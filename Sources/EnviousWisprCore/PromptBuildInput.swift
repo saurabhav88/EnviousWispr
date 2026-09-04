@@ -57,6 +57,20 @@ public struct PromptBuildInput: Sendable {
   /// break the on-device expectation users choose local Ollama for.
   public let ollamaIsRemote: Bool?
 
+  // MARK: - S1-mini control line (#2649)
+
+  /// The three control-line axes the user picked for S1-mini. Read by exactly
+  /// one builder, `S1ControlLinePromptBuilder`; every other family ignores it.
+  ///
+  /// Defaulted to the shipped values in `init`, and that default is a KNOWN
+  /// BLIND SPOT rather than a convenience: a production call site that forgets
+  /// to pass it compiles cleanly and silently sends every user the default
+  /// tone whatever they picked. The defence is not the parameter but the test
+  /// on the producer, `LLMPolishStep`, which asserts the configured value
+  /// reaches the planner. Tooling and probe call sites (`EGOneServerManager`'s
+  /// health probe) genuinely want the default.
+  public let s1Control: S1ControlSettings
+
   public init(
     transcript: String,
     provider: LLMProvider,
@@ -68,7 +82,8 @@ public struct PromptBuildInput: Sendable {
     customVocabulary: PromptVocabulary? = nil,
     languageDetection: LanguageDetectionResult? = nil,
     backend: ASRBackendType? = nil,
-    ollamaIsRemote: Bool? = nil
+    ollamaIsRemote: Bool? = nil,
+    s1Control: S1ControlSettings = .default
   ) {
     self.transcript = transcript
     self.provider = provider
@@ -84,6 +99,7 @@ public struct PromptBuildInput: Sendable {
     self.languageDetection = languageDetection
     self.backend = backend
     self.ollamaIsRemote = ollamaIsRemote
+    self.s1Control = s1Control
   }
 
   /// Returns a copy of this input with `polishVocabulary` replaced. Used by
@@ -105,7 +121,8 @@ public struct PromptBuildInput: Sendable {
       customVocabulary: customVocabulary,
       languageDetection: languageDetection,
       backend: backend,
-      ollamaIsRemote: ollamaIsRemote
+      ollamaIsRemote: ollamaIsRemote,
+      s1Control: s1Control
     )
   }
 }

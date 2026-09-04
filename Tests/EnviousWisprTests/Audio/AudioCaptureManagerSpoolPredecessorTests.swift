@@ -46,7 +46,7 @@ import Testing
         wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
         customWordsVersion: nil,
-        llmProvider: "none", llmModel: "none", polishPromptVersion: nil)
+        llmProvider: "none", llmModel: "none", polishPromptVersion: nil, s1Control: nil)
     }
 
     /// A directive pointing at a fresh file inside `dir`, encoded exactly as the

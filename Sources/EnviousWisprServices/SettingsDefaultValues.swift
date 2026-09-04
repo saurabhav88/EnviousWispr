@@ -42,6 +42,9 @@ enum SettingsDefaultValues {
   // #1950: the measured local-model default. This applies only when no choice is stored;
   // SettingsManager preserves an existing ollamaModel value.
   static let ollamaModel = "qwen2.5:3b"
+  /// #2649: S1-mini's control-line picks. The type's own default IS the shipped
+  /// value set, read here rather than restated so the two cannot drift.
+  static let s1Control: S1ControlSettings = .default
 
   static let autoCopyToClipboard = true
   static let hotkeyEnabled = true

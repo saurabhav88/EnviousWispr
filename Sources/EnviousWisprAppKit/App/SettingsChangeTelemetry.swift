@@ -53,6 +53,13 @@ enum SettingsProjection {
     /// and the second is what decides whether the download was worth shipping.
     /// A closed enum value, never a language, a model path or any dictated text.
     case livePreviewEngine = "live_preview_engine"
+    /// #2649: S1-mini's three control-line picks, one logical each. Instrumented
+    /// because the question the pickers exist to answer is which axis users
+    /// actually change, and that decides whether automatic per-destination
+    /// selection is worth building. Closed enum values, never dictated text.
+    case s1Styling = "s1_styling"
+    case s1Structure = "s1_structure"
+    case s1Context = "s1_context"
     case warmEnginePolicy = "warm_engine_policy"
     case appearance = "appearance"
     case overlayPillPosition = "overlay_pill_position"
@@ -115,6 +122,9 @@ enum SettingsProjection {
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
     case .livePreviewEngine: return [.livePreviewEngine]
+    case .s1MiniStyling: return [.s1Styling]
+    case .s1MiniStructure: return [.s1Structure]
+    case .s1MiniContext: return [.s1Context]
     case .warmEnginePolicy: return [.warmEnginePolicy]
     case .appearance: return [.appearance]
     case .overlayPillPosition: return [.overlayPillPosition]
@@ -171,6 +181,9 @@ enum SettingsProjection {
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .livePreview: return onOff(settings.livePreviewEnabled)
     case .livePreviewEngine: return settings.livePreviewEngine.rawValue
+    case .s1Styling: return settings.s1MiniStyling.rawValue
+    case .s1Structure: return settings.s1MiniStructure.rawValue
+    case .s1Context: return settings.s1MiniContext.rawValue
     case .warmEnginePolicy: return settings.warmEnginePolicy.rawValue
     case .appearance: return settings.appearancePreference.rawValue
     case .overlayPillPosition: return settings.overlayPillPosition.rawValue

@@ -257,6 +257,11 @@ final class PipelineSettingsSync {
       break
     case .crashRecoveryEnabled:
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
+    case .s1MiniStyling, .s1MiniStructure, .s1MiniContext:
+      // #2649: frozen into `DictationSessionConfig` at recording start, like
+      // provider and model, so a pick applies to the NEXT recording. Recovery
+      // replays the record-time value from the spool snapshot.
+      break
     case .escapeRecoveryEnabled:
       // #2087: deliberately NOT synced live. The value is frozen into
       // `DictationSessionConfig` at recording start, so a recording always ends

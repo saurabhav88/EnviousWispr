@@ -474,6 +474,16 @@ struct AIPolishSettingsView: View {
         providerSubConfig
       }
 
+      // #2649: S1-mini is one model with three dials. They are text at the top
+      // of every request, not model variants, so they live in a card of their
+      // own rather than in the model picker (which this engine does not show).
+      if settings.llmProvider == .s1Mini {
+        detailCard(label: S1ControlCopy.cardLabel) {
+          s1ControlRows
+          FrozenPerRecordingFootnote()
+        }
+      }
+
       if showModelSection {
         detailCard(label: "Model") {
           modelSelectorRow
@@ -592,6 +602,42 @@ struct AIPolishSettingsView: View {
       LocalEngineStatusCard(runtime: localPolishRuntimes.s1Mini, engine: .s1Mini) {
         localPolishRuntimes.s1Mini.removeModel()
         settings.llmProvider = .appleIntelligence
+      }
+    }
+  }
+
+  /// The three S1-mini control-line pickers (#2649). Each writes its own stored
+  /// setting so one change emits one delta. Every option label maps to exactly
+  /// one trained value; the enum is what keeps an untrained token off the wire.
+  @ViewBuilder
+  private var s1ControlRows: some View {
+    @Bindable var settings = settings
+    VStack(alignment: .leading, spacing: 14) {
+      Text(S1ControlCopy.intro)
+        .settingsReadingCopy()
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.stylingLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Styling.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniStyling)
+        Text(S1ControlCopy.stylingHint).font(.stHelper).foregroundStyle(.stTextSecondary)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.structureLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniStructure)
+        Text(S1ControlCopy.structureHint).font(.stHelper).foregroundStyle(.stTextSecondary)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.contextLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Context.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniContext)
+        Text(S1ControlCopy.contextHint).font(.stHelper).foregroundStyle(.stTextSecondary)
       }
     }
   }
@@ -2212,6 +2258,51 @@ struct AIPolishSettingsView: View {
       .buttonStyle(.borderless)
       .help("Prepare model")
       .accessibilityLabel("Prepare model")
+    }
+  }
+}
+
+// MARK: - S1-mini control-line copy (#2649)
+
+/// Every user-facing string on the S1-mini writing-style card, in one place so
+/// a test can read them and the no-dash rule can be checked on the whole set.
+/// The option labels are a total function over each enum, so adding a trained
+/// value cannot leave a segment without a name.
+enum S1ControlCopy {
+  static let cardLabel = "Writing style"
+  static let intro =
+    "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation."
+
+  static let stylingLabel = "Tone"
+  static let stylingHint =
+    "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text."
+  static let structureLabel = "Structure"
+  static let structureHint =
+    "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences."
+  static let contextLabel = "Context"
+  static let contextHint =
+    "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else."
+
+  static func label(for styling: S1Styling) -> String {
+    switch styling {
+    case .casual: return "Casual"
+    case .semiCasual: return "Semi-casual"
+    case .semiFormal: return "Semi-formal"
+    case .formal: return "Formal"
+    }
+  }
+
+  static func label(for structure: S1Structure) -> String {
+    switch structure {
+    case .prose: return "Prose"
+    case .lists: return "Lists"
+    }
+  }
+
+  static func label(for context: S1Context) -> String {
+    switch context {
+    case .general: return "General"
+    case .email: return "Email"
     }
   }
 }

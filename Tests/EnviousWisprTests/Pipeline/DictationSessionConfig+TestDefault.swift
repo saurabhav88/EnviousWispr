@@ -29,7 +29,8 @@ extension DictationSessionConfig {
     // #2087: both default to the pre-feature world — off, and no spool — so
     // every existing suite keeps its behaviour until it opts in explicitly.
     escapeRecoveryEnabled: Bool = false,
-    recoverySessionID: String? = nil
+    recoverySessionID: String? = nil,
+    s1Control: S1ControlSettings = .default
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
@@ -51,7 +52,8 @@ extension DictationSessionConfig {
       selectedInputDeviceUID: selectedInputDeviceUID,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,
-      escapeRecoveryEnabled: escapeRecoveryEnabled
+      escapeRecoveryEnabled: escapeRecoveryEnabled,
+      s1Control: s1Control
     )
   }
 }

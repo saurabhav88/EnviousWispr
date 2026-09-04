@@ -247,7 +247,7 @@ struct ReadinessRetryTelemetryContractTests {
           languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
           emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
           customWordsVersion: nil, llmProvider: "none", llmModel: "",
-          polishPromptVersion: nil),
+          polishPromptVersion: nil, s1Control: nil),
         appVersion: "1.0.0", createdAt: Date(timeIntervalSince1970: 0))
       writer.start()
       writer.append([0.1, 0.2, 0.3])

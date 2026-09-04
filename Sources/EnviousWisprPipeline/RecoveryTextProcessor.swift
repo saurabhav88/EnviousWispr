@@ -38,6 +38,10 @@ public struct RecoveryTextOutcome: Sendable {
 @MainActor
 public final class RecoveryTextProcessor {
   private let steps: LimbSteps
+  /// The polish step this processor replays through, for a test to read what
+  /// `applySettings` wrote. `internal`, reached only via `@testable`; the same
+  /// seam shape `LLMPolishStep.makePolisher` offers, and a read, never a knob.
+  var llmPolishStep: LLMPolishStep { steps.llmPolish }
   private let runner: TextProcessingRunner
   /// The recording's locked decode language (or nil for auto), applied from the
   /// snapshot. Recovery replays under the ORIGINAL language exactly as the live
@@ -118,6 +122,10 @@ public final class RecoveryTextProcessor {
     steps.llmPolish.llmModel = LLMProvider.replacingRetiredModel(
       snapshot.llmModel, for: steps.llmPolish.llmProvider)
     steps.llmPolish.backend = snapshot.backendType
+    // #2649: replay the recorded control-line picks. A spool from before the
+    // pickers carries nil and was polished under the shipped default, so that
+    // is the honest reproduction rather than the user's current picks.
+    steps.llmPolish.s1Control = snapshot.s1Control ?? .default
     // #1831 removed the record-time reasoning setting this used to replay. The
     // reason it existed still holds and is now satisfied structurally rather
     // than by carrying state: a recovered take must polish under the same

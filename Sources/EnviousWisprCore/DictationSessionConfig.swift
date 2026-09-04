@@ -93,6 +93,16 @@ public struct DictationSessionConfig: Sendable {
   /// races inside `SettingsManager`.
   public let llmModel: String
   public let polishInstructions: PolishInstructions
+  /// #2649: the S1-mini control-line picks this recording polishes under.
+  /// Frozen here for the same reason as provider and model: a pick changed
+  /// mid-dictation governs the NEXT recording, never the one in flight. Read
+  /// by exactly one prompt builder; every other provider ignores it.
+  ///
+  /// Defaults to the shipped values so a construction site that forgets it
+  /// gets today's behaviour, which is the same trade `escapeRecoveryEnabled`
+  /// makes below. The live producer (`DictationSessionConfigFactory`) passes
+  /// the user's value and is the site a test must watch.
+  public let s1Control: S1ControlSettings
 
   // MARK: Audio device selection
 
@@ -161,7 +171,8 @@ public struct DictationSessionConfig: Sendable {
     preferredInputDeviceIDOverride: String,
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil,
-    escapeRecoveryEnabled: Bool = false
+    escapeRecoveryEnabled: Bool = false,
+    s1Control: S1ControlSettings = .default
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
@@ -184,6 +195,7 @@ public struct DictationSessionConfig: Sendable {
     self.recoverySessionID = recoverySessionID
     self.recoveryPayload = recoveryPayload
     self.escapeRecoveryEnabled = escapeRecoveryEnabled
+    self.s1Control = s1Control
   }
 
   /// The user's locked dictation language, or nil on Auto-detect. Single authority

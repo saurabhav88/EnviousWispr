@@ -21,7 +21,7 @@ struct S1MiniConnectorTests {
   }
 
   static func userMessage(_ transcript: String) -> String {
-    "\(S1ControlLinePromptBuilder.controlLine)\n\(transcript)"
+    "\(S1ControlSettings.default.controlLine)\n\(transcript)"
   }
 
   @Test("an empty answer to filler-only input is a valid result, not a crash")
@@ -98,9 +98,20 @@ struct S1MiniConnectorTests {
     let odd = "no control line here"
     #expect(S1MiniConnector.transcript(fromUserMessage: odd) == odd)
     // And the whole control line, if it ever reached the classifier, must not
-    // read as filler.
-    #expect(
-      LocalPolishEmptyDisposition.classify(input: S1ControlLinePromptBuilder.controlLine)
-        == .unexpectedEmpty)
+    // read as filler. Every trained combination, not only the default: the
+    // pickers (#2649) can put any of them on the wire.
+    for styling in S1Styling.allCases {
+      for structure in S1Structure.allCases {
+        for context in S1Context.allCases {
+          let line = S1ControlSettings(styling: styling, structure: structure, context: context)
+            .controlLine
+          #expect(
+            LocalPolishEmptyDisposition.classify(input: line) == .unexpectedEmpty,
+            Comment(rawValue: line))
+          // And the transcript recovery must still find the transcript behind it.
+          #expect(S1MiniConnector.transcript(fromUserMessage: "\(line)\nhello there") == "hello there")
+        }
+      }
+    }
   }
 }

@@ -74,7 +74,10 @@ enum DictationSessionConfigFactory {
       recoveryPayload: recoveryPayload,
       // #2087: frozen here, so the rules a recording ends under are the rules it
       // started under. `RecordingSessionKernel`'s cancel branch is the reader.
-      escapeRecoveryEnabled: settings.escapeRecoveryEnabled
+      escapeRecoveryEnabled: settings.escapeRecoveryEnabled,
+      // #2649: frozen here like provider and model, so a pick changed
+      // mid-dictation applies to the next recording.
+      s1Control: settings.s1Control
     )
   }
 }

@@ -27,7 +27,10 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",
-      polishPromptVersion: "v38")
+      polishPromptVersion: "v38",
+      // A NON-default value, so the round-trip rows below prove the field
+      // survives rather than that a default was re-minted on the way back.
+      s1Control: S1ControlSettings(styling: .formal, structure: .prose, context: .email))
   }
 
   @Test("an audio frame round-trips bit-exact under AES-GCM")
@@ -195,6 +198,41 @@ struct RecoverySpoolCodecTests {
     let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
     // Every surviving field must arrive intact — not merely "it did not throw".
     #expect(decoded == snapshot())
+  }
+
+  /// #2649: a spool written before the S1-mini pickers has no `s1Control` key.
+  /// It must decode with the field nil, and every other field intact, so
+  /// recovery can resolve nil to the shipped default rather than losing the
+  /// whole settings block (and with it engine, language and polish fidelity).
+  @Test("a spool written before #2649 decodes with the control picks absent")
+  func legacySpoolWithoutControlPicksStillDecodes() throws {
+    // Derived from the real encoder, same reasoning as the #1831 row above.
+    let current = try JSONEncoder().encode(snapshot())
+    var fields = try #require(
+      try JSONSerialization.jsonObject(with: current) as? [String: Any])
+    #expect(fields["s1Control"] != nil, "a NEW snapshot must carry the key, or arm 2 tests nothing")
+    fields.removeValue(forKey: "s1Control")
+    let legacy = try JSONSerialization.data(withJSONObject: fields)
+    #expect(!String(decoding: legacy, as: UTF8.self).contains("s1Control"))
+
+    let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
+    #expect(decoded.s1Control == nil)
+    // Every other field arrived: the decoded value differs from the fixture ONLY
+    // in the removed field.
+    let expected = RecordingSettingsSnapshot(
+      backendType: snapshot().backendType,
+      backendSupportsLanguageDetection: snapshot().backendSupportsLanguageDetection,
+      languageMode: snapshot().languageMode,
+      wordCorrectionEnabled: snapshot().wordCorrectionEnabled,
+      fillerRemovalEnabled: snapshot().fillerRemovalEnabled,
+      emojiFormatterEnabled: snapshot().emojiFormatterEnabled,
+      spokenPunctuationEnabled: snapshot().spokenPunctuationEnabled,
+      customWordsVersion: snapshot().customWordsVersion,
+      llmProvider: snapshot().llmProvider,
+      llmModel: snapshot().llmModel,
+      polishPromptVersion: snapshot().polishPromptVersion,
+      s1Control: nil)
+    #expect(decoded == expected)
   }
 
   @Test("the file header round-trips and locates the frames")

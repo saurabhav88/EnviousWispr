@@ -20,6 +20,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var llmProvider: LLMProvider = .none
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
+  /// #2649: the user's S1-mini control-line picks. Frozen per recording like
+  /// provider and model (`DictationSessionConfig`), replayed from the spool on
+  /// recovery, and read by exactly one builder. Every other provider ignores it.
+  public var s1Control: S1ControlSettings = .default
   public var polishVocabulary: PolishVocabulary = .empty
 
   // MARK: - Multilingual v1 (W3)
@@ -539,6 +543,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    let s1Control = s1Control
     telemetry.breadcrumbStarted(
       "LLM polish started",
       [
@@ -883,7 +888,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // #1948: the daemon-reported execution location decides which Ollama prompt is sent.
       // Already captured for this attempt at the readiness probe above; nil for every
       // non-Ollama provider, which routes nothing.
-      ollamaIsRemote: ollamaRemote
+      ollamaIsRemote: ollamaRemote,
+      s1Control: s1Control
     )
     let plan = promptPlanner.plan(input: input)
 
@@ -893,10 +899,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // only, never transcript or prompt content.
     let systemChars =
       plan.envelope.messages.first(where: { $0.role == .system })?.content.count ?? 0
+    // #2649: the control line is three closed-enum policy values, never content,
+    // and it is the only way Live UAT can see which picks reached the model.
+    // Logged only for the family that reads it, so other engines' lines do not
+    // carry a field that means nothing to them.
+    let controlReceipt =
+      plan.family == .s1ControlLine ? ", control_line=\(s1Control.controlLine)" : ""
     Task {
       await AppLogger.shared.log(
         "LLM prompt route: provider=\(provider.rawValue), model=\(model), "
-          + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)",
+          + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)"
+          + controlReceipt,
         level: .info, category: "LLM"
       )
     }

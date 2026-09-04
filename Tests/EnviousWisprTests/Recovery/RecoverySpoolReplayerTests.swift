@@ -132,7 +132,8 @@ struct RecoverySpoolReplayerTests {
       customWordsVersion: nil,
       llmProvider: "none",
       llmModel: "",
-      polishPromptVersion: nil)
+      polishPromptVersion: nil,
+      s1Control: nil)
   }
 
   private struct Harness {

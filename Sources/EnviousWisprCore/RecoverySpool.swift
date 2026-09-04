@@ -90,6 +90,18 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   public let llmModel: String
   /// Polish prompt version at record time. Nil for providers without one.
   public let polishPromptVersion: String?
+  /// #2649: the S1-mini control-line picks at record time, so a recovered take
+  /// polishes under the tone the user had chosen, not the one they have now.
+  /// OPTIONAL for the same reason as `spokenPunctuationEnabled`: spools written
+  /// before this field exist, synthesized `Codable` would fail the WHOLE settings
+  /// decode on a missing non-optional key, and `RecoverySpoolStore` swallows that
+  /// with `try?`. `nil` means the spool predates the pickers; recovery resolves
+  /// that to the shipped default, which is what those takes were polished under.
+  ///
+  /// The initializer parameter is deliberately NOT defaulted, for the same reason
+  /// as its sibling: it is the only compile-time force on `RecoveryCoordinator`
+  /// to pass the record-time value.
+  public let s1Control: S1ControlSettings?
 
   public init(
     backendType: ASRBackendType,
@@ -102,7 +114,8 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
-    polishPromptVersion: String? = nil
+    polishPromptVersion: String? = nil,
+    s1Control: S1ControlSettings?
   ) {
     self.backendType = backendType
     self.backendSupportsLanguageDetection = backendSupportsLanguageDetection
@@ -115,6 +128,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.llmProvider = llmProvider
     self.llmModel = llmModel
     self.polishPromptVersion = polishPromptVersion
+    self.s1Control = s1Control
   }
 }
 

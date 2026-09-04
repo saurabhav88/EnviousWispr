@@ -15,6 +15,19 @@ struct DictationInvokedPipelineWiringTests {
     #expect(factorySource.contains("inputMode: settings.recordingMode"))
   }
 
+  /// #2649: the factory is the ONE live producer of the frozen S1-mini picks,
+  /// and it needs two kernel drivers and an ASR manager to run, so it is pinned
+  /// the same way `inputMode` is above: the forwarding expression must be
+  /// present, exactly once, reading the settings rather than a constant.
+  @Test("session config carries the S1-mini picks from settings, not a constant")
+  func sessionConfigCarriesS1ControlPicks() throws {
+    let factorySource = try Self.read(
+      "Sources/EnviousWisprAppKit/App/DictationSessionConfigFactory.swift")
+    let forwards = factorySource.components(separatedBy: "s1Control: settings.s1Control").count - 1
+    #expect(forwards == 1, "expected one forwarding expression, found \(forwards)")
+    #expect(!factorySource.contains("s1Control: .default"))
+  }
+
   @Test("Parakeet (kernel sink) emits dictation.invoked from recordingCommitted")
   func parakeetPipelineEmitsAfterRecordingStarts() throws {
     // PR-4b.4: Parakeet's dictation.invoked emit moved out of the deleted

@@ -35,27 +35,12 @@ struct S1ControlLinePromptBuilder: PromptBuilder {
     + "with a control line specifying the styling, structure, and context settings; "
     + "clean the transcript to match those settings and output only the cleaned text."
 
-  /// Register. The card's own default, and the one its published examples use.
-  /// `casual` and `semi-casual` deliberately keep sentence starts lowercase and
-  /// drop the final period, which would read as a formatting bug in dictated
-  /// text destined for other people's documents.
-  static let styling = "semi-formal"
-
-  /// Founder decision 2026-09-04: ship the list-capable behaviour. Told `lists`
-  /// the model emits one for genuinely enumerable content and leaves everything
-  /// else as prose; told `prose` it scores zero on list-demanding input. This is
-  /// a SETTING the model obeys, not a judgement it makes, so the choice is ours
-  /// and it belongs here rather than being inferred per transcript.
-  static let structure = "lists"
-
-  /// Destination conventions. `email` turns on greeting-line and sign-off-block
-  /// layout, which is a per-destination decision this build does not make: the
-  /// polish path does not know where the text is going. `general` is the
-  /// neutral value and the one every measurement here was taken at.
-  static let context = "general"
-
-  /// The first line of the user message, exactly as the card specifies it.
-  static let controlLine = "[Styling: \(styling)] [Structure: \(structure)] [Context: \(context)]"
+  // The three control-line values used to be constants here. Since the founder
+  // decision of 2026-09-04 they are user settings, carried on
+  // `PromptBuildInput.s1Control` and composed by `S1ControlSettings.controlLine`,
+  // which is where the reasoning behind each default now lives. The trained
+  // value sets are closed enums in that type, so this builder cannot be handed
+  // a value the model was not trained on.
 
   func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
     // `mode` is intentionally unused: this model's formatting behaviour is in
@@ -68,7 +53,7 @@ struct S1ControlLinePromptBuilder: PromptBuilder {
     // transcript after the control line; adding a wrapper would be exactly the
     // off-distribution drift the card warns about, and the model would be free
     // to echo the tags into the user's text.
-    let userMessage = "\(Self.controlLine)\n\(input.transcript)"
+    let userMessage = "\(input.s1Control.controlLine)\n\(input.transcript)"
 
     return PromptEnvelope(messages: [
       PromptMessage(role: .system, content: Self.systemPrompt),

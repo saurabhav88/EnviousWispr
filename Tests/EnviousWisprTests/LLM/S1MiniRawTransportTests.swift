@@ -60,7 +60,7 @@ struct S1MiniRawTransportTests {
   func textComesFromTheOwner() {
     let raw = S1MiniRawTransport.rawPrompt(for: Self.envelope())
     #expect(raw.contains(S1ControlLinePromptBuilder.systemPrompt))
-    #expect(raw.contains(S1ControlLinePromptBuilder.controlLine))
+    #expect(raw.contains(S1ControlSettings.default.controlLine))
     #expect(raw.contains("so um send the report by friday"))
   }
 

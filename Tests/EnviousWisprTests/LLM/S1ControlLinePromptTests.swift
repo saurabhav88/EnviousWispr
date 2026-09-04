@@ -77,18 +77,46 @@ struct S1ControlLinePromptTests {
     #expect(String(fileText.dropLast()) == S1ControlLinePromptBuilder.systemPrompt)
   }
 
-  /// The control line is the model's actual API surface. Its three values are
-  /// product decisions, not incidental strings: `lists` is the founder's choice
-  /// of behaviour, and `semi-formal` is the only register that does not
-  /// deliberately drop capitals and final periods.
-  @Test("the control line carries the chosen settings, in the card's shape")
+  /// The control line is the model's actual API surface. Its three DEFAULT
+  /// values are product decisions, not incidental strings: `lists` is the
+  /// founder's choice of behaviour, and `semi-formal` is the only register that
+  /// does not deliberately drop capitals and final periods. Since the pickers
+  /// (#2649) these are the values a user who never opens them runs under, so a
+  /// changed default here changes every install silently.
+  @Test("the default control line is the shipped one, in the card's shape")
   func controlLineShape() {
     #expect(
-      S1ControlLinePromptBuilder.controlLine
+      S1ControlSettings.default.controlLine
         == "[Styling: semi-formal] [Structure: lists] [Context: general]")
-    #expect(S1ControlLinePromptBuilder.structure == "lists")
-    #expect(S1ControlLinePromptBuilder.styling == "semi-formal")
-    #expect(S1ControlLinePromptBuilder.context == "general")
+    #expect(S1ControlSettings.default.structure == .lists)
+    #expect(S1ControlSettings.default.styling == .semiFormal)
+    #expect(S1ControlSettings.default.context == .general)
+  }
+
+  /// The pickers change EXACTLY the first line. The transcript after it, the
+  /// system prompt, and the message count are all untouched, or a picker could
+  /// leak into the text the model is asked to clean.
+  @Test("a non-default pick changes the control line and nothing else")
+  func nonDefaultPickReachesTheLine() {
+    var input = Self.input(transcript: "so um i need to send the report by friday")
+    input = PromptBuildInput(
+      transcript: input.transcript, provider: input.provider, modelID: input.modelID,
+      appName: input.appName, language: input.language,
+      polishVocabulary: input.polishVocabulary, ollamaIsRemote: nil,
+      s1Control: S1ControlSettings(styling: .formal, structure: .prose, context: .email))
+    let envelope = S1ControlLinePromptBuilder().build(input: input, mode: .message)
+    let baseline = S1ControlLinePromptBuilder().build(
+      input: Self.input(transcript: "so um i need to send the report by friday"), mode: .message)
+
+    #expect(envelope.messages.count == baseline.messages.count)
+    #expect(envelope.messages[0].content == baseline.messages[0].content)
+    #expect(
+      envelope.messages[1].content
+        == "[Styling: formal] [Structure: prose] [Context: email]\nso um i need to send the report by friday"
+    )
+    // Two-way control: the baseline really is different, so the row above did
+    // not pass by comparing a value to itself.
+    #expect(envelope.messages[1].content != baseline.messages[1].content)
   }
 
   /// The user message shape, asserted on the RENDERED envelope rather than on
