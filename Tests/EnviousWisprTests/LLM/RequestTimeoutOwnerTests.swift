@@ -49,6 +49,19 @@ struct RequestTimeoutOwnerTests {
   /// diff, and a grep for `= 60` is what produced the original five-site list.
   /// Asking for every assignment instead immediately returned a sixth site at
   /// `OllamaConnector.swift:485` that no value-shaped search could have found.
+  ///
+  /// **And the classification FAILS CLOSED, which is a separate lesson.** The
+  /// first version allowed anything that was not a literal equal to the session's
+  /// value, on the reasoning that a computed value "cannot silently equal" it.
+  /// That is false for the single most natural way to reintroduce this:
+  ///
+  ///     request.timeoutInterval = LLMNetworkSession.requestTimeoutSeconds
+  ///
+  /// which ALWAYS equals it, reads as conscientious, and sailed through — CONTROLLED
+  /// against the real source before the fix. Enumerating expression forms would
+  /// be describing a set with a next counterexample, so the question is inverted
+  /// instead: allowed ONLY if it is a literal that DIFFERS. Every other shape,
+  /// including ones nobody has written yet, is an offender.
   @Test("no connector restates the session's own timeout on a request")
   func noShadowCopies() throws {
     var offenders: [String] = []
@@ -59,11 +72,16 @@ struct RequestTimeoutOwnerTests {
       let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
       visitor.walk(Parser.parse(source: source))
       for assignment in visitor.assignments {
-        if assignment.literal == LLMNetworkSession.requestTimeoutSeconds {
+        // FAILS CLOSED. An assignment is allowed ONLY when it is a numeric
+        // literal that DIFFERS from the session's value. Everything else is an
+        // offender, including anything this parser cannot evaluate.
+        guard let literal = assignment.literal,
+          literal != LLMNetworkSession.requestTimeoutSeconds
+        else {
           offenders.append("\(path): \(assignment.text)")
-        } else {
-          deliberate.append("\(path): \(assignment.text)")
+          continue
         }
+        deliberate.append("\(path): \(assignment.text)")
       }
     }
     #expect(
@@ -71,11 +89,17 @@ struct RequestTimeoutOwnerTests {
       """
       per-request timeouts restating the session's own \
       (\(LLMNetworkSession.requestTimeoutSeconds)s): \(offenders).
-      A per-request value WINS over the configuration, so this copy does nothing \
-      today and silently overrides the session the moment anyone edits it there. \
-      Delete the assignment. If this request genuinely needs a different ceiling, \
-      set a different NUMBER and say why — that is allowed and this test permits \
-      it.
+      A per-request value WINS over the configuration, so a copy that matches it \
+      does nothing today and silently overrides the session the moment anyone \
+      edits it there. Delete the assignment.
+
+      This check FAILS CLOSED: the only allowed assignment is a numeric literal \
+      that DIFFERS from the session's. A reference such as \
+      `= LLMNetworkSession.requestTimeoutSeconds` is flagged BECAUSE it always \
+      equals the session's, and any expression this parser cannot evaluate is \
+      flagged too. If this request genuinely needs a different ceiling, write a \
+      different NUMBER and say why; if it needs a computed one, give it its own \
+      URLSession the way `OllamaConnector.readinessSession` does.
       """)
 
     // Two-way: the deliberate one must still be VISIBLE, or a future edit that
@@ -138,8 +162,11 @@ struct RequestTimeoutOwnerTests {
 private final class TimeoutAssignmentVisitor: SyntaxVisitor {
   struct Assignment {
     let text: String
-    /// The assigned number when it is a plain literal, else nil — a computed
-    /// value is never a shadow, because it cannot silently equal the session's.
+    /// The assigned number when it is a plain literal, else nil.
+    ///
+    /// `nil` does NOT mean safe. The caller treats an unevaluatable value as an
+    /// offender, because the most natural reintroduction of this defect is a
+    /// direct reference to the owner constant, which always equals it.
     let literal: Double?
   }
 
