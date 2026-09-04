@@ -53,9 +53,8 @@ The same is true if you say the keyword and nothing after it matches a snippet y
 
 1. Open **Settings** \> **Snippets**.
 2. Click **Add snippet**.
-3. Type the words you will say in **Snippet**, and the text you want pasted in **Expands to**.
-4. Watch the preview. It shows what you will say and what you will get.
-5. Click **Save**.
+3. Type the words you will say in **Snippet**, and the text you want pasted in **Expands to**. Your keyword sits to the left of the **Snippet** box, so you can read the whole phrase you will say.
+4. Click **Save**.
 
 ### Change your keyword
 

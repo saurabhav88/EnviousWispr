@@ -3,16 +3,21 @@ import SwiftUI
 
 /// Add or edit one snippet (#628), to the approved design's sheet.
 ///
-/// The live preview is the reason this sheet is worth its size. The keyword rule is easy to
-/// state and easy to misread, and a user typing a trigger cannot otherwise tell what they will
-/// have to say. Showing "You say" and "You get" as they type answers that without a manual.
+/// The sheet carried a live preview card until #2631. It was the only element in this fixed
+/// 600pt frame with no height bound — its "You get" line rendered every line of the expansion
+/// on purpose, so a multi-paragraph snippet grew the card until Delete, Cancel and Save were
+/// off the bottom and Escape was the only way out. It also restated what sat one row above it:
+/// the keyword is already a pill beside the trigger input, and the expansion is already in the
+/// editor. Removed rather than bounded, and the space went to that editor, which is where a
+/// long snippet is actually written.
 struct SnippetEditSheet: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
   @Environment(\.dismiss) private var dismiss
 
   let draft: SnippetDraft
-  /// Passed in rather than read from the coordinator inside `body`: the preview must show the
-  /// keyword as it was when the sheet opened, so it cannot change under the user mid-edit.
+  /// Passed in rather than read from the coordinator inside `body`: the pill beside the trigger
+  /// input must show the keyword as it was when the sheet opened, so it cannot change under the
+  /// user mid-edit.
   let keyword: String
 
   @State private var trigger = ""
@@ -35,9 +40,7 @@ struct SnippetEditSheet: View {
 
       triggerField
       expansionField
-      preview
 
-      Spacer(minLength: 0)
       footer
     }
     .padding(20)
@@ -79,9 +82,11 @@ struct SnippetEditSheet: View {
   private var expansionField: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Expands to").settingsRowLabel()
+      // Takes every point the sheet has left rather than a fixed height. A snippet is routinely
+      // a whole canned message, and the previous 110pt showed about four lines of one.
       TextEditor(text: $expansion)
         .font(.stBody)
-        .frame(height: 110)
+        .frame(minHeight: 110, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
         .padding(6)
         .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 8))
@@ -90,39 +95,6 @@ struct SnippetEditSheet: View {
             .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
       Text("Pasted exactly as written. AI Polish never rewrites it.").settingsHelperCopy()
     }
-  }
-
-  // MARK: - Preview
-
-  private var preview: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("PREVIEW")
-        .font(.stSectionHeader)
-        .tracking(0.6)
-        .foregroundStyle(.stAccent)
-
-      VStack(alignment: .leading, spacing: 3) {
-        Text("You say").settingsHelperCopy()
-        Text("\(keyword) \(trigger)")
-          .font(.stRowLabel)
-          .foregroundStyle(.stAccent)
-      }
-      Divider().overlay(Color.stDivider)
-      VStack(alignment: .leading, spacing: 3) {
-        Text("You get").settingsHelperCopy()
-        Text(expansion.isEmpty ? " " : expansion)
-          .font(.stRowLabel)
-          .foregroundStyle(.stSuccess)
-          // The expansion's line breaks are its point, so the preview must show them rather
-          // than collapsing them into one line the way the list row deliberately does.
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 10))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stDivider, lineWidth: 1))
   }
 
   // MARK: - Footer
