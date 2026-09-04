@@ -470,19 +470,23 @@ import os
     #expect(outcome == .pasted)
     #expect(requests.legacyTexts.count == 1, "the cascade is called exactly once")
 
-    // TRAILING whitespace only. The legacy payload always carries a trailing space —
-    // `PasteCascadeExecutor.swift`: "Today's payload, including its trailing space. ALWAYS
-    // present" — which predates snippets and is owned by the insertion repair, not by
-    // anything here. Trimming the tail cannot hide what this test is for: both line breaks
-    // sit in the MIDDLE of the string, so they survive the trim and are compared byte for
-    // byte. Pinning the trailing space instead would make this test fail the day somebody
-    // legitimately changes spacing, on a property it was never about.
-    let received = requests.legacyTexts.first ?? ""
-    let withoutTrailingWhitespace = String(
-      received.reversed().drop(while: \.isWhitespace).reversed())
+    // Asserted EXACTLY, trailing space included, and the earlier draft of this test trimmed
+    // it away — which is the whole reason to pin it. `CursorInsertionRepair.legacyPayload` is
+    // `text.hasSuffix(" ") ? text : text + " "`, so every delivered payload gains a space it
+    // did not have. That is shared behaviour, not snippet behaviour: single-line snippets
+    // have always carried it. What CHANGED here is that a multi-line snippet used to bypass
+    // the cascade and reach the clipboard byte-exact, and now takes the same path as
+    // everything else, so it gains the space too. A snippet ending in a newline therefore
+    // ends "\n ", a line holding one space — visible in a code block. #2643 owns whether
+    // snippets should be exempt from the trailing space; that is a product question about
+    // ALL snippets, not something to special-case here.
+    //
+    // Pinned rather than trimmed so the day somebody changes this, they change it on purpose
+    // and see this test. A trim would have let the delivered bytes drift silently, which is
+    // exactly what it did before Codex named it.
     #expect(
-      withoutTrailingWhitespace == signature,
-      "the cascade must receive the snippet text with its line breaks intact")
+      requests.legacyTexts == [signature + " "],
+      "the cascade receives the snippet's line breaks intact, plus the shared trailing space")
 
     #expect(
       recorder.copies.isEmpty,
