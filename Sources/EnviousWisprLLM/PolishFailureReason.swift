@@ -316,8 +316,14 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
       return "a configuration problem stopped it. Your original text was pasted unchanged."
     case .emptyResponse:
       return "\(name) returned no cleanup text. Try again."
+    // #2093: was "the dictation took too long", which blamed the user's input for
+    // something the data says it did not cause. Measured across 121 production
+    // timeouts: median dictation 106 characters, 26 of 54 Gemini cases under 100,
+    // smallest 18. The dictation was almost never long; the provider did not
+    // answer inside the budget. A user-facing sentence is a claim like any
+    // other, and this one was refuted by our own telemetry.
     case .timedOut:
-      return "the dictation took too long. Your original text was pasted unchanged."
+      return "\(name) did not answer in time. Your original text was pasted unchanged."
     case .unknown:
       return "an unexpected error stopped it. Your original text was pasted unchanged."
     case .outputTruncated:

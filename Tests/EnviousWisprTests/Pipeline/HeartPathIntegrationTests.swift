@@ -218,10 +218,12 @@ struct HeartPathIntegrationTests {
       asrManager: asrManager,
       pasteSink: pasteSink,
       polisher: FixedPolisher(polished: "Hello, world. This is a test."),
-      // The real `.openAI` polish budget is 5s. A 6s discriminator throws
-      // TimeoutError for it before the polisher body runs — deterministic, no
+      // #2093: the real `.openAI` budget moved 5s -> 15s + 1s per 500 chars, so
+      // the old 6s discriminator stopped firing and this test would have proved
+      // the opposite of its name. The discriminator must stay ABOVE the real
+      // budget for this fixture: 26 chars -> 15.052s, so 16s. Deterministic, no
       // wall clock, no sleep.
-      textProcessingRunner: finalizerRunner(throwBelowSeconds: 6)
+      textProcessingRunner: finalizerRunner(throwBelowSeconds: 16)
     )
 
     let result = try await harness.run()
@@ -230,13 +232,13 @@ struct HeartPathIntegrationTests {
     #expect(result.outcome.transcript?.text == "hello world this is a test")
     #expect(result.outcome.transcript?.polishedText == nil)
     #expect(result.outcome.transcript?.displayText == "hello world this is a test")
-    // The real step's `.openAI` budget is 5s; the fake executor throws for any
-    // budget below 6s, so polish times out deterministically with no wall clock.
-    // The live path maps a timeout to its own user-facing copy, distinct from
-    // the generic failure message above.
+    // The real step's `.openAI` budget is 15.052s for this fixture (#2093); the
+    // fake executor throws for any budget below 16s, so polish times out
+    // deterministically with no wall clock. The live path maps a timeout to its
+    // own user-facing copy, distinct from the generic failure message above.
     #expect(
       result.outcome.polishError
-        == "AI cleanup skipped: the dictation took too long. Your original text was pasted unchanged."
+        == "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
     )
     #expect(pasteSink.pastedTexts == ["hello world this is a test "])
   }
@@ -255,12 +257,17 @@ private struct HeartPathHarnessResult {
 ///
 /// #794 (2026-05-19): the default `TextProcessingRunner()` delegates to the
 /// real `withThrowingTimeout`, which races a wall clock. On a contended CI
-/// runner a polish step's 5s budget can expire and the runner silently
+/// runner a polish step's real budget can expire and the runner silently
 /// degrades to raw ASR text — a false failure unrelated to the test's
 /// intent. `throwBelowSeconds: 0.0` never throws (every step runs);
 /// `throwBelowSeconds: 0.1` discriminates a 50ms slow-step budget from the
-/// 5s default so the `polishTimeoutFallsBackToRawASR` test can exercise the
+/// cloud default so the `polishTimeoutFallsBackToRawASR` test can exercise the
 /// real timeout-degradation path deterministically.
+///
+/// #2093: any discriminator here is COUPLED to the real cloud budget. When that
+/// moved 5s -> 15s the 6s value silently stopped triggering, turning a
+/// timeout-path test into a happy-path one that still passed its name. If the
+/// budget moves again, these numbers move with it.
 @MainActor
 private func finalizerRunner(throwBelowSeconds: Double = 0.0) -> TextProcessingRunner {
   TextProcessingRunner(
@@ -322,7 +329,7 @@ private final class HeartPathHarness {
     }
 
     let polishStep = LLMPolishStep(keychainManager: KeychainManager())
-    // `.openAI` only selects the 5 s budget and enables the step; the injected
+    // `.openAI` only selects that provider's budget and enables the step; the injected
     // polisher replaces the connector entirely, so no key or network is used.
     polishStep.llmProvider = .openAI
     if let polisher {

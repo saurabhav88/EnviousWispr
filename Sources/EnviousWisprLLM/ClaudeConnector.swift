@@ -384,7 +384,7 @@ public struct ClaudeConnector: TranscriptPolisher {
         let delay = delays[min(attempt - 1, delays.count - 1)]
         Task {
           await AppLogger.shared.log(
-            "Claude retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+            "Claude retry \(attempt)/\(maxRetries) after \(delay / 1_000_000)ms (model=\(config.model))",
             level: .verbose, category: "LLM"
           )
         }

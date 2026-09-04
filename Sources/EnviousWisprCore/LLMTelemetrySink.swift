@@ -31,17 +31,38 @@ public struct LLMTelemetrySink: Sendable {
   /// account name and the bridged error signature, never the key material.
   public let legacyKeyCleanupFailed: @Sendable (_ error: any Error, _ account: String) -> Void
 
+  /// #2093: a cloud pre-warm request is about to leave → `llm.prewarm_started`.
+  ///
+  /// This exists to MEASURE C4, and it is the only thing that can. The obvious
+  /// proxy — watching `rate_or_quota` fall — moves for reasons we do not control
+  /// (a user's own separate usage, provider policy), so it is a guardrail and
+  /// never the evidence. The ratio that answers "did we stop spending the user's
+  /// quota" is this event over accepted-plus-failed polishes, per provider.
+  ///
+  /// Emitted immediately BEFORE the request is sent and AFTER every key, model
+  /// and construction guard — so it counts requests that actually leave, not
+  /// intentions. Metadata only: provider and model, never key material.
+  public let prewarmStarted: @Sendable (_ provider: String, _ model: String) -> Void
+
+  /// `prewarmStarted` is deliberately NOT defaulted. Only three sites construct
+  /// this type, so requiring it costs almost nothing and makes the compiler,
+  /// rather than a reviewer, catch a `.live` factory that forgets to wire the
+  /// event — the failure mode where the counter silently never fires and the
+  /// change looks unmeasurable rather than broken.
   public init(
     limbFailure: @escaping @Sendable (String, String, String, String, Int?) -> Void,
-    legacyKeyCleanupFailed: @escaping @Sendable (any Error, String) -> Void
+    legacyKeyCleanupFailed: @escaping @Sendable (any Error, String) -> Void,
+    prewarmStarted: @escaping @Sendable (String, String) -> Void
   ) {
     self.limbFailure = limbFailure
     self.legacyKeyCleanupFailed = legacyKeyCleanupFailed
+    self.prewarmStarted = prewarmStarted
   }
 
   /// No-op sink — the default at every construction site except the App composition
   /// root (which injects `.live`). Keeps tests and keyless paths silent.
   public static let noop = LLMTelemetrySink(
     limbFailure: { _, _, _, _, _ in },
-    legacyKeyCleanupFailed: { _, _ in })
+    legacyKeyCleanupFailed: { _, _ in },
+    prewarmStarted: { _, _ in })
 }

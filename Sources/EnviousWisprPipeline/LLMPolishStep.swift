@@ -182,9 +182,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// (#1770 corrected an older claim on this line that "cloud providers respond
   /// in <2s so 5s is generous": false for Gemini on the measured long
   /// dictations (11,324 chars took 6.12s, 66,896 took 50.65s), and #158 already
-  /// measured a 9.16s Claude call. Gemini now
-  /// scales via `maxDuration(for:)` below; the rest keep fixed budgets, and
-  /// OpenAI/Claude are #1833.)
+  /// measured a 9.16s Claude call. Gemini and, since #2093, OpenAI scale via
+  /// `maxDuration(for:)` below; the rest keep fixed budgets. #2093 closes the
+  /// OpenAI half of #1833; the Claude half stays open by choice, since #158
+  /// measured that provider directly.)
   /// Local models (Ollama 12B) generate ~18 tok/s and need 10-15s for long dictations.
   /// Apple Intelligence runs on-device with variable latency depending on model size.
   public var maxDuration: Duration {
@@ -198,8 +199,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     case .appleIntelligence: return .seconds(10)
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
-    // two Haiku calls over 4.6s. The shared 5 s backstop below would
-    // truncate that real tail. The picker offers every live-discovered
+    // two Haiku calls over 4.6s. The shared backstop below was 5 s when this
+    // receipt was written and would have truncated that real tail; #2093 raised
+    // the openAI/gemini arm to this same 15 s, so the contrast is now with the
+    // 10 s that the paragraph below rejects, not with 5 s. The picker offers every live-discovered
     // model, including several Opus tiers the bucketed receipt never
     // measured — the separate all-models sweep recorded a real successful
     // claude-opus-4-5-20251101 call at 9.16s (Codex r10), which would leave
@@ -209,12 +212,31 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // rather than inventing a new number, with real headroom over the
     // worst real value measured across every offered model so far.
     case .claude: return .seconds(15)
-    case .openAI, .gemini, .none: return .seconds(5)
+    // #2093: raised from 5 s. The 5 s base was never measured against the live
+    // distribution — it was the original backstop, and #1770 fixed only the LONG
+    // tail above it. Production, 30 days, SUCCESSFUL Gemini polishes: 263 under
+    // 1 s, 197 at 1-2 s, 41 at 2-3 s, 23 at 3-4 s, 9 at 4-5 s. The distribution
+    // thins and never stops, so a 5 s cut sits INSIDE it and took 54 polishes
+    // from 7 users in that window (`ENVIOUSWISPR-32`). 15 s is not a new number:
+    // it is the `.claude` value directly above, whose own receipt records a real
+    // 9.16 s call, and it clears every successful cloud polish we have ever
+    // recorded (max 5.3 s) by ~3x.
+    //
+    // This budget IS a real bound — measured, not assumed. `withThrowingTimeout`
+    // returns the caller at the budget on every shape we ship, including Gemini's
+    // SSE `bytes(for:)` stream and this runner's `@MainActor` executor bridge
+    // (four-arm probe against stalling localhost servers, 2026-09-03). An earlier
+    // draft of #2093 claimed the opposite and was wrong.
+    case .openAI, .gemini: return .seconds(15)
+    // No provider selected: polish never runs, so this value is unreachable in
+    // practice. Left at 5 s deliberately rather than swept along with the two
+    // above, which would imply a measurement that does not exist for it.
+    case .none: return .seconds(5)
     }
   }
 
-  /// Gemini's budget scales with the transcript; every other provider keeps its
-  /// fixed one (#1770).
+  /// Gemini (#1770) and OpenAI (#2093) scale their budget with the transcript;
+  /// every other provider keeps a fixed one.
   ///
   /// A fixed 5 s was timing out long dictations. Measured live against
   /// real dictations, Gemini in fast mode: 1,709 chars -> 1.33 s, 4,605 -> 2.69 s,
@@ -233,17 +255,21 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// chars/second leaves ~2.6x margin on the variable part alone. Headroom
   /// lands at 6x / 6x / 4.5x / 2.7x across the table above.
   ///
-  /// `base` is 5 s, preserving today's short-dictation failure speed almost
-  /// exactly (110 chars -> 5.22 s).
+  /// `base` was 5 s, chosen to preserve the then-current short-dictation failure
+  /// speed (110 chars -> 5.22 s). **#2093 raised it to 15 s**: preserving that
+  /// speed was preserving the defect, because the failures are concentrated on
+  /// SHORT dictations — measured median 106 chars, 26 of 54 under 100 — so the
+  /// base, not the per-character term, is what was cutting them off.
   ///
   /// #1831 removed the 60 s deep base along with the Deep-reasoning toggle that
   /// was its only trigger. The measurement that justified it is kept because it
   /// is evidence, not dead code: deep mode spent a measured 42.2-42.4 s
   /// thinking BEFORE the first byte, a fixed cost rather than a per-character
   /// one. No caller can request that shape any more — the capability table now
-  /// holds one value per model, each of them the toggle's OFF value — so 5 s is
-  /// what every Gemini request has always been budgeted at in the shipped
-  /// default configuration.
+  /// holds one value per model, each of them the toggle's OFF value — so there
+  /// is ONE base for every Gemini request in the shipped default configuration.
+  /// That base was 5 s when #1831 wrote this and is 15 s since #2093; the point
+  /// the paragraph makes is that there is only one of it, not what it equals.
   ///
   /// Capped at 180 s to match `URLSession`'s `timeoutIntervalForResource`
   /// (`LLMNetworkSession`): beyond that the transport terminates the attempt
@@ -267,20 +293,27 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// for every Gemini request, so a torn read cannot produce a budget/request
   /// mismatch on this axis. `llmProvider` and `llmModel` retain the invariant
   /// above.
+  /// #2093: OpenAI joins Gemini on the scaled form. It was on a FIXED 5 s while
+  /// Gemini scaled, which is the gap #1833 tracks — a long OpenAI dictation had
+  /// the same truncation #1770 fixed for Gemini, with no receipt saying 5 s was
+  /// right for it. Claude keeps its fixed 15 s: #158's receipt measured that
+  /// provider directly, and widening it here would be a change nothing measured.
   public func maxDuration(for context: TextProcessingContext) -> Duration {
-    guard llmProvider == .gemini else { return maxDuration }
+    guard llmProvider == .gemini || llmProvider == .openAI else { return maxDuration }
     let scaled =
-      Self.geminiBaseSeconds + Double(context.text.count) / Self.geminiCharsPerSecond
-    return .seconds(min(Self.geminiMaxBudgetSeconds, scaled))
+      Self.cloudBaseSeconds + Double(context.text.count) / Self.cloudCharsPerSecond
+    return .seconds(min(Self.cloudMaxBudgetSeconds, scaled))
   }
 
-  /// Preserves today's 5 s short-dictation failure speed.
-  private static let geminiBaseSeconds: Double = 5
-  /// Budgeted throughput, ~2.6x slower than the slowest measured rate.
-  private static let geminiCharsPerSecond: Double = 500
+  /// #2093: 5 -> 15. Rationale and the production distribution behind it live at
+  /// the `.openAI, .gemini` arm of `maxDuration` above; not restated here so the
+  /// two cannot drift apart.
+  private static let cloudBaseSeconds: Double = 15
+  /// Budgeted throughput, ~2.6x slower than the slowest measured rate (#1770).
+  private static let cloudCharsPerSecond: Double = 500
   /// Matches `URLSession.timeoutIntervalForResource`; beyond it the transport
   /// kills the attempt regardless.
-  private static let geminiMaxBudgetSeconds: Double = 180
+  private static let cloudMaxBudgetSeconds: Double = 180
 
   public init(keychainManager: KeychainManager) {
     self.keychainManager = keychainManager
@@ -823,6 +856,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       mode: plan.mode,
       provider: provider, model: model
     )
+
+    // #2093: the round trip completed, so this (provider, model) is warm and the
+    // next take inside the window needs no warm-up request. Without this call
+    // the gate in `LLMNetworkSession` could only ever be satisfied by a warm-up
+    // warming itself, which is the state-with-no-producer review caught.
+    //
+    // Placed on the COMPLETED round trip, deliberately, not on a "good" answer:
+    // warmth is a property of the transport and the provider's model routing, so
+    // a validator discard a few lines below still counts — the connection and the
+    // route were exercised. Every path that did NOT complete a round trip (throw,
+    // timeout, empty response) exits before here and records nothing.
+    // `recordPolishSuccess` itself ignores providers whose policy is `.never`.
+    LLMNetworkSession.shared.recordPolishSuccess(provider: provider, model: model)
 
     var ctx = context
     ctx.polishedText = validatedText

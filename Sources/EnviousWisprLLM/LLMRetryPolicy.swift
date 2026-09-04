@@ -3,8 +3,28 @@ import Foundation
 /// Shared retry infrastructure for LLM connectors.
 /// Centralizes retry-eligibility logic so all connectors use the same rules.
 enum LLMRetryPolicy {
-  /// Default retry delays: 1s, then 3s.
-  static let defaultDelays: [UInt64] = [1_000_000_000, 3_000_000_000]
+  /// Default retry delays: 200ms, then 400ms.
+  ///
+  /// #2093: was 1s then 3s. Those sleeps are spent INSIDE the polish step's own
+  /// budget, so on the old 5 s cloud base two retries burned 4 of the 5 seconds
+  /// doing nothing — one transient 5xx made a short dictation's timeout
+  /// arithmetically certain, and the user was then told "timed out" rather than
+  /// what actually happened. The failure was rebranded by our own backoff.
+  ///
+  /// 200ms x attempt matches FluidVoice's shipped `retryDelayMs` (open source,
+  /// same providers, same BYOK-direct architecture). Worst case is now 0.6 s of
+  /// sleep inside the 15 s cloud budget instead of 4 s inside 5 s.
+  ///
+  /// KNOWN LIMIT, deliberately not fixed here: these sleeps are still charged to
+  /// the caller's budget rather than deducted from a remaining-time ledger. The
+  /// ledger is the fuller fix and is its own change; this one removes the
+  /// arithmetic certainty without adding a mechanism.
+  /// REACH, stated because the issue's non-goals said local providers were not
+  /// touched: that was about BUDGETS. All four connectors — including Ollama —
+  /// default to these delays, so Ollama's backoff shrinks too. Intended and
+  /// beneficial (more of its unchanged 15 s budget goes to real attempts), not
+  /// an accident.
+  static let defaultDelays: [UInt64] = [200_000_000, 400_000_000]
   static let defaultMaxRetries = 2
 
   /// Determine if an error is transient and worth retrying.

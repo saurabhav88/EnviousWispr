@@ -17,6 +17,130 @@ public final class LLMNetworkSession: Sendable {
   /// subsequent calls without carrying extra state.
   private let callCounter = OSAllocatedUnfairLock<Int>(initialState: 0)
 
+  /// #2093: whether a provider warms at all.
+  ///
+  /// EXHAUSTIVE over `LLMProvider` on purpose, with no `default:` — a provider
+  /// added later must not silently inherit "warms on every recording", which is
+  /// the behaviour this issue exists to remove. `warmupKeychainId(for:)` below
+  /// keeps its `default: nil` because that one answers a different question
+  /// (which key to read) and failing closed there is already correct.
+  enum CloudWarmupPolicy: Equatable {
+    /// Never send a warm-up request for this provider.
+    case never
+    /// Warm only when this `(provider, model)` is not already warm or in flight.
+    case whenCold
+  }
+
+  /// #2093: Gemini stops warming; OpenAI and Claude warm only when cold.
+  ///
+  /// The asymmetry is evidence-led and was a founder decision (2026-09-03). Over
+  /// 60 days `rate_or_quota` — the provider refusing us for quota — was
+  /// 442 events across 4 users, and ALL of them are Gemini. No equivalent signal
+  /// exists for OpenAI or Claude, so removing their warm-up would be a change
+  /// nothing measured. Revisit only with provider-specific request and latency
+  /// evidence.
+  ///
+  /// #266's recorded reason for warming (it warms the provider's model ROUTING,
+  /// not just the transport) is not disputed. Its CONSEQUENCE was removed in the
+  /// same change: that mattered because the cloud budget was 5 s and a cold-start
+  /// spike meant LOSING the polish. At the 15 s base (#2093, `LLMPolishStep`) a
+  /// spike costs latency once instead of costing the answer.
+  static func cloudWarmupPolicy(for provider: LLMProvider) -> CloudWarmupPolicy {
+    switch provider {
+    case .gemini: return .never
+    case .openAI, .claude: return .whenCold
+    // Local providers never had a warm-up: `warmupKeychainId(for:)` returns nil
+    // for them, so this arm is belt-and-braces rather than a behaviour change.
+    case .ollama, .egOne, .appleIntelligence, .none: return .never
+    }
+  }
+
+  /// Warmth window for `.whenCold` providers. Chosen as an ordinary idle
+  /// keep-alive horizon, not a measured constant — the thing being avoided is a
+  /// warm-up on EVERY recording, and any window of minutes achieves that.
+  static let warmWindowSeconds: TimeInterval = 300
+
+  /// Atomic `(provider, model)` warm state.
+  ///
+  /// ONE lock holding both maps, so the decide-and-claim is a single critical
+  /// section. Two recordings can start inside the window, and a check-then-act
+  /// across separate reads would let both warm. A single-threaded test cannot
+  /// tell an atomic claim from a check-then-act one, because it cannot open the
+  /// window between the two reads — so the guard for this is structural, in
+  /// `LLMWarmupGateTests`, not a race.
+  private struct WarmState {
+    var lastSuccess: [String: Date] = [:]
+    var inFlight: Set<String> = []
+  }
+
+  private let warmState = OSAllocatedUnfairLock<WarmState>(initialState: WarmState())
+
+  private static func warmKey(_ provider: LLMProvider, _ model: String) -> String {
+    "\(provider.rawValue)|\(model)"
+  }
+
+  /// Decides and CLAIMS in one critical section. Returns true only for the caller
+  /// that may send; that caller owns clearing the in-flight marker.
+  func claimWarmupSlot(provider: LLMProvider, model: String, now: Date) -> Bool {
+    let key = Self.warmKey(provider, model)
+    return warmState.withLock { state in
+      if state.inFlight.contains(key) { return false }
+      if let last = state.lastSuccess[key],
+        now.timeIntervalSince(last) < Self.warmWindowSeconds
+      {
+        return false
+      }
+      state.inFlight.insert(key)
+      return true
+    }
+  }
+
+  func releaseWarmupSlot(provider: LLMProvider, model: String, succeededAt: Date?) {
+    let key = Self.warmKey(provider, model)
+    warmState.withLock { state in
+      state.inFlight.remove(key)
+      if let succeededAt { state.lastSuccess[key] = succeededAt }
+    }
+  }
+
+  /// #2093: a REAL polish was accepted, so this `(provider, model)` is warm and
+  /// the next take inside the window needs no warm-up request.
+  ///
+  /// This exists because `LLMNetworkSession` can observe its own warm-up and has
+  /// no other way to learn that a genuine polish succeeded — the first draft of
+  /// this change described "mark warm after an accepted polish" as a state with
+  /// no producer, which review caught. `LLMPolishStep` is the producer.
+  ///
+  /// The trigger is a COMPLETED ROUND TRIP, not a good answer. Warmth is a
+  /// property of the transport and the provider's model routing, so a polish
+  /// whose text we then discard on validation still leaves the route warm. A
+  /// throw, a timeout or an empty response exits before the call site and
+  /// records nothing: attempted is not completed.
+  public func recordPolishSuccess(provider: LLMProvider, model: String, at date: Date = Date()) {
+    guard Self.cloudWarmupPolicy(for: provider) == .whenCold, !model.isEmpty else { return }
+    warmState.withLock { state in
+      state.lastSuccess[Self.warmKey(provider, model)] = date
+    }
+  }
+
+  /// Test seam only: an ISOLATED instance, so a suite never mutates `shared`.
+  ///
+  /// Swift Testing runs tests concurrently by default, and `recordPolishSuccess`
+  /// is called on `shared` from production `LLMPolishStep`, so a suite that
+  /// resets `shared` can race any other test that happens to polish. Review
+  /// finding (2026-09-03) — the first version of `LLMWarmupGateTests` did
+  /// exactly that. This returns a private-init instance whose warm state is its
+  /// own; the URLSession it carries is never used by those tests.
+  static func makeIsolatedForTesting() -> LLMNetworkSession { LLMNetworkSession() }
+
+  /// Test seam only: forget all warm state so a suite starts cold.
+  func resetWarmStateForTesting() {
+    warmState.withLock { state in
+      state.lastSuccess.removeAll()
+      state.inFlight.removeAll()
+    }
+  }
+
   private init() {
     let config = URLSessionConfiguration.default
     config.timeoutIntervalForRequest = 60
@@ -37,9 +161,23 @@ public final class LLMNetworkSession: Sendable {
   /// Pre-warm the LLM backend with a real lightweight inference request.
   /// Warms both the transport layer (QUIC/TLS) AND the provider's model routing.
   /// Silently ignores errors — pre-warming is best-effort.
+  ///
+  /// #2093: this is no longer unconditional. It costs one provider request on the
+  /// USER'S OWN key, and it used to fire on every launch, every foreground and
+  /// every recording start. Gemini now returns immediately (`cloudWarmupPolicy`), and
+  /// OpenAI/Claude send only when this `(provider, model)` is neither warm nor
+  /// already in flight. Callers are unchanged and still call it freely — the
+  /// decision lives here, with the state that informs it, rather than being
+  /// duplicated at the three call sites.
   public func preWarmModel(
     provider: LLMProvider, model: String, keychainManager: KeychainManager
   ) {
+    // #2093: FIRST, before key lookup, request construction, state mutation or
+    // telemetry. A Gemini caller must leave this function having touched
+    // nothing — that is what makes "removing Gemini's warm-up cannot affect
+    // OpenAI or Claude" checkable rather than asserted, since all three enter
+    // here. `LLMWarmupGateTests` pins the ordering.
+    guard Self.cloudWarmupPolicy(for: provider) == .whenCold else { return }
     guard let keychainId = Self.warmupKeychainId(for: provider) else { return }
     guard !model.isEmpty else { return }
 
@@ -53,12 +191,22 @@ public final class LLMNetworkSession: Sendable {
       )
     else { return }
 
+    // #2093: decide and CLAIM atomically. Everything above this line is a pure
+    // eligibility check; this is the only place that can commit us to sending.
+    guard claimWarmupSlot(provider: provider, model: model, now: Date()) else { return }
+
     // #1177 (Telemetry Bible Phase 8): A6 reads the LLM module's telemetry sink off
     // the `keychainManager` it already receives (carried there because the LLM module
     // has no telemetry dependency — KeychainManager is the App-injected seam). The
     // sink is `Sendable`, so it crosses into the detached task cleanly.
-    Task.detached { [session, sink = keychainManager.telemetrySink] in
+    Task.detached { [self, session, sink = keychainManager.telemetrySink] in
       let start = CFAbsoluteTimeGetCurrent()
+      // #2093: counted here — past every guard, immediately before the request
+      // leaves — so the metric counts requests that actually go out rather than
+      // intentions. This is the only measurement of whether the warm-up gate
+      // works; `rate_or_quota` is a guardrail and moves for reasons we do not
+      // control.
+      sink.prewarmStarted(provider.rawValue, model)
       do {
         let (data, response) = try await session.data(for: request)
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
@@ -84,6 +232,13 @@ public final class LLMNetworkSession: Sendable {
         // returns it), so it would otherwise log "completed" and never report the
         // failure — mirror the A5 evict 2xx/non-2xx split. A missing status code
         // (n/a) is NOT treated as a failure (that path already lacks a real signal).
+        // #2093: release the in-flight marker on EVERY terminal outcome, and
+        // record warmth ONLY on a 2xx. A non-2xx warm-up proves the route is
+        // reachable and nothing else — treating it as warm would suppress the
+        // next real warm-up on the strength of a failure.
+        let warmedAt: Date? =
+          if let code = statusCode, (200...299).contains(code) { Date() } else { nil }
+        releaseWarmupSlot(provider: provider, model: model, succeededAt: warmedAt)
         if let code = statusCode, !(200...299).contains(code) {
           // `#if DEBUG` at the CALL SITE, not just inside `AppLogger` (cloud
           // review, PR #2072). `AppLogger.log` takes a `String`, so the
@@ -104,6 +259,9 @@ public final class LLMNetworkSession: Sendable {
             "llm_prewarm", "prewarm", "failed", "\(provider.rawValue)_http_\(code)", ms)
         }
       } catch {
+        // #2093: terminal too — free the slot so a later take can retry, and
+        // record NO warmth.
+        releaseWarmupSlot(provider: provider, model: model, succeededAt: nil)
         let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
         await AppLogger.shared.log(
           "preWarm failed provider=\(provider.rawValue) model=\(model) duration_ms=\(ms) error=\(String(describing: error))",
