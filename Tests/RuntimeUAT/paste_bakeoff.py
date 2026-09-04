@@ -269,8 +269,29 @@ def setup_textedit(pre_image: str, file_token: str) -> tuple[bool, str]:
     return ax_oracle.assert_precondition("com.apple.TextEdit", pre_image)
 
 
+def _close_fixture_tabs(app: str) -> None:
+    """Close every tab this harness opened. NOT hygiene — correctness.
+
+    Each trial opens a new tab and, without this, they accumulate. Measured 2026-09-04:
+    after ~40 trials Safari's accessibility tree exceeded the oracle's whole node budget,
+    so the walk never reached the newest tab and returned a scan with no fields — which
+    the scorer reads as "nothing landed". The bench degraded as it ran, and the later a
+    variant was scheduled the worse it looked. Randomised variant order limits the damage
+    to noise rather than bias; closing the tabs removes it.
+
+    Scoped to our own fixture URLs so the operator's real tabs are never touched.
+    """
+    subprocess.run(
+        ["osascript", "-e",
+         f'tell application "{app}" to close (every tab of every window '
+         'whose URL contains "EnviousWispr-bakeoff")'],
+        capture_output=True)
+
+
 def _setup_browser(app: str, bundle_id: str, focus_id: str):
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
+        if ax_oracle.pid_for_bundle(bundle_id) is not None:
+            _close_fixture_tabs(app)
         path = _write_fixture(file_token, pre_image, focus_id)
         subprocess.run(["open", "-a", app, str(path)], capture_output=True)
         ax_oracle.activate(bundle_id, handoff=2.0)
@@ -278,10 +299,35 @@ def _setup_browser(app: str, bundle_id: str, focus_id: str):
     return setup
 
 
+def _setup_composer(app_name: str, bundle_id: str):
+    """A chat app's message composer.
+
+    **Nothing is ever sent.** The pre-image is typed and Return is never pressed, so the
+    worst case is an unsent draft the operator can clear. No teardown clears it
+    deliberately: a stray select-all-and-delete aimed at a field that turned out not to be
+    the composer is a far worse outcome than a leftover draft, and the composer is only
+    ever FOCUSED here, never identified with certainty.
+
+    The composer is whatever holds focus when the app comes forward, which is true of
+    Slack, Discord and WhatsApp on open. When it is not, the pre-image lands somewhere the
+    oracle cannot find and the precondition marks the trial `invalid` — the honest answer,
+    and never a verdict about a variant.
+    """
+
+    def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
+        if ax_oracle.pid_for_bundle(bundle_id) is None:
+            return False, f"{app_name}_not_running"
+        ax_oracle.activate(bundle_id, handoff=2.0)
+        subprocess.run(
+            ["osascript", "-e",
+             f'tell application "System Events" to keystroke "{pre_image} "'],
+            capture_output=True)
+        return ax_oracle.assert_precondition(bundle_id, pre_image)
+
+    return setup
+
+
 TARGETS = {
-    # Native `AXTextArea`. The coverage anchor: the one cell where the direct write is
-    # expected to succeed outright, so a variant that loses it has lost the fast path.
-    "textedit": Target("textedit", "com.apple.TextEdit", setup_textedit),
     # The reported defect surface.
     "safari_textarea": Target(
         "safari_textarea", "com.apple.Safari",
@@ -298,6 +344,21 @@ TARGETS = {
     "chrome_textarea": Target(
         "chrome_textarea", "com.google.Chrome",
         _setup_browser("Google Chrome", "com.google.Chrome", "ta")),
+    # A THIRD Chromium build, because "Chromium" is not one behaviour: Brave ships its own
+    # patches and its own accessibility defaults, and the teardown found it in the same
+    # both-outcomes population as Safari.
+    "brave_textarea": Target(
+        "brave_textarea", "com.brave.Browser",
+        _setup_browser("Brave Browser", "com.brave.Browser", "ta")),
+    # Chat composers. Founder's list, and the reason it matters: these are Electron and
+    # web-view surfaces where the direct write may genuinely do nothing, so they are the
+    # cells that separate a variant which reroutes the fallback from one that refuses it.
+    "slack": Target("slack", "com.tinyspeck.slackmacgap",
+                    _setup_composer("Slack", "com.tinyspeck.slackmacgap")),
+    "discord": Target("discord", "com.hnc.Discord",
+                      _setup_composer("Discord", "com.hnc.Discord")),
+    "whatsapp": Target("whatsapp", "net.whatsapp.WhatsApp",
+                       _setup_composer("WhatsApp", "net.whatsapp.WhatsApp")),
 }
 
 
@@ -363,6 +424,14 @@ def run_trial(variant: str, run_id: str, target: Target, sentence: str, marker: 
         row.update(verdict="invalid", why=why)
         return row
 
+    # The recording is driven through EnviousWispr's own menu, which activates
+    # EnviousWispr. Delivery then targets whatever is frontmost when the pipeline
+    # finishes. If that is not our target, the words land somewhere real and the oracle
+    # honestly reports nothing in the field under test — a DROP, which is the verdict that
+    # disqualifies a variant. Measured 2026-09-04: the baseline dropped 2/5 in TextEdit,
+    # which is impossible for today's shipped behaviour and was the tell that the harness,
+    # not the app, was being measured.
+    frontmost_before = ax_oracle.pid_for_bundle(target.bundle_id)
     boundary = log_size()
     try:
         wispr_eyes.test_recording(sentence=sentence, expect=None)
@@ -370,7 +439,11 @@ def run_trial(variant: str, run_id: str, target: Target, sentence: str, marker: 
         row.update(verdict="invalid", why=f"recording_raised:{type(exc).__name__}:{exc}")
         return row
 
-    scan = ax_oracle.settled_scan(target.bundle_id, max_wait=6.0)
+    if ax_oracle.pid_for_bundle(target.bundle_id) != frontmost_before:
+        row.update(verdict="invalid", why="target_process_changed_during_trial")
+        return row
+
+    scan = ax_oracle.settled_focused(target.bundle_id, max_wait=6.0)
     if not scan.ok:
         row.update(verdict="invalid", why=f"oracle:{scan.why}")
         return row
@@ -389,12 +462,26 @@ def run_trial(variant: str, run_id: str, target: Target, sentence: str, marker: 
         row.update(tier=ev["tier"], attempts=ev["attempts"], ledger=ev["ledger"],
                    duration_ms=int(ev["duration"]))
     else:
-        tier = re.search(r"Paste cascade: tier=(\S+?),", text)
-        row["tier"] = tier.group(1) if tier else None
+        tiers = re.findall(r"Paste cascade: tier=(\S+?), app=(\S+?),", text)
+        if len(tiers) != 1:
+            # Zero means the dictation never delivered (a recording fault); more than one
+            # means a stray delivery landed inside this trial's window. Neither is a
+            # statement about the variant, and scoring either as a drop would put harness
+            # noise into the column that disqualifies variants.
+            row.update(verdict="invalid", why=f"baseline_delivery_lines={len(tiers)}")
+            return row
+        row["tier"], row["delivered_to"] = tiers[0]
         row["ledger"] = None
     del evidence
 
     verdict, detail = classify(pre_image, marker, scan.fields)
+    # The app said it delivered and the destination does not have it. That is either a
+    # real drop or the delivery went to a window this scan did not read, and the two are
+    # not distinguishable from here. Call it what it is rather than guessing: a `drop`
+    # verdict must mean "the user lost their words", because that verdict vetoes a
+    # variant, and a veto built on an ambiguous row is how a bench picks the wrong winner.
+    if verdict == "drop" and row.get("tier") not in (None, "clipboard_only"):
+        verdict, detail = "unseen", dict(detail, why=f"app_reported_{row.get('tier')}")
     row.update(verdict=verdict, **detail)
     return row
 
@@ -414,7 +501,8 @@ def decide(scorecard: dict) -> dict:
     cells: dict[tuple[str, str], dict] = {}
     for row in rows:
         key = (row.get("variant"), row.get("target"))
-        bucket = cells.setdefault(key, {"once": 0, "duplicate": 0, "drop": 0, "invalid": 0})
+        bucket = cells.setdefault(
+            key, {"once": 0, "duplicate": 0, "drop": 0, "unseen": 0, "invalid": 0})
         bucket[row.get("verdict", "invalid")] += 1
 
     targets = sorted({t for _, t in cells if t})
@@ -425,6 +513,13 @@ def decide(scorecard: dict) -> dict:
 
     verdicts: dict[str, dict] = {}
     for variant in variants:
+        # THREE statuses, not two. A first draft had `eligible` and `disqualified`, so a
+        # variant with no scoreable trials came out DISQUALIFIED — which reads as "it
+        # failed" when the truth is "we never learned anything about it". The self-test
+        # caught it on its first run. Same shape as every other defect in this bench: a
+        # three-valued reality read by a two-valued caller, collapsing toward the answer
+        # that looks like a finding.
+        vetoes: list[str] = []
         reasons: list[str] = []
         valid_total = 0
         duplicates = 0
@@ -433,20 +528,30 @@ def decide(scorecard: dict) -> dict:
             if cell is None:
                 reasons.append(f"{target}: not run")
                 continue
+            # `unseen` is deliberately NOT valid: the app reported a delivery the oracle
+            # could not find, so the row says nothing about the variant either way.
             valid = cell["once"] + cell["duplicate"] + cell["drop"]
             valid_total += valid
             duplicates += cell["duplicate"]
             if valid == 0:
-                reasons.append(f"{target}: no valid trials ({cell['invalid']} invalid)")
+                reasons.append(
+                    f"{target}: no scoreable trials "
+                    f"({cell['invalid']} invalid, {cell['unseen']} unseen)")
                 continue
             # COVERAGE VETO. Only fires where the baseline demonstrably works, so a target
             # nobody can deliver to cannot disqualify a variant for failing there too.
             if cell["drop"] > 0 and baseline_ok.get(target):
-                reasons.append(
+                vetoes.append(
                     f"{target}: VETO — dropped {cell['drop']}/{valid} where V0 delivers")
-        status = "eligible" if not reasons else "disqualified"
         if variant == "V0":
             status = "baseline"
+        elif vetoes:
+            status = "disqualified"
+        elif valid_total == 0:
+            status = "unmeasured"
+        else:
+            status = "eligible"
+        reasons = vetoes + reasons
         verdicts[variant] = {
             "status": status, "reasons": reasons,
             "valid_trials": valid_total, "duplicates": duplicates,
@@ -454,8 +559,14 @@ def decide(scorecard: dict) -> dict:
 
     eligible = [v for v, d in verdicts.items()
                 if d["status"] == "eligible" and d["valid_trials"] > 0]
-    if not eligible:
-        winner, why = None, "no eligible variant survived the coverage veto"
+    candidates = [v for v in verdicts if v != "V0"]
+    if not candidates:
+        # Baseline-only run. Saying "nothing survived the veto" here would be a plausible
+        # sentence about a comparison that never happened — the same shape of wrong answer
+        # this bench exists to avoid, one level up.
+        winner, why = None, "baseline-only run: no candidate variant was measured"
+    elif not eligible:
+        winner, why = None, "no candidate variant survived the coverage veto"
     else:
         fewest = min(verdicts[v]["duplicates"] for v in eligible)
         tied = [v for v in eligible if verdicts[v]["duplicates"] == fewest]
@@ -471,6 +582,84 @@ def decide(scorecard: dict) -> dict:
             "baseline_delivers": baseline_ok}
 
 
+def selftest() -> int:
+    """Exercise the scoring logic against the defects it has already had.
+
+    The scorer is the only part of this bench that can turn a correct delivery into a
+    verdict that disqualifies a variant, and it has done exactly that once. These rows are
+    the regression net for the specific ways it was wrong, built from the real values that
+    fooled it rather than from imagined ones.
+    """
+    from types import SimpleNamespace as F
+
+    failures: list[str] = []
+
+    def check(name: str, got, want):
+        if got != want:
+            failures.append(f"{name}: got {got!r}, want {want!r}")
+
+    pre = "PRE-CD7735EA"
+    marker = "brown fox"
+
+    # 1. The bug that scored a perfect delivery as a DROP. Safari's address bar carried
+    #    the pre-image because it was in the filename, and it was LONGER than the real box.
+    address_bar = F(role="AXTextField", depth=4, chars=76, focused=False,
+                    value=f"file:///Users/x/Library/Caches/EnviousWispr-bakeoff-{pre}.html")
+    textarea = F(role="AXTextArea", depth=8, chars=39, focused=True,
+                 value=f"The quick brown fox jumps. {pre}")
+    verdict, detail = classify(pre, marker, [address_bar, textarea])
+    check("focused editable wins over longer chrome", verdict, "once")
+    check("and says how it chose", detail["field_choice"], "focused")
+
+    # 2. The AXStaticText mirror. `_dedupe` removes it upstream, but the scorer must not
+    #    depend on that: a mirror reaching it must not become a second occurrence.
+    mirror = F(role="AXStaticText", depth=9, chars=None, focused=False,
+               value=f"The quick brown fox jumps. {pre}")
+    verdict, _ = classify(pre, marker, [textarea, mirror])
+    check("a non-editable mirror is not a duplicate", verdict, "once")
+
+    # 3. A real duplicate must still read as one.
+    doubled = F(role="AXTextArea", depth=8, chars=65, focused=True,
+                value=f"The quick brown fox jumps. The quick brown fox jumps. {pre}")
+    verdict, _ = classify(pre, marker, [doubled])
+    check("a genuine double insertion", verdict, "duplicate")
+
+    # 4. A real drop.
+    untouched = F(role="AXTextArea", depth=8, chars=12, focused=True, value=pre)
+    verdict, _ = classify(pre, marker, [untouched])
+    check("nothing landed", verdict, "drop")
+
+    # 5. The pre-image gone entirely is unscoreable, not a drop.
+    verdict, _ = classify(pre, marker, [F(role="AXTextArea", depth=1, chars=3,
+                                          focused=True, value="hi")])
+    check("pre-image absent is invalid", verdict, "invalid")
+
+    # 6. The decision rule must not read a baseline-only run as a failed comparison.
+    card = {"rows": [{"variant": "V0", "target": "t", "verdict": "once"}]}
+    result = decide(card)
+    check("baseline-only run", result["winner"], None)
+    check("and says why honestly", "baseline-only" in result["why"], True)
+
+    # 7. A candidate that drops where the baseline delivers is vetoed; `unseen` is not
+    #    evidence either way and must not veto.
+    card = {"rows": [
+        {"variant": "V0", "target": "t", "verdict": "once"},
+        {"variant": "V1", "target": "t", "verdict": "unseen"},
+        {"variant": "V4", "target": "t", "verdict": "once"},
+        {"variant": "V2", "target": "t", "verdict": "drop"},
+    ]}
+    result = decide(card)
+    check("a real drop vetoes", result["verdicts"]["V2"]["status"], "disqualified")
+    check("unseen does not veto", result["verdicts"]["V1"]["status"], "unmeasured")
+    check("unseen is not a valid trial", result["verdicts"]["V1"]["valid_trials"], 0)
+    check("winner has valid trials", result["winner"], "V4")
+
+    for failure in failures:
+        print(f"  FAIL {failure}")
+    print(f"selftest: {len(failures)} failure(s)")
+    return 1 if failures else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--variants", default="V0,V1,V2", help="comma-separated, in VARIANTS")
@@ -482,9 +671,14 @@ def main() -> int:
     ap.add_argument("--sentence", default="the quick brown fox jumps")
     ap.add_argument("--marker", default="brown fox")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--selftest", action="store_true",
+                    help="check the scoring logic against the defects it has already had")
     ap.add_argument("--report", default=None,
                     help="apply the decision rule to an existing scorecard and exit")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     if args.report:
         card = json.loads(pathlib.Path(args.report).read_text())
@@ -495,6 +689,12 @@ def main() -> int:
     if args.reps is None:
         print("--reps is required for a run: a default here would be a parameter nobody "
               "states and everybody inherits.", file=sys.stderr)
+        return 2
+
+    if ax_oracle.screen_is_locked():
+        print("REFUSING TO RUN: the Mac is locked. Every trial would be scored against a "
+              "screen no app can reach, and the results would look like dropped text "
+              "rather than like a locked machine.", file=sys.stderr)
         return 2
 
     seed = args.seed if args.seed is not None else random.randrange(1 << 30)
@@ -537,7 +737,8 @@ def main() -> int:
     summary: dict = {}
     for row in rows:
         key = f"{row['variant']}/{row['target']}"
-        bucket = summary.setdefault(key, {"once": 0, "duplicate": 0, "drop": 0, "invalid": 0})
+        bucket = summary.setdefault(
+            key, {"once": 0, "duplicate": 0, "drop": 0, "unseen": 0, "invalid": 0})
         bucket[row.get("verdict", "invalid")] = bucket.get(row.get("verdict", "invalid"), 0) + 1
 
     out_path.write_text(json.dumps(

@@ -15,9 +15,11 @@ import Testing
 // — a behavioural test would pass just as happily against a binary that carried the
 // whole control plane and merely defaulted it off.
 //
-// **A skip here is not a pass.** Every case reports what it could not check, loudly,
-// because the failure mode of an artifact test is silence on the machine that has no
-// artifact — which is every machine except the one that just built one.
+// **A skip here is not a pass, and the artifact case IS skipped on most machines.** It
+// runs only where a Release product exists, which is the release lane and nowhere else.
+// That boundary is stated in the plan's ship criteria rather than papered over, because
+// the failure mode of an artifact test is silence on every machine that has no artifact.
+// The second case runs everywhere and covers the half that needs no artifact.
 @Suite("Paste bake-off release containment (#2652)", .tags(.productOutcome))
 struct PasteBakeoffReleaseContainmentTests {
 
@@ -54,21 +56,26 @@ struct PasteBakeoffReleaseContainmentTests {
     return nil
   }
 
-  @Test("the DEBUG-only control-plane strings are absent from a Release executable")
+  // Gated, and the gate is the honest choice rather than the tidy one.
+  //
+  // A first draft called `Issue.record` when no Release product existed, so the suite
+  // would have gone RED on every machine that had not just built one — including the
+  // ordinary Debug lane, and therefore CI and `main`. That is a FALSE failure: it says
+  // "release containment is broken" when the truth is "no release artifact is here to
+  // look at", and a red main teaches everyone to ignore the row.
+  //
+  // The cost of gating is real and is stated in §13 rather than hidden: this check does
+  // not run in the Debug lane, so **release containment is only verified when the release
+  // lane runs it.** A skipped receipt is not a passed receipt, and the ship criteria say
+  // so. `releaseCanOnlyBuildTheBaseline` below runs everywhere and covers the half that
+  // can be checked without an artifact.
+  @Test(
+    "the DEBUG-only control-plane strings are absent from a Release executable",
+    .enabled(if: releaseExecutable() != nil))
   func releaseArtifactCarriesNoControlPlane() throws {
-    guard let executable = Self.releaseExecutable() else {
-      // Loud, and deliberately not an `.enabled(if:)` gate: a disabled test reports
-      // nothing at all, and this receipt is worth more than a tidy test list. The
-      // release lane builds the product this needs.
-      Issue.record(
-        """
-        SKIPPED, NOT PASSED: no Release executable found in this checkout, so release \
-        containment for #2652 is UNVERIFIED here. Build the release lane \
-        (`scripts/xcode-test.sh --release`) and re-run. This is a receipt that the check \
-        did not happen, not evidence that it succeeded.
-        """)
-      return
-    }
+    let executable = try #require(
+      Self.releaseExecutable(),
+      "gate said a Release executable exists and it was gone by the time the body ran")
 
     let data = try Data(contentsOf: executable)
     // Search the raw bytes rather than a decoded string: Swift string literals land in
