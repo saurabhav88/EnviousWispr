@@ -246,7 +246,7 @@ public actor EGOneServerManager {
     } catch {
       transition(to: .failed(reason: "spawn_failed"))
       await AppLogger.shared.log(
-        "EG-1 server spawn failed: \(error.localizedDescription)",
+        "Local polish server spawn failed: \(error.localizedDescription)",
         level: .info, category: "LLM")
       return
     }
@@ -281,7 +281,7 @@ public actor EGOneServerManager {
     guard case .starting = state else { return }
     transition(to: .ready(endpoint))
     await AppLogger.shared.log(
-      "EG-1 server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
+      "Local polish server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
   }
 
   private func handleTermination(configuration: Configuration, generation: Int) async {
@@ -301,7 +301,7 @@ public actor EGOneServerManager {
     if restartedOnceThisGeneration {
       transition(to: .failed(reason: "crashed_twice"))
       await AppLogger.shared.log(
-        "EG-1 server crashed twice this session — staying down", level: .info, category: "LLM")
+        "Local polish server crashed twice this session — staying down", level: .info, category: "LLM")
       return
     }
     restartedOnceThisGeneration = true
@@ -310,7 +310,7 @@ public actor EGOneServerManager {
     // endpoint and `start()` would no-op against a lie (#1271 seam review).
     transition(to: .starting)
     await AppLogger.shared.log(
-      "EG-1 server crashed — restarting once", level: .info, category: "LLM")
+      "Local polish server crashed — restarting once", level: .info, category: "LLM")
     // Actor reentrancy: `stop()` / memory-pressure pause / a fresh `start()`
     // may have run during the await above — only the crashed generation
     // (still `.starting`, no new process; this handler nulled `process`
@@ -346,7 +346,7 @@ public actor EGOneServerManager {
     tearDownProcess()
     transition(to: .pausedForMemoryPressure)
     await AppLogger.shared.log(
-      "EG-1 server paused: critical memory pressure", level: .info, category: "LLM")
+      "Local polish server paused: critical memory pressure", level: .info, category: "LLM")
   }
 
   // MARK: - Health probe

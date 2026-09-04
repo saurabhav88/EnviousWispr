@@ -628,6 +628,49 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
   }
 
+  /// llama-server flags, per model.
+  ///
+  /// The shared pair is a FOOTPRINT choice, measured 2026-07-02 (M4 Pro, real
+  /// EG-1 v1 GGUF): flash-attention plus a q8 KV cache at 16384 context is
+  /// 4.1 GB RSS against 7.4 GB at the naive 32768/fp16 config, with identical
+  /// probe output and about 0.2 s warm latency. Engine flags live here; model
+  /// identity lives in the manifest.
+  ///
+  /// **S1-mini needs two more or it answers with nothing.** It inherits Qwen3's
+  /// chat template, which turns thinking ON by default, and the model was
+  /// trained with thinking off; left on, it emits an empty think block and
+  /// stops. Its publisher calls this the single most common way to get a blank
+  /// result. `--jinja` makes llama-server apply the template's own logic, and
+  /// `--chat-template-kwargs` is what passes the flag through to it.
+  ///
+  /// Measured on the shipped binary and the shipped weights, 2026-09-04, two
+  /// arms differing only in these flags: without them the response is a valid
+  /// 200 with `finish_reason: stop` and ZERO characters of content; with them,
+  /// "So I need to send the report by Thursday." A blank body is what the
+  /// founder saw as "The model did not answer a test request."
+  ///
+  /// Do NOT reach for `--reasoning-budget 0` instead. It suppresses the think
+  /// block a different way and the publisher documents that it degrades the
+  /// output.
+  ///
+  /// Exhaustive rather than defaulted: a third bundled engine must state its
+  /// own flags, because inheriting another model's template handling is
+  /// exactly the failure above.
+  /// `nonisolated` because it is a pure function of its argument, and because
+  /// a test that has to hop to the main actor to read a constant is a test
+  /// nobody writes.
+  nonisolated static func engineArguments(for provider: LLMProvider) -> [String] {
+    let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+    switch provider {
+    case .egOne:
+      return footprint
+    case .s1Mini:
+      return footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+      preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
+    }
+  }
+
   private func bootServer(
     manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int
   ) async {
@@ -637,15 +680,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // The verified admitted location (install dir + resolved install path).
       modelURL: delivery.installedArtifactURL,
       contextTokens: manifest.contextTokens,
-      // Measured 2026-07-02 (M4 Pro, real EG-1 v1 GGUF): flash-attention +
-      // q8 KV cache at 16384 context = 4.1 GB RSS vs 7.4 GB at the naive
-      // 32768/fp16 config, with identical probe output and ~0.2 s warm
-      // latency. The MacBook-friendly footprint is a launch-flag choice,
-      // not a model choice — engine flags live here, model identity in the
-      // manifest.
-      extraArguments: [
-        "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
-      ]
+      extraArguments: Self.engineArguments(for: provider)
     )
     await server.transition(
       to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
