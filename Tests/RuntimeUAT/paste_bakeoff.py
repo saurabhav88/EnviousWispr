@@ -619,9 +619,17 @@ TARGETS = {
     # stand-ins because Word was unlicensed; the licence was bought on 2026-09-04, so the
     # bench measures Microsoft's apps directly and the stand-in argument is retired.
     #
-    # This is the `PasteTier.menuPaste` family — a container where Cmd+V cannot be aimed
-    # at a writable element, delivered by driving the app's own Edit > Paste menu item.
-    # No web cell exercises it, so before today no trial had touched this route at all.
+    # **Word and Excel were expected to exercise `PasteTier.menuPaste` and they DO NOT.**
+    # Measured 2026-09-04 across 23 deliveries: every one went out as `cgevent`, plain
+    # Cmd+V, and `menu_paste` appears three times in the whole log — none of them in an
+    # Office app. The expectation came from `PasteTier.menuPaste`'s own comment, which
+    # names "Word/Excel/Numbers/OneNote"; that comment describes what the tier is FOR, not
+    # where it is reached, and reading it as coverage was the error.
+    #
+    # So these cells are worth having for a different and smaller reason than the one they
+    # were added for: they are real desktop applications, they are what a user writing a
+    # document is actually in, and no browser or chat cell speaks for them. They do not
+    # close the menu-paste gap, and that gap stays open and stated.
     "word": Target("word", "com.microsoft.Word",
                    _setup_document(
                        "Word", "com.microsoft.Word",
