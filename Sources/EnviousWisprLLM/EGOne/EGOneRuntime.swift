@@ -461,7 +461,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // the order would be whatever the scheduler chose.
     let intent = server.claimIntent()
     Task {
-      await self.server.transition(to: nil, intent: intent)
+      await self.server.transition(to: .idle(self.provider), intent: intent)
       // The stop can be superseded, and the two halves of this task do NOT
       // deserve the same guard. A superseded stop is harmless — the server is
       // running because somebody newer asked for it. A superseded DELETE
@@ -580,7 +580,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // does not order them. Claiming both stamps here, on the main actor, is
     // what makes the later request win regardless of which task runs first.
     let intent = server.claimIntent()
-    Task { await self.server.transition(to: nil, intent: intent) }
+    Task { await self.server.transition(to: .idle(self.provider), intent: intent) }
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
@@ -648,7 +648,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       ]
     )
     await server.transition(
-      to: LocalPolishTarget(provider: provider, configuration: configuration), intent: intent)
+      to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+      intent: intent)
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)

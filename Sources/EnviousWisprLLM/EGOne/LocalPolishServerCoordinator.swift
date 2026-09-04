@@ -37,6 +37,32 @@ public struct LocalPolishTarget: Sendable {
   }
 }
 
+/// What a caller is asking the coordinator for.
+///
+/// **The two cases have different SCOPE, and collapsing them cost EG-1.** A
+/// `run` speaks for the whole resource: it evicts whatever else holds the
+/// process, because only one model may. A stop does NOT: an engine can say only
+/// that IT should not be running, never that nothing should.
+///
+/// Modelling the stop as a bare `nil` target lost that distinction, and the
+/// reconciler makes the difference matter on an ordinary switch. Selecting EG-1
+/// deactivates every unselected engine TWICE — once in the stop-outgoing pass
+/// and again in the main pass, which runs AFTER EG-1 has started. That second
+/// deactivate carries the newest stamp, so a whole-resource stop obeyed it and
+/// shut down the engine the user had just selected. Founder found it in UAT on
+/// 2026-09-04: EG-1 sat on "Attention" after switching back, and only the
+/// refresh button brought it up.
+///
+/// Both guards are load-bearing and neither is sufficient alone. Scope stops an
+/// engine speaking for another; the stamp still orders two requests that BOTH
+/// legitimately speak for the resource.
+public enum LocalPolishIntent: Sendable {
+  /// Run this model, evicting any other. Speaks for the whole resource.
+  case run(LocalPolishTarget)
+  /// This model should not be running. A no-op unless it is the resident.
+  case idle(LLMProvider)
+}
+
 public actor LocalPolishServerCoordinator {
   /// The one manager. Deliberately not exposed: handing it out would restore
   /// exactly the two-owners situation this type exists to remove.
@@ -105,10 +131,22 @@ public actor LocalPolishServerCoordinator {
   /// Re-stating the resident model stays idempotent, which is required:
   /// launch, provider switch and settings-open all arrive here and must not
   /// restart a working server.
-  public func transition(to target: LocalPolishTarget?, intent: Int) async {
+  public func transition(to request: LocalPolishIntent, intent: Int) async {
     // A stamp older than one already honoured describes a world the user has
     // moved on from. Obeying it is exactly the defect this replaced.
     guard intent >= honouredIntent else { return }
+
+    let target: LocalPolishTarget?
+    switch request {
+    case .run(let wanted):
+      target = wanted
+    case .idle(let provider):
+      // The caller speaks for itself only. A deactivate from a model that does
+      // not hold the process is not news about the process, and obeying it
+      // stops a server somebody else is waiting on.
+      guard resident == provider else { return }
+      target = nil
+    }
     honouredIntent = intent
 
     if let resident, resident != target?.provider {

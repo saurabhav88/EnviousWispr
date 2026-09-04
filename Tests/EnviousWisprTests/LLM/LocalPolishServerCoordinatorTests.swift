@@ -18,7 +18,7 @@ struct LocalPolishServerCoordinatorTests {
 
   /// A configuration pointing at a binary that does not exist. The server never
   /// comes up, which is fine and deliberate: these rows are about the IDENTITY
-  /// bookkeeping, and asserting it without a real 462 MB model is the whole
+  /// bookkeeping, and asserting it without a real 484 MB model is the whole
   /// reason the manager takes an injectable configuration.
   static func target(_ provider: LLMProvider, _ name: String) -> LocalPolishTarget {
     LocalPolishTarget(
@@ -30,6 +30,10 @@ struct LocalPolishServerCoordinatorTests {
         readinessBudgetSeconds: 1))
   }
 
+  static func run(_ provider: LLMProvider, _ name: String) -> LocalPolishIntent {
+    .run(target(provider, name))
+  }
+
   @Test("nothing is resident before anything starts")
   func startsEmpty() async {
     let coordinator = LocalPolishServerCoordinator()
@@ -39,7 +43,7 @@ struct LocalPolishServerCoordinatorTests {
   @Test("starting a model records it as resident")
   func startRecordsResident() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == .egOne)
   }
 
@@ -47,8 +51,8 @@ struct LocalPolishServerCoordinatorTests {
   @Test("starting a second model takes the process from the first")
   func switchingModelsSwapsResidency() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
-    await coordinator.transition(to: Self.target(.s1Mini, "s1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == .s1Mini)
   }
 
@@ -60,12 +64,37 @@ struct LocalPolishServerCoordinatorTests {
   @Test("a model that is not resident gets no endpoint and no green health")
   func nonResidentModelIsRefusedAnEndpoint() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
 
     #expect(await coordinator.endpoint(for: .s1Mini) == nil)
     let health = await coordinator.probeHealth(
       .s1Mini, promptFamily: .s1ControlLine, spec: .s1Mini)
     #expect(health == .red(reason: "not_running"))
+  }
+
+  /// **The founder's bug, 2026-09-04: "it's also breaking EG-1 when I swap back
+  /// to it."** This is the exact call sequence the settings reconciler makes.
+  ///
+  /// Selecting EG-1 deactivates every unselected engine TWICE — once in the
+  /// stop-outgoing pass, and again in the main pass, which runs AFTER EG-1 has
+  /// started. That second deactivate therefore carries the NEWEST stamp. A stop
+  /// that spoke for the whole resource obeyed it and shut EG-1 down, leaving
+  /// the row on "Attention" until the user pressed refresh.
+  @Test("a later deactivate of the OTHER engine cannot stop the one just selected")
+  func idleFromAnotherEngineCannotEvictTheResident() async {
+    let coordinator = LocalPolishServerCoordinator()
+    // The user was on S1-mini.
+    await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: coordinator.claimIntent())
+
+    // Reconciler, selecting EG-1, in its real order.
+    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    // The redundant second pass over the unselected engine. NEWEST stamp.
+    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+
+    #expect(
+      await coordinator.residentModelForTesting == .egOne,
+      "the engine the user selected was stopped by the other engine's deactivate")
   }
 
   /// The defect that made two guarded methods into one intent primitive.
@@ -77,18 +106,14 @@ struct LocalPolishServerCoordinatorTests {
   @Test("an older stop cannot beat a newer start, whatever order the tasks run in")
   func laterIntentWinsRegardlessOfDeliveryOrder() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
 
-    // The reconciler stamps in the order it observed: stop the outgoing model,
-    // then start the incoming one.
     let stopIntent = coordinator.claimIntent()
     let startIntent = coordinator.claimIntent()
 
-    // The tasks arrive in the OPPOSITE order. Under the previous design the
-    // stop superseded the start, the start bailed at its own guard, and the
-    // engine the user picked never came up.
-    await coordinator.transition(to: Self.target(.s1Mini, "s1"), intent: startIntent)
-    await coordinator.transition(to: nil, intent: stopIntent)
+    // The tasks arrive in the OPPOSITE order to the stamps.
+    await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: startIntent)
+    await coordinator.transition(to: .idle(.egOne), intent: stopIntent)
 
     #expect(
       await coordinator.residentModelForTesting == .s1Mini,
@@ -96,28 +121,28 @@ struct LocalPolishServerCoordinatorTests {
   }
 
   /// Two-way control for the row above: delivered in the order they were
-  /// claimed, the same two stamps must reach the same place. Without this, a
+  /// claimed, the same two stamps must reach the same state. Without this, a
   /// coordinator that ignored every stop would pass the inversion row.
   @Test("in-order delivery of the same intents reaches the same state")
   func inOrderDeliveryAgrees() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
 
     let stopIntent = coordinator.claimIntent()
     let startIntent = coordinator.claimIntent()
-    await coordinator.transition(to: nil, intent: stopIntent)
-    await coordinator.transition(to: Self.target(.s1Mini, "s1"), intent: startIntent)
+    await coordinator.transition(to: .idle(.egOne), intent: stopIntent)
+    await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: startIntent)
 
     #expect(await coordinator.residentModelForTesting == .s1Mini)
   }
 
-  /// And the stop must still WORK when it is the newest thing the user asked
-  /// for. A coordinator that simply never stopped would pass both rows above.
-  @Test("the newest intent being nil stops whatever is resident")
-  func newestNilIntentStops() async {
+  /// And the stop must still WORK when the resident asks for it. A coordinator
+  /// that simply never stopped would pass both rows above and the founder's row.
+  @Test("the resident asking to idle actually stops it")
+  func residentIdleStops() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
-    await coordinator.transition(to: nil, intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == nil)
   }
 
@@ -127,8 +152,8 @@ struct LocalPolishServerCoordinatorTests {
   @Test("re-activating the resident model does not swap it out")
   func reactivationIsIdempotent() async {
     let coordinator = LocalPolishServerCoordinator()
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
-    await coordinator.transition(to: Self.target(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == .egOne)
   }
 

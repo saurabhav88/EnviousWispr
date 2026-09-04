@@ -233,8 +233,14 @@ struct LocalEngineStatusCard: View {
   }
 
   /// Plain-language reason line under the health pill (nil for green).
-  private var healthDetail: String? {
-    switch runtime.health {
+  private var healthDetail: String? { Self.detail(for: runtime.health) }
+
+  /// Pure, and `static` so a test can enumerate every reason the app
+  /// PRODUCES and require copy for each. As an instance property reading
+  /// `runtime` this was unreachable, which is how two produced reasons
+  /// reached the alarming default branch unnoticed.
+  static func detail(for health: EGOneHealth) -> String? {
+    switch health {
     case .green:
       return nil
     case .yellow(let reason):
@@ -246,15 +252,37 @@ struct LocalEngineStatusCard: View {
       case "probe_output_unexpected":
         return "The model responded, but not as expected. Try re-downloading it."
       case "downloading", "verifying": return nil
+      // Installed, server not up. Ordinary and momentary — it is what every
+      // switch to this engine looks like for a second. The default below
+      // rendered "Something needs attention" for it, which reads as a fault,
+      // and is what the founder saw after switching back to EG-1 (2026-09-04).
+      case "not_started": return "Starting the model. This takes a few seconds."
+      // The user paused their own download; their progress is kept.
+      case "download_paused": return "Download paused. Resume anytime."
+      // Reached only by a reason invented at runtime. Every reason the app
+      // actually emits is named above, and `LocalEngineHealthCopyTests`
+      // enumerates them from the producing code so a new one fails loudly
+      // instead of landing here.
       default: return "Something needs attention. Try the refresh button."
       }
     case .red(let reason):
       switch reason {
       case "download_required": return "Download the model to get started."
-      case "app_update_required":
+      // The emitted reason is `update_required`. This branch used to read
+      // `app_update_required`, which nothing produces — so it was dead, and the
+      // real reason fell through to the generic line below. Found by the
+      // enumeration test, not by reading.
+      case "update_required":
         return "This model needs a newer version of EnviousWispr."
       case "crashed_twice":
         return "The model stopped twice in a row. Use the refresh button to try again."
+      // The server is not up and nothing is starting it. Distinct from
+      // `not_started`, which is yellow because something IS starting it.
+      case "not_running": return "Not running. Use the refresh button to start it."
+      // It answered the socket but failed a real inference probe, so a polish
+      // request would fail too. Naming that beats the generic line.
+      case "probe_failed":
+        return "The model did not answer a test request. Use the refresh button to try again."
       default: return "Not running. Use the refresh button to try again."
       }
     }
