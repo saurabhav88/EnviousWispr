@@ -186,6 +186,13 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: EG-1 llama-server missing from Resources (#1271)"; exit 1; }
 [ -f "$APP_PATH/Contents/Resources/eg1-manifest.json" ] \
   || { echo "ERROR: eg1-manifest.json missing from Resources (#1271)"; exit 1; }
+# #2649: S1-mini rides the same route. The licence text is listed here too —
+# its ADDITIONAL TERM binds the distributed bundle, not just the download.
+for s1_resource in s1-manifest.json s1-delivery-manifest.json \
+    S1-MINI-LICENSE.txt S1-MINI-NOTICE.txt; do
+  [ -f "$APP_PATH/Contents/Resources/$s1_resource" ] \
+    || { echo "ERROR: $s1_resource missing from Resources (#2649)"; exit 1; }
+done
 
 # Post-copy signature verification (non-strict: ditto+xattr can perturb xattrs
 # but not the seal; this confirms the copied bundle is still validly signed).

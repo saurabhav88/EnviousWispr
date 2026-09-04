@@ -29,6 +29,7 @@ enum ShippedModelNames {
   static let current: [ModelFamily: Set<String>] = [
     .egOne: ["eg-1"],
     .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
+    .s1Mini: ["s1-mini"],
     .whisperKit: ["whisperkit-coreml"],
   ]
 
@@ -63,6 +64,7 @@ enum ShippedModelNames {
   static let variants: [String: Set<String>] = [
     "eg_one|eg-1": ["q5km"],
     "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
+    "s1_mini|s1-mini": ["q4km"],
     "whisper_kit|whisperkit-coreml": [
       "openai_whisper-large-v3-v20240930_turbo", "openai_whisper-small_216MB",
     ],

@@ -60,7 +60,7 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
 
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
       "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
@@ -83,6 +83,7 @@ import Testing
     let minimum: [ModelFamily: Set<String>] = [
       .egOne: ["eg-1"],
       .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
+      .s1Mini: ["s1-mini"],
       .whisperKit: ["whisperkit-coreml"],
     ]
     // EXACT equality, not containment. Containment would let the registry GROW
@@ -142,7 +143,7 @@ import Testing
 
     var keys: [String] = []
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
       "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
@@ -153,7 +154,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 4, "expected four bundled registrations, got \(keys.count)")
+    #expect(keys.count == 5, "expected five bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -237,7 +238,7 @@ import Testing
       .deletingLastPathComponent()
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
       "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")

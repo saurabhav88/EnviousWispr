@@ -7,6 +7,12 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   case parakeet
   case whisperKit = "whisper_kit"
   case egOne = "eg_one"
+  /// #2649: S1-mini, a third-party ASR-output normalizer served by the same
+  /// bundled llama-server as EG-1. A SEPARATE family, not an EG-1 variant:
+  /// folding someone else's weights into the `eg_one` identity would put them
+  /// behind our first-party name in the delivery manifest, the admission
+  /// marker and telemetry.
+  case s1Mini = "s1_mini"
 }
 
 /// Canonical identity of one deliverable model (contract §3, D2 §1).
