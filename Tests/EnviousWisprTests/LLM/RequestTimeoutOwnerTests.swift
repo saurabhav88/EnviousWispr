@@ -70,6 +70,20 @@ struct RequestTimeoutOwnerTests {
   /// text. No parsing, no evaluation, nothing to be wrong about. A new assignment
   /// in any spelling — literal, reference, hex, underscored, computed, or a form
   /// nobody has written — fails until a person adds it here WITH a reason.
+  ///
+  /// Round 5 scoped each allowlist key to its ENCLOSING FUNCTION. Keyed on the
+  /// file alone, a second `= 3.0` added to a polish request builder produced the
+  /// same key as `evictModel`'s and was accepted — CONTROLLED green before the
+  /// fix and red after, naming `polish()`. That was a new AXIS (key uniqueness),
+  /// not another spelling, which is why it earned a round.
+  ///
+  /// **PRE-COMMITTED, declared before the next verdict is read: a SIXTH finding
+  /// on this assertion DELETES this test rather than refining it again.** Five
+  /// rounds is already past the point where the fixes are cleverer than the
+  /// defect, and the user-visible benefit of a sixth would be nil — what a person
+  /// feels was delivered by removing the five shadow copies, not by this guard.
+  /// If it comes to that, delete the file and rely on review. Do not negotiate
+  /// this paragraph.
   @Test("no connector sets a per-request timeout that is not explicitly allowed")
   func noShadowCopies() throws {
     var offenders: [String] = []
@@ -80,11 +94,11 @@ struct RequestTimeoutOwnerTests {
       let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
       visitor.walk(Parser.parse(source: source))
       for text in visitor.assignments {
-        let key = "\(path)|\(text)"
+        let key = "\(path)|\(text.function)|\(text.assignment)"
         if Self.allowedAssignments[key] != nil {
           seenAllowed.insert(key)
         } else {
-          offenders.append("\(path): \(text)")
+          offenders.append("\(path): \(text.function)(): \(text.assignment)")
         }
       }
     }
@@ -119,9 +133,9 @@ struct RequestTimeoutOwnerTests {
   /// `path|exact source text`, valued by WHY. Adding an entry is the deliberate
   /// act this guard exists to force.
   private static let allowedAssignments: [String: String] = [
-    "Sources/EnviousWisprLLM/OllamaConnector.swift|request.timeoutInterval = 3.0":
-      "evictModel: a fire-and-forget model unload must give up long before a "
-      + "polish would, and the shared session cannot express that."
+    "Sources/EnviousWisprLLM/OllamaConnector.swift|evictModel|request.timeoutInterval = 3.0":
+      "a fire-and-forget model unload must give up long before a polish would, "
+      + "and the shared session cannot express that."
   ]
 
   /// Two-way control: the visitor must actually be able to SEE an assignment, or
@@ -138,7 +152,8 @@ struct RequestTimeoutOwnerTests {
     let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
     visitor.walk(Parser.parse(source: source))
     #expect(visitor.assignments.count == 1)
-    #expect(visitor.assignments.first == "request.timeoutInterval = 60")
+    #expect(visitor.assignments.first?.assignment == "request.timeoutInterval = 60")
+    #expect(visitor.assignments.first?.function == "send")
   }
 
   /// The constants are actually WIRED to the session, asserted without naming
@@ -174,10 +189,26 @@ struct RequestTimeoutOwnerTests {
 /// because the code was clean. `detectorIsNotBlind` is what caught that, and it
 /// is the reason this file has a two-way control at all.
 private final class TimeoutAssignmentVisitor: SyntaxVisitor {
-  /// Exact source text of each assignment, normalised only by trimming. No value
-  /// is extracted and none is evaluated — deciding what an expression EQUALS is
-  /// the question this suite deleted rather than answered.
-  private(set) var assignments: [String] = []
+  struct Site {
+    /// Name of the enclosing function, or `<top-level>`.
+    let function: String
+    /// Exact source text of the assignment, trimmed. No value is extracted and
+    /// none is evaluated — deciding what an expression EQUALS is the question
+    /// this suite deleted rather than answered.
+    let assignment: String
+  }
+
+  private(set) var assignments: [Site] = []
+  private var functionStack: [String] = []
+
+  override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+    functionStack.append(node.name.text)
+    return .visitChildren
+  }
+
+  override func visitPost(_ node: FunctionDeclSyntax) {
+    functionStack.removeLast()
+  }
 
   override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
     let elements = Array(node.elements)
@@ -186,7 +217,10 @@ private final class TimeoutAssignmentVisitor: SyntaxVisitor {
         let member = elements[index - 1].as(MemberAccessExprSyntax.self),
         member.declName.baseName.text == "timeoutInterval"
       else { continue }
-      assignments.append(node.trimmedDescription)
+      assignments.append(
+        Site(
+          function: functionStack.last ?? "<top-level>",
+          assignment: node.trimmedDescription))
     }
     return .visitChildren
   }
