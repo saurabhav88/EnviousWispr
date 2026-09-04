@@ -8,6 +8,13 @@ public enum LLMProvider: String, Codable, CaseIterable, Sendable {
   case ollama
   case appleIntelligence
   case egOne
+  /// #2649: S1-mini, a third-party ASR-output normalizer served by the same
+  /// bundled server as EG-1 and offered beside it. A NEW case rather than a
+  /// generalisation of `egOne` into a model-carrying `localServer`: renaming a
+  /// shipped provider would force a settings migration on every existing EG-1
+  /// user for no user-visible gain, and it would put someone else's weights
+  /// behind our first-party name in telemetry and in `isFirstPartyModel`.
+  case s1Mini
   case none
 }
 
@@ -19,6 +26,17 @@ extension LLMProvider {
   /// activate a manifest whose model name disagrees with this value.
   public static let egOneModelName = "eg-1"
 
+  /// Canonical model-identity literal for S1-mini (#2649), same fixed-literal
+  /// pattern as EG-1 and Apple Intelligence: Core and Services cannot import
+  /// the LLM module where the manifest lives.
+  ///
+  /// This value is DISTINCT from the Ollama route's model id
+  /// (`hf.co/superwhisper/s1-mini-GGUF:Q4_K_M`) on purpose. Polish telemetry
+  /// groups by model, so a shared id would merge the managed path and the
+  /// bring-your-own-copy path in the dashboard and neither could be read —
+  /// which is exactly the query #2634 was diagnosed from.
+  public static let s1MiniModelName = "s1-mini"
+
   public var displayName: String {
     switch self {
     case .openAI: return "OpenAI"
@@ -27,6 +45,11 @@ extension LLMProvider {
     case .ollama: return "Ollama"
     case .appleIntelligence: return "Apple Intelligence"
     case .egOne: return "EG-1"
+    // LICENCE-BOUND, not a style choice. The S1-mini licence carries an
+    // ADDITIONAL TERM requiring this exact capitalisation wherever the model is
+    // identified. Every user-facing surface reads this one value; a raw model
+    // id rendered anywhere instead would not satisfy it.
+    case .s1Mini: return "S1-mini"
     case .none: return "None"
     }
   }
@@ -72,6 +95,7 @@ extension LLMProvider {
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName
+    case .s1Mini: return LLMProvider.s1MiniModelName
     case .none: return ""
     }
   }
@@ -154,7 +178,7 @@ extension LLMProvider {
       return modelID.hasPrefix("gemini-")
     case .claude:
       return modelID.hasPrefix("claude-")
-    case .ollama, .appleIntelligence, .egOne, .none:
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       // Not a cloud provider -- this check does not apply to these arms.
       return true
     }

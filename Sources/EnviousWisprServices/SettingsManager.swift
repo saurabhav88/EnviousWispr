@@ -200,12 +200,16 @@ public final class SettingsManager {
   /// until async discovery happened to repair it (#158, Codex r4):
   /// `modelIDLooksLikeCloudProvider` catches that case as well.
   private func canonicalizeLLMModelForProvider() {
-    let fixedLiterals = ["apple-intelligence", LLMProvider.egOneModelName]
+    let fixedLiterals = [
+      "apple-intelligence", LLMProvider.egOneModelName, LLMProvider.s1MiniModelName,
+    ]
     switch llmProvider {
     case .appleIntelligence:
       llmModel = "apple-intelligence"
     case .egOne:
       llmModel = LLMProvider.egOneModelName
+    case .s1Mini:
+      llmModel = LLMProvider.s1MiniModelName
     case .ollama:
       // #1305: empty stays empty for Ollama — refilling from `ollamaModel`
       // here silently re-armed the phantom picker selection at every launch
@@ -735,6 +739,10 @@ public final class SettingsManager {
     // #1271: fixed literal, the apple-intelligence pattern — Services cannot
     // import the LLM-module manifest; version detail rides eg1.* telemetry.
     case .egOne: return LLMProvider.egOneModelName
+    // #2649: same fixed-literal pattern. The value is deliberately NOT the
+    // Ollama route's id, so polish telemetry can tell the managed path from a
+    // model the user pulled themselves.
+    case .s1Mini: return LLMProvider.s1MiniModelName
     case .ollama: return ollamaModel
     case .openAI, .gemini, .claude, .none: return llmModel
     }

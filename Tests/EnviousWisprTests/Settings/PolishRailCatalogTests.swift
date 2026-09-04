@@ -90,7 +90,7 @@ struct PolishRailCatalogTests {
   @Test(
     "each group contains exactly its approved providers, in order",
     arguments: [
-      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .appleIntelligence]),
+      (PolishRailGroup.onThisMac, [LLMProvider.egOne, .appleIntelligence, .s1Mini]),
       (PolishRailGroup.yourOwnSetup, [LLMProvider.ollama]),
       (PolishRailGroup.cloud, [LLMProvider.openAI, .gemini, .claude]),
     ])
@@ -111,6 +111,27 @@ struct PolishRailCatalogTests {
     #expect(Set(flattened) == selectable, "a selectable provider is missing")
     #expect(flattened.count == selectable.count)
     #expect(flattened == PolishRailCatalog.all.map(\.provider))
+  }
+
+  /// #2649. The row's name is LICENCE-BOUND: the S1-mini licence carries an
+  /// additional term requiring that exact capitalisation wherever the model is
+  /// identified, and the maker must be credited. So the row must READ the one
+  /// owner rather than restate it, and the attribution must be pinned — a
+  /// tagline reworded for style would quietly drop a licence obligation, and
+  /// nothing else in the suite would notice.
+  @Test("the S1-mini row reads the licensed name and keeps its attribution")
+  func s1MiniRowCopyIsExact() throws {
+    let row = try #require(PolishRailCatalog.entry(for: .s1Mini))
+    #expect(row.name == LLMProvider.s1Mini.displayName)
+    #expect(row.name == "S1-mini")
+    #expect(row.tagline == "Small, English, by Superwhisper")
+    #expect(row.tagline.contains("Superwhisper"), "the maker must be credited on the row")
+    #expect(row.group == .onThisMac)
+    // EG-1 remains the recommended engine. A second recommended row would make
+    // the word meaningless, so this is asserted here rather than trusted.
+    #expect(row.recommended == false)
+    #expect(PolishRailCatalog.entry(for: .egOne)?.recommended == true)
+    #expect(PolishRailCatalog.all.filter(\.recommended).count == 1)
   }
 
   /// `.none` is the "polish off" sentinel, not an engine. A row for it would

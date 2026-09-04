@@ -20,6 +20,8 @@ struct ProviderStatusMappingTests {
     for provider: LLMProvider,
     egOneInstall: EGOneInstallState = .installed(version: "1"),
     egOneHealth: EGOneHealth = .green,
+    s1MiniInstall: EGOneInstallState = .installed(version: "1"),
+    s1MiniHealth: EGOneHealth = .green,
     appleStatus: AIAvailabilityStatus? = .available,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState = .valid,
     cloudKeyPresent: Bool = false,
@@ -29,10 +31,47 @@ struct ProviderStatusMappingTests {
       for: provider,
       egOneInstall: egOneInstall,
       egOneHealth: egOneHealth,
+      s1MiniInstall: s1MiniInstall,
+      s1MiniHealth: s1MiniHealth,
       appleStatus: appleStatus,
       cloudValidation: cloudValidation,
       cloudKeyPresent: cloudKeyPresent,
       ollamaSetup: ollamaSetup)
+  }
+
+  // MARK: - S1-mini (#2649: same renderer as EG-1, separate state)
+
+  /// S1-mini and EG-1 share `localServer`, so the rows that matter are the ones
+  /// proving they do NOT share state. A single-engine assertion cannot tell a
+  /// correct arm from one reading its neighbour's coordinator.
+  @Test("S1-mini not installed → Not installed / needs-setup")
+  func s1MiniNotInstalled() {
+    let s = status(for: .s1Mini, s1MiniInstall: .notInstalled)
+    #expect(s.label == "Not installed")
+    #expect(s.tone == .needsSetup)
+  }
+
+  @Test("S1-mini reads its own state, never EG-1's")
+  func s1MiniDoesNotReadEGOneState() {
+    // EG-1 broken, S1-mini fine: S1-mini must still be fine.
+    let healthy = status(
+      for: .s1Mini, egOneInstall: .notInstalled, egOneHealth: .red(reason: "eg1 down"),
+      s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green)
+    #expect(healthy.tone == .ready)
+
+    // And the reverse, so neither direction can leak.
+    let egOneHealthy = status(
+      for: .egOne, egOneInstall: .installed(version: "1"), egOneHealth: .green,
+      s1MiniInstall: .notInstalled, s1MiniHealth: .red(reason: "s1 down"))
+    #expect(egOneHealthy.tone == .ready)
+  }
+
+  @Test("S1-mini installed but unhealthy is not reported as ready")
+  func s1MiniUnhealthy() {
+    let s = status(
+      for: .s1Mini, s1MiniInstall: .installed(version: "1"),
+      s1MiniHealth: .red(reason: "server down"))
+    #expect(s.tone != .ready)
   }
 
   // MARK: - EG-1 (install lifecycle first, health once installed)

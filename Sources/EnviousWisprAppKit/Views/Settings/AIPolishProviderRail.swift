@@ -26,6 +26,14 @@ enum ProviderStatusMapping {
     for provider: LLMProvider,
     egOneInstall: EGOneInstallState,
     egOneHealth: EGOneHealth,
+    // #2649: REQUIRED, with no default value on purpose. A defaulted argument
+    // has no token at the call site, so no grep could find the sites still
+    // passing a placeholder, and the arm below would render a confident label
+    // for a state nobody supplied. Chunk 3 replaces what the call site hands in
+    // here; until then the call site passes the literal truth, which is that
+    // nothing is installed.
+    s1MiniInstall: EGOneInstallState,
+    s1MiniHealth: EGOneHealth,
     appleStatus: AIAvailabilityStatus?,
     cloudValidation: LLMModelDiscoveryCoordinator.KeyValidationState,
     cloudKeyPresent: Bool = false,
@@ -33,22 +41,34 @@ enum ProviderStatusMapping {
   ) -> ProviderStatus {
     switch provider {
     case .egOne:
-      return egOne(install: egOneInstall, health: egOneHealth)
+      return localServer(install: egOneInstall, health: egOneHealth)
     case .appleIntelligence:
       return apple(appleStatus)
     case .openAI, .gemini, .claude:
       return cloud(cloudValidation, keyPresent: cloudKeyPresent)
     case .ollama:
       return ollama(ollamaSetup)
+    case .s1Mini:
+      // #2649: the SAME install-then-health renderer EG-1 uses, reading
+      // S1-mini's OWN state. Sharing the renderer is safe because the lifecycle
+      // is identical — a download, then a bundled server that is up or is not —
+      // while the STATE is separate, so a cloud key or EG-1's health can never
+      // reach this arm.
+      return localServer(install: s1MiniInstall, health: s1MiniHealth)
     case .none:
       return ProviderStatus(label: "Off", tone: .unavailable)
     }
   }
 
-  // EG-1: install lifecycle first, health only once installed — mirrors the
-  // inline `egOneStatusContent` switch (installState first, health inside the
-  // `.installed` case). So the chip and the inline row read the same authority.
-  private static func egOne(
+  // A bundled-server engine: install lifecycle first, health only once
+  // installed — mirrors the inline `egOneStatusContent` switch (installState
+  // first, health inside the `.installed` case). So the chip and the inline row
+  // read the same authority.
+  //
+  // #2649 renamed this from `egOne`. It now serves EG-1 and S1-mini, which have
+  // the same lifecycle and separate state; a name claiming one of them would be
+  // wrong at the exact place a reader looks for the truth.
+  private static func localServer(
     install: EGOneInstallState, health: EGOneHealth
   ) -> ProviderStatus {
     switch install {
@@ -222,6 +242,14 @@ enum PolishRailCatalog {
     PolishRailProvider(
       provider: .appleIntelligence, name: "Apple Intelligence", tagline: "Built into macOS",
       group: .onThisMac, recommended: false),
+    // #2649. Founder placement: beside EG-1 on this Mac, never above it. EG-1
+    // keeps `recommended`; Apple Intelligence remains what a fresh install
+    // selects. The tagline says what the model IS rather than praising it,
+    // because it is somebody else's model and the licence binds the name.
+    PolishRailProvider(
+      provider: .s1Mini, name: LLMProvider.s1Mini.displayName,
+      tagline: "Small, English, by Superwhisper",
+      group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .ollama, name: "Ollama", tagline: "Any open model, local or hosted",
       group: .yourOwnSetup, recommended: false),
@@ -319,6 +347,12 @@ struct ProviderLogoTile: View {
       svgMark(ProviderLogoSVG.ollama, inset: 0.60)
     case .claude:
       svgMark(ProviderLogoSVG.claude, inset: 0.60)
+    case .s1Mini:
+      // A monogram, not a drawn mark. S1-mini is somebody else's model and we
+      // have no licence to its branding; the licence we DO have constrains the
+      // NAME, so the letters are the honest mark. `RainbowLipsIcon` is our own
+      // brand and must never stand in for a third party's model.
+      monogram("S1")
     case .none:
       monogram("--")
     }
@@ -381,6 +415,7 @@ enum ProviderLogoSVG {
     case .claude: return "CL"
     case .ollama: return "OL"
     case .egOne: return "EG"
+    case .s1Mini: return "S1"
     case .appleIntelligence: return ""
     case .none: return "--"
     }

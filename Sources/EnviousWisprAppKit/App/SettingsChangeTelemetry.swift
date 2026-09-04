@@ -228,6 +228,7 @@ enum SettingsProjection {
     // manifest contract (`effectiveLLMModel` returns `eg-1`), never user
     // input, so verbatim is safe by construction.
     case .egOne: return LLMProvider.egOneModelName
+    case .s1Mini: return LLMProvider.s1MiniModelName
     case .none: return "none"
     case .ollama:
       let canonical = OllamaSetupService.canonicalModelName(id)

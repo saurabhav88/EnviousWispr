@@ -66,6 +66,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // return nil and let the call site's `.egOne` branch throw the silent
     // bypass (never the surfaced `providerUnavailable`).
     case .egOne: nil
+    // #2649: same shape as EG-1 above and for the same reason — the S1-mini
+    // connector needs the live server endpoint, which this seam does not carry.
+    // Chunk 3 routes `.s1Mini` through the coordinator before consulting this
+    // factory; reaching this case means no runtime handle was injected.
+    case .s1Mini: nil
     case .none: nil
     }
   }
@@ -196,6 +201,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // precedent-cited from the `.ollama` line above. A timeout is a SILENT
     // skip for this provider (TextProcessingRunner), never a surfaced error.
     case .egOne: return .seconds(15)
+    // #2649: S1-mini is a 0.6B model, far smaller than EG-1's 4B, so this
+    // budget is generous rather than tight. It is deliberately the SAME number
+    // and not a tuned smaller one: a separate constant would be a second thing
+    // to keep in step for no measured benefit, and the §3.7 length guard —
+    // not the clock — is what bounds this provider's worst case.
+    case .s1Mini: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
@@ -1178,6 +1189,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // at the cap and paste a TRUNCATED polish. Latin gets ~4x headroom;
       // the tight 256 floor stays (fixed-prompt instruct tune, no thinking
       // tokens) and the 15 s budget bounds wall-clock.
+      return .capped(max(textCount, LLMConstants.ollamaMaxTokens))
+    case .s1Mini:
+      // #2649: same CJK-safe character-count shape as EG-1 above, and the same
+      // hazard it exists to avoid — a `count/3` estimate under-budgets
+      // unsegmented scripts, the server stops at the cap, and the connector is
+      // handed a TRUNCATED polish. Measured on this model: an input that fits
+      // can still exhaust the window during generation and come back HTTP 200
+      // with `finish_reason: length`, so the cap is one of two defences and the
+      // connector's length check is the other.
       return .capped(max(textCount, LLMConstants.ollamaMaxTokens))
     case .claude:
       // The Anthropic API requires `max_tokens`; fixed generous value.

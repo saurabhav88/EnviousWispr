@@ -399,6 +399,12 @@ struct AIPolishSettingsView: View {
       for: settings.llmProvider,
       egOneInstall: egOne.installState,
       egOneHealth: egOne.health,
+      // #2649 chunk 2: literally true today — no S1-mini runtime exists yet, so
+      // nothing is installed and nothing is serving. Chunk 3 replaces both with
+      // the S1-mini coordinator's own values. These are passed explicitly rather
+      // than defaulted so the two lines are visible here and in every diff.
+      s1MiniInstall: .notInstalled,
+      s1MiniHealth: .red(reason: "no runtime yet"),
       appleStatus: aiAvailability.latestReport?.overallStatus,
       cloudValidation: llmDiscovery.keyValidationState,
       cloudKeyPresent: cloudKeyPresent,
@@ -1128,6 +1134,9 @@ struct AIPolishSettingsView: View {
     // could run a model on its own servers.
     case .ollama: return "Why use Ollama"
     case .egOne: return "Why use EG-1"
+    // The exact name is licence-bound, so it comes from one place rather than
+    // being retyped per surface.
+    case .s1Mini: return "Why use \(LLMProvider.s1Mini.displayName)"
     case .none: return ""
     }
   }
@@ -1148,6 +1157,8 @@ struct AIPolishSettingsView: View {
       ollamaExplainer
     case .egOne:
       egOneExplainer
+    case .s1Mini:
+      s1MiniExplainer
     case .none:
       EmptyView()
     }
@@ -1168,6 +1179,39 @@ struct AIPolishSettingsView: View {
 
       Text(
         "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
+      )
+      .settingsReadingCopy()
+    }
+  }
+
+  /// #2649. Three paragraphs, matching the shape every other on-device engine
+  /// uses. Two constraints shaped this copy rather than taste:
+  ///
+  /// The licence carries an ADDITIONAL TERM requiring the exact string "S1-mini"
+  /// by "Superwhisper" wherever the model is identified, so the name comes from
+  /// `displayName` and the maker is credited in the first sentence rather than
+  /// buried. Nothing here may be reworded in a way that drops either.
+  ///
+  /// And it must not oversell. The model is a NORMALIZER, not a general writing
+  /// model: it cleans a transcript and does nothing else. Measured English-only
+  /// in practice — it never translates, but it resolves a spoken self-correction
+  /// in only 6 of the 25 languages our transcription supports — so the copy says
+  /// English rather than implying parity.
+  @ViewBuilder
+  private var s1MiniExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "\(LLMProvider.s1Mini.displayName) by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
+      )
+      .settingsReadingCopy()
+
+      Text(
+        "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence."
+      )
+      .settingsReadingCopy()
+
+      Text(
+        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice."
       )
       .settingsReadingCopy()
     }

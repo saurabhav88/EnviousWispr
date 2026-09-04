@@ -141,7 +141,13 @@ extension LLMProvider {
         supportsChatCompletions: false
       )
 
-    case .ollama, .appleIntelligence, .egOne, .none:
+    // #2649: `.s1Mini` joins this arm rather than getting one of its own. The
+    // model DOES have a think block, but it is suppressed at LAUNCH by
+    // `--chat-template-kwargs '{"enable_thinking":false}'`, not by a per-request
+    // field — so there is no thinking control to express here. Sending one is
+    // precisely the #2634 failure mode: a request-level thinking parameter
+    // returns 0 characters of content after 11.6 s.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return LLMModelCapabilities(
         thinkingControl: .unsupported,
         temperaturePolicy: .include,
