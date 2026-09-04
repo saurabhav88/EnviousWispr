@@ -242,7 +242,19 @@ public struct OllamaConnector: TranscriptPolisher {
       return ["role": role, "content": msg.content]
     }
 
-    let endpointURL = "\(baseURL)/api/chat"
+    // #2649/#2634: S1-mini takes the RAW endpoint. Its GGUF ships an Ollama
+    // template ending in an unclosed `<|im_start|>assistant\n<think>\n`, so over
+    // `/api/chat` the model is asked to think and answers with thinking and no
+    // content — measured as 161 empty responses and 22 timeouts for one real
+    // user across two releases. Every chat-shaped variant returned empty; only
+    // `/api/generate` with `raw: true` and the trained prefix works.
+    //
+    // Selected by MODEL IDENTITY, never by sniffing the outgoing prompt, which a
+    // user's own dictation could satisfy. Same authority the planner routes on,
+    // so the transport and the prompt can never disagree about which model this
+    // is.
+    let isS1Mini = OllamaSetupService.isS1MiniModel(config.model)
+    let endpointURL = "\(baseURL)/api/\(isS1Mini ? "generate" : "chat")"
     guard let url = URL(string: endpointURL) else {
       throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
     }
@@ -251,13 +263,18 @@ public struct OllamaConnector: TranscriptPolisher {
     guard case .capped(let maxTokens) = config.outputTokens else {
       throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
     }
-    let body = Self.makeRequestBody(
-      model: config.model,
-      messages: messages,
-      maxTokens: maxTokens,
-      temperature: config.temperature,
-      thinking: config.thinking
-    )
+    let body =
+      isS1Mini
+      ? S1MiniRawTransport.makeRequestBody(
+        model: config.model, envelope: envelope, maxTokens: maxTokens,
+        temperature: config.temperature)
+      : Self.makeRequestBody(
+        model: config.model,
+        messages: messages,
+        maxTokens: maxTokens,
+        temperature: config.temperature,
+        thinking: config.thinking
+      )
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -270,14 +287,18 @@ public struct OllamaConnector: TranscriptPolisher {
     let (data, _) = try await performWithRetry(request: request, config: config)
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let message = json?["message"] as? [String: Any],
-      let content = message["content"] as? String,
-      !content.isEmpty
-    else {
+    // `/api/generate` returns the text at the TOP LEVEL as `response`;
+    // `/api/chat` nests it under `message.content`. Reading the chat shape from
+    // a generate reply would find nothing and report an empty response, which is
+    // the very symptom this path exists to fix.
+    let message = json?["message"] as? [String: Any]
+    let rawContent: String? =
+      isS1Mini ? json?["response"] as? String : message?["content"] as? String
+    guard let content = rawContent, !content.isEmpty else {
       throw LLMError.emptyResponse
     }
 
-    Self.logTelemetry(json: json, message: message, model: config.model)
+    Self.logTelemetry(json: json, message: message ?? [:], model: config.model)
 
     if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
       Task {
