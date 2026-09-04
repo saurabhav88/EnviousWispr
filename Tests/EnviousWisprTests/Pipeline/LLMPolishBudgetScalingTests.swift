@@ -7,12 +7,19 @@ import Testing
 @testable import EnviousWisprPipeline
 
 /// #1770: the polish deadline scales with the transcript for Gemini.
+/// #2093: the base moved 5s -> 15s and OpenAI joined the scaled form.
 ///
 /// A flat 5 s was timing out the measured long dictations (11,324 chars at
-/// 6.12 s, 66,896 at 50.65 s; the last case under budget was 4,605 at 2.69 s) — measured live, a 10-minute dictation polishes in 6.12 s and the
-/// longest transcript we have recorded in 50.65 s. A flat LARGER number was
-/// rejected because it would slow the common case (p50 is 8 seconds of speech)
-/// down to rescue the 0.1% tail.
+/// 6.12 s, 66,896 at 50.65 s; the last case under budget was 4,605 at 2.69 s).
+///
+/// #1770 rejected a flat LARGER number on the ground that it would slow the
+/// common case to rescue the 0.1% tail. **#2093 raised the base anyway, because
+/// that reasoning did not survive its own evidence:** the failures are not in a
+/// long tail at all. Median dictation at a production timeout is 106 characters
+/// and 26 of 54 are under 100, so the BASE was cutting off the common case, not
+/// protecting it. Raising it costs nothing on a healthy call — the budget is a
+/// ceiling, not a delay — and only lengthens the wait when the provider was
+/// never going to answer.
 ///
 /// One table-driven test rather than "long > short": that weaker assertion
 /// would pass with the base, the divisor or the ceiling wrong.
@@ -20,7 +27,7 @@ import Testing
 /// #1831 removed the second (60 s) base along with the Deep-reasoning toggle
 /// that was its only trigger, so every Gemini request now shares one base.
 @MainActor
-@Suite("Gemini polish budget scales with transcript length (#1770)")
+@Suite("Cloud polish budget scales with transcript length (#1770, #2093)")
 struct LLMPolishBudgetScalingTests {
 
   private func step(model: String, provider: LLMProvider = .gemini) -> LLMPolishStep {
@@ -38,17 +45,40 @@ struct LLMPolishBudgetScalingTests {
   }
 
   /// Exact expected values, not display rounding: `base + chars / 500`.
-  @Test("base 5s plus one second per 500 characters")
+  ///
+  /// #2093 swept the RANGE the value really takes rather than testing at one
+  /// nominal length: 0 and 1 are the degenerate ends a `count`-derived term can
+  /// get wrong, and 106 is the MEASURED median dictation length at a production
+  /// timeout — the case the whole issue is about, which no earlier row covered.
+  @Test("base 15s plus one second per 500 characters, across the real range")
   func budgetScalesWithLength() {
     let s = step(model: "gemini-3.6-flash")
-    // ~20 words. Preserves today's short-dictation failure speed almost exactly.
-    #expect(budget(s, chars: 110) == .seconds(5 + 110.0 / 500))
+    // Degenerate ends.
+    #expect(budget(s, chars: 0) == .seconds(15))
+    #expect(budget(s, chars: 1) == .seconds(15 + 1.0 / 500))
+    // The measured median dictation at a production timeout (#2093).
+    #expect(budget(s, chars: 106) == .seconds(15 + 106.0 / 500))
+    // ~20 words.
+    #expect(budget(s, chars: 110) == .seconds(15 + 110.0 / 500))
     // p99 of real dictations.
-    #expect(budget(s, chars: 1709) == .seconds(5 + 1709.0 / 500))
-    // A 10-minute dictation — 6.12s measured, so 4.5x headroom.
-    #expect(budget(s, chars: 11324) == .seconds(5 + 11324.0 / 500))
-    // The longest transcript ever recorded — 50.65s measured, 2.7x headroom.
-    #expect(budget(s, chars: 66896) == .seconds(5 + 66896.0 / 500))
+    #expect(budget(s, chars: 1709) == .seconds(15 + 1709.0 / 500))
+    // A 10-minute dictation — 6.12s measured.
+    #expect(budget(s, chars: 11324) == .seconds(15 + 11324.0 / 500))
+    // The longest transcript ever recorded — 50.65s measured.
+    #expect(budget(s, chars: 66896) == .seconds(15 + 66896.0 / 500))
+  }
+
+  /// #2093: OpenAI now scales identically to Gemini, closing the OpenAI half of
+  /// #1833. Asserted at the same lengths so a divergence between the two cloud
+  /// providers cannot hide behind a different test shape.
+  @Test("OpenAI scales identically to Gemini (#2093)")
+  func openAIScalesLikeGemini() {
+    let openAI = step(model: "gpt-5.4-mini", provider: .openAI)
+    let gemini = step(model: "gemini-3.6-flash")
+    for chars in [0, 1, 106, 110, 1709, 11324, 66896] {
+      #expect(budget(openAI, chars: chars) == .seconds(15 + Double(chars) / 500))
+      #expect(budget(openAI, chars: chars) == budget(gemini, chars: chars))
+    }
   }
 
   /// Beyond this the transport terminates the attempt anyway, so a larger
@@ -77,19 +107,18 @@ struct LLMPolishBudgetScalingTests {
   func unlistedModelGetsTheSameBase() {
     let listed = step(model: "gemini-3.6-flash")
     let unlisted = step(model: "gemini-4.0-flash-imaginary")
-    #expect(budget(unlisted, chars: 110) == .seconds(5 + 110.0 / 500))
+    #expect(budget(unlisted, chars: 110) == .seconds(15 + 110.0 / 500))
     #expect(budget(unlisted, chars: 110) == budget(listed, chars: 110))
   }
 
-  /// Only Gemini scales. OpenAI and Claude keep their fixed budgets; widening
-  /// them without measuring their streaming behaviour is #1833.
-  @Test("other providers keep their fixed budgets regardless of length")
+  /// #2093: the set that scales is now {gemini, openAI}. Claude keeps its FIXED
+  /// 15s deliberately — #158 measured that provider directly (9.16s worst real
+  /// call), so widening it here would be a change nothing measured. This is the
+  /// remaining half of #1833.
+  @Test("non-scaling providers keep their fixed budgets regardless of length")
   func otherProvidersUnchanged() {
-    let openAI = step(model: "gpt-4o-mini", provider: .openAI)
-    #expect(budget(openAI, chars: 110) == .seconds(5))
-    #expect(budget(openAI, chars: 66896) == .seconds(5))
-
     let claude = step(model: "claude-haiku-4-5", provider: .claude)
+    #expect(budget(claude, chars: 110) == .seconds(15))
     #expect(budget(claude, chars: 66896) == .seconds(15))
 
     let ollama = step(model: "llama3.2", provider: .ollama)

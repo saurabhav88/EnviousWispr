@@ -439,9 +439,19 @@ struct TextProcessingRunnerCaptureTests {
   func polishTimeout() async throws {
     let spy = CaptureSpy()
     let records = RecordSpy()
-    // Polish step's cloud budget is 5s; throwing below 6s injects a TimeoutError
-    // for it (the executor short-circuits before calling the polisher).
-    let executor = FakeTimeoutExecutor(throwBelowSeconds: 6.0)
+    // The polish step's cloud budget is 15s + 1s per 500 chars (#2093), which is
+    // 15.154s for this 77-character fixture; throwing below 16s injects a
+    // TimeoutError for it (the executor short-circuits before calling the
+    // polisher).
+    //
+    // #2093: this was 6.0, tuned to the old 5s budget. When the budget moved to
+    // 15s the discriminator silently stopped firing — the fake polisher's
+    // `requestFailed` ran instead and the test asserted `bad_request` against a
+    // name that says `timed_out`. It went RED, which is the good outcome, but the
+    // coupling is invisible from the assertion: **any discriminator here is tied
+    // to the real cloud budget and must move with it.** Same trap in
+    // `HeartPathIntegrationTests.polishTimeoutFallsBackToRawASR`.
+    let executor = FakeTimeoutExecutor(throwBelowSeconds: 16.0)
     let runner = TextProcessingRunner(
       telemetry: .init(
         captureError: spy.sink, recordPolishFailed: records.sink,

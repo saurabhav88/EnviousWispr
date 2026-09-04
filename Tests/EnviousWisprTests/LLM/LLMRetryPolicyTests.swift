@@ -8,9 +8,27 @@ struct LLMRetryPolicyTests {
 
   // MARK: - Constants
 
-  @Test("default delays are 1s and 3s")
+  @Test("default delays are 200ms and 400ms")
   func defaultDelays() {
-    #expect(LLMRetryPolicy.defaultDelays == [1_000_000_000, 3_000_000_000])
+    #expect(LLMRetryPolicy.defaultDelays == [200_000_000, 400_000_000])
+  }
+
+  /// #2093: the durable claim is not the two literals above — it is that the
+  /// SLEEPS cannot eat the budget they run inside. They are spent within the
+  /// polish step's own deadline, so at 1s+3s a single transient 5xx made a short
+  /// cloud dictation's timeout arithmetically certain on the old 5s base, and
+  /// the user was told "timed out" instead of the real reason.
+  ///
+  /// Stated as a RELATION against the smallest cloud budget rather than as a
+  /// third copy of the numbers, so it stays true if the delays are retuned and
+  /// goes red if anyone reintroduces multi-second backoff.
+  @Test("all retry sleeps together stay well inside the smallest cloud budget")
+  func retrySleepsFitInsideTheBudget() {
+    let totalSleepNanos = LLMRetryPolicy.defaultDelays.reduce(0, +)
+    let totalSleepSeconds = Double(totalSleepNanos) / 1_000_000_000
+    #expect(totalSleepSeconds < 1.0)
+    // The smallest cloud budget any dictation can get is the 15s base (#2093).
+    #expect(totalSleepSeconds < 15.0 * 0.1)
   }
 
   @Test("default max retries is 2")

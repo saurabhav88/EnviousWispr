@@ -890,6 +890,42 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("limb.failure_observed", properties: props)
   }
 
+  /// #2093: a cloud pre-warm request is leaving, on the user's own API key.
+  ///
+  /// THE DENOMINATOR IS THE POINT. Before #2093 we warmed on every launch, every
+  /// foreground and every recording start, which is one extra provider request
+  /// per dictation charged to the user's quota — and `rate_or_quota` became the
+  /// largest cloud polish failure we have (442 events / 4 users / 60 days).
+  /// #2093 removes Gemini's warm-up entirely and gates OpenAI/Claude on cold.
+  /// The ratio that says whether that worked is this event over
+  /// (`llm.polish_completed` + `llm.polish_failed`) per cloud user-day, split by
+  /// provider. It reads ~1.0 today by construction and should fall.
+  ///
+  /// Watching `rate_or_quota` fall instead would NOT be evidence: it moves with
+  /// the user's own separate API usage and with provider policy, neither of
+  /// which this change controls. Guardrail, never the measurement.
+  ///
+  /// Emitted after every key/model/construction guard, immediately before the
+  /// request is sent — so it counts requests that actually leave, not intentions.
+  ///
+  /// `model` is RAW, matching `llm.polish_completed` / `llm.polish_failed`. That
+  /// is deliberate and required: `observability-operations.md`
+  /// RULE: telemetry-observes-resolved-value-deny-by-default carries a founder
+  /// decision (2026-08-15) that runtime polish events keep the raw model, because
+  /// bucketing makes "which model is failing" unanswerable and an allowlist goes
+  /// stale monthly. A reviewer seeing only the SETTINGS guard files this as a
+  /// privacy P0; it is not one. Metadata only — never key material.
+  public func prewarmStarted(provider: String, model: String) {
+    let props: [String: Any] = ["provider": provider, "model": model]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "llm.prewarm_started",
+          stringProps: ["provider": provider, "model": model]))
+    #endif
+    PostHogSDK.shared.capture("llm.prewarm_started", properties: props)
+  }
+
   /// #1408: the microphone died (or the duration cap fired) while a recording was
   /// in flight. Fires on EVERY such interruption that reaches a recording exit —
   /// salvaged or not — so `dictation.completed`'s salvage count has a denominator.

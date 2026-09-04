@@ -19,7 +19,11 @@ import Testing
         limbFailure: { limb, _, _, _, _ in self.lock.withLock { self._limbs.append(limb) } },
         legacyKeyCleanupFailed: { _, account in
           self.lock.withLock { self._cleanups.append(account) }
-        })
+        },
+        // #2093: this spy does not assert pre-warm counting; that lives in
+        // LLMWarmupGateTests. Required rather than defaulted at the type so a
+        // production factory cannot silently forget to wire it.
+        prewarmStarted: { _, _ in })
     }
   }
 

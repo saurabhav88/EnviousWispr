@@ -31,6 +31,16 @@ extension LLMTelemetrySink {
       errorCategory: errorCategory, durationMs: durationMs)
   }
 
+  /// #2093: the pre-warm counter's production home. Same injectable shape as the
+  /// two reporters above so a test asserts the effect without a process global.
+  package typealias PrewarmStartedReporter = @MainActor (
+    _ provider: String, _ model: String
+  ) -> Void
+
+  package static let defaultPrewarmStartedReporter: PrewarmStartedReporter = { provider, model in
+    TelemetryService.shared.prewarmStarted(provider: provider, model: model)
+  }
+
   package static let defaultHandledErrorReporter: HandledErrorReporter = {
     error, category, stage, extra, fingerprintDetail in
     SentryBreadcrumb.captureError(
@@ -47,7 +57,8 @@ extension LLMTelemetrySink {
   /// telemetry lost to an immediate quit is acceptable; a limb never blocks the heart.
   package static func makeLive(
     limbFailureReporter: @escaping LimbFailureReporter = defaultLimbFailureReporter,
-    handledErrorReporter: @escaping HandledErrorReporter = defaultHandledErrorReporter
+    handledErrorReporter: @escaping HandledErrorReporter = defaultHandledErrorReporter,
+    prewarmStartedReporter: @escaping PrewarmStartedReporter = defaultPrewarmStartedReporter
   ) -> LLMTelemetrySink {
     LLMTelemetrySink(
       limbFailure: { limb, operation, result, errorCategory, durationMs in
@@ -70,6 +81,13 @@ extension LLMTelemetrySink {
             handledErrorReporter(
               SentryCaptureBoundaryError.normalizingLegacyKeyCleanupFailure(error),
               .legacyKeyCleanupFailed, "keychain", ["account": account], account)
+          }
+        }
+      },
+      prewarmStarted: { provider, model in
+        DispatchQueue.main.async {
+          MainActor.assumeIsolated {
+            prewarmStartedReporter(provider, model)
           }
         }
       })

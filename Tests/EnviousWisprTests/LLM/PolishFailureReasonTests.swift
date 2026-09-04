@@ -180,7 +180,7 @@ struct PolishFailureReasonTests {
     // repeating the lead-in (no "AI cleanup skipped: AI cleanup took too long").
     #expect(
       PolishFailureReason.timedOut.composedMessage(provider: .openAI)
-        == "AI cleanup skipped: the dictation took too long. Your original text was pasted unchanged."
+        == "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
     )
     #expect(
       PolishFailureReason.badRequest.composedMessage(provider: .openAI)
