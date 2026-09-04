@@ -5,7 +5,7 @@ category: "ai-polish"
 section: "Polish"
 order: 3
 keywords: ["smart polish", "context", "context aware", "knows what app", "different apps", "tone", "formal", "casual"]
-updated: 2026-09-01
+updated: 2026-09-04
 ---
 When EnviousWispr sends your dictation to an AI for polishing, it includes a small set of background facts along with your words. That extra context helps the AI make better corrections than it could by reading the transcript alone.
 
@@ -27,10 +27,10 @@ How much context is sent depends on the polish option you selected in settings.
 | Polish option | App name included | Custom words included |
 | :--- | :--- | :--- |
 | **OpenAI, Gemini, and Claude** | Yes | Usually |
-| **Ollama, except EG-1** | Yes | Usually |
-| **Apple Intelligence and EG-1** | No | No |
+| **Ollama, except EG-1 and S1-mini** | Yes | Usually |
+| **Apple Intelligence, EG-1, and S1-mini** | No | No |
 
-Every Ollama model gets the app name, whichever one you picked and wherever it runs, with one exception: EG-1, which you can also run through Ollama. Apple Intelligence and EG-1 get neither field. Both are compact on-device models that do better with short instructions, and EG-1 was trained without them.
+Every Ollama model gets the app name, whichever one you picked and wherever it runs, with two exceptions: EG-1 and S1-mini, both of which you can also run through Ollama. Apple Intelligence, EG-1, and S1-mini get neither field. Both are compact on-device models that do better with short instructions, and EG-1 was trained without them.
 
 Custom words say "usually" for a reason. When the app cannot tell with confidence which language you spoke, it holds your word list back for that dictation instead of risking English spellings being pushed onto text in another language. That applies to every option in the Yes rows, not just Ollama.
 

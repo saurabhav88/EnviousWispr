@@ -68,6 +68,21 @@ enum WhatsNewContent {
       version: "2.4.7"
     ),
 
+    // #2649. Every clause checked against the branch before this entry was
+    // written: "484 MB" is `LocalEngineDescriptor.s1Mini.downloadSize`, bound
+    // to the delivery manifest by test; "free" and "on this Mac" are the
+    // engine's whole design (bundled llama-server, no key); "three settings"
+    // are the `S1ControlSettings` axes; the licensed spelling is asserted by
+    // `S1ControlLinePromptTests.displayNameIsLicenceExact`. No absolute about
+    // quality is made, because none was measured against a user's own text.
+    Entry(
+      id: "s1-mini-local-polish",
+      icon: "cpu",
+      title: "A second on-device polish model, S1-mini by Superwhisper",
+      description:
+        "S1-mini is a small open model for cleaning up dictation, and it is now an option beside EG-1 in AI Polish settings. It is a 484 MB download, runs on this Mac, and is free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. EG-1 stays the recommended choice.",
+      version: "2.4.7"
+    ),
     // MARK: - v2.4.6
 
     // Every title and every collapsed line in this group was written or edited by

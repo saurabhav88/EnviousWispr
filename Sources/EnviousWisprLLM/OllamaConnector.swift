@@ -292,10 +292,22 @@ public struct OllamaConnector: TranscriptPolisher {
     // a generate reply would find nothing and report an empty response, which is
     // the very symptom this path exists to fix.
     let message = json?["message"] as? [String: Any]
-    let rawContent: String? =
-      isS1Mini ? json?["response"] as? String : message?["content"] as? String
-    guard let content = rawContent, !content.isEmpty else {
-      throw LLMError.emptyResponse
+    let content: String
+    if isS1Mini {
+      // #2649 (confirming review): the same empty-answer rule the bundled
+      // S1-mini connector applies. Empty is the CORRECT answer to filler-only
+      // input, and a user with filler removal off can dictate exactly that.
+      content = try Self.s1MiniContent(rawContent: json?["response"] as? String, envelope: envelope)
+      if content.isEmpty {
+        // A correct empty result: the empty-output floor keeps the user's
+        // deterministic text, and no failure is recorded for a model doing its job.
+        return LLMResult(polishedText: "")
+      }
+    } else {
+      guard let chatContent = message?["content"] as? String, !chatContent.isEmpty else {
+        throw LLMError.emptyResponse
+      }
+      content = chatContent
     }
 
     Self.logTelemetry(json: json, message: message ?? [:], model: config.model)
@@ -547,6 +559,29 @@ public struct OllamaConnector: TranscriptPolisher {
 
   /// Logs Ollama `/api/chat` timing + reasoning-output telemetry (#276).
   ///
+  /// The S1-mini raw route's answer, with the empty case decided by the INPUT.
+  ///
+  /// Mirrors `S1MiniConnector.parseSuccess`: a missing field is a malformed
+  /// reply and stays a failure; an empty string is valid for filler-only input
+  /// and a failure otherwise. Without this the Ollama route threw
+  /// `emptyResponse` for every empty answer, so a user who turned filler
+  /// removal off and dictated only filler got an "AI polish failed" banner and
+  /// failure telemetry for correct model behaviour. `internal` so a test can
+  /// drive it with a canned payload, the same seam the bundled connector offers.
+  static func s1MiniContent(rawContent: String?, envelope: PromptEnvelope) throws -> String {
+    guard let rawContent else { throw LLMError.emptyResponse }
+    guard rawContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return rawContent
+    }
+    let userMessage = envelope.messages.last { $0.role == .user }?.content ?? ""
+    switch LocalPolishEmptyDisposition.classify(
+      input: S1MiniConnector.transcript(fromUserMessage: userMessage))
+    {
+    case .validEmpty: return ""
+    case .unexpectedEmpty: throw LLMError.emptyResponse
+    }
+  }
+
   /// `thinking` captures the char count of `message.thinking`, which we
   /// discard but which gemma4 spends significant eval time producing. Non-
   /// thinking models (llama3.2 etc.) log `thinking=0`. Compare against

@@ -7,7 +7,7 @@ order: 1
 keywords: ["privacy", "private", "is it private", "does it spy", "does it send my text anywhere", "data", "offline", "internet", "cloud", "tracking", "who can see my dictation"]
 related: ["what-data-is-collected", "ai-polish-and-cloud-data"]
 seeAlso: "on-device-vs-cloud-dictation-privacy"
-updated: 2026-08-06
+updated: 2026-09-04
 ---
 EnviousWispr is a free dictation app for macOS. Your voice becomes text on your own Mac, and the audio never leaves it. There is no account and nothing to sign up for.
 
@@ -35,6 +35,7 @@ This depends entirely on the option you select in settings.
 | :--- | :--- |
 | Apple Intelligence | Stays on your Mac |
 | EG-1 | Stays on your Mac |
+| S1-mini | Stays on your Mac |
 | An Ollama model you downloaded | Stays on your Mac |
 | An Ollama hosted model | To Ollama's servers |
 | OpenAI | To OpenAI |

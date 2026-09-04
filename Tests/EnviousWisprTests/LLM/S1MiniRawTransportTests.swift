@@ -55,6 +55,34 @@ struct S1MiniRawTransportTests {
     #expect(system.lowerBound < user.lowerBound)
   }
 
+  /// #2649 (confirming review): the raw route must decide an EMPTY answer by
+  /// the INPUT, exactly as the bundled connector does. Before this, every empty
+  /// answer threw, so a user with filler removal off who dictated only filler
+  /// saw "AI polish failed" for a model doing its job.
+  @Test("an empty answer is valid for filler-only input and a failure otherwise")
+  func emptyAnswerIsDecidedByTheInput() throws {
+    // Valid: the model correctly emitted nothing for pure filler.
+    #expect(
+      try OllamaConnector.s1MiniContent(rawContent: "", envelope: Self.envelope(transcript: "um uh"))
+        == "")
+    #expect(
+      try OllamaConnector.s1MiniContent(
+        rawContent: "  \n", envelope: Self.envelope(transcript: "um uh")) == "")
+    // Failure: real words came back as nothing.
+    #expect(throws: LLMError.self) {
+      try OllamaConnector.s1MiniContent(rawContent: "", envelope: Self.envelope())
+    }
+    // Failure: the field is missing, which is a malformed reply whatever the input.
+    #expect(throws: LLMError.self) {
+      try OllamaConnector.s1MiniContent(
+        rawContent: nil, envelope: Self.envelope(transcript: "um uh"))
+    }
+    // Ordinary content passes through untouched.
+    #expect(
+      try OllamaConnector.s1MiniContent(rawContent: "Send the report.", envelope: Self.envelope())
+        == "Send the report.")
+  }
+
   /// The prompt text has ONE owner. This file frames; it must never restate.
   @Test("the framed prompt carries the builder's text, not a second copy")
   func textComesFromTheOwner() {

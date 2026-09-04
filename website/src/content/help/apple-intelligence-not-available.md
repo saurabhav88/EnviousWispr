@@ -6,7 +6,7 @@ section: "AI Polish Issues"
 order: 6
 keywords: ["apple intelligence missing", "apple intelligence greyed out", "cant use apple intelligence", "not available", "unavailable", "why cant i pick apple"]
 related: ["apple-intelligence-setup", "system-requirements"]
-updated: 2026-08-06
+updated: 2026-09-04
 ---
 Apple Intelligence is one of the polish options EnviousWispr can use to tidy up your dictation, but Apple restricts the feature to specific hardware and software versions. Dictation itself keeps working normally even when Apple Intelligence is unavailable on your Mac.
 
@@ -23,4 +23,4 @@ Work through this list to identify why Apple Intelligence is not active in Envio
 
 ### Alternative polish options
 
-If Apple Intelligence is out of reach on your Mac, you can choose a different way to clean up your dictated text. Pick EG-1 or a downloaded Ollama model to keep everything on your Mac, or enter your own API key for OpenAI, Gemini, or Claude.
+If Apple Intelligence is out of reach on your Mac, you can choose a different way to clean up your dictated text. Pick EG-1, S1-mini, or a downloaded Ollama model to keep everything on your Mac, or enter your own API key for OpenAI, Gemini, or Claude.
