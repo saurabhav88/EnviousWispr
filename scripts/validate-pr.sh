@@ -556,8 +556,8 @@ case "$DECLARED" in
     else
       cat > "$RUN_DIR/codex-prose.txt" <<EOF
 [STUB — caller must overwrite]
-Run: ~/.claude/bin/codex-5.6-sol review --base origin/main > $RUN_DIR/codex-prose.txt
-(fallback if usage-capped: ~/.claude/bin/codex-5.3-spark review --base origin/main > $RUN_DIR/codex-prose.txt)
+Run: ~/.claude/bin/codex-run $RUN_DIR/codex-prose.txt review --base origin/main
+(usage-limit fallback: see ~/.claude/knowledge/ai/codex-cli.md — never a bare launcher, never a > redirect)
 Then re-run scripts/validate-pr.sh OR call scripts/attest.sh codex-prose "what I observed"
 EOF
       record_step "codex-prose" 1 "Stage 1 stub — caller must run 'codex review' and overwrite codex-prose.txt + attest"
@@ -579,8 +579,8 @@ esac
 echo "==> Phase 3.4: Codex code-diff review (caller's responsibility; MUST be clean BEFORE the smoke + Live UAT rebuild above — script not auto-invoking)"
 if [ ! -s "$RUN_DIR/codex-review.txt" ] && [ "$DECLARED" = "Code" ]; then
   cat > "$RUN_DIR/codex-review-todo.txt" <<EOF
-Run: ~/.claude/bin/codex-5.6-sol review --base origin/main > $RUN_DIR/codex-review.txt
-(fallback if usage-capped: ~/.claude/bin/codex-5.3-spark review --base origin/main > $RUN_DIR/codex-review.txt)
+Run: ~/.claude/bin/codex-run $RUN_DIR/codex-review.txt review --base origin/main
+(usage-limit fallback: see ~/.claude/knowledge/ai/codex-cli.md — never a bare launcher, never a > redirect)
 EOF
   record_step "codex-review" 1 "Stage 1 stub — caller must run codex review and overwrite codex-review.txt"
 fi
