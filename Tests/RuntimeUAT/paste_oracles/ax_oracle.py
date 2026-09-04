@@ -58,11 +58,15 @@ from ApplicationServices import (
     AXUIElementCopyAttributeValue,
     AXUIElementCreateApplication,
     AXUIElementGetPid,
+    AXUIElementPerformAction,
+    AXUIElementSetAttributeValue,
     kAXChildrenAttribute,
     kAXFocusedAttribute,
     AXUIElementCreateSystemWide,
     kAXFocusedApplicationAttribute,
     kAXFocusedUIElementAttribute,
+    kAXFrontmostAttribute,
+    kAXRaiseAction,
     kAXWindowsAttribute,
     kAXNumberOfCharactersAttribute,
     kAXRoleAttribute,
@@ -191,9 +195,24 @@ def activate(bundle_id: str, handoff: float = 1.0) -> bool:
     sources and agrees with all of them — an earlier theory that it returned a stale
     cached value was wrong and is recorded here so nobody re-derives it.
     """
-    if pid_for_bundle(bundle_id) is None:
+    pid = pid_for_bundle(bundle_id)
+    if pid is None:
         return False
-    subprocess.run(["open", "-b", bundle_id], capture_output=True, timeout=15)
+
+    # Raise through ACCESSIBILITY, which is already granted, then fall back to `open -b`.
+    #
+    # `open -b` raises a browser reliably and does NOT raise an already-running Electron
+    # app with an open window — Slack, Discord and WhatsApp all refused it, which cost 45
+    # trials in one run. Setting `AXFrontmost` on the application element and performing
+    # `AXRaise` on its first window moves all three, and needs no Automation grant, so it
+    # raises no modal. The fourth method tried, and the first that works everywhere.
+    application = AXUIElementCreateApplication(pid)
+    AXUIElementSetAttributeValue(application, kAXFrontmostAttribute, True)
+    err, windows = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute, None)
+    if err == 0 and windows:
+        AXUIElementPerformAction(windows[0], kAXRaiseAction)
+    else:
+        subprocess.run(["open", "-b", bundle_id], capture_output=True, timeout=15)
     workspace = NSWorkspace.sharedWorkspace()
     deadline = time.monotonic() + max(handoff, 8.0)
     while time.monotonic() < deadline:
