@@ -574,8 +574,25 @@ struct AIPolishSettingsView: View {
     if settings.llmProvider == .appleIntelligence {
       appleIntelligenceStatus
     }
+    // Both bundled engines render the SAME card (#2649). Written as two
+    // explicit branches rather than one derived runtime because the pairing of
+    // runtime to descriptor is what must not slip: handing EG-1's runtime an
+    // S1-mini descriptor would offer a 484 MB download for a 2.9 GB model, and
+    // nothing downstream would notice.
     if settings.llmProvider == .egOne {
-      egOneStatusContent
+      LocalEngineStatusCard(runtime: egOne, engine: .egOne) {
+        egOne.removeModel()
+        // Removing the selected engine must move the user somewhere that
+        // works, or polish silently stops. Apple Intelligence is what a fresh
+        // install selects, so it is where a removal lands.
+        settings.llmProvider = .appleIntelligence
+      }
+    }
+    if settings.llmProvider == .s1Mini {
+      LocalEngineStatusCard(runtime: localPolishRuntimes.s1Mini, engine: .s1Mini) {
+        localPolishRuntimes.s1Mini.removeModel()
+        settings.llmProvider = .appleIntelligence
+      }
     }
   }
 
@@ -1518,235 +1535,9 @@ struct AIPolishSettingsView: View {
 
   // MARK: - EG-1 native model (#1271)
 
-  /// Whole-section content for the EG-1 provider: explainer with the
-  /// founder-approved benchmark claim (real numbers, no competitor names),
-  /// download flow with size disclosure, the green/yellow/red activation
-  /// pill (a REAL inference probe, never process-exists), Remove Model, and
-  /// the 8 GB heads-up. Copy rules: no em or en dashes in these strings.
-  @ViewBuilder
-  private var egOneStatusContent: some View {
-    // The pitch (tuned, on-device, benchmark) lives in the "Why use EG-1" card
-    // now (#1286); this card is just the actionable status/download/remove.
-    if isLowMemoryMac {
-      Label(
-        "This Mac has 8 GB of memory. EG-1 may run slower here. "
-          + "Dictation always works, even when polish is unavailable.",
-        systemImage: "exclamationmark.triangle"
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stWarning)
-      .fixedSize(horizontal: false, vertical: true)
-    }
 
-    // One presentation value for the whole row (#2109). Hoisted above the
-    // switch deliberately: when only some branches consumed it, the remaining
-    // mappings were still ASSERTED by the agreement tests while the real row
-    // rendered something else, so the tests described a value the UI did not
-    // use. Every branch now reads from the tested value.
-    let presentation = EGOneRowPresentation.forState(egOne.installState)
-    switch egOne.installState {
-    case .notInstalled:
-      HStack {
-        // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
-        // update ships one. Promising a single download was true only while EG-1 could never be
-        // replaced, and that stopped being true the moment the automatic upgrade path existed.
-        Text("Download size: 2.9 GB")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Spacer()
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.startDownload() }
-        }
-      }
-    case .downloading(let fraction, _):
-      VStack(alignment: .leading, spacing: 4) {
-        ProgressView(value: max(0, min(1, fraction))) {
-          // An UPGRADE says so and names the version arriving; a first install
-          // keeps the original sentence (founder, 2026-08-17, from Live UAT).
-          // Both used to read "Downloading EG-1 (2.9 GB)", so a user who
-          // already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
-          // first install and was never told which version was coming.
-          //
-          // The version comes from `presentation.versionLabel`, composed from
-          // the manifest — never a literal here. A revision ships as a manifest
-          // edit with no Swift change, so a hard-coded number would keep naming
-          // the previous model after the real one moved on.
-          Text(
-            presentation.versionLabel.map { "Upgrading to \($0) (2.9 GB)" }
-              ?? "Downloading EG-1 (2.9 GB)"
-          )
-          .font(.stHelper)
-        }
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.cancelDownload() }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
-        }
-      }
-    // #2109: an interrupted FIRST install. Ported from the founder ruling of
-    // 2026-07-17 already shipped for Parakeet and WhisperKit — paused, Resume
-    // anytime. This used to render through the failure branch with a red row
-    // and a Try Again button, for something the user deliberately chose.
-    case .paused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.startDownload() }
-        }
-      }
-    // A working older EG-1 is installed and the pinned one is not, so AI
-    // cleanup is off until this finishes. The old revision is deliberately
-    // NOT named: this app bundle does not contain its manifest, so any name
-    // for it would be invented.
-    case .updatePaused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-        HStack {
-          if let action = presentation.primaryAction {
-            Button(action) { egOne.startDownload() }
-          }
-          Spacer()
-          if presentation.showsRemove {
-            Button("Remove Model") {
-              egOne.removeModel()
-              settings.llmProvider = .appleIntelligence
-            }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
-          }
-        }
-      }
-    case .verifying:
-      HStack {
-        ProgressView().controlSize(.small)
-        Text("Verifying download integrity")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-      }
-    case .failed(let failure):
-      Text(egOneFailureCopy(failure))
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-        .fixedSize(horizontal: false, vertical: true)
-      if let action = presentation.primaryAction {
-        Button(action) { egOne.startDownload() }
-      }
-    case .installed:
-      HStack {
-        Text("Status:")
-        // #2109: the version, as a quiet secondary label. Deliberately not
-        // prominent — Priya and Dr. Vasquez want to know which model they are
-        // on, Frank and Meera must be able to ignore it entirely, and nobody
-        // is being asked to make a decision here.
-        //
-        // Composed by `EGOneRowPresentation`, not here, so the same value the
-        // tests assert is the value that renders. nil and blank both render
-        // NOTHING: an absent label is honest, "Unknown version" is a string
-        // Frank should never see, and `EG-1 V` with an empty tail reads as a
-        // rendering bug.
-        if let versionLabel = presentation.versionLabel {
-          Text(versionLabel)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-        Spacer()
-        egOneHealthLabel
-        Button {
-          egOne.activateAndProbe()
-        } label: {
-          Image(systemName: "arrow.clockwise")
-            .settingsHoverQuiet()
-        }
-        .buttonStyle(.borderless)
-        .help("Test that EG-1 is live")
-        .accessibilityLabel("Test that EG-1 is live")
-      }
-      if let reason = egOneHealthDetail {
-        Text(reason)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      if presentation.showsRemove {
-        Button("Remove Model") {
-          egOne.removeModel()
-          settings.llmProvider = .appleIntelligence
-        }
-        .buttonStyle(.borderless)
-        .font(.stHelper)
-      }
-    }
-  }
 
-  @ViewBuilder
-  private var egOneHealthLabel: some View {
-    switch egOne.health {
-    case .green:
-      Label("Live", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.stSuccess)
-    case .yellow:
-      Label("Attention", systemImage: "exclamationmark.triangle.fill")
-        .foregroundStyle(.stWarning)
-    case .red:
-      Label("Not working", systemImage: "xmark.circle.fill")
-        .foregroundStyle(.stError)
-    }
-  }
 
-  /// Plain-language reason line under the health pill (nil for green).
-  private var egOneHealthDetail: String? {
-    switch egOne.health {
-    case .green:
-      return nil
-    case .yellow(let reason):
-      switch reason {
-      case "starting": return "The model is starting up. This takes a few seconds."
-      case "paused_for_memory":
-        return "Paused to free memory for other apps. Use the refresh button to restart it."
-      case "probe_slow": return "Working, but responding slowly right now."
-      case "probe_output_unexpected":
-        return "The model responded, but not as expected. Try re-downloading it."
-      case "downloading", "verifying": return nil
-      default: return "Something needs attention. Try the refresh button."
-      }
-    case .red(let reason):
-      switch reason {
-      case "download_required": return "Download the model to get started."
-      case "app_update_required":
-        return "This model needs a newer version of EnviousWispr."
-      case "crashed_twice":
-        return "The model stopped twice in a row. Use the refresh button to try again."
-      default: return "Not running. Use the refresh button to try again."
-      }
-    }
-  }
-
-  private func egOneFailureCopy(_ failure: EGOneDownloadFailure) -> String {
-    switch failure {
-    case .network:
-      return "Could not download the model from models.enviouslabs.co. "
-        + "Check your connection. On a managed network, ask IT to allow this domain."
-    case .checksum:
-      return "The download did not verify correctly and was discarded. Please try again."
-    case .disk:
-      return "Not enough free disk space. The download needs about 6 GB free during install."
-    case .cancelled:
-      return "Download canceled. Your progress is saved."
-    case .rangeUnsupported, .http:
-      return "The download server had a problem. Please try again in a few minutes."
-    case .stubURL:
-      return "This build has no download source configured."
-    }
-  }
-
-  private var isLowMemoryMac: Bool {
-    ProcessInfo.processInfo.physicalMemory <= (8 << 30)
-  }
 
   // MARK: - Apple Intelligence Status
 

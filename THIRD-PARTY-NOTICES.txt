@@ -1790,6 +1790,14 @@ served from models.enviouslabs.co and is byte-identical to the publisher
 build; it is not distributed inside this disk image. Because Envious Labs
 serves those bytes, the full licence and notice follow.
 
+EnviousWispr also displays the Superwhisper logo to identify this model in
+its engine picker. That mark is a trademark of Superwhisper and is NOT
+covered by the Apache licence below, whose section 6 reserves trade names
+and marks. It is used only to say whose model this is, which is the
+reasonable and customary use that section 6 permits. The artwork is
+unmodified from the SVG Superwhisper publishes, rendered in a single
+colour to match the surrounding interface.
+
 S1-mini-GGUF
 Copyright 2026 Superwhisper
 

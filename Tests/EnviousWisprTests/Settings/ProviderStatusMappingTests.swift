@@ -164,7 +164,7 @@ struct ProviderStatusMappingTests {
     for state in Self.everyEGOneState {
       let chip = status(for: .egOne, egOneInstall: state, egOneHealth: .green)
       guard chip.tone == .error || chip.tone == .needsSetup else { continue }
-      let row = EGOneRowPresentation.forState(state)
+      let row = egOneRow(state)
       // `verifying` is the one legitimate exception: it is transient and
       // resolves on its own, so there is nothing for the user to do.
       if case .verifying = state { continue }
@@ -180,7 +180,7 @@ struct ProviderStatusMappingTests {
   @Test("remove is offered exactly when bytes are on disk")
   func removeOfferedOnlyWithAModelPresent() {
     for state in Self.everyEGOneState {
-      let row = EGOneRowPresentation.forState(state)
+      let row = egOneRow(state)
       let hasModelOnDisk: Bool = {
         switch state {
         // `updatePaused` is deliberately FALSE: a model is on disk, but
@@ -208,19 +208,19 @@ struct ProviderStatusMappingTests {
   /// never began.
   @Test("the paused actions are pinned to the right state")
   func pausedActionsUseTheDecidedWording() {
-    #expect(EGOneRowPresentation.forState(.paused).primaryAction == "Resume")
+    #expect(egOneRow(.paused).primaryAction == "Resume")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
+      egOneRow(.updatePaused(resumable: true, targetVersion: "1.1"))
         .primaryAction
         == "Resume upgrade")
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+      egOneRow(.updatePaused(resumable: false, targetVersion: "1.1"))
         .primaryAction
         == "Finish upgrade")
     // Never "Install": the user already has a working model, and Install reads
     // as a new product to acquire — Frank's stated failure mode.
     #expect(
-      EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "1.1"))
+      egOneRow(.updatePaused(resumable: false, targetVersion: "1.1"))
         .primaryAction?
         .contains("Install") == false)
   }
@@ -231,7 +231,7 @@ struct ProviderStatusMappingTests {
   @Test("the update messages state that cleanup is paused")
   func updateMessagesSayCleanupIsPaused() {
     for resumable in [true, false] {
-      let message = EGOneRowPresentation.forState(
+      let message = egOneRow(
         .updatePaused(resumable: resumable, targetVersion: "1.1")
       ).message
       #expect(message.contains("AI cleanup is paused"), "\(resumable): message must not reassure")
@@ -244,9 +244,9 @@ struct ProviderStatusMappingTests {
   /// The version label, composed where it is tested rather than in the view.
   @Test("the version label renders only when there is something honest to show")
   func versionLabelSuppressesNilAndBlank() {
-    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).versionLabel == "EG-1 V1.1")
-    #expect(EGOneRowPresentation.forState(.installed(version: nil)).versionLabel == nil)
-    #expect(EGOneRowPresentation.forState(.installed(version: "")).versionLabel == nil)
+    #expect(egOneRow(.installed(version: "1.1")).versionLabel == "EG-1 V1.1")
+    #expect(egOneRow(.installed(version: nil)).versionLabel == nil)
+    #expect(egOneRow(.installed(version: "")).versionLabel == nil)
   }
 
   /// The upgrade copy is COMPOSED from the manifest's version, never a
@@ -254,11 +254,11 @@ struct ProviderStatusMappingTests {
   /// change, so a hard-coded "V1.1" would keep naming the previous model after
   /// the real one moved on — confidently wrong, which is worse than silent.
   @Test func upgradeCopyFollowsTheTargetVersion() {
-    let next = EGOneRowPresentation.forState(.updatePaused(resumable: false, targetVersion: "2.0"))
+    let next = egOneRow(.updatePaused(resumable: false, targetVersion: "2.0"))
     #expect(next.message.contains("EG-1 V2.0"))
     #expect(next.message.contains("V1.1") == false, "copy still names a hard-coded version")
 
-    let resuming = EGOneRowPresentation.forState(
+    let resuming = egOneRow(
       .updatePaused(resumable: true, targetVersion: "2.0"))
     #expect(resuming.message.contains("EG-1 V2.0"))
   }
@@ -266,7 +266,7 @@ struct ProviderStatusMappingTests {
   /// No target version means generic copy, not a placeholder and not a stale
   /// literal.
   @Test func upgradeCopyWithoutAVersionStaysGeneric() {
-    let unknown = EGOneRowPresentation.forState(
+    let unknown = egOneRow(
       .updatePaused(resumable: false, targetVersion: nil))
     #expect(unknown.message.contains("the new EG-1"))
     #expect(unknown.message.contains("V") == false, "a nil version must not render a version token")
@@ -278,22 +278,22 @@ struct ProviderStatusMappingTests {
   /// older model's gigabytes untouched and return the row to this state.
   @Test func removeIsNotOfferedWhileAnUpgradeIsPending() {
     for resumable in [true, false] {
-      let row = EGOneRowPresentation.forState(
+      let row = egOneRow(
         .updatePaused(resumable: resumable, targetVersion: "1.1"))
       #expect(
         row.showsRemove == false,
         "Remove is offered in a state where it cannot remove the installed model")
     }
     // Two-way control: it IS offered where it works.
-    #expect(EGOneRowPresentation.forState(.installed(version: "1.1")).showsRemove)
+    #expect(egOneRow(.installed(version: "1.1")).showsRemove)
   }
 
   /// The two paused rows must not read identically. One means "nothing works
   /// yet"; the other means "something that WAS working has stopped".
   @Test("the paused rows say different things")
   func pausedRowsAreDistinguishable() {
-    let paused = EGOneRowPresentation.forState(.paused)
-    let update = EGOneRowPresentation.forState(.updatePaused(resumable: true, targetVersion: "1.1"))
+    let paused = egOneRow(.paused)
+    let update = egOneRow(.updatePaused(resumable: true, targetVersion: "1.1"))
     #expect(paused.message != update.message)
     #expect(paused.primaryAction != update.primaryAction)
   }
@@ -469,13 +469,13 @@ struct ProviderStatusMappingTests {
   /// worse bug than the one being fixed, and invisible to a one-armed test.
   @MainActor
   @Test func onlyAnUpgradeDownloadCarriesAVersionLabel() throws {
-    let upgrading = EGOneRowPresentation.forState(
+    let upgrading = egOneRow(
       .downloading(fractionCompleted: 0.4, upgrade: .named("1.1")))
     #expect(
       upgrading.versionLabel == "EG-1 V1.1",
       "an upgrade in flight did not name the version arriving")
 
-    let firstInstall = EGOneRowPresentation.forState(
+    let firstInstall = egOneRow(
       .downloading(fractionCompleted: 0.4, upgrade: nil))
     #expect(
       firstInstall.versionLabel == nil,
@@ -487,7 +487,7 @@ struct ProviderStatusMappingTests {
     // an upgrade"; the second was wrong and is what the cloud-review P2 named.
     // A blank version now reads as an UNNAMED upgrade, so assert the property
     // rather than the old value.
-    let blank = EGOneRowPresentation.forState(
+    let blank = egOneRow(
       .downloading(fractionCompleted: 0.4, upgrade: EGOneUpgradeContext(displayVersion: "")))
     let blankLabel = try #require(blank.versionLabel)
     #expect(
@@ -511,7 +511,7 @@ struct ProviderStatusMappingTests {
   /// the FIRST-INSTALL sentence while an upgrade was running.
   @MainActor
   @Test func anUnnamedUpgradeStillReadsAsAnUpgrade() {
-    let unnamed = EGOneRowPresentation.forState(
+    let unnamed = egOneRow(
       .downloading(fractionCompleted: 0.4, upgrade: .unnamed))
     #expect(
       unnamed.versionLabel == "the new EG-1",
@@ -519,7 +519,7 @@ struct ProviderStatusMappingTests {
 
     // The same fallback the PAUSED row already uses, so the two states do not
     // describe one situation with two vocabularies.
-    let paused = EGOneRowPresentation.forState(
+    let paused = egOneRow(
       .updatePaused(resumable: false, targetVersion: nil))
     #expect(
       paused.message.contains("the new EG-1"),
@@ -531,4 +531,14 @@ struct ProviderStatusMappingTests {
     #expect(EGOneUpgradeContext(displayVersion: "1.1") == .named("1.1"))
     #expect(EGOneUpgradeContext(displayVersion: nil) == .unnamed)
   }
+}
+
+
+/// Every row above is about EG-1, so the engine name is bound in ONE place
+/// rather than repeated at each call. #2649 made the name an argument because a
+/// second bundled engine renders through the same value; binding it here keeps
+/// these rows asserting exactly what they asserted before, so a failure means
+/// the presentation changed rather than the call sites did.
+private func egOneRow(_ state: EGOneInstallState) -> EGOneRowPresentation {
+  EGOneRowPresentation.forState(state, engine: "EG-1")
 }

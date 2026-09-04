@@ -245,6 +245,13 @@ printf 'EnviousWispr downloads S1-mini only when a user selects it. The file is\
 printf 'served from models.enviouslabs.co and is byte-identical to the publisher\n'
 printf 'build; it is not distributed inside this disk image. Because Envious Labs\n'
 printf 'serves those bytes, the full licence and notice follow.\n\n'
+printf 'EnviousWispr also displays the Superwhisper logo to identify this model in\n'
+printf 'its engine picker. That mark is a trademark of Superwhisper and is NOT\n'
+printf 'covered by the Apache licence below, whose section 6 reserves trade names\n'
+printf 'and marks. It is used only to say whose model this is, which is the\n'
+printf 'reasonable and customary use that section 6 permits. The artwork is\n'
+printf 'unmodified from the SVG Superwhisper publishes, rendered in a single\n'
+printf 'colour to match the surrounding interface.\n\n'
 S1_NOTICE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt"
 S1_LICENSE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt"
 for f in "$S1_NOTICE" "$S1_LICENSE"; do
