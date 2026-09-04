@@ -505,7 +505,7 @@ public struct GeminiConnector: TranscriptPolisher {
         let delay = delays[min(attempt - 1, delays.count - 1)]
         Task {
           await AppLogger.shared.log(
-            "Gemini retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+            "Gemini retry \(attempt)/\(maxRetries) after \(delay / 1_000_000)ms (model=\(config.model))",
             level: .verbose, category: "LLM"
           )
         }

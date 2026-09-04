@@ -19,6 +19,11 @@ enum LLMRetryPolicy {
   /// the caller's budget rather than deducted from a remaining-time ledger. The
   /// ledger is the fuller fix and is its own change; this one removes the
   /// arithmetic certainty without adding a mechanism.
+  /// REACH, stated because the issue's non-goals said local providers were not
+  /// touched: that was about BUDGETS. All four connectors — including Ollama —
+  /// default to these delays, so Ollama's backoff shrinks too. Intended and
+  /// beneficial (more of its unchanged 15 s budget goes to real attempts), not
+  /// an accident.
   static let defaultDelays: [UInt64] = [200_000_000, 400_000_000]
   static let defaultMaxRetries = 2
 

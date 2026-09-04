@@ -124,6 +124,16 @@ public final class LLMNetworkSession: Sendable {
     }
   }
 
+  /// Test seam only: an ISOLATED instance, so a suite never mutates `shared`.
+  ///
+  /// Swift Testing runs tests concurrently by default, and `recordPolishSuccess`
+  /// is called on `shared` from production `LLMPolishStep`, so a suite that
+  /// resets `shared` can race any other test that happens to polish. Review
+  /// finding (2026-09-03) — the first version of `LLMWarmupGateTests` did
+  /// exactly that. This returns a private-init instance whose warm state is its
+  /// own; the URLSession it carries is never used by those tests.
+  static func makeIsolatedForTesting() -> LLMNetworkSession { LLMNetworkSession() }
+
   /// Test seam only: forget all warm state so a suite starts cold.
   func resetWarmStateForTesting() {
     warmState.withLock { state in

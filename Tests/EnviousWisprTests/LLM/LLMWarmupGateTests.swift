@@ -21,8 +21,15 @@ import os
 @Suite("Cloud pre-warm gate (#2093)", .tags(.driftGuard))
 struct LLMWarmupGateTests {
 
+  /// An ISOLATED instance per test, never `LLMNetworkSession.shared`.
+  ///
+  /// Review finding (2026-09-03): the first version reset the shared singleton.
+  /// Swift Testing runs tests concurrently, and production `LLMPolishStep` calls
+  /// `recordPolishSuccess` on `shared`, so resetting it here could race any
+  /// other suite that polishes — nondeterministic failures and state leaking out
+  /// of this file. Nothing in this suite needs the real shared session.
   private func freshSession() -> LLMNetworkSession {
-    let s = LLMNetworkSession.shared
+    let s = LLMNetworkSession.makeIsolatedForTesting()
     s.resetWarmStateForTesting()
     return s
   }
