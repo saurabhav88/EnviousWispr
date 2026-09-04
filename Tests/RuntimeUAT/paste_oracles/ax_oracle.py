@@ -62,8 +62,6 @@ from ApplicationServices import (
     AXUIElementSetAttributeValue,
     kAXChildrenAttribute,
     kAXFocusedAttribute,
-    AXUIElementCreateSystemWide,
-    kAXFocusedApplicationAttribute,
     kAXFocusedUIElementAttribute,
     kAXFrontmostAttribute,
     kAXRaiseAction,
@@ -151,26 +149,32 @@ def pid_for_bundle(bundle_id: str) -> int | None:
     return None
 
 
-def frontmost_pid() -> int | None:
-    """The pid of the app that actually owns focus, asked LIVE.
+def is_frontmost(pid: int) -> bool:
+    """Does this application own focus RIGHT NOW? Asked live, of the application itself.
 
-    **`NSWorkspace.frontmostApplication()` is not usable here.** It is maintained by
-    workspace notifications, which need a run loop the harness does not spin, so in a
-    long-running process it returns a value that never changes. Measured 2026-09-04: in a
-    one-shot probe Slack activated fine; inside the bench, twelve of fifteen trials came
-    back `would_not_come_forward` while the browsers — which happened to be frontmost
-    already — sailed through. The check was reporting the state at import time.
+    Two earlier answers to this question were both wrong, and both failed toward "no",
+    which the caller reports as `would_not_come_forward` — a harness fault dressed as a
+    fact about the destination app.
 
-    `AXFocusedApplication` on the system-wide element is a live query with no cache, and
-    it is the same thing the paste path itself cares about: who receives the keystroke.
+    - **`NSWorkspace.frontmostApplication()`** is maintained by workspace notifications
+      that need a run loop the harness does not spin. Inside one process it returns
+      whatever was true at import and never moves. Measured 2026-09-04: after a raise, the
+      target was frontmost within 0.4s and this call still named the previous app on every
+      poll for 3.2s.
+    - **`AXFocusedApplication` on the system-wide element** returns `None` on this machine,
+      every time, for every application. It is a live query with no cache, which is why it
+      was reached for, and it simply does not answer.
+
+    `AXFrontmost` read from the target's OWN application element does answer, immediately
+    and correctly, and needs no Automation grant. Verified against the menu bar and
+    against `System Events`, which agreed with it and with each other.
+
+    Returns False on any AX error, which is the safe direction: a caller that cannot tell
+    must retry rather than proceed against an app that may not be listening.
     """
-    system = AXUIElementCreateSystemWide()
-    err, focused_app = AXUIElementCopyAttributeValue(
-        system, kAXFocusedApplicationAttribute, None)
-    if err != 0 or focused_app is None:
-        return None
-    err, pid = AXUIElementGetPid(focused_app, None)
-    return pid if err == 0 else None
+    application = AXUIElementCreateApplication(pid)
+    err, value = AXUIElementCopyAttributeValue(application, kAXFrontmostAttribute, None)
+    return bool(value) if err == 0 else False
 
 
 def activate(bundle_id: str, handoff: float = 1.0) -> bool:
@@ -190,10 +194,18 @@ def activate(bundle_id: str, handoff: float = 1.0) -> bool:
       One of those sat unanswered for an hour while a script was rewritten around
       readings it fully explains.
 
-    `open -b` needs no Automation grant, so it raises no dialog. The verification is
-    `NSWorkspace.frontmostApplication()`, which was checked by hand against three other
-    sources and agrees with all of them — an earlier theory that it returned a stale
-    cached value was wrong and is recorded here so nobody re-derives it.
+    `open -b` needs no Automation grant, so it raises no dialog.
+
+    **The sentence that used to sit here said `NSWorkspace.frontmostApplication()` had
+    been checked against three other sources, agreed with all of them, and that the stale
+    cache theory was wrong. The stale cache theory was RIGHT.** The three sources were
+    read in three SEPARATE one-shot processes, and a fresh process reads a fresh cache, so
+    the check that was meant to falsify the theory could not have. Inside one long-running
+    process the value never moves at all — see `is_frontmost`, which is what this function
+    verifies with now.
+
+    A comment recording that a question is CLOSED is the shape to distrust: it stops the
+    next reader checking, and this one stopped two runs' worth of readings being believed.
     """
     pid = pid_for_bundle(bundle_id)
     if pid is None:
@@ -207,22 +219,58 @@ def activate(bundle_id: str, handoff: float = 1.0) -> bool:
     # `AXRaise` on its first window moves all three, and needs no Automation grant, so it
     # raises no modal. The fourth method tried, and the first that works everywhere.
     application = AXUIElementCreateApplication(pid)
-    AXUIElementSetAttributeValue(application, kAXFrontmostAttribute, True)
-    err, windows = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute, None)
-    if err == 0 and windows:
-        AXUIElementPerformAction(windows[0], kAXRaiseAction)
-    else:
+
+    def _raise_via_ax() -> None:
+        AXUIElementSetAttributeValue(application, kAXFrontmostAttribute, True)
+        err, windows = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute, None)
+        if err == 0 and windows:
+            AXUIElementPerformAction(windows[0], kAXRaiseAction)
+
+    def _wait_front(seconds: float) -> bool:
+        """Ask LIVE whether the target owns focus.
+
+        **`NSWorkspace.frontmostApplication()` is unusable here and this function used it
+        anyway, while the function directly above documents exactly why.** The
+        workspace value is maintained by notifications that need a run loop the harness
+        does not spin, so inside one process it returns whatever was true at import and
+        never moves. Measured 2026-09-04: after an AX raise, the live AX query reported
+        Discord frontmost within 0.4s and NSWorkspace still said WhatsApp 3.2s later, for
+        every single poll. The raise had worked every time; the verification could not see
+        it. Two full runs — 45 trials, then 30 — were scrapped as
+        `would_not_come_forward` on a check that was reading a frozen value.
+        """
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            # settle: poll gap between two reads of the signal this loop gates on
+            time.sleep(0.25)
+            if is_frontmost(pid):
+                return True
+        return False
+
+    # NEITHER METHOD WORKS EVERYWHERE, AND EACH FAILS SILENTLY WHERE THE OTHER SUCCEEDS.
+    #
+    # `open -b` raises a browser reliably and does NOT raise an already-running Electron
+    # app with an open window: Slack, Discord and WhatsApp all refused it, costing 45
+    # trials in one run. Setting `AXFrontmost` and performing `AXRaise` moves those three
+    # — but measured 2026-09-04, with Discord frontmost, the same AX raise aimed at
+    # WhatsApp returned with Discord STILL frontmost, and the whole 30-trial chat run came
+    # back `would_not_come_forward` for cells that had passed by hand ten minutes earlier.
+    #
+    # So they are tried in sequence rather than as alternatives, and the fallback is
+    # unconditional rather than reserved for an app with no windows. The earlier version
+    # only reached `open -b` when the app reported NO windows, which is the one case where
+    # an AX raise cannot work — never the case where it silently does not.
+    _raise_via_ax()
+    if not _wait_front(max(handoff, 3.0)):
         subprocess.run(["open", "-b", bundle_id], capture_output=True, timeout=15)
-    workspace = NSWorkspace.sharedWorkspace()
-    deadline = time.monotonic() + max(handoff, 8.0)
-    while time.monotonic() < deadline:
-        # settle: poll gap between two reads of the signal this loop gates on
-        time.sleep(0.25)
-        front = workspace.frontmostApplication()
-        if front is not None and front.bundleIdentifier() == bundle_id:
-            time.sleep(handoff)  # settle: window-server handoff has no foreign-process signal
-            return True
-    return False
+        if not _wait_front(3.0):
+            # Last try: both methods once more. A raise refused while another app is
+            # settling into the front often succeeds a second later.
+            _raise_via_ax()
+            if not _wait_front(3.0):
+                return False
+    time.sleep(handoff)  # settle: window-server handoff has no foreign-process signal
+    return True
 
 
 def _dedupe(found: list[Field]) -> list[Field]:
@@ -352,7 +400,20 @@ def read_focused(bundle_id: str) -> Scan:
     role = _attr(element, kAXRoleAttribute)
     value = _attr(element, kAXValueAttribute)
     if not isinstance(value, str):
-        return Scan(ok=False, why=f"focused_element_has_no_text_value:{role}")
+        # AN EMPTY EDITABLE FIELD IS A STATE, NOT AN UNREADABLE ELEMENT. WhatsApp's
+        # composer returns no value at all while it is empty and a real string the moment
+        # anything is in it. Rejecting the empty case made every WhatsApp trial
+        # `composer_not_focused`, because the setup reads the field BEFORE it types the
+        # pre-image into it — the one moment the field is guaranteed to be empty.
+        #
+        # Narrow on purpose: only a role that can hold typed text is read as empty. A
+        # scroll area or a window with no value really is unreadable and must stay an
+        # error, or a document app with no caret in it would score as an empty field and
+        # every trial there would read as a DROP.
+        if role in ("AXTextArea", "AXTextField", "AXComboBox"):
+            value = ""
+        else:
+            return Scan(ok=False, why=f"focused_element_has_no_text_value:{role}")
     return Scan(
         ok=True,
         nodes_visited=1,

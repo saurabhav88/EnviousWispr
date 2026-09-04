@@ -199,11 +199,15 @@ def launch_dev_app(variant: str, run_id: str) -> tuple[bool, str]:
 class Target:
     """One destination cell: how to put it into a known state and how to read it back."""
 
-    def __init__(self, key: str, bundle_id: str, setup, teardown=None):
+    def __init__(self, key: str, bundle_id: str, setup, teardown=None, reader=None):
         self.key = key
         self.bundle_id = bundle_id
         self.setup = setup
         self.teardown = teardown
+        # A cell whose destination text Accessibility cannot read supplies its own reader.
+        # `None` means the default focused-element read, which is right for every web and
+        # chat surface. See `_script_reader` for why the document apps need their own.
+        self.reader = reader
 
 
 def _write_fixture(token: str, pre_image: str, focus_id: str) -> pathlib.Path:
@@ -223,6 +227,13 @@ def _fixture_path(token: str) -> pathlib.Path:
     # both TextEdit and Safari serve the window/document they already have, so the file on
     # disk changed and the thing being measured did not. The precondition control caught
     # it, which is the whole reason that control is mandatory rather than nice to have.
+    # Sweep this harness's own leftovers. A fresh file per trial is deliberate; keeping
+    # every one of them is not. One run left 77 in Caches.
+    now = time.time()
+    for stale in pathlib.Path.home().glob("Library/Caches/EnviousWispr-bakeoff-*"):
+        if now - stale.stat().st_mtime > 600:
+            stale.unlink(missing_ok=True)
+
     path = pathlib.Path.home() / f"Library/Caches/EnviousWispr-bakeoff-{token}.html"
     path.write_text(
         "<!doctype html><meta charset='utf-8'><title>EW bake-off</title>"
@@ -278,8 +289,45 @@ def setup_textedit(pre_image: str, file_token: str) -> tuple[bool, str]:
 # focus for the whole machine — paying a permission prompt to solve a problem that no
 # longer exists.
 
+def _close_bakeoff_tabs(app: str) -> int:
+    """Close every bake-off tab this harness left in `app`, one at a time.
+
+    A fresh file per trial is what keeps a stale document from being measured, and the
+    cost of that is a new tab per trial: one full run left 30 tabs in Safari and 16 in
+    Brave, on top of the operator's own. Closing before opening keeps the count at one.
+
+    One at a time on purpose. Collecting the doomed tabs and closing them in a second
+    loop fails with `Invalid index (-1719)` partway through, because closing a tab
+    renumbers the ones behind it and the collected references go stale mid-loop. That
+    error closed exactly half of them and reported failure, which reads as "cleanup is
+    broken" rather than "cleanup half worked".
+    """
+    script = pathlib.Path.home() / "Library/Caches/ew-bakeoff-close.scpt"
+    script.write_text(
+        f'tell application "{app}"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in (tabs of w)\n"
+        '      if (URL of t) contains "EnviousWispr-bakeoff" then\n'
+        "        close t\n"
+        "        return 1\n"
+        "      end if\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell\n"
+        "return 0\n"
+    )
+    closed = 0
+    for _ in range(60):
+        out = subprocess.run(["osascript", str(script)], capture_output=True, text=True)
+        if out.stdout.strip() != "1":
+            break
+        closed += 1
+    return closed
+
+
 def _setup_browser(app: str, bundle_id: str, focus_id: str):
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
+        _close_bakeoff_tabs(app)
         path = _write_fixture(file_token, pre_image, focus_id)
         subprocess.run(["open", "-a", app, str(path)], capture_output=True)
         ax_oracle.activate(bundle_id, handoff=2.0)
@@ -337,9 +385,190 @@ def _setup_composer(app_name: str, bundle_id: str):
             ["osascript", "-e",
              f'tell application "System Events" to keystroke "{pre_image} "'],
             capture_output=True, timeout=20)
-        return ax_oracle.assert_precondition(bundle_id, pre_image)
+        ok, why = ax_oracle.assert_precondition(bundle_id, pre_image)
+        if not ok:
+            return ok, why
+        return _still_frontmost(app_name, bundle_id)
 
     return setup
+
+
+def _still_frontmost(app_name: str, bundle_id: str) -> tuple[bool, str]:
+    """The last thing every setup does: prove the target STILL owns focus.
+
+    Delivery goes wherever the caret is when the pipeline finishes, so a target that lost
+    focus during setup sends the dictation into a bystander. Measured 2026-09-04 on the
+    first Excel trial: setup succeeded, the pre-image was in the sheet, and the app
+    reported delivering to `com.mitchellh.ghostty` — the operator's TERMINAL. The trial
+    scored `unseen`, which is honest and says nothing about the variant, and the words
+    went somewhere real.
+
+    Raising once more is not enough on its own; the point is that a setup which cannot
+    hold focus returns INVALID rather than handing the trial a destination it does not own.
+    """
+    pid = ax_oracle.pid_for_bundle(bundle_id)
+    if pid is None:
+        return False, f"{app_name}_vanished_during_setup"
+    if ax_oracle.is_frontmost(pid):
+        return True, "ok"
+    if ax_oracle.activate(bundle_id, handoff=1.5) and ax_oracle.is_frontmost(pid):
+        return True, "ok"
+    return False, f"{app_name}_lost_focus_during_setup"
+
+
+def _osa(script: str, timeout: float = 30.0) -> tuple[bool, str]:
+    """Run one AppleScript. Returns (ok, output-or-error)."""
+    out = subprocess.run(["osascript", "-e", script],
+                         capture_output=True, text=True, timeout=timeout)
+    if out.returncode != 0:
+        return False, out.stderr.strip()[:120]
+    return True, out.stdout.rstrip("\n")
+
+
+def _script_reader(script: str, label: str, commit: str | None = None):
+    """Read a destination's text through the APPLICATION'S OWN scripting, not through AX.
+
+    **Pages, Numbers and Excel do not expose their document text to Accessibility in any
+    form this oracle can find, and the failure is silent.** Measured 2026-09-04: a marker
+    typed into a blank Pages document was plainly visible on screen, `read_focused`
+    returned `focused_element_has_no_text_value:AXScrollArea`, and a full tree walk visited
+    81 nodes and found it in none of them. An unreadable destination scores every trial as
+    a DROP, which is the verdict that disqualifies a variant — so a blind oracle here would
+    have vetoed whichever variant happened to be measured in these cells.
+
+    The app's own dictionary answers it exactly. This stays an INDEPENDENT oracle in the
+    sense that matters: the reading comes from the destination application, never from
+    EnviousWispr's account of what it delivered.
+
+    Gates on STABILITY rather than a fixed sleep, for the same reason `settled_focused`
+    does: "unchanged across two reads" has no parameter to get wrong.
+    """
+
+    def read() -> ax_oracle.Scan:
+        if commit is not None:
+            subprocess.run(["osascript", "-e", commit], capture_output=True, timeout=15)
+            time.sleep(0.5)
+        previous = None
+        stable = 0
+        deadline = time.monotonic() + 8.0
+        text = ""
+        while time.monotonic() < deadline:
+            time.sleep(0.4)
+            ok, value = _osa(script)
+            if not ok:
+                return ax_oracle.Scan(ok=False, why=f"{label}_reader_failed:{value}")
+            text = value
+            if value == previous:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                stable = 0
+                previous = value
+        return ax_oracle.Scan(
+            ok=True,
+            nodes_visited=1,
+            fields=[ax_oracle.Field(role="AXTextArea", depth=0, chars=len(text),
+                                    focused=True, value=text)],
+        )
+
+    return read
+
+
+def _setup_document(app_name: str, bundle_id: str, clear: str, reader_script: str):
+    """A word processor: empty the document, put the caret in the body, type the pre-image.
+
+    The caret step is not optional and is not tidiness. A freshly raised Word or Pages
+    window reports its focused element as an `AXScrollArea` with no text in it, and typing
+    is what moves focus into the body. Cmd+End moves the caret to the end of the document
+    and changes nothing, so it is safe to run before every trial.
+    """
+
+    def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
+        if ax_oracle.pid_for_bundle(bundle_id) is None:
+            return False, f"{app_name}_not_running"
+        if not ax_oracle.activate(bundle_id, handoff=2.0):
+            return False, f"{app_name}_would_not_come_forward"
+        ok, err = _osa(clear)
+        if not ok:
+            return False, f"{app_name}_clear_failed:{err}"
+        time.sleep(0.5)
+        subprocess.run(["osascript", "-e",
+                        'tell application "System Events" to key code 119 using command down'],
+                       capture_output=True, timeout=15)
+        time.sleep(0.4)
+        subprocess.run(["osascript", "-e",
+                        f'tell application "System Events" to keystroke "{pre_image} "'],
+                       capture_output=True, timeout=25)
+        time.sleep(0.6)
+        ok, value = _osa(reader_script)
+        if not ok:
+            return False, f"{app_name}_precondition_read_failed:{value}"
+        if pre_image not in value:
+            return False, f"{app_name}_precondition_sentinel_not_in_document"
+        return _still_frontmost(app_name, bundle_id)
+
+    return setup
+
+
+def _setup_cell(app_name: str, bundle_id: str, clear: str, reader_script: str,
+                select_a1: str, edit_key: str):
+    """A spreadsheet cell in EDIT mode, which is where a dictation actually lands.
+
+    Two things had to be got right, both found by hand before any trial ran:
+
+    - **Escape first.** Numbers was sitting in an open, empty cell editor left by an
+      earlier attempt, and every keystroke sent to it vanished. The typed marker appeared
+      nowhere in the sheet and nothing reported an error.
+    - **Edit mode, not selection.** A selected-but-not-editing cell REPLACES its contents
+      on the next input, which would delete the pre-image the scorer needs to find the
+      field by. `edit_key` opens the editor with the caret after the existing text, which
+      is the state a person dictating into a cell is in.
+    """
+
+    def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
+        if ax_oracle.pid_for_bundle(bundle_id) is None:
+            return False, f"{app_name}_not_running"
+        if not ax_oracle.activate(bundle_id, handoff=2.0):
+            return False, f"{app_name}_would_not_come_forward"
+        subprocess.run(["osascript", "-e",
+                        'tell application "System Events" to key code 53'],
+                       capture_output=True, timeout=15)
+        time.sleep(0.4)
+        ok, err = _osa(clear)
+        if not ok:
+            return False, f"{app_name}_clear_failed:{err}"
+        ok, err = _osa(select_a1)
+        if not ok:
+            return False, f"{app_name}_select_failed:{err}"
+        time.sleep(0.5)
+        subprocess.run(["osascript", "-e",
+                        f'tell application "System Events" to keystroke "{pre_image} "'],
+                       capture_output=True, timeout=25)
+        subprocess.run(["osascript", "-e",
+                        'tell application "System Events" to key code 36'],
+                       capture_output=True, timeout=15)
+        time.sleep(0.6)
+        ok, err = _osa(select_a1)
+        if not ok:
+            return False, f"{app_name}_reselect_failed:{err}"
+        time.sleep(0.4)
+        subprocess.run(["osascript", "-e", edit_key], capture_output=True, timeout=15)
+        time.sleep(0.5)
+        ok, value = _osa(reader_script)
+        if not ok:
+            return False, f"{app_name}_precondition_read_failed:{value}"
+        if pre_image not in value:
+            return False, f"{app_name}_precondition_sentinel_not_in_sheet"
+        return _still_frontmost(app_name, bundle_id)
+
+    return setup
+
+
+WORD_READ = 'tell application "Microsoft Word" to get content of text object of active document'
+PAGES_READ = 'tell application "Pages" to get body text of front document'
+EXCEL_READ = ('tell application "Microsoft Excel" to get string value of used range '
+              'of active sheet')
 
 
 TARGETS = {
@@ -374,6 +603,59 @@ TARGETS = {
                       _setup_composer("Discord", "com.hnc.Discord")),
     "whatsapp": Target("whatsapp", "net.whatsapp.WhatsApp",
                        _setup_composer("WhatsApp", "net.whatsapp.WhatsApp")),
+    # Pages and Numbers stand in for Word and Excel, and it is not a compromise.
+    #
+    # `PasteTier.menuPaste` exists for exactly this family — its own comment names
+    # "Word/Excel/Numbers/OneNote" — so all four take the SAME route through our cascade:
+    # a non-text container where Cmd+V cannot be aimed at a writable element, delivered by
+    # driving the app's own Edit > Paste menu item. Word is unlicensed on this Mac
+    # ("Subscription Required to Edit and Save"), and buying one to exercise a code path
+    # two free preinstalled apps already exercise would be spending money for nothing.
+    #
+    # Stated so nobody over-reads it: this covers the ROUTE, not Microsoft's apps. A
+    # Word-specific defect would not be caught here, and that is written into the plan's
+    # uncovered list rather than glossed.
+    # Word and Excel, the real ones. The plan previously used Pages and Numbers as
+    # stand-ins because Word was unlicensed; the licence was bought on 2026-09-04, so the
+    # bench measures Microsoft's apps directly and the stand-in argument is retired.
+    #
+    # This is the `PasteTier.menuPaste` family — a container where Cmd+V cannot be aimed
+    # at a writable element, delivered by driving the app's own Edit > Paste menu item.
+    # No web cell exercises it, so before today no trial had touched this route at all.
+    "word": Target("word", "com.microsoft.Word",
+                   _setup_document(
+                       "Word", "com.microsoft.Word",
+                       'tell application "Microsoft Word" to set content of text object '
+                       'of active document to ""',
+                       WORD_READ),
+                   reader=_script_reader(WORD_READ, "word")),
+    "excel": Target("excel", "com.microsoft.Excel",
+                    _setup_cell(
+                        "Excel", "com.microsoft.Excel",
+                        'tell application "Microsoft Excel" to clear contents of used '
+                        'range of active sheet',
+                        EXCEL_READ,
+                        'tell application "Microsoft Excel" to select range "A1" of '
+                        'active sheet',
+                        # F2 opens the cell editor with the caret after the existing text.
+                        'tell application "System Events" to key code 120'),
+                    # COMMIT THE CELL BEFORE READING IT. A spreadsheet's used range holds
+                    # only committed values, so text sitting in an open cell editor is
+                    # invisible to every reader — the delivery lands correctly and scores
+                    # as nothing at all. Return closes the editor and writes the value.
+                    reader=_script_reader(EXCEL_READ, "excel",
+                                          commit='tell application "System Events" to '
+                                                 'key code 36')),
+    "pages": Target("pages", "com.apple.iWork.Pages",
+                    _setup_document(
+                        "Pages", "com.apple.iWork.Pages",
+                        'tell application "Pages" to set body text of front document to ""',
+                        PAGES_READ),
+                    reader=_script_reader(PAGES_READ, "pages")),
+    # A terminal. Its own context path in the cascade (`terminal_screen_refused`), and the
+    # founder named terminals as coverage that must not regress.
+    "ghostty": Target("ghostty", "com.mitchellh.ghostty",
+                      _setup_composer("Ghostty", "com.mitchellh.ghostty")),
 }
 
 
@@ -458,7 +740,8 @@ def run_trial(variant: str, run_id: str, target: Target, sentence: str, marker: 
         row.update(verdict="invalid", why="target_process_changed_during_trial")
         return row
 
-    scan = ax_oracle.settled_focused(target.bundle_id, max_wait=6.0)
+    scan = (target.reader() if target.reader
+            else ax_oracle.settled_focused(target.bundle_id, max_wait=6.0))
     if not scan.ok:
         row.update(verdict="invalid", why=f"oracle:{scan.why}")
         return row
