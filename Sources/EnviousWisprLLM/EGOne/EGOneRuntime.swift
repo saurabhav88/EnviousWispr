@@ -455,7 +455,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
-      let result = await self.server.probeHealth(promptFamily: family)
+      let result = await self.server.probeHealth(promptFamily: family, spec: .egOne)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
       if case .ready = self.serverState { self.health = result }

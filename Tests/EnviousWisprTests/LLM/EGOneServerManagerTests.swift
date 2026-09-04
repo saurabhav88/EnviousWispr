@@ -63,7 +63,7 @@ struct EGOneServerManagerTests {
     let manager = EGOneServerManager()
     let endpoint = await manager.activeEndpoint()
     #expect(endpoint == nil)
-    let health = await manager.probeHealth(promptFamily: .egOneFixed)
+    let health = await manager.probeHealth(promptFamily: .egOneFixed, spec: .egOne)
     #expect(health == .red(reason: "not_running"))
   }
 
@@ -73,7 +73,7 @@ struct EGOneServerManagerTests {
     var config = try Self.fakeServerConfiguration()
     config.serverBinaryURL = URL(fileURLWithPath: "/nonexistent/llama-server")
     await manager.start(configuration: config)
-    let health = await manager.probeHealth(promptFamily: .egOneFixed)
+    let health = await manager.probeHealth(promptFamily: .egOneFixed, spec: .egOne)
     #expect(health == .red(reason: "server_binary_missing"))
   }
 

@@ -351,7 +351,44 @@ public actor EGOneServerManager {
   /// through the real prompt path; GREEN requires the expected
   /// TRANSFORMATION (contains "Friday", drops "um"), not merely HTTP 200 —
   /// a model that echoes raw text must read yellow, never green.
-  public func probeHealth(promptFamily: PromptFamily) async -> EGOneHealth {
+  /// #2649: WHICH model is being probed is now an argument, not three
+  /// constants in the body. The launch configuration was always generic; the
+  /// probe was EG-1 by construction — it built an `EGOneConnector`, stamped
+  /// `provider: .egOne` and sent `LLMProvider.egOneModelName`. A second model
+  /// served by the same manager would have been health-checked as EG-1, which
+  /// reads green or yellow about the wrong thing.
+  ///
+  /// The TRANSFORMATION the probe demands stays shared and is not part of the
+  /// spec, deliberately: both engines exist to do the same job to a dictation,
+  /// so a model that cannot do it must read yellow whichever one it is. Making
+  /// the success condition per-model would let a weaker model be graded on an
+  /// easier exam.
+  public struct ProbeSpec: Sendable {
+    public var provider: LLMProvider
+    public var modelID: String
+    public var makeConnector: @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+
+    public init(
+      provider: LLMProvider, modelID: String,
+      makeConnector: @escaping @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+    ) {
+      self.provider = provider
+      self.modelID = modelID
+      self.makeConnector = makeConnector
+    }
+
+    /// EG-1's exact current values, so its probe is unchanged by this move.
+    public static let egOne = ProbeSpec(
+      provider: .egOne, modelID: LLMProvider.egOneModelName,
+      makeConnector: { EGOneConnector(endpoint: $0) })
+  }
+
+  /// `spec` is REQUIRED and has no default. A defaulted argument leaves no
+  /// token at the call site, so no sweep could find the callers still probing
+  /// as EG-1, and the wrong-model probe would be invisible rather than merely
+  /// wrong. `.egOne` below is a named VALUE a caller passes, not a fallback the
+  /// language supplies.
+  public func probeHealth(promptFamily: PromptFamily, spec: ProbeSpec) async -> EGOneHealth {
     switch state {
     case .stopped:
       return .red(reason: "not_running")
@@ -363,19 +400,19 @@ public actor EGOneServerManager {
       return .red(reason: reason)
     case .ready(let endpoint):
       let probeTranscript = "so um move the meeting to thursday no wait friday"
-      let connector = EGOneConnector(endpoint: endpoint)
+      let connector = spec.makeConnector(endpoint)
       let builder = DefaultPromptPlanner.builder(for: promptFamily)
       let input = PromptBuildInput(
         transcript: probeTranscript,
-        provider: .egOne,
-        modelID: LLMProvider.egOneModelName,
+        provider: spec.provider,
+        modelID: spec.modelID,
         appName: nil,
         language: nil,
         polishVocabulary: PolishVocabulary(terms: [], generation: 0)
       )
       let envelope = builder.build(input: input, mode: .message)
       let config = LLMProviderConfig(
-        model: LLMProvider.egOneModelName,
+        model: spec.modelID,
         apiKeyKeychainId: nil,
         outputTokens: .capped(128),
         temperature: 0,
