@@ -103,12 +103,23 @@ struct RequestTimeoutOwnerTests {
     #expect(visitor.assignments.first?.literal == 60)
   }
 
-  /// The owner exists and both ceilings are readable from it, which is what lets
-  /// `LLMPolishStep` read the resource cap instead of restating `180`.
-  @Test("the owner publishes both ceilings")
-  func ownerPublishesBoth() {
-    #expect(LLMNetworkSession.requestTimeoutSeconds == 60)
-    #expect(LLMNetworkSession.resourceTimeoutSeconds == 180)
+  /// The constants are actually WIRED to the session, asserted without naming
+  /// either number.
+  ///
+  /// Review caught the first version pinning `60` and `180` here, which
+  /// reintroduced the exact defect this change removes: a one-file edit to the
+  /// owner would have failed CI until somebody also edited this test, so the
+  /// policy still had two owners. Asserting the WIRING instead is both
+  /// number-free and strictly stronger — it fails if a constant is declared and
+  /// then not used in the configuration, which pinning the value could never see.
+  ///
+  /// Uses an isolated instance rather than `LLMNetworkSession.shared`, for the
+  /// reason `freshSession()` gives in `LLMWarmupGateTests`.
+  @Test("both ceilings are wired to the session, whatever their values are")
+  func ceilingsAreWiredNotJustDeclared() {
+    let config = LLMNetworkSession.makeIsolatedForTesting().session.configuration
+    #expect(config.timeoutIntervalForRequest == LLMNetworkSession.requestTimeoutSeconds)
+    #expect(config.timeoutIntervalForResource == LLMNetworkSession.resourceTimeoutSeconds)
   }
 }
 
