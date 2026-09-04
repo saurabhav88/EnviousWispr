@@ -847,6 +847,11 @@ struct AIPolishSettingsView: View {
         // #1271: settings-open is one of the two probe moments (the other is
         // provider activation via PipelineSettingsSync). No background polling.
         egOne.activateAndProbe()
+      } else if settings.llmProvider == .s1Mini {
+        // #2649: same two probe moments for the second bundled engine. Found by
+        // the class sweep "code that names EG-1 where it means any bundled
+        // engine"; without this arm S1-mini fell through to model discovery.
+        localPolishRuntimes.s1Mini.activateAndProbe()
       } else if settings.llmProvider != .none {
         llmDiscovery.loadCachedModels(for: settings.llmProvider)
       }
@@ -890,12 +895,15 @@ struct AIPolishSettingsView: View {
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
-      case .egOne:
+      case .egOne, .s1Mini:
         // Fixed local model — no API key, no model discovery. Routing it
         // into the default key-provider path would hand the discovery
         // coordinator an empty model list and let it overwrite `llmModel`
         // (#1271 Codex r7). Activation/probe rides PipelineSettingsSync;
         // the status section's own onAppear probe covers settings-open.
+        // #2649: S1-mini is the same shape, and was falling into the default
+        // arm, which flipped the key-validation state for a model that has
+        // no key.
         break
       default:
         llmDiscovery.loadCachedModels(for: newProvider)
