@@ -1046,14 +1046,15 @@ final class KernelLifecycleTelemetrySink {
         captureFailureExtra(error: error, failureMode: "prepare_failed"))
     case .captureStalled:
       // r8 (2026-05-25) — NO Sentry/PostHog emission for `.captureStalled`.
-      // The rich `HeartPathTelemetryEmitter.stallFired(ctx:)` (`:91-116`)
-      // already owns this terminal: it is reached via
-      // `KernelHeartPathTelemetryObserver.handleCaptureStall(_:)` (`:94-100`)
+      // `HeartPathTelemetryEmitter.stallFired(ctx:)` already owns this terminal:
+      // it is reached via `KernelHeartPathTelemetryObserver.handleCaptureStall(_:)`
       // from the App-routed `WedgeRecoveryRouter` → driver's
       // `HeartPathTelemetryTarget` conformance, with full
       // `SentryAudioExtras.buildCaptureExtras(...)` payload + per-session
       // dedup. The lifecycle event still fires (kernel state observability
       // is preserved); only the duplicate Sentry captureError is suppressed.
+      // (Line-range citations removed 2026-09-03: they named a range #1810
+      // then moved, and nothing links a comment to the lines it counts.)
       //
       // Codex r8 flagged this as the convergence-escape signal: emitter
       // dedup is `private` to the emitter, so without this skip both paths
@@ -1066,6 +1067,17 @@ final class KernelLifecycleTelemetrySink {
       // the classified event, submitted either through the reactive
       // `WedgeRecoveryRouter` funnel or the kernel's STOP-time telemetry
       // closure (§3.6 N4). The lifecycle event still fires here.
+      //
+      // #1810 (2026-09-03) narrowed what "owns" means and the skip still
+      // stands, so read the reason rather than the conclusion: `stallFired`
+      // now creates an alerting Sentry error ONLY for `stall_window_elapsed`,
+      // and a zero-sample shape reaches NEITHER Sentry channel from it. The
+      // record for those takes is `audio.dead_mic_retire_attempted` plus its
+      // breadcrumb, emitted from the stop path. **Do not "restore" an emission
+      // here on the strength of that silence** — it is the intended end state,
+      // and adding one would put the retired alert back under another name.
+      // Policy: alert in Sentry only for product-owned faults; record user and
+      // device conditions in PostHog.
       break
     case .noAudioCaptured:
       // Build the rich `NoAudioContext` (route, active-capture, source,

@@ -86,16 +86,48 @@ final class HeartPathTelemetryEmitter {
 
   // MARK: - Events
 
-  /// Emit `audio_capture_stalled` once per session. Subsequent calls within
-  /// the same session are dropped silently (dedup).
-  /// Returns true if the event fired (caller may chain terminal-state work).
-  @discardableResult
+  /// Record the first observation of each capture-stall mode per session.
+  /// Subsequent calls for the same mode within the same session are dropped
+  /// silently (dedup).
+  ///
+  /// **Only `.noBuffers` creates an alerting Sentry error (#1810, 2026-09-03).**
+  /// The two zero-sample modes are recorded by the existing
+  /// `deadMicRetireAttempted` breadcrumb and PostHog event after the take stops;
+  /// they get no second breadcrumb here, because that method already fans out
+  /// both sinks from ONE set of computed values and a duplicate would split the
+  /// source of truth.
+  ///
+  /// Why they leave the alerting channel: the standing policy is to alert in
+  /// Sentry only for product-owned faults and to record user and device
+  /// conditions in PostHog. The measured population here is a permanently failed
+  /// microphone, a dropped Bluetooth link, or a hardware mute — none of which we
+  /// own. `.noBuffers` (no buffers arrived at all) is the one shape most likely
+  /// to be ours, so it keeps its error.
+  ///
+  /// **The insert MUST stay above the routing branch.** `noAudioCaptured` reads
+  /// `capturedStallModes` to decide breadcrumb-versus-error, so skipping the
+  /// insert for a downgraded mode would turn a stalled session's
+  /// `no_audio_captured` into a NEW alerting error — moving the noise rather
+  /// than removing it.
+  ///
+  /// Returns nothing: neither production caller read the old `Bool`, and a
+  /// boolean here would now read as "an alert fired", which is no longer true
+  /// for two of the three modes.
   func stallFired(
     ctx: CaptureStallContext,
     isActivelyCapturing: Bool
-  ) -> Bool {
+  ) {
     resetIfNewSession(ctx.sessionID)
-    guard capturedStallModes.insert(ctx.failureMode).inserted else { return false }
+    guard capturedStallModes.insert(ctx.failureMode).inserted else { return }
+
+    // Exhaustive, no `default`: a future failure mode must state its channel
+    // rather than inheriting whichever branch happens to be first.
+    switch ctx.failureMode {
+    case .noBuffers:
+      break
+    case .allZeroFromStart, .becameZeroMidCapture:
+      return
+    }
 
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: ctx.route,
@@ -107,10 +139,15 @@ final class HeartPathTelemetryEmitter {
       failureMode: ctx.failureMode.rawValue,
       stallContext: ctx,
       // #1844: "how long since this user last had a working recording" is
-      // diagnostic on EVERY capture stall, not only a classified zero-signal one,
-      // so it lands on all three failure modes this shared emitter serves. Same
-      // expression the zombie path already uses below; omitted when nil, so a
-      // user with no prior success is not reported as zero.
+      // diagnostic on a capture stall. Since #1810 this payload is built ONLY
+      // for `.noBuffers` — the two zero-sample modes returned above. They are
+      // not left without the measurement: `ms_since_last_good` on
+      // `audio.dead_mic_retire_attempted` reads the SAME `captureTelemetry`.
+      // Same source, NOT the same number — that one is sampled at stop, this one
+      // mid-take, so they differ by the take's own duration and must never be
+      // substituted for each other in a query.
+      // Same expression the zombie path already uses below; omitted when nil, so
+      // a user with no prior success is not reported as zero.
       timeSinceLastSuccessfulRecordingMs:
         captureTelemetry.timeSinceLastSuccessfulRecordingMs(),
       selectedTransport: ctx.selectedTransport,
@@ -127,7 +164,6 @@ final class HeartPathTelemetryEmitter {
       "recording",
       extras
     )
-    return true
   }
 
   /// Emit either a deduped breadcrumb (if a stall already fired for this
