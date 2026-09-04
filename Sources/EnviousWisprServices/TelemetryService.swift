@@ -909,12 +909,12 @@ public final class TelemetryService {
   /// request is sent — so it counts requests that actually leave, not intentions.
   ///
   /// `model` is RAW, matching `llm.polish_completed` / `llm.polish_failed`. That
-  /// is deliberate and required: `observability-operations.md`
-  /// RULE: telemetry-observes-resolved-value-deny-by-default carries a founder
-  /// decision (2026-08-15) that runtime polish events keep the raw model, because
-  /// bucketing makes "which model is failing" unanswerable and an allowlist goes
-  /// stale monthly. A reviewer seeing only the SETTINGS guard files this as a
-  /// privacy P0; it is not one. Metadata only — never key material.
+  /// is deliberate and required by a founder decision (2026-08-15): runtime
+  /// polish events keep the raw model, because bucketing makes "which model is
+  /// failing" unanswerable and a static allowlist goes stale monthly. The
+  /// deny-by-default projection applies to SETTINGS telemetry, not here — a
+  /// reviewer seeing only that guard files this as a privacy P0, and it is not
+  /// one. Metadata only, never key material.
   public func prewarmStarted(provider: String, model: String) {
     let props: [String: Any] = ["provider": provider, "model": model]
     #if DEBUG

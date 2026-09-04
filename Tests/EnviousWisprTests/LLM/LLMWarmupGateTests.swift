@@ -94,8 +94,8 @@ struct LLMWarmupGateTests {
     let justInside = now.addingTimeInterval(LLMNetworkSession.warmWindowSeconds - 1)
     #expect(!session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: justInside))
 
-    // Outside it: cold again. Injected clock, never a real sleep
-    // (`swift-patterns.md` RULE: tests-no-real-time-scheduling-precision).
+    // Outside it: cold again. Injected clock, never a real sleep — this suite
+    // must not depend on scheduling precision.
     let justOutside = now.addingTimeInterval(LLMNetworkSession.warmWindowSeconds + 1)
     #expect(session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: justOutside))
   }
@@ -161,9 +161,7 @@ struct LLMWarmupGateTests {
   /// The decide-and-claim must be ONE critical section.
   ///
   /// A check-then-act across two reads passes every test above, because a
-  /// single-threaded test cannot open the window between them
-  /// (`validation-discipline.md`
-  /// RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act).
+  /// single-threaded test cannot open the window between them.
   /// **This test was VACUOUS on its first writing and the control caught it.**
   /// A `withTaskGroup` of 64 children finished in 0.001s and passed against a
   /// deliberately broken check-then-act implementation, because `claimWarmupSlot`
@@ -178,13 +176,16 @@ struct LLMWarmupGateTests {
   /// check and act is on the order of nanoseconds, and real threads do not
   /// reliably land inside it.
   ///
-  /// **So this test is NOT the guard for atomicity, and must not be read as
-  /// one.** It is a smoke test: it exercises the claim under genuine parallelism
-  /// and would catch a gross regression such as removing the lock entirely. The
-  /// property "decide and claim happen in ONE critical section" is pinned
-  /// STRUCTURALLY by `claimIsASingleCriticalSection` below, because that is a
-  /// question about the code's shape and the machine can answer it exactly —
-  /// where a timing test can only ever answer "I did not happen to see it".
+  /// **What it does and does not catch, both measured — the honest version is
+  /// narrower than "useless" and narrower than "a guard".** It MISSED the tight
+  /// split, where two `withLock` calls sit adjacent and the window is a few
+  /// nanoseconds. It CAUGHT the helper-boundary split, where the check moves
+  /// into its own lock-taking function: that window spans a call boundary, and
+  /// the race produced 2 winners immediately.
+  ///
+  /// So: a real test of a real property, blind to the tightest shape. The
+  /// structural guard below is what covers that one, and the two together are
+  /// why both are kept.
   @Test("concurrent claims under real threads yield one winner (smoke, not the guard)")
   func concurrentClaimsProduceOneWinner() {
     let session = freshSession()
@@ -206,38 +207,57 @@ struct LLMWarmupGateTests {
 
   /// THE ACTUAL ATOMICITY GUARD.
   ///
-  /// Two review rounds and two failed controls established that this property
-  /// cannot be demonstrated by racing: the window is nanoseconds wide and a
-  /// timing test that never opens it reports green against broken code. So ask
-  /// the machine about the SHAPE instead, which it can answer exactly.
+  /// Two failed controls established that this property cannot be demonstrated
+  /// by racing: the window is nanoseconds wide, and a timing test that never
+  /// opens it reports green against broken code. So ask the machine about the
+  /// SHAPE instead, which it can answer exactly.
   ///
-  /// `claimWarmupSlot` must take the lock EXACTLY ONCE. Two acquisitions is the
-  /// check-then-act bug, and it is invisible in every behavioural test.
-  /// Parsed, never grepped — `swift-patterns.md`
-  /// RULE: scan-swift-source-with-swiftparser-never-a-hand-rolled-lexer.
+  /// **The first version of this guard counted lock acquisitions and review was
+  /// right that a count is a PROXY.** One `withLock` says nothing about what is
+  /// inside it: a refactor could move the CHECK into a lock-taking helper and
+  /// leave one `withLock` around the insert, recreating the exact race while
+  /// this test still passed. So assert the property itself — every read and
+  /// write of the warm state happens INSIDE the one critical section, and both
+  /// halves of the decision are in there together.
   @Test("the claim decides and commits inside ONE critical section")
   func claimIsASingleCriticalSection() throws {
     let url = RepoRoot.sourceURL("Sources/EnviousWisprLLM/LLMNetworkSession.swift")
     let tree = Parser.parse(source: try String(contentsOf: url, encoding: .utf8))
-    let visitor = LockCountVisitor(functionName: "claimWarmupSlot", viewMode: .sourceAccurate)
+    let visitor = CriticalSectionVisitor(functionName: "claimWarmupSlot", viewMode: .sourceAccurate)
     visitor.walk(tree)
 
     #expect(visitor.functionFound, "claimWarmupSlot not found — did it get renamed?")
     #expect(
       visitor.lockCallCount == 1,
+      "claimWarmupSlot takes the lock \(visitor.lockCallCount) times, expected exactly 1")
+    #expect(
+      visitor.stateTouchesOutsideLock.isEmpty,
       """
-      claimWarmupSlot takes the lock \(visitor.lockCallCount) times, expected exactly 1.
-      More than one acquisition means the decision and the claim are separable, which is       the check-then-act race. No behavioural test in this suite can see it — that was       measured twice, so this assertion is the only thing standing between us and it.
+      warm state touched OUTSIDE the critical section: \(visitor.stateTouchesOutsideLock).
+      Every read and write must be inside the single lock, or the decision and the       claim are separable and two callers can both warm.
+      """)
+    #expect(
+      visitor.stateNamesInsideLock == ["inFlight", "lastSuccess"],
+      """
+      the critical section touches \(visitor.stateNamesInsideLock.sorted()); it must       contain BOTH the in-flight check and the last-success check, or half the       decision has moved out of the lock.
       """)
   }
 }
 
-/// Counts `withLock` calls inside one named function.
-private final class LockCountVisitor: SyntaxVisitor {
+/// Verifies that a named function touches its guarded state only inside a single
+/// `withLock` closure — the property, not the proxy.
+private final class CriticalSectionVisitor: SyntaxVisitor {
+  private static let stateNames: Set<String> = ["inFlight", "lastSuccess"]
+
   private let functionName: String
   private(set) var functionFound = false
   private(set) var lockCallCount = 0
-  private var depth = 0
+  private(set) var stateTouchesOutsideLock: [String] = []
+  private(set) var stateNamesInsideLock: Set<String> = []
+
+  private var functionRange: Range<AbsolutePosition>?
+  private var lockRanges: [Range<AbsolutePosition>] = []
+  private var tokensSeen: [(String, AbsolutePosition)] = []
 
   init(functionName: String, viewMode: SyntaxTreeViewMode) {
     self.functionName = functionName
@@ -247,21 +267,38 @@ private final class LockCountVisitor: SyntaxVisitor {
   override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
     guard node.name.text == functionName else { return .visitChildren }
     functionFound = true
-    depth += 1
+    functionRange = node.position..<node.endPosition
     return .visitChildren
   }
 
-  override func visitPost(_ node: FunctionDeclSyntax) {
-    if node.name.text == functionName { depth -= 1 }
-  }
-
   override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-    guard depth > 0 else { return .visitChildren }
+    guard let fnRange = functionRange, fnRange.contains(node.position) else {
+      return .visitChildren
+    }
     if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
       member.declName.baseName.text == "withLock"
     {
       lockCallCount += 1
+      lockRanges.append(node.position..<node.endPosition)
     }
     return .visitChildren
+  }
+
+  override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind {
+    if Self.stateNames.contains(token.text) {
+      tokensSeen.append((token.text, token.position))
+    }
+    return .skipChildren
+  }
+
+  override func visitPost(_ node: SourceFileSyntax) {
+    guard let fnRange = functionRange else { return }
+    for (name, pos) in tokensSeen where fnRange.contains(pos) {
+      if lockRanges.contains(where: { $0.contains(pos) }) {
+        stateNamesInsideLock.insert(name)
+      } else {
+        stateTouchesOutsideLock.append(name)
+      }
+    }
   }
 }

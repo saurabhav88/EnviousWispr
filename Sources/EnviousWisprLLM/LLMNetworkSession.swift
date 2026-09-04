@@ -64,11 +64,10 @@ public final class LLMNetworkSession: Sendable {
   ///
   /// ONE lock holding both maps, so the decide-and-claim is a single critical
   /// section. Two recordings can start inside the window, and a check-then-act
-  /// across separate reads would let both warm — the exact shape
-  /// `validation-discipline.md`
-  /// RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act
-  /// warns about, and a single-threaded test cannot tell the two apart. The
-  /// concurrent test in `LLMWarmupGateTests` races it deliberately.
+  /// across separate reads would let both warm. A single-threaded test cannot
+  /// tell an atomic claim from a check-then-act one, because it cannot open the
+  /// window between the two reads — so the guard for this is structural, in
+  /// `LLMWarmupGateTests`, not a race.
   private struct WarmState {
     var lastSuccess: [String: Date] = [:]
     var inFlight: Set<String> = []

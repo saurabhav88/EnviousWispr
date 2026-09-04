@@ -320,9 +320,8 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     // something the data says it did not cause. Measured across 121 production
     // timeouts: median dictation 106 characters, 26 of 54 Gemini cases under 100,
     // smallest 18. The dictation was almost never long; the provider did not
-    // answer inside the budget. `grounding-discipline.md`
-    // RULE: public-claims-need-binding-evidence — a user-facing sentence is a
-    // claim, and this one was refuted by our own telemetry.
+    // answer inside the budget. A user-facing sentence is a claim like any
+    // other, and this one was refuted by our own telemetry.
     case .timedOut:
       return "\(name) did not answer in time. Your original text was pasted unchanged."
     case .unknown:
