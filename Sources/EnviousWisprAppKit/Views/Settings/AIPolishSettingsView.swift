@@ -374,8 +374,12 @@ struct AIPolishSettingsView: View {
 
   private var showModelSection: Bool {
     // EG-1 excluded: one fixed first-party model, no model picker (#1271).
+    // S1-mini excluded for the same reason (#2649): it is one bundled model, so
+    // a picker offers a choice that does not exist. Left in, it rendered
+    // Ollama's discovery dropdown on the S1-mini pane showing the lower-case
+    // Ollama model id, which also reads as the wrong name for the model.
     settings.llmProvider != .none && settings.llmProvider != .appleIntelligence
-      && settings.llmProvider != .egOne
+      && settings.llmProvider != .egOne && settings.llmProvider != .s1Mini
   }
 
   private var ollamaShowsManageModels: Bool {

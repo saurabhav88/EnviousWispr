@@ -248,7 +248,13 @@ enum PolishRailCatalog {
     // because it is somebody else's model and the licence binds the name.
     PolishRailProvider(
       provider: .s1Mini, name: LLMProvider.s1Mini.displayName,
-      tagline: "Small, English, by Superwhisper",
+      // Founder 2026-09-04: the credit must be READABLE in the rail, and at
+      // 216pt "Small, English, by Superwhisper" truncated to "Small, English,…"
+      // — dropping the one clause the licence requires. Size and language are
+      // said in full on the detail pane; the attribution is what has to survive
+      // here. Capitalisation is fixed by the ADDITIONAL TERM: "Superwhisper",
+      // lower-case w, not "SuperWhisper".
+      tagline: "by Superwhisper",
       group: .onThisMac, recommended: false),
     PolishRailProvider(
       provider: .ollama, name: "Ollama", tagline: "Any open model, local or hosted",
@@ -638,9 +644,16 @@ struct ProviderDetailHeader: View {
         Text("\(entry.tagline) · \(privacyLine)")
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
-          // Ollama's approved line carries the local-or-hosted qualification.
-          // Let that row wrap instead of truncating the trust-relevant copy.
-          .lineLimit(entry.group == .yourOwnSetup ? nil : 1)
+          // Every row's second clause IS the privacy claim, so truncating any
+          // of them cuts the trust-relevant copy — which is the reason Ollama
+          // was already exempt. Keying that exemption on the GROUP made it a
+          // stand-in for "is this line long", and the two agreed only until a
+          // longer tagline arrived: S1-mini's credit to Superwhisper is 15
+          // characters more than the next longest on-this-Mac row, and the
+          // header rendered "Nothing you dictate l…" (founder, 2026-09-04).
+          // Nothing here caps a line, so no future tagline can truncate a
+          // promise. Rows that fit stay one line; SwiftUI wraps only what must.
+          .lineLimit(nil)
           .fixedSize(horizontal: false, vertical: true)
           .truncationMode(.tail)
       }

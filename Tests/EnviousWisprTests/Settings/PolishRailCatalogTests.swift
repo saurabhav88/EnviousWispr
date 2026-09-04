@@ -124,8 +124,19 @@ struct PolishRailCatalogTests {
     let row = try #require(PolishRailCatalog.entry(for: .s1Mini))
     #expect(row.name == LLMProvider.s1Mini.displayName)
     #expect(row.name == "S1-mini")
-    #expect(row.tagline == "Small, English, by Superwhisper")
+    // Founder 2026-09-04: at the rail's 216pt this read "Small, English,…" and
+    // the credit was the half being eaten. Size and language are said in full
+    // on the detail pane; the attribution is what has to survive here.
+    #expect(row.tagline == "by Superwhisper")
     #expect(row.tagline.contains("Superwhisper"), "the maker must be credited on the row")
+    // The ADDITIONAL TERM fixes the capitalisation, and the plausible wrong
+    // spelling is a camel-cased one. Asserted rather than trusted because it
+    // reads as a typo and is actually a licence breach: the founder asked for
+    // "SuperWhisper" on 2026-09-04 and following that would have broken the
+    // term we host the weights under.
+    #expect(
+      !row.tagline.contains("SuperWhisper"),
+      "the licence requires \"Superwhisper\", lower-case w")
     #expect(row.group == .onThisMac)
     // EG-1 remains the recommended engine. A second recommended row would make
     // the word meaningless, so this is asserted here rather than trusted.
