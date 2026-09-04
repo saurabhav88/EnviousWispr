@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import random
 import re
@@ -966,6 +967,34 @@ def selftest() -> int:
     return 1 if failures else 0
 
 
+def ensure_targets_running(targets: list["Target"], wait: float = 25.0) -> list[tuple[str, str]]:
+    """Launch every destination app, and report the ones that never came up.
+
+    Measured 2026-09-04: a 240-trial run scored 120 trials `app_not_running` because
+    Safari, Brave and Word happened to be closed. The harness discovered this once per
+    TRIAL, thirty times per target, and reported it as an ordinary invalid row — so the
+    run took its full fifty minutes and produced a scorecard that looked like data.
+
+    A missing app is knowable BEFORE the first dictation, so it is asked once, up front,
+    where the answer costs a second instead of an evening. Returns the targets that are
+    still not running, which the caller turns into a refusal rather than a warning: a
+    warning here reads exactly like the run that already wasted the evening.
+    """
+    launched: list["Target"] = []
+    for target in targets:
+        if ax_oracle.pid_for_bundle(target.bundle_id) is None:
+            subprocess.run(["open", "-b", target.bundle_id], capture_output=True, timeout=20)
+            launched.append(target)
+    if not launched:
+        return []
+    deadline = time.time() + wait
+    pending = list(launched)
+    while pending and time.time() < deadline:
+        time.sleep(1.0)
+        pending = [t for t in pending if ax_oracle.pid_for_bundle(t.bundle_id) is None]
+    return [(t.name, t.bundle_id) for t in pending]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--variants", default="V0,V1,V2", help="comma-separated, in VARIANTS")
@@ -1011,7 +1040,23 @@ def main() -> int:
     if unknown:
         print(f"unknown variants: {unknown}", file=sys.stderr)
         return 2
-    targets = [TARGETS[t.strip()] for t in args.targets.split(",") if t.strip() in TARGETS]
+    requested = [t.strip() for t in args.targets.split(",") if t.strip()]
+    # An unknown target used to be DROPPED here, silently. A typo therefore produced a
+    # shorter run that looked complete, which is the same failure shape as the one below.
+    unknown_targets = [t for t in requested if t not in TARGETS]
+    if unknown_targets:
+        print(f"unknown targets: {unknown_targets}. Known: {sorted(TARGETS)}", file=sys.stderr)
+        return 2
+    targets = [TARGETS[t] for t in requested]
+
+    not_running = ensure_targets_running(targets)
+    if not_running:
+        print("REFUSING TO RUN: these destination apps are not running, and every trial "
+              "against them would be scored invalid rather than measured:", file=sys.stderr)
+        for name, bundle_id in not_running:
+            print(f"  {name} ({bundle_id})", file=sys.stderr)
+        print("Open them and re-run.", file=sys.stderr)
+        return 2
 
     out_path = pathlib.Path(
         args.out or (pathlib.Path.home()
@@ -1019,7 +1064,24 @@ def main() -> int:
                      / f"paste-bakeoff-{run_id}.json"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # HOLD THE MAC AWAKE FOR THE WHOLE RUN, and let it die with the run.
+    #
+    # Measured 2026-09-04: a 16-trial run was killed by the Mac locking, and the only
+    # caffeinate on the machine was `caffeinate -i -t 300` from an unrelated tool — five
+    # minutes, and `-i` holds off IDLE SYSTEM SLEEP ONLY. It does not hold the display,
+    # does not declare the user active, and expires long before a 50-minute run ends.
+    #
+    # `-d` display, `-i` idle, `-m` disk, `-s` on AC, `-u` declare the user active. `-w`
+    # ties its life to this process, so an aborted run leaves nothing holding the machine
+    # awake — an orphaned caffeinate is a worse bug than the lock it prevents.
+    keep_awake = subprocess.Popen(
+        ["caffeinate", "-dimsu", "-w", str(os.getpid())],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"holding the Mac awake for this run (caffeinate pid {keep_awake.pid})",
+          flush=True)
+
     rows: list[dict] = []
+    locked_early = False
     # RELAUNCH ONCE PER VARIANT, NOT ONCE PER CELL.
     #
     # The variant is baked into the app's launch environment, so it is the variant — never
@@ -1060,11 +1122,28 @@ def main() -> int:
         for target in block:
             print(f"  [{variant}/{target.key}]", flush=True)
             for i in range(args.reps):
-                row = run_trial(variant, run_id, target, args.sentence, args.marker)
+                try:
+                    row = run_trial(variant, run_id, target, args.sentence, args.marker)
+                except ax_oracle.ScreenLocked:
+                    # The Mac locked mid-run. Every reading from here on is taken against
+                    # a screen no application can reach, so a trial scored now would read
+                    # as DROPPED TEXT rather than as a locked machine — and drops are the
+                    # verdict this bench vetoes on. Stop, keep what was already measured,
+                    # and say why. An uncaught raise here loses every completed row and
+                    # reads as a harness fault rather than as a locked Mac.
+                    print("\nSTOPPED: the Mac locked mid-run. Rows measured before the "
+                          "lock are kept and written below; nothing after it was scored.",
+                          file=sys.stderr)
+                    locked_early = True
+                    break
                 row["rep"] = i
                 rows.append(row)
                 print(f"    rep {i}: {row.get('verdict')} tier={row.get('tier')} "
                       f"{row.get('why', '')}", flush=True)
+            if locked_early:
+                break
+        if locked_early:
+            break
 
     summary: dict = {}
     for row in rows:

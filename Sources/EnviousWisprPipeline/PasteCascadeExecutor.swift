@@ -525,10 +525,18 @@ internal final class PasteCascadeExecutor {
     // unreadable chain is NOT treated as web content and keeps baseline behaviour. That
     // asymmetry is deliberate: this arm is a claim about page content, not about AX
     // uncertainty in general.
+    #if DEBUG
+      // Why this gate decided what it decided (#2652). Captured here, reported at the
+      // emit site below, because the remaining ancestor distance may only be measured
+      // AFTER delivery — see `resumeAncestorChainTrace`.
+      var webGateTrace: PasteService.AXWebAreaAncestryTrace?
+    #endif
     let skipTier1ForWebContent: Bool = {
       #if DEBUG
         guard policy.writer == .webCmdV, let element = request.targetElement else { return false }
-        return PasteService.ancestorChainVerifiedFreeOfWebArea(element) == .containsWebArea
+        let trace = PasteService.ancestorChainTrace(element)
+        webGateTrace = trace
+        return trace.result == .containsWebArea
       #else
         return false
       #endif
@@ -897,11 +905,23 @@ internal final class PasteCascadeExecutor {
       if !policy.isBaseline {
         let attempts = tiersAttempted.map(\.rawValue).joined(separator: ">")
         let ledger = submissionLedger.joined(separator: "|")
-        Task { [runID = Self.bakeoffRunID, variant = policy.id] in
+        // The gate evidence rides on the DELIVERY line rather than on a line of its own.
+        // Two independently scheduled log lines have to be joined by timestamp, and a
+        // mis-join produces a confident wrong tabulation with nothing to show for it.
+        var gateEvidence = ""
+        if let trace = webGateTrace {
+          let extended = PasteService.resumeAncestorChainTrace(trace, maxExamined: 60)
+          gateEvidence =
+            " gate=\(trace.result):\(trace.depthExamined):\(trace.stopReason.rawValue)"
+            + " ext=\(extended.result):\(extended.depthExamined):\(extended.stopReason.rawValue)"
+            + " roles=\(extended.roles.joined(separator: ">"))"
+            + " target=\(targetDiagnostics)"
+        }
+        Task { [runID = Self.bakeoffRunID, variant = policy.id, gateEvidence] in
           await AppLogger.shared.log(
             "PASTE_BAKEOFF_TRIAL run_id=\(runID ?? "none") variant=\(variant) "
               + "tier=\(tier.rawValue) app=\(bundleId) attempts=\(attempts) "
-              + "ledger=\(ledger) duration=\(durationMs)ms",
+              + "ledger=\(ledger) duration=\(durationMs)ms" + gateEvidence,
             level: .info, category: "PipelineTiming"
           )
         }

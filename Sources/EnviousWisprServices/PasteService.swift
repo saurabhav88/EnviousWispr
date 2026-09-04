@@ -1484,18 +1484,66 @@ public enum PasteService {
     case unverifiable
   }
 
-  package static func ancestorChainVerifiedFreeOfWebArea(
-    _ element: AXUIElement, maxDepth: Int = 10
-  ) -> AXWebAreaAncestry {
-    var current = element
-    var depth = 0
-    while depth < maxDepth {
+  /// Why a traversal stopped, and how far it got (#2652 diagnosis).
+  ///
+  /// The Boolean and the three-way enum both record what the walk CONCLUDED and neither
+  /// records why. Measured on 2026-09-04: the V1 arm skipped Tier 1 in Brave 5/5 and in
+  /// Chrome 1/4, and nothing in the logs distinguished "the web area is further than
+  /// `maxDepth`" from "this focused element genuinely sits under no web area". Those two
+  /// want opposite fixes, so the gate is instrumented rather than tuned.
+  ///
+  /// `depthExamined` counts ROLE READS ATTEMPTED, the starting element included and a
+  /// failed read included. A web area found on read 11 is ten parent edges away.
+  ///
+  /// `resumeElement` is non-nil only on `.depthExhausted`, and exists so the remaining
+  /// distance can be measured AFTER delivery. Continuing before the write would add
+  /// synchronous accessibility traffic to a Chromium process inside the paste path and
+  /// could warm the very cache whose staleness is the subject — an unchanged Boolean is
+  /// not an unchanged experiment.
+  package struct AXWebAreaAncestryTrace {
+    package enum StopReason: String, Equatable, Sendable {
+      case foundWebArea
+      case reachedApplication
+      case roleReadFailed
+      case parentMissingNotApplication
+      case parentReadFailed
+      case depthExhausted
+    }
+    package let result: AXWebAreaAncestry
+    package let depthExamined: Int
+    package let stopReason: StopReason
+    package let roles: [String]
+    package let resumeElement: AXUIElement?
+  }
+
+  /// The traversal, with its stopping condition made observable.
+  ///
+  /// Every exit here reproduces an exit the Boolean version had, in the same order and
+  /// after the same accessibility calls. Nothing was added to the decision path: no
+  /// retry, no cycle exit, no timeout, no extra read.
+  private static func walkAncestry(
+    from start: AXUIElement, alreadyExamined: Int, roles seed: [String], maxExamined: Int
+  ) -> AXWebAreaAncestryTrace {
+    var current = start
+    var examined = alreadyExamined
+    var roles = seed
+    while examined < maxExamined {
       var roleRef: CFTypeRef?
       guard
         AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleRef) == .success,
         let role = roleRef as? String
-      else { return .unverifiable }
-      if role == "AXWebArea" { return .containsWebArea }
+      else {
+        return AXWebAreaAncestryTrace(
+          result: .unverifiable, depthExamined: examined + 1, stopReason: .roleReadFailed,
+          roles: roles, resumeElement: nil)
+      }
+      examined += 1
+      roles.append(role)
+      if role == "AXWebArea" {
+        return AXWebAreaAncestryTrace(
+          result: .containsWebArea, depthExamined: examined, stopReason: .foundWebArea,
+          roles: roles, resumeElement: nil)
+      }
 
       var parentRef: CFTypeRef?
       let parentRead = AXUIElementCopyAttributeValue(
@@ -1507,16 +1555,54 @@ public enum PasteService {
         // codes — for whatever reason, including a page-content quirk — would
         // be read as "verified clean" without ever having been checked past
         // this point. `role` is already in hand from this same iteration.
-        return role == "AXApplication" ? .verifiedNative : .unverifiable
+        return role == "AXApplication"
+          ? AXWebAreaAncestryTrace(
+            result: .verifiedNative, depthExamined: examined, stopReason: .reachedApplication,
+            roles: roles, resumeElement: nil)
+          : AXWebAreaAncestryTrace(
+            result: .unverifiable, depthExamined: examined,
+            stopReason: .parentMissingNotApplication, roles: roles, resumeElement: nil)
       }
       guard parentRead == .success, let parentRef,
         CFGetTypeID(parentRef) == AXUIElementGetTypeID()
-      else { return .unverifiable }
+      else {
+        return AXWebAreaAncestryTrace(
+          result: .unverifiable, depthExamined: examined, stopReason: .parentReadFailed,
+          roles: roles, resumeElement: nil)
+      }
       // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check above.
       current = (parentRef as! AXUIElement)
-      depth += 1
     }
-    return .unverifiable
+    return AXWebAreaAncestryTrace(
+      result: .unverifiable, depthExamined: examined, stopReason: .depthExhausted,
+      roles: roles, resumeElement: current)
+  }
+
+  package static func ancestorChainTrace(
+    _ element: AXUIElement, maxDepth: Int = 10
+  ) -> AXWebAreaAncestryTrace {
+    walkAncestry(from: element, alreadyExamined: 0, roles: [], maxExamined: maxDepth)
+  }
+
+  /// Pick the walk up where `maxDepth` stopped it, never at the focused element again.
+  ///
+  /// Restarting would re-read every element the first pass already read, which is the
+  /// added traffic this design exists to avoid. Returns the prior trace unchanged when
+  /// there is nothing to resume, so a caller cannot accidentally report a continuation
+  /// that never ran.
+  package static func resumeAncestorChainTrace(
+    _ prior: AXWebAreaAncestryTrace, maxExamined: Int
+  ) -> AXWebAreaAncestryTrace {
+    guard let resume = prior.resumeElement else { return prior }
+    return walkAncestry(
+      from: resume, alreadyExamined: prior.depthExamined, roles: prior.roles,
+      maxExamined: maxExamined)
+  }
+
+  package static func ancestorChainVerifiedFreeOfWebArea(
+    _ element: AXUIElement, maxDepth: Int = 10
+  ) -> AXWebAreaAncestry {
+    ancestorChainTrace(element, maxDepth: maxDepth).result
   }
 
   /// Exact UTF-16 code-unit identity.
