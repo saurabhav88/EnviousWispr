@@ -41,74 +41,88 @@ struct RequestTimeoutOwnerTests {
   /// The defect is narrower and it is the one that hides: a per-request value
   /// that RESTATES the session's own. That copy changes nothing while it agrees,
   /// and silently wins the moment somebody edits the session — so the setting
-  /// they edited appears to do nothing. A DIFFERENT value is intent; an EQUAL
-  /// value is a shadow.
+  /// they edited appears to do nothing.
   ///
-  /// Enumerated by CAPABILITY, not by the value I expected. The first version of
-  /// this test looked for assignments of `60` because that was the number in the
-  /// diff, and a grep for `= 60` is what produced the original five-site list.
-  /// Asking for every assignment instead immediately returned a sixth site at
-  /// `OllamaConnector.swift:485` that no value-shaped search could have found.
+  /// **THE VALUE-EVALUATING MACHINERY IS DELETED, NOT FIXED A FOURTH TIME.**
+  /// Three rounds tried to decide whether a given assignment EQUALS the session's
+  /// value, and each fix was correct and exposed a subtler instance of the same
+  /// question:
   ///
-  /// **And the classification FAILS CLOSED, which is a separate lesson.** The
-  /// first version allowed anything that was not a literal equal to the session's
-  /// value, on the reasoning that a computed value "cannot silently equal" it.
-  /// That is false for the single most natural way to reintroduce this:
+  ///   1. flag the literal `60`             -> missed `= 3.0` entirely (a sixth
+  ///                                           site no value-shaped search found)
+  ///   2. flag a literal equal to the owner -> missed
+  ///                                           `= LLMNetworkSession.requestTimeoutSeconds`,
+  ///                                           which always equals it (CONTROLLED green)
+  ///   3. allow only a differing literal    -> missed `= 6_0`, because
+  ///                                           `Double("6_0")` is nil and the
+  ///                                           `?? .nan` fallback made "cannot
+  ///                                           evaluate" look like a number
+  ///                                           (CONTROLLED green)
   ///
-  ///     request.timeoutInterval = LLMNetworkSession.requestTimeoutSeconds
+  /// Each round produced a new SPELLING, never a new axis, which is the signature
+  /// of describing a set instead of enumerating one. There is no last spelling:
+  /// `0x3c` happens to be caught (Swift's `Double(String)` parses hex floats, so
+  /// the review's own example was wrong), `6_0` is not, and the next one is
+  /// unknowable.
   ///
-  /// which ALWAYS equals it, reads as conscientious, and sailed through — CONTROLLED
-  /// against the real source before the fix. Enumerating expression forms would
-  /// be describing a set with a next counterexample, so the question is inverted
-  /// instead: allowed ONLY if it is a literal that DIFFERS. Every other shape,
-  /// including ones nobody has written yet, is an offender.
-  @Test("no connector restates the session's own timeout on a request")
+  /// So the question is replaced rather than refined. **Every assignment is an
+  /// offender unless it is on an explicit allowlist**, matched on exact source
+  /// text. No parsing, no evaluation, nothing to be wrong about. A new assignment
+  /// in any spelling — literal, reference, hex, underscored, computed, or a form
+  /// nobody has written — fails until a person adds it here WITH a reason.
+  @Test("no connector sets a per-request timeout that is not explicitly allowed")
   func noShadowCopies() throws {
     var offenders: [String] = []
-    var deliberate: [String] = []
+    var seenAllowed: Set<String> = []
     for path in Self.sharedSessionConnectors {
       let url = RepoRoot.sourceURL(path)
       let source = try String(contentsOf: url, encoding: .utf8)
       let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
       visitor.walk(Parser.parse(source: source))
-      for assignment in visitor.assignments {
-        // FAILS CLOSED. An assignment is allowed ONLY when it is a numeric
-        // literal that DIFFERS from the session's value. Everything else is an
-        // offender, including anything this parser cannot evaluate.
-        guard let literal = assignment.literal,
-          literal != LLMNetworkSession.requestTimeoutSeconds
-        else {
-          offenders.append("\(path): \(assignment.text)")
-          continue
+      for text in visitor.assignments {
+        let key = "\(path)|\(text)"
+        if Self.allowedAssignments[key] != nil {
+          seenAllowed.insert(key)
+        } else {
+          offenders.append("\(path): \(text)")
         }
-        deliberate.append("\(path): \(assignment.text)")
       }
     }
     #expect(
       offenders.isEmpty,
       """
-      per-request timeouts restating the session's own \
-      (\(LLMNetworkSession.requestTimeoutSeconds)s): \(offenders).
-      A per-request value WINS over the configuration, so a copy that matches it \
-      does nothing today and silently overrides the session the moment anyone \
-      edits it there. Delete the assignment.
+      per-request timeout assignments that are not explicitly allowed: \(offenders).
 
-      This check FAILS CLOSED: the only allowed assignment is a numeric literal \
-      that DIFFERS from the session's. A reference such as \
-      `= LLMNetworkSession.requestTimeoutSeconds` is flagged BECAUSE it always \
-      equals the session's, and any expression this parser cannot evaluate is \
-      flagged too. If this request genuinely needs a different ceiling, write a \
-      different NUMBER and say why; if it needs a computed one, give it its own \
-      URLSession the way `OllamaConnector.readinessSession` does.
+      A per-request value WINS over `LLMNetworkSession`'s configuration \
+      (measured), so a copy that matches it does nothing today and silently \
+      overrides the session the moment anyone edits it there.
+
+      Delete the assignment. If this request genuinely needs a different ceiling, \
+      add it to `allowedAssignments` with the reason — that is a deliberate, \
+      reviewable act, which is the point. If it needs a computed one, give it its \
+      own URLSession the way `OllamaConnector.readinessSession` does.
       """)
 
-    // Two-way: the deliberate one must still be VISIBLE, or a future edit that
-    // deletes it goes unnoticed and a fire-and-forget unload silently inherits a
-    // 60-second ceiling.
+    // The allowlist must not rot: every entry has to still be present, or a
+    // deletion silently hands that request the session's ceiling instead.
+    let missing = Set(Self.allowedAssignments.keys).subtracting(seenAllowed)
     #expect(
-      deliberate.contains { $0.contains("OllamaConnector") && $0.contains("3.0") },
-      "the deliberate 3.0s evict timeout is gone; it is intent, not a shadow: \(deliberate)")
+      missing.isEmpty,
+      """
+      allowlisted timeouts are GONE from the source: \(missing).
+      Each was there for a reason recorded beside it; deleting one silently gives \
+      that request the session's ceiling.
+      """)
   }
+
+  /// The only per-request timeouts allowed on the shared session, keyed by
+  /// `path|exact source text`, valued by WHY. Adding an entry is the deliberate
+  /// act this guard exists to force.
+  private static let allowedAssignments: [String: String] = [
+    "Sources/EnviousWisprLLM/OllamaConnector.swift|request.timeoutInterval = 3.0":
+      "evictModel: a fire-and-forget model unload must give up long before a "
+      + "polish would, and the shared session cannot express that."
+  ]
 
   /// Two-way control: the visitor must actually be able to SEE an assignment, or
   /// the test above passes because it is blind rather than because the code is
@@ -124,7 +138,7 @@ struct RequestTimeoutOwnerTests {
     let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
     visitor.walk(Parser.parse(source: source))
     #expect(visitor.assignments.count == 1)
-    #expect(visitor.assignments.first?.literal == 60)
+    #expect(visitor.assignments.first == "request.timeoutInterval = 60")
   }
 
   /// The constants are actually WIRED to the session, asserted without naming
@@ -160,31 +174,19 @@ struct RequestTimeoutOwnerTests {
 /// because the code was clean. `detectorIsNotBlind` is what caught that, and it
 /// is the reason this file has a two-way control at all.
 private final class TimeoutAssignmentVisitor: SyntaxVisitor {
-  struct Assignment {
-    let text: String
-    /// The assigned number when it is a plain literal, else nil.
-    ///
-    /// `nil` does NOT mean safe. The caller treats an unevaluatable value as an
-    /// offender, because the most natural reintroduction of this defect is a
-    /// direct reference to the owner constant, which always equals it.
-    let literal: Double?
-  }
-
-  private(set) var assignments: [Assignment] = []
+  /// Exact source text of each assignment, normalised only by trimming. No value
+  /// is extracted and none is evaluated — deciding what an expression EQUALS is
+  /// the question this suite deleted rather than answered.
+  private(set) var assignments: [String] = []
 
   override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
     let elements = Array(node.elements)
     for (index, element) in elements.enumerated() where element.is(AssignmentExprSyntax.self) {
       guard index > 0,
         let member = elements[index - 1].as(MemberAccessExprSyntax.self),
-        member.declName.baseName.text == "timeoutInterval",
-        index + 1 < elements.count
+        member.declName.baseName.text == "timeoutInterval"
       else { continue }
-      let value = elements[index + 1]
-      let literal =
-        value.as(FloatLiteralExprSyntax.self).map { Double($0.literal.text) ?? .nan }
-        ?? value.as(IntegerLiteralExprSyntax.self).map { Double($0.literal.text) ?? .nan }
-      assignments.append(Assignment(text: node.trimmedDescription, literal: literal))
+      assignments.append(node.trimmedDescription)
     }
     return .visitChildren
   }
