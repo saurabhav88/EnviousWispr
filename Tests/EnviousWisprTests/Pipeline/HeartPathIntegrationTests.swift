@@ -257,7 +257,7 @@ private struct HeartPathHarnessResult {
 ///
 /// #794 (2026-05-19): the default `TextProcessingRunner()` delegates to the
 /// real `withThrowingTimeout`, which races a wall clock. On a contended CI
-/// runner a polish step's 5s budget can expire and the runner silently
+/// runner a polish step's real budget can expire and the runner silently
 /// degrades to raw ASR text — a false failure unrelated to the test's
 /// intent. `throwBelowSeconds: 0.0` never throws (every step runs);
 /// `throwBelowSeconds: 0.1` discriminates a 50ms slow-step budget from the
@@ -329,7 +329,7 @@ private final class HeartPathHarness {
     }
 
     let polishStep = LLMPolishStep(keychainManager: KeychainManager())
-    // `.openAI` only selects the 5 s budget and enables the step; the injected
+    // `.openAI` only selects that provider's budget and enables the step; the injected
     // polisher replaces the connector entirely, so no key or network is used.
     polishStep.llmProvider = .openAI
     if let polisher {

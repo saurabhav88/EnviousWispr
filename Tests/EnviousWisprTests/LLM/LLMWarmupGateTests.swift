@@ -176,16 +176,18 @@ struct LLMWarmupGateTests {
   /// check and act is on the order of nanoseconds, and real threads do not
   /// reliably land inside it.
   ///
-  /// **What it does and does not catch, both measured — the honest version is
-  /// narrower than "useless" and narrower than "a guard".** It MISSED the tight
-  /// split, where two `withLock` calls sit adjacent and the window is a few
-  /// nanoseconds. It CAUGHT the helper-boundary split, where the check moves
-  /// into its own lock-taking function: that window spans a call boundary, and
-  /// the race produced 2 winners immediately.
+  /// **What it does and does not catch, measured against three splits, and the
+  /// discriminator is WHICH operation moves — not how wide the window is.** It
+  /// catches a split that separates the IN-FLIGHT read from the in-flight write
+  /// across a call boundary: 2 winners immediately. It misses that same split
+  /// when the two sit adjacent, a few nanoseconds apart. And it misses a split
+  /// that moves only the WARMTH read out — measured 2026-09-03, one winner,
+  /// green — because `inFlight` is still read and written under one lock there,
+  /// so nothing races even though the decision is no longer atomic.
   ///
-  /// So: a real test of a real property, blind to the tightest shape. The
-  /// structural guard below is what covers that one, and the two together are
-  /// why both are kept.
+  /// That last case is the one worth carrying: a real race test reports a real
+  /// green against code whose guarantee is already broken. Only the structural
+  /// guard below sees it.
   @Test("concurrent claims under real threads yield one winner (smoke, not the guard)")
   func concurrentClaimsProduceOneWinner() {
     let session = freshSession()
@@ -205,20 +207,23 @@ struct LLMWarmupGateTests {
     }
   }
 
-  /// THE ACTUAL ATOMICITY GUARD.
+  /// **Two review rounds have now landed on this one assertion, so it asserts
+  /// the whole property rather than another clause.** Round 2: the first
+  /// version counted lock acquisitions, and a count says nothing about what is
+  /// inside one. Round 3: counting the NAMES inside the lock is the same defect
+  /// one level in — `inFlight` and `lastSuccess` can both appear inside the
+  /// closure while `inFlight.insert` has moved out to a separately locking
+  /// helper, which is check-then-act again with every name assertion green.
   ///
-  /// Two failed controls established that this property cannot be demonstrated
-  /// by racing: the window is nanoseconds wide, and a timing test that never
-  /// opens it reports green against broken code. So ask the machine about the
-  /// SHAPE instead, which it can answer exactly.
+  /// So the unit is the OPERATION, not the name. All three of the decision's
+  /// parts must sit inside ONE `withLock` closure: the in-flight read, the
+  /// warmth read, and the in-flight write.
   ///
-  /// **The first version of this guard counted lock acquisitions and review was
-  /// right that a count is a PROXY.** One `withLock` says nothing about what is
-  /// inside it: a refactor could move the CHECK into a lock-taking helper and
-  /// leave one `withLock` around the insert, recreating the exact race while
-  /// this test still passed. So assert the property itself — every read and
-  /// write of the warm state happens INSIDE the one critical section, and both
-  /// halves of the decision are in there together.
+  /// Controlled 2026-09-03 against both splits, each applied to the real source
+  /// and each red HERE and nowhere else in the suite: moving the in-flight
+  /// check-and-write into a lock-taking helper while both reads stay in the
+  /// original closure, and moving the WARMTH READ into one. The race test above
+  /// stayed green on both. Recipes in #2632.
   @Test("the claim decides and commits inside ONE critical section")
   func claimIsASingleCriticalSection() throws {
     let url = RepoRoot.sourceURL("Sources/EnviousWisprLLM/LLMNetworkSession.swift")
@@ -234,30 +239,52 @@ struct LLMWarmupGateTests {
       visitor.stateTouchesOutsideLock.isEmpty,
       """
       warm state touched OUTSIDE the critical section: \(visitor.stateTouchesOutsideLock).
-      Every read and write must be inside the single lock, or the decision and the       claim are separable and two callers can both warm.
+      Every read and write must be inside the single lock, or the decision and the \
+      claim are separable and two callers can both warm.
       """)
     #expect(
-      visitor.stateNamesInsideLock == ["inFlight", "lastSuccess"],
+      visitor.sectionsHoldingTheWholeDecision == 1,
       """
-      the critical section touches \(visitor.stateNamesInsideLock.sorted()); it must       contain BOTH the in-flight check and the last-success check, or half the       decision has moved out of the lock.
+      no single critical section performs the whole decision. Sections found: \
+      \(visitor.operationsPerSection.map { $0.sorted() }). \
+      One `withLock` closure must contain ALL of \
+      \(CriticalSectionVisitor.wholeDecision.sorted()) — the in-flight read, the \
+      warmth read and the in-flight write together. Splitting any one of them into \
+      a separately locking helper reopens the race with every name still present.
       """)
   }
 }
 
-/// Verifies that a named function touches its guarded state only inside a single
-/// `withLock` closure — the property, not the proxy.
+/// Verifies that a named function performs its whole guarded decision inside a
+/// single `withLock` closure.
+///
+/// The unit is the OPERATION (`inFlight.contains`, `lastSuccess[]`,
+/// `inFlight.insert`), never the bare property name. A name-based check passes
+/// against a version that reads both names inside the lock and writes one of
+/// them outside it, which is exactly the race being guarded.
 private final class CriticalSectionVisitor: SyntaxVisitor {
   private static let stateNames: Set<String> = ["inFlight", "lastSuccess"]
+
+  /// Every operation the decision is made of. A section holding all three has
+  /// decided and committed without releasing the lock.
+  static let wholeDecision: Set<String> = [
+    "inFlight.contains", "inFlight.insert", "lastSuccess[]",
+  ]
 
   private let functionName: String
   private(set) var functionFound = false
   private(set) var lockCallCount = 0
   private(set) var stateTouchesOutsideLock: [String] = []
-  private(set) var stateNamesInsideLock: Set<String> = []
+  private(set) var operationsPerSection: [Set<String>] = []
+
+  var sectionsHoldingTheWholeDecision: Int {
+    operationsPerSection.filter { Self.wholeDecision.isSubset(of: $0) }.count
+  }
 
   private var functionRange: Range<AbsolutePosition>?
   private var lockRanges: [Range<AbsolutePosition>] = []
   private var tokensSeen: [(String, AbsolutePosition)] = []
+  private var operationsSeen: [(String, AbsolutePosition)] = []
 
   init(functionName: String, viewMode: SyntaxTreeViewMode) {
     self.functionName = functionName
@@ -275,11 +302,24 @@ private final class CriticalSectionVisitor: SyntaxVisitor {
     guard let fnRange = functionRange, fnRange.contains(node.position) else {
       return .visitChildren
     }
-    if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-      member.declName.baseName.text == "withLock"
-    {
-      lockCallCount += 1
-      lockRanges.append(node.position..<node.endPosition)
+    if let member = node.calledExpression.as(MemberAccessExprSyntax.self) {
+      let method = member.declName.baseName.text
+      if method == "withLock" {
+        lockCallCount += 1
+        lockRanges.append(node.position..<node.endPosition)
+      } else if let owner = Self.stateName(of: member.base) {
+        operationsSeen.append(("\(owner).\(method)", node.position))
+      }
+    }
+    return .visitChildren
+  }
+
+  override func visit(_ node: SubscriptCallExprSyntax) -> SyntaxVisitorContinueKind {
+    guard let fnRange = functionRange, fnRange.contains(node.position) else {
+      return .visitChildren
+    }
+    if let owner = Self.stateName(of: node.calledExpression) {
+      operationsSeen.append(("\(owner)[]", node.position))
     }
     return .visitChildren
   }
@@ -294,11 +334,29 @@ private final class CriticalSectionVisitor: SyntaxVisitor {
   override func visitPost(_ node: SourceFileSyntax) {
     guard let fnRange = functionRange else { return }
     for (name, pos) in tokensSeen where fnRange.contains(pos) {
-      if lockRanges.contains(where: { $0.contains(pos) }) {
-        stateNamesInsideLock.insert(name)
-      } else {
+      if !lockRanges.contains(where: { $0.contains(pos) }) {
         stateTouchesOutsideLock.append(name)
       }
     }
+    operationsPerSection = lockRanges.map { range in
+      Set(operationsSeen.filter { range.contains($0.1) }.map(\.0))
+    }
+  }
+
+  /// The guarded property an expression is rooted at, if any — `state.inFlight`
+  /// and a bare `inFlight` both answer `inFlight`.
+  private static func stateName(of expr: ExprSyntax?) -> String? {
+    guard let expr else { return nil }
+    if let member = expr.as(MemberAccessExprSyntax.self),
+      stateNames.contains(member.declName.baseName.text)
+    {
+      return member.declName.baseName.text
+    }
+    if let ref = expr.as(DeclReferenceExprSyntax.self),
+      stateNames.contains(ref.baseName.text)
+    {
+      return ref.baseName.text
+    }
+    return nil
   }
 }

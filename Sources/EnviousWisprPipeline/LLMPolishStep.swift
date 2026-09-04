@@ -199,8 +199,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     case .appleIntelligence: return .seconds(10)
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
-    // two Haiku calls over 4.6s. The shared 5 s backstop below would
-    // truncate that real tail. The picker offers every live-discovered
+    // two Haiku calls over 4.6s. The shared backstop below was 5 s when this
+    // receipt was written and would have truncated that real tail; #2093 raised
+    // the openAI/gemini arm to this same 15 s, so the contrast is now with the
+    // 10 s that the paragraph below rejects, not with 5 s. The picker offers every live-discovered
     // model, including several Opus tiers the bucketed receipt never
     // measured — the separate all-models sweep recorded a real successful
     // claude-opus-4-5-20251101 call at 9.16s (Codex r10), which would leave
@@ -233,8 +235,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
   }
 
-  /// Gemini's budget scales with the transcript; every other provider keeps its
-  /// fixed one (#1770).
+  /// Gemini (#1770) and OpenAI (#2093) scale their budget with the transcript;
+  /// every other provider keeps a fixed one.
   ///
   /// A fixed 5 s was timing out long dictations. Measured live against
   /// real dictations, Gemini in fast mode: 1,709 chars -> 1.33 s, 4,605 -> 2.69 s,
@@ -264,9 +266,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// is evidence, not dead code: deep mode spent a measured 42.2-42.4 s
   /// thinking BEFORE the first byte, a fixed cost rather than a per-character
   /// one. No caller can request that shape any more — the capability table now
-  /// holds one value per model, each of them the toggle's OFF value — so 5 s is
-  /// what every Gemini request has always been budgeted at in the shipped
-  /// default configuration.
+  /// holds one value per model, each of them the toggle's OFF value — so there
+  /// is ONE base for every Gemini request in the shipped default configuration.
+  /// That base was 5 s when #1831 wrote this and is 15 s since #2093; the point
+  /// the paragraph makes is that there is only one of it, not what it equals.
   ///
   /// Capped at 180 s to match `URLSession`'s `timeoutIntervalForResource`
   /// (`LLMNetworkSession`): beyond that the transport terminates the attempt
