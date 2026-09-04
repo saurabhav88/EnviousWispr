@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 
 /// The only code permitted to start, stop or swap the bundled polish server
 /// (#2649, contract delta C6).
@@ -37,6 +38,18 @@ public actor LocalPolishServerCoordinator {
   private var observers: [LLMProvider: @Sendable (EGOneServerManager.ServerState) -> Void] = [:]
   private var managerObserverInstalled = false
 
+  /// A non-isolated mirror of `resident`, read from inside the manager's own
+  /// callback so an event carries the identity it was emitted UNDER. The
+  /// actor-isolated field cannot be read there without a hop, and the hop is
+  /// exactly the window this closes.
+  private let observedResident = OSAllocatedUnfairLock<LLMProvider?>(initialState: nil)
+
+  /// One writer for both, so the mirror cannot drift from the field it mirrors.
+  private func setResident(_ provider: LLMProvider?) {
+    resident = provider
+    observedResident.withLock { $0 = provider }
+  }
+
   public init() {}
 
   /// Start `provider`'s server, stopping a DIFFERENT model's first.
@@ -53,9 +66,9 @@ public actor LocalPolishServerCoordinator {
       // than claiming a model that is not running.
       await manager.stop()
       observers[resident]?(.stopped)
-      self.resident = nil
+      setResident(nil)
     }
-    resident = provider
+    setResident(provider)
     await manager.start(configuration: configuration)
   }
 
@@ -67,7 +80,7 @@ public actor LocalPolishServerCoordinator {
     guard resident == provider else { return }
     await manager.stop()
     observers[provider]?(.stopped)
-    resident = nil
+    setResident(nil)
   }
 
   /// Health for `provider`. Returns red when a DIFFERENT model is resident,
@@ -121,13 +134,23 @@ public actor LocalPolishServerCoordinator {
   private func installManagerObserverIfNeeded() async {
     guard !managerObserverInstalled else { return }
     managerObserverInstalled = true
-    await manager.setStateObserver { [weak self] state in
-      Task { await self?.publish(state) }
+    await manager.setStateObserver { [weak self, observedResident] state in
+      // Identity is captured AT EMISSION, not read when the task runs. Reading
+      // it later is a real race and it delivers to the wrong model: during an
+      // eviction the manager emits `.stopped` for the OUTGOING model, and
+      // residency can flip to the incoming one before the queued task executes.
+      // The outgoing model's stop would then arrive at the model that just
+      // started, telling a live server it is stopped.
+      let provider = observedResident.withLock { $0 }
+      Task { await self?.publish(state, for: provider) }
     }
   }
 
-  private func publish(_ state: EGOneServerManager.ServerState) {
-    guard let resident, let observer = observers[resident] else { return }
+  private func publish(_ state: EGOneServerManager.ServerState, for provider: LLMProvider?) {
+    // Both halves matter: the event must belong to a model, and that model must
+    // STILL be resident when it lands. A stale event for a model that has since
+    // been evicted is not news it can act on.
+    guard let provider, resident == provider, let observer = observers[provider] else { return }
     observer(state)
   }
 

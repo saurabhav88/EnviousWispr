@@ -172,11 +172,26 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     provider: LLMProvider = .egOne
   ) {
     self.provider = provider
-    let keyPrefix = provider == .egOne ? "eg1." : "s1."
     // Derived from the provider rather than taken as a parameter: the two must
     // agree, and a caller free to pair `.s1Mini` with EG-1's probe would
     // recreate the defect this replaced.
-    self.probeSpec = provider == .egOne ? .egOne : .s1Mini
+    //
+    // EXHAUSTIVE rather than a ternary, deliberately. `provider == .egOne ? ... :
+    // ...` gave every OTHER provider S1-mini's identity silently, which is the
+    // same fail-open default this file exists to remove — a third bundled model
+    // would have been health-checked as S1-mini with nothing failing. The switch
+    // makes a new case a compile error here.
+    let keyPrefix: String
+    switch provider {
+    case .egOne:
+      keyPrefix = "eg1."
+      self.probeSpec = .egOne
+    case .s1Mini:
+      keyPrefix = "s1."
+      self.probeSpec = .s1Mini
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+      preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
+    }
     self.defaultsKeyPrefix = keyPrefix
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
