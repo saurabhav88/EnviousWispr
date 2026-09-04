@@ -434,6 +434,65 @@ import os
     #expect(recorder.copies == ["hello"], "clipboardOnly must mean it actually copied")
   }
 
+  /// #2639. A multi-line snippet is DELIVERED, not diverted to the clipboard.
+  ///
+  /// The removed #628 guard sent any snippet-bearing payload containing a newline straight to
+  /// `copyToClipboard` without calling the cascade at all, so nothing appeared at the caret and
+  /// the user had to press Cmd+V by hand. Founder decision 2026-09-03: a user who saved a
+  /// multi-line snippet asked for a multi-line snippet.
+  ///
+  /// The fixture is deliberately the exact state the old branch keyed on — auto-paste ON and
+  /// `snippetExpansionFired` TRUE — because a fixture missing either one passes whether or not
+  /// the branch is still there, and would pin nothing.
+  ///
+  /// Both assertions are required for the same reason. "Outcome is `.pasted`" alone does not
+  /// prove the newline survived, and "the clipboard is untouched" alone does not prove the
+  /// cascade ever ran. The pair is what the promise actually is.
+  @Test("#2639 a multi-line snippet reaches the paste cascade with its line breaks intact")
+  func multiLineSnippetIsDeliveredNotDivertedToTheClipboard() async {
+    let recorder = ClipboardRecorder()
+    let requests = PasteRequestRecorder()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    context.snippetExpansionFired = true
+
+    let signature = "Thanks,\nSaurabh\nEnvious Labs"
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        requests.record(request.legacyText)
+        return Self.deliveredResult
+      },
+      copyToClipboard: { recorder.record($0) })
+
+    let outcome = await wiring.deliver(signature, .ordinary)
+
+    #expect(outcome == .pasted)
+    #expect(requests.legacyTexts.count == 1, "the cascade is called exactly once")
+
+    // Asserted EXACTLY, trailing space included, and the earlier draft of this test trimmed
+    // it away — which is the whole reason to pin it. `CursorInsertionRepair.legacyPayload` is
+    // `text.hasSuffix(" ") ? text : text + " "`, so every delivered payload gains a space it
+    // did not have. That is shared behaviour, not snippet behaviour: single-line snippets
+    // have always carried it. What CHANGED here is that a multi-line snippet used to bypass
+    // the cascade and reach the clipboard byte-exact, and now takes the same path as
+    // everything else, so it gains the space too. A snippet ending in a newline therefore
+    // ends "\n ", a line holding one space — visible in a code block. #2643 owns whether
+    // snippets should be exempt from the trailing space; that is a product question about
+    // ALL snippets, not something to special-case here.
+    //
+    // Pinned rather than trimmed so the day somebody changes this, they change it on purpose
+    // and see this test. A trim would have let the delivered bytes drift silently, which is
+    // exactly what it did before Codex named it.
+    #expect(
+      requests.legacyTexts == [signature + " "],
+      "the cascade receives the snippet's line breaks intact, plus the shared trailing space")
+
+    #expect(
+      recorder.copies.isEmpty,
+      "nothing may be diverted to the clipboard behind the cascade's back")
+  }
+
   @Test("#1921 A clipboard-only delivery cannot inherit the previous session's language fields")
   func clipboardOnlyDeliveryClearsStaleLanguageFields() async {
     // `outcome` is SHARED and reused across sessions, and everything describing
@@ -1811,6 +1870,15 @@ import os
   private final class ClipboardRecorder {
     private(set) var copies: [String] = []
     func record(_ text: String) { copies.append(text) }
+  }
+
+  /// #2639. What the cascade was actually handed. Records the legacy payload rather than a
+  /// call count, because the question is whether the NEWLINE survived the trip, and a count
+  /// cannot answer that. Takes the String rather than the request: `legacyText` is main-actor
+  /// isolated, so it is read at the call site inside the closure and handed over as a value.
+  private final class PasteRequestRecorder {
+    private(set) var legacyTexts: [String] = []
+    func record(_ legacyText: String) { legacyTexts.append(legacyText) }
   }
 
   // MARK: Fallback metrics gate (#1624, widened #158)

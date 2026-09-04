@@ -12,14 +12,16 @@ import Foundation
 /// example, so the catalog is held to the same rules the edit sheet enforces and is checked
 /// against them by its own test rather than by inspection.
 ///
-/// Two constraints the catalog must keep, both mechanically tested:
+/// One constraint the catalog must keep, mechanically tested:
 ///
 /// - **No two starters collide.** `SnippetsManager.validate` refuses a duplicate trigger, so a
 ///   colliding pair would make the seeded file un-editable: every later save re-validates the
 ///   whole list and would fail on a clash the user never created.
-/// - **Every expansion is one line.** A snippet carrying a newline is delivered to the
-///   clipboard rather than typed in place, because in a terminal a newline submits the command.
-///   That is correct behaviour and a poor first impression, so no starter has one.
+///
+/// A second constraint used to sit here — every expansion is one line — and it is gone (#2639).
+/// It existed only because a multi-line expansion was diverted to the clipboard instead of being
+/// inserted. Multi-line expansions now deliver like any other text, so a multi-line starter is
+/// allowed.
 public enum SnippetStarters {
 
   /// The canonical text of one starter, and the reason this is a separate type from `Snippet`:

@@ -254,18 +254,6 @@ struct SnippetStartersCatalogTests {
     #expect(Set(ids).count == ids.count)
   }
 
-  @Test("No starter expansion contains a newline")
-  func everyExpansionIsOneLine() {
-    // A snippet carrying a newline is delivered to the clipboard rather than typed in place.
-    // Correct, and a poor first impression: the example would look like it did nothing.
-    for snippet in SnippetStarters.all {
-      // Computed outside `#expect`: `contains(where:)` is `rethrows`, and the macro expansion
-      // does not carry the `try` the compiler then asks for.
-      let carriesNewline = snippet.expansion.contains(where: \.isNewline)
-      #expect(!carriesNewline, "\(snippet.trigger) would be delivered to the clipboard")
-    }
-  }
-
   @Test("Every trigger survives normalisation as the words it is written as")
   func triggersNormaliseToThemselves() {
     // Written lowercase and unpunctuated on purpose. A trigger that normalised to something
