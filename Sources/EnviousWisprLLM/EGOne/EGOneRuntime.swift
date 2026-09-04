@@ -462,6 +462,22 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     let intent = server.claimIntent()
     Task {
       await self.server.transition(to: nil, intent: intent)
+      // The stop can be superseded, and the two halves of this task do NOT
+      // deserve the same guard. A superseded stop is harmless — the server is
+      // running because somebody newer asked for it. A superseded DELETE
+      // removes bytes, and if the newer intent was a switch to this very
+      // engine it removes the model the user just picked.
+      //
+      // Intent is the wrong authority for that question, which is why this is
+      // not the stamp check the stop uses: a newer intent about the OTHER
+      // engine must not abandon this removal, or the model stays on disk with
+      // nothing saying so. Selection is the question that decides whether
+      // deleting is right, so selection is what is asked.
+      //
+      // Unset reads as "not selected" and the deletion proceeds: the user
+      // asked for this explicitly, and refusing on a missing closure would
+      // make removal unreachable rather than safe.
+      guard self.isActiveProvider?() != true else { return }
       _ = await delivery.remove()
     }
   }
