@@ -81,11 +81,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// pre-wiring) means every `.egOne` polish silently skips.
   public var egOneRuntime: (any EGOneEndpointProviding)?
 
+  /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both
+  /// resolve an endpoint from the same coordinator, and that coordinator returns
+  /// nil for a model that is not the resident one. Sharing one handle would
+  /// throw that answer away and let a polish be served by other weights.
+  public var s1MiniRuntime: (any EGOneEndpointProviding)?
+
   /// Test seam for `.egOne` (mirrors `makePolisher` for the other
   /// providers): production builds the localhost connector from the live
   /// endpoint; tests substitute a spy without a real server.
   var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
     EGOneConnector(endpoint: $0)
+  }
+
+  /// #2649 test seam, mirroring `makeEGOnePolisher`. A separate factory rather
+  /// than one that switches on provider: the two connectors differ in what an
+  /// empty answer MEANS, and a single factory would put that decision in the
+  /// pipeline instead of in the connector that owns it.
+  var makeS1MiniPolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
+    S1MiniConnector(endpoint: $0)
   }
 
   /// #1305 test seam (mirrors `makeEGOnePolisher`): the Ollama readiness
@@ -643,11 +657,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // bypass (`egOneSkipped`), never the surfaced `providerUnavailable` —
     // a local limb that is not ready must degrade to raw text quietly.
     let polisher: any TranscriptPolisher
-    if provider == .egOne {
-      guard let runtime = egOneRuntime else {
+    // #2649: both bundled-server engines take this path, and they take it for
+    // the same reason — the endpoint is live state, not a keychain lookup. What
+    // differs is only WHICH runtime answers and WHICH connector reads the reply.
+    let localServerHandles: (runtime: (any EGOneEndpointProviding)?,
+      make: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher))? =
+      switch provider {
+      case .egOne: (egOneRuntime, makeEGOnePolisher)
+      case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
+      default: nil
+      }
+    if let handles = localServerHandles {
+      guard let runtime = handles.runtime else {
         throw LLMError.egOneSkipped(.notReady)
       }
       guard let endpoint = await runtime.activeEndpoint() else {
+        // Also the answer when ANOTHER model holds the server: the coordinator
+        // refuses an endpoint to a non-resident model, so this is the branch
+        // that stops a polish being served by different weights. Silent bypass,
+        // so the user keeps their deterministic text.
         throw LLMError.egOneSkipped(.notReady)
       }
       // Context preflight: polish whole or skip whole, never a silent
@@ -662,7 +690,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       if context.text.count + outputBudget + 256 > endpoint.contextTokens {
         throw LLMError.egOneSkipped(.inputTooLong)
       }
-      polisher = makeEGOnePolisher(endpoint)
+      polisher = handles.make(endpoint)
     } else if let made = makePolisher(
       provider, keychainManager, outputClassifierHolder?.classifier)
     {
