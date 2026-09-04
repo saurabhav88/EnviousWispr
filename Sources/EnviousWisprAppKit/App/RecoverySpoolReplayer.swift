@@ -101,6 +101,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #1271: EG-1 runtime handle — recovery polishes through the same server
   /// as live dictation (or silently skips when it is not ready).
   private let egOneRuntime: (any EGOneEndpointProviding)?
+  /// #2649: a recovered take is re-polished with the provider it was captured
+  /// under, so the second engine needs its own handle here too.
+  private let s1MiniRuntime: (any EGOneEndpointProviding)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
@@ -137,6 +140,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     keychainManager: KeychainManager,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
@@ -152,6 +156,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.keychainManager = keychainManager
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
+    self.s1MiniRuntime = s1MiniRuntime
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
   }
@@ -429,7 +434,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // guaranteed: a failed/skipped polish lands raw text, still saved + labeled).
     let processor = RecoveryTextProcessor(
       keychainManager: keychainManager, outputClassifierHolder: outputClassifierHolder,
-      egOneRuntime: egOneRuntime)
+      egOneRuntime: egOneRuntime,
+      s1MiniRuntime: s1MiniRuntime)
     if let settings = recovered.settings { processor.applySettings(settings) }
     let vocab = currentVocabulary()
     processor.applyCustomWordsVocabulary(corrector: vocab.corrector, polish: vocab.polish)

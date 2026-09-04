@@ -92,6 +92,12 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
     switch promptTemplateID {
     case "eg1-v1": return .egOneFixed
     case "eg1-v2": return .egOneEnvelope
+    // #2649. One row, and there will not be a second: EG-1 has two families
+    // because WE retrained it and had to keep serving 1.1 users their 1.1
+    // prompt. S1-mini's text is not ours to change, so a second family could
+    // only come from upstream publishing a different format, which would be a
+    // new artifact and a new manifest.
+    case "s1-control-line-v1": return .s1ControlLine
     default: return nil
     }
   }
@@ -101,9 +107,16 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
 
   /// Full activation validation. Returns the reasons the manifest cannot
   /// be activated by THIS app build; empty means activatable.
-  public func activationBlockers() -> [String] {
+  /// `expectedModelName` is REQUIRED and has no default (#2649). This guard
+  /// exists so Core and Services, which cannot read this manifest, can identify
+  /// a provider's model by a fixed literal and be sure the bytes agree. With a
+  /// second model served by the same machinery, a default would silently hold
+  /// every future manifest to EG-1's name — and the failure would present as
+  /// "S1-mini refuses to activate", which reads like a broken model rather than
+  /// a stale guard.
+  public func activationBlockers(expectedModelName: String) -> [String] {
     var blockers: [String] = []
-    if modelName != LLMProvider.egOneModelName {
+    if modelName != expectedModelName {
       blockers.append("model_name_mismatch")
     }
     if promptFamily == nil {

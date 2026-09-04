@@ -81,12 +81,16 @@ public final class EGOneDeliveryAdapter {
   /// reads the flag to choose the cache-only load path). Static so the
   /// legacy-upgrade coordinator reads the SAME key without duplicating it
   /// (#1386 PR-1).
-  static func isDeliveryEnabled(defaults: UserDefaults) -> Bool {
-    defaults.object(forKey: DeliveryFlags.key("enabled", family: .egOne)) as? Bool ?? true
+  /// #2649: `family` is REQUIRED. This decides WHICH delivery flag is read, so a
+  /// default would have made a second model silently obey EG-1's switch — and
+  /// the failure is invisible, because the flag it reads is a real flag with a
+  /// plausible value.
+  static func isDeliveryEnabled(defaults: UserDefaults, family: ModelFamily) -> Bool {
+    defaults.object(forKey: DeliveryFlags.key("enabled", family: family)) as? Bool ?? true
   }
 
   private func isEnabled() -> Bool {
-    Self.isDeliveryEnabled(defaults: defaults)
+    Self.isDeliveryEnabled(defaults: defaults, family: registration.manifest.identity.family)
   }
 
   /// Ensure EG-1's bytes are admitted, fetching/adopting as needed. When
@@ -307,7 +311,8 @@ public final class EGOneDeliveryAdapter {
     let identity = registration.manifest.identity
     Task {
       await controller.noteFlagActive(
-        identity: identity, flag: "eg1.enabled", value: "false")
+        identity: identity,
+        flag: DeliveryFlags.key("enabled", family: identity.family), value: "false")
     }
   }
 

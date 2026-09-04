@@ -63,7 +63,13 @@ package final class WisprBootstrapper {
   let bulkImportEnrichmentCoordinator: BulkImportEnrichmentCoordinator
   let setup: SetupCoordinator
   /// #1271 — EG-1 native runtime home (model store + inference server).
-  let egOneRuntime: EGOneRuntime
+  /// #2649: both local engines, named. See `LocalPolishRuntimeSet`.
+  ///
+  /// This REPLACED a separate `egOneRuntime` property rather than joining it.
+  /// The set already holds that runtime, so keeping both would have held one
+  /// twice and pushed this type past its stored-property ceiling — a guard that
+  /// exists to make growth deliberate, and this growth was avoidable.
+  let localPolishRuntimes: LocalPolishRuntimeSet
   /// #1348 Phase 2: owned model-delivery home (controller + Parakeet
   /// registration + telemetry bridge + observable UI mirror). The +1 stored
   /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
@@ -366,11 +372,52 @@ package final class WisprBootstrapper {
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
       }
     }
+    // #2649: S1-mini's install path, built beside EG-1's and sharing its
+    // SERVER COORDINATOR. Sharing that object is what makes one-model-at-a-time
+    // true: two independently constructed coordinators would each own a process,
+    // and 3.4 GB resident is the regression that would follow.
+    //
+    // Everything else is separate on purpose — its own manifest, its own install
+    // directory, its own delivery flag, its own persisted keys. A shared value
+    // there would let one model's state describe the other's.
+    //
+    // No upgrade coordinator: that machinery exists to retire the one shipped
+    // EG-1 monolith, and S1-mini has no predecessor to retire.
+    let s1Manifest = try? EGOneManifest.loadBundled(resourceName: "s1-manifest")
+    var s1Adapter: EGOneDeliveryAdapter?
+    if let s1DeliveryManifest = try? DeliveryManifest.loadBundled(
+      resource: "s1-delivery-manifest")
+    {
+      s1Adapter = EGOneDeliveryAdapter(
+        controller: modelDelivery.controller,
+        registration: DeliveryRegistration(
+          manifest: s1DeliveryManifest,
+          installDirectory: egOneAppSupport.appendingPathComponent(
+            "EnviousWispr/Models/s1-mini", isDirectory: true),
+          metadataDirectory: egOneAppSupport.appendingPathComponent(
+            "EnviousWispr/ModelDelivery", isDirectory: true)),
+        version: s1Manifest?.resolvedDisplayVersion)
+    }
+    let s1MiniRuntime = EGOneRuntime(
+      manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
+      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
+    s1MiniRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .s1Mini }
+    let localPolishRuntimes = LocalPolishRuntimeSet(
+      egOne: egOneRuntime, s1Mini: s1MiniRuntime)
+
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
     // would race it and kill the fresh server (Codex r10 P1).
-    if settings.llmProvider == .egOne {
+    // #2649: whichever local engine is selected starts; the other only sweeps.
+    // Starting both would put two models in the coordinator's start path at
+    // launch, and the second would evict the first the user actually chose.
+    switch settings.llmProvider {
+    case .egOne:
       egOneRuntime.startIfActiveProvider()
-    } else {
+      s1MiniRuntime.sweepStaleServersAtLaunch()
+    case .s1Mini:
+      s1MiniRuntime.startIfActiveProvider()
+      egOneRuntime.sweepStaleServersAtLaunch()
+    default:
       egOneRuntime.sweepStaleServersAtLaunch()
     }
 
@@ -402,6 +449,7 @@ package final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
+        s1MiniRuntime: s1MiniRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
@@ -455,6 +503,7 @@ package final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
+        s1MiniRuntime: s1MiniRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
       ))
@@ -521,6 +570,7 @@ package final class WisprBootstrapper {
       asrManager: asrManager,
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
+      s1MiniRuntime: s1MiniRuntime,
       ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     )
     settingsSync.applyInitialSettings(settings)
@@ -859,6 +909,7 @@ package final class WisprBootstrapper {
       keychainManager: keychainManager,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
+      s1MiniRuntime: s1MiniRuntime,
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
@@ -1217,7 +1268,7 @@ package final class WisprBootstrapper {
     self.bulkImportEnrichmentCoordinator = bulkImportEnrichmentCoordinator
     self.setup = setup
     self.whisperKitRetirement = whisperKitRetirement
-    self.egOneRuntime = egOneRuntime
+    self.localPolishRuntimes = localPolishRuntimes
     self.modelDelivery = modelDelivery
     self.audioDeviceList = audioDeviceList
     self.pillAppearance = pillAppearance
@@ -1369,7 +1420,7 @@ package final class WisprBootstrapper {
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.
-    egOneRuntime.terminateServerForAppQuit()
+    localPolishRuntimes.egOne.terminateServerForAppQuit()
     // #1019: tear down the network path monitor + wake observer.
     updateTriggerCoordinator.stop()
     // #1176: a Cocoa quit during onboarding is an abandon (best-effort — kill -9
@@ -1440,7 +1491,11 @@ private struct MainWindowRoot: View {
       .environment(b.snippetsCoordinator)
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
-      .environment(b.egOneRuntime)
+      .environment(b.localPolishRuntimes.egOne)
+      // #2649: both engines are `EGOneRuntime`, and `@Environment` keys by TYPE,
+      // so injecting the second directly would silently replace the first. The
+      // set names them instead.
+      .environment(b.localPolishRuntimes)
       .environment(b.audioDeviceList)
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)

@@ -52,7 +52,8 @@ public final class RecoveryTextProcessor {
 
   public init(
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
-    egOneRuntime: (any EGOneEndpointProviding)? = nil
+    egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    s1MiniRuntime: (any EGOneEndpointProviding)? = nil
   ) {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
@@ -62,6 +63,9 @@ public final class RecoveryTextProcessor {
     // #1271: recovery polishes through the SAME EG-1 server as live dictation
     // (or silently skips when it is not ready) — never crashes on a nil handle.
     llmPolish.egOneRuntime = egOneRuntime
+    // #2649: a recovered take is re-polished under the settings it was
+    // captured with, so the second engine needs its handle here too.
+    llmPolish.s1MiniRuntime = s1MiniRuntime
     // `emojiRestore` is the final limb (#761): always-on and data-driven, it
     // no-ops unless the recovered take polished under a RESTORING path (Apple
     // Intelligence, or local Ollama since #1948) and a glyph was dropped, so it

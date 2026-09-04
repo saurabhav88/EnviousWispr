@@ -100,3 +100,23 @@ public actor LocalPolishServerCoordinator {
   /// happened rather than proving the coordinator merely returned.
   var residentModelForTesting: LLMProvider? { resident }
 }
+
+/// The set of local polish engines the app constructed, so a view can reach the
+/// SECOND one (#2649).
+///
+/// SwiftUI keys `@Environment` by TYPE, and both engines are `EGOneRuntime`, so
+/// injecting two of them would have the second silently replace the first. This
+/// holder gives the settings screen an unambiguous way to ask for a specific
+/// engine rather than "the" engine — which is the same mistake the server
+/// coordinator exists to prevent, one layer up.
+@MainActor
+@Observable
+public final class LocalPolishRuntimeSet {
+  public let egOne: EGOneRuntime
+  public let s1Mini: EGOneRuntime
+
+  public init(egOne: EGOneRuntime, s1Mini: EGOneRuntime) {
+    self.egOne = egOne
+    self.s1Mini = s1Mini
+  }
+}

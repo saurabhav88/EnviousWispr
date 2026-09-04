@@ -308,7 +308,7 @@ struct PromptPlannerTests {
     #expect(manifest("eg1-v2").promptFamily == .egOneEnvelope)
     // An id this build does not know still refuses, rather than guessing a prompt.
     #expect(manifest("eg1-v99").promptFamily == nil)
-    #expect(manifest("eg1-v99").activationBlockers().contains("unknown_prompt_template"))
+    #expect(manifest("eg1-v99").activationBlockers(expectedModelName: LLMProvider.egOneModelName).contains("unknown_prompt_template"))
   }
 
   @Test("EG-1 builder neutralizes embedded wrapper tags (delimiter escape)")

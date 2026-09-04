@@ -326,6 +326,9 @@ struct AIPolishSettingsView: View {
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
   @Environment(EGOneRuntime.self) private var egOne
+  /// #2649: both engines are `EGOneRuntime`, so the set is how this view names
+  /// the second one rather than getting whichever was injected last.
+  @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
@@ -399,12 +402,8 @@ struct AIPolishSettingsView: View {
       for: settings.llmProvider,
       egOneInstall: egOne.installState,
       egOneHealth: egOne.health,
-      // #2649 chunk 2: literally true today — no S1-mini runtime exists yet, so
-      // nothing is installed and nothing is serving. Chunk 3 replaces both with
-      // the S1-mini coordinator's own values. These are passed explicitly rather
-      // than defaulted so the two lines are visible here and in every diff.
-      s1MiniInstall: .notInstalled,
-      s1MiniHealth: .red(reason: "no runtime yet"),
+      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
+      s1MiniHealth: localPolishRuntimes.s1Mini.health,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       cloudValidation: llmDiscovery.keyValidationState,
       cloudKeyPresent: cloudKeyPresent,

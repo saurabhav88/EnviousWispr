@@ -90,21 +90,21 @@ struct EGOneManifestTests {
   @Test func unknownTemplateRefusesActivation() {
     let manifest = Self.makeManifest(promptTemplateID: "eg2-v1")
     #expect(manifest.promptFamily == nil)
-    #expect(manifest.activationBlockers().contains("unknown_prompt_template"))
+    #expect(manifest.activationBlockers(expectedModelName: LLMProvider.egOneModelName).contains("unknown_prompt_template"))
   }
 
   @Test func modelNameMismatchRefusesActivation() {
     let manifest = Self.makeManifest(modelName: "eg-2")
-    #expect(manifest.activationBlockers().contains("model_name_mismatch"))
+    #expect(manifest.activationBlockers(expectedModelName: LLMProvider.egOneModelName).contains("model_name_mismatch"))
   }
 
   @Test func nonHTTPSRefusesActivation() {
     let manifest = Self.makeManifest(downloadURL: "http://models.enviouslabs.co/x.gguf")
-    #expect(manifest.activationBlockers().contains("non_https_url"))
+    #expect(manifest.activationBlockers(expectedModelName: LLMProvider.egOneModelName).contains("non_https_url"))
   }
 
   @Test func validManifestHasNoBlockers() {
-    #expect(Self.makeManifest().activationBlockers().isEmpty)
+    #expect(Self.makeManifest().activationBlockers(expectedModelName: LLMProvider.egOneModelName).isEmpty)
   }
 
   @Test func decodeIgnoresUnknownFutureFields() throws {
@@ -153,7 +153,7 @@ struct EGOneManifestTests {
     // verification (ManifestFetchTask/CacheAdmission, contract invariant 1).
     #expect(manifest.modelName == LLMProvider.egOneModelName)
     #expect(manifest.promptFamily != nil)
-    #expect(manifest.activationBlockers().isEmpty)
+    #expect(manifest.activationBlockers(expectedModelName: LLMProvider.egOneModelName).isEmpty)
 
     // #2109: the shipped manifest must carry a renderable display version.
     // Its ABSENCE is the malformed-build case the settings row silently

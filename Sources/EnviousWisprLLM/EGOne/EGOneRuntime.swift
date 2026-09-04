@@ -136,10 +136,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// the SET of local models, and a property of a set cannot be enforced by
   /// members that cannot see each other.
   private let server: LocalPolishServerCoordinator
+
+  /// #2649: the composition root reads this to hand the SAME coordinator to the
+  /// second model's runtime. Exposed read-only and named for what it is, rather
+  /// than letting the root construct two — two coordinators mean two processes,
+  /// which is the regression one-model-at-a-time exists to prevent.
+  public var serverCoordinator: LocalPolishServerCoordinator { server }
   /// Which model this runtime speaks for. The coordinator refuses to hand an
   /// endpoint or a health verdict to a model that is not the resident one, so
   /// this value is what stops a polish being answered by other weights.
   private let provider: LLMProvider
+  /// Namespace for this model's persisted values. EG-1's is `eg1.` exactly as
+  /// before, so nothing it already wrote moves.
+  private let defaultsKeyPrefix: String
   private let serverBinaryURL: URL?
 
   // MARK: - Init
@@ -160,6 +169,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     provider: LLMProvider = .egOne
   ) {
     self.provider = provider
+    let keyPrefix = provider == .egOne ? "eg1." : "s1."
+    self.defaultsKeyPrefix = keyPrefix
+    self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.delivery = delivery
@@ -169,11 +181,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // leaves an upgrade paused and quits emits a fresh ENTRY on every launch
     // with no matching exit — the eventual exit then has several candidate
     // starts and the duration this event exists to measure is uncomputable.
-    self.lastPausedProjection = (self.defaults.string(forKey: Self.pausedProjectionKey))
+    self.lastPausedProjection = (self.defaults.string(forKey: self.pausedProjectionKey))
       .flatMap(EGOnePausedInstallState.init(rawValue:))
     self.server = coordinator ?? LocalPolishServerCoordinator()
     if let manifest {
-      self.activationBlockers = manifest.activationBlockers()
+      self.activationBlockers = manifest.activationBlockers(
+        expectedModelName: LLMProvider.defaultModel(for: provider))
     } else {
       self.activationBlockers = ["manifest_missing"]
     }
@@ -329,14 +342,18 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   private var lastPausedProjection: EGOnePausedInstallState? {
     didSet {
       if let raw = lastPausedProjection?.rawValue {
-        defaults.set(raw, forKey: Self.pausedProjectionKey)
+        defaults.set(raw, forKey: self.pausedProjectionKey)
       } else {
-        defaults.removeObject(forKey: Self.pausedProjectionKey)
+        defaults.removeObject(forKey: self.pausedProjectionKey)
       }
     }
   }
 
-  private static let pausedProjectionKey = "eg1.pausedInstallProjection"
+  /// #2649: per-model, because two runtimes writing one key would each read the
+  /// other's paused upgrade and emit an entry with no matching exit — the exact
+  /// defect #2109 added this projection to fix. EG-1 keeps `eg1.` verbatim, so
+  /// no persisted value moves and there is no migration.
+  private let pausedProjectionKey: String
   private let defaults: UserDefaults
 
   private var serverState: EGOneServerManager.ServerState = .stopped

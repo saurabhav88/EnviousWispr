@@ -72,6 +72,7 @@ final class PipelineSettingsSync {
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
     egOneRuntime: EGOneRuntime? = nil,
+    s1MiniRuntime: EGOneRuntime? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?
   ) {
     self.kernelDriver = kernelDriver
@@ -80,6 +81,7 @@ final class PipelineSettingsSync {
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
     self.egOneRuntime = egOneRuntime
+    self.s1MiniRuntime = s1MiniRuntime
     self.ollamaRemotenessLookup = ollamaRemotenessLookup
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
@@ -95,6 +97,9 @@ final class PipelineSettingsSync {
   /// probe; switch away → server down (a multi-GB child never lingers past
   /// its selection, the #295 RAM lesson).
   private let egOneRuntime: EGOneRuntime?
+  /// #2649: the second local engine. Switching TO it must start it, and
+  /// switching AWAY must stop it, exactly as EG-1 does.
+  private let s1MiniRuntime: EGOneRuntime?
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
   /// at each `startRecording` and are not seeded here.
@@ -297,18 +302,39 @@ final class PipelineSettingsSync {
   /// stop on switch-away — but never underneath an in-flight session that
   /// froze `.egOne` at recording start.
   private func reconcileEGOneActivation(settings: SettingsManager) {
-    guard let egOneRuntime else { return }
-    if settings.llmProvider == .egOne {
+    // #2649: BOTH local engines are reconciled on every switch, and the order
+    // is load-bearing. The outgoing model is stopped FIRST, so the incoming one
+    // is never started while the other still holds the server — the coordinator
+    // would then have to evict it mid-start, and the user would wait through a
+    // stop the switch had already asked for.
+    reconcile(runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne, deselectFirst: true)
+    reconcile(
+      runtime: s1MiniRuntime, isSelected: settings.llmProvider == .s1Mini, deselectFirst: true)
+    reconcile(runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne)
+    reconcile(runtime: s1MiniRuntime, isSelected: settings.llmProvider == .s1Mini)
+  }
+
+  /// One pass over one engine. `deselectFirst` runs only the STOP half, so the
+  /// caller can stop every unselected engine before starting the selected one.
+  private func reconcile(
+    runtime: EGOneRuntime?, isSelected: Bool, deselectFirst: Bool = false
+  ) {
+    guard let runtime else { return }
+    if isSelected {
+      guard !deselectFirst else { return }
       egOneDeactivationPending = false
-      egOneRuntime.activateAndProbe()
+      runtime.activateAndProbe()
       return
     }
+    // The pinned-in-flight guard is about the RECORDING, not about which engine
+    // it froze: stopping any local server underneath a session that froze a
+    // local provider degrades that take's polish to raw.
     if isEGOnePinnedInFlight() {
       egOneDeactivationPending = true
       return
     }
     egOneDeactivationPending = false
-    egOneRuntime.deactivate()
+    runtime.deactivate()
   }
 
   /// Retry a deferred EG-1 shutdown AND a deferred model removal after an
