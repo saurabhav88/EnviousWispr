@@ -360,7 +360,7 @@ package final class WisprBootstrapper {
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
-    egOneRuntime.onEvent = EGOneTelemetryBridge.handler
+    egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
     if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
@@ -402,6 +402,10 @@ package final class WisprBootstrapper {
       manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
     s1MiniRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .s1Mini }
+    // #2649 (cloud review): the second engine reports through the same bridge,
+    // keyed by engine. Found on the "composition-root wiring" axis the class
+    // sweep did not cover: every `egOneRuntime.<property> =` needs its twin.
+    s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)
     let localPolishRuntimes = LocalPolishRuntimeSet(
       egOne: egOneRuntime, s1Mini: s1MiniRuntime)
 
