@@ -44,6 +44,22 @@ public actor LocalPolishServerCoordinator {
   /// exactly the window this closes.
   private let observedResident = OSAllocatedUnfairLock<LLMProvider?>(initialState: nil)
 
+  /// Monotonic token for a residency TRANSITION.
+  ///
+  /// **The class, named because two instances of it reached review one at a
+  /// time.** An actor does not hold isolation across an `await`, so every
+  /// `guard resident == provider` followed by an await is a check-then-act:
+  /// the value that was true when checked can be false when used. Five sites
+  /// had this shape — both mutating paths and all three reading ones — and
+  /// fixing them individually would have left the next one to be found by the
+  /// next reviewer.
+  ///
+  /// Mutating paths bump this and re-check it after every await, so a superseded
+  /// transition abandons rather than overwriting a newer one. Reading paths
+  /// re-check RESIDENCY after their await, because the answer is only useful if
+  /// it is still about the model that asked.
+  private var transitionGeneration = 0
+
   /// One writer for both, so the mirror cannot drift from the field it mirrors.
   private func setResident(_ provider: LLMProvider?) {
     resident = provider
@@ -60,14 +76,23 @@ public actor LocalPolishServerCoordinator {
   public func start(_ provider: LLMProvider, configuration: EGOneServerManager.Configuration)
     async
   {
+    transitionGeneration += 1
+    let generation = transitionGeneration
+
     if let resident, resident != provider {
       // A different model holds the process. Stop it BEFORE recording the new
       // resident, so a failure to start leaves the field honestly empty rather
       // than claiming a model that is not running.
       await manager.stop()
+      // Two rapid switches can both reach here having seen the same outgoing
+      // model. Without this the older continuation resumes afterwards and
+      // overwrites the newer resident, so the field names a model nobody
+      // selected.
+      guard generation == transitionGeneration else { return }
       observers[resident]?(.stopped)
       setResident(nil)
     }
+    guard generation == transitionGeneration else { return }
     setResident(provider)
     await manager.start(configuration: configuration)
   }
@@ -78,7 +103,12 @@ public actor LocalPolishServerCoordinator {
   /// would kill the server the user is now waiting on.
   public func stop(_ provider: LLMProvider) async {
     guard resident == provider else { return }
+    transitionGeneration += 1
+    let generation = transitionGeneration
     await manager.stop()
+    // A switch that started during the stop owns the field now; clearing it
+    // here would evict the model the user just selected.
+    guard generation == transitionGeneration else { return }
     observers[provider]?(.stopped)
     setResident(nil)
   }
@@ -90,14 +120,24 @@ public actor LocalPolishServerCoordinator {
     spec: EGOneServerManager.ProbeSpec) async -> EGOneHealth
   {
     guard resident == provider else { return .red(reason: "not_running") }
-    return await manager.probeHealth(promptFamily: promptFamily, spec: spec)
+    let result = await manager.probeHealth(promptFamily: promptFamily, spec: spec)
+    // A probe takes real time. If the user switched during it, this verdict
+    // describes a process the asking model no longer owns, and reporting it
+    // would put another model's health on this model's row.
+    guard resident == provider else { return .red(reason: "not_running") }
+    return result
   }
 
   /// The live endpoint for `provider`, or nil when another model holds the
   /// process. A polish request must never be answered by different weights.
   public func endpoint(for provider: LLMProvider) async -> EGOneEndpoint? {
     guard resident == provider else { return nil }
-    return await manager.activeEndpoint()
+    let endpoint = await manager.activeEndpoint()
+    // The most consequential of the five: handing back an endpoint the asking
+    // model no longer owns is the wrong-model polish this whole type exists to
+    // prevent, arriving through the door that was supposed to stop it.
+    guard resident == provider else { return nil }
+    return endpoint
   }
 
   public func reapOrphansIfIdle(binaryPath: String) async {
@@ -124,7 +164,11 @@ public actor LocalPolishServerCoordinator {
     // Seed with the caller's OWN truth rather than the manager's state: a model
     // that is not resident is stopped as far as it is concerned, whatever the
     // other one is doing.
-    observer(resident == provider ? await manager.currentState() : .stopped)
+    let seed: EGOneServerManager.ServerState =
+      resident == provider ? await manager.currentState() : .stopped
+    // Re-checked after the await for the same reason as the readers above: a
+    // switch during registration would seed this model with the other's state.
+    observer(resident == provider ? seed : .stopped)
     await installManagerObserverIfNeeded()
   }
 

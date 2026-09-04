@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprPipeline
 
 /// The context preflight in `LLMPolishStep` reserves a fixed byte allowance for
 /// everything that is NOT the transcript: the system prompt and the chat
@@ -15,10 +16,14 @@ import Testing
 /// with a 16,384-token window. S1-mini has 8,192 and no such slack.
 @Suite("Local polish prompt overhead stays inside its reserve (#2649)", .tags(.driftGuard))
 struct LocalPolishPromptOverheadTests {
-  /// The constant `LLMPolishStep` reserves. Restated here rather than imported
-  /// because the step is in another module; the row below is what keeps them
-  /// honest, and a mismatch shows up as a failure rather than as drift.
-  static let reservedBytes = 1536
+  /// The constant `LLMPolishStep` actually reserves, READ from it.
+  ///
+  /// An earlier version of this line restated `1536` with a comment claiming
+  /// the rows below kept the two honest. That claim was false: changing
+  /// production to 1,024 would have left every row green, which is the same
+  /// disconnected-constant defect that let the previous 256 survive beside
+  /// EG-1's 1,147-byte system prompt.
+  static let reservedBytes = LLMPolishStep.localPromptOverheadBytes
 
   static func input(provider: LLMProvider, modelID: String) -> PromptBuildInput {
     PromptBuildInput(

@@ -79,6 +79,18 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// `KernelDictationDriverFactory` / `RecoveryTextProcessor` — same
   /// threading as `keychainManager`. Nil (standalone callsites, tests, or
   /// pre-wiring) means every `.egOne` polish silently skips.
+  /// Bytes the context preflight reserves for everything that is NOT the
+  /// transcript: the system prompt and the chat framing around it.
+  ///
+  /// `package` so `LocalPolishPromptOverheadTests` binds THIS value rather than
+  /// restating it. A test that restates a constant passes when production
+  /// changes, which is how the previous 256 survived beside EG-1's 1,147-byte
+  /// system prompt with nothing failing.
+  /// `nonisolated` so a test can bind to it without a main-actor hop. It is a
+  /// constant, so isolation buys nothing and only makes the value harder to
+  /// check from where checking matters.
+  package nonisolated static let localPromptOverheadBytes = 1536
+
   public var egOneRuntime: (any EGOneEndpointProviding)?
 
   /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both
@@ -698,7 +710,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // 230 bytes and its window is 8,192, where the slack does not exist.
       let inputUpperBound = context.text.utf8.count
       let outputBudget = max(context.text.count, LLMConstants.ollamaMaxTokens)
-      if inputUpperBound + outputBudget + 1536 > endpoint.contextTokens {
+      if inputUpperBound + outputBudget + Self.localPromptOverheadBytes > endpoint.contextTokens {
         throw LLMError.egOneSkipped(.inputTooLong)
       }
       polisher = handles.make(endpoint)
