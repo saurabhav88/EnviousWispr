@@ -2552,6 +2552,21 @@ check_flag_parse("the self-test check refuses a docstring that only mentions the
                  '"""Run with --self-test."""\n', accepted=False)
 check_flag_parse("the self-test check refuses a module that never spells the flag",
                  'x = 1\n', accepted=False)
+check_flag_parse("the self-test check refuses a recognised check under `if False:`",
+                 'import sys\nif False:\n    if "--self-test" in sys.argv:\n        pass\n',
+                 accepted=False)
+check_flag_parse("the self-test check refuses a recognised check under `while 0:`",
+                 'import sys\nwhile 0:\n    if "--self-test" in sys.argv:\n        pass\n',
+                 accepted=False)
+check_flag_parse("the self-test check refuses a recognised check in the else of `if True:`",
+                 'import sys\nif True:\n    pass\nelse:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=False)
+check_flag_parse("the self-test check accepts a recognised check in the else of `if False:`",
+                 'import sys\nif False:\n    pass\nelse:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=True)
+check_flag_parse("the self-test check accepts a recognised check under a name it cannot evaluate",
+                 'import sys\nDEBUG = False\nif DEBUG:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=True)
 
 print()
 if failures:

@@ -369,6 +369,22 @@ def flag_aliases(tree, flag):
     }
 
 
+def reachable_nodes(tree):
+    """`ast.walk`, minus the branches Python can never enter: the body of `if False:`,
+    `if 0:` or `while False:`, and the else of `if True:`. A recognised check under one of
+    those proves nothing about the command the validator prints, and `ast.walk` visits it
+    anyway (#2672 review, round 2). Only a literal constant test is treated as static; a
+    name or expression is assumed live, since deciding otherwise would need evaluation."""
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, (ast.If, ast.While)) and isinstance(node.test, ast.Constant):
+            stack.extend(node.body if node.test.value else node.orelse)
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
 def parses_flag(node, flag, aliases=frozenset()):
     """Does this AST node PARSE the flag, rather than merely spell it?
 
@@ -377,8 +393,9 @@ def parses_flag(node, flag, aliases=frozenset()):
     `sys.argv[1:] == ["--self-test"]`, or the same through a module constant bound to
     it), or an argparse registration (`parser.add_argument("--self-test", ...)`). A
     constant anywhere else — an unused module constant, a help string, a print, a
-    docstring, an unreachable branch — is not evidence the module inspects its arguments
-    for it, and the old check accepted every one of those (#2672 review).
+    docstring — is not evidence the module inspects its arguments for it, and the old
+    check accepted every one of those (#2672 review). Unreachable branches are the
+    caller's job: `self_test_problems` feeds this only the nodes `reachable_nodes` yields.
     """
     if isinstance(node, ast.Compare):
         return any(_holds_flag(operand, flag, aliases)
@@ -409,7 +426,8 @@ def self_test_problems(battery, suite, root):
     except SyntaxError as error:
         return [f"self-test target {shown} is not valid Python: {error}"]
     aliases = flag_aliases(tree, battery.SELF_TEST_FLAG)
-    if not any(parses_flag(node, battery.SELF_TEST_FLAG, aliases) for node in ast.walk(tree)):
+    if not any(parses_flag(node, battery.SELF_TEST_FLAG, aliases)
+               for node in reachable_nodes(tree)):
         return [f"self-test target {shown} does not parse {battery.SELF_TEST_FLAG}; "
                 f"`{battery.self_test_command(suite)}` would prove nothing"]
     return []
