@@ -1134,11 +1134,12 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                     raise Refusal(
                         f"human row {i} suite {row['suite']!r} must be {SELF_TEST_TARGET}/<module>, "
                         f"one module name: it is {self_test_source('<module>')}.")
-                if row["must_fire"] or row["must_not_fire"]:
+                if row["must_fire"] or row["must_not_fire"] or "expect_fail" in row:
                     raise Refusal(
                         f"human row {i} names a {SELF_TEST_TARGET} self-test, which has no "
                         f"addressable test names: `{self_test_command(row['suite'])}` passes or "
-                        "fails as a whole, so must_fire and must_not_fire must be empty.")
+                        "fails as a whole, so must_fire and must_not_fire must be empty and "
+                        "expect_fail is not accepted.")
             row["_must_fire"] = row["must_fire"]
             row["_must_not_fire"] = row["must_not_fire"]
             row["_mode"] = "human"

@@ -182,6 +182,10 @@ check("a human row naming a RuntimeUAT self-test is deferred with its fixed comm
       [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
         "suite": "RuntimeUAT/wispr_eyes"}],
       expect_exit=0, expect_text="run: python3 Tests/RuntimeUAT/wispr_eyes.py --self-test")
+check("a human row naming a RuntimeUAT self-test with a legacy expect_fail is refused",
+      [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
+        "suite": "RuntimeUAT/wispr_eyes", "expect_fail": "the guard fires"}],
+      expect_exit=2, expect_text="expect_fail is not accepted")
 check("a mechanical row naming a RuntimeUAT self-test is refused before anything runs",
       [dict(VALID_ROW, suite="RuntimeUAT/wispr_eyes")],
       expect_exit=2, expect_text="only valid on a human row")
@@ -2292,6 +2296,9 @@ check_validator("the filing validator refuses a RuntimeUAT target that is not on
 check_validator("the filing validator refuses Swift test names on a RuntimeUAT self-test row",
                 dict(_self_test_row, must_fire=["the guard fires"]),
                 expected_rc=1, expected_text="no addressable test names")
+check_validator("the filing validator refuses a legacy expect_fail on a RuntimeUAT self-test row",
+                dict(_self_test_row, expect_fail="the guard fires"),
+                expected_rc=1, expected_text=("no addressable test names", "expect_fail"))
 check_validator("the filing validator refuses a RuntimeUAT target on a mechanical row",
                 dict(_validator_base, suite="RuntimeUAT/wispr_eyes", expect_fail=_guard_name),
                 expected_rc=1, expected_text="only valid on a human row")
@@ -2540,6 +2547,9 @@ check_flag_parse("the self-test check accepts an argparse registration of the fl
                  'parser.add_argument("--self-test", action="store_true")\n', accepted=True)
 check_flag_parse("the self-test check accepts a whole-argv comparison with a list holding the flag",
                  'import sys\nif sys.argv[1:] == ["--self-test"]:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check refuses a whole-argv comparison the fixed command cannot match",
+                 'import sys\nif sys.argv[1:] == ["--verbose", "--self-test"]:\n    pass\n',
+                 accepted=False)
 check_flag_parse("the self-test check accepts a comparison through a module constant bound to the flag",
                  'import sys\nFLAG = "--self-test"\nif FLAG in sys.argv:\n    pass\n', accepted=True)
 check_flag_parse("the self-test check refuses a module constant that only spells the flag",

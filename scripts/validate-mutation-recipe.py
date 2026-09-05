@@ -344,13 +344,16 @@ def missing_test_problem(name, known_names):
 
 def _holds_flag(node, flag, aliases):
     """Is `node` the flag itself, a module-level name assigned the flag, or a
-    list/tuple/set literal holding either?"""
+    one-element list/tuple/set literal holding either?"""
     if isinstance(node, ast.Constant):
         return node.value == flag
     if isinstance(node, ast.Name):
         return node.id in aliases
     if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-        return any(_holds_flag(item, flag, aliases) for item in node.elts)
+        # An aggregate stands for the WHOLE argv tail, and the fixed command supplies
+        # exactly one argument, so `["--verbose", "--self-test"]` is a branch that command
+        # can never enter (#2672 review, round 3). Only a one-element aggregate matches.
+        return len(node.elts) == 1 and _holds_flag(node.elts[0], flag, aliases)
     return False
 
 
