@@ -16,4 +16,14 @@ public enum InputChannelPreference {
     else { return 0 }
     return requested
   }
+
+  /// The ONE way a device's saved choice is looked up. A device whose UID could
+  /// not be read (nil, or the empty string `AudioDeviceEnumerator` substitutes)
+  /// has NO saved choice: an empty key would otherwise be shared by every such
+  /// device, and a choice made on one would be applied to another. Every reader
+  /// (cold prepare, warm reuse, the settings row) goes through here.
+  public static func requested(for deviceUID: String?, in preference: [String: Int]) -> Int? {
+    guard let deviceUID, !deviceUID.isEmpty else { return nil }
+    return preference[deviceUID]
+  }
 }

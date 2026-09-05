@@ -76,11 +76,15 @@ struct AudioSettingsView: View {
           // HAL applies, so a saved index the device no longer has shows as
           // Input 1 rather than as a socket that does not exist. Stored 0-based;
           // labelled from 1 like the sockets on the box.
-          if let device = socketDevice, device.inputChannelCount > 1 {
+          // A device whose UID could not be read has nothing to key a choice on,
+          // so the row stays hidden for it rather than saving under an empty key
+          // that every such device would share.
+          if let device = socketDevice, device.inputChannelCount > 1, !device.uid.isEmpty {
             let socketSelection = Binding<Int>(
               get: {
                 InputChannelPreference.effectiveChannel(
-                  requested: settingsManager.inputChannelByDeviceUID[device.uid],
+                  requested: InputChannelPreference.requested(
+                    for: device.uid, in: settingsManager.inputChannelByDeviceUID),
                   availableChannels: device.inputChannelCount)
               },
               set: { newValue in

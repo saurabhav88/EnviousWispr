@@ -43,6 +43,17 @@ struct InputChannelPreferenceTests {
     #expect(InputChannelPreference.effectiveChannel(requested: -1, availableChannels: 2) == 0)
   }
 
+  @Test("a device with no readable UID has NO saved choice, so two such devices never share one")
+  func unreadableUIDHasNoChoice() {
+    // `AudioDeviceEnumerator` substitutes "" for a UID it could not read; a map
+    // entry under "" (however it got there) must never reach a capture.
+    let preference = ["": 1, "real-uid": 1]
+    #expect(InputChannelPreference.requested(for: "", in: preference) == nil)
+    #expect(InputChannelPreference.requested(for: nil, in: preference) == nil)
+    #expect(InputChannelPreference.requested(for: "real-uid", in: preference) == 1)
+    #expect(InputChannelPreference.requested(for: "unknown-uid", in: preference) == nil)
+  }
+
   @Test("Auto flipping between a 1-input and a 2-input device applies each device's OWN value")
   func perDeviceValuesAreIndependent() {
     // The preference is keyed by device UID; the built-in microphone has no entry

@@ -592,7 +592,8 @@ final class HALDeviceInputSource: AudioInputSource {
   func boundInputChannelMatches(preference: [String: Int]) -> Bool {
     guard let bound = currentBoundInputDevice else { return false }
     let wanted = InputChannelPreference.effectiveChannel(
-      requested: preference[bound.deviceUID ?? ""], availableChannels: boundNativeChannelCount)
+      requested: InputChannelPreference.requested(for: bound.deviceUID, in: preference),
+      availableChannels: boundNativeChannelCount)
     return wanted == bound.inputChannel
   }
 
@@ -751,7 +752,8 @@ final class HALDeviceInputSource: AudioInputSource {
     // and says so in the route log.
     let deviceUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
     let nativeChannelCount = AudioDeviceEnumerator.inputChannelCount(for: deviceID)
-    let requestedChannel = inputChannelByDeviceUID[deviceUID ?? ""]
+    let requestedChannel = InputChannelPreference.requested(
+      for: deviceUID, in: inputChannelByDeviceUID)
     let channel = InputChannelPreference.effectiveChannel(
       requested: requestedChannel, availableChannels: nativeChannelCount)
     if let requestedChannel, requestedChannel != channel {

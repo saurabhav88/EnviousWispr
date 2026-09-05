@@ -138,6 +138,19 @@ import Testing
       #expect(source.boundInputChannelMatches(preference: [:]) == false)
     }
 
+    @Test("a bind whose UID could not be read ignores a choice saved under the empty key")
+    func emptyUIDIgnoresEmptyKey() {
+      let source = HALDeviceInputSource()
+      source.setBoundInputDeviceForTesting(
+        BoundInputDevice(
+          deviceID: 9, deviceUID: "", transportLabel: "usb",
+          resolutionSource: "system_default", inputChannel: 0),
+        nativeChannelCount: 2)
+      // No choice applies, so the channel-0 unit matches and is not rebuilt in
+      // pursuit of a choice that belongs to no device.
+      #expect(source.boundInputChannelMatches(preference: ["": 1]))
+    }
+
     @Test("no committed bind answers false, like the device predicate beside it")
     func noBindIsNotAMatch() {
       let source = HALDeviceInputSource()
