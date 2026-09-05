@@ -109,7 +109,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - ↩️ **Escape Recovery**: hit your cancel keybind by mistake and get the dictation back. On by default: a keybind cancel keeps the text for 24 hours instead of discarding it, and you can switch that off. The Cancel button in the recording pill still discards on the spot, so you keep one way to mean it. Only the text is kept, never the audio
 - ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
 - 🔒 **Polish that can stay private**: run it fully on-device with EG-1 (our own custom model), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI, Google Gemini, or Claude with your own API key
-- ✂️ **Snippets**: say a keyword and a short phrase, and the text you saved is pasted exactly as you typed it, never polished. An email address, a sign-off, a link you send every week
+- ✂️ **Snippets**: say a keyword and a short phrase, and the text you saved is pasted word for word, never polished. An email address, a sign-off, a link you send every week
 - 🌍 **Multilingual with automatic language detection**: speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
 - 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
