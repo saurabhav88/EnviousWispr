@@ -45,19 +45,27 @@ survives a trip through printed text.
 The plist path (`snapshot_plist` / `restore_plist`) never goes through text.
 It reads the whole domain with `defaults export <domain> -` (XML plist on
 stdout), parses it with `plistlib`, and keeps the Python VALUE -- `bytes`,
-`list`, `dict`, nested or not. Restore writes a plist holding ONLY the parked
-keys and hands it to `defaults import <domain> <file>`, then re-exports and
-compares the parsed values with `==`. So the check is structural: a string
-`"(\n a\n)"` is not equal to the list `["a"]`, and a mangled restore reads as
-dirty instead of clean.
+`list`, `dict`, nested or not. Restore re-exports the domain AS IT IS AT THAT
+MOMENT, overlays the parked keys on that copy, hands the whole thing to
+`defaults import <domain> <file>`, then re-exports and compares the parsed
+values with `==`. So the check is structural: a string `"(\n a\n)"` is not
+equal to the list `["a"]`, and a mangled restore reads as dirty instead of clean.
 
-**Assumption, stated because the man page does not:** `defaults import` MERGES
-the plist's keys into the domain and leaves every other key alone. That is the
-documented shape of `CFPreferencesSetMultiple`, which is what `import` wraps, and
-the control test asserts it directly with a bystander key rather than trusting
-this paragraph. Importing only the parked keys, rather than the whole exported
-domain, is deliberate: a live instance may write unrelated keys between the
-snapshot and the restore, and this module must not revert them.
+**Why the import carries the whole domain and not only the parked keys.** The
+man page does not say whether `defaults import` merges its keys into the domain
+or REPLACES the domain with them, and the first draft of this module assumed
+merge. Under replace semantics that draft would have deleted every unrelated
+preference in the developer's dev domain on each language-hover run, and
+`check_plist` would still have reported a clean restore because it looks only
+at the parked keys (cloud review on #2674). Overlaying the parked keys onto a
+fresh export is correct under EITHER semantics: merge makes the unchanged keys
+a no-op, replace puts them back as they were. The export is taken at restore
+time rather than reused from the snapshot for the reason the old draft gave
+for importing less: a live instance may write unrelated keys between the
+snapshot and the restore, and this module must not revert them. The control
+test asserts the bystander's survival with a key written AFTER the snapshot,
+so it proves the property the harness relies on rather than the one that
+happened to hold.
 
 Control test: `test_defaults_store.py`, which round-trips every type on a
 throwaway domain and asserts the type SURVIVES, not merely the printed text.
@@ -223,17 +231,22 @@ def restore_plist(domain, snap):
 
     Absent keys are DELETED, not written as an empty container -- an empty
     `Data` is a decodable JSON failure to the presenter, not the fresh-install
-    state it had. Present keys go back through ONE `defaults import` of a plist
-    holding only those keys (merge semantics; see the module docstring).
+    state it had. Present keys go back through ONE `defaults import` of the
+    domain as it stands right now with the parked keys overlaid, so every key
+    this module was not asked about keeps its current value whether `import`
+    merges or replaces (see the module docstring).
     """
     present = {k: v for k, v in snap.items() if v is not None}
     for key in snap:
         if key not in present:
             subprocess.run(["defaults", "delete", domain, key], capture_output=True)
     if present:
+        # Exported AFTER the deletes, so an absent key does not ride back in.
+        merged = export_domain(domain)
+        merged.update(present)
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "restore.plist")
             with open(path, "wb") as fh:
-                plistlib.dump(present, fh)
+                plistlib.dump(merged, fh)
             subprocess.run(["defaults", "import", domain, path], check=True)
     return check_plist(domain, snap)

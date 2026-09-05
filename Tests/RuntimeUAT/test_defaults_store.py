@@ -11,7 +11,8 @@ fixed-flag restore.
 
 The plist-path rows (#2579) assert STRUCTURE: a `data`, an array and a dictionary
 must come back as the same parsed value, an absent key must come back absent, a
-bystander key must survive the `defaults import`, and the restore of a value from
+bystander key written AFTER the snapshot must survive the `defaults import`
+whether it merges or replaces the domain, and the restore of a value from
 its PRINTED text -- what `phase5_language_hover.py` used to do -- must be reported
 as NOT clean rather than compared equal.
 
@@ -94,12 +95,15 @@ def main():
         subprocess.run(["defaults", "write", DOMAIN, "d", "-data", "5b226573225d"], check=True)
         subprocess.run(["defaults", "write", DOMAIN, "arr", "-array", "a", "b"], check=True)
         subprocess.run(["defaults", "write", DOMAIN, "dct", "-dict", "k1", "v1", "k2", "v2"], check=True)
-        # A bystander the restore must NOT touch: this is the merge assumption
-        # `defaults import` is trusted with, asserted rather than assumed.
-        subprocess.run(["defaults", "write", DOMAIN, "keep", "-int", "7"], check=True)
         want = {"d": b'["es"]', "arr": ["a", "b"], "dct": {"k1": "v1", "k2": "v2"}}
         snap = ds.snapshot_plist(DOMAIN, ["d", "arr", "dct"])
         ok("the snapshot holds parsed VALUES, not printed text", snap == want, repr(snap))
+        # A bystander the restore must NOT touch, written AFTER the snapshot the
+        # way a live instance writes between park and restore. It must survive
+        # whether `defaults import` merges or replaces the domain: the restore
+        # overlays the parked keys on a fresh export, and this is the row that
+        # would catch a return to importing only the parked keys (#2674 review).
+        subprocess.run(["defaults", "write", DOMAIN, "keep", "-int", "7"], check=True)
         for k in ("d", "arr", "dct"):  # the harness clears its rows, as language_hover does
             subprocess.run(["defaults", "delete", DOMAIN, k], capture_output=True)
         ok("precondition: the rows really are gone",
@@ -110,7 +114,7 @@ def main():
         ok("the ARRAY came back as an array", read_type("arr") == "array", read_type("arr"))
         ok("the DICTIONARY came back as a dictionary", read_type("dct") == "dictionary", read_type("dct"))
         ok("the values are structurally identical", ds.snapshot_plist(DOMAIN, ["d", "arr", "dct"]) == want)
-        ok("the bystander key survived the import (merge, not replace)",
+        ok("a bystander written after the snapshot survived the import",
            ds.read_plist(DOMAIN, "keep") == 7, repr(ds.read_plist(DOMAIN, "keep")))
         ok("the bystander is still an integer", read_type("keep") == "integer", read_type("keep"))
 
