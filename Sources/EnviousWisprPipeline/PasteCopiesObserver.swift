@@ -1,4 +1,5 @@
 import ApplicationServices
+import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
@@ -195,31 +196,26 @@ package enum PasteCopiesObserver {
 
     // A WEDGED DESTINATION MUST NOT TAKE THE GATE WITH IT.
     //
-    // Cloud review, PR #2660: timing the read cannot bound it. `AXUIElementCopyAttributeValue`
-    // is a synchronous call into a foreign process, and if that process never answers, control
-    // never reaches the elapsed-time check OR `gate.release()`. The single-slot gate would then
-    // stay claimed for the rest of the session and EVERY later delivery — into healthy
-    // applications — would report `probe_busy`. One wedged app would silently retire the whole
-    // instrument.
+    // Cloud review, PR #2660, twice. `AXUIElementCopyAttributeValue` is a synchronous call into
+    // a foreign process; if that process never answers, nothing downstream of it runs — not the
+    // elapsed-time check, and not `gate.release()`. The single-slot gate would stay claimed for
+    // the rest of the session and EVERY later delivery, into healthy applications, would report
+    // `probe_busy`. One wedged app would silently retire the whole instrument, and the dashboard
+    // would look like a busy user rather than a broken one.
     //
-    // So the read races a deadline. Losing the race releases the gate and retires that
-    // destination; the wedged read is abandoned to finish or not on its own thread. That leaks
-    // at most one thread per destination, and the destination is disabled immediately after, so
-    // it cannot leak a second. Bounding with `AXUIElementSetMessagingTimeout` is still refused:
-    // it mutates the ELEMENT handle the delivery path also holds.
-    // `nonisolated(unsafe)` for the element crossing into the task group, the same spelling
-    // `PasteService.logElementDiagnostics` uses to run its AX reads off the caller's thread.
+    // **A task group does not bound it either, which is the part that is not obvious.** The
+    // group's scope AWAITS a losing child on exit, and a synchronous C call cannot observe
+    // cancellation, so racing inside `withTaskGroup` still waits for the wedged read.
+    // `TaskTimeout.swift:50-55` documents exactly this and ships `withDeadline`, which abandons
+    // the loser instead. Using the house helper rather than a fourth attempt at hand-rolling it.
+    //
+    // Bounding with `AXUIElementSetMessagingTimeout` is still refused: it mutates the ELEMENT
+    // handle the delivery path also holds, and an instrument may not change what it measures.
     nonisolated(unsafe) let element = evidence.element
-    let after: Int? = await withTaskGroup(of: Int??.self) { group in
-      group.addTask { PasteService.characterCount(of: element) }
-      group.addTask {
-        try? await Task.sleep(for: .milliseconds(slowReadMilliseconds))
-        return Int??.some(nil)
-      }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first ?? nil
-    }
+    let after: Int? = await withDeadline(seconds: Double(slowReadMilliseconds) / 1000.0) {
+      PasteService.characterCount(of: element)
+    } ?? nil
+
     if after == nil {
       await gate.disable(bundleID: targetBundleID)
     }

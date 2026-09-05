@@ -888,14 +888,40 @@ def decide(scorecard: dict) -> dict:
     elif not eligible:
         winner, why = None, "no candidate variant survived the coverage veto"
     else:
-        fewest = min(verdicts[v]["duplicates"] for v in eligible)
-        tied = [v for v in eligible if verdicts[v]["duplicates"] == fewest]
-        if len(tied) > 1:
-            winner, why = None, (
-                f"tie on duplicates ({fewest}) between {tied} — latency is the tie-break "
-                "and this screening run does not measure it")
+        # AN ABSOLUTE DUPLICATE COUNT FAVOURS THE LEAST-MEASURED CANDIDATE.
+        #
+        # Cloud review, PR #2660: `duplicates` is a COUNT, so a variant with one valid trial
+        # and zero duplicates beat one with a hundred valid trials and a single duplicate.
+        # Any nonzero `valid_total` was eligible, so the rule could crown the arm nobody
+        # measured — and it would read as a clean sweep rather than as a thin one.
+        #
+        # Two changes, and the first is the one that matters. Coverage must be COMPARABLE:
+        # a candidate with fewer than 80% of the best-measured candidate's valid trials
+        # cannot win, because there is no honest way to rank a rate nobody sampled. Then
+        # rank on the RATE rather than the count.
+        best_measured = max(verdicts[v]["valid_trials"] for v in eligible)
+        floor = 0.8 * best_measured
+        comparable = [v for v in eligible if verdicts[v]["valid_trials"] >= floor]
+        undermeasured = sorted(set(eligible) - set(comparable))
+        if not comparable:
+            winner, why = None, "no eligible variant reached comparable coverage"
         else:
-            winner, why = tied[0], f"fewest duplicates ({fewest}) among eligible variants"
+            def rate(v: str) -> float:
+                d = verdicts[v]
+                return d["duplicates"] / d["valid_trials"]
+
+            lowest = min(rate(v) for v in comparable)
+            tied = [v for v in comparable if rate(v) == lowest]
+            note = (f"; excluded as under-measured against {best_measured} valid trials: "
+                    f"{undermeasured}") if undermeasured else ""
+            if len(tied) > 1:
+                winner, why = None, (
+                    f"tie on duplicate rate ({lowest:.3f}) between {tied} — latency is the "
+                    f"tie-break and this screening run does not measure it{note}")
+            else:
+                winner, why = tied[0], (
+                    f"lowest duplicate rate ({lowest:.3f}) among eligible variants with "
+                    f"comparable coverage{note}")
 
     return {"cells": {f"{v}/{t}": c for (v, t), c in cells.items()},
             "verdicts": verdicts, "winner": winner, "why": why,
@@ -1040,6 +1066,19 @@ def main() -> int:
     if args.reps is None:
         print("--reps is required for a run: a default here would be a parameter nobody "
               "states and everybody inherits.", file=sys.stderr)
+        return 2
+
+    # THE MARKER IS WHAT COUNTS COPIES, so it has to occur exactly once in the sentence.
+    #
+    # Cloud review, PR #2660: both are public CLI inputs and neither was checked. Change
+    # `--sentence` without `--marker` and a perfect single delivery scores as a DROP; put the
+    # marker in twice and one delivery scores as a DUPLICATE. Either way an expensive run
+    # produces a scorecard that looks like a result.
+    occurrences = args.sentence.lower().count(args.marker.lower())
+    if not args.marker.strip() or occurrences != 1:
+        print(f"REFUSING TO RUN: the marker {args.marker!r} occurs {occurrences} times in the "
+              f"sentence {args.sentence!r}. It must occur exactly once, because occurrence "
+              "counting is how this bench tells one copy from two.", file=sys.stderr)
         return 2
 
     if ax_oracle.screen_is_locked():
