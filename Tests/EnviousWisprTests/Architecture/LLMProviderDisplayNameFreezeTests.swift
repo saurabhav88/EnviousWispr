@@ -34,28 +34,33 @@ struct LLMProviderDisplayNameFreezeTests {
   private static let owner = "Sources/EnviousWisprCore/LLMResult.swift"
 
   /// Lines outside the owner that legitimately carry one of the strings, keyed
-  /// by repo-relative file, each with the literal it is allowed and the reason
-  /// it is NOT a restatement of the provider's display name. Adding an entry
-  /// is a deliberate act: state what else the string is doing there.
-  private static let permitted: [String: [(literal: String, reason: String)]] = [
+  /// by repo-relative file. Each exception is bound to the exact construct that
+  /// carries the literal — the argument label and the quoted name together, as
+  /// they appear on the line — with the reason it is NOT a restatement of the
+  /// provider's display name. Binding the whole construct rather than the bare
+  /// name is deliberate: `"EG-1"` is allowed in the dictionary file only as a
+  /// `canonical:` vocabulary spelling, so a NEW `"EG-1"` in the same file that
+  /// is anything else (a label, a description, an alert) still fails. Adding an
+  /// entry is a deliberate act: state what else the string is doing there.
+  private static let permitted: [String: [(construct: String, reason: String)]] = [
     // Built-in dictionary corrections. The string is a VOCABULARY entry — the
     // canonical spelling a recogniser's mishearing is corrected to, keyed by a
     // stable `id` and bound to its own alias list — in a table that also holds
     // brands with no provider at all ("EnviousWispr"). Tying it to the settings
     // enum would couple the spoken-word dictionary to the polish picker.
     "Sources/EnviousWisprPostProcessing/CustomWordsManager.swift": [
-      ("EG-1", "built-in dictionary canonical spelling, a vocabulary entry"),
-      ("OpenAI", "built-in dictionary canonical spelling, a vocabulary entry"),
-      ("Claude", "built-in dictionary canonical spelling, a vocabulary entry"),
+      ("canonical: \"EG-1\"", "built-in dictionary canonical spelling, a vocabulary entry"),
+      ("canonical: \"OpenAI\"", "built-in dictionary canonical spelling, a vocabulary entry"),
+      ("canonical: \"Claude\"", "built-in dictionary canonical spelling, a vocabulary entry"),
     ],
     // A log CATEGORY. It names the subsystem a diagnostic line belongs to, is an
     // observability key rather than anything a user reads, and matches the
     // display name by coincidence of both being the product's name.
     "Sources/EnviousWisprAppKit/App/PipelineSettingsSync.swift": [
-      ("Ollama", "diagnostic log category, an observability key")
+      ("category: \"Ollama\"", "diagnostic log category, an observability key")
     ],
     "Sources/EnviousWisprPipeline/LLMPolishStep.swift": [
-      ("Ollama", "diagnostic log category, an observability key")
+      ("category: \"Ollama\"", "diagnostic log category, an observability key")
     ],
   ]
 
@@ -80,7 +85,7 @@ struct LLMProviderDisplayNameFreezeTests {
       guard item.pathExtension == "swift" else { continue }
       let relative = item.path.replacingOccurrences(of: root.path + "/", with: "")
       guard relative != Self.owner else { continue }
-      let allowed = Set((Self.permitted[relative] ?? []).map { $0.literal })
+      let allowed = (Self.permitted[relative] ?? []).map { $0.construct }
       let source = try String(contentsOf: item, encoding: .utf8)
       for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
         .enumerated()
@@ -91,8 +96,13 @@ struct LLMProviderDisplayNameFreezeTests {
         // code that would show it, so those are skipped the way the other
         // source-scanning freezes in this directory skip them.
         if trimmed.hasPrefix("//") { continue }
-        for entry in names where !allowed.contains(entry.name) {
-          if text.contains(entry.quoted) {
+        for entry in names where text.contains(entry.quoted) {
+          // An exception covers THIS line only when the line carries the whole
+          // permitted construct, not merely the name it contains.
+          let excused = allowed.contains { construct in
+            construct.contains(entry.quoted) && text.contains(construct)
+          }
+          if !excused {
             offenders.append("\(relative):\(idx + 1): \(trimmed)")
           }
         }
@@ -105,8 +115,8 @@ struct LLMProviderDisplayNameFreezeTests {
       These lines restate a provider display name that `LLMProvider.displayName` \
       already owns. Read it from there (`LLMProvider.egOne.displayName`, or \
       `provider.displayName`) so a rename or a licence-bound spelling changes in \
-      one place, or add the file to `permitted` with the reason the string is \
-      something other than the provider's name:
+      one place, or add the exact construct on that line to `permitted` with the \
+      reason the string is something other than the provider's name:
       \(offenders.sorted().joined(separator: "\n"))
       """)
   }
@@ -129,11 +139,13 @@ struct LLMProviderDisplayNameFreezeTests {
   }
 
   /// Every permitted exception must still name a real file that still carries
-  /// the literal, so a rename or a cleanup turns into a failure here rather
-  /// than silently widening the allow-list to cover nothing.
-  @Test("every permitted exception still names a real file carrying its literal")
+  /// the exact construct, and the construct must quote a real display name, so
+  /// a rename or a cleanup turns into a failure here rather than silently
+  /// widening the allow-list to cover nothing — or narrowing it to a construct
+  /// the scan would never match.
+  @Test("every permitted exception still names a real file carrying its construct")
   func permittedEntriesAreLive() throws {
-    let known = Set(Self.quotedDisplayNames.map { $0.name })
+    let quoted = Self.quotedDisplayNames.map { $0.quoted }
     for (path, entries) in Self.permitted {
       let url = RepoRoot.sourceURL(path)
       #expect(
@@ -142,11 +154,14 @@ struct LLMProviderDisplayNameFreezeTests {
       let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
       for entry in entries {
         #expect(
-          known.contains(entry.literal),
-          "permitted literal \(entry.literal) is not a display name (\(entry.reason)): \(path)")
+          quoted.contains { entry.construct.contains($0) },
+          """
+          permitted construct \(entry.construct) quotes no display name \
+          (\(entry.reason)): \(path)
+          """)
         #expect(
-          text.contains("\"\(entry.literal)\""),
-          "permitted exception no longer carries \"\(entry.literal)\" (\(entry.reason)): \(path)")
+          text.contains(entry.construct),
+          "permitted exception no longer carries \(entry.construct) (\(entry.reason)): \(path)")
       }
     }
   }
