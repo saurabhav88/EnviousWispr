@@ -11,6 +11,7 @@ exact vacuity this harness exists to catch.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2214,6 +2215,63 @@ check_validator("the filing validator rejects a runtime-gated individual test",
                      suite="EnviousWisprTests/TerminalProcessScannerTests"),
                 expected_rc=1, expected_text="DOES NOT EXIST")
 
+# #2525: a @Suite nested inside another @Suite is addressed by its whole declaration chain,
+# `Outer/Inner`, which is the path the test filter accepts. The oracle used to key every
+# suite by its innermost type name alone, so the qualified path — the only one that runs —
+# was "NOT FOUND" and every one of its rows retired, while the bare inner name — a filter
+# that executes zero tests — was accepted. Three spellings in, one spelling out.
+_nested_suite = "EnviousWisprTests/OnboardingPracticeStepSuite/OnboardingWarmingGateTests"
+_nested_display = "the gate stays shut while the warm-up is still running"
+check_validator("the filing validator finds a @Suite nested inside another @Suite by its qualified path",
+                dict(_validator_base, suite=_nested_suite, expect_fail=_nested_display),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator resolves a nested test's fully qualified id",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="OnboardingPracticeStepSuite/OnboardingWarmingGateTests/"
+                                 "gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator resolves a nested test's bare function name",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator finds a sibling nested @Suite under the same parent",
+                dict(_validator_base,
+                     suite="EnviousWisprTests/OnboardingPracticeStepSuite/"
+                           "OnboardingWarmingGateTelemetryTests",
+                     expect_fail="a warmed gate completes the step once, with a duration"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator does not accept a nested @Suite by its bare inner name",
+                dict(_validator_base, suite="EnviousWisprTests/OnboardingWarmingGateTests",
+                     expect_fail=_nested_display),
+                expected_rc=1, expected_text="NOT FOUND in Tests")
+check_validator("the filing validator does not accept a nested test's inner-only id",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="OnboardingWarmingGateTests/gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+
+# #2525 part 2: the validator hands the runner ONE row at a time so that every row is
+# judged, which means the runner's own `row N` prefix is always `row 1`. Printed after the
+# validator's real `row 2:` label it read as an anchor index. The number must be the row's.
+check_validator("the filing validator labels a later row's refusal with that row's own number",
+                document={"rows": [
+                    dict(_validator_base, expect_fail=_guard_name),
+                    dict(_validator_base, expect_fail=_guard_name,
+                         anchor="this text is nowhere in the file"),
+                ]},
+                expected_rc=1, expected_text="row 2: UNRUNNABLE — row 2 anchor not found in")
+check_validator("the filing validator still labels the first row's refusal as row 1",
+                dict(_validator_base, expect_fail=_guard_name,
+                     anchor="this text is nowhere in the file"),
+                expected_rc=1, expected_text="row 1: UNRUNNABLE — row 1 anchor not found in")
+check_validator("the filing validator renumbers a later row's field refusal too",
+                document={"rows": [
+                    dict(_validator_base, expect_fail=_guard_name),
+                    {k: v for k, v in dict(_validator_base, expect_fail=_guard_name).items()
+                     if k != "anchor"},
+                ]},
+                expected_rc=1,
+                expected_text="row 2: UNRUNNABLE — row 2 is missing required field 'anchor'")
+
 _validator_spec = importlib.util.spec_from_file_location("mutation_validator", VALIDATOR)
 validator = importlib.util.module_from_spec(_validator_spec)
 _validator_spec.loader.exec_module(validator)
@@ -2240,6 +2298,117 @@ try:
 finally:
     Path.read_text = _real_read_text
 
+ran += 1
+
+# #2669 review: a nested @Suite's tests may be hosted by a QUALIFIED extension,
+# `extension Outer.Inner { @Test ... }`, and `swift test list` files them under
+# `Outer/Inner/...`. The declaration regex captured only `Outer`, so the oracle filed the
+# test one level up and the validator rejected a valid recipe for it. Two-way against a
+# copy of the real corpus plus one fixture file: the test is under the qualified path, and
+# NOT under the bare outer name it used to land on.
+_qualified_fixture = """
+import Testing
+
+enum QualifiedFixtureOuter {
+  @Suite("qualified fixture inner") struct QualifiedFixtureInner {}
+}
+
+extension QualifiedFixtureOuter.QualifiedFixtureInner {
+  @Test("an extension-hosted nested test") func hostedByExtension() {}
+}
+
+extension QualifiedFixtureOuter . `QualifiedFixtureInner` {
+  @Test("a spaced, backticked extension-hosted test") func hostedBySpacedExtension() {}
+}
+
+@Suite(.disabled("gated fixture")) enum GatedFixtureOuter {
+  @Suite struct GatedFixtureInner {}
+}
+
+extension GatedFixtureOuter.GatedFixtureInner {
+  @Test("an extension-hosted test under a gated declaration") func hostedUnderGate() {}
+}
+"""
+# The gated declaration and its extension in DIFFERENT files: the gate must reach across
+# the file boundary the way Swift's type system does (#2669 review, round 4).
+_cross_file_declaration = """
+import Testing
+
+@Suite(.disabled("cross-file gate")) enum CrossFileGatedOuter {
+  @Suite struct CrossFileGatedInner {}
+}
+"""
+_cross_file_extension = """
+import Testing
+
+extension CrossFileGatedOuter.CrossFileGatedInner {
+  @Test("an extension-hosted test gated from another file") func hostedAcrossFiles() {}
+}
+"""
+with tempfile.TemporaryDirectory() as _qtd:
+    _qroot = Path(_qtd)
+    shutil.copytree(BATTERY.parent.parent / "Tests", _qroot / "Tests")
+    (_qroot / "Tests" / "EnviousWisprTests" / "QualifiedExtensionFixture.swift").write_text(
+        _qualified_fixture)
+    (_qroot / "Tests" / "EnviousWisprTests" / "CrossFileGateDeclaration.swift").write_text(
+        _cross_file_declaration)
+    (_qroot / "Tests" / "EnviousWisprTests" / "CrossFileGateExtension.swift").write_text(
+        _cross_file_extension)
+    _qnames = validator.test_oracle(_qroot)
+_qcanonical = "QualifiedFixtureOuter/QualifiedFixtureInner/hostedByExtension()"
+_qunder = _qnames.get("EnviousWisprTests/QualifiedFixtureOuter/QualifiedFixtureInner", {})
+_qwrong = _qnames.get("EnviousWisprTests/QualifiedFixtureOuter", {})
+if _qunder.get("hostedByExtension()") != {_qcanonical} \
+        or _qunder.get("an extension-hosted nested test") != {_qcanonical}:
+    failures.append(
+        "the filing-time oracle files an extension-hosted nested test under its qualified "
+        f"path: got {_qunder!r}")
+else:
+    print("  ok  the filing-time oracle files an extension-hosted nested test under its "
+          "qualified path")
+ran += 1
+if "hostedByExtension()" in _qwrong:
+    failures.append(
+        "the filing-time oracle no longer files an extension-hosted nested test under the "
+        "bare outer name")
+else:
+    print("  ok  the filing-time oracle no longer files an extension-hosted nested test "
+          "under the bare outer name")
+ran += 1
+# Legal spellings with trivia around the dot and a backtick-escaped segment name the SAME
+# type; the key must not depend on which one the author typed (#2669 review, round 2).
+_qspaced = "QualifiedFixtureOuter/QualifiedFixtureInner/hostedBySpacedExtension()"
+if _qunder.get("hostedBySpacedExtension()") != {_qspaced} \
+        or "hostedBySpacedExtension()" in _qwrong \
+        or any("`" in key or " " in key for key in _qnames if "QualifiedFixture" in key):
+    failures.append(
+        "the filing-time oracle normalises a spaced, backticked qualified extension to the "
+        f"same key: got {sorted(k for k in _qnames if 'QualifiedFixture' in k)!r}")
+else:
+    print("  ok  the filing-time oracle normalises a spaced, backticked qualified extension "
+          "to the same key")
+ran += 1
+# A `.disabled` on the ORIGINAL declaration gates a test hosted in a qualified extension of
+# the nested type, exactly as Swift Testing skips it through the parent trait; the
+# extension's braces are not inside the gated declaration's, so this cannot come from the
+# brace chain alone (#2669 review, round 3).
+_qgated = sorted(key for key in _qnames if "GatedFixture" in key)
+if _qgated or any("hostedUnderGate()" in names for names in _qnames.values()):
+    failures.append(
+        "the filing-time oracle applies a declaration's gate to an extension-hosted test of "
+        f"the nested type: found {_qgated!r}")
+else:
+    print("  ok  the filing-time oracle applies a declaration's gate to an extension-hosted "
+          "test of the nested type")
+ran += 1
+_qcross = sorted(key for key in _qnames if "CrossFileGated" in key)
+if _qcross or any("hostedAcrossFiles()" in names for names in _qnames.values()):
+    failures.append(
+        "the filing-time oracle applies a declaration's gate to an extension in another "
+        f"file: found {_qcross!r}")
+else:
+    print("  ok  the filing-time oracle applies a declaration's gate to an extension in "
+          "another file")
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
