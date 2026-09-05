@@ -200,12 +200,28 @@ def test_oracle(root):
             "validate against a suspiciously small oracle")
 
     names_by_suite = {}
+    # Pass one: every declaration's brace range and gate, for EVERY file, before any test
+    # is extracted. Gates are keyed by target-qualified path (`Target/Outer/Inner`) so a
+    # `.disabled` on a declaration in one file reaches a qualified extension of that type
+    # in another file; a map rebuilt per file could not see across (#2669 review, round 4).
+    parsed = []
+    gate_by_path = {}
     for path, part in sources:
         target = path.relative_to(test_root).parts[0]
         code = mask_inactive_debug_branches(mask_noncode(part))
         ranges = []
+        # The name may be QUALIFIED: `extension Outer.Inner { @Test ... }` hosts tests for
+        # the nested suite, and `swift test list` files them under `Outer/Inner/...`.
+        # Capturing only the first segment filed them under `Outer`, so the validator
+        # rejected a valid recipe for every extension-hosted nested test (#2669 review).
+        # Swift also accepts trivia around the dot and backtick-escaped segments
+        # (`extension Outer . \`Inner\``), which the inventory freeze already treats as the
+        # same name; both are stripped so the spelling never decides the key. The dots
+        # become the path separator the chain below already uses.
         for declaration in re.finditer(
-            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+(\w+)", code
+            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+"
+            r"(`?\w+`?(?:\s*\.\s*`?\w+`?)*)",
+            code,
         ):
             opening = code.find("{", declaration.end())
             closing = matching_delimiter(code, opening, "{", "}") if opening >= 0 else None
@@ -216,9 +232,29 @@ def test_oracle(root):
                 if "{" in suite_attribute or "}" in suite_attribute:
                     suite_attribute = ""
                 ranges.append((
-                    opening, closing, declaration.group(1), has_runtime_gate(suite_attribute)
+                    opening, closing,
+                    re.sub(r"[\s`]", "", declaration.group(1)).replace(".", "/"),
+                    has_runtime_gate(suite_attribute)
                 ))
 
+        # Gates by QUALIFIED PATH, not only by brace range. A test hosted in a top-level
+        # `extension Outer.Inner` sits in no brace of `Outer`, so the chain of ranges
+        # around it never sees a `.disabled` on `Outer`'s own declaration — yet Swift
+        # Testing skips that test through the parent trait (#2669 review, round 3). Every
+        # declaration records the gate on its own path, and a test is gated when any
+        # prefix of its path is, whichever braces — and whichever file — it was written in.
+        for opening, closing, name, gated in ranges:
+            outer = sorted(
+                ((end - start, outer_name) for start, end, outer_name, _ in ranges
+                 if start < opening < end),
+                key=lambda entry: -entry[0],
+            )
+            qualified = "/".join([target] + [outer_name for _, outer_name in outer] + [name])
+            gate_by_path[qualified] = gate_by_path.get(qualified, False) or gated
+        parsed.append((target, part, code, ranges))
+
+    # Pass two: the tests, each judged against the whole target's gates.
+    for target, part, code, ranges in parsed:
         for attribute in re.finditer(r"@Test\b", code):
             function_match = re.search(r"\bfunc\s+(\w+)\s*\(", code[attribute.end():])
             if not function_match:
@@ -237,14 +273,32 @@ def test_oracle(root):
             suffix = function_suffix(code[opening + 1:closing])
             if suffix is None:
                 continue
-            containing = [
-                (end - start, name, gated) for start, end, name, gated in ranges
-                if start < attribute.start() < end
-            ]
+            # Every declaration wrapping this test, outermost first. Brace ranges nest, so
+            # the ranges containing one point form a chain, and the whole chain is the
+            # suite's name: a @Suite nested inside another @Suite is `Outer/Inner`, which
+            # is the path the test filter accepts. Keying by the innermost name alone put
+            # the qualified path — the only one that runs — at "NOT FOUND" and accepted the
+            # bare inner name, a filter that executes zero tests (#2525). A top-level suite
+            # is a chain of one, so its name is unchanged.
+            containing = sorted(
+                ((end - start, name, gated) for start, end, name, gated in ranges
+                 if start < attribute.start() < end),
+                key=lambda entry: -entry[0],
+            )
             if not containing:
                 continue
-            _, enclosing, suite_is_gated = min(containing)
-            if suite_is_gated:
+            # A `.enabled`/`.disabled` on any level of the chain gates every test beneath it,
+            # whether that level is a brace around the test or the original declaration of
+            # a type the hosting extension names.
+            if any(gated for _, _, gated in containing):
+                continue
+            enclosing = "/".join(name for _, name, _ in containing)
+            # Walk the PATH components, not the chain entries: a qualified extension is one
+            # chain entry whose name already holds a `/`, and the gate it must inherit sits
+            # on the shorter path (`Target/Outer`) that only a component walk reaches.
+            components = enclosing.split("/")
+            if any(gate_by_path.get("/".join([target] + components[:depth]), False)
+                   for depth in range(1, len(components) + 1)):
                 continue
             body = part[attribute.end():function_start]
             display_names = []
@@ -306,12 +360,17 @@ def validate(recipes, root, label):
             total += 1
             problems = []
             normalized = {}
+            # One row per call, so the runner's first refusal cannot hide the rows behind
+            # it. The cost is that the runner numbers every row as `row 1`; printed after
+            # this loop's own `row N:` label that read as an anchor index (#2525). Only the
+            # leading prefix is renumbered — a `row 1` inside a quoted path is left alone.
             single_row = {"suite_default": default_suite, "rows": [row]}
             try:
                 normalized = battery.load_recipes(
                     None, root, raw=json.dumps(single_row))[0]
             except battery.Refusal as error:
-                problems.append(str(error))
+                problems.append(re.sub(
+                    r"^((?:human )?row )1\b", rf"\g<1>{index}", str(error)))
 
             suite = normalized.get("suite")
             suite_names = names_by_suite.get(suite, {})
