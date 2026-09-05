@@ -2375,6 +2375,14 @@ extension QualifiedFixtureOuter.QualifiedFixtureInner {
 extension QualifiedFixtureOuter . `QualifiedFixtureInner` {
   @Test("a spaced, backticked extension-hosted test") func hostedBySpacedExtension() {}
 }
+
+@Suite(.disabled("gated fixture")) enum GatedFixtureOuter {
+  @Suite struct GatedFixtureInner {}
+}
+
+extension GatedFixtureOuter.GatedFixtureInner {
+  @Test("an extension-hosted test under a gated declaration") func hostedUnderGate() {}
+}
 """
 with tempfile.TemporaryDirectory() as _qtd:
     _qroot = Path(_qtd)
@@ -2414,6 +2422,19 @@ if _qunder.get("hostedBySpacedExtension()") != {_qspaced} \
 else:
     print("  ok  the filing-time oracle normalises a spaced, backticked qualified extension "
           "to the same key")
+ran += 1
+# A `.disabled` on the ORIGINAL declaration gates a test hosted in a qualified extension of
+# the nested type, exactly as Swift Testing skips it through the parent trait; the
+# extension's braces are not inside the gated declaration's, so this cannot come from the
+# brace chain alone (#2669 review, round 3).
+_qgated = sorted(key for key in _qnames if "GatedFixture" in key)
+if _qgated or any("hostedUnderGate()" in names for names in _qnames.values()):
+    failures.append(
+        "the filing-time oracle applies a declaration's gate to an extension-hosted test of "
+        f"the nested type: found {_qgated!r}")
+else:
+    print("  ok  the filing-time oracle applies a declaration's gate to an extension-hosted "
+          "test of the nested type")
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
