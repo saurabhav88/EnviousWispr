@@ -672,6 +672,10 @@ TARGETS = {
                     reader=_script_reader(PAGES_READ, "pages")),
     # A terminal. Its own context path in the cascade (`terminal_screen_refused`), and the
     # founder named terminals as coverage that must not regress.
+    # The default target, and it was missing from this table while `--targets` advertised it —
+    # so the harness's own documented invocation refused to run. `setup_textedit` has been here
+    # all along.
+    "textedit": Target("textedit", "com.apple.TextEdit", setup_textedit),
     "ghostty": Target("ghostty", "com.mitchellh.ghostty",
                       _setup_composer("Ghostty", "com.mitchellh.ghostty")),
 }
@@ -1001,7 +1005,10 @@ def ensure_targets_running(targets: list["Target"], wait: float = 25.0) -> list[
     while pending and time.time() < deadline:
         time.sleep(1.0)
         pending = [t for t in pending if ax_oracle.pid_for_bundle(t.bundle_id) is None]
-    return [(t.name, t.bundle_id) for t in pending]
+    # `Target` defines `key`, never `name`. This line runs ONLY when an app fails to launch,
+    # so nothing had executed it: the refusal path this function exists to provide would have
+    # raised `AttributeError` instead of refusing.
+    return [(t.key, t.bundle_id) for t in pending]
 
 
 def main() -> int:
