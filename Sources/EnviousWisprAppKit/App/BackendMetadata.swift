@@ -39,12 +39,14 @@ final class BackendMetadata {
   /// success — a configured-but-unreachable provider still shows its
   /// model name; per-dictation outcomes surface on the transcript.
   /// Apple Intelligence is named directly: its model id never varies
-  /// and discovery only runs when the settings pane is visited.
+  /// and discovery only runs when the settings pane is visited. The fixed
+  /// names are READ from `LLMProvider.displayName`, never restated here
+  /// (#2650): this arm was one of four sites spelling the same string.
   var polishLabel: String {
     switch settings.llmProvider {
     case .none: "Off"
-    case .appleIntelligence: "Apple Intelligence"
-    case .egOne: "EG-1"  // #1271: fixed name, like Apple Intelligence above
+    case .appleIntelligence: LLMProvider.appleIntelligence.displayName
+    case .egOne: LLMProvider.egOne.displayName  // #1271: fixed name, like Apple Intelligence above
     // #2649 (cloud review): falling through to `llmLabel` rendered the model id
     // `s1-mini`, and the licence requires the exact spelling wherever the
     // model is identified. One owner for that string.
