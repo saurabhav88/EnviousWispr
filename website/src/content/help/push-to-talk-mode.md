@@ -5,8 +5,8 @@ category: "recording-and-keybinds"
 section: "Recording"
 order: 1
 keywords: ["push to talk", "hold to talk", "hold the key", "ptt", "press and hold", "default mode", "recording mode"]
-related: ["customizing-your-keybind", "first-word-gets-cut-off"]
-updated: 2026-08-06
+related: ["customizing-your-keybind", "first-word-gets-cut-off", "escape-recovery"]
+updated: 2026-09-05
 ---
 Push-to-talk is the default recording mode. You hold your keybind down for as long as you are speaking. Letting go ends the recording, and your transcribed words appear at your cursor once EnviousWispr has worked out what you said.
 
@@ -19,6 +19,10 @@ Push-to-talk is the default recording mode. You hold your keybind down for as lo
 **Release it.** Let go when you finish your sentence. Your text appears at the cursor a moment later, once the audio has been transcribed.
 
 Recording stops the exact moment you release the key. Because of that, a cough, a deep breath, or a passing conversation after you finish speaking never reaches the transcript.
+
+A short sound confirms when recording starts and stops. Switch it off under **Settings** \> **Sounds**.
+
+If you press your cancel keybind by mistake, Escape by default, the dictation is kept and offered back to you rather than thrown away. Read [_Escape Recovery_](/help/escape-recovery/).
 
 ### Dictating for longer periods
 

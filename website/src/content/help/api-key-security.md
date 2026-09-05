@@ -6,9 +6,9 @@ section: "Privacy"
 order: 4
 keywords: ["api key", "where is my key stored", "keychain", "secret", "token", "is my key safe", "billing"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
-If you use OpenAI, Gemini, or Claude to polish your dictation, you bring your own API key. Here is where that key is kept and how to take it back out.
+If you use OpenAI, Gemini, or Claude to polish your dictation, you bring your own API key. Here is where that key is kept and how to take it back out. The on-device options, EG-1, Apple Intelligence and S1-mini, need no key at all.
 
 ### Stored in the macOS Keychain
 
@@ -24,6 +24,6 @@ If you used an early version of EnviousWispr, your key may have started out in a
 
 ### Removing a key
 
-**Clear the field.** Open **Settings**, select **AI Polish**, and clear the key field. The stored key goes with it.
+**Clear the key.** Open **Settings**, select **AI Polish**, choose your provider, and click **Clear** beside the key field. The stored key goes with it.
 
 You can also revoke the key from your provider's own dashboard at any time, which takes effect immediately regardless of what EnviousWispr does.

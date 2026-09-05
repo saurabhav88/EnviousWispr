@@ -6,7 +6,7 @@ section: "Audio Processing"
 order: 4
 keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long"]
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 EnviousWispr can end a recording by itself once you stop talking, so you do not have to reach for your keybind again. This is off by default and has to be switched on before it does anything.
 
@@ -39,3 +39,5 @@ That recognition step now works from a copy of your audio with the low rumble ta
 ### If it stops at the wrong time
 
 Move the slider. If EnviousWispr keeps ending the recording while you are still thinking, raise the setting to three seconds, or switch the feature off and end every recording yourself.
+
+In a noisy room the timing moves. Since the trimming step stopped eating the start of sentences in noisy rooms, auto-stop usually stops sooner there, and on the half-second setting it sometimes waits longer or does not stop on its own at all. Raise the setting, or end the recording with your keybind.
