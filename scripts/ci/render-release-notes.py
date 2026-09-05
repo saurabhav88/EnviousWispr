@@ -152,7 +152,13 @@ def parse_bullets(fields):
             pos += 1
             continue
         if ch == "]":
-            return bullets
+            # The closer must be the END of the argument: only whitespace, a comment and
+            # the argument's own comma may follow it before `version:` (where `fields`
+            # ends). `["First"] + ["Second"]` is a valid Swift expression, and returning
+            # at the first `]` read it as one bullet and let the release path exit 0 with
+            # half the list (Codex, #2680). Anything else there makes the array unreadable.
+            trailing = mask_literals_and_comments(fields[pos + 1:]).strip()
+            return bullets if trailing in ("", ",") else None
         if ch != '"':
             return None
         lit = STRING_LITERAL.match(fields, pos)
@@ -361,6 +367,38 @@ FIXTURE_CASES = [
         [{"title": "Raw", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
         "- **Raw.** Desc.",
         ["9.9.9: Raw"],
+    ),
+    (
+        "an array extended by another expression after its closer is refused, not truncated",
+        '''
+    Entry(
+      id: "extended",
+      icon: "sparkles",
+      title: "Extended",
+      description: "Desc.",
+      bullets: ["First"] + ["Second"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Extended", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Extended.** Desc.",
+        ["9.9.9: Extended"],
+    ),
+    (
+        "a comment after the closer is not an extension of the array",
+        '''
+    Entry(
+      id: "commented",
+      icon: "sparkles",
+      title: "Commented",
+      description: "Desc.",
+      bullets: ["Only"], // + ["never"]
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Commented", "desc": "Desc.", "version": "9.9.9", "bullets": ["Only"]}],
+        "- **Commented.** Desc.\n  - Only",
+        [],
     ),
     (
         "an array with no closing bracket before version is refused",
