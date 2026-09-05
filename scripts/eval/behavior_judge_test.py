@@ -3052,7 +3052,40 @@ def test_floor_cli_reports_the_real_sealed_floor():
     assert "--adjudication" in err and "--production" in err, err
 
 
-EXPECTED_TESTS = 140
+def test_floor_compares_blinding_exactly():
+    # #2577 row 4. `comparable()` checks `evaluation.get("judgeBlind") == blind`
+    # EXACTLY, and the comment beside it says why: `bool(None) == bool(False)`, so a
+    # truthy comparison makes an evaluation whose receipt never recorded blinding
+    # compare as SIGHTED, and twelve of the evaluations on record are exactly that.
+    # None of the four #2576 tests reaches this line, so a mutation to
+    # `bool(...) == bool(...)` survived the whole suite. Driven against the REAL
+    # registry: the 1.2 winner's rows all record `judgeBlind: false`, so the
+    # sighted query finds the 31 floor and the "unknown blinding" query finds
+    # nothing. Under the truthy mutant both queries answer 31.
+    import model_registry
+    doc = model_registry.load()
+    query = dict(corpus="sealed_v1.jsonl", rubric="626d3a1c5219",
+                 judge="azure/gpt-5-6-luna@d9697a344ff6", cases=1462, doc=doc,
+                 system="new", adjudication="0.15:15",
+                 production="sealed_shipped.jsonl")
+
+    count, where = model_registry.floor(blind=False, **query)
+    assert count == 31 and where.startswith("eg1-1.2-c003 "), (count, where)
+
+    # The control that makes the None answer meaningful: the row that set the 31
+    # floor RECORDED its blinding as False. If it ever recorded nothing, the query
+    # below would be asking a different question and this test must say so.
+    winner = next(a for a in doc["artifacts"] if a["artifactId"] == "eg1-1.2-c003")
+    recorded = [e.get("judgeBlind") for e in winner["evaluations"]
+                if model_registry.comparable(e, blind=False, **query)]
+    assert recorded and all(r is False for r in recorded), recorded
+
+    count, why = model_registry.floor(blind=None, **query)
+    assert count is None, f"unknown blinding matched a sighted evaluation: {count} ({why})"
+    assert "blind=no" in why, why
+
+
+EXPECTED_TESTS = 141
 
 
 def _run() -> int:
