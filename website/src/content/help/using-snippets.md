@@ -64,7 +64,7 @@ Clearing the field puts the default back rather than switching snippets off.
 
 ### What EnviousWispr will not do to your snippet
 
-The text you save is pasted exactly as you typed it. AI Polish never rewrites it, so an email address, a web link or a signature arrives character for character. Everything else you dictate is still polished as normal.
+The text you save is pasted word for word, with a space after it like any other dictation. AI Polish never rewrites it, so an email address, a web link or a signature arrives as you saved it. Everything else you dictate is still polished as normal.
 
 Line breaks are kept, so a two-line sign-off arrives as two lines, and a snippet with line breaks is inserted where you are typing like any other dictation.
 

@@ -28,7 +28,7 @@ Capital matching works in English, German, French, Italian, Spanish, Portuguese,
 
 You can turn this behaviour off under **Settings** \> **Clipboard**, where the setting is named **Smart insertion**.
 
-A dictation that expanded a snippet skips this tidy-up, so the text you saved arrives exactly as you typed it. Read [_Using Snippets_](/help/using-snippets/).
+A dictation that expanded a snippet skips this tidy-up, so the text you saved arrives word for word, with only the usual space after it. Read [_Using Snippets_](/help/using-snippets/).
 
 ### Web addresses in a browser
 
