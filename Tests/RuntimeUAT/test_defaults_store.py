@@ -8,6 +8,16 @@ read` prints a boolean `false` and a string `"0"` identically as `0`.
 Two-way by construction: the string row and the boolean row would BOTH pass under
 a correct implementation, and the string row is the one that fails under the old
 fixed-flag restore.
+
+The plist-path rows (#2579) assert STRUCTURE: a `data`, an array and a dictionary
+must come back as the same parsed value, an absent key must come back absent, a
+bystander key written AFTER the snapshot must survive the `defaults import`
+whether it merges or replaces the domain, and the restore of a value from
+its PRINTED text -- what `phase5_language_hover.py` used to do -- must be reported
+as NOT clean rather than compared equal.
+
+Run: `python3 Tests/RuntimeUAT/test_defaults_store.py` on a Mac. It needs the real
+`defaults` binary; there is no fake.
 """
 
 import subprocess
@@ -78,6 +88,96 @@ def main():
         except ds.UnsupportedType:
             refused = True
         ok("an array REFUSES rather than being guessed", refused)
+
+        print("\nthe plist path round-trips DATA, an ARRAY and a DICTIONARY structurally (#2579)")
+        # The real shape of the two language-chip keys: JSON bytes stored as
+        # `data`. This is `["es"]` as hex, which is what `-data` takes.
+        subprocess.run(["defaults", "write", DOMAIN, "d", "-data", "5b226573225d"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "arr", "-array", "a", "b"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "dct", "-dict", "k1", "v1", "k2", "v2"], check=True)
+        want = {"d": b'["es"]', "arr": ["a", "b"], "dct": {"k1": "v1", "k2": "v2"}}
+        snap = ds.snapshot_plist(DOMAIN, ["d", "arr", "dct"])
+        ok("the snapshot holds parsed VALUES, not printed text", snap == want, repr(snap))
+        # A bystander the restore must NOT touch, written AFTER the snapshot the
+        # way a live instance writes between park and restore. It must survive
+        # whether `defaults import` merges or replaces the domain: the restore
+        # overlays the parked keys on a fresh export, and this is the row that
+        # would catch a return to importing only the parked keys (#2674 review).
+        subprocess.run(["defaults", "write", DOMAIN, "keep", "-int", "7"], check=True)
+        for k in ("d", "arr", "dct"):  # the harness clears its rows, as language_hover does
+            subprocess.run(["defaults", "delete", DOMAIN, k], capture_output=True)
+        ok("precondition: the rows really are gone",
+           ds.snapshot_plist(DOMAIN, ["d", "arr", "dct"]) == {"d": None, "arr": None, "dct": None})
+        landed = ds.restore_plist(DOMAIN, snap)
+        ok("restore reports success for every key", all(landed.values()), repr(landed))
+        ok("the DATA came back as data", read_type("d") == "data", read_type("d"))
+        ok("the ARRAY came back as an array", read_type("arr") == "array", read_type("arr"))
+        ok("the DICTIONARY came back as a dictionary", read_type("dct") == "dictionary", read_type("dct"))
+        ok("the values are structurally identical", ds.snapshot_plist(DOMAIN, ["d", "arr", "dct"]) == want)
+        ok("a bystander written after the snapshot survived the import",
+           ds.read_plist(DOMAIN, "keep") == 7, repr(ds.read_plist(DOMAIN, "keep")))
+        ok("the bystander is still an integer", read_type("keep") == "integer", read_type("keep"))
+
+        print("\na restore from PRINTED text does not land, and the check says so")
+        # Exactly what phase5_language_hover.py did before #2579: `defaults read`,
+        # then the printed blob back through `defaults write` as one argument.
+        # Measured on macOS 26.7 (2026-09-05): for DATA, the on-disk type of both
+        # language-chip keys, `defaults write` REFUSES the `{length = N, bytes = ...}`
+        # text (exit 1, "Could not parse"), so the driven value simply stays. The
+        # printed text of an ARRAY or a DICTIONARY happens to parse back on this
+        # macOS; that is a property of `defaults`, not of the harness, and it is not
+        # asserted either way here.
+        blob = subprocess.run(["defaults", "read", DOMAIN, "d"],
+                              capture_output=True, text=True).stdout.strip()
+        subprocess.run(["defaults", "write", DOMAIN, "d", "-data", "5b226672225d"], check=True)
+        refused = subprocess.run(["defaults", "write", DOMAIN, "d", blob], capture_output=True)
+        ok("the printed-text write of DATA is refused", refused.returncode != 0, refused.returncode)
+        checked = ds.check_plist(DOMAIN, snap)
+        ok("the un-restored data is caught", checked["d"] is False, repr(ds.read_plist(DOMAIN, "d")))
+        ok("the untouched array still reads clean", checked["arr"] is True)
+        ok("the untouched dictionary still reads clean", checked["dct"] is True)
+        landed = ds.restore_plist(DOMAIN, snap)
+        ok("a real restore puts the data back", all(landed.values()), repr(landed))
+        ok("and it is the original bytes", ds.read_plist(DOMAIN, "d") == b'["es"]',
+           repr(ds.read_plist(DOMAIN, "d")))
+
+        print("\nan INTEGER standing where a BOOLEAN was is reported as NOT landed")
+        # Python calls `True`, `1` and `1.0` equal, so a value-only check would
+        # report a pass for the class of defect this check exists to catch. Every
+        # row here FAILS under a plain `==` and passes under the typed compare.
+        subprocess.run(["defaults", "write", DOMAIN, "flag", "-bool", "true"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "row", "-array", "-bool", "true"], check=True)
+        typed = ds.snapshot_plist(DOMAIN, ["flag", "row"])
+        ok("precondition: the snapshot holds real booleans",
+           typed == {"flag": True, "row": [True]}, repr(typed))
+        subprocess.run(["defaults", "write", DOMAIN, "flag", "-int", "1"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "row", "-array", "-int", "1"], check=True)
+        swapped = ds.check_plist(DOMAIN, typed)
+        ok("an integer in place of a boolean is caught", swapped["flag"] is False,
+           repr(ds.read_plist(DOMAIN, "flag")))
+        ok("an integer INSIDE an array is caught too", swapped["row"] is False,
+           repr(ds.read_plist(DOMAIN, "row")))
+        ok("and a real restore puts both booleans back",
+           all(ds.restore_plist(DOMAIN, typed).values()))
+        ok("the boolean is a boolean again", read_type("flag") == "boolean", read_type("flag"))
+
+        print("\na domain that does not exist exports as EMPTY, and is not mistaken for a failure")
+        # `defaults export` on a missing domain exits 0 with an empty <dict/>. That is the
+        # only way `{}` may come back: a non-zero exit RAISES, because returning `{}` there
+        # would park None for keys that are really present and then delete them on restore.
+        subprocess.run(["defaults", "delete", DOMAIN + ".never"], capture_output=True)
+        ok("a missing domain reads as no keys", ds.export_domain(DOMAIN + ".never") == {})
+        ok("a missing domain snapshots as absent",
+           ds.snapshot_plist(DOMAIN + ".never", ["x"]) == {"x": None})
+
+        print("\nan ABSENT key on the plist path is restored to ABSENT, not to an empty container")
+        snap = ds.snapshot_plist(DOMAIN, ["never"])
+        ok("snapshot says absent", snap["never"] is None)
+        subprocess.run(["defaults", "write", DOMAIN, "never", "-array", "x"], check=True)
+        landed = ds.restore_plist(DOMAIN, snap)
+        ok("restore reports success", landed["never"] is True)
+        ok("the key is gone again", ds.read_plist(DOMAIN, "never") is None)
+        ok("the bystander is still there", ds.read_plist(DOMAIN, "keep") == 7)
     finally:
         subprocess.run(["defaults", "delete", DOMAIN], capture_output=True)
 

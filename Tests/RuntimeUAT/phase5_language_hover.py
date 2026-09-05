@@ -24,9 +24,18 @@ dictating Spanish with the language mode on Auto — which is also the only way 
 prove the production trigger still reaches the new clock.
 
 The presenter persists a suppression set and dismissal counts
-(`languageChipSuppressedLanguages`), so both are snapshotted and restored; a
-language suppressed by an earlier run produces no chip and the row would read as
-the dwell being broken.
+(`languageChipSuppressedLanguages`, `languageChipDismissalCounts`), so both are
+snapshotted and restored; a language suppressed by an earlier run produces no
+chip and the row would read as the dwell being broken.
+
+**Both are parked and restored STRUCTURALLY, never through printed text (#2579).**
+They are JSON-encoded `Data` on disk (`LanguageSuggestionPresenter.persistState`),
+logically a list and a dictionary. `defaults read` prints such a value as a
+`{length = N, bytes = ...}` blob, and `defaults write` refuses that blob as an
+argument (measured on macOS 26.7, 2026-09-05) — so a run that began with either
+key populated never put it back, and `restore_clean` could not see it because it
+compared the same printed text on both sides. Owner: `defaults_store`'s plist path, which goes
+through `defaults export` / `defaults import` and compares parsed values.
 
 **THE LANGUAGE CHIP IS UNREACHABLE ON PARAKEET, AND NOTHING SAYS SO.**
 `languageDetector.detect(...)` has exactly ONE caller in the tree,
@@ -61,6 +70,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+import defaults_store as ds  # noqa: E402  (structural park-and-restore)
 import phase5_geometry_relaunch as g  # noqa: E402
 import phase5_paste_target as pt  # noqa: E402
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
@@ -167,9 +177,21 @@ def backend_in_use(since_bytes):
     return seen[-1].split("Backend:")[1].split(",")[0].strip()
 
 
-def read_dev(k):
-    r = subprocess.run(["defaults", "read", DEV_DOMAIN, k], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else None
+def readable(value):
+    """The parked value as the artifact should show it.
+
+    The two state keys are JSON bytes; decoded they are the list and the
+    dictionary the presenter holds, which is what a reader of the report wants
+    to see. Only the REPORT goes through this — the restore and its check work
+    on the parsed plist value itself, so a decode here can never make a dirty
+    restore look clean.
+    """
+    if isinstance(value, bytes):
+        try:
+            return json.loads(value.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return {"undecodable_bytes_hex": value.hex()}
+    return value
 
 
 def dictate(audio):
@@ -278,11 +300,12 @@ def main():
         return
     pid = pids[0]
 
-    snapshot = {k: read_dev(k) for k in STATE_KEYS}
+    # STRUCTURE, not printed text. See the module docstring and #2579.
+    snapshot = ds.snapshot_plist(DEV_DOMAIN, STATE_KEYS)
     backend_before = subprocess.run(["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
                                     capture_output=True, text=True).stdout.strip() or None
-    report = {"pid": pid, "snapshot": snapshot, "dwell_seconds": CHIP_DWELL,
-              "backend_before": backend_before}
+    report = {"pid": pid, "snapshot": {k: readable(v) for k, v in snapshot.items()},
+              "dwell_seconds": CHIP_DWELL, "backend_before": backend_before}
     try:
         for k in STATE_KEYS:
             subprocess.run(["defaults", "delete", DEV_DOMAIN, k], capture_output=True)
@@ -350,13 +373,14 @@ def main():
         report["backend_restored"] = subprocess.run(
             ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
             capture_output=True, text=True).stdout.strip() or None
-        for k, v in snapshot.items():
-            if v is None:
-                subprocess.run(["defaults", "delete", DEV_DOMAIN, k], capture_output=True)
-            else:
-                subprocess.run(["defaults", "write", DEV_DOMAIN, k, v], check=True)
-        report["restored"] = {k: read_dev(k) for k in STATE_KEYS}
-        report["restore_clean"] = report["restored"] == snapshot
+        # An absent key is DELETED, a present one goes back through `defaults
+        # import` as the same plist value, and `landed` is parsed-value equality
+        # — a check that can actually fail, unlike the printed-text comparison
+        # this replaced.
+        landed = ds.restore_plist(DEV_DOMAIN, snapshot)
+        report["restored"] = {k: readable(ds.read_plist(DEV_DOMAIN, k)) for k in STATE_KEYS}
+        report["restore_clean"] = all(landed.values())
+        report["restore_failed_keys"] = [k for k, good in landed.items() if not good]
         (UAT / "language-hover.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps(report, indent=2, default=str))
 
