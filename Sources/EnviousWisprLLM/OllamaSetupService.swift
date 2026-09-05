@@ -348,8 +348,10 @@ public final class OllamaSetupService {
   /// suggestion row would render a dead Download button. EG-1 distribution ships
   /// separately (see the tuned-polish-provider wiring plan).
   public nonisolated static let curatedPrivateCatalog: [OllamaModelCatalogEntry] = [
+    // The display name is the EG-1 provider's, read from its one owner (#2650):
+    // this row and the polish rail must agree on what the model is called.
     OllamaModelCatalogEntry(
-      name: "eg-1", displayName: "EG-1", parameterCount: "4B",
+      name: "eg-1", displayName: LLMProvider.egOne.displayName, parameterCount: "4B",
       downloadSize: "~2.9 GB")
   ]
 

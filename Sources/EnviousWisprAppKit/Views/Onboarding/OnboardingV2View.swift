@@ -1203,7 +1203,8 @@ private struct ChecklistPhaseView: View {
 
   private static let items: [(title: String, subtitle: String)] = [
     ("Setting up speech model", "One-time setup"),
-    ("Configuring on-device AI", "Apple Intelligence"),
+    // #2650: the provider's display name has one owner.
+    ("Configuring on-device AI", LLMProvider.appleIntelligence.displayName),
     ("Setting your keybind", "Default: ⌥ Option"),
   ]
 

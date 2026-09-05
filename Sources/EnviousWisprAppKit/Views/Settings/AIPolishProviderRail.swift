@@ -235,12 +235,17 @@ struct PolishRailProvider: Identifiable, Equatable {
 enum PolishRailCatalog {
   /// Flattened in render order. `providers(in:)` derives group membership from
   /// this list, and the current rail renders those results.
+  ///
+  /// Every `name` that IS the provider's display name reads
+  /// `LLMProvider.displayName` (#2650) rather than restating it; the one row
+  /// whose name deliberately differs says so where it does.
   static let all: [PolishRailProvider] = [
     PolishRailProvider(
-      provider: .egOne, name: "EG-1", tagline: "Our tuned model",
+      provider: .egOne, name: LLMProvider.egOne.displayName, tagline: "Our tuned model",
       group: .onThisMac, recommended: true),
     PolishRailProvider(
-      provider: .appleIntelligence, name: "Apple Intelligence", tagline: "Built into macOS",
+      provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
+      tagline: "Built into macOS",
       group: .onThisMac, recommended: false),
     // #2649. Founder placement: beside EG-1 on this Mac, never above it. EG-1
     // keeps `recommended`; Apple Intelligence remains what a fresh install
@@ -257,16 +262,20 @@ enum PolishRailCatalog {
       tagline: "by Superwhisper",
       group: .onThisMac, recommended: false),
     PolishRailProvider(
-      provider: .ollama, name: "Ollama", tagline: "Any open model, local or hosted",
+      provider: .ollama, name: LLMProvider.ollama.displayName,
+      tagline: "Any open model, local or hosted",
       group: .yourOwnSetup, recommended: false),
     PolishRailProvider(
-      provider: .openAI, name: "OpenAI", tagline: "Your API key",
+      provider: .openAI, name: LLMProvider.openAI.displayName, tagline: "Your API key",
       group: .cloud, recommended: false),
+    // Intentionally NOT `LLMProvider.gemini.displayName` ("Gemini"): the rail
+    // carries the vendor so the row reads as a cloud service beside OpenAI and
+    // Claude. `PolishRailCatalogTests` pins this exact copy.
     PolishRailProvider(
       provider: .gemini, name: "Google Gemini", tagline: "Your API key",
       group: .cloud, recommended: false),
     PolishRailProvider(
-      provider: .claude, name: "Claude", tagline: "Your API key",
+      provider: .claude, name: LLMProvider.claude.displayName, tagline: "Your API key",
       group: .cloud, recommended: false),
   ]
 
