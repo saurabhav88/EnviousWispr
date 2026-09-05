@@ -268,6 +268,14 @@ def main() -> int:
     # candidate whose four summaries became one still passes it, because the KEY is
     # present. Comparing per-artifact evaluation COUNTS against the file being
     # replaced catches that, which the key check cannot.
+    #
+    # And the count check has a blind spot of its own: it walks the REBUILT records,
+    # so an artifact that is not in them is never examined. Delete an ARMS row, or
+    # rename its immutable id, and the artifact and every evaluation on it fall out
+    # of the registry while the staged file still validates and the script exits 0
+    # (#2581). A floor-setting winner can vanish that way. So the WHOLE id set of
+    # the file being replaced is compared first: an id that was registered and is
+    # absent from the rebuild is a refusal, before any per-artifact count is read.
     sys.path.insert(0, str(Path(__file__).parent))
     import model_registry
 
@@ -286,6 +294,17 @@ def main() -> int:
         for key in ("_rubricEquivalence", "_rubricEquivalenceContract"):
             if key in previous:
                 doc[key] = previous[key]
+
+        # SETS, not lengths: a row added beside a row dropped nets out to the same
+        # count, and an id is immutable, so a rename IS a drop plus an add.
+        gone = sorted(set(was) - {r["artifactId"] for r in records})
+        if gone:
+            raise SystemExit(
+                "REFUSED: this rebuild would DROP registered artifacts:\n  " +
+                "\n  ".join(f"{aid}: {was[aid]} eval(s) on record" for aid in gone) +
+                "\nAn artifact id is immutable and its history is not rebuilt from "
+                "receipts. Restore the row under its original id, or say why the "
+                "artifact leaves the record.")
 
         lost = [(r["artifactId"], was[r["artifactId"]], len(r["evaluations"]))
                 for r in records

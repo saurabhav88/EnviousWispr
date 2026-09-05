@@ -657,6 +657,10 @@ jobs:
           # count, because both runners exit 0 on ZERO discovered tests.
           python3 scripts/eval/tests/test_alias_scorer.py
           python3 scripts/eval/tests/test_v4_adversarial_runner.py
+          # The registry rebuild's history-loss guards (#2581): a deleted or
+          # renamed ARMS row must be REFUSED, not silently dropped. Same runner
+          # shape and exact-count assertion as the two above.
+          python3 scripts/eval/tests/test_rebuild_model_registry.py
 
       - name: Require every lane
         run: |
