@@ -121,6 +121,8 @@ internal struct PasteDeliveryResult {
   /// #2652. Non-nil only where Tier 1 reached its setter, so the before-image exists without any
   /// read having been added for it. Nil is reported as `no_before_image`, never as one copy.
   var copiesEvidence: PasteCopiesEvidence?
+  /// #2652. Whether the Tier 1 accessibility SETTER ran. Narrower than "evidence exists".
+  var copiesSetterReached = false
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -571,6 +573,10 @@ internal final class PasteCascadeExecutor {
     // cause of the very defect being measured.
     var copiesBeforeImage: PasteService.CopiesBeforeImage?
     var copiesSubmittedLengths: [Int] = []
+    /// Whether the Tier 1 SETTER ran, which is a narrower claim than "Tier 1 was attempted"
+    /// and narrower again than "a before-image exists". Read from `writeCall`, never inferred
+    /// from the presence of evidence.
+    var copiesSetterReached = false
     let skipTier1ForWebContent: Bool = {
       #if DEBUG
         guard policy.writer == .webCmdV, let element = request.targetElement else { return false }
@@ -596,6 +602,8 @@ internal final class PasteCascadeExecutor {
         requireFocusedElementMatch: request.targetElementIsRetried,
         boundMessagingTimeout: policy.boundTier1MessagingTimeout)
       copiesBeforeImage = insert.copiesBeforeImage
+      if case .succeeded = insert.writeCall { copiesSetterReached = true }
+      if case .failed = insert.writeCall { copiesSetterReached = true }
       if let attempted = insert.writeCall.attemptedText {
         copiesSubmittedLengths.append(attempted.utf16.count)
         #if DEBUG
@@ -1007,17 +1015,28 @@ internal final class PasteCascadeExecutor {
       axDeclineReason: axDeclineReason?.rawValue,
       axSettability: axSettability?.telemetryValue)
 
-    // #2652. Evidence only where Tier 1 reached its setter AND the delivery put something in a
-    // field. A `clipboardOnly` delivery submitted nothing to the destination, so there is nothing
-    // to have arrived once or twice; it is reported as `no_before_image`, never as one copy.
+    // #2652. Evidence wherever a before-image exists AND something was actually submitted to the
+    // destination.
+    //
+    // Review finding, 2026-09-04: this used to also require `tier != .clipboardOnly`, which
+    // discarded the measurement on the two paths where it is most useful. A Tier 1 write that
+    // returned `.unverifiable` leaves the tier at `clipboardOnly` even though the setter
+    // SUCCEEDED and the text may be in the document; a setter that returned an error hands
+    // delivery to a fallback that then succeeds. Both are measurable and both were being
+    // reported as `no_before_image`.
+    //
+    // The submitted-lengths check is what still excludes a genuine nothing-happened: a decline
+    // before any writer ran leaves that array empty, so there is no delivery to have arrived once
+    // or twice.
     var result = PasteDeliveryResult(
       tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind,
       axDeclineReason: axDeclineReason?.rawValue, axSettability: axSettability?.telemetryValue)
     if let before = copiesBeforeImage, let element = request.targetElement,
-      tier != .clipboardOnly, !copiesSubmittedLengths.isEmpty
+      !copiesSubmittedLengths.isEmpty
     {
       result.copiesEvidence = PasteCopiesEvidence(
         element: element, before: before, submittedLengths: copiesSubmittedLengths)
+      result.copiesSetterReached = copiesSetterReached
     }
     return result
   }

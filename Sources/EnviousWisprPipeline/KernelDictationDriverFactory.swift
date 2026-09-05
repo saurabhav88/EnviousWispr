@@ -583,7 +583,7 @@ public enum KernelDictationDriverFactory {
                 settleMs: PasteCopiesObserver.settleMilliseconds,
                 tier: result.pasteTierLabel,
                 targetApp: request.targetApp?.bundleIdentifier,
-                tier1ReachedSetter: result.copiesEvidence != nil)
+                tier1ReachedSetter: result.copiesSetterReached)
             }
           }
         }

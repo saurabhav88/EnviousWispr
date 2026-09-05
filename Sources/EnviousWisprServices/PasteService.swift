@@ -509,7 +509,15 @@ public enum PasteService {
     package let writeCall: AXWriteCall
     package let declineReason: AXDeclineReason?
     package let settability: AXSettability?
-    /// Non-nil only where the setter was actually reached, so both reads happened.
+    /// Non-nil on every return AFTER both before-image reads succeeded — not only the ones
+    /// that reached the setter.
+    ///
+    /// Review finding, 2026-09-04: attaching it to the success path alone discarded it on the
+    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error,
+    /// and a decline after the reads, both hand delivery to the fallback — and that fallback
+    /// delivery is measurable, with a before-image already in hand. Reporting those as
+    /// `no_before_image` would have excluded exactly the uncertain cases the instrument exists
+    /// for. **Whether the SETTER ran is a separate question, answered by `writeCall`.**
     package var copiesBeforeImage: CopiesBeforeImage?
 
     package init(
@@ -530,11 +538,14 @@ public enum PasteService {
     /// in every case, because nothing was mutated — the reason is what tells
     /// the two dozen ways of getting here apart.
     static func declined(
-      _ reason: AXDeclineReason, settability: AXSettability? = nil
+      _ reason: AXDeclineReason, settability: AXSettability? = nil,
+      beforeImage: CopiesBeforeImage? = nil
     ) -> AXInsertResult {
-      AXInsertResult(
+      var result = AXInsertResult(
         outcome: .noMutation, submitted: nil, writeCall: .notAttempted, declineReason: reason,
         settability: settability)
+      result.copiesBeforeImage = beforeImage
+      return result
     }
 
     /// The setter RAN and returned an error. Distinct from `declined` on purpose: this
@@ -542,12 +553,15 @@ public enum PasteService {
     /// accidentally claim one, and no failed call can accidentally claim it never ran.
     /// Nothing was mutated either way, so the cascade's retry rules are unchanged.
     static func writeCallFailed(
-      attemptedText: String, settability: AXSettability?
+      attemptedText: String, settability: AXSettability?,
+      beforeImage: CopiesBeforeImage? = nil
     ) -> AXInsertResult {
-      AXInsertResult(
+      var result = AXInsertResult(
         outcome: .noMutation, submitted: nil,
         writeCall: .failed(attemptedText: attemptedText), declineReason: .setFailed,
         settability: settability)
+      result.copiesBeforeImage = beforeImage
+      return result
     }
   }
 
@@ -1897,7 +1911,9 @@ public enum PasteService {
     } else {
       // Without a trustworthy before-image, a successful AX call could never be
       // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
-      return .declined(.beforeImageUnreadableOrIncomplete, settability: settability)
+      return .declined(
+        .beforeImageUnreadableOrIncomplete, settability: settability,
+        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
     }
 
     // The payload choice, made from the range AND the surrounding text this
@@ -1938,7 +1954,9 @@ public enum PasteService {
           requireFocusedElementMatch: true,
           isFocused: freshFocusedElement(matching: element) != nil)
       else {
-        return .declined(.focusUnconfirmed, settability: settability)
+        return .declined(
+          .focusUnconfirmed, settability: settability,
+          beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
       }
     }
 
@@ -1949,7 +1967,9 @@ public enum PasteService {
       text as CFTypeRef
     )
     guard err == .success else {
-      return .writeCallFailed(attemptedText: text, settability: settability)
+      return .writeCallFailed(
+        attemptedText: text, settability: settability,
+        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
     }
 
     // From here the write may have landed, so every remaining failure is
