@@ -2214,6 +2214,63 @@ check_validator("the filing validator rejects a runtime-gated individual test",
                      suite="EnviousWisprTests/TerminalProcessScannerTests"),
                 expected_rc=1, expected_text="DOES NOT EXIST")
 
+# #2525: a @Suite nested inside another @Suite is addressed by its whole declaration chain,
+# `Outer/Inner`, which is the path the test filter accepts. The oracle used to key every
+# suite by its innermost type name alone, so the qualified path — the only one that runs —
+# was "NOT FOUND" and every one of its rows retired, while the bare inner name — a filter
+# that executes zero tests — was accepted. Three spellings in, one spelling out.
+_nested_suite = "EnviousWisprTests/OnboardingPracticeStepSuite/OnboardingWarmingGateTests"
+_nested_display = "the gate stays shut while the warm-up is still running"
+check_validator("the filing validator finds a @Suite nested inside another @Suite by its qualified path",
+                dict(_validator_base, suite=_nested_suite, expect_fail=_nested_display),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator resolves a nested test's fully qualified id",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="OnboardingPracticeStepSuite/OnboardingWarmingGateTests/"
+                                 "gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator resolves a nested test's bare function name",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator finds a sibling nested @Suite under the same parent",
+                dict(_validator_base,
+                     suite="EnviousWisprTests/OnboardingPracticeStepSuite/"
+                           "OnboardingWarmingGateTelemetryTests",
+                     expect_fail="a warmed gate completes the step once, with a duration"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator does not accept a nested @Suite by its bare inner name",
+                dict(_validator_base, suite="EnviousWisprTests/OnboardingWarmingGateTests",
+                     expect_fail=_nested_display),
+                expected_rc=1, expected_text="NOT FOUND in Tests")
+check_validator("the filing validator does not accept a nested test's inner-only id",
+                dict(_validator_base, suite=_nested_suite,
+                     expect_fail="OnboardingWarmingGateTests/gateHoldsUntilTheEngineAnswers()"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+
+# #2525 part 2: the validator hands the runner ONE row at a time so that every row is
+# judged, which means the runner's own `row N` prefix is always `row 1`. Printed after the
+# validator's real `row 2:` label it read as an anchor index. The number must be the row's.
+check_validator("the filing validator labels a later row's refusal with that row's own number",
+                document={"rows": [
+                    dict(_validator_base, expect_fail=_guard_name),
+                    dict(_validator_base, expect_fail=_guard_name,
+                         anchor="this text is nowhere in the file"),
+                ]},
+                expected_rc=1, expected_text="row 2: UNRUNNABLE — row 2 anchor not found in")
+check_validator("the filing validator still labels the first row's refusal as row 1",
+                dict(_validator_base, expect_fail=_guard_name,
+                     anchor="this text is nowhere in the file"),
+                expected_rc=1, expected_text="row 1: UNRUNNABLE — row 1 anchor not found in")
+check_validator("the filing validator renumbers a later row's field refusal too",
+                document={"rows": [
+                    dict(_validator_base, expect_fail=_guard_name),
+                    {k: v for k, v in dict(_validator_base, expect_fail=_guard_name).items()
+                     if k != "anchor"},
+                ]},
+                expected_rc=1,
+                expected_text="row 2: UNRUNNABLE — row 2 is missing required field 'anchor'")
+
 _validator_spec = importlib.util.spec_from_file_location("mutation_validator", VALIDATOR)
 validator = importlib.util.module_from_spec(_validator_spec)
 _validator_spec.loader.exec_module(validator)

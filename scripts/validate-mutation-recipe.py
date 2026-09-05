@@ -237,15 +237,24 @@ def test_oracle(root):
             suffix = function_suffix(code[opening + 1:closing])
             if suffix is None:
                 continue
-            containing = [
-                (end - start, name, gated) for start, end, name, gated in ranges
-                if start < attribute.start() < end
-            ]
+            # Every declaration wrapping this test, outermost first. Brace ranges nest, so
+            # the ranges containing one point form a chain, and the whole chain is the
+            # suite's name: a @Suite nested inside another @Suite is `Outer/Inner`, which
+            # is the path the test filter accepts. Keying by the innermost name alone put
+            # the qualified path — the only one that runs — at "NOT FOUND" and accepted the
+            # bare inner name, a filter that executes zero tests (#2525). A top-level suite
+            # is a chain of one, so its name is unchanged.
+            containing = sorted(
+                ((end - start, name, gated) for start, end, name, gated in ranges
+                 if start < attribute.start() < end),
+                key=lambda entry: -entry[0],
+            )
             if not containing:
                 continue
-            _, enclosing, suite_is_gated = min(containing)
-            if suite_is_gated:
+            # A `.enabled`/`.disabled` on any level of the chain gates every test beneath it.
+            if any(gated for _, _, gated in containing):
                 continue
+            enclosing = "/".join(name for _, name, _ in containing)
             body = part[attribute.end():function_start]
             display_names = []
             display = re.match(r'\s*\(\s*"((?:[^"\\]|\\.)*)"', body)
@@ -306,12 +315,17 @@ def validate(recipes, root, label):
             total += 1
             problems = []
             normalized = {}
+            # One row per call, so the runner's first refusal cannot hide the rows behind
+            # it. The cost is that the runner numbers every row as `row 1`; printed after
+            # this loop's own `row N:` label that read as an anchor index (#2525). Only the
+            # leading prefix is renumbered — a `row 1` inside a quoted path is left alone.
             single_row = {"suite_default": default_suite, "rows": [row]}
             try:
                 normalized = battery.load_recipes(
                     None, root, raw=json.dumps(single_row))[0]
             except battery.Refusal as error:
-                problems.append(str(error))
+                problems.append(re.sub(
+                    r"^((?:human )?row )1\b", rf"\g<1>{index}", str(error)))
 
             suite = normalized.get("suite")
             suite_names = names_by_suite.get(suite, {})
