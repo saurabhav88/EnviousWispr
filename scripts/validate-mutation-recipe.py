@@ -204,8 +204,13 @@ def test_oracle(root):
         target = path.relative_to(test_root).parts[0]
         code = mask_inactive_debug_branches(mask_noncode(part))
         ranges = []
+        # The name may be QUALIFIED: `extension Outer.Inner { @Test ... }` hosts tests for
+        # the nested suite, and `swift test list` files them under `Outer/Inner/...`.
+        # Capturing only the first segment filed them under `Outer`, so the validator
+        # rejected a valid recipe for every extension-hosted nested test (#2669 review).
+        # The dots become the path separator the chain below already uses.
         for declaration in re.finditer(
-            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+(\w+)", code
+            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+(\w+(?:\.\w+)*)", code
         ):
             opening = code.find("{", declaration.end())
             closing = matching_delimiter(code, opening, "{", "}") if opening >= 0 else None
@@ -216,7 +221,8 @@ def test_oracle(root):
                 if "{" in suite_attribute or "}" in suite_attribute:
                     suite_attribute = ""
                 ranges.append((
-                    opening, closing, declaration.group(1), has_runtime_gate(suite_attribute)
+                    opening, closing, declaration.group(1).replace(".", "/"),
+                    has_runtime_gate(suite_attribute)
                 ))
 
         for attribute in re.finditer(r"@Test\b", code):

@@ -11,6 +11,7 @@ exact vacuity this harness exists to catch.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2297,6 +2298,50 @@ try:
 finally:
     Path.read_text = _real_read_text
 
+ran += 1
+
+# #2669 review: a nested @Suite's tests may be hosted by a QUALIFIED extension,
+# `extension Outer.Inner { @Test ... }`, and `swift test list` files them under
+# `Outer/Inner/...`. The declaration regex captured only `Outer`, so the oracle filed the
+# test one level up and the validator rejected a valid recipe for it. Two-way against a
+# copy of the real corpus plus one fixture file: the test is under the qualified path, and
+# NOT under the bare outer name it used to land on.
+_qualified_fixture = """
+import Testing
+
+enum QualifiedFixtureOuter {
+  @Suite("qualified fixture inner") struct QualifiedFixtureInner {}
+}
+
+extension QualifiedFixtureOuter.QualifiedFixtureInner {
+  @Test("an extension-hosted nested test") func hostedByExtension() {}
+}
+"""
+with tempfile.TemporaryDirectory() as _qtd:
+    _qroot = Path(_qtd)
+    shutil.copytree(BATTERY.parent.parent / "Tests", _qroot / "Tests")
+    (_qroot / "Tests" / "EnviousWisprTests" / "QualifiedExtensionFixture.swift").write_text(
+        _qualified_fixture)
+    _qnames = validator.test_oracle(_qroot)
+_qcanonical = "QualifiedFixtureOuter/QualifiedFixtureInner/hostedByExtension()"
+_qunder = _qnames.get("EnviousWisprTests/QualifiedFixtureOuter/QualifiedFixtureInner", {})
+_qwrong = _qnames.get("EnviousWisprTests/QualifiedFixtureOuter", {})
+if _qunder.get("hostedByExtension()") != {_qcanonical} \
+        or _qunder.get("an extension-hosted nested test") != {_qcanonical}:
+    failures.append(
+        "the filing-time oracle files an extension-hosted nested test under its qualified "
+        f"path: got {_qunder!r}")
+else:
+    print("  ok  the filing-time oracle files an extension-hosted nested test under its "
+          "qualified path")
+ran += 1
+if "hostedByExtension()" in _qwrong:
+    failures.append(
+        "the filing-time oracle no longer files an extension-hosted nested test under the "
+        "bare outer name")
+else:
+    print("  ok  the filing-time oracle no longer files an extension-hosted nested test "
+          "under the bare outer name")
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
