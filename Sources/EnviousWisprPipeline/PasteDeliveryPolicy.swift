@@ -46,6 +46,17 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
       /// destination that genuinely accepts the write and genuinely does nothing loses
       /// its automatic delivery here.
       case axOneWriter
+
+      /// Deliberately deliver TWICE: after a successful key paste, paste once more.
+      ///
+      /// This arm exists to ARM the copies detector, not to test a candidate fix. A
+      /// detector that has never seen the thing it detects is a comment: every Mac we
+      /// own produces exactly one copy, so "it reported `once` on 300 dictations" is
+      /// equally consistent with a working detector and with one wired to a constant.
+      /// V6 stages the defect on purpose so the detector has a positive control.
+      ///
+      /// Never eligible in a release build, and never proposed as a fix.
+      case deliberateDouble
     #endif
   }
 
@@ -75,6 +86,7 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
         case "V2": writer == .axOneWriter && !boundTier1MessagingTimeout
         case "V4": writer == .current && boundTier1MessagingTimeout
         case "V5": writer == .webCmdV && boundTier1MessagingTimeout
+        case "V6": writer == .deliberateDouble && !boundTier1MessagingTimeout
         default: false
         }
     #else
@@ -127,6 +139,7 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
         case "V2": (.axOneWriter, false)
         case "V4": (.current, true)
         case "V5": (.webCmdV, true)
+        case "V6": (.deliberateDouble, false)
         default: nil
         }
       guard let combination else {

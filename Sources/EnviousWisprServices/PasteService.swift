@@ -1578,6 +1578,64 @@ public enum PasteService {
       roles: roles, resumeElement: current)
   }
 
+  /// How many characters the field holds, or nil when it will not say.
+  ///
+  /// The copies detector is built on this NUMBER and never on the text, which is what
+  /// makes it shippable: a count crossing the network says nothing about what anybody
+  /// dictated, and a count is also the only reading that survives the case a text
+  /// comparison gets wrong — somebody deliberately dictating the same sentence twice
+  /// produces two separate deliveries, each with its own delta of one copy.
+  package static func characterCount(of element: AXUIElement) -> Int? {
+    var ref: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        element, kAXNumberOfCharactersAttribute as CFString, &ref) == .success,
+      let count = ref as? Int, count >= 0
+    else { return nil }
+    return count
+  }
+
+  /// UTF-16 length of whatever is selected, or nil when the range will not read.
+  ///
+  /// A dictation that REPLACES a selection shortens the field by that much before it
+  /// lengthens it, so a copies count that ignores the selection reads a replacement as a
+  /// short delivery and lands on `unknown`.
+  package static func selectedTextLength(of element: AXUIElement) -> Int? {
+    guard let range = selectedRange(of: element), range.length >= 0 else { return nil }
+    return range.length
+  }
+
+  /// How many copies of a delivery of `insertedLength` landed, judged by length alone.
+  ///
+  /// `expected` is what the field must hold if exactly one copy arrived. One further
+  /// `insertedLength` beyond that is two copies. Anything else is `nil`: the user typing
+  /// during the settle window, an app that rewrites the field, a count we could not read.
+  /// Returning nil rather than guessing matters more here than usual, because this number
+  /// is destined for a dashboard where a wrong verdict becomes a wrong headline.
+  package static func copiesDelivered(
+    countAfter: Int?, countBefore: Int, selectionLengthBefore: Int, insertedLength: Int
+  ) -> Int? {
+    guard let countAfter, insertedLength > 0 else { return nil }
+    let expected = countBefore - selectionLengthBefore + insertedLength
+
+    // A DESTINATION MAY NOT STORE EXACTLY WHAT IT WAS GIVEN, so exact arithmetic
+    // answers `unknown` for a delivery that plainly worked.
+    //
+    // Measured 2026-09-04 across 8 deliveries of the same sentence: Discord landed on
+    // the exact expected count every time, and Slack was short by exactly one character
+    // per copy — one copy short by 1, two copies short by 2. Whatever Slack normalises
+    // away, it does so once per copy and reproducibly.
+    //
+    // The tolerance is bounded to a THIRD of one copy so the one-copy and two-copy
+    // bands can never overlap, whatever the sentence length. That bound is what keeps a
+    // widened window from turning a single delivery into a reported duplicate, which is
+    // the one error this detector must never make.
+    let tolerance = min(3, insertedLength / 3)
+    if abs(countAfter - expected) <= tolerance { return 1 }
+    if abs(countAfter - (expected + insertedLength)) <= tolerance { return 2 }
+    return nil
+  }
+
   package static func ancestorChainTrace(
     _ element: AXUIElement, maxDepth: Int = 10
   ) -> AXWebAreaAncestryTrace {

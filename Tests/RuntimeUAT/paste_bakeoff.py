@@ -71,7 +71,10 @@ TRIAL_RE = re.compile(
     r"ledger=(?P<ledger>\S*) duration=(?P<duration>\d+)ms"
 )
 
-VARIANTS = ["V0", "V1", "V2", "V4", "V5"]
+# V6 is not a candidate fix. It delivers TWICE on purpose, to arm the copies detector
+# with a positive control — no Mac we own produces a real double, so without it a
+# detector wired to a constant would pass every run we could think to do.
+VARIANTS = ["V0", "V1", "V2", "V4", "V5", "V6"]
 
 
 # --------------------------------------------------------------------------- log

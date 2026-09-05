@@ -530,6 +530,21 @@ internal final class PasteCascadeExecutor {
       // emit site below, because the remaining ancestor distance may only be measured
       // AFTER delivery — see `resumeAncestorChainTrace`.
       var webGateTrace: PasteService.AXWebAreaAncestryTrace?
+
+      // The before-image the copies detector is judged against (#2652). Read HERE,
+      // before any writer runs, because after the first write there is no longer a
+      // before to read and the count alone cannot say how many copies made it.
+      var copiesCountBefore: Int?
+      var copiesSelectionLengthBefore = 0
+      // The UTF-16 length actually handed to the winning writer. Recorded AT the
+      // submission rather than re-derived at the end: `repairedText` is optional and
+      // which of the two strings went out is decided inside the write, so re-deriving
+      // it here would be a second opinion about a question already answered.
+      var copiesSubmittedLength: Int?
+      if !policy.isBaseline, let element = request.targetElement {
+        copiesCountBefore = PasteService.characterCount(of: element)
+        copiesSelectionLengthBefore = PasteService.selectedTextLength(of: element) ?? 0
+      }
     #endif
     let skipTier1ForWebContent: Bool = {
       #if DEBUG
@@ -558,6 +573,7 @@ internal final class PasteCascadeExecutor {
       #if DEBUG
         if let attempted = insert.writeCall.attemptedText {
           submissionLedger.append(submissionToken(tier: .axDirect, text: attempted))
+          copiesSubmittedLength = attempted.utf16.count
         }
       #endif
       let disposition = dispositionForAXDirect(insert, writerPolicy: policy.writer)
@@ -643,6 +659,7 @@ internal final class PasteCascadeExecutor {
           submittedKind = payload.kind
           #if DEBUG
             submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
+            copiesSubmittedLength = payload.text.utf16.count
           #endif
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard)
@@ -650,6 +667,17 @@ internal final class PasteCascadeExecutor {
           switch dispatchResult {
           case .dispatched:
             tier = .cgEvent
+            #if DEBUG
+              // V6 ONLY: stage the reported defect on purpose, so the copies detector
+              // below has a positive control. Every Mac we own delivers exactly one
+              // copy, so without this the detector could be wired to a constant and
+              // three hundred `once` readings would look like proof.
+              if policy.writer == .deliberateDouble {
+                submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
+                copiesSubmittedLength = payload.text.utf16.count
+                _ = PasteService.pasteToActiveApp(payload.text, to: self.pasteboard)
+              }
+            #endif
           case .cgEventCreationFailed(let accessibilityTrusted, _):
             cgEventFailureAccessibilityTrusted = accessibilityTrusted
             tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
@@ -701,6 +729,7 @@ internal final class PasteCascadeExecutor {
         submittedKind = payload.kind
         #if DEBUG
           submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
+          copiesSubmittedLength = payload.text.utf16.count
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
@@ -783,6 +812,7 @@ internal final class PasteCascadeExecutor {
         submittedKind = payload.kind
         #if DEBUG
           submissionLedger.append(submissionToken(tier: .menuPaste, text: payload.text))
+          copiesSubmittedLength = payload.text.utf16.count
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
@@ -908,6 +938,35 @@ internal final class PasteCascadeExecutor {
         // The gate evidence rides on the DELIVERY line rather than on a line of its own.
         // Two independently scheduled log lines have to be joined by timestamp, and a
         // mis-join produces a confident wrong tabulation with nothing to show for it.
+        // HOW MANY COPIES ARRIVED, measured from lengths and never from the text.
+        //
+        // Read after a settle window because the destination has not finished applying
+        // the write when the cascade returns — the same lag that makes the Tier 1
+        // verification answer `noMutation` on a write that landed. Reading immediately
+        // would reproduce the defect inside its own detector.
+        var copiesEvidence = " copies=not_measured"
+        if let element = request.targetElement, let before = copiesCountBefore,
+          tier != .clipboardOnly
+        {
+          try? await Task.sleep(for: .milliseconds(400))
+          let after = PasteService.characterCount(of: element)
+          let copies = PasteService.copiesDelivered(
+            countAfter: after,
+            countBefore: before,
+            selectionLengthBefore: copiesSelectionLengthBefore,
+            insertedLength: copiesSubmittedLength ?? 0)
+          // The raw readings ride along while this is being proved. `unknown` has three
+          // causes that demand different answers — the field will not report a count, the
+          // destination rewrote the text so the arithmetic cannot hold, or a real double —
+          // and a bare `unknown` cannot tell them apart.
+          copiesEvidence =
+            " copies=\(copies.map(String.init) ?? "unknown")"
+            + " copies_raw=before:\(before)"
+            + ",sel:\(copiesSelectionLengthBefore)"
+            + ",sent:\(copiesSubmittedLength.map(String.init) ?? "nil")"
+            + ",after:\(after.map(String.init) ?? "unreadable")"
+        }
+
         var gateEvidence = ""
         if let trace = webGateTrace {
           let extended = PasteService.resumeAncestorChainTrace(trace, maxExamined: 60)
@@ -917,11 +976,11 @@ internal final class PasteCascadeExecutor {
             + " roles=\(extended.roles.joined(separator: ">"))"
             + " target=\(targetDiagnostics)"
         }
-        Task { [runID = Self.bakeoffRunID, variant = policy.id, gateEvidence] in
+        Task { [runID = Self.bakeoffRunID, variant = policy.id, gateEvidence, copiesEvidence] in
           await AppLogger.shared.log(
             "PASTE_BAKEOFF_TRIAL run_id=\(runID ?? "none") variant=\(variant) "
               + "tier=\(tier.rawValue) app=\(bundleId) attempts=\(attempts) "
-              + "ledger=\(ledger) duration=\(durationMs)ms" + gateEvidence,
+              + "ledger=\(ledger) duration=\(durationMs)ms" + copiesEvidence + gateEvidence,
             level: .info, category: "PipelineTiming"
           )
         }
