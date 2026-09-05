@@ -230,15 +230,43 @@ def snapshot_plist(domain, keys):
     return {k: values.get(k) for k in keys}
 
 
+def same_plist_value(got, want):
+    """`==` PLUS the exact type, recursively. `True`, `1` and `1.0` are three.
+
+    Python equality alone would call all three equal, so a restore that put an
+    integer where a boolean was would read as clean -- the check reporting a
+    pass for the class of defect it exists to catch (cloud review on #2674).
+    `bool` is its own type in Python, so `type(...) is type(...)` separates it
+    from `int` without a special case; a `list` compares element by element and
+    a `dict` key by key, because a container's mangling lives inside it.
+    """
+    if type(got) is not type(want):
+        return False
+    if isinstance(want, list):
+        return len(got) == len(want) and all(
+            same_plist_value(g, w) for g, w in zip(got, want))
+    if isinstance(want, dict):
+        return got.keys() == want.keys() and all(
+            same_plist_value(got[k], want[k]) for k in want)
+    return got == want
+
+
 def check_plist(domain, snap):
     """`{key: bool}`: does each key hold EXACTLY the snapshotted value now?
 
-    Parsed-value equality, so an array restored as the string `defaults read`
-    printed for it is reported as NOT landed. Exposed on its own so a harness,
-    or the control test, can ask the question without performing a restore.
+    Parsed-value equality AND type, so an array restored as the string
+    `defaults read` printed for it is reported as NOT landed, and so is a
+    boolean restored as the integer that prints identically. Exposed on its own
+    so a harness, or the control test, can ask the question without performing
+    a restore.
     """
     values = export_domain(domain)
-    return {k: values.get(k) == want for k, want in snap.items()}
+    absent = object()
+    return {
+        k: (want is None and values.get(k, absent) is absent)
+        or (want is not None and same_plist_value(values.get(k, absent), want))
+        for k, want in snap.items()
+    }
 
 
 def restore_plist(domain, snap):

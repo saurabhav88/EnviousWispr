@@ -141,6 +141,26 @@ def main():
         ok("and it is the original bytes", ds.read_plist(DOMAIN, "d") == b'["es"]',
            repr(ds.read_plist(DOMAIN, "d")))
 
+        print("\nan INTEGER standing where a BOOLEAN was is reported as NOT landed")
+        # Python calls `True`, `1` and `1.0` equal, so a value-only check would
+        # report a pass for the class of defect this check exists to catch. Every
+        # row here FAILS under a plain `==` and passes under the typed compare.
+        subprocess.run(["defaults", "write", DOMAIN, "flag", "-bool", "true"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "row", "-array", "-bool", "true"], check=True)
+        typed = ds.snapshot_plist(DOMAIN, ["flag", "row"])
+        ok("precondition: the snapshot holds real booleans",
+           typed == {"flag": True, "row": [True]}, repr(typed))
+        subprocess.run(["defaults", "write", DOMAIN, "flag", "-int", "1"], check=True)
+        subprocess.run(["defaults", "write", DOMAIN, "row", "-array", "-int", "1"], check=True)
+        swapped = ds.check_plist(DOMAIN, typed)
+        ok("an integer in place of a boolean is caught", swapped["flag"] is False,
+           repr(ds.read_plist(DOMAIN, "flag")))
+        ok("an integer INSIDE an array is caught too", swapped["row"] is False,
+           repr(ds.read_plist(DOMAIN, "row")))
+        ok("and a real restore puts both booleans back",
+           all(ds.restore_plist(DOMAIN, typed).values()))
+        ok("the boolean is a boolean again", read_type("flag") == "boolean", read_type("flag"))
+
         print("\na domain that does not exist exports as EMPTY, and is not mistaken for a failure")
         # `defaults export` on a missing domain exits 0 with an empty <dict/>. That is the
         # only way `{}` may come back: a non-zero exit RAISES, because returning `{}` there
