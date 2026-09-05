@@ -655,12 +655,18 @@ jobs:
           # argparse json os sys time datetime pathlib), so both run here under
           # bare python3 with no pytest install. Each asserts its own exact test
           # count, because both runners exit 0 on ZERO discovered tests.
+          #
+          # test_custom_vocab_mirror (#2609) joins them under the same rule: it
+          # pins the gate's CUSTOM VOCABULARY block to production's
+          # (priority, canonical) sort order. Importing acceptance_gate pulls in
+          # only the stdlib and reads no key, so it runs here on the same terms.
           python3 scripts/eval/tests/test_alias_scorer.py
           python3 scripts/eval/tests/test_v4_adversarial_runner.py
           # The registry rebuild's history-loss guards (#2581): a deleted or
           # renamed ARMS row must be REFUSED, not silently dropped. Same runner
           # shape and exact-count assertion as the two above.
           python3 scripts/eval/tests/test_rebuild_model_registry.py
+          python3 scripts/eval/tests/test_custom_vocab_mirror.py
 
       - name: Require every lane
         run: |
