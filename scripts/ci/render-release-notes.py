@@ -106,6 +106,22 @@ def normalise_literal(raw):
 
 BULLETS_OPEN = re.compile(r"bullets:\s*\[")
 STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
+LINE_COMMENT = re.compile(r"//[^\n]*")
+
+
+def blank_out(match):
+    """The matched text as spaces of the same length, so positions found in the masked
+    text index the original."""
+    return " " * (match.end() - match.start())
+
+
+def mask_literals_and_comments(fields):
+    """`fields` with every string literal and `//` comment replaced by spaces, so a
+    search over it sees only the entry's own argument syntax. Literals go first: a
+    `//` inside a description is prose, not a comment, and blanking the literal
+    removes it before the comment pass looks."""
+    masked = STRING_LITERAL.sub(blank_out, fields)
+    return LINE_COMMENT.sub(blank_out, masked)
 
 
 def parse_bullets(fields):
@@ -120,7 +136,12 @@ def parse_bullets(fields):
     does a missing `]`. A `]` inside a bullet's text is fine: the literal is consumed
     before the closer is looked for.
     """
-    m = BULLETS_OPEN.search(fields)
+    # Found in the argument SYNTAX only. A description whose prose happens to contain
+    # `bullets: [one, two]` is a string literal, and searching the raw text would read
+    # the words inside it as a field that cannot be parsed, which `empty_fields` then
+    # turns into a refusal of the whole release's notes. The mask keeps every offset,
+    # so `m.end()` indexes the original text and the walk below reads the real array.
+    m = BULLETS_OPEN.search(mask_literals_and_comments(fields))
     if not m:
         return []
     pos = m.end()
@@ -374,6 +395,40 @@ FIXTURE_CASES = [
         # `render` strips the whole body, so the blank last line loses its space.
         "- **Blank.** Desc.\n  - Present\n  -",
         ["9.9.9: Blank"],
+    ),
+    (
+        "a description that mentions bullets: [...] in prose is not a bullets field",
+        '''
+    Entry(
+      id: "prose",
+      icon: "sparkles",
+      title: "Prose",
+      description: "Format bullets: [one, two] the way you like.",
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Prose", "desc": "Format bullets: [one, two] the way you like.",
+          "version": "9.9.9", "bullets": []}],
+        "- **Prose.** Format bullets: [one, two] the way you like.",
+        [],
+    ),
+    (
+        "a real bullets field after a description that mentions one is still read",
+        '''
+    Entry(
+      id: "both",
+      icon: "sparkles",
+      title: "Both",
+      description: "Mentions bullets: [not these].",
+      // bullets: ["not this either"]
+      bullets: ["The real one"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Both", "desc": "Mentions bullets: [not these].",
+          "version": "9.9.9", "bullets": ["The real one"]}],
+        "- **Both.** Mentions bullets: [not these].\n  - The real one",
+        [],
     ),
     (
         "bullets on one entry do not leak into the next, nor out of a comment",
