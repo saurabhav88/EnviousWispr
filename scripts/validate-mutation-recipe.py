@@ -209,9 +209,14 @@ def test_oracle(root):
         # the nested suite, and `swift test list` files them under `Outer/Inner/...`.
         # Capturing only the first segment filed them under `Outer`, so the validator
         # rejected a valid recipe for every extension-hosted nested test (#2669 review).
-        # The dots become the path separator the chain below already uses.
+        # Swift also accepts trivia around the dot and backtick-escaped segments
+        # (`extension Outer . \`Inner\``), which the inventory freeze already treats as the
+        # same name; both are stripped so the spelling never decides the key. The dots
+        # become the path separator the chain below already uses.
         for declaration in re.finditer(
-            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+(\w+(?:\.\w+)*)", code
+            r"\b(?:struct|final\s+class|class|enum|actor|extension)\s+"
+            r"(`?\w+`?(?:\s*\.\s*`?\w+`?)*)",
+            code,
         ):
             opening = code.find("{", declaration.end())
             closing = matching_delimiter(code, opening, "{", "}") if opening >= 0 else None
@@ -222,7 +227,8 @@ def test_oracle(root):
                 if "{" in suite_attribute or "}" in suite_attribute:
                     suite_attribute = ""
                 ranges.append((
-                    opening, closing, declaration.group(1).replace(".", "/"),
+                    opening, closing,
+                    re.sub(r"[\s`]", "", declaration.group(1)).replace(".", "/"),
                     has_runtime_gate(suite_attribute)
                 ))
 

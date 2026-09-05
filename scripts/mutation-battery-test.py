@@ -2371,6 +2371,10 @@ enum QualifiedFixtureOuter {
 extension QualifiedFixtureOuter.QualifiedFixtureInner {
   @Test("an extension-hosted nested test") func hostedByExtension() {}
 }
+
+extension QualifiedFixtureOuter . `QualifiedFixtureInner` {
+  @Test("a spaced, backticked extension-hosted test") func hostedBySpacedExtension() {}
+}
 """
 with tempfile.TemporaryDirectory() as _qtd:
     _qroot = Path(_qtd)
@@ -2397,6 +2401,19 @@ if "hostedByExtension()" in _qwrong:
 else:
     print("  ok  the filing-time oracle no longer files an extension-hosted nested test "
           "under the bare outer name")
+ran += 1
+# Legal spellings with trivia around the dot and a backtick-escaped segment name the SAME
+# type; the key must not depend on which one the author typed (#2669 review, round 2).
+_qspaced = "QualifiedFixtureOuter/QualifiedFixtureInner/hostedBySpacedExtension()"
+if _qunder.get("hostedBySpacedExtension()") != {_qspaced} \
+        or "hostedBySpacedExtension()" in _qwrong \
+        or any("`" in key or " " in key for key in _qnames if "QualifiedFixture" in key):
+    failures.append(
+        "the filing-time oracle normalises a spaced, backticked qualified extension to the "
+        f"same key: got {sorted(k for k in _qnames if 'QualifiedFixture' in k)!r}")
+else:
+    print("  ok  the filing-time oracle normalises a spaced, backticked qualified extension "
+          "to the same key")
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
