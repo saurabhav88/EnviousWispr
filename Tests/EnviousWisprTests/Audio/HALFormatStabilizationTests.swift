@@ -169,6 +169,24 @@ struct CaptureStopMetadataTransportTests {
     #expect(decoded.nativeChannelCount == 4)
   }
 
+  @Test("#2664: the applied input channel survives the round trip and is absent-means-nil")
+  func inputChannelRoundTripAndAbsence() throws {
+    let original = CaptureStopMetadata(
+      nativeRateHz: 48000, rateDivergenceDetected: false, nativeChannelCount: 2, inputChannel: 1)
+    let data = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(CaptureStopMetadata.self, from: data)
+    #expect(decoded == original)
+    #expect(decoded.inputChannel == 1)
+    // A blob from a build before #2664: no `inputChannel` key. Nil, never 0 — nil
+    // means "not measured", 0 means "the default channel was measured".
+    let preFieldJSON = """
+      {"nativeRateHz":48000,"rateDivergenceDetected":false,"nativeChannelCount":2}
+      """
+    let older = try JSONDecoder().decode(CaptureStopMetadata.self, from: Data(preFieldJSON.utf8))
+    #expect(older.inputChannel == nil)
+    #expect(older.nativeChannelCount == 2)
+  }
+
   @Test("#1523: a pre-field JSON blob (no channel key) decodes to a nil count")
   func preFieldBlobDecodesToNilChannelCount() throws {
     // A stop-reply blob encoded before #1523 shipped — no `nativeChannelCount`
@@ -243,6 +261,7 @@ struct CaptureStopMetadataGapTests {
           "lostChunkCount",
           "rateDivergenceDetected",
           "nativeChannelCount",
+          "inputChannel",
         ]))
     #expect(!fields.contains("drainedPreRollSampleCount"))
   }

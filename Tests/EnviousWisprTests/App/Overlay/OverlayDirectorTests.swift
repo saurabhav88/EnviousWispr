@@ -117,6 +117,7 @@ struct OverlayDirectorTests {
         display: { preview.display() }),
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
       openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     return (d, host, sink)
@@ -189,7 +190,8 @@ struct OverlayDirectorTests {
       scheduler: .manual { _ in },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
   }
 
@@ -285,6 +287,7 @@ struct OverlayDirectorTests {
         display: { preview.display() }),
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
       openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     hosts.append(host)
@@ -316,7 +319,8 @@ struct OverlayDirectorTests {
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
     d.present(.warning(reason: .polishFailed))
@@ -957,7 +961,8 @@ struct OverlayDirectorTests {
         isEnabledForGeometry: { recordingStarted },
         wordsCapability: { recordingStarted ? .available : .previewOff },
         display: { .off }),
-      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      selections: { .shipped },
       firstRenderSchedule: { $0() })
     Self.hosts.append(host)
     defer { Self.closeAllWindows() }
@@ -1429,7 +1434,8 @@ struct OverlayDirectorTests {
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in }, livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
     defer { recorder.panel?.orderOut() }
 
@@ -1460,6 +1466,7 @@ struct OverlayDirectorTests {
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { announcements.append($0) },
       livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
@@ -1489,6 +1496,7 @@ struct OverlayDirectorTests {
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in },
       livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
@@ -1697,6 +1705,7 @@ struct OverlayDirectorTests {
     let d = OverlayDirector(
       host: host, announce: { _ in },
       livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped })
 
     d.present(.warning(reason: .polishFailed))
@@ -1724,6 +1733,7 @@ struct OverlayDirectorTests {
     let d = OverlayDirector(
       host: host, announce: { _ in },
       livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped })
 
     // First request, deferred. A second replaces it before the run loop turns,
@@ -1749,6 +1759,7 @@ struct OverlayDirectorTests {
     let d = OverlayDirector(
       host: host, announce: { _ in },
       livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped })
     d.present(.warning(reason: .polishFailed))
     await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
@@ -1929,6 +1940,7 @@ struct OverlayDirectorTests {
       livePreview: .disabled,
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
       openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     hosts.append(host)

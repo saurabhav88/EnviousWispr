@@ -60,7 +60,7 @@ final class KernelLifecycleTelemetrySink {
     _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
     _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
     _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
-    _ takeID: String?
+    _ captureInputChannel: Int?, _ takeID: String?
   ) -> Void
 
   /// #1884 `dictation.started` — the denominator. Deliberately minimal: this
@@ -79,6 +79,8 @@ final class KernelLifecycleTelemetrySink {
     _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
     _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
     _ captureNativeChannelCount: Int?,
+    // #2664: the device input channel the capture took (0 = default), beside the count.
+    _ captureInputChannel: Int?,
     // #2184: what the VAD's segments did to this take's audio. All four are nil
     // when the take concluded before the conditioner ran, which is the reading
     // rather than a gap. Owner: `KernelVADConditioningTelemetry`.
@@ -219,7 +221,7 @@ final class KernelLifecycleTelemetrySink {
     vadGateNoSpeech: @escaping VADGateNoSpeechSink = {
       backend, mode, rawSampleCount, peakAudioLevel, wholeBufferRMS, maxWindowRMS, durationMs,
       effectiveTransport, selectedTransport, inputSelectionMode, inputDeviceKind,
-      captureNativeRateHz, captureNativeChannelCount, takeID in
+      captureNativeRateHz, captureNativeChannelCount, captureInputChannel, takeID in
       TelemetryService.shared.vadGateNoSpeech(
         backend: backend, mode: mode, rawSampleCount: rawSampleCount,
         peakAudioLevel: peakAudioLevel, wholeBufferRMS: wholeBufferRMS,
@@ -227,7 +229,8 @@ final class KernelLifecycleTelemetrySink {
         effectiveTransport: effectiveTransport, selectedTransport: selectedTransport,
         inputSelectionMode: inputSelectionMode, inputDeviceKind: inputDeviceKind,
         captureNativeRateHz: captureNativeRateHz,
-        captureNativeChannelCount: captureNativeChannelCount, takeID: takeID)
+        captureNativeChannelCount: captureNativeChannelCount,
+        captureInputChannel: captureInputChannel, takeID: takeID)
     },
     dictationStarted: @escaping DictationStartedSink = { takeID, backend in
       TelemetryService.shared.dictationStarted(takeID: takeID, backend: backend)
@@ -235,8 +238,8 @@ final class KernelLifecycleTelemetrySink {
     dictationTerminal: @escaping DictationTerminalSink = {
       takeID, backend, result, reason, inputDeviceKind, effectiveTransport, selectedTransport,
       inputSelectionMode, wholeBufferRMS, maxWindowRMS, peakAudioLevel, durationMs,
-      captureNativeRateHz, captureNativeChannelCount, vadRawSampleCount, vadFilteredSampleCount,
-      vadRetainedRatio, vadConditioningReason, deliveryDisposition in
+      captureNativeRateHz, captureNativeChannelCount, captureInputChannel, vadRawSampleCount,
+      vadFilteredSampleCount, vadRetainedRatio, vadConditioningReason, deliveryDisposition in
       TelemetryService.shared.dictationTerminal(
         takeID: takeID, backend: backend, result: result, reason: reason,
         inputDeviceKind: inputDeviceKind, effectiveTransport: effectiveTransport,
@@ -245,6 +248,7 @@ final class KernelLifecycleTelemetrySink {
         peakAudioLevel: peakAudioLevel, durationMs: durationMs,
         captureNativeRateHz: captureNativeRateHz,
         captureNativeChannelCount: captureNativeChannelCount,
+        captureInputChannel: captureInputChannel,
         deliveryDisposition: deliveryDisposition,
         vadRawSampleCount: vadRawSampleCount,
         vadFilteredSampleCount: vadFilteredSampleCount,
@@ -377,6 +381,7 @@ final class KernelLifecycleTelemetrySink {
       attribution?.wholeBufferRMS, attribution?.maxWindowRMS,
       attribution?.peakAudioLevel, attribution?.durationMs,
       attribution?.captureNativeRateHz, attribution?.captureNativeChannelCount,
+      attribution?.captureInputChannel,
       conditioning?.rawSampleCount, conditioning?.filteredSampleCount,
       conditioning?.retainedRatio, conditioning?.conditioningReason,
       snapshot.deliveryDisposition.rawValue)
@@ -568,7 +573,7 @@ final class KernelLifecycleTelemetrySink {
           facts.wholeBufferRMS, facts.maxWindowRMS, facts.durationMs,
           facts.effectiveTransport, facts.selectedTransport, facts.inputSelectionMode,
           facts.inputDeviceKind, facts.captureNativeRateHz, facts.captureNativeChannelCount,
-          facts.takeID)
+          facts.captureInputChannel, facts.takeID)
       case .asrEmptyNoSpeech:
         breadcrumb(
           "asr", "ASR empty (no speech detected)",
@@ -831,6 +836,7 @@ final class KernelLifecycleTelemetrySink {
     let inputDeviceKind: String?
     let captureNativeRateHz: Double?
     let captureNativeChannelCount: Int?
+    let captureInputChannel: Int?
     let takeID: String?
   }
 
@@ -851,6 +857,7 @@ final class KernelLifecycleTelemetrySink {
       inputDeviceKind: noSpeech?.inputDeviceKind,
       captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
       captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount,
+      captureInputChannel: health?.stopMetadata?.inputChannel,
       // Read BEFORE the generic terminal postamble clears the take key. The
       // postamble deliberately runs after the event-specific arm for exactly
       // this reason; if it is ever moved above the switch, the §11.2 take-key
@@ -875,6 +882,7 @@ final class KernelLifecycleTelemetrySink {
     if let v = facts.inputDeviceKind { payload["input_device_kind"] = v }
     if let v = facts.captureNativeRateHz { payload["capture_native_rate_hz"] = v }
     if let v = facts.captureNativeChannelCount { payload["capture_native_channel_count"] = v }
+    if let v = facts.captureInputChannel { payload["capture_input_channel"] = v }
     return payload
   }
 
@@ -1118,7 +1126,8 @@ final class KernelLifecycleTelemetrySink {
         captureRateDivergenceDetected: health?.stopMetadata?.rateDivergenceDetected,
         captureFormatStabilized: health?.formatStabilized,
         captureRebuiltForFormat: health?.captureRebuiltForFormat,
-        captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount
+        captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount,
+        captureInputChannel: health?.stopMetadata?.inputChannel
       )
       if let noAudioCapturedRich {
         noAudioCapturedRich(ctx)

@@ -136,6 +136,7 @@ final class PipelineSettingsSync {
 
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
+    audioCapture.inputChannelByDeviceUID = settings.inputChannelByDeviceUID
     audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     audioCapture.configureVAD(
       autoStop: settings.vadAutoStop,
@@ -251,6 +252,11 @@ final class PipelineSettingsSync {
       audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     case .preferredInputDeviceIDOverride:
       audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
+    case .inputChannelByDeviceUID:
+      // #2664: same contract as `.selectedInputDeviceUID` — rebuilds the next
+      // recording's capture source (the manager's warm-reuse check reads this
+      // map live); an in-flight recording is unaffected.
+      audioCapture.inputChannelByDeviceUID = settings.inputChannelByDeviceUID
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,

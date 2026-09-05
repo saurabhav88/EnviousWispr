@@ -222,6 +222,7 @@ final class HeartPathTelemetryEmitter {
     if let channels = ctx.captureNativeChannelCount {
       extras["capture.native_channel_count"] = channels
     }
+    if let channel = ctx.captureInputChannel { extras["capture.input_channel"] = channel }
     captureError(err, .audioCaptureFailed, "recording", extras)
   }
 

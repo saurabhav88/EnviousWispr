@@ -41,13 +41,16 @@ struct HeartPathContextsTests {
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil,
       failureMode: .noBuffers,
-      nativeChannelCount: 6
+      nativeChannelCount: 6,
+      inputChannel: 1
     )
     // The kernel merges its stabilization observations without reconstructing
     // the context from scratch, so the source-stamped channel count must survive.
     let enriched = source.enrichedWithStabilizationFlags(
       formatStabilized: true, captureRebuiltForFormat: false)
     #expect(enriched.nativeChannelCount == 6)
+    // #2664: the applied input channel rides beside it, same lifetime.
+    #expect(enriched.inputChannel == 1)
     #expect(enriched.formatStabilized == true)
     // A source that never stamps a count leaves it nil through enrichment.
     #expect(
@@ -63,6 +66,10 @@ struct HeartPathContextsTests {
       unstamped.enrichedWithStabilizationFlags(
         formatStabilized: nil, captureRebuiltForFormat: nil
       ).nativeChannelCount == nil)
+    #expect(
+      unstamped.enrichedWithStabilizationFlags(
+        formatStabilized: nil, captureRebuiltForFormat: nil
+      ).inputChannel == nil)
   }
 
   @Test("#1543: enrichedWithManagerRoute overlays session id + route, preserves source fields")
@@ -83,7 +90,8 @@ struct HeartPathContextsTests {
       failureMode: .noBuffers,
       nativeRateHz: 48_000,
       rateDivergenceDetected: true,
-      nativeChannelCount: 2
+      nativeChannelCount: 2,
+      inputChannel: 1
     )
     let enriched = halBuilt.enrichedWithManagerRoute(
       sessionID: 7,  // manager's app-lifetime id
@@ -104,6 +112,7 @@ struct HeartPathContextsTests {
     #expect(enriched.nativeRateHz == 48_000)
     #expect(enriched.rateDivergenceDetected == true)
     #expect(enriched.nativeChannelCount == 2)
+    #expect(enriched.inputChannel == 1)
     #expect(enriched.inputDeviceUIDPreferred == "BuiltInMicrophoneDevice")
     #expect(enriched.failureMode == .noBuffers)
     #expect(enriched.armedAtUptimeNs == 100)

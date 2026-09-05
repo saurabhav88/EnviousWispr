@@ -60,7 +60,7 @@ import Testing
       /// model a retry that lands on a different device.
       var boundToReturn = BoundInputDevice(
         deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       /// When set, `prepare()` throws this instead of returning a bind.
       var prepareError: Error?
       private(set) var prepareCallCount = 0
@@ -118,7 +118,7 @@ import Testing
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
         deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "usb",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -136,7 +136,7 @@ import Testing
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
         deviceID: 7, deviceUID: "actually-bound-uid", transportLabel: "built_in",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(
         stub, rememberedSelection: "remembered-but-never-opened-uid")
 
@@ -172,7 +172,7 @@ import Testing
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
         deviceID: 99, deviceUID: "first-attempt-uid", transportLabel: "usb",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -182,7 +182,7 @@ import Testing
       manager.rebuildEngine()
       stub.boundToReturn = BoundInputDevice(
         deviceID: 42, deviceUID: "final-attempt-uid", transportLabel: "built_in",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       try await manager.startEnginePhase()
 
       #expect(manager.zeroSignalDiscriminatorDevice == stub.boundToReturn)
@@ -237,7 +237,7 @@ import Testing
       stub.finalizedAttemptToFire = nil
       stub.boundToReturn = BoundInputDevice(
         deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
-        resolutionSource: "list_fallback")
+        resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -254,7 +254,7 @@ import Testing
       stub.finalizedAttemptToFire = Self.finalizedAttempt(.systemDefault)
       stub.boundToReturn = BoundInputDevice(
         deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
-        resolutionSource: "list_fallback")
+        resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       try await manager.startEnginePhase()
@@ -268,7 +268,7 @@ import Testing
       // First attempt succeeds on the system default.
       stub.boundToReturn = BoundInputDevice(
         deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
       try await manager.startEnginePhase()
       #expect(manager.currentInputResolutionSource == "system_default")
@@ -291,7 +291,7 @@ import Testing
       let stub = StubSource()
       stub.boundToReturn = BoundInputDevice(
         deviceID: 42, deviceUID: "default-uid", transportLabel: "built_in",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
       try await manager.startEnginePhase()
       #expect(manager.currentInputResolutionSource == "system_default")
@@ -312,7 +312,7 @@ import Testing
       stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
       stub.boundToReturn = BoundInputDevice(
         deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
-        resolutionSource: "list_fallback")
+        resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       try await manager.preWarm()
@@ -344,7 +344,7 @@ import Testing
       stub.finalizedAttemptToFire = Self.finalizedAttempt(.listFallback)
       stub.boundToReturn = BoundInputDevice(
         deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
-        resolutionSource: "list_fallback")
+        resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       var forwarded: [InputResolutionAttemptTelemetry] = []
@@ -365,7 +365,7 @@ import Testing
       stub.finalizedAttemptToFire = nil
       stub.boundToReturn = BoundInputDevice(
         deviceID: 30, deviceUID: "fallback-uid", transportLabel: "built_in",
-        resolutionSource: "list_fallback")
+        resolutionSource: "list_fallback", inputChannel: 0)
       let manager = Self.makeManager(stub)
 
       var forwarded: [InputResolutionAttemptTelemetry] = []

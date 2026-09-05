@@ -127,6 +127,12 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// device exposed so a >1-channel population is measurable). Nil when the
   /// source doesn't read a channel count (e.g. proxy-origin stalls).
   public let nativeChannelCount: Int?
+  /// #2664: the device input channel (0-based) the mono capture ACTUALLY took.
+  /// 0 is the default channel (no channel map set, today's behaviour for every
+  /// device); a positive value means the user's per-device socket choice was
+  /// applied. Nil means "not measured" (a source that binds no HAL unit), never
+  /// 0 — the same absent-vs-zero rule `nativeChannelCount` follows.
+  public let inputChannel: Int?
 
   /// Every way the captured stream can lose frames between the microphone and
   /// the pipeline, summed. THE point of this property is to be the one place
@@ -175,7 +181,8 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     preRollGapCount: Int = 0,
     lostChunkCount: Int = 0,
     rateDivergenceDetected: Bool = false,
-    nativeChannelCount: Int? = nil
+    nativeChannelCount: Int? = nil,
+    inputChannel: Int? = nil
   ) {
     self.nativeRateHz = nativeRateHz
     self.ringDropCount = ringDropCount
@@ -187,6 +194,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.lostChunkCount = lostChunkCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
+    self.inputChannel = inputChannel
   }
 
   /// Counters decode as ABSENT-MEANS-ZERO rather than as required keys, so a stop
@@ -208,6 +216,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     rateDivergenceDetected =
       try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
     nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)
+    inputChannel = try c.decodeIfPresent(Int.self, forKey: .inputChannel)
   }
 }
 

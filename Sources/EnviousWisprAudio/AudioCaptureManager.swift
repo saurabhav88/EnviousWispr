@@ -207,6 +207,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// User override for input device. Empty string means "Auto" (smart selection enabled).
   public var preferredInputDeviceIDOverride: String = ""
 
+  /// #2664: per-device input-channel preference (device UID -> 0-based channel),
+  /// mirrored from settings by `PipelineSettingsSync` exactly as the two device
+  /// fields above are. Missing UID means channel 0. Copied onto every HAL source
+  /// at construction for its cold prepare, and read LIVE by `resolveSource()`'s
+  /// warm-reuse check, so changing the socket for the bound device rebuilds the
+  /// next recording's capture source instead of reusing a unit on the old one.
+  public var inputChannelByDeviceUID: [String: Int] = [:]
+
   /// Hard emergency recording-duration ceiling in seconds. Prevents unbounded
   /// memory growth. MUST stay strictly above the graceful soft cap
   /// (`TimingConstants.maxRecordingDuration`, 3600s) so the graceful stop+transcribe
@@ -1014,6 +1022,22 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       buildSource(for: decision)
     }
 
+    /// #2664 test seam: replace the route resolver with one whose two hardware
+    /// reads are injected, so `resolveSource()` can run on a machine with no
+    /// audio output device. Production never calls this.
+    func installRouteResolverForTesting(_ resolver: CaptureRouteResolver) {
+      routeResolver = resolver
+    }
+
+    /// #2664 test seam: run the REAL `resolveSource()` — warm-reuse decision
+    /// included — and return the source it settled on, so a test can assert
+    /// identity (`===` the installed warm source means reused; anything else
+    /// means rebuilt) without going on to `prepare()` real hardware. Install the
+    /// warm source with `installCapturedSourceForTesting` first.
+    func resolveSourceForTesting() -> any AudioInputSource {
+      resolveSource()
+    }
+
     /// Test seam (heartpath 5b): drop the live active source while KEEPING the
     /// retained capture-session source, so `retireCapturingSource` reaches the
     /// `.activeSourceGone` branch. The installer's optional `active` argument
@@ -1207,12 +1231,25 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// DEBUG arming tests can exercise construction from a given decision without
   /// running `CaptureRouteResolver.resolve()`, which reads live output hardware.
   private func buildSource(for decision: CaptureRouteDecision) -> any AudioInputSource {
+    let source: any AudioInputSource
     #if DEBUG
       if let debugSourceFactory {
-        return debugSourceFactory(decision)  // #1844/#1714 seam; nil in production
+        source = debugSourceFactory(decision)  // #1844/#1714 seam; nil in production
+      } else {
+        source = Self.makeSource(for: decision)
       }
+    #else
+      source = Self.makeSource(for: decision)
     #endif
-    return Self.makeSource(for: decision)
+    // #2664: hand EVERY freshly built HAL source the manager's CURRENT channel
+    // map — the production path and the DEBUG factories alike — here rather than
+    // inside each constructor, so no construction route can build a source that
+    // cold-prepares on a stale or empty map. A source that is not HAL-typed has
+    // no channel to choose.
+    if let halSource = source as? HALDeviceInputSource {
+      halSource.inputChannelByDeviceUID = inputChannelByDeviceUID
+    }
+    return source
   }
 
   private func resolveSource() -> any AudioInputSource {
@@ -1239,13 +1276,17 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // Device changes between recordings must trigger rebuild.
       var configMatch = existingSourceType == decision.sourceType
       // A warm HAL source must not be reused once the resolved target device
-      // changes (or the bound device drifts from the resolved target).
+      // changes (or the bound device drifts from the resolved target), nor
+      // (#2664) once the user's socket choice for the bound device no longer
+      // matches the channel the warm unit takes — compared against the MANAGER's
+      // live map, because the source's own copy is what it prepared on.
       if configMatch, let halSource = existing as? HALDeviceInputSource {
         let wantsTarget = decision.effectiveDeviceUID
         let normalize: (String?) -> String = { ($0?.isEmpty ?? true) ? "" : $0! }
         configMatch =
           normalize(halSource.targetDeviceUID) == normalize(wantsTarget)
           && halSource.boundDeviceMatchesResolvedTargetForReuse()
+          && halSource.boundInputChannelMatches(preference: inputChannelByDeviceUID)
       }
 
       if configMatch {

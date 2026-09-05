@@ -6,6 +6,18 @@ public struct AudioInputDevice: Sendable, Identifiable, Hashable {
   public let id: AudioDeviceID
   public let name: String
   public let uid: String
+  /// #2664: total native input channels, from the single channel-count
+  /// authority (`AudioDeviceEnumerator.inputChannelCount`). Always > 0 here —
+  /// `allInputDevices()` drops a device reporting none. The settings row shows
+  /// a per-device socket picker only when this exceeds 1.
+  public let inputChannelCount: Int
+
+  public init(id: AudioDeviceID, name: String, uid: String, inputChannelCount: Int) {
+    self.id = id
+    self.name = name
+    self.uid = uid
+    self.inputChannelCount = inputChannelCount
+  }
 }
 
 /// One input-device candidate, frozen during a SINGLE enumeration pass (#1714).
@@ -115,7 +127,8 @@ public enum AudioDeviceEnumerator {
       return AudioInputDevice(
         id: deviceID,
         name: name,
-        uid: uid
+        uid: uid,
+        inputChannelCount: channelCount
       )
     }
   }

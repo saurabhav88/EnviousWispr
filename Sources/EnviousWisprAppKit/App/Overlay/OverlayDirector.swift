@@ -307,6 +307,13 @@ final class OverlayDirector {
   /// compile rather than shipping a button that reaches nobody.
   private let openMicrophoneSettings: () -> Void
 
+  /// #2664: the facts a silent-take advisory needs to name a multi-input
+  /// device, resolved at ADMISSION time from settings + the device list. Same
+  /// no-default reasoning as the two closures above: a caller that forgets to
+  /// wire it fails to compile rather than shipping an advisory that can never
+  /// name the box.
+  private let advisoryHint: @MainActor (TerminalAdvisoryReason) -> MultiInputAdvisoryHint?
+
   init(
     host: any OverlayWindowHosting,
     position: @escaping () -> OverlayPillPosition = { .top },
@@ -323,6 +330,8 @@ final class OverlayDirector {
     grantAccessibility: @escaping () -> Void,
     // #2549: same no-default reasoning as `grantAccessibility` above.
     openMicrophoneSettings: @escaping () -> Void,
+    // #2664: same no-default reasoning again.
+    advisoryHint: @escaping @MainActor (TerminalAdvisoryReason) -> MultiInputAdvisoryHint?,
     // **No default either, for the reason directly above** (#2375 C3a). This is
     // the seam Phase 4 replaces: a settings-backed snapshot at this same
     // construction point, changing this closure's BODY and nothing else. A
@@ -350,6 +359,7 @@ final class OverlayDirector {
     self.livePreview = livePreview
     self.grantAccessibility = grantAccessibility
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.advisoryHint = advisoryHint
     self.position = position
     self.model = model
     self.expiryClock = PillExpiryClock(
@@ -1406,8 +1416,14 @@ extension OverlayDirector: OverlayPresenting {
       } else {
         handle(.pipeline(.error(reason: reason)), binding: .none, relay: relay)
       }
-    case .advisory(let reason):
-      handle(.pipeline(.advisory(reason: reason)), binding: .none, relay: relay)
+    case .advisory(let reason, let hint):
+      // #2664: a supplied hint wins; otherwise ask the composition root NOW, so
+      // the sentence names the device the user would find selected in Settings.
+      if let hint = hint ?? advisoryHint(reason) {
+        handle(.advisory(reason: reason, hint: hint), binding: .none, relay: relay)
+      } else {
+        handle(.pipeline(.advisory(reason: reason)), binding: .none, relay: relay)
+      }
     case .interruption(let reason):
       handle(.pipeline(.interruption(reason: reason)), binding: .none, relay: relay)
     case .cachingModel(let engineLabel):

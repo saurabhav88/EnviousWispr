@@ -142,7 +142,11 @@ enum PillRequest {
   case clipboardFallback
   case warning(reason: RecordingWarningReason)
   case error(reason: TerminalNoticeReason)
-  case advisory(reason: TerminalAdvisoryReason)
+  /// #2664: `hint` is presentation-only (the device name for a multi-input
+  /// interface). nil means "resolve it at admission through the director's
+  /// `advisoryHint` closure"; a supplied hint wins, so a test can present a
+  /// hinted advisory without a device list.
+  case advisory(reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint? = nil)
   case interruption(reason: TerminalNoticeReason)
   case cachingModel(engineLabel: String)
   case engineReady

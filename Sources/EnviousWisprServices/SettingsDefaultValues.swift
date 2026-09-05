@@ -122,6 +122,9 @@ enum SettingsDefaultValues {
 
   static let selectedInputDeviceUID = ""
   static let preferredInputDeviceIDOverride = ""
+  /// #2664: no per-device socket choice on a fresh install; every device
+  /// records from its first input, as before.
+  static let inputChannelByDeviceUID: [String: Int] = [:]
 
   static let useStreamingASR = false
   static let warmEnginePolicy: WarmEnginePolicy = .seconds30

@@ -14,6 +14,8 @@ public struct CaptureHealthTransports: Sendable, Equatable {
   public let captureRebuiltForFormat: Bool?
   /// #1523: the bound device's total native input channel count.
   public let nativeChannelCount: Int?
+  /// #2664: the device input channel the capture actually took (0 = default).
+  public let inputChannel: Int?
 
   public init(
     nativeRateHz: Double?,
@@ -23,7 +25,8 @@ public struct CaptureHealthTransports: Sendable, Equatable {
     rateDivergenceDetected: Bool?,
     formatStabilized: Bool?,
     captureRebuiltForFormat: Bool?,
-    nativeChannelCount: Int? = nil
+    nativeChannelCount: Int? = nil,
+    inputChannel: Int? = nil
   ) {
     self.nativeRateHz = nativeRateHz
     self.ringDropCount = ringDropCount
@@ -33,5 +36,6 @@ public struct CaptureHealthTransports: Sendable, Equatable {
     self.formatStabilized = formatStabilized
     self.captureRebuiltForFormat = captureRebuiltForFormat
     self.nativeChannelCount = nativeChannelCount
+    self.inputChannel = inputChannel
   }
 }

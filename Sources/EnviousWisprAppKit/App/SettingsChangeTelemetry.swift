@@ -138,6 +138,10 @@ enum SettingsProjection {
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
       .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
+      // #2664: a UID-keyed map is device identity, which never leaves the Mac;
+      // the effective channel is already carried per take by
+      // `capture_input_channel`, so a settings delta would add nothing.
+      .inputChannelByDeviceUID,
       // #1480: the popover's own lifecycle telemetry (`bt_awareness.*`) owns this
       // signal, incl. `suppressed_by_setting`; no separate settings.changed delta.
       .showBluetoothTips,

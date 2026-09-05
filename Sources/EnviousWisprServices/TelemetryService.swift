@@ -212,6 +212,7 @@ public final class TelemetryService {
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
     captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
+    captureInputChannel: Int? = nil,
     salvagedLeadTrimMs: Int? = nil,
     // #1408: present only on a salvaged completion — WHICH interruption cut the
     // recording short. `stop_reason` already says an interruption ended it; this
@@ -281,6 +282,7 @@ public final class TelemetryService {
       captureFormatStabilized: captureFormatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat,
       captureNativeChannelCount: captureNativeChannelCount,
+      captureInputChannel: captureInputChannel,
       salvagedLeadTrimMs: salvagedLeadTrimMs,
       interruptedBy: interruptedBy,
       asrSalvageOutcome: asrSalvageOutcome,
@@ -1068,6 +1070,7 @@ public final class TelemetryService {
     inputDeviceKind: String?,
     captureNativeRateHz: Double?,
     captureNativeChannelCount: Int?,
+    captureInputChannel: Int?,
     takeID: String?
   ) {
     let event = "audio.vad_gate_no_speech"
@@ -1090,6 +1093,7 @@ public final class TelemetryService {
     if let captureNativeChannelCount {
       props["capture_native_channel_count"] = captureNativeChannelCount
     }
+    if let captureInputChannel { props["capture_input_channel"] = captureInputChannel }
     if let takeID { props["take_id"] = takeID }
     #if DEBUG
       // Read BACK OUT of the emitted payload so a test observes what PostHog
@@ -1102,7 +1106,7 @@ public final class TelemetryService {
         if let value = props[key] as? String { stringProps[key] = value }
       }
       var intProps: [String: Int] = ["raw_sample_count": rawSampleCount]
-      for key in ["duration_ms", "capture_native_channel_count"] {
+      for key in ["duration_ms", "capture_native_channel_count", "capture_input_channel"] {
         if let value = props[key] as? Int { intProps[key] = value }
       }
       var doubleProps: [String: Double] = [:]
@@ -1207,6 +1211,9 @@ public final class TelemetryService {
     durationMs: Int? = nil,
     captureNativeRateHz: Double? = nil,
     captureNativeChannelCount: Int? = nil,
+    // #2664: the device input channel the capture took (0 = default). Additive,
+    // defaulted, omit-when-nil like the count beside it.
+    captureInputChannel: Int? = nil,
     // #2087: ADDITIVE and defaulted, so every existing call site and every
     // existing query keeps working. An Escape Recovery session concludes
     // `.completed`, so without this the ordinary terminal row would report it as
@@ -1245,6 +1252,7 @@ public final class TelemetryService {
     if let captureNativeChannelCount {
       props["capture_native_channel_count"] = captureNativeChannelCount
     }
+    if let captureInputChannel { props["capture_input_channel"] = captureInputChannel }
     if let vadRawSampleCount { props["vad_raw_sample_count"] = vadRawSampleCount }
     if let vadFilteredSampleCount { props["vad_filtered_sample_count"] = vadFilteredSampleCount }
     if let vadRetainedRatio { props["vad_retained_ratio"] = vadRetainedRatio }
@@ -1262,8 +1270,8 @@ public final class TelemetryService {
       }
       var intProps: [String: Int] = [:]
       for key in [
-        "duration_ms", "capture_native_channel_count", "vad_raw_sample_count",
-        "vad_filtered_sample_count",
+        "duration_ms", "capture_native_channel_count", "capture_input_channel",
+        "vad_raw_sample_count", "vad_filtered_sample_count",
       ] {
         if let value = props[key] as? Int { intProps[key] = value }
       }
@@ -1434,6 +1442,7 @@ public final class TelemetryService {
     captureConverterErrorCount: Int? = nil, captureZeroOutputCount: Int? = nil,
     captureRateDivergenceDetected: Bool? = nil, captureFormatStabilized: Bool? = nil,
     captureRebuiltForFormat: Bool? = nil, captureNativeChannelCount: Int? = nil,
+    captureInputChannel: Int? = nil,
     salvagedLeadTrimMs: Int? = nil,
     interruptedBy: String? = nil,
     asrSalvageOutcome: String? = nil,
@@ -1472,6 +1481,9 @@ public final class TelemetryService {
     if let stab = captureFormatStabilized { props["capture_format_stabilized"] = stab }
     if let rebuilt = captureRebuiltForFormat { props["capture_rebuilt_for_format"] = rebuilt }
     if let channels = captureNativeChannelCount { props["capture_native_channel_count"] = channels }
+    // #2664: which device input channel the capture took (0 = default). Omit when
+    // nil (not measured); 0 is a real measurement and travels.
+    if let channel = captureInputChannel { props["capture_input_channel"] = channel }
     if let trim = salvagedLeadTrimMs { props["salvaged_lead_trim_ms"] = trim }
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }

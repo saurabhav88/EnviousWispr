@@ -50,7 +50,7 @@ struct OverlayHostingContractTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {},
+      openMicrophoneSettings: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
 

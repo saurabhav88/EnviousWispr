@@ -164,6 +164,7 @@ private final class DefaultsOnlyAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "defaults_only_stub"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}

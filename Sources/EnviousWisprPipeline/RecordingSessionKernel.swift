@@ -1922,7 +1922,8 @@ final class RecordingSessionKernel {
       rateDivergenceDetected: captureResult.metadata?.rateDivergenceDetected,
       formatStabilized: formatStabilizedThisSession,
       captureRebuiltForFormat: captureRebuiltForFormatThisSession,
-      nativeChannelCount: captureResult.metadata?.nativeChannelCount
+      nativeChannelCount: captureResult.metadata?.nativeChannelCount,
+      inputChannel: captureResult.metadata?.inputChannel
     )
     recordingStoppedTelemetry(captureResult.samples.count)
     await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
@@ -4022,7 +4023,10 @@ final class RecordingSessionKernel {
         // terminal. This is the near-silent-capture event §3a correlates a
         // >1-channel count against (voice on a later channel → AUHAL takes
         // channel 0 → silence), so the count belongs precisely here.
-        nativeChannelCount: captureResult.metadata?.nativeChannelCount
+        nativeChannelCount: captureResult.metadata?.nativeChannelCount,
+        // #2664: and which channel the capture actually took, so the fleet
+        // question "did the socket setting reach this take" is answerable.
+        inputChannel: captureResult.metadata?.inputChannel
       ))
   }
 
@@ -4102,7 +4106,8 @@ final class RecordingSessionKernel {
       peakAudioLevel: peak,
       durationMs: telemetryState.recordingSnapshot?.durationMs,
       captureNativeRateHz: health?.stopMetadata?.nativeRateHz,
-      captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount
+      captureNativeChannelCount: health?.stopMetadata?.nativeChannelCount,
+      captureInputChannel: health?.stopMetadata?.inputChannel
     )
   }
 
@@ -4493,6 +4498,7 @@ final class RecordingSessionKernel {
     diagnostics.captureFormatStabilized = health.formatStabilized
     diagnostics.captureRebuiltForFormat = health.captureRebuiltForFormat
     diagnostics.captureNativeChannelCount = health.stopMetadata?.nativeChannelCount
+    diagnostics.captureInputChannel = health.stopMetadata?.inputChannel
     telemetryState.asrEmptyDiagnostics = diagnostics
   }
 

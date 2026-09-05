@@ -30,6 +30,16 @@ To select a specific device:
 
 **Select your device.** Choose your microphone from the list.
 
+### If your microphone box has more than one input
+
+Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from one of them. It uses Input 1 unless you tell it otherwise. When the selected device reports more than one input, a **Mic is on** control appears next to the device picker. Pick the input your microphone is plugged into, and EnviousWispr remembers that choice for that box.
+
+If your microphone is on the wrong input, a recording ends with a notice that names the device and points you to this setting. If the input numbers do not match the sockets on your device, try the next one.
+
+**Scarlett Solo 4th Gen:** the XLR microphone socket is Input 2, so pick Input 2. If you have enabled "Combine inputs", Input 1 already carries your microphone and no change is needed. On Scarlett Solo 3rd Gen, the XLR microphone socket is Input 1.
+
+**Two microphones at once:** this setting listens to one input. To record two people through one interface, use the mix your interface itself provides. Combining devices with a macOS Aggregate Device is not recommended.
+
 ### If your microphone is unplugged mid-recording
 
 EnviousWispr keeps what it recorded up to that point and transcribes it, rather than losing the entire recording.

@@ -134,6 +134,17 @@ enum DictationNarrator {
     }
   }
 
+  /// #2664. The same advisory when the take came from a multi-input audio
+  /// interface: it names the device and points at the one setting that fixes
+  /// the common cause (the microphone is on a socket other than Input 1). Sentence
+  /// FOUNDER-LOCKED at Gate 2, 2026-09-05; no dashes. A nil hint is the locked
+  /// seventh sentence above, byte for byte, so every existing caller is unchanged.
+  static func copy(for reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint?) -> String {
+    guard let hint else { return copy(for: reason) }
+    return
+      "Audio isn't capturing from \(hint.deviceName). Try a different input under Settings > Microphone."
+  }
+
   // MARK: - Post-completion + advisory warnings (E3, #1567)
 
   /// Founder-LOCKED 2026-07-15. Unchanged from today EXCEPT two approved
@@ -187,7 +198,11 @@ enum DictationNarrator {
   /// The single authority for every VoiceOver announcement the recording overlay
   /// posts. The panel keeps choosing the AX priority + target element; the words
   /// live here. Words byte-identical to today (founder-locked 2026-07-15).
-  static func announcement(for intent: OverlayIntent) -> String {
+  /// #2664: `hint` reaches only the `.advisory` arm; every other intent ignores it,
+  /// and a nil hint keeps every spoken string byte-identical.
+  static func announcement(for intent: OverlayIntent, hint: MultiInputAdvisoryHint? = nil)
+    -> String
+  {
     switch intent {
     case .hidden: return "Recording complete"
     case .recording(audioLevel: _): return "Recording started"
@@ -199,7 +214,7 @@ enum DictationNarrator {
     // #1891: NO "Error: " prefix. A screen-reader user would otherwise hear
     // the exact opposite of what the sentence says. This arm is the reason the
     // advisory is a separate intent rather than a suppression flag on `.error`.
-    case .advisory(let reason): return copy(for: reason)
+    case .advisory(let reason): return copy(for: reason, hint: hint)
     case .interruption(let reason): return "Interruption: \(copy(for: reason))"
     case .passiveChip(let payload): return "Detected \(payload.displayName)"
     case .cachingModel(engineLabel: _): return "Getting dictation ready, one moment"

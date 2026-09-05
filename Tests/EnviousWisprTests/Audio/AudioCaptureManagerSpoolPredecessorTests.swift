@@ -78,7 +78,6 @@ import Testing
       ).terminationReason
     }
 
-
     /// Barrier on a writer's serial write queue. `finalize` is idempotent and
     /// ALWAYS invokes `completion` — including on the already-finalized path — so
     /// this cannot hang; it simply queues behind whatever the manager already
@@ -204,7 +203,8 @@ import Testing
       await Self.drain(writer)
 
       let recovered = try RecoverySpoolStore(directory: dir).recover(
-        recoverySessionID: "tail", cipher: RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key()))
+        recoverySessionID: "tail",
+        cipher: RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key()))
       #expect(recovered.terminationReason == .interrupted, "marked superseded, not clean")
       #expect(
         recovered.samples == [0.5, -0.5, 0.25, -0.25],
@@ -332,7 +332,7 @@ import Testing
     var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
     var boundToReturn = BoundInputDevice(
       deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
-      resolutionSource: "system_default")
+      resolutionSource: "system_default", inputChannel: 0)
     func prepare() async throws -> BoundInputDevice { boundToReturn }
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
       AsyncStream { $0.finish() }

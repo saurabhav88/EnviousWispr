@@ -62,7 +62,7 @@ import Testing
       var onInputResolutionAttemptFinalized: ((FinalizedInputResolutionAttempt) -> Void)?
       var boundToReturn = BoundInputDevice(
         deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       private(set) var prepareCallCount = 0
 
       func prepare() async throws -> BoundInputDevice {

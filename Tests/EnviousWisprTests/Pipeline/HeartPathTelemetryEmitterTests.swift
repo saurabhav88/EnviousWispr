@@ -204,6 +204,8 @@ struct HeartPathTelemetryEmitterTests {
     #expect(captured.extra["capture.failure_mode"] as? String == "no_audio_captured")
     // #1523: an unstamped no-audio terminal omits the channel-count key.
     #expect(captured.extra["capture.native_channel_count"] == nil)
+    // #2664: and the applied input channel key.
+    #expect(captured.extra["capture.input_channel"] == nil)
   }
 
   @Test("#1523: a stamped channel count rides the no-audio captureError extras")
@@ -213,10 +215,13 @@ struct HeartPathTelemetryEmitterTests {
 
     var ctx = Self.noAudioContext(sessionID: 5)
     ctx.captureNativeChannelCount = 8
+    ctx.captureInputChannel = 3
     emitter.noAudioCaptured(ctx: ctx)
 
     #expect(recorder.errors.count == 1)
     #expect(recorder.errors[0].extra["capture.native_channel_count"] as? Int == 8)
+    // #2664: the applied input channel rides beside the count.
+    #expect(recorder.errors[0].extra["capture.input_channel"] as? Int == 3)
   }
 
   @Test("noAudioCaptured dedups to a breadcrumb after a stall in the same session")

@@ -39,6 +39,9 @@ struct KernelSignalAttributionTelemetry: Sendable, Equatable {
   let durationMs: Int?
   let captureNativeRateHz: Double?
   let captureNativeChannelCount: Int?
+  /// #2664: the device input channel the capture took (0 = default), so a
+  /// signal-free terminal can say whether a non-default socket was in effect.
+  let captureInputChannel: Int?
 }
 
 /// #2184 — what the VAD's segments did to this take's audio, frozen at the

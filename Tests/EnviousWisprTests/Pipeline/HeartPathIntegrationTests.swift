@@ -514,6 +514,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "fixture_mock"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   private let loadedSamples: [Float]

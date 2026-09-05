@@ -689,7 +689,7 @@ struct InputDeviceResolverTests {
   private func bind(_ id: AudioDeviceID, _ source: InputResolutionSource) -> BoundInputDevice {
     BoundInputDevice(
       deviceID: id, deviceUID: "uid-\(id)", transportLabel: "built_in",
-      resolutionSource: source.rawValue)
+      resolutionSource: source.rawValue, inputChannel: 0)
   }
 
   /// `defaultTransport` is injected here for the same reason as the cold helper:

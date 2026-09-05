@@ -78,6 +78,7 @@ struct RecordingReconciliationTests {
         display: { .off }),
       grantAccessibility: {},
       openMicrophoneSettings: {},
+      advisoryHint: { _ in nil },
       selections: selections,
       firstRenderSchedule: { $0() },
       scheduleReconciliation: { queue.schedule($0) })

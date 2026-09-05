@@ -58,6 +58,13 @@ struct RenderedPillFreezeTests {
       // unwrapped line — which is the reading two earlier capture rounds took
       // and the reason the harness proposes a width at all.
       ("advisory.zeroSignal", .advisory(reason: .zeroSignal), 360, 68),
+      // #2664: the hinted variant names the device; one line shorter than the
+      // seventh sentence, same requested width. Measured 2026-09-05.
+      (
+        "advisory.zeroSignal.hinted",
+        .advisory(reason: .zeroSignal, hint: MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")),
+        360, 52
+      ),
       ("interruption.deviceRemoved", .interruption(reason: .deviceRemoved), 225.5, 44),
       ("cachingModel", .cachingModel(engineLabel: "Parakeet"), 259.5, 51),
       ("engineReady", .engineReady, 213, 40),
