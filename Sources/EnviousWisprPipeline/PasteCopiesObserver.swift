@@ -138,10 +138,19 @@ package enum PasteCopiesObserver {
 
   /// Whether the before-image's selection length still describes the field the delivery wrote
   /// into. Pure, so the rule can be tested without a live element.
+  /// **The discriminator is ACTIVATION, not the setter.** Three review rounds each found a new
+  /// case where "did the Tier 1 setter run" trusted a selection it should not have: a setter that
+  /// failed, and a setter that returned `.noMutation`, both hand delivery to a fallback. Reaching
+  /// the setter never proved it replaced the selection.
+  ///
+  /// Every route after Tier 1 activates the destination first, and activation is what can clear a
+  /// selection. So the question is whether ANY of them ran, which `tiersAttempted` answers
+  /// directly. The `.unverifiable` case keeps its measurement, correctly: the cascade STOPS there
+  /// rather than paste again, so nothing activated and the selection still stands.
   package static func selectionStillDescribesTheField(
-    setterReached: Bool, selectionLength: Int
+    fallbackRan: Bool, selectionLength: Int
   ) -> Bool {
-    if setterReached { return true }
+    if !fallbackRan { return true }
     return selectionLength == 0
   }
 
@@ -176,7 +185,7 @@ package enum PasteCopiesObserver {
     // there. Activation CREATING a selection fails the other way — the field ends shorter than
     // expected and lands in no band — which is `unclassified`, the safe answer.
     if !selectionStillDescribesTheField(
-      setterReached: evidence.setterReached, selectionLength: evidence.before.selectionLength)
+      fallbackRan: evidence.fallbackRan, selectionLength: evidence.before.selectionLength)
     {
       return PasteCopiesObservation(
         estimate: .unknown, status: .unclassified, detectorVersion: detectorVersion)

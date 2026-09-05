@@ -89,18 +89,20 @@ package struct PasteCopiesEvidence: @unchecked Sendable {
   package let element: AXUIElement
   package let before: PasteService.CopiesBeforeImage
   package let submittedLengths: [Int]
-  /// Whether the Tier 1 SETTER ran. Decides whether the before-image's SELECTION LENGTH is
-  /// still describing the field the fallback wrote into — see `PasteCopiesObserver`.
-  package let setterReached: Bool
+  /// Whether any route AFTER Tier 1 ran. Every one of them ACTIVATES the destination first,
+  /// and activation is what can clear a selection — so this, not "did the setter run", is what
+  /// decides whether the before-image's SELECTION LENGTH still describes the field that was
+  /// written into. See `PasteCopiesObserver.selectionStillDescribesTheField`.
+  package let fallbackRan: Bool
 
   package init(
     element: AXUIElement, before: PasteService.CopiesBeforeImage, submittedLengths: [Int],
-    setterReached: Bool
+    fallbackRan: Bool
   ) {
     self.element = element
     self.before = before
     self.submittedLengths = submittedLengths
-    self.setterReached = setterReached
+    self.fallbackRan = fallbackRan
   }
 
   /// The one length the observation may use, or nil when the attempts disagree.
@@ -1039,9 +1041,11 @@ internal final class PasteCascadeExecutor {
     if let before = copiesBeforeImage, let element = request.targetElement,
       !copiesSubmittedLengths.isEmpty
     {
+      // Derived from `tiersAttempted` — the producing code — rather than from any belief about
+      // which paths reach a fallback.
       result.copiesEvidence = PasteCopiesEvidence(
         element: element, before: before, submittedLengths: copiesSubmittedLengths,
-        setterReached: copiesSetterReached)
+        fallbackRan: tiersAttempted.contains { $0 != .axDirect })
       result.copiesSetterReached = copiesSetterReached
     }
     return result
