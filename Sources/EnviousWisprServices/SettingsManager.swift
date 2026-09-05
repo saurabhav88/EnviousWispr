@@ -49,6 +49,8 @@ public final class SettingsManager {
     case languageMode
     case selectedInputDeviceUID
     case preferredInputDeviceIDOverride
+    /// #2664: per-device "Microphone socket" choice, keyed by device UID.
+    case inputChannelByDeviceUID
     case useStreamingASR
     case livePreviewEnabled
     case livePreviewEngine
@@ -98,7 +100,7 @@ public final class SettingsManager {
     "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "whisperKitLanguage", "languageMode",
-    "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
+    "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
@@ -730,6 +732,22 @@ public final class SettingsManager {
     }
   }
 
+  /// #2664: which input of a multi-input audio interface the microphone is on,
+  /// per device UID, stored 0-based (the UI shows `Input \(index + 1)`). A
+  /// missing UID means channel 0, today's behaviour. Persisted as JSON `Data`
+  /// under one key, the `languageMode` shape above; an undecodable or absent
+  /// value loads as `[:]` (no earlier shape exists to migrate from). Keyed by
+  /// UID rather than `AudioDeviceID` because a replug recycles the numeric
+  /// handle and keeps the UID.
+  public var inputChannelByDeviceUID: [String: Int] {
+    didSet {
+      if let data = try? JSONEncoder().encode(inputChannelByDeviceUID) {
+        defaults.set(data, forKey: "inputChannelByDeviceUID")
+      }
+      onChange?(.inputChannelByDeviceUID)
+    }
+  }
+
   #if DEBUG
     /// DEV-ONLY per-build knob (AFM adapter PoC): when ON and EW_AFM_ADAPTER_PATH
     /// is set, on-device Apple Intelligence polish runs through the local
@@ -797,6 +815,17 @@ public final class SettingsManager {
   ///   default) for production (resolves to `SettingsDefaults.store`, the
   ///   build-shared suite); tests inject a private suite. `nil` (not a direct
   ///   `SettingsDefaults.store` default arg) keeps the accessor Services-internal.
+  /// #2664: decode the per-device socket map, or `[:]` when the key is absent
+  /// or undecodable. Fails OPEN to the default on purpose: a corrupt blob must
+  /// cost the user one re-pick, never a launch that cannot read its settings.
+  nonisolated static func loadInputChannelByDeviceUID(from defaults: UserDefaults) -> [String: Int]
+  {
+    guard let data = defaults.data(forKey: "inputChannelByDeviceUID"),
+      let decoded = try? JSONDecoder().decode([String: Int].self, from: data)
+    else { return SettingsDefaultValues.inputChannelByDeviceUID }
+    return decoded
+  }
+
   public init(defaults: UserDefaults? = nil) {
     let defaults = defaults ?? SettingsDefaults.store
     self.defaults = defaults
@@ -984,6 +1013,7 @@ public final class SettingsManager {
     preferredInputDeviceIDOverride =
       defaults.string(forKey: "preferredInputDeviceIDOverride")
       ?? SettingsDefaultValues.preferredInputDeviceIDOverride
+    inputChannelByDeviceUID = Self.loadInputChannelByDeviceUID(from: defaults)
     #if DEBUG
       // PER-BUILD EXCEPTION (#923): AFM adapter PoC dev knob, read from the
       // build's own store, default ON. Stays out of unifiedDefaultsKeys + the

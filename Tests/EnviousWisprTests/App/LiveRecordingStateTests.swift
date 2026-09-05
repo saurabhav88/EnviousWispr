@@ -175,6 +175,7 @@ private final class SettableAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}
@@ -223,6 +224,7 @@ private final class ObservableAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}

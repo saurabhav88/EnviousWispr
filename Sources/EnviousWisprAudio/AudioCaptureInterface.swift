@@ -167,6 +167,10 @@ public protocol AudioCaptureInterface: AnyObject {
   // Configuration properties (read-write)
   var selectedInputDeviceUID: String { get set }
   var preferredInputDeviceIDOverride: String { get set }
+  /// #2664: per-device input-channel preference (device UID -> 0-based channel).
+  /// Mirrored from settings like the two device fields above; the manager reads
+  /// it at source construction and at every warm-reuse decision.
+  var inputChannelByDeviceUID: [String: Int] { get set }
   var warmEnginePolicy: WarmEnginePolicy { get set }
 
   // Core lifecycle

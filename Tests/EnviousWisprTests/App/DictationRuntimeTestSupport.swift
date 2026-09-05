@@ -37,6 +37,7 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
   var preWarmError: Error?
   /// #1063 PR1: counts `abortPreWarm()` so the release-during-recovery-arm guard

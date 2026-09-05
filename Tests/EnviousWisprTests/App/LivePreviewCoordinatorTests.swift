@@ -2197,6 +2197,7 @@ private final class CountingAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "hal_device_input"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   func startEnginePhase() async throws {}

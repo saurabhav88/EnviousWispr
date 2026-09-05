@@ -150,6 +150,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
   var captureSourceType: String = "fixture_mock"
   var selectedInputDeviceUID: String = ""
   var preferredInputDeviceIDOverride: String = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   /// Hold the continuation indefinitely so the AsyncStream never completes.

@@ -204,6 +204,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   var selectedInputDeviceUID = ""
   var preferredInputDeviceIDOverride = ""
+  var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
   init() {}
