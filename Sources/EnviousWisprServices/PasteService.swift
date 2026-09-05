@@ -488,12 +488,29 @@ public enum PasteService {
     }
   }
 
+  /// The field's size immediately BEFORE a Tier 1 write, for the copies observation (#2652).
+  ///
+  /// Taken from reads `insertViaAccessibility` ALREADY performs; no read exists for this type's
+  /// sake. That is the whole constraint: the observation must add no synchronous accessibility
+  /// traffic to the delivery path, and a destination whose AX round trip is slow is precisely the
+  /// suspected population.
+  package struct CopiesBeforeImage: Sendable, Equatable {
+    package let count: Int
+    package let selectionLength: Int
+    package init(count: Int, selectionLength: Int) {
+      self.count = count
+      self.selectionLength = selectionLength
+    }
+  }
+
   package struct AXInsertResult: Sendable {
     package let outcome: AXInsertOutcome
     package let submitted: PastePayloadKind?
     package let writeCall: AXWriteCall
     package let declineReason: AXDeclineReason?
     package let settability: AXSettability?
+    /// Non-nil only where the setter was actually reached, so both reads happened.
+    package var copiesBeforeImage: CopiesBeforeImage?
 
     package init(
       outcome: AXInsertOutcome,
@@ -1615,8 +1632,17 @@ public enum PasteService {
   package static func copiesDelivered(
     countAfter: Int?, countBefore: Int, selectionLengthBefore: Int, insertedLength: Int
   ) -> Int? {
-    guard let countAfter, insertedLength > 0 else { return nil }
-    let expected = countBefore - selectionLengthBefore + insertedLength
+    // Overflow-safe throughout: these numbers come from a foreign application's accessibility
+    // implementation, so they are arbitrary Ints, not values this process produced.
+    guard let countAfter, insertedLength > 0, countBefore >= 0, selectionLengthBefore >= 0,
+      countAfter >= 0
+    else { return nil }
+    let (afterSelection, s1) = countBefore.subtractingReportingOverflow(selectionLengthBefore)
+    guard !s1 else { return nil }
+    let (expected, s2) = afterSelection.addingReportingOverflow(insertedLength)
+    guard !s2 else { return nil }
+    let (twoCopies, s3) = expected.addingReportingOverflow(insertedLength)
+    guard !s3 else { return nil }
 
     // A DESTINATION MAY NOT STORE EXACTLY WHAT IT WAS GIVEN, so exact arithmetic
     // answers `unknown` for a delivery that plainly worked.
@@ -1631,8 +1657,12 @@ public enum PasteService {
     // widened window from turning a single delivery into a reported duplicate, which is
     // the one error this detector must never make.
     let tolerance = min(3, insertedLength / 3)
-    if abs(countAfter - expected) <= tolerance { return 1 }
-    if abs(countAfter - (expected + insertedLength)) <= tolerance { return 2 }
+    func within(_ band: Int) -> Bool {
+      let (delta, overflowed) = countAfter.subtractingReportingOverflow(band)
+      return !overflowed && delta.magnitude <= UInt(tolerance)
+    }
+    if within(expected) { return 1 }
+    if within(twoCopies) { return 2 }
     return nil
   }
 
@@ -1962,13 +1992,16 @@ public enum PasteService {
     // The write was attempted with this payload, whatever the verification says
     // afterwards — including an outcome later classified `unverifiable`, where
     // the text may already be in the document.
-    return AXInsertResult(
+    var result = AXInsertResult(
       outcome: outcome,
       submitted: payload.kind,
       writeCall: .succeeded(attemptedText: text),
       declineReason: Self.declineReason(for: outcome),
       settability: settability
     )
+    result.copiesBeforeImage = CopiesBeforeImage(
+      count: countBefore, selectionLength: rangeBefore.length)
+    return result
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V

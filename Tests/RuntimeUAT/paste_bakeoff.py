@@ -71,10 +71,16 @@ TRIAL_RE = re.compile(
     r"ledger=(?P<ledger>\S*) duration=(?P<duration>\d+)ms"
 )
 
-# V6 is not a candidate fix. It delivers TWICE on purpose, to arm the copies detector
-# with a positive control — no Mac we own produces a real double, so without it a
-# detector wired to a constant would pass every run we could think to do.
-VARIANTS = ["V0", "V1", "V2", "V4", "V5", "V6"]
+# V6 delivered TWICE on purpose, to arm the copies detector with a positive control. It is
+# NOT committed: a second `pasteToActiveApp` call site reads to the clipboard-isolation freeze
+# as a fourth shipped automatic paste route, and a third attempt to satisfy that guard moved the
+# write out of its snapshot's scope, which the guard also refused. Correctly, all three times.
+#
+# Recipe to re-add it locally and uncommitted when the detector needs re-proving: a
+# `deliberateDouble` writer policy mapped to "V6", and a second delivery IN THE SNAPSHOT'S OWN
+# SCOPE. Proof it produced on 2026-09-04: 40 trials, four destinations, both directions, zero
+# wrong verdicts and zero unknowns.
+VARIANTS = ["V0", "V1", "V2", "V4", "V5"]
 
 
 # --------------------------------------------------------------------------- log

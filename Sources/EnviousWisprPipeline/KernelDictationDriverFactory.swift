@@ -555,8 +555,39 @@ public enum KernelDictationDriverFactory {
       // omission; this is the production wiring, so here it is passed
       // explicitly. Same shape as the required seam two hundred lines above.
       deliverPaste: { request in
-        await PasteCascadeExecutor(pasteboard: .general, policy: Self.pasteDeliveryPolicy)
-          .deliver(request)
+        // #2652. SNAPSHOT the take id BEFORE the await. `KernelTelemetryState.takeID` is mutable
+        // and reset per accepted session, so reading it after the observation's settle window
+        // could attribute this delivery's copies to the NEXT dictation.
+        let takeIDAtDelivery = telemetryState.takeID
+        let result = await PasteCascadeExecutor(
+          pasteboard: .general, policy: Self.pasteDeliveryPolicy
+        ).deliver(request)
+        // Scheduled AFTER delivery has returned and its latency is finalised, so the
+        // observation's own work cannot land inside a delivery metric. It reports and returns
+        // nothing: there is no caller decision to make on a measurement.
+        if let takeIDAtDelivery {
+          PasteCopiesObserver.schedule(
+            evidence: result.copiesEvidence,
+            targetBundleID: request.targetApp?.bundleIdentifier,
+            gate: .shared
+          ) { observation in
+            // The measurement is finished before this hop, so nothing accessibility-related runs
+            // on the main actor. Only the reporting does, because `TelemetryService` is
+            // main-actor isolated.
+            Task { @MainActor in
+              TelemetryService.shared.pasteCopiesObserved(
+                takeID: takeIDAtDelivery,
+                copiesEstimate: observation.estimate.rawValue,
+                status: observation.status.rawValue,
+                detectorVersion: observation.detectorVersion,
+                settleMs: PasteCopiesObserver.settleMilliseconds,
+                tier: result.pasteTierLabel,
+                targetApp: request.targetApp?.bundleIdentifier,
+                tier1ReachedSetter: result.copiesEvidence != nil)
+            }
+          }
+        }
+        return result
       },
       pasteCompletionRegistry: pasteCompletionRegistry,
       // #950 — share the SAME telemetry state the kernel stamps so the metrics

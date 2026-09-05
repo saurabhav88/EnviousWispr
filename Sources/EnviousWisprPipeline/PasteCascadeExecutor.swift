@@ -76,6 +76,35 @@ internal enum PasteDeliveryOutcome: Equatable, Sendable {
   )
 }
 
+/// Everything the copies observation needs, and nothing it could write with (#2652).
+///
+/// `@unchecked Sendable` for the `AXUIElement`, matching the house precedent at
+/// `PasteService.logElementDiagnostics`, which captures one with `nonisolated(unsafe)` to run its
+/// reads off the caller's thread.
+///
+/// `submittedLengths` holds EVERY attempt's UTF-16 length, never the winner's alone. Routes choose
+/// their payload separately, so when the attempts disagree there is no single length the
+/// arithmetic can be about and the observation must decline rather than pick one.
+package struct PasteCopiesEvidence: @unchecked Sendable {
+  package let element: AXUIElement
+  package let before: PasteService.CopiesBeforeImage
+  package let submittedLengths: [Int]
+
+  package init(
+    element: AXUIElement, before: PasteService.CopiesBeforeImage, submittedLengths: [Int]
+  ) {
+    self.element = element
+    self.before = before
+    self.submittedLengths = submittedLengths
+  }
+
+  /// The one length the observation may use, or nil when the attempts disagree.
+  package var unambiguousSubmittedLength: Int? {
+    let distinct = Set(submittedLengths)
+    return distinct.count == 1 ? distinct.first : nil
+  }
+}
+
 /// Result of a paste delivery operation.
 internal struct PasteDeliveryResult {
   let tier: PasteTier
@@ -89,6 +118,9 @@ internal struct PasteDeliveryResult {
   /// answers as one token. Nil when Tier 1 delivered.
   var axDeclineReason: String?
   var axSettability: String?
+  /// #2652. Non-nil only where Tier 1 reached its setter, so the before-image exists without any
+  /// read having been added for it. Nil is reported as `no_before_image`, never as one copy.
+  var copiesEvidence: PasteCopiesEvidence?
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -531,21 +563,14 @@ internal final class PasteCascadeExecutor {
       // AFTER delivery — see `resumeAncestorChainTrace`.
       var webGateTrace: PasteService.AXWebAreaAncestryTrace?
 
-      // The before-image the copies detector is judged against (#2652). Read HERE,
-      // before any writer runs, because after the first write there is no longer a
-      // before to read and the count alone cannot say how many copies made it.
-      var copiesCountBefore: Int?
-      var copiesSelectionLengthBefore = 0
-      // The UTF-16 length actually handed to the winning writer. Recorded AT the
-      // submission rather than re-derived at the end: `repairedText` is optional and
-      // which of the two strings went out is decided inside the write, so re-deriving
-      // it here would be a second opinion about a question already answered.
-      var copiesSubmittedLength: Int?
-      if !policy.isBaseline, let element = request.targetElement {
-        copiesCountBefore = PasteService.characterCount(of: element)
-        copiesSelectionLengthBefore = PasteService.selectedTextLength(of: element) ?? 0
-      }
     #endif
+
+    // #2652. The before-image comes ONLY from reads Tier 1 already performs, and the lengths from
+    // the attempts themselves. Nothing here reads the destination: an added pre-write AX round trip
+    // would land on the delivery path, against a destination whose slow round trip is the suspected
+    // cause of the very defect being measured.
+    var copiesBeforeImage: PasteService.CopiesBeforeImage?
+    var copiesSubmittedLengths: [Int] = []
     let skipTier1ForWebContent: Bool = {
       #if DEBUG
         guard policy.writer == .webCmdV, let element = request.targetElement else { return false }
@@ -570,12 +595,13 @@ internal final class PasteCascadeExecutor {
         element: element,
         requireFocusedElementMatch: request.targetElementIsRetried,
         boundMessagingTimeout: policy.boundTier1MessagingTimeout)
-      #if DEBUG
-        if let attempted = insert.writeCall.attemptedText {
+      copiesBeforeImage = insert.copiesBeforeImage
+      if let attempted = insert.writeCall.attemptedText {
+        copiesSubmittedLengths.append(attempted.utf16.count)
+        #if DEBUG
           submissionLedger.append(submissionToken(tier: .axDirect, text: attempted))
-          copiesSubmittedLength = attempted.utf16.count
-        }
-      #endif
+        #endif
+      }
       let disposition = dispositionForAXDirect(insert, writerPolicy: policy.writer)
       submittedKind = insert.submitted
       axDeclineReason = insert.declineReason
@@ -657,9 +683,9 @@ internal final class PasteCascadeExecutor {
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
             : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
           submittedKind = payload.kind
+          copiesSubmittedLengths.append(payload.text.utf16.count)
           #if DEBUG
             submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
-            copiesSubmittedLength = payload.text.utf16.count
           #endif
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard)
@@ -667,17 +693,6 @@ internal final class PasteCascadeExecutor {
           switch dispatchResult {
           case .dispatched:
             tier = .cgEvent
-            #if DEBUG
-              // V6 ONLY: stage the reported defect on purpose, so the copies detector
-              // below has a positive control. Every Mac we own delivers exactly one
-              // copy, so without this the detector could be wired to a constant and
-              // three hundred `once` readings would look like proof.
-              if policy.writer == .deliberateDouble {
-                submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
-                copiesSubmittedLength = payload.text.utf16.count
-                _ = PasteService.pasteToActiveApp(payload.text, to: self.pasteboard)
-              }
-            #endif
           case .cgEventCreationFailed(let accessibilityTrusted, _):
             cgEventFailureAccessibilityTrusted = accessibilityTrusted
             tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
@@ -727,9 +742,9 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
           : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
         submittedKind = payload.kind
+        copiesSubmittedLengths.append(payload.text.utf16.count)
         #if DEBUG
           submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
-          copiesSubmittedLength = payload.text.utf16.count
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
@@ -810,9 +825,9 @@ internal final class PasteCascadeExecutor {
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
+        copiesSubmittedLengths.append(payload.text.utf16.count)
         #if DEBUG
           submissionLedger.append(submissionToken(tier: .menuPaste, text: payload.text))
-          copiesSubmittedLength = payload.text.utf16.count
         #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
@@ -938,35 +953,6 @@ internal final class PasteCascadeExecutor {
         // The gate evidence rides on the DELIVERY line rather than on a line of its own.
         // Two independently scheduled log lines have to be joined by timestamp, and a
         // mis-join produces a confident wrong tabulation with nothing to show for it.
-        // HOW MANY COPIES ARRIVED, measured from lengths and never from the text.
-        //
-        // Read after a settle window because the destination has not finished applying
-        // the write when the cascade returns — the same lag that makes the Tier 1
-        // verification answer `noMutation` on a write that landed. Reading immediately
-        // would reproduce the defect inside its own detector.
-        var copiesEvidence = " copies=not_measured"
-        if let element = request.targetElement, let before = copiesCountBefore,
-          tier != .clipboardOnly
-        {
-          try? await Task.sleep(for: .milliseconds(400))
-          let after = PasteService.characterCount(of: element)
-          let copies = PasteService.copiesDelivered(
-            countAfter: after,
-            countBefore: before,
-            selectionLengthBefore: copiesSelectionLengthBefore,
-            insertedLength: copiesSubmittedLength ?? 0)
-          // The raw readings ride along while this is being proved. `unknown` has three
-          // causes that demand different answers — the field will not report a count, the
-          // destination rewrote the text so the arithmetic cannot hold, or a real double —
-          // and a bare `unknown` cannot tell them apart.
-          copiesEvidence =
-            " copies=\(copies.map(String.init) ?? "unknown")"
-            + " copies_raw=before:\(before)"
-            + ",sel:\(copiesSelectionLengthBefore)"
-            + ",sent:\(copiesSubmittedLength.map(String.init) ?? "nil")"
-            + ",after:\(after.map(String.init) ?? "unreadable")"
-        }
-
         var gateEvidence = ""
         if let trace = webGateTrace {
           let extended = PasteService.resumeAncestorChainTrace(trace, maxExamined: 60)
@@ -976,11 +962,11 @@ internal final class PasteCascadeExecutor {
             + " roles=\(extended.roles.joined(separator: ">"))"
             + " target=\(targetDiagnostics)"
         }
-        Task { [runID = Self.bakeoffRunID, variant = policy.id, gateEvidence, copiesEvidence] in
+        Task { [runID = Self.bakeoffRunID, variant = policy.id, gateEvidence] in
           await AppLogger.shared.log(
             "PASTE_BAKEOFF_TRIAL run_id=\(runID ?? "none") variant=\(variant) "
               + "tier=\(tier.rawValue) app=\(bundleId) attempts=\(attempts) "
-              + "ledger=\(ledger) duration=\(durationMs)ms" + copiesEvidence + gateEvidence,
+              + "ledger=\(ledger) duration=\(durationMs)ms" + gateEvidence,
             level: .info, category: "PipelineTiming"
           )
         }
@@ -1021,9 +1007,19 @@ internal final class PasteCascadeExecutor {
       axDeclineReason: axDeclineReason?.rawValue,
       axSettability: axSettability?.telemetryValue)
 
-    return PasteDeliveryResult(
+    // #2652. Evidence only where Tier 1 reached its setter AND the delivery put something in a
+    // field. A `clipboardOnly` delivery submitted nothing to the destination, so there is nothing
+    // to have arrived once or twice; it is reported as `no_before_image`, never as one copy.
+    var result = PasteDeliveryResult(
       tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind,
       axDeclineReason: axDeclineReason?.rawValue, axSettability: axSettability?.telemetryValue)
+    if let before = copiesBeforeImage, let element = request.targetElement,
+      tier != .clipboardOnly, !copiesSubmittedLengths.isEmpty
+    {
+      result.copiesEvidence = PasteCopiesEvidence(
+        element: element, before: before, submittedLengths: copiesSubmittedLengths)
+    }
+    return result
   }
 
   /// #729 Tier 2c menu-paste probe outcome. Drives `paste.focus_class`.

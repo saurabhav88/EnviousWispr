@@ -114,6 +114,10 @@ TAKE_KEYED_EVENTS = (
     "llm.polish_failed",
     "llm.polish_skipped",
     "paste.completed",
+    # #2652. Reports how many copies of one dictation landed. Registered here because this
+    # list is the authority for which events carry `take_id`, and an event absent from it is
+    # invisible to every join whatever its payload says.
+    "paste.copies_observed",
     "recording.cap_warning_shown",
 )
 

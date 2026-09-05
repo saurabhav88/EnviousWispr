@@ -2174,6 +2174,58 @@ public final class TelemetryService {
   /// SLOWER than AI polish when it is in fact ~16x faster. `latency_ms` keeps
   /// the raw millisecond value, so `$value` is a pure aggregation mirror and
   /// converting it loses nothing.
+  /// How many copies of one dictation landed (#2652).
+  ///
+  /// A SEPARATE event rather than a field on `paste.completed`, because the verdict is only
+  /// available after a settle window that `paste.completed` must not wait for — delaying an
+  /// existing latency metric to carry a new one would corrupt it, and a stalled probe would cost
+  /// us an otherwise valid completion. Joined on `take_id`. **Either arrival order is permitted;
+  /// no query may assume one.**
+  ///
+  /// **Lengths never leave the Mac.** The arithmetic runs locally and only its verdict is sent.
+  /// Field counts describe the size of whatever document the user is working in, which has nothing
+  /// to do with dictation, so shipping one would widen exposure beyond
+  /// `asr.completed.char_count`, which describes only dictated output.
+  ///
+  /// Machine characteristics are deliberately NOT repeated here: `app.launched` already carries
+  /// `os_version` and `device_model`, joinable by `distinct_id`. Repeating them per delivery would
+  /// put more on the wire to answer a question the existing join already answers.
+  ///
+  /// A MISSING event is a fourth state and must never be read as one copy.
+  public func pasteCopiesObserved(
+    takeID: String,
+    copiesEstimate: String,
+    status: String,
+    detectorVersion: Int,
+    settleMs: Int,
+    tier: String,
+    targetApp: String?,
+    tier1ReachedSetter: Bool
+  ) {
+    guard !takeID.isEmpty else { return }
+    var props: [String: Any] = [
+      "take_id": takeID,
+      "copies_estimate": copiesEstimate,
+      "status": status,
+      "detector_version": detectorVersion,
+      "settle_ms": settleMs,
+      "tier": tier,
+      "tier1_reached_setter": tier1ReachedSetter,
+    ]
+    if let targetApp { props["target_app"] = targetApp }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "paste.copies_observed",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }
+        ))
+    #endif
+    PostHogSDK.shared.capture("paste.copies_observed", properties: props)
+  }
+
   public func pasteCompleted(
     tier: String, targetApp: String?, result: String, latencyMs: Int,
     insertion: PasteInsertionTelemetry = .init(),
