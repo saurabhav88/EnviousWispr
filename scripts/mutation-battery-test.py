@@ -2329,11 +2329,31 @@ extension GatedFixtureOuter.GatedFixtureInner {
   @Test("an extension-hosted test under a gated declaration") func hostedUnderGate() {}
 }
 """
+# The gated declaration and its extension in DIFFERENT files: the gate must reach across
+# the file boundary the way Swift's type system does (#2669 review, round 4).
+_cross_file_declaration = """
+import Testing
+
+@Suite(.disabled("cross-file gate")) enum CrossFileGatedOuter {
+  @Suite struct CrossFileGatedInner {}
+}
+"""
+_cross_file_extension = """
+import Testing
+
+extension CrossFileGatedOuter.CrossFileGatedInner {
+  @Test("an extension-hosted test gated from another file") func hostedAcrossFiles() {}
+}
+"""
 with tempfile.TemporaryDirectory() as _qtd:
     _qroot = Path(_qtd)
     shutil.copytree(BATTERY.parent.parent / "Tests", _qroot / "Tests")
     (_qroot / "Tests" / "EnviousWisprTests" / "QualifiedExtensionFixture.swift").write_text(
         _qualified_fixture)
+    (_qroot / "Tests" / "EnviousWisprTests" / "CrossFileGateDeclaration.swift").write_text(
+        _cross_file_declaration)
+    (_qroot / "Tests" / "EnviousWisprTests" / "CrossFileGateExtension.swift").write_text(
+        _cross_file_extension)
     _qnames = validator.test_oracle(_qroot)
 _qcanonical = "QualifiedFixtureOuter/QualifiedFixtureInner/hostedByExtension()"
 _qunder = _qnames.get("EnviousWisprTests/QualifiedFixtureOuter/QualifiedFixtureInner", {})
@@ -2380,6 +2400,15 @@ if _qgated or any("hostedUnderGate()" in names for names in _qnames.values()):
 else:
     print("  ok  the filing-time oracle applies a declaration's gate to an extension-hosted "
           "test of the nested type")
+ran += 1
+_qcross = sorted(key for key in _qnames if "CrossFileGated" in key)
+if _qcross or any("hostedAcrossFiles()" in names for names in _qnames.values()):
+    failures.append(
+        "the filing-time oracle applies a declaration's gate to an extension in another "
+        f"file: found {_qcross!r}")
+else:
+    print("  ok  the filing-time oracle applies a declaration's gate to an extension in "
+          "another file")
 ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",

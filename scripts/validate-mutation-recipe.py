@@ -200,6 +200,12 @@ def test_oracle(root):
             "validate against a suspiciously small oracle")
 
     names_by_suite = {}
+    # Pass one: every declaration's brace range and gate, for EVERY file, before any test
+    # is extracted. Gates are keyed by target-qualified path (`Target/Outer/Inner`) so a
+    # `.disabled` on a declaration in one file reaches a qualified extension of that type
+    # in another file; a map rebuilt per file could not see across (#2669 review, round 4).
+    parsed = []
+    gate_by_path = {}
     for path, part in sources:
         target = path.relative_to(test_root).parts[0]
         code = mask_inactive_debug_branches(mask_noncode(part))
@@ -236,17 +242,19 @@ def test_oracle(root):
         # around it never sees a `.disabled` on `Outer`'s own declaration — yet Swift
         # Testing skips that test through the parent trait (#2669 review, round 3). Every
         # declaration records the gate on its own path, and a test is gated when any
-        # prefix of its path is, whichever braces it was written inside.
-        gate_by_path = {}
+        # prefix of its path is, whichever braces — and whichever file — it was written in.
         for opening, closing, name, gated in ranges:
             outer = sorted(
                 ((end - start, outer_name) for start, end, outer_name, _ in ranges
                  if start < opening < end),
                 key=lambda entry: -entry[0],
             )
-            path = "/".join([outer_name for _, outer_name in outer] + [name])
-            gate_by_path[path] = gate_by_path.get(path, False) or gated
+            qualified = "/".join([target] + [outer_name for _, outer_name in outer] + [name])
+            gate_by_path[qualified] = gate_by_path.get(qualified, False) or gated
+        parsed.append((target, part, code, ranges))
 
+    # Pass two: the tests, each judged against the whole target's gates.
+    for target, part, code, ranges in parsed:
         for attribute in re.finditer(r"@Test\b", code):
             function_match = re.search(r"\bfunc\s+(\w+)\s*\(", code[attribute.end():])
             if not function_match:
@@ -284,10 +292,13 @@ def test_oracle(root):
             # a type the hosting extension names.
             if any(gated for _, _, gated in containing):
                 continue
-            segments = [name for _, name, _ in containing]
-            enclosing = "/".join(segments)
-            if any(gate_by_path.get("/".join(enclosing.split("/")[:depth]), False)
-                   for depth in range(1, enclosing.count("/") + 2)):
+            enclosing = "/".join(name for _, name, _ in containing)
+            # Walk the PATH components, not the chain entries: a qualified extension is one
+            # chain entry whose name already holds a `/`, and the gate it must inherit sits
+            # on the shorter path (`Target/Outer`) that only a component walk reaches.
+            components = enclosing.split("/")
+            if any(gate_by_path.get("/".join([target] + components[:depth]), False)
+                   for depth in range(1, len(components) + 1)):
                 continue
             body = part[attribute.end():function_start]
             display_names = []
