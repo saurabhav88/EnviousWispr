@@ -88,16 +88,20 @@ enum WhatsNewContent {
     // body rendered from this file would have omitted a headline feature.
     // Every clause checked against main: the default keyword is
     // `VocabularyLanes.defaultKeyword` ("backslash"); "six working examples"
-    // is `SnippetStarters`; "exactly as you typed it" and "line breaks
-    // included" are the polish bypass and the multi-line delivery fix
-    // (#2639); the location is `SettingsSection.snippets`. Nothing is claimed
-    // about import, which has not shipped.
+    // is `SnippetStarters`; "word for word" and "line breaks included" are
+    // the polish bypass, the smart-insertion skip and the multi-line delivery
+    // fix (#2639); the location is `SettingsSection.snippets`. NOT "exactly as
+    // you typed it": `CursorInsertionRepair.legacyPayload` appends a trailing
+    // space to every delivered dictation, snippets included (#2643 owns
+    // whether they should be exempt), so the copy says so instead of
+    // promising a byte-exact paste. Nothing is claimed about import, which
+    // has not shipped.
     Entry(
       id: "snippets",
       icon: "text.badge.plus",
       title: "Snippets: say a short phrase, paste the text you saved",
       description:
-        "Save a piece of text once, then say your keyword and a short phrase to paste it: an email address, a sign-off, a link you send every week. The keyword is backslash unless you change it, so \"backslash my email\" pastes your address and \"my email\" on its own is left alone. What you saved is pasted exactly as you typed it, line breaks included, and AI Polish never rewrites it. A fresh install starts with six working examples you can edit or delete. Find them in Settings under Snippets.",
+        "Save a piece of text once, then say your keyword and a short phrase to paste it: an email address, a sign-off, a link you send every week. The keyword is backslash unless you change it, so \"backslash my email\" pastes your address and \"my email\" on its own is left alone. What you saved is pasted word for word, line breaks included, with a space after it like any other dictation, and AI Polish never rewrites it. A fresh install starts with six working examples you can edit or delete. Find them in Settings under Snippets.",
       version: "2.4.7"
     ),
     // MARK: - v2.4.6
