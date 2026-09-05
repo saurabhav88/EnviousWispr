@@ -38,9 +38,14 @@ struct LLMRetryPolicyTests {
 
   // MARK: - LLMError retryable cases
 
-  @Test("rateLimited is retryable")
-  func rateLimitedRetryable() {
-    #expect(LLMRetryPolicy.isRetryable(LLMError.rateLimited))
+  /// #2641: `LLMError.rateLimited` has no producer — the connectors classify a
+  /// 429 into `.classified(.rateLimited)` (retried, asserted below) or
+  /// `.classified(.rateLimitedOrQuota)` (fail-fast). The bare case used to
+  /// carry a retry that nothing could reach; it is pinned non-retryable so a
+  /// future producer has to choose to retry rather than inherit it.
+  @Test("bare rateLimited has no producer and is not retryable")
+  func bareRateLimitedNotRetryable() {
+    #expect(!LLMRetryPolicy.isRetryable(LLMError.rateLimited))
   }
 
   @Test("requestFailed with server error is retryable")
