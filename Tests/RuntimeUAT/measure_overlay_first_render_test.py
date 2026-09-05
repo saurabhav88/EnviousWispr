@@ -1700,13 +1700,25 @@ def _identity_for(side):
     return IDENTITY_A if side == "A" else IDENTITY_B
 
 
+SYNTHETIC_HARDWARE = {"model": "Test,1", "cpu": "synthetic", "cores": "0",
+                      "memory_bytes": "0", "os": "0.0"}
+
+
 def _patch_benchmark_environment(script):
     """Runs `script(calls)` with `_drive_one_launch`, `bundle_identity`,
-    `screen_lock_state`, and `running_instances` all patched to synthetic,
-    deterministic behavior — A and B pinned to genuinely DIFFERENT
-    identities, since `run_benchmark` now refuses to compare a build with
-    itself. `calls` accumulates one dict per launch in call order, so a test
-    can assert on ORDER without depending on real timing.
+    `screen_lock_state`, `running_instances`, and `hardware_identity` all
+    patched to synthetic, deterministic behavior — A and B pinned to
+    genuinely DIFFERENT identities, since `run_benchmark` now refuses to
+    compare a build with itself. `calls` accumulates one dict per launch in
+    call order, so a test can assert on ORDER without depending on real
+    timing.
+
+    `hardware_identity` is patched because the real one shells out to
+    `sysctl` and `sw_vers`, and `run_benchmark` calls it before any guard or
+    mocked launch runs. Left unpatched, every test here raises
+    `FileNotFoundError` on a non-macOS host before reaching the path it
+    exists to check — which the module's own docstring promises cannot
+    happen to the pure half (#2467).
     """
     calls = []
 
@@ -1715,9 +1727,11 @@ def _patch_benchmark_environment(script):
         "bundle_identity": m.bundle_identity,
         "screen_lock_state": m.screen_lock_state,
         "running_instances": m.running_instances,
+        "hardware_identity": m.hardware_identity,
     }
     m.screen_lock_state = lambda: False
     m.running_instances = lambda: {}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.bundle_identity = lambda bundle_path: (
         IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
 
@@ -1748,6 +1762,10 @@ def test_run_benchmark_drives_pairs_in_the_declared_ab_ba_order():
     expect("a clean run with distinct identities reaches a real benchmark verdict",
            receipt["verdict"] in (m.BENCHMARK_PASS, m.BENCHMARK_FAIL), True)
     expect("the schedule alternates AB/BA", receipt["schedule"][:4], ["AB", "BA", "AB", "BA"])
+    # The receipt names its host through the patched lookup, so this suite
+    # can prove the field is carried without touching sysctl or sw_vers.
+    expect("the receipt carries the host identity it was handed",
+           receipt["hardware"], SYNTHETIC_HARDWARE)
     # The letter 'A' must always resolve to "A.app" and 'B' to "B.app" in the
     # per-pair receipt — not merely alternate SOMETHING, which a bug swapping
     # the bundle-for-letter mapping would still satisfy.
@@ -1767,7 +1785,9 @@ def test_run_benchmark_blocks_on_identity_drift_mid_run_never_pass_or_fail():
     saved = {"_drive_one_launch": m._drive_one_launch,
             "bundle_identity": m.bundle_identity,
             "screen_lock_state": m.screen_lock_state,
-            "running_instances": m.running_instances}
+            "running_instances": m.running_instances,
+            "hardware_identity": m.hardware_identity}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.screen_lock_state = lambda: False
     m.running_instances = lambda: {}
     # Pinning (the first two calls, one per bundle) sees the ORIGINAL identity.
@@ -1854,7 +1874,9 @@ def test_run_benchmark_stops_after_the_first_bad_side_no_top_up():
     saved = {"_drive_one_launch": m._drive_one_launch,
             "bundle_identity": m.bundle_identity,
             "screen_lock_state": m.screen_lock_state,
-            "running_instances": m.running_instances}
+            "running_instances": m.running_instances,
+            "hardware_identity": m.hardware_identity}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.screen_lock_state = lambda: False
     m.running_instances = lambda: {}
     m.bundle_identity = lambda bundle_path: (
@@ -1901,7 +1923,9 @@ def test_run_benchmark_rechecks_occupancy_before_every_launch():
     saved = {"_drive_one_launch": m._drive_one_launch,
             "bundle_identity": m.bundle_identity,
             "screen_lock_state": m.screen_lock_state,
-            "running_instances": m.running_instances}
+            "running_instances": m.running_instances,
+            "hardware_identity": m.hardware_identity}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.screen_lock_state = lambda: False
     m.bundle_identity = lambda bundle_path: (
         IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
@@ -1937,10 +1961,17 @@ def test_run_benchmark_rejects_any_pair_count_other_than_the_binding_thirty():
     """Fewer than 30 pairs has no statistical claim on a p95; more than 30
     is not the binding evidence set the plan names. Every count other than
     exactly `PAIR_COUNT` must block before any launch."""
-    for bad_count in (0, 2, 29, 32):
-        receipt = m.run_benchmark("A.app", "B.app", pairs=bad_count, out_dir="/tmp")
-        expect(f"{bad_count} pairs blocks before any launch",
-               receipt["verdict"], m.BLOCKED_INCOMPLETE_PAIRS)
+    # The host lookup runs before the count guard, so even a run that blocks
+    # on its first check names its host; patch it so this holds off-macOS.
+    saved_hardware = m.hardware_identity
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
+    try:
+        for bad_count in (0, 2, 29, 32):
+            receipt = m.run_benchmark("A.app", "B.app", pairs=bad_count, out_dir="/tmp")
+            expect(f"{bad_count} pairs blocks before any launch",
+                   receipt["verdict"], m.BLOCKED_INCOMPLETE_PAIRS)
+    finally:
+        m.hardware_identity = saved_hardware
 
     def script(calls):
         return m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
@@ -1955,7 +1986,9 @@ def test_run_benchmark_refuses_two_arms_that_resolve_to_the_same_build():
     Path OR hash matching alone must block."""
     saved = {"bundle_identity": m.bundle_identity,
             "screen_lock_state": m.screen_lock_state,
-            "running_instances": m.running_instances}
+            "running_instances": m.running_instances,
+            "hardware_identity": m.hardware_identity}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.screen_lock_state = lambda: False
     m.running_instances = lambda: {}
     m.bundle_identity = lambda bundle_path: IDENTITY_A  # both arms identical
@@ -1997,7 +2030,9 @@ def test_run_benchmark_pins_identity_before_the_first_pair():
     saved = {"_drive_one_launch": m._drive_one_launch,
             "bundle_identity": m.bundle_identity,
             "screen_lock_state": m.screen_lock_state,
-            "running_instances": m.running_instances}
+            "running_instances": m.running_instances,
+            "hardware_identity": m.hardware_identity}
+    m.hardware_identity = lambda: dict(SYNTHETIC_HARDWARE)
     m.screen_lock_state = lambda: False
     m.running_instances = lambda: {}
 
