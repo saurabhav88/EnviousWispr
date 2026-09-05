@@ -43,7 +43,7 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 | **Privacy** | 100% on-device transcription | Audio uploaded to servers |
 | **Speed** | Sub-second transcription, paste-on-stop | Network round-trip latency |
 | **Models** | Parakeet v3 (NVIDIA NeMo) + WhisperKit (OpenAI Whisper) | Single vendor model |
-| **Polish** | Optional. Fully on-device (EG-1, Apple Intelligence, Ollama) or bring-your-own-key cloud (GPT, Gemini) | Cloud polish, included in subscription |
+| **Polish** | Optional. Fully on-device (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama) or bring-your-own-key cloud (OpenAI, Gemini, Claude) | Cloud polish, included in subscription |
 | **Cost** | Free. No account, no subscription | Monthly subscription |
 | **Works offline** | Yes, fully functional without internet | No |
 
@@ -57,7 +57,7 @@ Press keybind -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
 1. **Press your keybind** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
 2. **Speak naturally.** Silero VAD detects when you stop talking and ends recording automatically.
 3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or WhisperKit (99+ languages, with automatic language detection).
-4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with EG-1 (our own custom model), Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI or Gemini with your own API key.
+4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with EG-1 (our own custom model), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI, Gemini, or Claude with your own API key.
 5. **Text lands in your clipboard** and optionally auto-pastes into the active app.
 
 > See the full interactive pipeline demo at [enviouswispr.com/how-it-works](https://enviouswispr.com/how-it-works)
@@ -93,9 +93,10 @@ Transcription gets your words down. AI polish cleans them up: it drops filler, f
 | Polish engine | What it is | Runs on | Extra download |
 |---|---|---|---|
 | **EG-1** (recommended) | Our own model, custom fine-tuned for dictation cleanup | On-device, macOS 14+ | ~2.9 GB (optional) |
+| **S1-mini** by Superwhisper | A small open model for dictation cleanup, happiest in English, with Tone, Structure, and Context writing style settings | On-device, macOS 14+ | ~484 MB (optional) |
 | **Apple Intelligence** | Apple's on-device model, no extra download | On-device, macOS 26+ | none |
 | **Ollama** | Use a model on your Mac or one hosted by Ollama | On-device or Ollama's servers | varies for local models; none for hosted |
-| **OpenAI / Gemini** | Bring-your-own-key cloud polish, text only | Cloud (your key) | none |
+| **OpenAI / Gemini / Claude** | Bring-your-own-key cloud polish, text only | Cloud (your key) | none |
 
 **EG-1** is our own AI model, fine-tuned specifically for dictation cleanup and optimized for Apple Silicon. It runs entirely on your Mac with no internet required, and it closes the gaps a general on-device model leaves: reliably turning a spoken list into a real list, splitting a wall of speech into clean paragraphs, and keeping only the corrected version when you fix yourself mid-sentence. Because it is our own model rather than Apple's, it works across the full supported range (macOS 14 and later), not just macOS 26. EG-1 is distributed under its own model license, not the GPLv3 that covers the app code (see [License](#license)).
 
@@ -107,11 +108,14 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 👀 **Live Preview**: watch your words appear in the recording pill while you speak, so you can see it is working without waiting for the paste. On by default, switchable off, and it never changes the text you get. A Mac that cannot run it behaves as though it were off
 - ↩️ **Escape Recovery**: hit your cancel keybind by mistake and get the dictation back. On by default: a keybind cancel keeps the text for 24 hours instead of discarding it, and you can switch that off. The Cancel button in the recording pill still discards on the spot, so you keep one way to mean it. Only the text is kept, never the audio
 - ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
-- 🔒 **Polish that can stay private**: run it fully on-device with EG-1 (our own custom model), Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI GPT / Google Gemini with your own API key
+- 🔒 **Polish that can stay private**: run it fully on-device with EG-1 (our own custom model), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI, Google Gemini, or Claude with your own API key
+- ✂️ **Snippets**: say a keyword and a short phrase, and the text you saved is pasted word for word, never polished. An email address, a sign-off, a link you send every week
 - 🌍 **Multilingual with automatic language detection**: speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
 - 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
 - 📚 **Custom vocabulary and vocabulary packs** for names, brands, and technical terms the ASR might miss, plus one-tap import of names from your Contacts (which never leave your Mac)
+- ➕ **Quick Add**: highlight a misheard word anywhere on macOS and save the right spelling to your dictionary with a keyboard shortcut or from the menu bar, without opening Settings
+- 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Appearance settings, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
 - 🕘 **Transcript history** for browsing, searching, and reviewing past dictations
@@ -122,6 +126,13 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **A second on-device polish model, S1-mini by Superwhisper.** A small open model for cleaning up dictation, now an option beside EG-1 in AI Polish settings. A 484 MB download, runs on your Mac, and free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. Happiest in English. EG-1 stays the recommended choice. (v2.4.7)
+- **Snippets.** Say a keyword, then a short phrase, and the text you saved is pasted character for character. A fresh install starts with six working examples to try. (v2.4.7)
+- **More of EnviousWispr is switched on from the start.** Escape Recovery, Live Preview and the recording sounds are now on by default, and each is a switch you can turn off. Quick Add has moved to Control Shift W so it no longer shares a key with recording. (v2.4.7)
+- **Add a custom word to your dictionary with a click of a button.** Highlight a misheard word anywhere on macOS, press the Quick Add keybind, and save the right spelling without opening Settings. A small panel ranks it against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu. (v2.4.6)
+- **A new pill design for recording, and a practice run during setup.** Choose between recording pill designs in Appearance, and try dictation before onboarding ends. (v2.4.6)
+- **Dictated web addresses come out ready to use.** Stray periods and dot words around a spoken address are cleaned up, a garbled https is repaired before polish sees it, and pasting into a browser's address bar no longer adds a trailing space. (v2.4.6)
+- **Real German, Dutch, Danish and Norwegian words are no longer deleted.** Filler removal now reads the language you are dictating in, so "er" and "um" survive where they are real words. (v2.4.6)
 - **Recover a dictation you cancelled by mistake.** Escape Recovery is on by default, so hitting your cancel keybind keeps the text for 24 hours instead of throwing it away. The Cancel button still discards deliberately. Only the transcript is kept, never the audio. (v2.4.5)
 - **See your words as you speak.** The recording pill can now show what it is hearing, live, with a choice of two preview engines. The text you actually get is unchanged: it is still transcribed from the whole recording when you stop. (v2.4.5)
 - **Dictation no longer records silence on a virtual microphone.** If your Mac's default input was a virtual device (Krisp, Loopback, BlackHole, an aggregate, a meeting app's mic), the app bound it and captured nothing at all. It now prefers a real microphone. (v2.4.5)
@@ -150,14 +161,14 @@ Or download manually:
 4. Set your preferred keybind in Settings > Keybinds
 5. Start talking
 
-**Optional:** Turn on AI polish in Settings > AI Polish. Keep it fully on-device with Apple Intelligence (macOS 26+) or Ollama, or add an OpenAI or Gemini API key.
+**Optional:** Turn on AI polish in Settings > AI Polish. Keep it fully on-device with EG-1 (recommended, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or add an OpenAI, Gemini, or Claude API key.
 
 ## Requirements
 
 - macOS 14 (Sonoma) or later
 - Apple Silicon (M1 or newer)
 
-Core dictation works across the full supported range. The built-in Apple Intelligence polish option requires macOS 26 or later; on earlier versions dictation works normally and you can use Ollama or a cloud key for polish instead.
+Core dictation works across the full supported range, and so does EG-1, our own on-device polish model. The built-in Apple Intelligence polish option requires macOS 26 or later; on earlier versions dictation works normally and you can use EG-1, Ollama, or a cloud key for polish instead.
 
 ## Building from Source
 
