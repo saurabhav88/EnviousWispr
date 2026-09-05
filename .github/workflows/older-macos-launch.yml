@@ -21,7 +21,7 @@ name: Older macOS Launch
 # baseline proves nothing about users at it.
 #
 # The app cannot be BUILT on an older runner (it needs the macOS 26 SDK), so the build happens
-# on macos-26 and the product is carried to macos-15 as an artifact.
+# on macos-26 and the product is carried to macos-14 as an artifact.
 
 on:
   pull_request:
