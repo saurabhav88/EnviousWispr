@@ -2504,6 +2504,55 @@ if result.returncode != 2 or "carries 2 explicit recipe blocks" not in _issue_ou
 else:
     print("  ok  the filing validator shares the runner's single-recipe issue contract")
 
+# #2672 review: `self_test_problems` accepted ANY `"--self-test"` constant that was not a bare
+# docstring statement, so a module constant, a help message or an unreachable branch made a
+# module "parse" a flag it never inspects, and the validator printed a command whose exit
+# code would exercise only the module's normal path. Two-way over the shapes a module can
+# take: the ways to answer the flag are accepted, spelling it anywhere else is refused.
+_battery_for_validator = validator.load_battery()
+
+
+def check_flag_parse(name, body, *, accepted):
+    global ran
+    ran += 1
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "Tests" / "RuntimeUAT").mkdir(parents=True)
+        (root / "Tests" / "RuntimeUAT" / "probe.py").write_text(body)
+        problems = validator.self_test_problems(
+            _battery_for_validator, "RuntimeUAT/probe", root)
+    refused = any("does not parse --self-test" in problem for problem in problems)
+    if accepted and problems:
+        failures.append(f"{name}: expected acceptance, got {problems!r}")
+    elif not accepted and not refused:
+        failures.append(f"{name}: expected refusal, got {problems!r}")
+    else:
+        print(f"  ok  {name}")
+
+
+check_flag_parse("the self-test check accepts a sys.argv membership test of the flag",
+                 'import sys\nif "--self-test" in sys.argv:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check accepts an equality against the flag",
+                 'import sys\ncmd = sys.argv[1]\nif cmd == "--self-test":\n    pass\n',
+                 accepted=True)
+check_flag_parse("the self-test check accepts an argparse registration of the flag",
+                 'import argparse\nparser = argparse.ArgumentParser()\n'
+                 'parser.add_argument("--self-test", action="store_true")\n', accepted=True)
+check_flag_parse("the self-test check accepts a whole-argv comparison with a list holding the flag",
+                 'import sys\nif sys.argv[1:] == ["--self-test"]:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check accepts a comparison through a module constant bound to the flag",
+                 'import sys\nFLAG = "--self-test"\nif FLAG in sys.argv:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check refuses a module constant that only spells the flag",
+                 'SELF_TEST_FLAG = "--self-test"\n', accepted=False)
+check_flag_parse("the self-test check refuses a help message that only spells the flag",
+                 'print("--self-test")\n', accepted=False)
+check_flag_parse("the self-test check refuses an unreachable assignment of the flag",
+                 'if False:\n    flag = "--self-test"\n', accepted=False)
+check_flag_parse("the self-test check refuses a docstring that only mentions the flag",
+                 '"""Run with --self-test."""\n', accepted=False)
+check_flag_parse("the self-test check refuses a module that never spells the flag",
+                 'x = 1\n', accepted=False)
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
