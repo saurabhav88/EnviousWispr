@@ -6,7 +6,7 @@ section: "Polish"
 order: 2
 keywords: ["turn off ai", "turn ai off", "disable ai", "no ai", "provider", "openai", "chatgpt", "gemini", "claude", "apple intelligence", "ollama", "s1-mini", "superwhisper", "eg-1", "which ai", "api key", "change provider", "stop rewriting my words"]
 related: ["ai-polish-and-cloud-data", "api-key-security", "s1-mini-by-superwhisper-and-writing-style"]
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 AI Polish is the step that tidies up your dictation after transcription, and you choose which provider does the work. Your transcription audio stays on your Mac on every one of these options. Open **Settings**, then select **AI Polish** to make your choice.
 
@@ -15,7 +15,7 @@ AI Polish is the step that tidies up your dictation after transcription, and you
 These options process your text entirely on your own machine.
 
 - **Apple Intelligence.** Free, with nothing to set up. It requires macOS 26 or later on a Mac that supports Apple Intelligence. This is the default when you install the app.
-- **EG-1.** The model Envious Labs built specifically for dictation. It is free. Download it from the AI Polish page, and it takes about 2.9 GB of storage once installed.
+- **EG-1.** The model Envious Labs built specifically for dictation, and the one marked **Recommended** on the AI Polish page. It is free. Download it from the AI Polish page, and it takes about 2.9 GB of storage once installed.
 - **S1-mini.** A small open model made by Superwhisper, and the lightest on-device option. It is free. Download it from the AI Polish page; it takes about 484 MB once installed and has three writing style settings you can adjust. See [_S1-mini by Superwhisper and Its Writing Style Settings_](/help/s1-mini-by-superwhisper-and-writing-style/).
 - **None.** No AI polish step runs at all. You still get filler-word removal and the benefit of your custom words.
 

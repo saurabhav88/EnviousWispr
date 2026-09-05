@@ -5,8 +5,8 @@ category: "pasting-your-text"
 section: "Paste System"
 order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor"]
-related: ["clipboard-preservation", "paste-not-working"]
-updated: 2026-08-06
+related: ["clipboard-preservation", "paste-not-working", "using-snippets"]
+updated: 2026-09-05
 ---
 EnviousWispr remembers the app and text field that were focused when you started recording, and delivers your text there. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
 
@@ -27,6 +27,12 @@ EnviousWispr looks at the text on either side of your cursor and matches it. Dic
 Capital matching works in English, German, French, Italian, Spanish, Portuguese, Dutch, Danish, Swedish, Finnish, Russian, and Turkish. German follows its own rules, so nouns keep the capital letters they are supposed to have. In every other language, EnviousWispr handles the spacing and leaves your capitals exactly as you spoke them.
 
 You can turn this behaviour off under **Settings** \> **Clipboard**, where the setting is named **Smart insertion**.
+
+A dictation that expanded a snippet skips this tidy-up, so the text you saved arrives word for word, with only the usual space after it. Read [_Using Snippets_](/help/using-snippets/).
+
+### Web addresses in a browser
+
+Dictating into the address bar of Safari, Chrome, Brave or Edge no longer adds a trailing space you have to delete. In Chrome and Brave, pressing Return after dictating an address goes there.
 
 ### Your clipboard contents are preserved
 

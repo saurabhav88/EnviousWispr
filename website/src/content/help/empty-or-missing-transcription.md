@@ -6,13 +6,13 @@ section: "Transcription Issues"
 order: 3
 keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 When a recording finishes and no text appears, something between your microphone and the speech model did not deliver. These checks run from the most common cause to the least, so work through them in order.
 
 ### 1. Is the app hearing you?
 
-Watch the recording bar on screen while you talk. Its meter moves with your voice. If the meter stays flat while you speak, your microphone is not reaching the app, and steps 2 to 4 are where to look.
+Watch the recording pill on screen while you talk. Its meter moves with your voice, and on a Mac that can show them, your words appear in the pill as you speak. If the meter stays flat and no words appear, your microphone is not reaching the app, and steps 2 to 4 are where to look.
 
 ### 2. Check the microphone permission
 
@@ -26,9 +26,11 @@ A physical mute switch stops your voice reaching the app even when everything el
 
 EnviousWispr needs to listen to the device you are actually speaking into. Open EnviousWispr settings and go to **Microphone**. When set to Auto, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the ambiguity.
 
+If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, Auto skips it and records from a real microphone, because a virtual device delivers only silence. Versions before 2.4.5 recorded that silence, so if you gave up on EnviousWispr for this reason, it is worth another go. A virtual device is still used when it is the only input on your Mac.
+
 ### 5. Is the speech model ready?
 
-The app downloads its speech model on first launch. Until that download finishes, there is no model available to transcribe your voice. Progress is shown on screen.
+The app downloads its speech model on first launch. Until that download finishes, there is no model available to transcribe your voice. Progress is shown on screen. If the engine was not ready at the moment you finished speaking, your recording is kept and given another go rather than lost.
 
 ### 6. Was the recording very short?
 

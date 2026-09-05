@@ -5,8 +5,8 @@ category: "speech-engines"
 section: "Transcription"
 order: 1
 keywords: ["parakeet", "whisperkit", "whisper", "which engine", "engine", "speech engine", "model", "accuracy vs speed", "switch engine", "transcription engine", "which is better"]
-related: ["multi-language-dictation", "why-is-my-dictation-inaccurate"]
-updated: 2026-08-06
+related: ["multi-language-dictation", "why-is-my-dictation-inaccurate", "using-snippets"]
+updated: 2026-09-05
 ---
 You can choose between two speech engines for transcription, Parakeet or WhisperKit. Both run entirely on your Mac. Neither sends your audio anywhere, and neither needs an internet connection once its model has been downloaded.
 
@@ -27,11 +27,13 @@ To change your engine, follow these steps.
 
 **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
 
-**Pick your engine.** Select either Parakeet or WhisperKit.
+**Pick your engine.** The **Fast** card is Parakeet, and the **All Languages** card is WhisperKit. Each card names the model it runs.
 
 **Download the model.** The first time you choose WhisperKit, click **Download WhisperKit Model**. The model does not download on its own, and it takes about 1.5 GB of storage.
 
 The change applies to your next recording.
+
+Setting your language under **Language** on the same page works on both engines. On Parakeet it stops the engine reaching for a different alphabet, such as Greek or Cyrillic turning up in a German dictation, though it cannot tell apart two languages that share one. Read [_Multi-Language Dictation_](/help/multi-language-dictation/).
 
 ### What happens when you dictate
 
@@ -41,7 +43,7 @@ Knowing the sequence helps you work out where a delay or an unexpected change ca
 
 **Transcribe the speech.** Your chosen engine reads the audio and writes out the text.
 
-**Clean up the text.** Your custom words are applied, filler words are removed, spoken emoji are converted, and numbers, dates and times are written the way you would type them. This stage always runs, whatever you have AI Polish set to, and each part of it has its own setting.
+**Clean up the text.** Any snippet you said is expanded first, then your custom words are applied, filler words are removed, spoken emoji are converted, and numbers, dates and times are written the way you would type them. This stage always runs, whatever you have AI Polish set to, and each part of it has its own setting.
 
 **Polish the text.** Any AI polish you have switched on runs against the cleaned-up text. This stage is optional, and setting AI Polish to None skips it entirely.
 

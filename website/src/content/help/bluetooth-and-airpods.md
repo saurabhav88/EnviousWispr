@@ -6,7 +6,7 @@ section: "Input Configuration"
 order: 2
 keywords: ["airpods", "air pods", "bluetooth", "wireless headphones", "headphones", "earbuds", "sounds muffled", "quality drops", "music stops", "beats", "headset"]
 related: ["choosing-your-microphone"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 AirPods and Bluetooth headsets work with EnviousWispr, and there are two things worth knowing before you rely on them.
 
@@ -25,6 +25,10 @@ That switch also takes a moment, which is why a first word can go missing if you
 **Wait a beat before speaking.** Hold your keybind for a moment before you start talking on the first recording after connecting.
 
 If that drop in audio quality bothers you, record from your Mac's built-in microphone instead. Your headset then stays in music mode the whole time.
+
+### The Bluetooth reminder
+
+EnviousWispr can show a short reminder of these tips once per launch. If you know them by now, switch off **Show Bluetooth tips** under **When using Bluetooth** on the **Microphone** page in **Settings**. The guide itself stays on that page.
 
 ### If it disconnects mid-recording
 

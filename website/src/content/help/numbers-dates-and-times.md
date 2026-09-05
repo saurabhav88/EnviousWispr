@@ -5,9 +5,9 @@ category: "features"
 section: "Text Processing"
 order: 4
 keywords: ["numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "formatting numbers", "writes out numbers", "spelled out"]
-related: ["spoken-punctuation-and-emoji"]
+related: ["spoken-punctuation-and-emoji", "how-text-gets-pasted-into-your-app"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 Numbers, dates, and times are converted automatically from spoken words into the standard written forms. EnviousWispr writes numbers, money, dates, times, phone numbers, email addresses, and web addresses the way you would type them, rather than spelling out every word you said. It is switched on when you install the app, and there is nothing to configure.
 
@@ -23,6 +23,10 @@ Numbers, dates, and times are converted automatically from spoken words into the
 ### Small numbers stay as words
 
 Numbers below ten are written out as words, while numbers from ten upwards use digits. That follows the standard style used in most professional and general writing.
+
+### Web addresses
+
+A bare web address said out loud comes out ready to use. A stray period at the end of it is dropped, while a real sentence period is kept. A leftover "dot" sitting beside an address that has already been joined up is folded into it, and a garbled "h slash slash" from a half-heard "https" is repaired. Dictating into a browser's address bar is covered in [_How Text Gets Pasted Into Your App_](/help/how-text-gets-pasted-into-your-app/).
 
 ### When the formatting happens
 

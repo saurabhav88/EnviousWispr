@@ -6,7 +6,7 @@ section: "Input Configuration"
 order: 1
 keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 EnviousWispr can follow whichever microphone your Mac is set to, or use a specific device you name yourself. Both choices live under **Settings** \> **Microphone**.
 
@@ -15,6 +15,8 @@ EnviousWispr can follow whichever microphone your Mac is set to, or use a specif
 Auto records from whatever input your Mac is currently set to, and follows that input as devices come and go. This is the default, and it suits most setups.
 
 To change what Auto follows, set your input in **System Settings** \> **Sound**.
+
+There is one exception. If the input your Mac is set to turns out not to be a real microphone, such as a virtual device installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, EnviousWispr records from an available real microphone instead, because a virtual device delivers nothing but silence. If a virtual device is the only input on your Mac, it is still used. The **Microphone** page shows which device Auto is using.
 
 ### Choosing a specific microphone
 

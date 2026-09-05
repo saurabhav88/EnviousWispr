@@ -1,13 +1,13 @@
 ---
 title: "Sounds and Appearance"
-description: "Light and dark mode, where the recording bar sits, and recording sounds."
+description: "Light and dark mode, where the recording bar sits and how it looks, and recording sounds."
 category: "features"
 section: "Appearance and Sounds"
 order: 5
-keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "overlay", "bar position", "move the bar", "menu bar icon"]
-updated: 2026-09-01
+keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon"]
+updated: 2026-09-05
 ---
-Three settings change how EnviousWispr looks and sounds while you use it. None of them affects what you dictate or how accurately it is transcribed.
+Four settings change how EnviousWispr looks and sounds while you use it. None of them affects what you dictate or how accurately it is transcribed.
 
 ### Light or dark
 
@@ -20,6 +20,10 @@ The recording bar shows you when EnviousWispr is listening, and you can put it w
 You can also move the bar during a dictation.
 
 **Drag the bar.** Click and drag the recording bar to any position on your screen while it is visible. That placement lasts for the current dictation only, and the next one returns to the position you chose in Settings.
+
+### The look of the recording bar
+
+The same **Appearance** page has a **Recording Pill** row with three designs: **Capsule**, **Reading Well** and **Level Rail**. Click one to use it. Reading Well is the design that shows your words as you speak, so it goes together with [Live Preview](/help/live-preview-words-on-screen/). If a design is greyed out, the line under the row says why.
 
 ### Recording sounds
 

@@ -5,13 +5,15 @@ category: "troubleshooting"
 section: "Recording Issues"
 order: 8
 keywords: ["crash", "crashes", "quits", "closes by itself", "keeps crashing", "stopped working", "disappeared", "not responding"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
 EnviousWispr keeps its transcription engine separate from the rest of the app, so a failure in one does not take the other down with it.
 
 ### If the speech engine stops
 
 The transcription engine runs in its own process. If that process hits an error and stops, the rest of EnviousWispr stays open. EnviousWispr starts the engine again when you press your keybind for your next recording. There is nothing for you to do.
+
+If the engine was not ready at the moment you finished speaking, your recording is kept and given another go rather than lost.
 
 ### If the app itself quits
 

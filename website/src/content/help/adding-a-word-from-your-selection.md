@@ -5,8 +5,8 @@ category: "custom-words"
 section: "Dictionary"
 order: 4
 keywords: ["quick add", "add selected word", "highlight a word", "selection", "shortcut", "whatsapp", "terminal", "menu bar", "clipboard", "add word from selection"]
-related: ["adding-custom-words", "clipboard-preservation", "how-custom-word-correction-works"]
-updated: 2026-09-01
+related: ["adding-custom-words", "clipboard-preservation", "how-custom-word-correction-works", "customizing-your-keybind"]
+updated: 2026-09-05
 ---
 When EnviousWispr writes a name the wrong way, you do not have to open settings to fix it. Highlight the word it should have written, press the Quick Add shortcut, and a small panel appears offering to attach that spelling to the word it keeps getting wrong.
 
@@ -14,10 +14,12 @@ When EnviousWispr writes a name the wrong way, you do not have to open settings 
 
 Both do the same thing, so use whichever is closer to hand.
 
-1. **The shortcut.** Highlight the word, then press your Quick Add keybind. You can see and change it in **Settings**, under your keybinds.
+1. **The shortcut.** Highlight the word, then press your Quick Add keybind. It is **Control Shift W** unless you have changed it. You can see and change it in **Settings** \> **Keybinds**, under **Add a Word**.
 2. **The menu bar.** Highlight the word, click the EnviousWispr icon, and choose **Add Selected Word**. The row names the word it found, so you can check it before you click.
 
 The panel shows you the word first and ranks the words already in your library, so you pick which one this spelling belongs to. Nothing is written until you choose.
+
+The shortcut moved to Control Shift W in version 2.4.7. Its old keys shared the Option key with the record key, so pressing them could start a recording instead of opening the panel. If you had chosen your own keys, yours are untouched.
 
 ### When an app will not say what you highlighted
 

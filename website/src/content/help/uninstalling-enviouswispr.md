@@ -6,7 +6,7 @@ section: "Basics"
 order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space"]
 related: ["model-downloads-and-management"]
-updated: 2026-08-17
+updated: 2026-09-05
 ---
 Removing the app involves two parts: deleting the application itself, and deleting the support files it saved on your Mac.
 
@@ -18,7 +18,7 @@ Quit the application first, so macOS is not holding the program files open when 
 
 **Move it to the Trash.** Open your Applications folder in Finder and drag EnviousWispr to the Trash.
 
-The application is now gone, but your dictation history, custom words, and downloaded speech models remain on the Mac.
+The application is now gone, but your dictation history, custom words, snippets, and downloaded models remain on the Mac.
 
 ### Remove your data and settings
 
@@ -26,7 +26,7 @@ Those remaining files can add up to a few gigabytes of storage. Follow these ste
 
 **Open the Go to Folder box.** In Finder, press **Shift+Cmd+G** on your keyboard.
 
-**Delete the application support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, and the WhisperKit and EG-1 models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
+**Delete the application support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, your snippets, and the WhisperKit, EG-1 and S1-mini models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
 
 **Delete the preferences file.** Press **Shift+Cmd+G** again, paste `~/Library/Preferences`, press Enter, and move `com.enviouswispr.app.plist` to the Trash. That file stores your settings.
 
@@ -50,6 +50,6 @@ Revoking the key in that company's own dashboard is worth doing either way.
 
 ### If you come back
 
-If you plan to reinstall later, leave those support files in place. Reinstalling brings your history, custom words, models, and settings back on its own. Delete them first if you want to start fresh.
+If you plan to reinstall later, leave those support files in place. Reinstalling brings your history, custom words, snippets, models, and settings back on its own. Delete them first if you want to start fresh.
 
 Once you move those files to the Trash and empty it, they are gone for good. Envious Labs cannot restore them, because we never had a copy.

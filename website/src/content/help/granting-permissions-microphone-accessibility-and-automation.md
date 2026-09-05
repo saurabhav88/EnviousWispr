@@ -6,15 +6,15 @@ section: "Basics"
 order: 5
 keywords: ["permissions", "permission", "allow", "access", "microphone access", "accessibility", "privacy settings", "system settings", "grant", "it is asking for permission", "blocked", "denied"]
 related: ["accessibility-permission-not-working", "paste-not-working"]
-updated: 2026-08-06
+updated: 2026-09-05
 ---
-Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. The **Permissions** page in EnviousWispr settings always shows the current status of each one.
+Because EnviousWispr listens to your microphone and types into other apps, macOS requires you to grant specific permissions first. Two permissions are always needed, and a third is required only in rare cases. Setup asks for the two before the practice dictation at the end, so most people grant both there. The **Permissions** page in EnviousWispr settings always shows the current status of each one.
 
 ### Microphone
 
 This permission allows EnviousWispr to hear your voice while you dictate.
 
-**Grant permission.** macOS asks the first time you record. If you missed the prompt, open **System Settings**, select **Privacy & Security**, click **Microphone**, and switch EnviousWispr on.
+**Grant permission.** Setup asks for it, and macOS asks again the first time you record if it was skipped. If you missed the prompt, open **System Settings**, select **Privacy & Security**, click **Microphone**, and switch EnviousWispr on.
 
 You will know it worked when you hold your keybind and the meter on the recording bar moves as you speak.
 
@@ -22,7 +22,7 @@ You will know it worked when you hold your keybind and the meter on the recordin
 
 This permission allows EnviousWispr to place the finished text directly into the app you are working in.
 
-**Grant permission.** Open **System Settings**, select **Privacy & Security**, click **Accessibility**, click the plus button, and add EnviousWispr from your Applications folder.
+**Grant permission.** Setup offers a **Grant** button for it. Otherwise open **System Settings**, select **Privacy & Security**, click **Accessibility**, click the plus button, and add EnviousWispr from your Applications folder.
 
 You will know it worked when your next dictation lands in the text box on its own.
 
