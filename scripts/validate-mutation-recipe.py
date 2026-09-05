@@ -2,6 +2,7 @@
 """Validate mutation recipes against a checkout without running Xcode."""
 
 import argparse
+import ast
 import importlib.util
 import json
 import pathlib
@@ -341,6 +342,37 @@ def missing_test_problem(name, known_names):
     return f"expectation names a test that DOES NOT EXIST: {name!r}"
 
 
+def self_test_problems(battery, suite, root):
+    """Prove a `RuntimeUAT/<module>` target exists and really parses `--self-test`.
+
+    Nothing is executed: wispr_eyes imports Quartz transitively, so running it here would
+    test the host's PyObjC, not the recipe. The module is parsed instead, and the flag must
+    appear as a string the code compares or registers — a docstring that merely mentions
+    `--self-test` (a bare string statement) is not evidence the module answers it.
+    """
+    source = root / battery.self_test_source(battery.self_test_module(suite))
+    shown = source.relative_to(root)
+    if not source.is_file():
+        return [f"self-test target {shown} DOES NOT EXIST"]
+    try:
+        tree = ast.parse(source.read_text(errors="replace"), filename=str(shown))
+    except SyntaxError as error:
+        return [f"self-test target {shown} is not valid Python: {error}"]
+    docstrings = {
+        id(node.value) for node in ast.walk(tree)
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+    }
+    parsed = any(
+        isinstance(node, ast.Constant) and node.value == battery.SELF_TEST_FLAG
+        and id(node) not in docstrings
+        for node in ast.walk(tree)
+    )
+    if not parsed:
+        return [f"self-test target {shown} does not parse {battery.SELF_TEST_FLAG}; "
+                f"`{battery.self_test_command(suite)}` would prove nothing"]
+    return []
+
+
 def validate(recipes, root, label):
     names_by_suite = test_oracle(root)
     battery = load_battery()
@@ -407,7 +439,16 @@ def validate(recipes, root, label):
                             for test_id, aliases in sorted(duplicates.items())
                         ))
 
-            if suite and suite not in names_by_suite:
+            # A `RuntimeUAT/<module>` suite is a Python self-test, not a Swift suite (#2570):
+            # the oracle cannot know it, so it is proved against the checkout instead. The
+            # runner has already refused it on a mechanical row and with test names attached.
+            command = battery.self_test_command(suite)
+            if command:
+                if suite in names_by_suite:
+                    problems.append(
+                        f"suite {suite} is both a Swift suite and a self-test target — ambiguous")
+                problems.extend(self_test_problems(battery, suite, root))
+            elif suite and suite not in names_by_suite:
                 problems.append(f"suite {suite} NOT FOUND in Tests/")
 
             if problems:
@@ -417,7 +458,8 @@ def validate(recipes, root, label):
                 print(f"        {str(row_label)[:90]}")
             else:
                 status = "DEFERRED" if normalized.get("_mode") == "human" else "runnable"
-                print(f"row {index}: {status:<10} | {str(normalized.get('label', ''))[:70]}")
+                run = f" — run: {command}" if command else ""
+                print(f"row {index}: {status:<10} | {str(normalized.get('label', ''))[:70]}{run}")
 
     print(f"\n{label}: {total - bad}/{total} rows runnable"
           + (f", {bad} UNRUNNABLE" if bad else ""))
