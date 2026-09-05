@@ -31,7 +31,16 @@ enum LLMRetryPolicy {
   static func isRetryable(_ error: Error) -> Bool {
     if let llmError = error as? LLMError {
       switch llmError {
-      case .rateLimited: return true
+      case .rateLimited:
+        // EXPLICIT (#2641): nothing in the repository constructs
+        // `LLMError.rateLimited`. Every connector that recognises a 429
+        // throws `.classified(.rateLimited)` (OpenAI, Claude) or
+        // `.classified(.rateLimitedOrQuota)` (Gemini, Ollama), and those are
+        // decided by the catalog arm below. The case itself stays for the
+        // public `LLMError` surface and its pinned Sentry identity (#10),
+        // but a retry nobody can reach is not a policy; a future producer
+        // must opt into retrying on purpose rather than inherit it.
+        return false
       case .requestFailed(let msg):
         return msg.contains("server error")
       case .classified(let reason):
