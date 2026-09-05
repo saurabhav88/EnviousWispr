@@ -6,7 +6,7 @@ section: "Polish"
 order: 4
 keywords: ["s1-mini", "s1 mini", "superwhisper", "writing style", "tone", "casual", "formal", "lists", "prose", "email", "context", "lightweight", "small model", "8 gb mac", "on-device polish"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "model-downloads-and-management", "using-ollama-for-fully-offline-ai-polish"]
-updated: 2026-09-04
+updated: 2026-09-05
 ---
 S1-mini is a small open model made by Superwhisper for one job: tidying up dictated text. EnviousWispr offers it as a second on-device polish option beside EG-1. It runs entirely on your Mac, it is free, and there is no API key to manage. Open **Settings**, then **AI Polish**, and pick **S1-mini** to use it.
 
@@ -24,9 +24,9 @@ S1-mini was trained with three settings that you choose. They appear on the **Wr
 
 **Tone** sets the register.
 
-- **Casual** and **Semi-casual** write the way you would text: sentence starts stay lowercase and there is no final full stop.
+- **Casual** and **Semi-casual** write the way you would text.
 - **Semi-formal** keeps capitals and full stops. This is the default.
-- **Formal** keeps capitals and full stops and reads a little more buttoned up.
+- **Formal** keeps capitals and full stops and is the most formal of the four.
 
 **Structure** decides what happens to a spoken run of items.
 

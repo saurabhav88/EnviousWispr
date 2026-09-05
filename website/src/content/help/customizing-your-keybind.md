@@ -4,8 +4,9 @@ description: "Set the keys that start, stop, and cancel dictation."
 category: "recording-and-keybinds"
 section: "Recording"
 order: 4
-keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app"]
-updated: 2026-09-01
+keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w"]
+related: ["adding-a-word-from-your-selection", "escape-recovery"]
+updated: 2026-09-05
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 
@@ -40,6 +41,12 @@ If holding a key down is uncomfortable, toggle mode asks less of your hand: one 
 Pressing Escape ends the current recording without pasting anything. You can change this cancel key on the same **Keybinds** page if you prefer a different one.
 
 The same page carries a setting called **Escape Recovery**, on unless you switch it off. With it on, your cancel keybind keeps the recording and offers to paste it back rather than discarding it, which is worth knowing before you reassign the key. See [Escape Recovery](/help/escape-recovery/).
+
+### The Quick Add key
+
+The same page has one more keybind, under **Add a Word**. Highlight a misheard word anywhere on your Mac, press it, and a small panel offers to add the right spelling to your dictionary. It is **Control Shift W** unless you change it.
+
+Version 2.4.7 moved it to those keys. The old ones shared the Option key with the record key, so pressing them could start a recording instead of opening the panel. If you had already chosen your own keys, yours are untouched. See [Adding a Word From Your Selection](/help/adding-a-word-from-your-selection/).
 
 ### If your keybind stops working
 

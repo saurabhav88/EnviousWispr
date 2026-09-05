@@ -5,8 +5,8 @@ category: "custom-words"
 section: "Dictionary"
 order: 2
 keywords: ["how correction works", "why didnt my word work", "fuzzy match", "sounds like", "replacement rules"]
-related: ["adding-custom-words"]
-updated: 2026-09-01
+related: ["adding-custom-words", "using-snippets"]
+updated: 2026-09-05
 ---
 When you teach EnviousWispr a custom word, you give it one correct spelling, and it then recognises the many ways that word can come out wrong during transcription and corrects them for you.
 
@@ -20,7 +20,7 @@ Transcription errors on an unfamiliar word fall into three groups, and custom wo
 
 ### When custom word correction runs
 
-Custom word correction runs first, before anything else touches the text. Your words are therefore already right by the time filler removal and AI Polish see them.
+Custom word correction runs early. Only [snippet expansion](/help/using-snippets/) comes before it, and nothing else has touched the text by then. Your words are therefore already right by the time filler removal and AI Polish see them.
 
 ### If a word is not being caught
 

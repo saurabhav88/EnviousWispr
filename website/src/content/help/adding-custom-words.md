@@ -5,8 +5,8 @@ category: "custom-words"
 section: "Dictionary"
 order: 1
 keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts"]
-related: ["why-is-my-dictation-inaccurate", "how-custom-word-correction-works"]
-updated: 2026-09-04
+related: ["why-is-my-dictation-inaccurate", "how-custom-word-correction-works", "using-snippets"]
+updated: 2026-09-05
 ---
 When EnviousWispr repeatedly misspells a name or a specialised word, you can teach it the exact spelling you want to use.
 
@@ -26,6 +26,8 @@ Building a reliable list saves you time editing afterwards. These are the catego
 - Names of people you write to regularly.
 - Your company name and your internal product names.
 - Technical vocabulary, acronyms, and jargon from your field that a general dictionary misses.
+
+A custom word is a spelling. If what you want is a whole block of text, such as your email address, a sign-off, or a link you send every week, that is a snippet rather than a custom word. See [_Using Snippets_](/help/using-snippets/).
 
 ### Using ready-made vocabulary packs
 

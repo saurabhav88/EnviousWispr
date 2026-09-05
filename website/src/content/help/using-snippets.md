@@ -6,7 +6,7 @@ section: "Text Processing"
 order: 7
 keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text"]
 related: ["adding-custom-words", "ai-polish-and-cloud-data"]
-updated: 2026-09-01
+updated: 2026-09-05
 ---
 A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. An email address, a sign-off, a link you send people every week.
 
@@ -66,7 +66,9 @@ Clearing the field puts the default back rather than switching snippets off.
 
 The text you save is pasted exactly as you typed it. AI Polish never rewrites it, so an email address, a web link or a signature arrives character for character. Everything else you dictate is still polished as normal.
 
-Line breaks are kept, so a two-line sign-off arrives as two lines.
+Line breaks are kept, so a two-line sign-off arrives as two lines, and a snippet with line breaks is inserted where you are typing like any other dictation.
+
+Your saved text also decides how it ends. Say nothing but the keyword and the trigger, into a search box or an empty field, and the full stop the speech engine adds to a complete sentence is dropped, so an email address does not arrive with a full stop welded on. The same happens when your saved text already ends a sentence, so a canned reply does not end in two full stops. In the middle of a sentence of your own, your own punctuation is kept.
 
 ### One thing worth knowing
 
@@ -82,4 +84,4 @@ Line breaks are kept, so a two-line sign-off arrives as two lines.
 
 **Export** writes your snippets and your keyword to a file you choose. Useful when you move to a new Mac. EnviousWispr will refuse to save over its own snippets file, because that would erase the snippets you were trying to back up.
 
-Import is coming soon.
+**Import** sits beside it but is greyed out. It is coming soon.

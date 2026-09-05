@@ -5,8 +5,8 @@ category: "custom-words"
 section: "Dictionary"
 order: 3
 keywords: ["import", "export", "backup my words", "csv", "move to a new mac", "transfer", "share my word list"]
-related: ["adding-custom-words"]
-updated: 2026-09-01
+related: ["adding-custom-words", "using-snippets"]
+updated: 2026-09-05
 ---
 Your custom words are the names and specialised words you have taught EnviousWispr to recognise. You can move them to another Mac or bring them in from another dictation app. Every control mentioned on this page lives under **Settings** \> **Dictionary** \> **Your Words**.
 
@@ -24,7 +24,7 @@ Importing adds new words to your list without changing the words you already hav
 - **Juno** ships with around 400 built-in words of its own. Only the words you added are imported, so your list stays yours.
 - **Spokenly** can store find-and-replace rules written as patterns rather than plain words. Those are skipped, because a pattern is not a word.
 - **TypeWhisper** entries you have switched off stay off, and its case-sensitivity setting for each word comes across with it. Its match-strictness setting does not.
-- **Wispr Flow** text shortcuts are skipped. Those are text expansions rather than vocabulary.
+- **Wispr Flow** text shortcuts are skipped. Those are text expansions rather than vocabulary. EnviousWispr's own version of those is [Snippets](/help/using-snippets/), which you add by hand under **Settings** \> **Snippets**.
 
 If an app holds entries but none of them can come across, EnviousWispr tells you how many it found rather than saying it found nothing.
 
