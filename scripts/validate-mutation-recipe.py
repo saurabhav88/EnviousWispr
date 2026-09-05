@@ -297,13 +297,63 @@ def missing_test_problem(name, known_names):
     return f"expectation names a test that DOES NOT EXIST: {name!r}"
 
 
+def _holds_flag(node, flag, aliases):
+    """Is `node` the flag itself, a module-level name assigned the flag, or a
+    list/tuple/set literal holding either?"""
+    if isinstance(node, ast.Constant):
+        return node.value == flag
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return any(_holds_flag(item, flag, aliases) for item in node.elts)
+    return False
+
+
+def flag_aliases(tree, flag):
+    """Module-level names bound to the flag by a plain assignment, `FLAG = "--self-test"`,
+    so a module that compares through its own constant is read the same as one that
+    compares the literal. Only the binding is followed; a name that is never compared or
+    registered still proves nothing."""
+    return {
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant) and node.value.value == flag
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def parses_flag(node, flag, aliases=frozenset()):
+    """Does this AST node PARSE the flag, rather than merely spell it?
+
+    Two shapes count, because they are the ways a module answers the flag: a comparison
+    with it as an operand (`cmd == "--self-test"`, `"--self-test" in sys.argv`,
+    `sys.argv[1:] == ["--self-test"]`, or the same through a module constant bound to
+    it), or an argparse registration (`parser.add_argument("--self-test", ...)`). A
+    constant anywhere else — an unused module constant, a help string, a print, a
+    docstring, an unreachable branch — is not evidence the module inspects its arguments
+    for it, and the old check accepted every one of those (#2672 review).
+    """
+    if isinstance(node, ast.Compare):
+        return any(_holds_flag(operand, flag, aliases)
+                   for operand in [node.left, *node.comparators])
+    if isinstance(node, ast.Call):
+        callee = node.func
+        name = callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
+        return name == "add_argument" and any(
+            _holds_flag(arg, flag, aliases) for arg in node.args)
+    return False
+
+
 def self_test_problems(battery, suite, root):
     """Prove a `RuntimeUAT/<module>` target exists and really parses `--self-test`.
 
     Nothing is executed: wispr_eyes imports Quartz transitively, so running it here would
     test the host's PyObjC, not the recipe. The module is parsed instead, and the flag must
-    appear as a string the code compares or registers — a docstring that merely mentions
-    `--self-test` (a bare string statement) is not evidence the module answers it.
+    be an operand of a comparison or an argument to `add_argument` (see `parses_flag`) —
+    a docstring, a constant, or a help message that merely spells `--self-test` is not
+    evidence the module answers it.
     """
     source = root / battery.self_test_source(battery.self_test_module(suite))
     shown = source.relative_to(root)
@@ -313,16 +363,8 @@ def self_test_problems(battery, suite, root):
         tree = ast.parse(source.read_text(errors="replace"), filename=str(shown))
     except SyntaxError as error:
         return [f"self-test target {shown} is not valid Python: {error}"]
-    docstrings = {
-        id(node.value) for node in ast.walk(tree)
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
-    }
-    parsed = any(
-        isinstance(node, ast.Constant) and node.value == battery.SELF_TEST_FLAG
-        and id(node) not in docstrings
-        for node in ast.walk(tree)
-    )
-    if not parsed:
+    aliases = flag_aliases(tree, battery.SELF_TEST_FLAG)
+    if not any(parses_flag(node, battery.SELF_TEST_FLAG, aliases) for node in ast.walk(tree)):
         return [f"self-test target {shown} does not parse {battery.SELF_TEST_FLAG}; "
                 f"`{battery.self_test_command(suite)}` would prove nothing"]
     return []
