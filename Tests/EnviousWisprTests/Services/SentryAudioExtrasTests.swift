@@ -127,6 +127,8 @@ struct SentryAudioExtrasTests {
     #expect(extras["polish.recent_model_swap_ms"] as? Int == 4500)
     // #1523: a source that never stamped a channel count omits the key.
     #expect(extras["capture.native_channel_count"] == nil)
+    // #2664: same for the applied input channel.
+    #expect(extras["capture.input_channel"] == nil)
   }
 
   @Test("#1523: a source-stamped channel count rides the stall extras")
@@ -143,7 +145,8 @@ struct SentryAudioExtrasTests {
       inputDeviceUIDPreferred: nil,
       inputDeviceUIDSystemDefault: nil,
       failureMode: .noBuffers,
-      nativeChannelCount: 2
+      nativeChannelCount: 2,
+      inputChannel: 1
     )
     let extras = SentryAudioExtras.buildCaptureExtras(
       route: ctx.route,
@@ -156,6 +159,8 @@ struct SentryAudioExtrasTests {
       stallContext: ctx
     )
     #expect(extras["capture.native_channel_count"] as? Int == 2)
+    // #2664: the applied input channel rides beside the count.
+    #expect(extras["capture.input_channel"] as? Int == 1)
   }
 
   @Test("nil polish swap omits the key entirely")

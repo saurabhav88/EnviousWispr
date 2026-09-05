@@ -66,6 +66,10 @@ struct ASREmptyResultDiagnosticsTests {
 
     diagnostics.captureNativeChannelCount = 2
     #expect(diagnostics.sentryExtra()["capture.native_channel_count"] as? Int == 2)
+    // #2664: the applied input channel rides beside the count, nil omits.
+    #expect(diagnostics.sentryExtra()["capture.input_channel"] == nil)
+    diagnostics.captureInputChannel = 1
+    #expect(diagnostics.sentryExtra()["capture.input_channel"] as? Int == 1)
   }
 
   @Test("WhisperKit diagnostics keep comparable base fields and worker subset")

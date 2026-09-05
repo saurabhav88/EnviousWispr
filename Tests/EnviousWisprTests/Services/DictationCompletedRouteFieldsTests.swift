@@ -286,6 +286,30 @@ struct DictationCompletedRouteFieldsTests {
       #expect(box.event?.intProps["capture_native_channel_count"] == nil)
     }
 
+    @Test("#2664: the applied input channel threads into dictation.completed; 0 travels, nil omits")
+    func inputChannelThreadedAsIntProp() {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { box.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt",
+        captureNativeChannelCount: 2, captureInputChannel: 1)
+      #expect(box.event?.intProps["capture_input_channel"] == 1)
+
+      // 0 is the measured default channel and must travel (it is the reading
+      // that says "the setting was not applied on this take").
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt", captureInputChannel: 0)
+      #expect(box.event?.intProps["capture_input_channel"] == 0)
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+      #expect(box.event?.intProps["capture_input_channel"] == nil)
+    }
+
     @Test("#1707: asrSalvageOutcome threads into dictation.completed when a salvage was attempted")
     func asrSalvageOutcomeThreaded() {
       let box = Box()

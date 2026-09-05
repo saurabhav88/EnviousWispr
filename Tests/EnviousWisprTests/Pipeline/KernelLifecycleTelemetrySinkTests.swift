@@ -80,6 +80,7 @@ import Testing
       let inputDeviceKind: String?
       let captureNativeRateHz: Double?
       let captureNativeChannelCount: Int?
+      let captureInputChannel: Int?
       let takeID: String?
     }
 
@@ -160,7 +161,7 @@ import Testing
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
         effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
-        nativeChannels, takeID in
+        nativeChannels, inputChannel, takeID in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
@@ -169,6 +170,7 @@ import Testing
             selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
             inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
+            captureInputChannel: inputChannel,
             takeID: takeID))
         recorder.timeline.append("vadGateNoSpeech")
       },
@@ -895,7 +897,7 @@ import Testing
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
         effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
-        nativeChannels, takeID in
+        nativeChannels, inputChannel, takeID in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
@@ -904,6 +906,7 @@ import Testing
             selectedTransport: selectedTransport, inputSelectionMode: inputSelectionMode,
             inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
+            captureInputChannel: inputChannel,
             takeID: takeID))
       })
 

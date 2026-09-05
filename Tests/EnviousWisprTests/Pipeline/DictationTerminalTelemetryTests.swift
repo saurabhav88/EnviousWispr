@@ -24,6 +24,8 @@ struct DictationTerminalTelemetryTests {
     /// conditioner ran, so this records absence as data rather than skipping it.
     var conditionings: [(raw: Int?, filtered: Int?, ratio: Double?, reason: String?)] = []
     var starts: [(takeID: String, backend: String)] = []
+    /// #2664. The applied input channel per terminal; nil is "not measured".
+    var inputChannels: [Int?] = []
   }
 
   private func makeSink(_ recorder: Recorder) -> KernelLifecycleTelemetrySink {
@@ -38,9 +40,10 @@ struct DictationTerminalTelemetryTests {
       },
       dictationTerminal: {
         takeID, backend, result, reason, kind, effectiveTransport, _, _, _, _, peak, _, _, _,
-        vadRaw, vadFiltered, vadRatio, vadReason, disposition in
+        inputChannel, vadRaw, vadFiltered, vadRatio, vadReason, disposition in
         recorder.terminals.append((takeID, backend, result, reason))
         recorder.attributions.append((kind, peak, effectiveTransport))
+        recorder.inputChannels.append(inputChannel)
         recorder.dispositions.append(disposition)
         recorder.conditionings.append((vadRaw, vadFiltered, vadRatio, vadReason))
       }
@@ -178,8 +181,11 @@ struct DictationTerminalTelemetryTests {
           inputDeviceKind: "built_in_mic", effectiveTransport: "builtin",
           selectedTransport: nil, inputSelectionMode: "auto",
           wholeBufferRMS: 0.0001, maxWindowRMS: 0.0002, peakAudioLevel: 0.0007,
-          durationMs: 3200, captureNativeRateHz: 48000, captureNativeChannelCount: 1)))
+          durationMs: 3200, captureNativeRateHz: 48000, captureNativeChannelCount: 1,
+          captureInputChannel: 0)))
     #expect(recorder.attributions.first?.kind == "built_in_mic")
+    // #2664: the applied channel rides the row; 0 is a measurement, not an omission.
+    #expect(recorder.inputChannels == [0])
     #expect(recorder.attributions.first?.peak == 0.0007)
     #expect(recorder.attributions.first?.transport == "builtin")
   }
@@ -208,8 +214,10 @@ struct DictationTerminalTelemetryTests {
           inputDeviceKind: nil, effectiveTransport: nil, selectedTransport: nil,
           inputSelectionMode: nil, wholeBufferRMS: nil, maxWindowRMS: nil,
           peakAudioLevel: nil, durationMs: nil, captureNativeRateHz: nil,
-          captureNativeChannelCount: nil)))
+          captureNativeChannelCount: nil, captureInputChannel: nil)))
     #expect(missing.attributions.first?.peak == nil, "a missing reading must never become 0")
+    // `[Int?]`: the row is present and carries nil, so compare the array, not `.first`.
+    #expect(missing.inputChannels == [nil], "an unmeasured channel must never become 0")
 
     let measuredZero = Recorder()
     makeSink(measuredZero).emitTerminal(
@@ -219,7 +227,8 @@ struct DictationTerminalTelemetryTests {
           inputDeviceKind: nil, effectiveTransport: nil, selectedTransport: nil,
           inputSelectionMode: nil, wholeBufferRMS: nil, maxWindowRMS: nil,
           peakAudioLevel: 0.0, durationMs: nil, captureNativeRateHz: nil,
-          captureNativeChannelCount: nil)))
+          captureNativeChannelCount: nil, captureInputChannel: 1)))
+    #expect(measuredZero.inputChannels == [1], "a chosen Input 2 (channel 1) travels")
     #expect(
       measuredZero.attributions.first?.peak == 0.0,
       "a MEASURED zero is the diagnostic finding and must survive")
