@@ -88,7 +88,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use EnviousWispr completely offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key."
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key."
       }
     },
     {
@@ -96,7 +96,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Superwhisper have offline AI polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
+        "text": "Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1, S1-mini by Superwhisper, and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
       }
     },
     {
@@ -430,12 +430,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Ollama on-device, Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
+            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama on-device, Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td>Cloud AI via GPT-5, Claude, Llama 4, Grok, Gemini, Ministral (requires Pro); or S1-mini on-device for basic cleanup (experimental, free)</td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or Ollama, fully on-device)</td>
+            <td><span class="table-check">Yes</span> (EG-1, S1-mini by Superwhisper, Apple Intelligence, or Ollama, fully on-device)</td>
             <td><span class="table-check">Yes</span>, for basic cleanup: Local mode with S1-mini (experimental, 0.6B, on-device); full writing modes still need GPT, Claude, or Llama over the internet</td>
           </tr>
           <tr>
@@ -573,7 +573,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">EG-1 and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
+        <p class="advantage-desc">EG-1, S1-mini by Superwhisper, and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -608,7 +608,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally (EG-1, Ollama, or Apple Intelligence on macOS 26+) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+          <div>AI polish runs locally (EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence on macOS 26+) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -773,11 +773,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key.</p>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
+        <p class="faq-a">Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1, S1-mini by Superwhisper, and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
