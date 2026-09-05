@@ -43,7 +43,7 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 | **Privacy** | 100% on-device transcription | Audio uploaded to servers |
 | **Speed** | Sub-second transcription, paste-on-stop | Network round-trip latency |
 | **Models** | Parakeet v3 (NVIDIA NeMo) + WhisperKit (OpenAI Whisper) | Single vendor model |
-| **Polish** | Optional. Fully on-device (EG-1, S1-mini, Apple Intelligence, Ollama) or bring-your-own-key cloud (OpenAI, Gemini, Claude) | Cloud polish, included in subscription |
+| **Polish** | Optional. Fully on-device (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama) or bring-your-own-key cloud (OpenAI, Gemini, Claude) | Cloud polish, included in subscription |
 | **Cost** | Free. No account, no subscription | Monthly subscription |
 | **Works offline** | Yes, fully functional without internet | No |
 
@@ -93,7 +93,7 @@ Transcription gets your words down. AI polish cleans them up: it drops filler, f
 | Polish engine | What it is | Runs on | Extra download |
 |---|---|---|---|
 | **EG-1** (recommended) | Our own model, custom fine-tuned for dictation cleanup | On-device, macOS 14+ | ~2.9 GB (optional) |
-| **S1-mini** by Superwhisper | A small open model for dictation cleanup, with Tone, Structure, and Context writing style settings | On-device, macOS 14+ | ~484 MB (optional) |
+| **S1-mini** by Superwhisper | A small open model for dictation cleanup, happiest in English, with Tone, Structure, and Context writing style settings | On-device, macOS 14+ | ~484 MB (optional) |
 | **Apple Intelligence** | Apple's on-device model, no extra download | On-device, macOS 26+ | none |
 | **Ollama** | Use a model on your Mac or one hosted by Ollama | On-device or Ollama's servers | varies for local models; none for hosted |
 | **OpenAI / Gemini / Claude** | Bring-your-own-key cloud polish, text only | Cloud (your key) | none |
@@ -126,7 +126,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
-- **A second on-device polish model, S1-mini by Superwhisper.** A small open model for cleaning up dictation, now an option beside EG-1 in AI Polish settings. A 484 MB download, runs on your Mac, and free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. EG-1 stays the recommended choice. (v2.4.7)
+- **A second on-device polish model, S1-mini by Superwhisper.** A small open model for cleaning up dictation, now an option beside EG-1 in AI Polish settings. A 484 MB download, runs on your Mac, and free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. Happiest in English. EG-1 stays the recommended choice. (v2.4.7)
 - **Snippets.** Say a keyword, then a short phrase, and the text you saved is pasted character for character. A fresh install starts with six working examples to try. (v2.4.7)
 - **More of EnviousWispr is switched on from the start.** Escape Recovery, Live Preview and the recording sounds are now on by default, and each is a switch you can turn off. Quick Add has moved to Control Shift W so it no longer shares a key with recording. (v2.4.7)
 - **Add a custom word to your dictionary with a click of a button.** Highlight a misheard word anywhere on macOS, press the Quick Add keybind, and save the right spelling without opening Settings. A small panel ranks it against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu. (v2.4.6)
