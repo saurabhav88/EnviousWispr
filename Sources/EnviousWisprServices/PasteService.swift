@@ -155,8 +155,9 @@ public enum PasteService {
   public static func saveClipboard(from pasteboard: NSPasteboard = .general) -> ClipboardSnapshot {
     // Unbounded by contract, which is correct for a delivery: whatever the user had, they get back.
     // A caller that must bound its memory asks for the budgeted variant below and handles the nil.
-    boundedSaveClipboard(from: pasteboard, maximumBytes: nil) ?? ClipboardSnapshot(
-      items: [], changeCount: pasteboard.changeCount)
+    boundedSaveClipboard(from: pasteboard, maximumBytes: nil)
+      ?? ClipboardSnapshot(
+        items: [], changeCount: pasteboard.changeCount)
   }
 
   /// Capture the pasteboard, giving up as soon as the cumulative bytes exceed `maximumBytes`.
@@ -457,20 +458,78 @@ public enum PasteService {
   /// Replaces a `(outcome, submitted)` tuple. The decision evidence used to be
   /// discarded at this return boundary, which is why nothing downstream could
   /// say why the fast route lost.
+  /// Whether the AX write CALL was made, and with what text (#2652).
+  ///
+  /// `AXInsertOutcome` alone cannot answer this. `.noMutation` is returned both when we
+  /// declined before touching the element and when the write ran and provably changed
+  /// nothing — opposite facts, one value, because the cascade only ever needed to know
+  /// whether a retry was safe. The V2 arm needs the other question: once the setter has
+  /// RETURNED SUCCESS, no later writer may run, regardless of what verification says.
+  ///
+  /// The attempted text rides as an ASSOCIATED VALUE rather than a sibling field so
+  /// "not attempted, but here is the text" and "succeeded, but no text" cannot be
+  /// spelled. A first draft carried them as independent properties and the reviewer
+  /// found the contradictory pair immediately; this shape deletes the states instead of
+  /// documenting them.
+  package enum AXWriteCall: Equatable, Sendable {
+    /// The setter was never called. Nothing was mutated; fallback is safe.
+    case notAttempted
+    /// The setter was called and returned an error. Nothing was mutated.
+    case failed(attemptedText: String)
+    /// The setter returned success. The mutation MAY be in the document.
+    case succeeded(attemptedText: String)
+
+    /// The exact string handed to the setter, for the bake-off submission ledger.
+    package var attemptedText: String? {
+      switch self {
+      case .notAttempted: return nil
+      case .failed(let text), .succeeded(let text): return text
+      }
+    }
+  }
+
+  /// The field's size immediately BEFORE a Tier 1 write, for the copies observation (#2652).
+  ///
+  /// Taken from reads `insertViaAccessibility` ALREADY performs; no read exists for this type's
+  /// sake. That is the whole constraint: the observation must add no synchronous accessibility
+  /// traffic to the delivery path, and a destination whose AX round trip is slow is precisely the
+  /// suspected population.
+  package struct CopiesBeforeImage: Sendable, Equatable {
+    package let count: Int
+    package let selectionLength: Int
+    package init(count: Int, selectionLength: Int) {
+      self.count = count
+      self.selectionLength = selectionLength
+    }
+  }
+
   package struct AXInsertResult: Sendable {
     package let outcome: AXInsertOutcome
     package let submitted: PastePayloadKind?
+    package let writeCall: AXWriteCall
     package let declineReason: AXDeclineReason?
     package let settability: AXSettability?
+    /// Non-nil on every return AFTER both before-image reads succeeded — not only the ones
+    /// that reached the setter.
+    ///
+    /// Review finding, 2026-09-04: attaching it to the success path alone discarded it on the
+    /// two paths where the observation is MOST useful. A Tier 1 write that returned an error,
+    /// and a decline after the reads, both hand delivery to the fallback — and that fallback
+    /// delivery is measurable, with a before-image already in hand. Reporting those as
+    /// `no_before_image` would have excluded exactly the uncertain cases the instrument exists
+    /// for. **Whether the SETTER ran is a separate question, answered by `writeCall`.**
+    package var copiesBeforeImage: CopiesBeforeImage?
 
     package init(
       outcome: AXInsertOutcome,
       submitted: PastePayloadKind?,
+      writeCall: AXWriteCall,
       declineReason: AXDeclineReason?,
       settability: AXSettability?
     ) {
       self.outcome = outcome
       self.submitted = submitted
+      self.writeCall = writeCall
       self.declineReason = declineReason
       self.settability = settability
     }
@@ -479,10 +538,30 @@ public enum PasteService {
     /// in every case, because nothing was mutated — the reason is what tells
     /// the two dozen ways of getting here apart.
     static func declined(
-      _ reason: AXDeclineReason, settability: AXSettability? = nil
+      _ reason: AXDeclineReason, settability: AXSettability? = nil,
+      beforeImage: CopiesBeforeImage? = nil
     ) -> AXInsertResult {
-      AXInsertResult(
-        outcome: .noMutation, submitted: nil, declineReason: reason, settability: settability)
+      var result = AXInsertResult(
+        outcome: .noMutation, submitted: nil, writeCall: .notAttempted, declineReason: reason,
+        settability: settability)
+      result.copiesBeforeImage = beforeImage
+      return result
+    }
+
+    /// The setter RAN and returned an error. Distinct from `declined` on purpose: this
+    /// factory is the only way to spell a failed write call, so no pre-write decline can
+    /// accidentally claim one, and no failed call can accidentally claim it never ran.
+    /// Nothing was mutated either way, so the cascade's retry rules are unchanged.
+    static func writeCallFailed(
+      attemptedText: String, settability: AXSettability?,
+      beforeImage: CopiesBeforeImage? = nil
+    ) -> AXInsertResult {
+      var result = AXInsertResult(
+        outcome: .noMutation, submitted: nil,
+        writeCall: .failed(attemptedText: attemptedText), declineReason: .setFailed,
+        settability: settability)
+      result.copiesBeforeImage = beforeImage
+      return result
     }
   }
 
@@ -1386,7 +1465,10 @@ public enum PasteService {
         bundleIdentifier: bundleIdentifier, axIdentifier: nil, axDOMClassList: axDOMClassList)
     }
     guard signatureMatches else { return nil }
-    return ancestorChainVerifiedFreeOfWebArea(element) ? family : nil
+    // Exactly the projection the Boolean version computed: only a chain walked to a
+    // verified native root yields a browser family. `containsWebArea` and
+    // `unverifiable` both yield nil, as `false` did before.
+    return ancestorChainVerifiedFreeOfWebArea(element) == .verifiedNative ? family : nil
   }
 
   /// Whether `element`'s AX ancestor chain can be POSITIVELY VERIFIED clean of
@@ -1413,18 +1495,86 @@ public enum PasteService {
   /// the walk was cut short, not that it reached the top, and must not be
   /// read as verification — the existing `.attributeUnsupported`/`.noValue`
   /// idiom in `firstPasteItem` above draws the same distinction one type over.
-  private static func ancestorChainVerifiedFreeOfWebArea(
-    _ element: AXUIElement, maxDepth: Int = 10
-  ) -> Bool {
-    var current = element
-    var depth = 0
-    while depth < maxDepth {
+  /// Three states, because two callers need different halves of the answer (#2652).
+  ///
+  /// `addressBarFamily(of:)` needs only "is this positively native chrome", which is
+  /// what the Boolean said. The bake-off's V1 arm needs "is this positively PAGE
+  /// CONTENT", and those are not each other's negation: a chain we could not read is
+  /// neither. Collapsing the two into one Bool would route an unreadable chain as if it
+  /// were a web area, which would change behaviour on a target the arm is not testing.
+  ///
+  /// The traversal below is byte-for-byte what the Boolean version did; only the return
+  /// vocabulary widened. `.verifiedNative` is returned in exactly the one place the old
+  /// code returned `true`, so the projection `== .verifiedNative` reproduces it exactly.
+  package enum AXWebAreaAncestry: Equatable, Sendable {
+    /// An `AXWebArea` was found in the chain. Positively page content.
+    case containsWebArea
+    /// The chain was walked to a verified `AXApplication` root with no web area.
+    case verifiedNative
+    /// The walk was cut short. Proof of nothing, in either direction.
+    case unverifiable
+  }
+
+  /// Why a traversal stopped, and how far it got (#2652 diagnosis).
+  ///
+  /// The Boolean and the three-way enum both record what the walk CONCLUDED and neither
+  /// records why. Measured on 2026-09-04: the V1 arm skipped Tier 1 in Brave 5/5 and in
+  /// Chrome 1/4, and nothing in the logs distinguished "the web area is further than
+  /// `maxDepth`" from "this focused element genuinely sits under no web area". Those two
+  /// want opposite fixes, so the gate is instrumented rather than tuned.
+  ///
+  /// `depthExamined` counts ROLE READS ATTEMPTED, the starting element included and a
+  /// failed read included. A web area found on read 11 is ten parent edges away.
+  ///
+  /// `resumeElement` is non-nil only on `.depthExhausted`, and exists so the remaining
+  /// distance can be measured AFTER delivery. Continuing before the write would add
+  /// synchronous accessibility traffic to a Chromium process inside the paste path and
+  /// could warm the very cache whose staleness is the subject — an unchanged Boolean is
+  /// not an unchanged experiment.
+  package struct AXWebAreaAncestryTrace {
+    package enum StopReason: String, Equatable, Sendable {
+      case foundWebArea
+      case reachedApplication
+      case roleReadFailed
+      case parentMissingNotApplication
+      case parentReadFailed
+      case depthExhausted
+    }
+    package let result: AXWebAreaAncestry
+    package let depthExamined: Int
+    package let stopReason: StopReason
+    package let roles: [String]
+    package let resumeElement: AXUIElement?
+  }
+
+  /// The traversal, with its stopping condition made observable.
+  ///
+  /// Every exit here reproduces an exit the Boolean version had, in the same order and
+  /// after the same accessibility calls. Nothing was added to the decision path: no
+  /// retry, no cycle exit, no timeout, no extra read.
+  private static func walkAncestry(
+    from start: AXUIElement, alreadyExamined: Int, roles seed: [String], maxExamined: Int
+  ) -> AXWebAreaAncestryTrace {
+    var current = start
+    var examined = alreadyExamined
+    var roles = seed
+    while examined < maxExamined {
       var roleRef: CFTypeRef?
       guard
         AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleRef) == .success,
         let role = roleRef as? String
-      else { return false }
-      if role == "AXWebArea" { return false }
+      else {
+        return AXWebAreaAncestryTrace(
+          result: .unverifiable, depthExamined: examined + 1, stopReason: .roleReadFailed,
+          roles: roles, resumeElement: nil)
+      }
+      examined += 1
+      roles.append(role)
+      if role == "AXWebArea" {
+        return AXWebAreaAncestryTrace(
+          result: .containsWebArea, depthExamined: examined, stopReason: .foundWebArea,
+          roles: roles, resumeElement: nil)
+      }
 
       var parentRef: CFTypeRef?
       let parentRead = AXUIElementCopyAttributeValue(
@@ -1437,15 +1587,124 @@ public enum PasteService {
         // be read as "verified clean" without ever having been checked past
         // this point. `role` is already in hand from this same iteration.
         return role == "AXApplication"
+          ? AXWebAreaAncestryTrace(
+            result: .verifiedNative, depthExamined: examined, stopReason: .reachedApplication,
+            roles: roles, resumeElement: nil)
+          : AXWebAreaAncestryTrace(
+            result: .unverifiable, depthExamined: examined,
+            stopReason: .parentMissingNotApplication, roles: roles, resumeElement: nil)
       }
       guard parentRead == .success, let parentRef,
         CFGetTypeID(parentRef) == AXUIElementGetTypeID()
-      else { return false }
+      else {
+        return AXWebAreaAncestryTrace(
+          result: .unverifiable, depthExamined: examined, stopReason: .parentReadFailed,
+          roles: roles, resumeElement: nil)
+      }
       // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check above.
       current = (parentRef as! AXUIElement)
-      depth += 1
     }
-    return false
+    return AXWebAreaAncestryTrace(
+      result: .unverifiable, depthExamined: examined, stopReason: .depthExhausted,
+      roles: roles, resumeElement: current)
+  }
+
+  /// How many characters the field holds, or nil when it will not say.
+  ///
+  /// The copies detector is built on this NUMBER and never on the text, which is what
+  /// makes it shippable: a count crossing the network says nothing about what anybody
+  /// dictated, and a count is also the only reading that survives the case a text
+  /// comparison gets wrong — somebody deliberately dictating the same sentence twice
+  /// produces two separate deliveries, each with its own delta of one copy.
+  package static func characterCount(of element: AXUIElement) -> Int? {
+    var ref: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(
+        element, kAXNumberOfCharactersAttribute as CFString, &ref) == .success,
+      let count = ref as? Int, count >= 0
+    else { return nil }
+    return count
+  }
+
+  /// UTF-16 length of whatever is selected, or nil when the range will not read.
+  ///
+  /// A dictation that REPLACES a selection shortens the field by that much before it
+  /// lengthens it, so a copies count that ignores the selection reads a replacement as a
+  /// short delivery and lands on `unknown`.
+  package static func selectedTextLength(of element: AXUIElement) -> Int? {
+    guard let range = selectedRange(of: element), range.length >= 0 else { return nil }
+    return range.length
+  }
+
+  /// How many copies of a delivery of `insertedLength` landed, judged by length alone.
+  ///
+  /// `expected` is what the field must hold if exactly one copy arrived. One further
+  /// `insertedLength` beyond that is two copies. Anything else is `nil`: the user typing
+  /// during the settle window, an app that rewrites the field, a count we could not read.
+  /// Returning nil rather than guessing matters more here than usual, because this number
+  /// is destined for a dashboard where a wrong verdict becomes a wrong headline.
+  package static func copiesDelivered(
+    countAfter: Int?, countBefore: Int, selectionLengthBefore: Int, insertedLength: Int
+  ) -> Int? {
+    // Overflow-safe throughout: these numbers come from a foreign application's accessibility
+    // implementation, so they are arbitrary Ints, not values this process produced.
+    guard let countAfter, insertedLength > 0, countBefore >= 0, selectionLengthBefore >= 0,
+      countAfter >= 0
+    else { return nil }
+    let (afterSelection, s1) = countBefore.subtractingReportingOverflow(selectionLengthBefore)
+    guard !s1 else { return nil }
+    let (expected, s2) = afterSelection.addingReportingOverflow(insertedLength)
+    guard !s2 else { return nil }
+    let (twoCopies, s3) = expected.addingReportingOverflow(insertedLength)
+    guard !s3 else { return nil }
+
+    // A DESTINATION MAY NOT STORE EXACTLY WHAT IT WAS GIVEN, so exact arithmetic
+    // answers `unknown` for a delivery that plainly worked.
+    //
+    // Measured 2026-09-04 across 8 deliveries of the same sentence: Discord landed on
+    // the exact expected count every time, and Slack was short by exactly one character
+    // per copy — one copy short by 1, two copies short by 2. Whatever Slack normalises
+    // away, it does so once per copy and reproducibly.
+    //
+    // The tolerance is bounded to a THIRD of one copy so the one-copy and two-copy
+    // bands can never overlap, whatever the sentence length. That bound is what keeps a
+    // widened window from turning a single delivery into a reported duplicate, which is
+    // the one error this detector must never make.
+    let tolerance = min(3, insertedLength / 3)
+    func within(_ band: Int) -> Bool {
+      let (delta, overflowed) = countAfter.subtractingReportingOverflow(band)
+      return !overflowed && delta.magnitude <= UInt(tolerance)
+    }
+    if within(expected) { return 1 }
+    if within(twoCopies) { return 2 }
+    return nil
+  }
+
+  package static func ancestorChainTrace(
+    _ element: AXUIElement, maxDepth: Int = 10
+  ) -> AXWebAreaAncestryTrace {
+    walkAncestry(from: element, alreadyExamined: 0, roles: [], maxExamined: maxDepth)
+  }
+
+  /// Pick the walk up where `maxDepth` stopped it, never at the focused element again.
+  ///
+  /// Restarting would re-read every element the first pass already read, which is the
+  /// added traffic this design exists to avoid. Returns the prior trace unchanged when
+  /// there is nothing to resume, so a caller cannot accidentally report a continuation
+  /// that never ran.
+  package static func resumeAncestorChainTrace(
+    _ prior: AXWebAreaAncestryTrace, maxExamined: Int
+  ) -> AXWebAreaAncestryTrace {
+    guard let resume = prior.resumeElement else { return prior }
+    return walkAncestry(
+      from: resume, alreadyExamined: prior.depthExamined, roles: prior.roles,
+      maxExamined: maxExamined)
+  }
+
+  package static func ancestorChainVerifiedFreeOfWebArea(
+    _ element: AXUIElement, maxDepth: Int = 10
+  ) -> AXWebAreaAncestry {
+    ancestorChainTrace(element, maxDepth: maxDepth).result
   }
 
   /// Exact UTF-16 code-unit identity.
@@ -1541,8 +1800,23 @@ public enum PasteService {
     repaired: String? = nil,
     context: CaretContext? = nil,
     element: AXUIElement,
-    requireFocusedElementMatch: Bool = false
+    requireFocusedElementMatch: Bool = false,
+    boundMessagingTimeout: Bool = false
   ) -> AXInsertResult {
+    // #2652 V4/V5: bound THIS element's own AX round trips.
+    //
+    // We already set a messaging timeout for app-scoped focused-element reads and menu
+    // probing. What has never been bounded is the captured Tier 1 element across its
+    // read/write/read sequence — the one place the stale-read hazard lives, and the one
+    // difference between us and the three competitors that import this call.
+    //
+    // It bounds how long a single call may BLOCK. It cannot make a destination's state
+    // settle sooner, and this arm exists to measure whether that distinction matters
+    // here rather than to assume either way. Off in every shipped build.
+    if boundMessagingTimeout {
+      _ = AXUIElementSetMessagingTimeout(element, Float(axMessagingTimeoutSeconds))
+    }
+
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -1637,7 +1911,9 @@ public enum PasteService {
     } else {
       // Without a trustworthy before-image, a successful AX call could never be
       // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
-      return .declined(.beforeImageUnreadableOrIncomplete, settability: settability)
+      return .declined(
+        .beforeImageUnreadableOrIncomplete, settability: settability,
+        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
     }
 
     // The payload choice, made from the range AND the surrounding text this
@@ -1678,7 +1954,9 @@ public enum PasteService {
           requireFocusedElementMatch: true,
           isFocused: freshFocusedElement(matching: element) != nil)
       else {
-        return .declined(.focusUnconfirmed, settability: settability)
+        return .declined(
+          .focusUnconfirmed, settability: settability,
+          beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
       }
     }
 
@@ -1688,7 +1966,11 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return .declined(.setFailed, settability: settability) }
+    guard err == .success else {
+      return .writeCallFailed(
+        attemptedText: text, settability: settability,
+        beforeImage: CopiesBeforeImage(count: countBefore, selectionLength: rangeBefore.length))
+    }
 
     // From here the write may have landed, so every remaining failure is
     // `unverifiable`, never `noMutation`.
@@ -1730,12 +2012,16 @@ public enum PasteService {
     // The write was attempted with this payload, whatever the verification says
     // afterwards — including an outcome later classified `unverifiable`, where
     // the text may already be in the document.
-    return AXInsertResult(
+    var result = AXInsertResult(
       outcome: outcome,
       submitted: payload.kind,
+      writeCall: .succeeded(attemptedText: text),
       declineReason: Self.declineReason(for: outcome),
       settability: settability
     )
+    result.copiesBeforeImage = CopiesBeforeImage(
+      count: countBefore, selectionLength: rangeBefore.length)
+    return result
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
