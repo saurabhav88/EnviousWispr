@@ -83,6 +83,23 @@ enum WhatsNewContent {
         "S1-mini is a small open model for cleaning up dictation, and it is now an option beside EG-1 in AI Polish settings. It is a 484 MB download, runs on this Mac, and is free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. EG-1 stays the recommended choice.",
       version: "2.4.7"
     ),
+
+    // #628. Snippets shipped on 2026-09-01 and had no entry, so the release
+    // body rendered from this file would have omitted a headline feature.
+    // Every clause checked against main: the default keyword is
+    // `VocabularyLanes.defaultKeyword` ("backslash"); "six working examples"
+    // is `SnippetStarters`; "exactly as you typed it" and "line breaks
+    // included" are the polish bypass and the multi-line delivery fix
+    // (#2639); the location is `SettingsSection.snippets`. Nothing is claimed
+    // about import, which has not shipped.
+    Entry(
+      id: "snippets",
+      icon: "text.badge.plus",
+      title: "Snippets: say a short phrase, paste the text you saved",
+      description:
+        "Save a piece of text once, then say your keyword and a short phrase to paste it: an email address, a sign-off, a link you send every week. The keyword is backslash unless you change it, so \"backslash my email\" pastes your address and \"my email\" on its own is left alone. What you saved is pasted exactly as you typed it, line breaks included, and AI Polish never rewrites it. A fresh install starts with six working examples you can edit or delete. Find them in Settings under Snippets.",
+      version: "2.4.7"
+    ),
     // MARK: - v2.4.6
 
     // Every title and every collapsed line in this group was written or edited by
