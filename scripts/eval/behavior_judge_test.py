@@ -3007,7 +3007,52 @@ def test_check_live_reports_the_recorded_identity():
         f"run `python3 scripts/eval/model_registry.py check-live`")
 
 
-EXPECTED_TESTS = 139
+def test_floor_cli_reports_the_real_sealed_floor():
+    # #2582. PR #2576 made `adjudication` and `productionBaseline` comparability
+    # axes, but the documented `floor` CLI kept forwarding only four of the six
+    # and let the new two fall to None. Every floor-setting sealed evaluation on
+    # record carries "0.15:15" and a baseline, so the documented interface answered
+    # NO FLOOR for a history whose floor is 63. Driven through `main()` against the
+    # REAL checked-in registry, not a fixture: a fixture shaped to pass would prove
+    # nothing about the history the operator actually queries.
+    import model_registry
+
+    def run(argv):
+        out, err = io.StringIO(), io.StringIO()
+        old = sys.argv
+        sys.argv = ["model_registry.py", *argv]
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = model_registry.main()
+                except SystemExit as exc:  # argparse refusals exit rather than return
+                    code = exc.code
+        finally:
+            sys.argv = old
+        return code, out.getvalue(), err.getvalue()
+
+    base = ["floor", "--corpus", "sealed_v1.jsonl", "--cases", "1462",
+            "--rubric", "626d3a1c5219", "--judge", "azure/gpt-5-6-luna@d9697a344ff6"]
+
+    code, out, err = run(base + ["--adjudication", "0.15:15", "--production", "none"])
+    assert code == 0, f"floor CLI failed on the real history:\n{out}{err}"
+    assert out.startswith("63 S4 — eg1-1.1-c016 "), out
+
+    # Same query with the baseline the 1.2 winner was measured against: a
+    # different setup and a different floor, which is the whole point of the axis.
+    code, out, _ = run(base + ["--adjudication", "0.15:15",
+                               "--production", "sealed_shipped.jsonl"])
+    assert code == 0 and out.startswith("31 S4 — eg1-1.2-c003 "), out
+
+    # Without the two axes the query is REFUSED at the parser, never answered.
+    # A None default matches only a row whose receipt recorded null, which the
+    # module says may never set a bar — so the old silent NO FLOOR must not return.
+    code, out, err = run(base)
+    assert code == 2 and "NO FLOOR" not in err, (code, out, err)
+    assert "--adjudication" in err and "--production" in err, err
+
+
+EXPECTED_TESTS = 140
 
 
 def _run() -> int:
