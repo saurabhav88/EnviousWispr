@@ -39,7 +39,7 @@ struct KernelFrozenBindGuardTests {
     deviceID: 121,
     deviceUID: "synthetic-uid-no-real-device-carries-this",
     transportLabel: "bluetooth",
-    resolutionSource: "system_default"
+    resolutionSource: "system_default", inputChannel: 0
   )
 
   private struct Context {
@@ -94,7 +94,7 @@ struct KernelFrozenBindGuardTests {
       // widening of `AudioDeviceEnumerator.inputDeviceUID(for:)`, which is internal.
       return BoundInputDevice(
         deviceID: device.id, deviceUID: device.uid, transportLabel: nil,
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
     }
     return nil
   }

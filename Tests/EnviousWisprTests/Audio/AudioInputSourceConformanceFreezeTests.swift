@@ -115,7 +115,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
   ) -> BoundInputDevice {
     BoundInputDevice(
       deviceID: deviceID, deviceUID: "uid-\(deviceID)", transportLabel: "built_in",
-      resolutionSource: source)
+      resolutionSource: source, inputChannel: 0)
   }
 
   @Test("warm automatic source is reusable while bound to current system default")
@@ -123,7 +123,10 @@ struct HALDeviceInputSourceDeviceTargetTests {
     let source = HALDeviceInputSource()
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { 42 },
-      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
+      inputDeviceSnapshot: {
+        Issue.record("Auto must not enumerate")
+        return .complete([])
+      }
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
@@ -136,7 +139,10 @@ struct HALDeviceInputSourceDeviceTargetTests {
     nonisolated(unsafe) var currentDefault: AudioDeviceID = 42
     source.inputDeviceResolver = InputDeviceResolver(
       defaultInputDeviceID: { currentDefault },
-      inputDeviceSnapshot: { Issue.record("Auto must not enumerate"); return .complete([]) }
+      inputDeviceSnapshot: {
+        Issue.record("Auto must not enumerate")
+        return .complete([])
+      }
     )
     source.setBoundInputDeviceForTesting(committedBind(42))
 
@@ -179,7 +185,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
       deviceID: 121,
       deviceUID: "BC-87-FA-9C-7E-71:input",
       transportLabel: "bluetooth",
-      resolutionSource: "system_default"
+      resolutionSource: "system_default", inputChannel: 0
     )
     source.setBoundInputDeviceForTesting(committed)
 
@@ -198,7 +204,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
     source.setBoundInputDeviceForTesting(
       BoundInputDevice(
         deviceID: 121, deviceUID: "BC-87-FA-9C-7E-71:input", transportLabel: "bluetooth",
-        resolutionSource: "system_default"))
+        resolutionSource: "system_default", inputChannel: 0))
 
     #expect(source.warmReuseBindForTesting(hasLiveUnit: false) == nil)
   }
@@ -217,7 +223,7 @@ struct HALDeviceInputSourceDeviceTargetTests {
       deviceID: 121,
       deviceUID: "BC-87-FA-9C-7E-71:input",
       transportLabel: "bluetooth",
-      resolutionSource: "system_default"
+      resolutionSource: "system_default", inputChannel: 0
     )
     source.setBoundInputDeviceForTesting(committed)
     #expect(source.warmReuseBindForTesting(hasLiveUnit: true) == committed)
@@ -336,7 +342,7 @@ struct HALInputResolutionFinalizationTests {
     source.setBoundInputDeviceForTesting(
       BoundInputDevice(
         deviceID: 121, deviceUID: "uid-121", transportLabel: "bluetooth",
-        resolutionSource: "list_fallback"))
+        resolutionSource: "list_fallback", inputChannel: 0))
 
     nonisolated(unsafe) var finalised: [FinalizedInputResolutionAttempt] = []
     source.onInputResolutionAttemptFinalized = { finalised.append($0) }

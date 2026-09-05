@@ -19,7 +19,7 @@ struct InputDevicePreferenceReconcilerTests {
   }
 
   private static func device(_ uid: String) -> AudioInputDevice {
-    AudioInputDevice(id: 1, name: uid, uid: uid)
+    AudioInputDevice(id: 1, name: uid, uid: uid, inputChannelCount: 1)
   }
 
   @Test(

@@ -55,7 +55,7 @@ import Testing
       func prepare() async throws -> BoundInputDevice {
         BoundInputDevice(
           deviceID: 1, deviceUID: "stub", transportLabel: "built_in",
-          resolutionSource: "system_default")
+          resolutionSource: "system_default", inputChannel: 0)
       }
       func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         AsyncStream { $0.finish() }

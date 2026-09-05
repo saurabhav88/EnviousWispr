@@ -60,7 +60,7 @@ import Testing
       /// could have derived from settings.
       var boundToReturn = BoundInputDevice(
         deviceID: 1, deviceUID: "stub-uid", transportLabel: "stub",
-        resolutionSource: "system_default")
+        resolutionSource: "system_default", inputChannel: 0)
       /// #1714: the undefaulted protocol witness. This suite is about retire
       /// behaviour and never fires it; declaring it explicitly is exactly what
       /// the undefaulted requirement is for.

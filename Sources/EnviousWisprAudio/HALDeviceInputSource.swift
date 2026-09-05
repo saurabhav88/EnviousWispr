@@ -399,6 +399,9 @@ final class HALDeviceInputSource: AudioInputSource {
 
   private(set) var isCapturing = false
   var isRunning: Bool {
+    #if DEBUG
+      if let isRunningOverrideForTesting { return isRunningOverrideForTesting }
+    #endif
     guard let audioUnit else { return false }
     var running: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
@@ -409,6 +412,14 @@ final class HALDeviceInputSource: AudioInputSource {
 
   /// Target capture device UID. Nil means follow the live system default input.
   var targetDeviceUID: String?
+
+  /// #2664: per-device input-channel preference (device UID -> 0-based channel),
+  /// copied from `AudioCaptureManager` at construction. Read ONCE, at cold
+  /// `prepare()`, to choose the channel map; nothing else reads it. The
+  /// warm-reuse predicate deliberately takes the MANAGER's current map as an
+  /// argument instead, because this copy is stale by definition once the user
+  /// changes the setting while the unit is warm.
+  var inputChannelByDeviceUID: [String: Int] = [:]
 
   /// The single capture device-selection authority (#1714). Injected so the
   /// whole ladder — and the warm-compatibility projection below — is testable
@@ -482,33 +493,51 @@ final class HALDeviceInputSource: AudioInputSource {
   /// is cleared only in `teardownUnit()`. AUHAL down-mixes to mono by taking
   /// channel 0; this records how many channels the device actually exposed.
   private var boundNativeChannelCount: Int?
+  /// #2664: the device input channel the committed unit ACTUALLY takes. 0 when
+  /// no channel map was set (the default path, byte-for-byte today's behaviour)
+  /// or when the map set was refused; otherwise the applied channel. Committed
+  /// and cleared with the other bound fields, and carried on `BoundInputDevice`
+  /// so the warm-reuse predicate can compare it to the current preference.
+  private var boundInputChannel: Int?
 
   var actualBoundTransport: String? { boundTransport }
 
+  #if DEBUG
+    /// #2664 test seam: when non-nil, `isRunning` reports this instead of asking
+    /// the real unit, so `AudioCaptureManager.resolveSource()`'s warm-reuse
+    /// branch — which is HAL-typed and gated on `existing.isRunning` — can be
+    /// driven with a committed bind and no `AudioUnit`. Production never sets it.
+    var isRunningOverrideForTesting: Bool?
+  #endif
+
   /// #1844: the committed bind, or nil before `prepare()` succeeded / after
-  /// teardown. All four fields are assigned together in the cold commit block
-  /// and cleared together in `teardownUnit()`, so this reads one fact, not four
+  /// teardown. All five fields are assigned together in the cold commit block
+  /// and cleared together in `teardownUnit()`, so this reads one fact, not five
   /// that could drift.
   private var currentBoundInputDevice: BoundInputDevice? {
-    guard let boundDeviceID, let boundResolutionSource else { return nil }
+    guard let boundDeviceID, let boundResolutionSource, let boundInputChannel else { return nil }
     return BoundInputDevice(
       deviceID: boundDeviceID, deviceUID: boundUID, transportLabel: boundTransport,
-      resolutionSource: boundResolutionSource)
+      resolutionSource: boundResolutionSource, inputChannel: boundInputChannel)
   }
 
-  /// #1844: sets or clears ALL FOUR committed bind fields together, the way the
-  /// cold commit block and `teardownUnit()` each do.
+  /// #1844: sets or clears ALL FIVE committed bind fields together, the way the
+  /// cold commit block and `teardownUnit()` each do. `nativeChannelCount` is the
+  /// prepare-time constant beside them (#2664: the warm-reuse channel predicate
+  /// reads it), so a test staging a multi-input bind supplies it here too.
   ///
   /// This is the ONLY bind-setting seam. A partial-bind setter used to sit
   /// beside it, moving just the numeric id; #1714 deleted it once the warm
   /// predicate started reading the whole bind, because a test could otherwise
   /// pass on a correct id with a stale UID — and the UID is exactly what the
   /// health check's identity re-check depends on. Do not reintroduce one.
-  func setBoundInputDeviceForTesting(_ bound: BoundInputDevice?) {
+  func setBoundInputDeviceForTesting(_ bound: BoundInputDevice?, nativeChannelCount: Int? = nil) {
     boundDeviceID = bound?.deviceID
     boundUID = bound?.deviceUID
     boundTransport = bound?.transportLabel
     boundResolutionSource = bound?.resolutionSource
+    boundInputChannel = bound?.inputChannel
+    boundNativeChannelCount = nativeChannelCount
   }
 
   /// #1844: the warm-reuse DECISION, split from the hardware that answers
@@ -553,6 +582,20 @@ final class HALDeviceInputSource: AudioInputSource {
     return inputDeviceResolver.isWarmBindCompatible(bound, preferredUID: targetDeviceUID)
   }
 
+  /// #2664: does the committed unit take the channel the CURRENT preference
+  /// asks for? `preference` is the manager's live map, never this source's own
+  /// construction-time copy. Resolved through the same pure function cold
+  /// prepare applies, against the bound device's own channel count, so a
+  /// preference the device cannot honour compares equal to the channel-0 bind
+  /// it produced rather than forcing a rebuild that would land on channel 0
+  /// again. False with no committed bind, like the device predicate above.
+  func boundInputChannelMatches(preference: [String: Int]) -> Bool {
+    guard let bound = currentBoundInputDevice else { return false }
+    let wanted = InputChannelPreference.effectiveChannel(
+      requested: preference[bound.deviceUID ?? ""], availableChannels: boundNativeChannelCount)
+    return wanted == bound.inputChannel
+  }
+
   /// #1523: the last live stop-metadata, cached in `teardownUnit()` right before
   /// the render context + bound-device state are cleared. The device-vanish path
   /// (`handleDeviceMayHaveVanished`) tears the unit down BEFORE the manager reads
@@ -580,7 +623,8 @@ final class HALDeviceInputSource: AudioInputSource {
       preRollGapCount: preRollGapCount,
       lostChunkCount: snap.lostChunks,
       rateDivergenceDetected: formatDivergenceObserved,
-      nativeChannelCount: boundNativeChannelCount
+      nativeChannelCount: boundNativeChannelCount,
+      inputChannel: boundInputChannel
     )
   }
 
@@ -699,6 +743,23 @@ final class HALDeviceInputSource: AudioInputSource {
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.set_device")
     }
 
+    // #2664: the bound device's identity and channel count, read into LOCALS
+    // here (both are plain property reads with no device-configuration side
+    // effect) and committed to `self` only in the all-succeeded block below.
+    // Which channel the mono capture should take is decided by the one pure
+    // authority; an unusable preference falls to channel 0, today's behaviour,
+    // and says so in the route log.
+    let deviceUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
+    let nativeChannelCount = AudioDeviceEnumerator.inputChannelCount(for: deviceID)
+    let requestedChannel = inputChannelByDeviceUID[deviceUID ?? ""]
+    let channel = InputChannelPreference.effectiveChannel(
+      requested: requestedChannel, availableChannels: nativeChannelCount)
+    if let requestedChannel, requestedChannel != channel {
+      AudioCaptureManager.btRouteLog(
+        "HALDeviceInputSource: channel_pref_out_of_range requested=\(requestedChannel) "
+          + "available=\(nativeChannelCount) — capturing channel 0")
+    }
+
     // AUHAL input does NOT resample (Apple QA1777: "does not provide sample
     // rate conversion" for input on macOS) — query the HARDWARE's actual
     // native rate and set the client format to MATCH it (mono/Float32 is
@@ -734,6 +795,30 @@ final class HALDeviceInputSource: AudioInputSource {
     guard status == noErr else {
       AudioComponentInstanceDispose(unit)
       throw AudioError.formatCreationFailed(source: "HALDeviceInputSource.prepare.stream_format")
+    }
+
+    // #2664: the ONE capture change. With a mono client format AUHAL takes
+    // device channel 0 and nothing else, so a microphone on any other input of a
+    // multi-input interface recorded silence. `kAudioOutputUnitProperty_ChannelMap`
+    // on the input element's OUTPUT scope is an `Int32` per client channel naming
+    // the device channel it should carry (Apple TN2091), and it must be set AFTER
+    // the client format and BEFORE `AudioUnitInitialize`. Channel 0 sets nothing,
+    // so the default path is byte-for-byte what shipped before. A refused set is
+    // a LIMB failure: log it, keep channel 0, and let the take proceed — the
+    // committed `boundInputChannel` then says 0, never the channel asked for.
+    var appliedChannel = 0
+    if channel != 0 {
+      var channelMap: [Int32] = [Int32(channel)]
+      let mapStatus = AudioUnitSetProperty(
+        unit, kAudioOutputUnitProperty_ChannelMap, kAudioUnitScope_Output, 1,
+        &channelMap, UInt32(MemoryLayout<Int32>.size))
+      if mapStatus == noErr {
+        appliedChannel = channel
+      } else {
+        AudioCaptureManager.btRouteLog(
+          "HALDeviceInputSource: channel_map_set_failed status=\(mapStatus) requested=\(channel) "
+            + "— capturing channel 0")
+      }
     }
 
     // Scratch/ring capacity scales with the native rate — a fixed 4096-frame
@@ -828,7 +913,7 @@ final class HALDeviceInputSource: AudioInputSource {
     registerFormatChangeListeners(deviceID: deviceID)
 
     boundDeviceID = deviceID
-    boundUID = AudioDeviceEnumerator.inputDeviceUID(for: deviceID)
+    boundUID = deviceUID
     boundTransport = AudioDeviceEnumerator.transportLabel(for: deviceID)
     // #1714: the fourth committed field, taken from the same switch that chose
     // the device — so there is no defaulted or optional path by which a bind
@@ -839,10 +924,14 @@ final class HALDeviceInputSource: AudioInputSource {
     // channels: 1 above) and AUHAL down-mixes by TAKING CHANNEL 0 — so a device
     // whose meaningful audio is on a later channel would be captured as silence.
     // This value makes a >1-channel fleet population measurable; it does NOT
-    // change what we capture (measure-only, #1523). Do not build a channel
-    // selector until this telemetry shows both a >1-channel population and a
-    // buried-audio report.
-    boundNativeChannelCount = AudioDeviceEnumerator.inputChannelCount(for: deviceID)
+    // change what we capture; the SELECTOR #1523 deferred is the channel map
+    // above (#2664), built once this telemetry showed both a >1-channel
+    // population and a buried-audio report.
+    boundNativeChannelCount = nativeChannelCount
+    // #2664: the sixth committed field — what the unit actually takes, from the
+    // property set's own result, so telemetry and warm reuse never read the
+    // requested channel as the recorded one.
+    boundInputChannel = appliedChannel
     // #1434: the native rate + ratio in the prepare line is the per-recording
     // rate evidence D4 flagged as the highest-value instrumentation gap.
     let ratio = Self.targetFormat.sampleRate / nativeFormat.sampleRate
@@ -850,7 +939,8 @@ final class HALDeviceInputSource: AudioInputSource {
       "HALDeviceInputSource: prepared with device \(deviceID) (uid=\(boundUID ?? "unknown")) "
         + "nativeRate=\(Int(nativeFormat.sampleRate)) targetRate=\(Int(Self.targetFormat.sampleRate)) "
         + "ratio=\(String(format: "%.3f", ratio)) "
-        + "nativeChannels=\(boundNativeChannelCount.map(String.init) ?? "nil")"
+        + "nativeChannels=\(boundNativeChannelCount.map(String.init) ?? "nil") "
+        + "inputChannel=\(appliedChannel)"
     )
 
     // #1844: the bind this attempt established, handed straight back to the
@@ -861,7 +951,7 @@ final class HALDeviceInputSource: AudioInputSource {
     attemptState.recordPrepareSucceeded()
     return BoundInputDevice(
       deviceID: deviceID, deviceUID: boundUID, transportLabel: boundTransport,
-      resolutionSource: selectedSource.rawValue)
+      resolutionSource: selectedSource.rawValue, inputChannel: appliedChannel)
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -993,7 +1083,8 @@ final class HALDeviceInputSource: AudioInputSource {
       // not exist yet. (The XPC proxy's host-side watchdog leaves these nil.)
       nativeRateHz: renderContext?.nativeFormat.sampleRate,
       rateDivergenceDetected: formatDivergenceObserved,
-      nativeChannelCount: boundNativeChannelCount
+      nativeChannelCount: boundNativeChannelCount,
+      inputChannel: boundInputChannel
     )
     onCaptureStalled?(ctx)
   }
@@ -1246,6 +1337,7 @@ final class HALDeviceInputSource: AudioInputSource {
     boundTransport = nil
     boundResolutionSource = nil
     boundNativeChannelCount = nil
+    boundInputChannel = nil
   }
 
   /// Read the device's OWN native stream format directly from the HAL device

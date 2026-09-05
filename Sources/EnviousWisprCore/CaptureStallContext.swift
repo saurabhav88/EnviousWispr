@@ -60,6 +60,9 @@ public struct CaptureStallContext: Sendable {
   /// at watchdog-fire time (direct HAL stalls populate it; the XPC proxy's
   /// host-side watchdog leaves it nil). Preserved through `enrichedWithStabilizationFlags`.
   public let nativeChannelCount: Int?
+  /// #2664: the device input channel the stalled capture was bound to (0 =
+  /// default). Source-stamped beside `nativeChannelCount`, nil on the same paths.
+  public let inputChannel: Int?
 
   public init(
     sessionID: UInt64,
@@ -84,7 +87,8 @@ public struct CaptureStallContext: Sendable {
     rateDivergenceDetected: Bool? = nil,
     formatStabilized: Bool? = nil,
     captureRebuiltForFormat: Bool? = nil,
-    nativeChannelCount: Int? = nil
+    nativeChannelCount: Int? = nil,
+    inputChannel: Int? = nil
   ) {
     self.sessionID = sessionID
     self.armedAtUptimeNs = armedAtUptimeNs
@@ -109,6 +113,7 @@ public struct CaptureStallContext: Sendable {
     self.formatStabilized = formatStabilized
     self.captureRebuiltForFormat = captureRebuiltForFormat
     self.nativeChannelCount = nativeChannelCount
+    self.inputChannel = inputChannel
   }
 
   /// #1543 in-process forward enrichment: the capture MANAGER owns the
@@ -156,7 +161,8 @@ public struct CaptureStallContext: Sendable {
       rateDivergenceDetected: rateDivergenceDetected,
       formatStabilized: formatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat,
-      nativeChannelCount: nativeChannelCount
+      nativeChannelCount: nativeChannelCount,
+      inputChannel: inputChannel
     )
   }
 
@@ -190,7 +196,8 @@ public struct CaptureStallContext: Sendable {
       rateDivergenceDetected: rateDivergenceDetected,
       formatStabilized: formatStabilized,
       captureRebuiltForFormat: captureRebuiltForFormat,
-      nativeChannelCount: nativeChannelCount
+      nativeChannelCount: nativeChannelCount,
+      inputChannel: inputChannel
     )
   }
 }

@@ -9,9 +9,9 @@ import CoreAudio
 /// could describe a microphone the session never recorded from. Returning the
 /// bind makes "read it before it exists" unexpressible rather than merely tested.
 ///
-/// All four fields are read together in HAL's single all-succeeded commit block
+/// All five fields are read together in HAL's single all-succeeded commit block
 /// and cleared together in its single teardown, so they are ONE fact with one
-/// lifetime, not four accessors that could drift apart.
+/// lifetime, not five accessors that could drift apart.
 ///
 /// **Visibility.** `public` is the NARROWEST WORKING visibility, not a default.
 /// `AudioCaptureInterface` is already `public` (`AudioCaptureInterface.swift:7`)
@@ -52,12 +52,26 @@ public struct BoundInputDevice: Equatable, Sendable {
   /// is `public`, and a public requirement cannot expose a package type.
   public let resolutionSource: String
 
+  /// #2664: the device input channel (0-based) the mono capture ACTUALLY took.
+  /// 0 is the default (no channel map set). Set only in HAL's committed block,
+  /// from the channel-map property set's own result, so a map the unit refused
+  /// reads 0 here — never the channel the user asked for. The warm-reuse
+  /// predicate compares this to the CURRENT preference; a mismatch rebuilds.
+  ///
+  /// **Undefaulted, deliberately** — the `resolutionSource` reasoning above
+  /// applies unchanged: a defaulted field would let a conformer commit a bind
+  /// without saying which channel it recorded, and a reuse decision built on
+  /// that silence would keep a stale channel warm across a settings change.
+  public let inputChannel: Int
+
   public init(
-    deviceID: AudioDeviceID, deviceUID: String?, transportLabel: String?, resolutionSource: String
+    deviceID: AudioDeviceID, deviceUID: String?, transportLabel: String?, resolutionSource: String,
+    inputChannel: Int
   ) {
     self.deviceID = deviceID
     self.deviceUID = deviceUID
     self.transportLabel = transportLabel
     self.resolutionSource = resolutionSource
+    self.inputChannel = inputChannel
   }
 }

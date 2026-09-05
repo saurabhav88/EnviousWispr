@@ -26,7 +26,7 @@ struct ZeroSignalDeviceIdentityTests {
     deviceID: 121,
     deviceUID: "BC-87-FA-9C-7E-71:input",
     transportLabel: "bluetooth",
-    resolutionSource: "system_default"
+    resolutionSource: "system_default", inputChannel: 0
   )
 
   /// Counts hardware classifications so a test can prove a guard short-circuited
@@ -130,7 +130,7 @@ struct ZeroSignalDeviceIdentityTests {
     let counter = ReadCounter()
     let bindWithoutUID = BoundInputDevice(
       deviceID: 121, deviceUID: nil, transportLabel: "bluetooth",
-      resolutionSource: "system_default")
+      resolutionSource: "system_default", inputChannel: 0)
 
     let eligible = Self.evaluate(bound: bindWithoutUID, counter: counter)
 
@@ -254,7 +254,7 @@ struct ZeroSignalDeviceIdentityTests {
   func booleanWrapperMatchesClassificationForEveryOutcome() {
     let bindWithoutUID = BoundInputDevice(
       deviceID: 121, deviceUID: nil, transportLabel: "bluetooth",
-      resolutionSource: "system_default")
+      resolutionSource: "system_default", inputChannel: 0)
 
     // (bind, uidNow, liveness, mute) → the outcome each row is here to cover.
     let rows: [(BoundInputDevice, String??, DeviceLiveness, DeviceMuteState)] = [
