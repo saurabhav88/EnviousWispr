@@ -194,9 +194,31 @@ CUSTOM_VOCAB_HEADER = (
 )
 
 
+# Mirrors `CustomWord.init(priority: Int = 0)`. Every `builtinDefaults` entry takes
+# the default, so the mirror carries no priority column: the tuple below is
+# production's key with that column filled in.
+BUILTIN_VOCAB_PRIORITY = 0
+
+
 def render_custom_vocab() -> str:
+    # Production SORTS before rendering (#2609). CustomVocabularyFormatter.render:
+    #   words.sorted { ($0.priority, $0.canonical) < ($1.priority, $1.canonical) }
+    # Until this sort, the gate rendered the list in declaration order (EnviousWispr
+    # first) while every user's prompt led with API — a prompt no user received.
+    #
+    # Swift's String `<` compares Unicode scalars after canonical normalization:
+    # case-sensitive, every uppercase letter before every lowercase one, so the
+    # shipped order is API, CLI, ChatGPT, ..., VS Code, ..., iOS, macOS. Python's
+    # str `<` compares raw code points, which is the same relation on ASCII and can
+    # differ only for non-ASCII forms that normalization would fold. Every canonical
+    # here is ASCII and none differ only by case; tests/test_custom_vocab_mirror.py
+    # fails the moment a non-ASCII canonical is added, so the equivalence is checked
+    # rather than assumed. Alias order within a line is NOT sorted by production
+    # either, so aliases stay in declaration order.
     lines = [CUSTOM_VOCAB_HEADER]
-    for canonical, aliases in DEFAULT_CUSTOM_VOCAB:
+    for canonical, aliases in sorted(
+        DEFAULT_CUSTOM_VOCAB, key=lambda entry: (BUILTIN_VOCAB_PRIORITY, entry[0])
+    ):
         if aliases:
             lines.append(f"- {canonical} (may be misheard as: {', '.join(aliases)})")
         else:
