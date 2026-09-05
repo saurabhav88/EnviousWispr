@@ -626,6 +626,18 @@ package final class WisprBootstrapper {
       openMicrophoneSettings: {
         Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
       },
+      // #2664: the silent-take advisory names the multi-input device the user
+      // would find selected in Settings right now. Same device rule as the
+      // settings row (`InputSocket.socketDevice`), same strong captures as the
+      // closures beside it — the bootstrapper owns both for the app's lifetime.
+      advisoryHint: { reason in
+        MultiInputAdvisoryHint.make(
+          reason: reason,
+          socketDevice: InputSocket.socketDevice(
+            preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
+            devices: audioDeviceList.availableInputDevices,
+            resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID))
+      },
       // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
       // so that it can be: the director lives for the app's lifetime, so a stored
       // pair would freeze the user's choice at launch — a picker would appear to

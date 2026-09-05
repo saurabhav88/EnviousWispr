@@ -93,6 +93,7 @@ struct PillRequestParityTests {
           appActions.append(.openMicrophoneSettings)
           openMicrophoneSettingsSawPresentation = director.renderModel.state.presentation != nil
         },
+        advisoryHint: { _ in nil },
         selections: { .shipped },
         firstRenderSchedule: { $0() })
     }

@@ -67,6 +67,33 @@ import Testing
     }
   }
 
+  @Test("#2664: the hinted sentence is byte-exact, and a nil hint is the seventh sentence itself")
+  func hintedSentenceIsFrozen() {
+    let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
+    let expected =
+      "Audio isn't capturing from Scarlett 2i2 USB. Try a different input under Settings > Microphone."
+    for reason in TerminalAdvisoryReason.allCases {
+      #expect(DictationNarrator.copy(for: reason, hint: hint) == expected)
+      #expect(DictationNarrator.copy(for: reason, hint: nil) == DictationNarrator.copy(for: reason))
+    }
+    // Rule 6: no em-dashes or en-dashes in user-facing copy.
+    #expect(expected.contains("\u{2014}") == false)
+    #expect(expected.contains("\u{2013}") == false)
+    #expect(expected.contains("Try again.") == false)
+  }
+
+  @Test("#2664: VoiceOver speaks the hinted sentence with no Error prefix")
+  func hintedAnnouncementHasNoErrorPrefix() {
+    let hint = MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")
+    let spoken = DictationNarrator.announcement(for: .advisory(reason: .zeroSignal), hint: hint)
+    #expect(spoken == DictationNarrator.copy(for: .zeroSignal, hint: hint))
+    #expect(spoken.hasPrefix("Error:") == false)
+    // The hint reaches ONLY the advisory arm: an error with a hint is unchanged.
+    #expect(
+      DictationNarrator.announcement(for: .error(reason: .asrFailed), hint: hint)
+        == DictationNarrator.announcement(for: .error(reason: .asrFailed)))
+  }
+
   @Test("the advisory is a plain sentence, never the our-fault retry form")
   func advisoryNeverClaimsOurBug() {
     // The house rule (#1558): "[Category] error. Try again." means OUR bug.

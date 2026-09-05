@@ -12,23 +12,20 @@ struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
 
-  /// Names the device Auto would actually OPEN, not the system default.
-  ///
-  /// Since #2022 those differ when the default is a virtual or aggregate device
-  /// the ladder refuses. Reading the default here would print "Using Krisp"
-  /// while the microphone we actually record from is the built-in one — the
-  /// pill's only job is to say what is in use, so naming the refused device is
-  /// the one thing it must not do.
-  private var autoInputDeviceName: String? {
-    guard settings.preferredInputDeviceIDOverride.isEmpty,
-      let resolvedID = AudioDeviceEnumerator.resolvedAutoInputDeviceID()
-    else { return nil }
-    return audioDeviceList.availableInputDevices.first { $0.id == resolvedID }?.name
-  }
-
   var body: some View {
     let settingsManager = settings
     @Bindable var settings = settings
+    // #2664: the device this page describes, computed ONCE per body (the Auto
+    // branch runs the resolver ladder, so two computed properties would pay for
+    // it twice). Since #2022 Auto names the device the ladder would actually
+    // OPEN, not the raw system default: printing "Using Krisp" while recording
+    // from the built-in microphone is the one thing the pill must not do. The
+    // "Using X" pill and the socket row both read this local, and the advisory
+    // hint uses the same rule, so the three can never disagree about one state.
+    let socketDevice = InputSocket.socketDevice(
+      preferredInputDeviceIDOverride: settingsManager.preferredInputDeviceIDOverride,
+      devices: audioDeviceList.availableInputDevices,
+      resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID)
     let inputDeviceSelection = Binding<String>(
       get: { settingsManager.preferredInputDeviceIDOverride },
       set: { newValue in
@@ -56,21 +53,68 @@ struct AudioSettingsView: View {
           + "device selected in macOS. If that device turns out not to be a real "
           + "microphone, recording uses an available microphone instead."
       ) {
-        HStack(spacing: 10) {
-          Picker("", selection: inputDeviceSelection) {
-            Text("Auto").tag("")
-            ForEach(audioDeviceList.availableInputDevices) { device in
-              Text(device.name).tag(device.uid)
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(spacing: 10) {
+            Picker("", selection: inputDeviceSelection) {
+              Text("Auto").tag("")
+              ForEach(audioDeviceList.availableInputDevices) { device in
+                Text(device.name).tag(device.uid)
+              }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 340, alignment: .leading)
+
+            if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
+              StatusPill(text: "Using \(socketDevice.name)")
+            }
+
+            Spacer(minLength: 0)
+          }
+
+          // #2664: "Microphone socket" — only for a device reporting more than
+          // one input. The DISPLAYED selection goes through the same pure rule
+          // HAL applies, so a saved index the device no longer has shows as
+          // Input 1 rather than as a socket that does not exist. Stored 0-based;
+          // labelled from 1 like the sockets on the box.
+          if let device = socketDevice, device.inputChannelCount > 1 {
+            let socketSelection = Binding<Int>(
+              get: {
+                InputChannelPreference.effectiveChannel(
+                  requested: settingsManager.inputChannelByDeviceUID[device.uid],
+                  availableChannels: device.inputChannelCount)
+              },
+              set: { newValue in
+                settingsManager.inputChannelByDeviceUID[device.uid] = newValue
+              }
+            )
+            VStack(alignment: .leading, spacing: 8) {
+              Text(InputSocketCopy.header).settingsRowLabel()
+              if device.inputChannelCount <= 6 {
+                BrandedSegmentedPicker(
+                  options: (0..<device.inputChannelCount).map { index in
+                    (
+                      label: InputSocketCopy.optionLabel(index: index), systemImage: nil,
+                      value: index
+                    )
+                  },
+                  selection: socketSelection
+                )
+              } else {
+                Picker("", selection: socketSelection) {
+                  ForEach(0..<device.inputChannelCount, id: \.self) { index in
+                    Text(InputSocketCopy.optionLabel(index: index)).tag(index)
+                  }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200, alignment: .leading)
+              }
+              Text(
+                InputSocketCopy.helper(
+                  inputCount: device.inputChannelCount, deviceName: device.name)
+              )
+              .settingsHelperCopy()
             }
           }
-          .labelsHidden()
-          .frame(maxWidth: 340, alignment: .leading)
-
-          if let autoInputDeviceName {
-            StatusPill(text: "Using \(autoInputDeviceName)")
-          }
-
-          Spacer(minLength: 0)
         }
       }
 

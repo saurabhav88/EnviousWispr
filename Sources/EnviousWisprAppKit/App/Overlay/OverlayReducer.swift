@@ -19,6 +19,11 @@ import Foundation
 enum OverlayEvent: Equatable {
   /// The dictation pipeline. Outranks every feature.
   case pipeline(OverlayIntent)
+  /// #2664: a pipeline advisory carrying a presentation-only fact the intent
+  /// vocabulary must not learn (the multi-input device's name). Reduced through
+  /// the SAME arm as `.pipeline(.advisory(reason:))` — same admission, same
+  /// priority, same dedup — with the hint threaded to the catalog request.
+  case advisory(reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint)
   /// A bulk-import progress pill. A feature, so it takes the slot only while
   /// the pipeline is idle, and only from ITSELF.
   case importStatus(message: String)
@@ -223,6 +228,8 @@ struct OverlayReducer {
     switch event {
     case .pipeline(let intent):
       return reducePipeline(intent)
+    case .advisory(let reason, let hint):
+      return reducePipeline(.advisory(reason: reason), advisoryHint: hint)
     case .importStatus(let message):
       return reduceImportStatus(message: message)
     case .bluetoothAwareness:
@@ -376,7 +383,9 @@ struct OverlayReducer {
 
   // MARK: - Pipeline
 
-  private mutating func reducePipeline(_ intent: OverlayIntent) -> OverlayPlan {
+  private mutating func reducePipeline(
+    _ intent: OverlayIntent, advisoryHint: MultiInputAdvisoryHint? = nil
+  ) -> OverlayPlan {
     // **Announce on a CHANGE of intent, which is the shipped dedup guard's own
     // condition.** The shipped post sits after `guard intent != currentIntent`,
     // so a repeated push is silent — and every production `.recording` push
@@ -390,7 +399,18 @@ struct OverlayReducer {
     // and re-announcing a recording that never stopped is not behaviour worth
     // porting.
     let isNewIntent = state.pipelineIntent != intent
-    let announcement = isNewIntent ? PillCatalog.announcement(for: intent) : nil
+    // #2664: a hinted advisory must be SPOKEN with the device name too, and the
+    // intent alone cannot say it — so the announcement comes from the hinted
+    // catalog request on that one path. Every other intent is unchanged.
+    let announcement: OverlayAnnouncement?
+    if !isNewIntent {
+      announcement = nil
+    } else if case .advisory(let reason) = intent, let advisoryHint {
+      announcement = PillCatalog.announcement(
+        for: PillCatalogRequest.advisory(reason: reason, hint: advisoryHint))
+    } else {
+      announcement = PillCatalog.announcement(for: intent)
+    }
 
     // **The shipped dedup DROPS a repeated intent, it does not merely silence
     // it.** The first version returned a fresh presentation with a new ID and
@@ -441,7 +461,9 @@ struct OverlayReducer {
       return .noChange
     }
 
-    guard var presentation = Self.presentation(for: intent, id: makeID()) else {
+    guard
+      var presentation = Self.presentation(for: intent, id: makeID(), advisoryHint: advisoryHint)
+    else {
       // `.hidden`, and anything with no presentation, empties the slot.
       // `didChange` is read BEFORE the mutation: emptying an already-empty slot
       // is a genuine no-op and must not make the host re-apply nothing.
@@ -780,18 +802,25 @@ struct OverlayReducer {
   ///
   /// Listing the other fifteen rather than writing `default` is deliberate: a new
   /// pipeline intent must fail to compile here as well as in the catalog.
-  private static func presentation(for intent: OverlayIntent, id: PresentationID)
+  private static func presentation(
+    for intent: OverlayIntent, id: PresentationID, advisoryHint: MultiInputAdvisoryHint? = nil
+  )
     -> PillDefinition?
   {
     switch intent {
     case .hidden, .processing, .clipboardFallback, .accessibilityToast, .warning,
       .error, .advisory, .interruption, .passiveChip, .cachingModel, .engineReady,
       .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness, .escapeRecovery:
-      guard let request = PillCatalogRequest(nonRecording: intent) else {
+      guard var request = PillCatalogRequest(nonRecording: intent) else {
         // Unreachable: the initialiser refuses `.recording` only, and that arm
         // returns above without reaching here.
         assertionFailure("PillCatalogRequest(nonRecording:) refused a non-recording intent")
         return nil
+      }
+      // #2664: the intent conversion supplies no hint by design; re-attach the
+      // one the event carried. Only an advisory can carry one.
+      if let advisoryHint, case .advisory(let reason, _) = request {
+        request = .advisory(reason: reason, hint: advisoryHint)
       }
       return PillCatalog.entry(for: request, id: id).definition
 

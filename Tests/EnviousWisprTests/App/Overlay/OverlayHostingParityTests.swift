@@ -50,7 +50,7 @@ struct OverlayHostingParityTests {
   private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
     OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {},
+      openMicrophoneSettings: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
   }

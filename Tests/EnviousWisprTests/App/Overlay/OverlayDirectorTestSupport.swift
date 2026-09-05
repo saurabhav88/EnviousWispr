@@ -1,4 +1,5 @@
 import EnviousWisprAppKitTestSupport
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -36,18 +37,27 @@ enum OverlayTestDouble {
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {}, selections: { .shipped },
+      openMicrophoneSettings: {}, advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { $0() })
   }
 
   /// The same director, with its fake host in hand for a test that needs to
   /// assert on what the host was ASKED for.
-  static func headlessDirectorWithHost() -> (OverlayDirector, WindowlessOverlayHost) {
+  ///
+  /// `advisoryHint` defaults to "no device known", the composition root's answer
+  /// for a one-input microphone; a #2664 test hands in a resolver to prove the
+  /// director asks it at admission.
+  static func headlessDirectorWithHost(
+    advisoryHint: @escaping @MainActor (TerminalAdvisoryReason) -> MultiInputAdvisoryHint? = {
+      _ in nil
+    }
+  ) -> (OverlayDirector, WindowlessOverlayHost) {
     let host = WindowlessOverlayHost()
     return (
       OverlayDirector(
         host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        advisoryHint: advisoryHint,
         selections: { .shipped }, firstRenderSchedule: { $0() }),
       host
     )

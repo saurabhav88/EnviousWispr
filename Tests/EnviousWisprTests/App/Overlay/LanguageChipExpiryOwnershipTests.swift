@@ -70,7 +70,8 @@ struct LanguageChipExpiryOwnershipTests {
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      selections: { .shipped },
       firstRenderSchedule: { $0() })
 
     d.present(

@@ -35,7 +35,11 @@ enum PillCatalogRequest: Equatable, Sendable {
   case accessibilityToast
   case warning(reason: RecordingWarningReason)
   case error(reason: TerminalNoticeReason)
-  case advisory(reason: TerminalAdvisoryReason)
+  /// #2664: `hint` is a presentation-only fact `OverlayIntent` never carries.
+  /// The intent conversions below drop it (`matchingIntent`) and supply nil
+  /// (`init?(nonRecording:)`) BY DESIGN; the reducer re-attaches it from the
+  /// `OverlayEvent.advisory(reason:hint:)` event.
+  case advisory(reason: TerminalAdvisoryReason, hint: MultiInputAdvisoryHint? = nil)
   case interruption(reason: TerminalNoticeReason)
   case passiveChip(payload: LanguageChipPayload)
   case cachingModel(engineLabel: String)
@@ -126,6 +130,12 @@ enum PillCatalog {
   /// assert on identity. There is still exactly one implementation: `entry`
   /// calls this.
   static func announcement(for request: PillCatalogRequest) -> OverlayAnnouncement? {
+    // #2664: a hinted advisory would lose its hint through `matchingIntent`, so
+    // VoiceOver reads the same sentence the pill shows. Same priority as the
+    // `.advisory` arm below.
+    if case .advisory(let reason, let hint?) = request {
+      return .high(DictationNarrator.announcement(for: .advisory(reason: reason), hint: hint))
+    }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
       // omitted.** It is the one presentation with no matching `OverlayIntent`,
@@ -227,7 +237,7 @@ enum PillCatalog {
         width: .fixed(280), fixedHeight: 44,
         expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
-    case .advisory(let reason):
+    case .advisory(let reason, let hint):
       // #1891. A user-setup advisory draws the mic-slash glyph in the secondary
       // colour, not the red failure treatment, and `NotificationStyle` owns both
       // — so it needs a severity of its own rather than inheriting the helper's
@@ -237,7 +247,7 @@ enum PillCatalog {
       // called with `fitToContent: style.isMultiline` and this is the one style
       // where that is true. No `fixedHeight` here is deliberate, not an omission.
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason, hint: hint),
         width: .fixed(360),  // RecordingOverlayPanel.advisoryWidth
         // **The 8 seconds is READING TIME, and the reason moved here from the
         // dead table it used to live in** (#2376 C3). `NotificationStyle`
@@ -418,7 +428,8 @@ extension PillCatalogRequest {
     case .accessibilityToast: return .accessibilityToast
     case .warning(let reason): return .warning(reason: reason)
     case .error(let reason): return .error(reason: reason)
-    case .advisory(let reason): return .advisory(reason: reason)
+    // #2664: the hint is dropped here by design — `OverlayIntent` is reason-only.
+    case .advisory(let reason, _): return .advisory(reason: reason)
     case .interruption(let reason): return .interruption(reason: reason)
     case .passiveChip(let payload): return .passiveChip(payload: payload)
     case .cachingModel(let engineLabel): return .cachingModel(engineLabel: engineLabel)
