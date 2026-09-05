@@ -33,8 +33,28 @@ struct WhatsNewSettingsView: View {
 
             BrandedSection {
               BrandedRow(showDivider: false) {
-                Text(entry.description)
-                  .settingsReadingCopy()
+                VStack(alignment: .leading, spacing: 8) {
+                  Text(entry.description)
+                    .settingsReadingCopy()
+
+                  // Sub-points beneath the paragraph (#2484), in the same reading
+                  // copy so the list reads as part of the description rather than
+                  // as a caption. Same shape as the numbered steps in the Globe key
+                  // popover; a bullet glyph instead of a number, since these are
+                  // points and not an order.
+                  if !entry.bullets.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                      ForEach(Array(entry.bullets.enumerated()), id: \.offset) { _, bullet in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                          Text("•")
+                            .foregroundStyle(.stTextTertiary)
+                            .accessibilityHidden(true)
+                          Text(bullet).settingsReadingCopy()
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
