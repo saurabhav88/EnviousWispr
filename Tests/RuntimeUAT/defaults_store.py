@@ -53,19 +53,22 @@ equal to the list `["a"]`, and a mangled restore reads as dirty instead of clean
 
 **Why the import carries the whole domain and not only the parked keys.** The
 man page does not say whether `defaults import` merges its keys into the domain
-or REPLACES the domain with them, and the first draft of this module assumed
-merge. Under replace semantics that draft would have deleted every unrelated
-preference in the developer's dev domain on each language-hover run, and
-`check_plist` would still have reported a clean restore because it looks only
-at the parked keys (cloud review on #2674). Overlaying the parked keys onto a
-fresh export is correct under EITHER semantics: merge makes the unchanged keys
-a no-op, replace puts them back as they were. The export is taken at restore
-time rather than reused from the snapshot for the reason the old draft gave
-for importing less: a live instance may write unrelated keys between the
-snapshot and the restore, and this module must not revert them. The control
-test asserts the bystander's survival with a key written AFTER the snapshot,
-so it proves the property the harness relies on rather than the one that
-happened to hold.
+or REPLACES the domain with them. Measured on macOS on 2026-09-05: it MERGES
+(a bystander survived an import of a plist holding only the parked keys). The
+first draft relied on that without stating it as a measurement, and a review
+read it the other way; rather than argue from an undocumented behaviour, the
+restore now overlays the parked keys onto a fresh export of the domain, which
+is correct under EITHER semantics: merge makes the unchanged keys a no-op,
+replace would put them back as they were. The cost is a few milliseconds
+between the export and the import during which a write by a live instance
+could be re-covered by the export; the old draft had no such window but had
+the undocumented assumption instead. The export is taken at restore time
+rather than reused from the snapshot for the reason the old draft gave for
+importing less: a live instance may write unrelated keys between the snapshot
+and the restore, and this module must not revert them. The control test
+asserts the bystander's survival with a key written AFTER the snapshot, so it
+proves the property the harness relies on rather than the one that happened
+to hold.
 
 Control test: `test_defaults_store.py`, which round-trips every type on a
 throwaway domain and asserts the type SURVIVES, not merely the printed text.
@@ -189,13 +192,24 @@ def export_domain(domain):
     """Every key in the domain as parsed plist values, `{}` when it has none.
 
     `defaults export <domain> -` writes an XML plist to stdout. A domain that
-    does not exist yet is reported the same way `read_typed` reports an absent
-    key: as nothing there, so a first run on a fresh install parks `None` and
-    restores by deleting.
+    does not exist yet EXITS 0 with an empty `<dict/>` (measured on macOS,
+    2026-09-05), so it parses to `{}` and is reported the same way `read_typed`
+    reports an absent key: as nothing there, and a first run on a fresh install
+    parks `None` and restores by deleting.
+
+    A non-zero exit is therefore never "no keys"; it is `defaults` failing to
+    answer, and it RAISES. The first draft returned `{}` there, which turned
+    "I could not ask" into "the domain is empty": `snapshot_plist` would have
+    parked `None` for keys that were really present, and `restore_plist` would
+    then have DELETED them on the developer's own machine with every check
+    green -- the silent-empty shape `validation-discipline.md` tabulates
+    (cloud review on #2674).
     """
     got = subprocess.run(["defaults", "export", domain, "-"], capture_output=True)
-    if got.returncode != 0 or not got.stdout.strip():
-        return {}
+    if got.returncode != 0:
+        raise RuntimeError(
+            f"defaults export {domain} failed (exit {got.returncode}): "
+            f"{got.stderr.decode(errors='replace').strip()}")
     return plistlib.loads(got.stdout)
 
 

@@ -132,6 +132,15 @@ def main():
         landed = ds.restore_plist(DOMAIN, snap)
         ok("a real restore repairs the mangling", all(landed.values()), repr(landed))
 
+        print("\na domain that does not exist exports as EMPTY, and is not mistaken for a failure")
+        # `defaults export` on a missing domain exits 0 with an empty <dict/>. That is the
+        # only way `{}` may come back: a non-zero exit RAISES, because returning `{}` there
+        # would park None for keys that are really present and then delete them on restore.
+        subprocess.run(["defaults", "delete", DOMAIN + ".never"], capture_output=True)
+        ok("a missing domain reads as no keys", ds.export_domain(DOMAIN + ".never") == {})
+        ok("a missing domain snapshots as absent",
+           ds.snapshot_plist(DOMAIN + ".never", ["x"]) == {"x": None})
+
         print("\nan ABSENT key on the plist path is restored to ABSENT, not to an empty container")
         snap = ds.snapshot_plist(DOMAIN, ["never"])
         ok("snapshot says absent", snap["never"] is None)
