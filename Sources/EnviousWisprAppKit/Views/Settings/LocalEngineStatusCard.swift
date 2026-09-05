@@ -44,8 +44,8 @@ struct LocalEngineDescriptor: Equatable {
   }
 
   static let egOne = LocalEngineDescriptor(
-    name: "EG-1", downloadSize: "2.9 GB", installHeadroom: "6 GB", showsLowMemoryNote: true,
-    contextTokens: 16384)
+    name: LLMProvider.egOne.displayName, downloadSize: "2.9 GB", installHeadroom: "6 GB",
+    showsLowMemoryNote: true, contextTokens: 16384)
 
   static let s1Mini = LocalEngineDescriptor(
     // 484,219,808 bytes. Stated DECIMAL, because that is what EG-1's "2.9 GB"
