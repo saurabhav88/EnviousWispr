@@ -16,7 +16,12 @@ CLI:
     model_registry.py list                 every artifact, newest release first
     model_registry.py list --release 1.2   one release
     model_registry.py validate             schema + convention + one-winner rules
-    model_registry.py floor --corpus sealed_v1.jsonl --cases 1462 --rubric <id> --judge <id>
+    model_registry.py floor --corpus sealed_v1.jsonl --cases 1462 --rubric <id> --judge <id> \
+                            --adjudication 0.15:15 --production none [--system new] [--blind]
+
+`floor` takes EVERY axis `comparable()` checks. `--adjudication` and `--production`
+are required because their absence can never match a floor-setting evaluation, so
+a query without them is not a looser question, it is a different one.
 """
 import argparse
 import hashlib
@@ -600,7 +605,14 @@ def cmd_validate(_args) -> int:
 
 
 def cmd_floor(args) -> int:
-    count, where = floor(args.corpus, args.rubric, args.judge, args.cases)
+    # EVERY axis `comparable()` checks is forwarded. The first version forwarded
+    # four of them and let `adjudication` and `production` fall to their None
+    # defaults, which no floor-setting evaluation on record carries — so the
+    # documented CLI answered NO FLOOR for a history whose floor is 63 (#2582).
+    count, where = floor(args.corpus, args.rubric, args.judge, args.cases,
+                         system=args.system, blind=args.blind,
+                         adjudication=args.adjudication,
+                         production=args.production)
     if count is None:
         print(f"NO FLOOR: {where}", file=sys.stderr)
         return 1
@@ -622,6 +634,21 @@ def main() -> int:
     p.add_argument("--judge", required=True, help="judge identity, exactly as recorded")
     p.add_argument("--cases", required=True, type=int,
                    help="cases scored; a corpus FILENAME is reused for different sets")
+    # REQUIRED, not defaulted to None. `comparable()` matches these exactly, so a
+    # None default would match only an evaluation whose receipt recorded null —
+    # the one kind of row the module says may never set a bar — and would answer
+    # NO FLOOR for every real sealed history. `release_gate.s4_floor()` refuses to
+    # ask without them for the same reason; the CLI asks the same question.
+    p.add_argument("--adjudication", required=True,
+                   help='adjudication policy exactly as recorded: "<pct>:<min>" '
+                        '(e.g. 0.15:15) or "none"')
+    p.add_argument("--production", required=True,
+                   help='production baseline exactly as recorded: its filename '
+                        '(e.g. sealed_shipped.jsonl) or "none"')
+    p.add_argument("--system", default="new",
+                   help='grading system as recorded (default: "new")')
+    p.add_argument("--blind", action="store_true",
+                   help="the judge was blinded (default: sighted)")
     p.set_defaults(fn=cmd_floor)
     args = ap.parse_args()
     try:
