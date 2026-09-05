@@ -15,6 +15,10 @@ struct WhatsNewContentTests {
     let title: String
     let desc: String
     let version: String
+    /// Always present in `--dump-json` output, `[]` for an entry without the field,
+    /// so the comparison covers the list too (#2484): an array the renderer cannot
+    /// read dumps as `[]` and disagrees with the compiled bullets right here.
+    let bullets: [String]
   }
 
   private enum ReleaseNoteDrift: Error {
@@ -143,9 +147,56 @@ struct WhatsNewContentTests {
     let swiftFile = Self.repoRoot.appendingPathComponent(
       "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift")
     let compiled = WhatsNewContent.entries.map {
-      ReleaseNoteEntry(title: $0.title, desc: $0.description, version: $0.version)
+      ReleaseNoteEntry(
+        title: $0.title, desc: $0.description, version: $0.version, bullets: $0.bullets)
     }
     try Self.requireRendererEquivalence(swiftFile: swiftFile, compiledEntries: compiled)
+  }
+
+  /// #2484: the same two-way control for `bullets`. The renderer reads the array
+  /// strictly, so one non-literal member makes it dump `[]` for the whole entry
+  /// rather than the readable prefix; the compiled value has both members, and only
+  /// the value comparison can tell a shorter list from the real one.
+  @Test("the renderer comparison rejects a bullets array it cannot fully read")
+  func releaseNoteRendererRejectsUnreadableBullets() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-2484-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let expected = [
+      ReleaseNoteEntry(
+        title: "Headline", desc: "Paragraph", version: "9.9.9",
+        bullets: ["Readable", "Second"])
+    ]
+    let readable = directory.appendingPathComponent("readable.swift")
+    try """
+    Entry(
+      title: "Headline",
+      description: "Paragraph",
+      bullets: ["Readable", "Second"],
+      version: "9.9.9"
+    )
+    """.write(to: readable, atomically: true, encoding: .utf8)
+    // Control for the control: the well-formed spelling must agree, or the
+    // rejection below proves nothing about the constant.
+    try Self.requireRendererEquivalence(swiftFile: readable, compiledEntries: expected)
+
+    let unreadable = directory.appendingPathComponent("unreadable.swift")
+    try """
+    Entry(
+      title: "Headline",
+      description: "Paragraph",
+      bullets: ["Readable", Copy.second],
+      version: "9.9.9"
+    )
+    """.write(to: unreadable, atomically: true, encoding: .utf8)
+    #expect(
+      throws: ReleaseNoteDrift.self,
+      "a constant inside bullets must disagree with the compiled value even though the entry still parses"
+    ) {
+      try Self.requireRendererEquivalence(swiftFile: unreadable, compiledEntries: expected)
+    }
   }
 
   /// Two-way control for the comparison itself. Both forms still parse as one
@@ -158,7 +209,9 @@ struct WhatsNewContentTests {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let expected = [ReleaseNoteEntry(title: "Headline", desc: "First second", version: "9.9.9")]
+    let expected = [
+      ReleaseNoteEntry(title: "Headline", desc: "First second", version: "9.9.9", bullets: [])
+    ]
     for (name, description) in [
       ("concatenated", #""First " + "second""#),
       ("interpolated", #""First \(word)""#),
@@ -202,8 +255,9 @@ struct WhatsNewContentTests {
   // MARK: - Content sanity
 
   /// The title is now the ONLY header on the card, so an empty one leaves an entry
-  /// with no heading at all, and an empty description leaves an empty card.
-  @Test("no entry has an empty title, description, or icon")
+  /// with no heading at all, and an empty description leaves an empty card. A blank
+  /// bullet (#2484) leaves a bare glyph in the app and a bare `-` on the release page.
+  @Test("no entry has an empty title, description, icon, or bullet")
   func noEmptyFields() {
     for entry in WhatsNewContent.entries {
       #expect(!entry.title.trimmingCharacters(in: .whitespaces).isEmpty, "\(entry.id): empty title")
@@ -211,6 +265,11 @@ struct WhatsNewContentTests {
         !entry.description.trimmingCharacters(in: .whitespaces).isEmpty,
         "\(entry.id): empty description")
       #expect(!entry.icon.trimmingCharacters(in: .whitespaces).isEmpty, "\(entry.id): empty icon")
+      for (index, bullet) in entry.bullets.enumerated() {
+        #expect(
+          !bullet.trimmingCharacters(in: .whitespaces).isEmpty,
+          "\(entry.id): empty bullet at index \(index)")
+      }
     }
   }
 

@@ -14,7 +14,44 @@ enum WhatsNewContent {
     let icon: String
     let title: String
     let description: String
+    /// Optional sub-points (#2484): a bulleted list beneath the description in the
+    /// app, and indented sub-bullets under the entry's line on the GitHub release
+    /// page. Empty for an entry with no list, which is every entry written before it.
+    ///
+    /// Spelled as a Swift array literal of direct double-quoted strings, between
+    /// `description:` and `version:`, because `scripts/ci/render-release-notes.py`
+    /// reads the SOURCE TEXT of this file, never a compiled value:
+    ///
+    ///     bullets: ["First point", "Second point"],
+    ///
+    /// A named constant, concatenation, interpolation or raw string inside the array
+    /// makes the renderer refuse the whole entry rather than ship a shorter list, and
+    /// `WhatsNewContentTests.releaseNoteRendererMatchesCompiledValues` fails the PR
+    /// that introduces one. Do NOT fake a list with `\n` and bullet characters inside
+    /// `description`: it renders in the app and ships the escapes visible on GitHub.
+    let bullets: [String]
     let version: String
+
+    /// Explicit so `bullets` can default to empty while staying a `let`: a `let`
+    /// with a default value is dropped from the synthesised memberwise initialiser
+    /// entirely, and `var` would make every entry mutable for no reason. The label
+    /// order is the memberwise order with `bullets` slotted before `version`, so
+    /// every existing entry, and one written without the field, compiles unchanged.
+    init(
+      id: String,
+      icon: String,
+      title: String,
+      description: String,
+      bullets: [String] = [],
+      version: String
+    ) {
+      self.id = id
+      self.icon = icon
+      self.title = title
+      self.description = description
+      self.bullets = bullets
+      self.version = version
+    }
   }
 
   static let entries: [Entry] = [

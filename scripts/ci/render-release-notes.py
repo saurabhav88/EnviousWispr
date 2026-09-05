@@ -19,6 +19,20 @@ silently captures only the first segment, and interpolation emits unresolved Swi
 NEITHER is caught by the count check, so both would ship wrong text. Validate by comparing
 parsed values against expected strings, not by counting items alone.
 
+The optional `bullets:` field (#2484) is a Swift array literal of the same direct
+double-quoted literals, written between `description:` and `version:` (the order the
+Swift initialiser fixes), on one line or one bullet per line:
+
+    bullets: ["First point", "Second point"],
+
+Absent means no list. Each bullet renders as an indented markdown sub-bullet under its
+entry's line and is normalised exactly like `description` (a backslash line-continuation
+or any run of whitespace becomes one space). The array is read STRICTLY: any token
+between `[` and `]` that is not a string literal, a comma or whitespace (a named constant,
+`+`, a raw string, a comment) makes the WHOLE array unreadable, which `empty_fields`
+turns into a hard failure. A partial read would be the silent failure this file exists
+to prevent: a list one item shorter than the one the app shows, with every count green.
+
 Used by .github/workflows/release.yml. Designed to fail SAFELY: if it cannot produce
 notes for the requested version, it exits non-zero and the workflow falls back to
 GitHub's auto-generated notes, so a release is never blocked or shipped blank.
@@ -58,14 +72,101 @@ def parse_entries(swift_path):
         v = re.search(r'version:\s*"([\d.]+)"', chunk)
         if not (t and d and v):
             continue
-        title = t.group(1).replace('\\"', '"')
-        title = re.sub(r"\s*\\\s*\n\s*", " ", title)
-        title = re.sub(r"\s+", " ", title).strip()
-        desc = d.group(1).replace('\\"', '"')
-        desc = re.sub(r"\s*\\\s*\n\s*", " ", desc)
-        desc = re.sub(r"\s+", " ", desc).strip()
-        entries.append({"title": title, "desc": desc, "version": v.group(1)})
+        # `bullets:` is looked for only BEFORE `version:`. That is where the Swift
+        # initialiser puts it, and bounding the search there keeps the parser inside
+        # the entry's own argument list: the chunk runs on to the next `Entry(`, so
+        # it also holds the comments above the NEXT entry, and a comment that merely
+        # mentions `bullets: [...]` must not become a phantom list on this one.
+        bullets = parse_bullets(chunk[: v.start()])
+        entries.append(
+            {
+                "title": normalise_literal(t.group(1)),
+                "desc": normalise_literal(d.group(1)),
+                "version": v.group(1),
+                # Absent in source is the same as `bullets: []`, so every entry
+                # written before #2484 parses and renders exactly as it did.
+                "bullets": bullets if bullets is not None else [],
+                # Parser state, not content: the field is in the source but could
+                # not be read (see `parse_bullets`). Consumed by `empty_fields` and
+                # never dumped, since the app compiles no such value to compare.
+                "bullets_unreadable": bullets is None,
+            }
+        )
     return entries
+
+
+def normalise_literal(raw):
+    """One literal's captured text as the reader sees it: an escaped quote becomes a
+    quote, a backslash line-continuation and any run of whitespace become one space,
+    both ends are trimmed. The same rule for title, description and each bullet."""
+    text = raw.replace('\\"', '"')
+    text = re.sub(r"\s*\\\s*\n\s*", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+BULLETS_OPEN = re.compile(r"bullets:\s*\[")
+STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.DOTALL)
+LINE_COMMENT = re.compile(r"//[^\n]*")
+
+
+def blank_out(match):
+    """The matched text as spaces of the same length, so positions found in the masked
+    text index the original."""
+    return " " * (match.end() - match.start())
+
+
+def mask_literals_and_comments(fields):
+    """`fields` with every string literal and `//` comment replaced by spaces, so a
+    search over it sees only the entry's own argument syntax. Literals go first: a
+    `//` inside a description is prose, not a comment, and blanking the literal
+    removes it before the comment pass looks."""
+    masked = STRING_LITERAL.sub(blank_out, fields)
+    return LINE_COMMENT.sub(blank_out, masked)
+
+
+def parse_bullets(fields):
+    """The entry's `bullets:` array: `[]` when the field is absent, the normalised
+    bullets in source order when it reads cleanly, or `None` when the field is
+    present but this parser cannot read it.
+
+    Walks the array body token by token rather than regexing string literals out of
+    it, because the failure to avoid is a PARTIAL read: `["a", b]` must not become
+    `["a"]` with every assertion green. So anything between `[` and `]` that is not
+    a string literal, a comma or whitespace makes the whole array unreadable, and so
+    does a missing `]`. A `]` inside a bullet's text is fine: the literal is consumed
+    before the closer is looked for.
+    """
+    # Found in the argument SYNTAX only. A description whose prose happens to contain
+    # `bullets: [one, two]` is a string literal, and searching the raw text would read
+    # the words inside it as a field that cannot be parsed, which `empty_fields` then
+    # turns into a refusal of the whole release's notes. The mask keeps every offset,
+    # so `m.end()` indexes the original text and the walk below reads the real array.
+    m = BULLETS_OPEN.search(mask_literals_and_comments(fields))
+    if not m:
+        return []
+    pos = m.end()
+    bullets = []
+    while pos < len(fields):
+        ch = fields[pos]
+        if ch.isspace() or ch == ",":
+            pos += 1
+            continue
+        if ch == "]":
+            # The closer must be the END of the argument: only whitespace, a comment and
+            # the argument's own comma may follow it before `version:` (where `fields`
+            # ends). `["First"] + ["Second"]` is a valid Swift expression, and returning
+            # at the first `]` read it as one bullet and let the release path exit 0 with
+            # half the list (Codex, #2680). Anything else there makes the array unreadable.
+            trailing = mask_literals_and_comments(fields[pos + 1:]).strip()
+            return bullets if trailing in ("", ",") else None
+        if ch != '"':
+            return None
+        lit = STRING_LITERAL.match(fields, pos)
+        if not lit:
+            return None
+        bullets.append(normalise_literal(lit.group(1)))
+        pos = lit.end()
+    return None
 
 
 def version_key(v):
@@ -85,6 +186,8 @@ def render(entries, version):
         if title and title[-1] not in ".!?":
             title += "."
         out.append(f"- **{title}** {e['desc']}")
+        # Two-space indent nests each one under the entry's bullet on GitHub.
+        out.extend(f"  - {bullet}" for bullet in e["bullets"])
     rendered = "\n".join(out).strip()
     return rendered or None
 
@@ -100,22 +203,323 @@ def empty_fields(entries):
     An OUTCOME check rather than a syntax allow-list: the protocol's list of prohibited
     forms has been wrong twice about which forms exist, and "no entry renders empty"
     holds whatever syntax the next author reaches for.
+
+    Bullets (#2484) get the same outcome check for the same reason: a `bullets:` array
+    this parser cannot read would otherwise parse as NO bullets, the entry still parses,
+    the count check still passes, and the list the app shows is simply missing from the
+    release page. So an unreadable array, or any bullet that parsed blank, fails here.
     """
     return [
         f"{e['version']}: {e['title'][:60] or '(no title)'}"
         for e in entries
-        if not e["desc"].strip() or not e["title"].strip()
+        if not e["desc"].strip()
+        or not e["title"].strip()
+        or e["bullets_unreadable"]
+        or any(not b.strip() for b in e["bullets"])
     ]
 
 
 def empty_fields_message(empty):
     return (
-        "error: %d entr%s parsed with an empty title or description — the field is "
-        "present in the source but this parser could not read it (a multiline, "
-        "concatenated, interpolated or raw literal). Rewrite it as a single direct "
-        "double-quoted literal:\n  %s"
+        "error: %d entr%s parsed with an empty title, description or bullet, or a "
+        "bullets array this parser could not read — the field is present in the "
+        "source but its text is not (a multiline, concatenated, interpolated or raw "
+        "literal, or something other than a string literal inside `bullets: [...]`). "
+        "Rewrite it as direct double-quoted literals:\n  %s"
         % (len(empty), "y" if len(empty) == 1 else "ies", "\n  ".join(empty))
     )
+
+
+def public_values(entries):
+    """The parsed values the app also compiles, in source order: what `--dump-json`
+    emits and what `WhatsNewContentTests` compares against `WhatsNewContent.entries`
+    field by field. Parser state such as `bullets_unreadable` stays out."""
+    return [{k: e[k] for k in ("title", "desc", "version", "bullets")} for e in entries]
+
+
+# Two-way controls for the parser, run by `--self-test` before the real content.
+# Each case is (label, Swift source text, expected parse, expected render of 9.9.9,
+# expected `empty_fields` outcome). The expected parse pins VALUES rather than counts,
+# because a count is exactly what a zero-length capture satisfies. Each fixture is
+# written the way an author writes an entry, indentation included, and exercises one
+# spelling the parse contract allows or one it must refuse.
+FIXTURE_CASES = [
+    (
+        "no bullets field parses as an empty list and renders as before",
+        '''
+    Entry(
+      id: "plain",
+      icon: "sparkles",
+      title: "A plain entry",
+      description:
+        "One paragraph, no list.",
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "A plain entry", "desc": "One paragraph, no list.",
+          "version": "9.9.9", "bullets": []}],
+        "- **A plain entry.** One paragraph, no list.",
+        [],
+    ),
+    (
+        "two bullets render as two indented sub-bullets",
+        '''
+    Entry(
+      id: "listed",
+      icon: "list.bullet",
+      title: "An entry with a list",
+      description: "The paragraph above the list.",
+      bullets: [
+        "First point",
+        "Second point",
+      ],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "An entry with a list", "desc": "The paragraph above the list.",
+          "version": "9.9.9", "bullets": ["First point", "Second point"]}],
+        "- **An entry with a list.** The paragraph above the list.\n"
+        "  - First point\n"
+        "  - Second point",
+        [],
+    ),
+    (
+        "a one-line array, with an escaped quote and brackets inside a bullet",
+        r'''
+    Entry(
+      id: "inline",
+      icon: "sparkles",
+      title: "Inline",
+      description: "Desc.",
+      bullets: ["Say \"hi\"", "Keys [Option] and ]"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Inline", "desc": "Desc.", "version": "9.9.9",
+          "bullets": ['Say "hi"', "Keys [Option] and ]"]}],
+        '- **Inline.** Desc.\n  - Say "hi"\n  - Keys [Option] and ]',
+        [],
+    ),
+    (
+        "a bullet literal spanning lines is normalised like a description",
+        r'''
+    Entry(
+      id: "wrapped",
+      icon: "sparkles",
+      title: "Wrapped",
+      description: "Desc.",
+      bullets: [
+        "A bullet   whose text \
+         continues on the next line",
+      ],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Wrapped", "desc": "Desc.", "version": "9.9.9",
+          "bullets": ["A bullet whose text continues on the next line"]}],
+        "- **Wrapped.** Desc.\n  - A bullet whose text continues on the next line",
+        [],
+    ),
+    (
+        "a named constant inside the array is refused, not partially read",
+        '''
+    Entry(
+      id: "constant",
+      icon: "sparkles",
+      title: "Constant",
+      description: "Desc.",
+      bullets: ["Readable", Copy.secondBullet],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Constant", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Constant.** Desc.",
+        ["9.9.9: Constant"],
+    ),
+    (
+        "a concatenated bullet is refused",
+        '''
+    Entry(
+      id: "concat",
+      icon: "sparkles",
+      title: "Concat",
+      description: "Desc.",
+      bullets: ["First " + "second"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Concat", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Concat.** Desc.",
+        ["9.9.9: Concat"],
+    ),
+    (
+        "a raw-string bullet is refused",
+        '''
+    Entry(
+      id: "raw",
+      icon: "sparkles",
+      title: "Raw",
+      description: "Desc.",
+      bullets: [#"Raw text"#],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Raw", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Raw.** Desc.",
+        ["9.9.9: Raw"],
+    ),
+    (
+        "an array extended by another expression after its closer is refused, not truncated",
+        '''
+    Entry(
+      id: "extended",
+      icon: "sparkles",
+      title: "Extended",
+      description: "Desc.",
+      bullets: ["First"] + ["Second"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Extended", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Extended.** Desc.",
+        ["9.9.9: Extended"],
+    ),
+    (
+        "a comment after the closer is not an extension of the array",
+        '''
+    Entry(
+      id: "commented",
+      icon: "sparkles",
+      title: "Commented",
+      description: "Desc.",
+      bullets: ["Only"], // + ["never"]
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Commented", "desc": "Desc.", "version": "9.9.9", "bullets": ["Only"]}],
+        "- **Commented.** Desc.\n  - Only",
+        [],
+    ),
+    (
+        "an array with no closing bracket before version is refused",
+        '''
+    Entry(
+      id: "open",
+      icon: "sparkles",
+      title: "Open",
+      description: "Desc.",
+      bullets: ["Never closed",
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Open", "desc": "Desc.", "version": "9.9.9", "bullets": []}],
+        "- **Open.** Desc.",
+        ["9.9.9: Open"],
+    ),
+    (
+        "a blank bullet is refused",
+        '''
+    Entry(
+      id: "blank",
+      icon: "sparkles",
+      title: "Blank",
+      description: "Desc.",
+      bullets: ["Present", "   "],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Blank", "desc": "Desc.", "version": "9.9.9",
+          "bullets": ["Present", ""]}],
+        # `render` strips the whole body, so the blank last line loses its space.
+        "- **Blank.** Desc.\n  - Present\n  -",
+        ["9.9.9: Blank"],
+    ),
+    (
+        "a description that mentions bullets: [...] in prose is not a bullets field",
+        '''
+    Entry(
+      id: "prose",
+      icon: "sparkles",
+      title: "Prose",
+      description: "Format bullets: [one, two] the way you like.",
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Prose", "desc": "Format bullets: [one, two] the way you like.",
+          "version": "9.9.9", "bullets": []}],
+        "- **Prose.** Format bullets: [one, two] the way you like.",
+        [],
+    ),
+    (
+        "a real bullets field after a description that mentions one is still read",
+        '''
+    Entry(
+      id: "both",
+      icon: "sparkles",
+      title: "Both",
+      description: "Mentions bullets: [not these].",
+      // bullets: ["not this either"]
+      bullets: ["The real one"],
+      version: "9.9.9"
+    ),
+''',
+        [{"title": "Both", "desc": "Mentions bullets: [not these].",
+          "version": "9.9.9", "bullets": ["The real one"]}],
+        "- **Both.** Mentions bullets: [not these].\n  - The real one",
+        [],
+    ),
+    (
+        "bullets on one entry do not leak into the next, nor out of a comment",
+        '''
+    Entry(
+      id: "with",
+      icon: "sparkles",
+      title: "With",
+      description: "Desc.",
+      bullets: ["Only mine"],
+      version: "9.9.9"
+    ),
+
+    // MARK: - v9.9.8
+
+    // Written without bullets: ["Not a bullet"] on purpose.
+    Entry(
+      id: "without",
+      icon: "sparkles",
+      title: "Without",
+      description: "Desc.",
+      version: "9.9.8"
+    ),
+''',
+        [{"title": "With", "desc": "Desc.", "version": "9.9.9", "bullets": ["Only mine"]},
+         {"title": "Without", "desc": "Desc.", "version": "9.9.8", "bullets": []}],
+        "- **With.** Desc.\n  - Only mine",
+        [],
+    ),
+]
+
+
+def self_test_fixtures():
+    """Run FIXTURE_CASES; one line per failed assertion, empty when all pass."""
+    import tempfile
+
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "fixture.swift")
+        for label, source, want_entries, want_body, want_empty in FIXTURE_CASES:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(source)
+            entries = parse_entries(path)
+            got = public_values(entries)
+            if got != want_entries:
+                failures.append(f"[{label}] parsed {got!r}, wanted {want_entries!r}")
+            body = render(entries, "9.9.9")
+            if body != want_body:
+                failures.append(f"[{label}] rendered {body!r}, wanted {want_body!r}")
+            empty = empty_fields(entries)
+            if empty != want_empty:
+                failures.append(f"[{label}] empty_fields {empty!r}, wanted {want_empty!r}")
+    return failures
 
 
 def current_content_version():
@@ -147,7 +551,13 @@ def main():
         return 2
 
     if args.dump_json:
-        json.dump(entries, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        # Only the values the app compiles. An unreadable bullets array dumps as
+        # `[]`, which the compiled-value comparison in WhatsNewContentTests then
+        # rejects against the entry's real bullets, the same way a multiline
+        # description dumps as "" and is rejected against the real text.
+        json.dump(
+            public_values(entries), sys.stdout, ensure_ascii=False, separators=(",", ":")
+        )
         sys.stdout.write("\n")
         return 0
 
@@ -157,6 +567,20 @@ def main():
         return 0
 
     if args.self_test:
+        # Two-way controls on fixtures first: a parser only ever run on correct
+        # input has never been seen to refuse anything.
+        fixture_failures = self_test_fixtures()
+        if fixture_failures:
+            print(
+                "error: %d fixture case%s failed:\n  %s"
+                % (
+                    len(fixture_failures),
+                    "" if len(fixture_failures) == 1 else "s",
+                    "\n  ".join(fixture_failures),
+                ),
+                file=sys.stderr,
+            )
+            return 2
         # Integrity check: every entry has exactly one `version:` field, so the
         # number of parsed entries must equal the number of version fields in the
         # source. A mismatch means the parser dropped entries (e.g. the MARK-comment
@@ -193,7 +617,8 @@ def main():
             return 2
         print(
             f"self-test OK: {len(entries)} entries parsed (matches source); "
-            f"{cv} renders {body.count('- **')} item(s)"
+            f"{cv} renders {body.count('- **')} item(s); "
+            f"{len(FIXTURE_CASES)} fixture cases pass"
         )
         return 0
 
