@@ -1695,13 +1695,25 @@ public struct InverseTextNormalizer: Sendable {
     // fires where \b failed on the full figure — ordinal suffixes ('1,000,000,000th' #1201),
     // decimals past the (?!\.\d) block ('$5,000,000,000.00'), plurals ('1,000,000,000s').
     return reSub(
-      // `(?<![A-Za-z])` so a compact alphanumeric tag is never split: "P one million" renders
-      // "P1,000,000" and must stay that way, matching the reverse form "one million P" ->
-      // "1,000,000P". Without it the two directions of #2496 disagreed — "P1 million" against
-      // "1,000,000P" (Codex diff review r1). A letter glued directly to a comma-grouped number
-      // is a tag by construction; every real house-style case is preceded by "$", a space, or
-      // the start of the text.
-      #"(?<![A-Za-z])(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t,
+      // A compact alphanumeric tag is never split: "P one million" renders "P1,000,000" and
+      // must stay that way, matching the reverse form "one million P" -> "1,000,000P". Without
+      // a guard the two directions of #2496 disagreed — "P1 million" against "1,000,000P"
+      // (Codex diff review r1).
+      //
+      // The guard exempts EXACTLY the shape `listMarkers` emits and nothing wider: ONE
+      // uppercase ASCII letter (`markerLetterOK`) that sat at a word boundary
+      // (`\b(?<letter>[A-Za-z])`), i.e. a single capital preceded by the start of the text or a
+      // non-word character. Anything else in front of the figure — "$", a space, or a run of
+      // two or more letters — is not a tag and keeps house style: "USD1,000,000" ->
+      // "USD1 million", as it always had. The first cut of this guard was a bare
+      // `(?<![A-Za-z])`, which exempted EVERY letter-prefixed figure and silently froze
+      // code-prefixed currency (#2583).
+      //
+      // Spelled as an alternation of two single-level lookbehinds rather than the equivalent
+      // nested `(?<!(?<!\w)[A-Z])`, so it leans only on bounded, un-nested lookbehind in ICU.
+      // Read it as: the previous character is NOT a capital, OR it is a capital that itself
+      // follows a word character (so it is the tail of a longer token, not a lone marker).
+      #"(?:(?<=\w[A-Z])|(?<![A-Z]))(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t,
       caseInsensitive: false
     ) {
       m in

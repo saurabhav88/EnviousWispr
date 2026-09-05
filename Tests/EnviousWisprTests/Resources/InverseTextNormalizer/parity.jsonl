@@ -2198,6 +2198,9 @@
 {"input": "I take One A Day.", "expected": "I take One A Day.", "category": "listmarker", "slice": "mixedstate"}
 {"input": "One A Day, every day", "expected": "One A Day, every day", "category": "listmarker", "slice": "mixedstate"}
 {"input": "US$1,000,000", "expected": "US$1 million", "category": "listmarker", "slice": "mixedstate"}
+{"input": "USD1,000,000", "expected": "USD1 million", "category": "listmarker", "slice": "mixedstate"}
+{"input": "EUR1,000,000", "expected": "EUR1 million", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P1,000,000", "expected": "P1,000,000", "category": "listmarker", "slice": "mixedstate"}
 {"input": "P one hundred and five Q two", "expected": "P105 Q2", "category": "listmarker", "slice": "mixedstate"}
 {"input": "one hundred and five B two C", "expected": "105B 2C", "category": "listmarker", "slice": "mixedstate"}
 {"input": "He said, \"P one Q two\"", "expected": "He said, \"P1 Q2\"", "category": "listmarker", "slice": "mixedstate"}

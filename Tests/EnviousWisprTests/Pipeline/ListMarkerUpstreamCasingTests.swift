@@ -161,19 +161,32 @@ struct ListMarkerUpstreamCasingTests {
     #expect(itn.normalize("One A, two B, three C.") == "1A, 2B, 3C.")
   }
 
-  /// The magnitude guard must protect a letter TOUCHING the number, not one separated by "$".
+  /// The magnitude guard must protect a letter TOUCHING the number, not one separated by "$",
+  /// and only a SINGLE capital — the shape `listMarkers` emits — never a currency code.
   ///
-  /// **Product Outcome.** `keepMagnitude` gained a `(?<![A-Za-z])` so a compact tag is never
-  /// split ("P1,000,000" must not become "P1 million"). A letter-prefixed currency is the case
-  /// where that guard could over-reach — nothing in either parity fixture covers "US$", so this
-  /// surface was untested in both implementations until now.
+  /// **Product Outcome.** `keepMagnitude` gained a lookbehind so a compact tag is never split
+  /// ("P1,000,000" must not become "P1 million"). A letter-prefixed currency is the case where
+  /// that guard could over-reach — nothing in either parity fixture covers "US$", so this
+  /// surface was untested in both implementations until now. The first cut, a bare
+  /// `(?<![A-Za-z])`, DID over-reach one step further: a code-prefixed figure ("USD1,000,000")
+  /// stopped collapsing to the "USD1 million" it had always received (#2583). The guard now
+  /// exempts exactly one capital at a word boundary, which is all `listMarkers` can produce.
   @Test("a letter-prefixed currency still gets house-style magnitude")
   func letterPrefixedCurrencyKeepsMagnitude() {
     let itn = InverseTextNormalizer()
     #expect(itn.normalize("US$1,000,000") == "US$1 million")
     #expect(itn.normalize("US$5,200,000") == "US$5.2 million")
     #expect(itn.normalize("$1,000,000") == "$1 million")
-    // The tag this guard exists for, asserted beside it so neither can drift alone.
+    // #2583: a currency CODE is a letter run, not a marker, so it collapses exactly as "$" does.
+    #expect(itn.normalize("USD1,000,000") == "USD1 million")
+    #expect(itn.normalize("EUR1,000,000") == "EUR1 million")
+    #expect(itn.normalize("GBP2,500,000") == "GBP2.5 million")
+    #expect(itn.normalize("raised USD1,000,000") == "raised USD1 million")
+    // The tag this guard exists for, asserted beside it so neither can drift alone — both the
+    // spoken form and the already-compact form the guard actually sees.
     #expect(itn.normalize("P one million") == "P1,000,000")
+    #expect(itn.normalize("P1,000,000") == "P1,000,000")
+    #expect(itn.normalize("(P1,000,000)") == "(P1,000,000)")
+    #expect(itn.normalize("A1,000,000") == "A1,000,000")
   }
 }
