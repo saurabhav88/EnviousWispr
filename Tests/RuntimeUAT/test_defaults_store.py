@@ -118,19 +118,28 @@ def main():
            ds.read_plist(DOMAIN, "keep") == 7, repr(ds.read_plist(DOMAIN, "keep")))
         ok("the bystander is still an integer", read_type("keep") == "integer", read_type("keep"))
 
-        print("\na restore from PRINTED text is reported as NOT clean")
+        print("\na restore from PRINTED text does not land, and the check says so")
         # Exactly what phase5_language_hover.py did before #2579: `defaults read`,
         # then the printed blob back through `defaults write` as one argument.
-        for k in ("arr", "d"):
-            blob = subprocess.run(["defaults", "read", DOMAIN, k],
-                                  capture_output=True, text=True).stdout.strip()
-            subprocess.run(["defaults", "write", DOMAIN, k, blob], check=True)
+        # Measured on macOS 26.7 (2026-09-05): for DATA, the on-disk type of both
+        # language-chip keys, `defaults write` REFUSES the `{length = N, bytes = ...}`
+        # text (exit 1, "Could not parse"), so the driven value simply stays. The
+        # printed text of an ARRAY or a DICTIONARY happens to parse back on this
+        # macOS; that is a property of `defaults`, not of the harness, and it is not
+        # asserted either way here.
+        blob = subprocess.run(["defaults", "read", DOMAIN, "d"],
+                              capture_output=True, text=True).stdout.strip()
+        subprocess.run(["defaults", "write", DOMAIN, "d", "-data", "5b226672225d"], check=True)
+        refused = subprocess.run(["defaults", "write", DOMAIN, "d", blob], capture_output=True)
+        ok("the printed-text write of DATA is refused", refused.returncode != 0, refused.returncode)
         checked = ds.check_plist(DOMAIN, snap)
-        ok("the mangled array is caught", checked["arr"] is False, repr(ds.read_plist(DOMAIN, "arr")))
-        ok("the mangled data is caught", checked["d"] is False, repr(ds.read_plist(DOMAIN, "d")))
+        ok("the un-restored data is caught", checked["d"] is False, repr(ds.read_plist(DOMAIN, "d")))
+        ok("the untouched array still reads clean", checked["arr"] is True)
         ok("the untouched dictionary still reads clean", checked["dct"] is True)
         landed = ds.restore_plist(DOMAIN, snap)
-        ok("a real restore repairs the mangling", all(landed.values()), repr(landed))
+        ok("a real restore puts the data back", all(landed.values()), repr(landed))
+        ok("and it is the original bytes", ds.read_plist(DOMAIN, "d") == b'["es"]',
+           repr(ds.read_plist(DOMAIN, "d")))
 
         print("\na domain that does not exist exports as EMPTY, and is not mistaken for a failure")
         # `defaults export` on a missing domain exits 0 with an empty <dict/>. That is the

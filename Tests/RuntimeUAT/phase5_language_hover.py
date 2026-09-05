@@ -31,10 +31,10 @@ chip and the row would read as the dwell being broken.
 **Both are parked and restored STRUCTURALLY, never through printed text (#2579).**
 They are JSON-encoded `Data` on disk (`LanguageSuggestionPresenter.persistState`),
 logically a list and a dictionary. `defaults read` prints such a value as a
-multi-line blob, and handing that blob back to `defaults write` as one argument
-stores something else entirely — so a run that began with either key populated
-never put it back, and `restore_clean` could not see it because it compared the
-same printed text on both sides. Owner: `defaults_store`'s plist path, which goes
+`{length = N, bytes = ...}` blob, and `defaults write` refuses that blob as an
+argument (measured on macOS 26.7, 2026-09-05) — so a run that began with either
+key populated never put it back, and `restore_clean` could not see it because it
+compared the same printed text on both sides. Owner: `defaults_store`'s plist path, which goes
 through `defaults export` / `defaults import` and compares parsed values.
 
 **THE LANGUAGE CHIP IS UNREACHABLE ON PARAKEET, AND NOTHING SAYS SO.**

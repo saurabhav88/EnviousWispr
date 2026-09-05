@@ -32,15 +32,16 @@ cannot be put back through `defaults write` at all -- and that is exactly what
 `phase5_language_hover.py` used to do (#2579). It parked
 `languageChipSuppressedLanguages` and `languageChipDismissalCounts` from
 `defaults read`'s printed text and handed that text back to `defaults write` as
-one positional argument, which stores a STRING (or an old-style-plist dictionary)
-where the original value was. The restore check compared the same printed text
-on both sides, so it could not see the difference.
+one positional argument. Measured on macOS 26.7 (2026-09-05): for a `Data` value
+`defaults write` REFUSES the `{length = N, bytes = ...}` text (exit 1), so the
+driven value simply stays where the original was. The restore check compared the
+same printed text on both sides, so it could not see the difference.
 
 Those two keys are JSON-encoded `Data` on disk (`LanguageSuggestionPresenter
 .persistState` writes `JSONEncoder` output with `defaults.set(data, forKey:)`),
 so `defaults read` prints `{length = N, bytes = 0x...}` and `read-type` says
 `data`; logically they hold a list and a dictionary. Either way the value never
-survives a trip through printed text.
+comes back from its printed text.
 
 The plist path (`snapshot_plist` / `restore_plist`) never goes through text.
 It reads the whole domain with `defaults export <domain> -` (XML plist on
