@@ -231,6 +231,22 @@ def test_oracle(root):
                     has_runtime_gate(suite_attribute)
                 ))
 
+        # Gates by QUALIFIED PATH, not only by brace range. A test hosted in a top-level
+        # `extension Outer.Inner` sits in no brace of `Outer`, so the chain of ranges
+        # around it never sees a `.disabled` on `Outer`'s own declaration — yet Swift
+        # Testing skips that test through the parent trait (#2669 review, round 3). Every
+        # declaration records the gate on its own path, and a test is gated when any
+        # prefix of its path is, whichever braces it was written inside.
+        gate_by_path = {}
+        for opening, closing, name, gated in ranges:
+            outer = sorted(
+                ((end - start, outer_name) for start, end, outer_name, _ in ranges
+                 if start < opening < end),
+                key=lambda entry: -entry[0],
+            )
+            path = "/".join([outer_name for _, outer_name in outer] + [name])
+            gate_by_path[path] = gate_by_path.get(path, False) or gated
+
         for attribute in re.finditer(r"@Test\b", code):
             function_match = re.search(r"\bfunc\s+(\w+)\s*\(", code[attribute.end():])
             if not function_match:
@@ -263,10 +279,16 @@ def test_oracle(root):
             )
             if not containing:
                 continue
-            # A `.enabled`/`.disabled` on any level of the chain gates every test beneath it.
+            # A `.enabled`/`.disabled` on any level of the chain gates every test beneath it,
+            # whether that level is a brace around the test or the original declaration of
+            # a type the hosting extension names.
             if any(gated for _, _, gated in containing):
                 continue
-            enclosing = "/".join(name for _, name, _ in containing)
+            segments = [name for _, name, _ in containing]
+            enclosing = "/".join(segments)
+            if any(gate_by_path.get("/".join(enclosing.split("/")[:depth]), False)
+                   for depth in range(1, enclosing.count("/") + 2)):
+                continue
             body = part[attribute.end():function_start]
             display_names = []
             display = re.match(r'\s*\(\s*"((?:[^"\\]|\\.)*)"', body)
