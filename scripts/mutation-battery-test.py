@@ -176,6 +176,20 @@ check("a bare suite name is refused as not target-qualified",
       [dict(VALID_ROW, suite="ThingTests")],
       expect_exit=2, expect_text="not target-qualified")
 
+# #2570: `RuntimeUAT/<module>` on a human row is a Python self-test, and the runner defers it
+# with the one command that namespace means — nothing is guessed from the instruction.
+check("a human row naming a RuntimeUAT self-test is deferred with its fixed command",
+      [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
+        "suite": "RuntimeUAT/wispr_eyes"}],
+      expect_exit=0, expect_text="run: python3 Tests/RuntimeUAT/wispr_eyes.py --self-test")
+check("a human row naming a RuntimeUAT self-test with a legacy expect_fail is refused",
+      [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
+        "suite": "RuntimeUAT/wispr_eyes", "expect_fail": "the guard fires"}],
+      expect_exit=2, expect_text="expect_fail is not accepted")
+check("a mechanical row naming a RuntimeUAT self-test is refused before anything runs",
+      [dict(VALID_ROW, suite="RuntimeUAT/wispr_eyes")],
+      expect_exit=2, expect_text="only valid on a human row")
+
 check("a non-string suite is refused, not crashed on",
       [dict(VALID_ROW, suite=1)],
       expect_exit=2, expect_text="suite must be a string")
@@ -2107,10 +2121,12 @@ def check_validator(name, row=None, *, document=None, expected_rc, expected_text
             capture_output=True, text=True,
         )
     output = result.stdout + result.stderr
-    if result.returncode != expected_rc or expected_text not in output:
+    expected = (expected_text,) if isinstance(expected_text, str) else tuple(expected_text)
+    missing = [text for text in expected if text not in output]
+    if result.returncode != expected_rc or missing:
         failures.append(
             f"{name}: exit {result.returncode}, wanted {expected_rc}; "
-            f"missing {expected_text!r} in {output[:300]!r}")
+            f"missing {missing!r} in {output[:300]!r}")
     else:
         print(f"  ok  {name}")
 
@@ -2248,6 +2264,52 @@ check_validator("the filing validator does not accept a nested test's inner-only
                 dict(_validator_base, suite=_nested_suite,
                      expect_fail="OnboardingWarmingGateTests/gateHoldsUntilTheEngineAnswers()"),
                 expected_rc=1, expected_text="DOES NOT EXIST")
+
+# #2570: a human row may name a non-Swift self-test target, `RuntimeUAT/<module>`, which is
+# `python3 Tests/RuntimeUAT/<module>.py --self-test` and nothing else. The oracle indexes only
+# Swift, so the truthful target for wispr_eyes's own control was "NOT FOUND", a blank suite was
+# refused, and the only green row was one naming an unrelated Swift suite — a result that
+# proved nothing. Two-way: the real target is accepted with the exact command the validator
+# proved, a missing module and a module that never parses the flag are refused by name.
+_self_test_row = {"mode": "human", "label": "break the single-instance guard",
+                  "instruction": "Drop the `if pid == me` filter, then run the self-test.",
+                  "suite": "RuntimeUAT/wispr_eyes"}
+check_validator("the filing validator accepts a human row naming a real RuntimeUAT self-test",
+                _self_test_row,
+                expected_rc=0,
+                expected_text=("DEFERRED", "python3 Tests/RuntimeUAT/wispr_eyes.py --self-test",
+                               "1/1 rows runnable"))
+check_validator("the filing validator reads an argparse --self-test as well as a sys.argv one",
+                dict(_self_test_row, suite="RuntimeUAT/ptt_binding"),
+                expected_rc=0, expected_text="python3 Tests/RuntimeUAT/ptt_binding.py --self-test")
+check_validator("the filing validator refuses a RuntimeUAT module that does not exist",
+                dict(_self_test_row, suite="RuntimeUAT/no_such_module"),
+                expected_rc=1,
+                expected_text=("Tests/RuntimeUAT/no_such_module.py", "DOES NOT EXIST"))
+check_validator("the filing validator refuses a RuntimeUAT module that never parses --self-test",
+                dict(_self_test_row, suite="RuntimeUAT/ui_helpers"),
+                expected_rc=1,
+                expected_text=("Tests/RuntimeUAT/ui_helpers.py", "does not parse --self-test"))
+check_validator("the filing validator refuses a RuntimeUAT target that is not one module name",
+                dict(_self_test_row, suite="RuntimeUAT/scenarios/wispr_eyes"),
+                expected_rc=1, expected_text="one module name")
+check_validator("the filing validator refuses Swift test names on a RuntimeUAT self-test row",
+                dict(_self_test_row, must_fire=["the guard fires"]),
+                expected_rc=1, expected_text="no addressable test names")
+check_validator("the filing validator refuses a legacy expect_fail on a RuntimeUAT self-test row",
+                dict(_self_test_row, expect_fail="the guard fires"),
+                expected_rc=1, expected_text=("no addressable test names", "expect_fail"))
+check_validator("the filing validator refuses a RuntimeUAT target on a mechanical row",
+                dict(_validator_base, suite="RuntimeUAT/wispr_eyes", expect_fail=_guard_name),
+                expected_rc=1, expected_text="only valid on a human row")
+check_validator("the filing validator still finds a Swift suite next to a RuntimeUAT row",
+                document={"rows": [
+                    _self_test_row,
+                    {"mode": "human", "label": "semantic route", "instruction": "restore it",
+                     "suite": "EnviousWisprTests/ProviderStatusMappingTests",
+                     "must_fire": [_guard_name]},
+                ]},
+                expected_rc=0, expected_text="2/2 rows runnable")
 
 # #2525 part 2: the validator hands the runner ONE row at a time so that every row is
 # judged, which means the runner's own `row N` prefix is always `row 1`. Printed after the
@@ -2448,6 +2510,73 @@ if result.returncode != 2 or "carries 2 explicit recipe blocks" not in _issue_ou
         f"exit {result.returncode}: {_issue_output[:250]!r}")
 else:
     print("  ok  the filing validator shares the runner's single-recipe issue contract")
+
+# #2672 review: `self_test_problems` accepted ANY `"--self-test"` constant that was not a bare
+# docstring statement, so a module constant, a help message or an unreachable branch made a
+# module "parse" a flag it never inspects, and the validator printed a command whose exit
+# code would exercise only the module's normal path. Two-way over the shapes a module can
+# take: the ways to answer the flag are accepted, spelling it anywhere else is refused.
+_battery_for_validator = validator.load_battery()
+
+
+def check_flag_parse(name, body, *, accepted):
+    global ran
+    ran += 1
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "Tests" / "RuntimeUAT").mkdir(parents=True)
+        (root / "Tests" / "RuntimeUAT" / "probe.py").write_text(body)
+        problems = validator.self_test_problems(
+            _battery_for_validator, "RuntimeUAT/probe", root)
+    refused = any("does not parse --self-test" in problem for problem in problems)
+    if accepted and problems:
+        failures.append(f"{name}: expected acceptance, got {problems!r}")
+    elif not accepted and not refused:
+        failures.append(f"{name}: expected refusal, got {problems!r}")
+    else:
+        print(f"  ok  {name}")
+
+
+check_flag_parse("the self-test check accepts a sys.argv membership test of the flag",
+                 'import sys\nif "--self-test" in sys.argv:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check accepts an equality against the flag",
+                 'import sys\ncmd = sys.argv[1]\nif cmd == "--self-test":\n    pass\n',
+                 accepted=True)
+check_flag_parse("the self-test check accepts an argparse registration of the flag",
+                 'import argparse\nparser = argparse.ArgumentParser()\n'
+                 'parser.add_argument("--self-test", action="store_true")\n', accepted=True)
+check_flag_parse("the self-test check accepts a whole-argv comparison with a list holding the flag",
+                 'import sys\nif sys.argv[1:] == ["--self-test"]:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check refuses a whole-argv comparison the fixed command cannot match",
+                 'import sys\nif sys.argv[1:] == ["--verbose", "--self-test"]:\n    pass\n',
+                 accepted=False)
+check_flag_parse("the self-test check accepts a comparison through a module constant bound to the flag",
+                 'import sys\nFLAG = "--self-test"\nif FLAG in sys.argv:\n    pass\n', accepted=True)
+check_flag_parse("the self-test check refuses a module constant that only spells the flag",
+                 'SELF_TEST_FLAG = "--self-test"\n', accepted=False)
+check_flag_parse("the self-test check refuses a help message that only spells the flag",
+                 'print("--self-test")\n', accepted=False)
+check_flag_parse("the self-test check refuses an unreachable assignment of the flag",
+                 'if False:\n    flag = "--self-test"\n', accepted=False)
+check_flag_parse("the self-test check refuses a docstring that only mentions the flag",
+                 '"""Run with --self-test."""\n', accepted=False)
+check_flag_parse("the self-test check refuses a module that never spells the flag",
+                 'x = 1\n', accepted=False)
+check_flag_parse("the self-test check refuses a recognised check under `if False:`",
+                 'import sys\nif False:\n    if "--self-test" in sys.argv:\n        pass\n',
+                 accepted=False)
+check_flag_parse("the self-test check refuses a recognised check under `while 0:`",
+                 'import sys\nwhile 0:\n    if "--self-test" in sys.argv:\n        pass\n',
+                 accepted=False)
+check_flag_parse("the self-test check refuses a recognised check in the else of `if True:`",
+                 'import sys\nif True:\n    pass\nelse:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=False)
+check_flag_parse("the self-test check accepts a recognised check in the else of `if False:`",
+                 'import sys\nif False:\n    pass\nelse:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=True)
+check_flag_parse("the self-test check accepts a recognised check under a name it cannot evaluate",
+                 'import sys\nDEBUG = False\nif DEBUG:\n    if "--self-test" in sys.argv:\n'
+                 '        pass\n', accepted=True)
 
 print()
 if failures:

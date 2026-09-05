@@ -2,6 +2,7 @@
 """Validate mutation recipes against a checkout without running Xcode."""
 
 import argparse
+import ast
 import importlib.util
 import json
 import pathlib
@@ -341,6 +342,100 @@ def missing_test_problem(name, known_names):
     return f"expectation names a test that DOES NOT EXIST: {name!r}"
 
 
+def _holds_flag(node, flag, aliases):
+    """Is `node` the flag itself, a module-level name assigned the flag, or a
+    one-element list/tuple/set literal holding either?"""
+    if isinstance(node, ast.Constant):
+        return node.value == flag
+    if isinstance(node, ast.Name):
+        return node.id in aliases
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        # An aggregate stands for the WHOLE argv tail, and the fixed command supplies
+        # exactly one argument, so `["--verbose", "--self-test"]` is a branch that command
+        # can never enter (#2672 review, round 3). Only a one-element aggregate matches.
+        return len(node.elts) == 1 and _holds_flag(node.elts[0], flag, aliases)
+    return False
+
+
+def flag_aliases(tree, flag):
+    """Module-level names bound to the flag by a plain assignment, `FLAG = "--self-test"`,
+    so a module that compares through its own constant is read the same as one that
+    compares the literal. Only the binding is followed; a name that is never compared or
+    registered still proves nothing."""
+    return {
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant) and node.value.value == flag
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def reachable_nodes(tree):
+    """`ast.walk`, minus the branches Python can never enter: the body of `if False:`,
+    `if 0:` or `while False:`, and the else of `if True:`. A recognised check under one of
+    those proves nothing about the command the validator prints, and `ast.walk` visits it
+    anyway (#2672 review, round 2). Only a literal constant test is treated as static; a
+    name or expression is assumed live, since deciding otherwise would need evaluation."""
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, (ast.If, ast.While)) and isinstance(node.test, ast.Constant):
+            stack.extend(node.body if node.test.value else node.orelse)
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def parses_flag(node, flag, aliases=frozenset()):
+    """Does this AST node PARSE the flag, rather than merely spell it?
+
+    Two shapes count, because they are the ways a module answers the flag: a comparison
+    with it as an operand (`cmd == "--self-test"`, `"--self-test" in sys.argv`,
+    `sys.argv[1:] == ["--self-test"]`, or the same through a module constant bound to
+    it), or an argparse registration (`parser.add_argument("--self-test", ...)`). A
+    constant anywhere else — an unused module constant, a help string, a print, a
+    docstring — is not evidence the module inspects its arguments for it, and the old
+    check accepted every one of those (#2672 review). Unreachable branches are the
+    caller's job: `self_test_problems` feeds this only the nodes `reachable_nodes` yields.
+    """
+    if isinstance(node, ast.Compare):
+        return any(_holds_flag(operand, flag, aliases)
+                   for operand in [node.left, *node.comparators])
+    if isinstance(node, ast.Call):
+        callee = node.func
+        name = callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
+        return name == "add_argument" and any(
+            _holds_flag(arg, flag, aliases) for arg in node.args)
+    return False
+
+
+def self_test_problems(battery, suite, root):
+    """Prove a `RuntimeUAT/<module>` target exists and really parses `--self-test`.
+
+    Nothing is executed: wispr_eyes imports Quartz transitively, so running it here would
+    test the host's PyObjC, not the recipe. The module is parsed instead, and the flag must
+    be an operand of a comparison or an argument to `add_argument` (see `parses_flag`) —
+    a docstring, a constant, or a help message that merely spells `--self-test` is not
+    evidence the module answers it.
+    """
+    source = root / battery.self_test_source(battery.self_test_module(suite))
+    shown = source.relative_to(root)
+    if not source.is_file():
+        return [f"self-test target {shown} DOES NOT EXIST"]
+    try:
+        tree = ast.parse(source.read_text(errors="replace"), filename=str(shown))
+    except SyntaxError as error:
+        return [f"self-test target {shown} is not valid Python: {error}"]
+    aliases = flag_aliases(tree, battery.SELF_TEST_FLAG)
+    if not any(parses_flag(node, battery.SELF_TEST_FLAG, aliases)
+               for node in reachable_nodes(tree)):
+        return [f"self-test target {shown} does not parse {battery.SELF_TEST_FLAG}; "
+                f"`{battery.self_test_command(suite)}` would prove nothing"]
+    return []
+
+
 def validate(recipes, root, label):
     names_by_suite = test_oracle(root)
     battery = load_battery()
@@ -407,7 +502,16 @@ def validate(recipes, root, label):
                             for test_id, aliases in sorted(duplicates.items())
                         ))
 
-            if suite and suite not in names_by_suite:
+            # A `RuntimeUAT/<module>` suite is a Python self-test, not a Swift suite (#2570):
+            # the oracle cannot know it, so it is proved against the checkout instead. The
+            # runner has already refused it on a mechanical row and with test names attached.
+            command = battery.self_test_command(suite)
+            if command:
+                if suite in names_by_suite:
+                    problems.append(
+                        f"suite {suite} is both a Swift suite and a self-test target — ambiguous")
+                problems.extend(self_test_problems(battery, suite, root))
+            elif suite and suite not in names_by_suite:
                 problems.append(f"suite {suite} NOT FOUND in Tests/")
 
             if problems:
@@ -417,7 +521,8 @@ def validate(recipes, root, label):
                 print(f"        {str(row_label)[:90]}")
             else:
                 status = "DEFERRED" if normalized.get("_mode") == "human" else "runnable"
-                print(f"row {index}: {status:<10} | {str(normalized.get('label', ''))[:70]}")
+                run = f" — run: {command}" if command else ""
+                print(f"row {index}: {status:<10} | {str(normalized.get('label', ''))[:70]}{run}")
 
     print(f"\n{label}: {total - bad}/{total} rows runnable"
           + (f", {bad} UNRUNNABLE" if bad else ""))

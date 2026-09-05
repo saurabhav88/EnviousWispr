@@ -75,6 +75,14 @@ RECIPE FORMAT (JSON; the same block that goes in the `test-hardening` issue body
     a literal pipe. A semantic instruction that cannot be an anchor/replacement pair
     is mode `human`; it is reported as DEFERRED and is never guessed into source code.
 
+    A human row may instead name a NON-SWIFT SELF-TEST as its suite: `RuntimeUAT/<module>`
+    means `python3 Tests/RuntimeUAT/<module>.py --self-test`, and nothing else. The target
+    segment is the marker; the module is the file; the command is fixed by the namespace the
+    same way a Swift suite fixes its `-only-testing:` filter, so no command is ever read out
+    of prose. The whole exit code is the verdict, so such a row carries no `must_fire` or
+    `must_not_fire`. The filing validator proves the module exists and really parses
+    `--self-test`; the runner defers the row and prints the command an operator runs.
+
     `expect_fail` NAMES A TEST AND IS MATCHED EXACTLY — it is not a substring of the
     failure line. Any one of the three spellings the result bundle carries will do:
     the `Suite/function()` identifier, the bare `function()`, or the display name in
@@ -905,6 +913,30 @@ def preflight(worktree: Path):
             )
 
 
+# A human row's suite may name a self-test outside Swift Testing. `RuntimeUAT/<module>` is
+# `python3 Tests/RuntimeUAT/<module>.py --self-test` — one namespace, one command shape — so
+# the command is a function of the suite, never a field an author fills from prose (#2570).
+SELF_TEST_TARGET = "RuntimeUAT"
+SELF_TEST_FLAG = "--self-test"
+
+
+def self_test_module(suite):
+    """The module a `RuntimeUAT/<module>` suite names, or None for anything else."""
+    if not isinstance(suite, str):
+        return None
+    target, _, module = suite.partition("/")
+    return module if target == SELF_TEST_TARGET else None
+
+
+def self_test_source(module):
+    return f"Tests/{SELF_TEST_TARGET}/{module}.py"
+
+
+def self_test_command(suite):
+    module = self_test_module(suite)
+    return f"python3 {self_test_source(module)} {SELF_TEST_FLAG}" if module else None
+
+
 FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
 MARKDOWN_FENCE_RE = re.compile(r"```mutation-recipe\s*\n(.*?)```", re.DOTALL)
 MARKDOWN_RECIPE_COLUMNS = (
@@ -1096,6 +1128,18 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
             if not isinstance(row["suite"], str) or "/" not in row["suite"]:
                 raise Refusal(
                     f"human row {i} suite must be a target-qualified string, got {row['suite']!r}.")
+            module = self_test_module(row["suite"])
+            if module is not None:
+                if not module.isidentifier():
+                    raise Refusal(
+                        f"human row {i} suite {row['suite']!r} must be {SELF_TEST_TARGET}/<module>, "
+                        f"one module name: it is {self_test_source('<module>')}.")
+                if row["must_fire"] or row["must_not_fire"] or "expect_fail" in row:
+                    raise Refusal(
+                        f"human row {i} names a {SELF_TEST_TARGET} self-test, which has no "
+                        f"addressable test names: `{self_test_command(row['suite'])}` passes or "
+                        "fails as a whole, so must_fire and must_not_fire must be empty and "
+                        "expect_fail is not accepted.")
             row["_must_fire"] = row["must_fire"]
             row["_must_not_fire"] = row["must_not_fire"]
             row["_mode"] = "human"
@@ -1157,6 +1201,10 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                 "(A non-string here used to raise TypeError and exit 1, which the exit codes reserve "
                 "for a row SURVIVING.)"
             )
+        if self_test_module(row["suite"]) is not None:
+            raise Refusal(
+                f"row {i} suite '{row['suite']}' names a {SELF_TEST_TARGET} self-test, which is "
+                "only valid on a human row: a mechanical row names the Swift suite xcodebuild runs.")
         if "/" not in row["suite"]:
             raise Refusal(
                 f"row {i} suite '{row['suite']}' is not target-qualified. It must read "
@@ -1600,9 +1648,11 @@ def main(argv=None):
             suite = f" [{row.get('suite')}]" if row.get("suite") else ""
             fire = f"; must fire: {row['must_fire']}" if row["must_fire"] else ""
             silent = f"; must not fire: {row['must_not_fire']}" if row["must_not_fire"] else ""
+            command = self_test_command(row.get("suite"))
+            invocation = f"; run: {command}" if command else ""
             print(
                 f"  - row {row['_recipe_index']}: {row['label']}{suite}: "
-                f"{row['instruction']}{fire}{silent}"
+                f"{row['instruction']}{fire}{silent}{invocation}"
             )
 
     if args.validate_only:
