@@ -96,7 +96,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use EnviousWispr completely offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
       }
     },
     {
@@ -431,7 +431,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish (cleanup after transcription)</td>
-            <td><span class="table-highlight">EG-1</span> (measured, purpose-built for dictation), Apple Intelligence, Ollama, or your own key</td>
+            <td><span class="table-highlight">EG-1</span> (measured, purpose-built for dictation), S1-mini by Superwhisper, Apple Intelligence, Ollama, or your own key</td>
             <td><span class="table-check">Yes</span>, on-device: Qwen3 0.6B for live correction, Qwen3 4B Instruct for smart formatting, both separate downloads; no published benchmark</td>
           </tr>
           <tr>
@@ -653,7 +653,7 @@ const faqJsonLd = JSON.stringify({
           <p>Juno is a local voice layer for writing, rewriting, and taking actions. After dictation begins, Voice Actions for creating a Note, setting a Reminder, or adding a one-shot alarm start with "Hey Juno." Its separate Voice Commands and Writer commands can rewrite text without a wake phrase.</p>
           <p>EnviousWispr does not create Notes, Reminders, or alarms. It turns speech into text and pastes it where you were working. If you want a broader local assistant, Juno covers ground we do not.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
           </div>
         </div>
       </div>
@@ -721,7 +721,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source like Juno?</div>

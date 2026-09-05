@@ -193,7 +193,7 @@ const faqJsonLd = JSON.stringify({
             <li>Numbers, dates, money, emails, URLs, and spoken punctuation formatted correctly, when you are dictating in English. These share one step and it is skipped for other languages</li>
             <li>Spoken emoji</li>
             <li>Custom vocabulary correction</li>
-            <li>Cleanup with our own on-device model, or with Apple Intelligence on macOS 26 and later, or with a local Ollama model</li>
+            <li>Cleanup with our own on-device model, or with S1-mini by Superwhisper, or with Apple Intelligence on macOS 26 and later, or with a local Ollama model</li>
           </ul>
         </div>
         <div class="offline-col reveal">
@@ -219,7 +219,7 @@ const faqJsonLd = JSON.stringify({
         <ul>
           <li><strong>Apple Silicon only.</strong> M1 or later. There is no Intel build and there will not be one; the speed comes from the Neural Engine.</li>
           <li><strong>macOS 14 Sonoma or later.</strong> Core dictation works across that whole range.</li>
-          <li><strong>Apple Intelligence cleanup needs macOS 26.</strong> Third-party apps could not call the on-device model before that. Apple Intelligence is also the shipped default, so on macOS 14 to 25 the cleanup step is skipped silently and you get the deterministically cleaned text rather than raw output. There is no automatic fallback: to get AI cleanup below macOS 26 you pick EG-1, a local Ollama model, or your own provider key yourself.</li>
+          <li><strong>Apple Intelligence cleanup needs macOS 26.</strong> Third-party apps could not call the on-device model before that. Apple Intelligence is also the shipped default, so on macOS 14 to 25 the cleanup step is skipped silently and you get the deterministically cleaned text rather than raw output. There is no automatic fallback: to get AI cleanup below macOS 26 you pick EG-1, S1-mini by Superwhisper, a local Ollama model, or your own provider key yourself.</li>
           <li><strong>No Windows, Linux, iOS, or Android version.</strong> If you need those, <a href="/compare/handy/">Handy</a> is free, open source, and cross-platform.</li>
           <li><strong>Dictation, not file transcription.</strong> For turning existing recordings into transcripts, <a href="/compare/macwhisper/">MacWhisper</a> is built for that job.</li>
         </ul>
