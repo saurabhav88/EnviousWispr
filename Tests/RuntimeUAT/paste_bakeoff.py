@@ -485,20 +485,64 @@ def _script_reader(script: str, label: str, commit: str | None = None):
     return read
 
 
-def _setup_document(app_name: str, bundle_id: str, clear: str, reader_script: str):
-    """A word processor: empty the document, put the caret in the body, type the pre-image.
+def _own_the_document(
+    app_name: str, bundle_id: str, count_script: str, create_script: str, owned: set
+) -> tuple[bool, str]:
+    """Make sure the document we are about to CLEAR is one this harness created.
+
+    Cloud review, PR #2660: setup emptied the ACTIVE document. With a real workbook or
+    manuscript open, running this bench DESTROYED it — no scratch document, no ownership
+    check, and an irreversible AppleScript clear. The founder's own machine runs these apps.
+
+    This refuses rather than guesses. If the application already has documents open and we
+    have not created ours yet, the run stops and says so; nothing is cleared. Only after the
+    application is empty do we make one and record it as ours.
+    """
+    if bundle_id in owned:
+        return True, ""
+    ok, value = _osa(count_script)
+    if not ok:
+        return False, f"{app_name}_document_count_failed:{value}"
+    try:
+        existing = int(value.strip())
+    except ValueError:
+        return False, f"{app_name}_document_count_unreadable:{value!r}"
+    if existing > 0:
+        return False, (
+            f"{app_name}_refusing_to_clear_your_documents: {existing} already open. This "
+            "bench EMPTIES the document it works in, so it will only ever work in one it "
+            f"created. Close your {app_name} documents and run again."
+        )
+    ok, err = _osa(create_script)
+    if not ok:
+        return False, f"{app_name}_could_not_create_scratch_document:{err}"
+    owned.add(bundle_id)
+    time.sleep(1.0)
+    return True, ""
+
+
+def _setup_document(
+    app_name: str, bundle_id: str, clear: str, reader_script: str,
+    count_script: str, create_script: str
+):
+    """A word processor: empty OUR document, put the caret in the body, type the pre-image.
 
     The caret step is not optional and is not tidiness. A freshly raised Word or Pages
     window reports its focused element as an `AXScrollArea` with no text in it, and typing
     is what moves focus into the body. Cmd+End moves the caret to the end of the document
     and changes nothing, so it is safe to run before every trial.
     """
+    owned: set = set()
 
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
         if ax_oracle.pid_for_bundle(bundle_id) is None:
             return False, f"{app_name}_not_running"
         if not ax_oracle.activate(bundle_id, handoff=2.0):
             return False, f"{app_name}_would_not_come_forward"
+        ok, why = _own_the_document(
+            app_name, bundle_id, count_script, create_script, owned)
+        if not ok:
+            return False, why
         ok, err = _osa(clear)
         if not ok:
             return False, f"{app_name}_clear_failed:{err}"
@@ -522,7 +566,7 @@ def _setup_document(app_name: str, bundle_id: str, clear: str, reader_script: st
 
 
 def _setup_cell(app_name: str, bundle_id: str, clear: str, reader_script: str,
-                select_a1: str, edit_key: str):
+                select_a1: str, edit_key: str, count_script: str, create_script: str):
     """A spreadsheet cell in EDIT mode, which is where a dictation actually lands.
 
     Two things had to be got right, both found by hand before any trial ran:
@@ -536,11 +580,17 @@ def _setup_cell(app_name: str, bundle_id: str, clear: str, reader_script: str,
       is the state a person dictating into a cell is in.
     """
 
+    owned: set = set()
+
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
         if ax_oracle.pid_for_bundle(bundle_id) is None:
             return False, f"{app_name}_not_running"
         if not ax_oracle.activate(bundle_id, handoff=2.0):
             return False, f"{app_name}_would_not_come_forward"
+        ok, why = _own_the_document(
+            app_name, bundle_id, count_script, create_script, owned)
+        if not ok:
+            return False, why
         subprocess.run(["osascript", "-e",
                         'tell application "System Events" to key code 53'],
                        capture_output=True, timeout=15)
@@ -645,7 +695,9 @@ TARGETS = {
                        "Word", "com.microsoft.Word",
                        'tell application "Microsoft Word" to set content of text object '
                        'of active document to ""',
-                       WORD_READ),
+                       WORD_READ,
+                       'tell application "Microsoft Word" to count documents',
+                       'tell application "Microsoft Word" to make new document'),
                    reader=_script_reader(WORD_READ, "word")),
     "excel": Target("excel", "com.microsoft.Excel",
                     _setup_cell(
@@ -656,7 +708,9 @@ TARGETS = {
                         'tell application "Microsoft Excel" to select range "A1" of '
                         'active sheet',
                         # F2 opens the cell editor with the caret after the existing text.
-                        'tell application "System Events" to key code 120'),
+                        'tell application "System Events" to key code 120',
+                        'tell application "Microsoft Excel" to count workbooks',
+                        'tell application "Microsoft Excel" to make new workbook'),
                     # COMMIT THE CELL BEFORE READING IT. A spreadsheet's used range holds
                     # only committed values, so text sitting in an open cell editor is
                     # invisible to every reader — the delivery lands correctly and scores
@@ -668,7 +722,9 @@ TARGETS = {
                     _setup_document(
                         "Pages", "com.apple.iWork.Pages",
                         'tell application "Pages" to set body text of front document to ""',
-                        PAGES_READ),
+                        PAGES_READ,
+                        'tell application "Pages" to count documents',
+                        'tell application "Pages" to make new document'),
                     reader=_script_reader(PAGES_READ, "pages")),
     # A terminal. Its own context path in the cascade (`terminal_screen_refused`), and the
     # founder named terminals as coverage that must not regress.
@@ -899,10 +955,25 @@ def decide(scorecard: dict) -> dict:
         # a candidate with fewer than 80% of the best-measured candidate's valid trials
         # cannot win, because there is no honest way to rank a rate nobody sampled. Then
         # rank on the RATE rather than the count.
+        # AND A TOTAL HIDES A MISSING APPLICATION. Cloud review, second finding: a candidate
+        # with ten good native trials and ten invalid web trials clears any total-based floor
+        # while its web coverage is entirely unknown — which is the coverage this bench exists
+        # to compare. So the floor is applied PER TARGET, over the targets where the baseline
+        # actually delivers, and a candidate missing one of them cannot win.
+        def valid_in(variant: str, target: str) -> int:
+            c = cells.get((variant, target), {})
+            return c.get("once", 0) + c.get("duplicate", 0) + c.get("drop", 0)
+
+        measured_targets = [t for t in targets if baseline_ok.get(t)]
+        comparable, undermeasured = [], []
+        for v in eligible:
+            thin = [
+                t for t in measured_targets
+                if valid_in(v, t) < 0.8 * max(valid_in(c, t) for c in eligible)
+            ]
+            (undermeasured if thin else comparable).append(v)
         best_measured = max(verdicts[v]["valid_trials"] for v in eligible)
-        floor = 0.8 * best_measured
-        comparable = [v for v in eligible if verdicts[v]["valid_trials"] >= floor]
-        undermeasured = sorted(set(eligible) - set(comparable))
+        undermeasured = sorted(undermeasured)
         if not comparable:
             winner, why = None, "no eligible variant reached comparable coverage"
         else:
@@ -999,6 +1070,23 @@ def selftest() -> int:
     check("unseen does not veto", result["verdicts"]["V1"]["status"], "unmeasured")
     check("unseen is not a valid trial", result["verdicts"]["V1"]["valid_trials"], 0)
     check("winner has valid trials", result["winner"], "V4")
+
+    # 8. A candidate measured on one target and blind on another must not win. The rule
+    #    used to rank on an absolute duplicate COUNT with a total-based coverage floor, so
+    #    a perfect score on the cell nobody cares about beat a near-perfect score on both.
+    #    Cloud review's own counterexample, PR #2660.
+    def _rows(variant, target, verdict, n):
+        return [{"variant": variant, "target": target, "verdict": verdict} for _ in range(n)]
+
+    card = {"rows": (
+        _rows("V0", "native", "once", 10) + _rows("V0", "web", "once", 10)
+        + _rows("V1", "native", "once", 10) + _rows("V1", "web", "invalid", 10)
+        + _rows("V4", "native", "once", 10)
+        + _rows("V4", "web", "once", 9) + _rows("V4", "web", "duplicate", 1)
+    )}
+    result = decide(card)
+    check("a blind target loses to a measured one", result["winner"], "V4")
+    check("and the thin candidate is named", "V1" in result["why"], True)
 
     for failure in failures:
         print(f"  FAIL {failure}")
