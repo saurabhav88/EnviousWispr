@@ -89,13 +89,18 @@ package struct PasteCopiesEvidence: @unchecked Sendable {
   package let element: AXUIElement
   package let before: PasteService.CopiesBeforeImage
   package let submittedLengths: [Int]
+  /// Whether the Tier 1 SETTER ran. Decides whether the before-image's SELECTION LENGTH is
+  /// still describing the field the fallback wrote into — see `PasteCopiesObserver`.
+  package let setterReached: Bool
 
   package init(
-    element: AXUIElement, before: PasteService.CopiesBeforeImage, submittedLengths: [Int]
+    element: AXUIElement, before: PasteService.CopiesBeforeImage, submittedLengths: [Int],
+    setterReached: Bool
   ) {
     self.element = element
     self.before = before
     self.submittedLengths = submittedLengths
+    self.setterReached = setterReached
   }
 
   /// The one length the observation may use, or nil when the attempts disagree.
@@ -1035,7 +1040,8 @@ internal final class PasteCascadeExecutor {
       !copiesSubmittedLengths.isEmpty
     {
       result.copiesEvidence = PasteCopiesEvidence(
-        element: element, before: before, submittedLengths: copiesSubmittedLengths)
+        element: element, before: before, submittedLengths: copiesSubmittedLengths,
+        setterReached: copiesSetterReached)
       result.copiesSetterReached = copiesSetterReached
     }
     return result

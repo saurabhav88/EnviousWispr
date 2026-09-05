@@ -136,6 +136,15 @@ package enum PasteCopiesObserver {
     }
   }
 
+  /// Whether the before-image's selection length still describes the field the delivery wrote
+  /// into. Pure, so the rule can be tested without a live element.
+  package static func selectionStillDescribesTheField(
+    setterReached: Bool, selectionLength: Int
+  ) -> Bool {
+    if setterReached { return true }
+    return selectionLength == 0
+  }
+
   /// The measurement itself. Reads two numbers and does arithmetic; writes nothing.
   private static func observe(
     evidence: PasteCopiesEvidence,
@@ -146,6 +155,29 @@ package enum PasteCopiesObserver {
       // The routes disagreed about what they submitted, so no single length is what the field
       // grew BY. Declining is the whole point: picking the last writer's length would produce a
       // confident number about a question nobody asked.
+      return PasteCopiesObservation(
+        estimate: .unknown, status: .unclassified, detectorVersion: detectorVersion)
+    }
+
+    // A BEFORE-IMAGE THAT SURVIVED A DECLINE MAY DESCRIBE A DIFFERENT SELECTION.
+    //
+    // Review finding, 2026-09-04, and it was introduced by the fix one commit earlier: carrying
+    // the before-image through a Tier 1 decline means the delivery that followed was the
+    // FALLBACK, and the fallback activates the destination first. Activation is explicitly
+    // allowed to change the selection.
+    //
+    // The failure is one-directional and it is the direction that matters. A selection that is
+    // LOST means the field never shrank, so it grew by a whole payload more than expected — a
+    // 100-character field with 27 selected, losing its selection and receiving one 27-character
+    // paste, reaches 127 where one copy was expected at 100, and reads as TWO. A false `two` is
+    // the one error this instrument must never make.
+    //
+    // A caret with nothing selected cannot lose a selection, so the arithmetic still holds
+    // there. Activation CREATING a selection fails the other way — the field ends shorter than
+    // expected and lands in no band — which is `unclassified`, the safe answer.
+    if !selectionStillDescribesTheField(
+      setterReached: evidence.setterReached, selectionLength: evidence.before.selectionLength)
+    {
       return PasteCopiesObservation(
         estimate: .unknown, status: .unclassified, detectorVersion: detectorVersion)
     }
