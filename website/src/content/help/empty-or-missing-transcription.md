@@ -28,7 +28,7 @@ EnviousWispr needs to listen to the device you are actually speaking into. Open 
 
 If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, Auto skips it and records from a real microphone, because a virtual device delivers only silence. Versions before 2.4.5 recorded that silence, so if you gave up on EnviousWispr for this reason, it is worth another go. A virtual device is still used when it is the only input on your Mac.
 
-If you record through an audio interface with more than one input (a Focusrite Scarlett, for example), also check the **Microphone socket** row under the device picker. EnviousWispr listens to Input 1 unless you pick another, and a microphone plugged into Input 2 records silence until you do. Read [_Choosing Your Microphone_](/help/choosing-your-microphone/) for the details.
+If you record through an audio interface with more than one input (a Focusrite Scarlett, for example), also check the **Mic is on** control next to the device picker. EnviousWispr listens to Input 1 unless you pick another, and a microphone plugged into Input 2 records silence until you do. Read [_Choosing Your Microphone_](/help/choosing-your-microphone/) for the details.
 
 ### 5. Is the speech model ready?
 

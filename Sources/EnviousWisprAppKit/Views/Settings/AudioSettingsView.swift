@@ -53,7 +53,18 @@ struct AudioSettingsView: View {
           + "device selected in macOS. If that device turns out not to be a real "
           + "microphone, recording uses an available microphone instead."
       ) {
-        VStack(alignment: .leading, spacing: 12) {
+        // #2664: the socket control sits on the SAME line as the device picker,
+        // sized to its own text (founder, 2026-09-05: a full-width segmented bar
+        // for two options read as a giant purple slab). Only for a device
+        // reporting more than one input, and never for one whose UID could not
+        // be read (nothing to key a choice on, and an empty key would be shared
+        // by every such device). The DISPLAYED selection goes through the same
+        // pure rule HAL applies, so a saved index the device no longer has shows
+        // as Input 1. Stored 0-based; labelled from 1 like the sockets on the box.
+        let multiInputDevice = socketDevice.flatMap { device in
+          device.inputChannelCount > 1 && !device.uid.isEmpty ? device : nil
+        }
+        VStack(alignment: .leading, spacing: 6) {
           HStack(spacing: 10) {
             Picker("", selection: inputDeviceSelection) {
               Text("Auto").tag("")
@@ -68,56 +79,50 @@ struct AudioSettingsView: View {
               StatusPill(text: "Using \(socketDevice.name)")
             }
 
+            if let device = multiInputDevice {
+              let socketSelection = Binding<Int>(
+                get: {
+                  InputChannelPreference.effectiveChannel(
+                    requested: InputChannelPreference.requested(
+                      for: device.uid, in: settingsManager.inputChannelByDeviceUID),
+                    availableChannels: device.inputChannelCount)
+                },
+                set: { newValue in
+                  settingsManager.inputChannelByDeviceUID[device.uid] = newValue
+                }
+              )
+              HStack(spacing: 8) {
+                Text(InputSocketCopy.label).settingsHelperCopy()
+                if device.inputChannelCount <= 6 {
+                  BrandedSegmentedPicker(
+                    options: (0..<device.inputChannelCount).map { index in
+                      (
+                        label: InputSocketCopy.optionLabel(index: index), systemImage: nil,
+                        value: index
+                      )
+                    },
+                    selection: socketSelection
+                  )
+                  // Content-sized: the picker's segments stretch to fill whatever
+                  // width they are given, and here they are given only their own.
+                  .fixedSize(horizontal: true, vertical: false)
+                } else {
+                  Picker("", selection: socketSelection) {
+                    ForEach(0..<device.inputChannelCount, id: \.self) { index in
+                      Text(InputSocketCopy.optionLabel(index: index)).tag(index)
+                    }
+                  }
+                  .labelsHidden()
+                  .fixedSize()
+                }
+              }
+            }
+
             Spacer(minLength: 0)
           }
 
-          // #2664: "Microphone socket" — only for a device reporting more than
-          // one input. The DISPLAYED selection goes through the same pure rule
-          // HAL applies, so a saved index the device no longer has shows as
-          // Input 1 rather than as a socket that does not exist. Stored 0-based;
-          // labelled from 1 like the sockets on the box.
-          // A device whose UID could not be read has nothing to key a choice on,
-          // so the row stays hidden for it rather than saving under an empty key
-          // that every such device would share.
-          if let device = socketDevice, device.inputChannelCount > 1, !device.uid.isEmpty {
-            let socketSelection = Binding<Int>(
-              get: {
-                InputChannelPreference.effectiveChannel(
-                  requested: InputChannelPreference.requested(
-                    for: device.uid, in: settingsManager.inputChannelByDeviceUID),
-                  availableChannels: device.inputChannelCount)
-              },
-              set: { newValue in
-                settingsManager.inputChannelByDeviceUID[device.uid] = newValue
-              }
-            )
-            VStack(alignment: .leading, spacing: 8) {
-              Text(InputSocketCopy.header).settingsRowLabel()
-              if device.inputChannelCount <= 6 {
-                BrandedSegmentedPicker(
-                  options: (0..<device.inputChannelCount).map { index in
-                    (
-                      label: InputSocketCopy.optionLabel(index: index), systemImage: nil,
-                      value: index
-                    )
-                  },
-                  selection: socketSelection
-                )
-              } else {
-                Picker("", selection: socketSelection) {
-                  ForEach(0..<device.inputChannelCount, id: \.self) { index in
-                    Text(InputSocketCopy.optionLabel(index: index)).tag(index)
-                  }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 200, alignment: .leading)
-              }
-              Text(
-                InputSocketCopy.helper(
-                  inputCount: device.inputChannelCount, deviceName: device.name)
-              )
-              .settingsHelperCopy()
-            }
+          if let device = multiInputDevice {
+            Text(InputSocketCopy.helper(deviceName: device.name)).settingsHelperCopy()
           }
         }
       }

@@ -32,7 +32,7 @@ To select a specific device:
 
 ### If your microphone box has more than one input
 
-Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from one of them. It uses Input 1 unless you tell it otherwise. When the selected device reports more than one input, a **Microphone socket** row appears under the device picker. Pick the input your microphone is plugged into, and EnviousWispr remembers that choice for that box.
+Audio interfaces such as a Focusrite Scarlett have two or more inputs, and EnviousWispr records from one of them. It uses Input 1 unless you tell it otherwise. When the selected device reports more than one input, a **Mic is on** control appears next to the device picker. Pick the input your microphone is plugged into, and EnviousWispr remembers that choice for that box.
 
 If your microphone is on the wrong input, a recording ends with a notice that names the device and points you to this setting. If the input numbers do not match the sockets on your device, try the next one.
 
