@@ -87,7 +87,7 @@ enum WhatsNewContent {
     // #628. Snippets shipped on 2026-09-01 and had no entry, so the release
     // body rendered from this file would have omitted a headline feature.
     // Every clause checked against main: the default keyword is
-    // `VocabularyLanes.defaultKeyword` ("backslash"); "six working examples"
+    // `SnippetVocabulary.defaultKeyword` ("backslash"); "six working examples"
     // is `SnippetStarters`; "word for word" and "line breaks included" are
     // the polish bypass, the smart-insertion skip and the multi-line delivery
     // fix (#2639); the location is `SettingsSection.snippets`. NOT "exactly as
