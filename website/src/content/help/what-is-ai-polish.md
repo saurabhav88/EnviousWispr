@@ -35,11 +35,11 @@ Every option is listed under **Settings** \> **AI Polish**, in three groups.
 
 ### How EG-1 lays out what you dictate
 
-From version 2.4.7, EG-1 gives your dictation a shape rather than returning one long paragraph.
+From version 2.4.7, EG-1 gives your dictation a shape rather than returning one long paragraph. It gets this right most of the time rather than every time, so read anything long before you send it.
 
-- **A new topic starts a new paragraph.** When you move from one subject to the next, EG-1 puts a break there.
-- **A list you announce comes out as a list.** Say that you have three points and then give them, and you get three lines rather than one run-on sentence.
-- **An email gets a greeting on its own line.** Dictate a message start to finish and the opening line sits above the body. A sign-off usually lands on its own line too, though less reliably than the greeting, so check that one before you send.
+- **A new topic starts a new paragraph.** When you move from one subject to the next, EG-1 usually puts a break there.
+- **A list you announce comes out as a list.** Say that you have three points and then give them, and you usually get three lines rather than one run-on sentence. This is the one it misses most often.
+- **An email gets a greeting on its own line.** Dictate a message start to finish and the opening line sits above the body. A sign-off usually lands on its own line too, though less reliably than the greeting.
 
 EG-1 still adds nothing you did not say, and it does not write a subject line for you.
 
