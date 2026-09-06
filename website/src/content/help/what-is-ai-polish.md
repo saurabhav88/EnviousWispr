@@ -39,9 +39,9 @@ From version 2.4.7, EG-1 gives your dictation a shape rather than returning one 
 
 - **A new topic starts a new paragraph.** When you move from one subject to the next, EG-1 usually puts a break there.
 - **A list you announce comes out as a list.** Say that you have three points and then give them, and you usually get three lines rather than one run-on sentence. This is the one it misses most often.
-- **An email gets a greeting on its own line.** Dictate a message start to finish and the opening line sits above the body. A sign-off usually lands on its own line too, though less reliably than the greeting.
+- **An email gets a greeting on its own line.** Dictate a message start to finish and the opening line almost always sits above the body. A sign-off usually lands on its own line too, though less reliably than the greeting.
 
-EG-1 still adds nothing you did not say, and it does not write a subject line for you.
+This is layout, not content. The limits above still apply: EG-1 is not allowed to add anything you did not say, and it is not asked to write you a subject line.
 
 ### The default, and how to change it
 
