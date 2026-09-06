@@ -58,89 +58,227 @@ enum WhatsNewContent {
     // MARK: - v2.4.7
 
     // **THIS GROUP IS OPEN AND 2.4.6 HAS SHIPPED** (tag v2.4.6, 2026-08-28), so
-    // the entry below could not live in that group. The unread badge is
-    // `lastSeen != currentContentVersion`; a user who opened What's New after
-    // 2.4.6 shipped has `lastSeen == "2.4.6"`, so an entry appended there raises
-    // no badge and is never seen by the exact people it was written for, with
-    // nothing failing. `WhatsNewConstants.currentContentVersion` moves to 2.4.7
-    // with this group. Only the CONTENT version moves; the marketing version in
-    // Info.plist waits for a release PR. Owner, not restated:
+    // these entries could not live in that group. The unread badge is
+    // `lastSeen != currentContentVersion`; an entry appended to a shipped group
+    // raises no badge and is never seen. Owner, not restated:
     // .claude/knowledge/whats-new-protocol.md FACT: whats-new-grouping.
-
-    // Founder direction 2026-09-01: settings that were opt in now ship on.
-    // ONE entry rather than three, because a user does not experience three
-    // settings changing; they experience the app doing more on the day they
-    // update. The sentence names what they will SEE and where the switch is,
-    // since every one of these is still theirs to turn off.
     //
-    // The macOS 26 caveat on Live Preview is stated as behaviour rather than as
-    // a requirement: on a Mac that cannot run it, nothing appears and nothing is
-    // said, which is the whole reason on-by-default is safe to ship.
-    Entry(
-      id: "better-out-of-the-box-defaults",
-      icon: "sparkles",
-      title: "More of EnviousWispr is switched on from the start",
-      description:
-        "Cancelling with your keybind now keeps the dictation and offers it back instead of throwing it away. Your words appear in the recording bar while you speak, on Macs that can show them. A short tick confirms when recording starts and stops. Every one of these is a switch you can turn off, in Keybinds, Live Preview and Sounds settings.",
-      version: "2.4.7"
-    ),
-
-    // #2497 follow-up. Repair copy is allowed here and was NOT allowed in the
-    // 2.4.6 entry above, and the protocol draws that line by whether anyone RAN
-    // the version being repaired: Quick Add reached users in 2.4.6, so its keys
-    // moving under them is a change they will feel the moment they reach for the
-    // old ones.
+    // THE COPY IS THE FOUNDER'S OWN TEXT, VERBATIM. He wrote these entries in a
+    // review page on 2026-09-05 after rejecting two drafts of mine as
+    // machine-written, and rejected a THIRD for polishing his sentences into
+    // mine: "I kind of wanted my verbatim writing." Do not smooth, expand or
+    // re-balance them. Seven repairs were made and every one was declared to
+    // him. He then did a FINAL pass on 2026-09-06 and rewrote six of the eight
+    // himself; those six are his text exactly, with three mechanical repairs,
+    // each declared:
     //
-    // "could start a recording" rather than "started": the collision is real but
-    // it is not universal. Record ships as bare RIGHT Option, so only a hand that
-    // took the right-hand Option key hit it, and anyone who had rebound Record
-    // never hit it at all. An unearned absolute here would be the same defect
-    // RULE: verify-every-claim-in-an-entry exists to catch.
-    Entry(
-      id: "quick-add-shortcut-moved",
-      icon: "keyboard",
-      title: "Quick Add has a new keyboard shortcut",
-      description:
-        "Quick Add has moved to Control Shift W. Its old keys shared the Option key with the record key, so it could start a recording instead of opening the panel. If you chose your own Quick Add keys, yours are untouched. You can change it in Keybinds settings.",
-      version: "2.4.7"
-    ),
-
-    // #2649. Every clause checked against the branch before this entry was
-    // written: "484 MB" is `LocalEngineDescriptor.s1Mini.downloadSize`, bound
-    // to the delivery manifest by test; "free" and "on this Mac" are the
-    // engine's whole design (bundled llama-server, no key); "three settings"
-    // are the `S1ControlSettings` axes; the licensed spelling is asserted by
-    // `S1ControlLinePromptTests.displayNameIsLicenceExact`. No absolute about
-    // quality is made, because none was measured against a user's own text.
-    Entry(
-      id: "s1-mini-local-polish",
-      icon: "cpu",
-      title: "A second on-device polish model, S1-mini by Superwhisper",
-      description:
-        "S1-mini is a small open model for cleaning up dictation, and it is now an option beside EG-1 in AI Polish settings. It is a 484 MB download, runs on this Mac, and is free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. EG-1 stays the recommended choice.",
-      version: "2.4.7"
-    ),
-
-    // #628. Snippets shipped on 2026-09-01 and had no entry, so the release
-    // body rendered from this file would have omitted a headline feature.
-    // Every clause checked against main: the default keyword is
-    // `SnippetVocabulary.defaultKeyword` ("backslash"); "six working examples"
-    // is `SnippetStarters`; "word for word" and "line breaks included" are
-    // the polish bypass, the smart-insertion skip and the multi-line delivery
-    // fix (#2639); the location is `SettingsSection.snippets`. NOT "exactly as
-    // you typed it": `CursorInsertionRepair.legacyPayload` appends a trailing
-    // space to every delivered dictation, snippets included (#2643 owns
-    // whether they should be exempt), so the copy says so instead of
-    // promising a byte-exact paste. Nothing is claimed about import, which
-    // has not shipped.
+    // 1. "sound settings" -> "microphone settings" in the multi-input entry.
+    //    The control is `SettingsSection.audio`, titled "Microphone"; "Sound
+    //    settings" is a macOS System Settings pane that does not carry it, so
+    //    the sentence sent people to the wrong window.
+    // 2. The `\n\n` he typed in two bodies was REMOVED, not shipped. A newline
+    //    escape in `description` survives `normalise_literal` (which collapses
+    //    real whitespace, never the two characters `\` `n`) and ships visible
+    //    on the GitHub release page. The Snippets pair joined into one
+    //    paragraph; the five-fix list moved to `bullets:`, which is the
+    //    mechanism #2484 added for exactly this and which the Entry doc comment
+    //    above names.
+    // 3. "The rest of what changed:" is mine, five words, because `bullets:`
+    //    renders beneath a description and the empty-field guard refuses a
+    //    blank one.
+    //
+    // Untouched though arguable, because they are his call and not wrong:
+    // "Vocab packs are fully editable" (a pack word can be switched off, have
+    // aliases added or removed, and be restored; a word cannot be added to or
+    // deleted from a pack), and "no more input error messages", which he ruled
+    // on directly.
+    // Three rulings, all of which overrode a draft of mine:
+    //
+    // 1. A NET-NEW thing opens `Introducing "<Name>"` and then says how it
+    //    works. Everything else answers first, `voice-framework.md` Mode D.
+    // 2. "POLISHING" IS THE USER'S WORD FOR EVERYTHING AFTER RAW TEXT. Do not
+    //    split AI Polish from the deterministic clean-up in user copy: "I am
+    //    seeing how people talk about these apps. They don't care if it's AI
+    //    polish or deterministic." An earlier draft spent two sentences drawing
+    //    that line and he cut it. The distinction stays in code and in these
+    //    comments, never on the What's New screen.
+    // 2b. REGISTER, and it governs every entry above: "it's super simple, easy
+    //    to understand sentences that don't give too much detail. No one cares
+    //    what was broken. They just want to understand the experience and
+    //    value." So no entry narrates the defect, no entry quotes a
+    //    measurement, and two to four short sentences is the whole card. Two
+    //    drafts were cut for failing this before the third passed.
+    // 3. Thirteen entries became eight. Five small fixes merged into the last
+    //    entry at one sentence each, and the three cosmetic repairs that had
+    //    been collected as "quiet-repairs-2-4-7" (#2597 toolbar overlap, #2602
+    //    model grouping, #2578 built-in spellings) were CUT outright. Nothing
+    //    user-visible is unmentioned except those three, which he judged not
+    //    worth a line.
     Entry(
       id: "snippets",
       icon: "text.badge.plus",
-      title: "Snippets: say a short phrase, paste the text you saved",
+      title: "Introducing \"Snippets\"",
       description:
-        "Save a piece of text once, then say your keyword and a short phrase to paste it: an email address, a sign-off, a link you send every week. The keyword is backslash unless you change it, so \"backslash my email\" pastes your address and \"my email\" on its own is left alone. What you saved is pasted word for word, line breaks included, with a space after it like any other dictation, and AI Polish never rewrites it. A fresh install starts with six working examples you can edit or delete. Find them in Settings under Snippets.",
+        "Stop retyping the same information. Save your email address, LinkedIn, Calendly link, or common email templates as snippets. Speak your customizable trigger phrase, and the text drops straight into your active cursor field. New installs come preloaded with six examples to help you get started. To set it up: Settings > Snippets.",
       version: "2.4.7"
     ),
+
+    // #2547 / #2573, merged bd47b224. FOUNDER-GATED and granted 2026-09-05:
+    // the bytes were published 2026-09-01 and reach no installed user until a
+    // release ships, which #2547 recorded as his call.
+    //
+    // "IT RESTRUCTURES" IS THE FOUNDER'S CORRECTION AND IT IS RIGHT. A draft of
+    // mine said 1.2 only moves the greeting and the sign-off onto their own
+    // lines and does not restructure paragraphs. Measured against the SHIPPED
+    // model on #2547: a paragraph break at a topic change 4/102 -> 97/102, a
+    // real list built 1/114 -> 96/114, email layout 0/36 -> 31/36. The ship
+    // criterion stated before the result was "keep a3's email and structure
+    // gains", and 1.2 shipped, so the gains held. The greeting is
+    // unconditional (32 of 32 on the 69-case real-audio bench); the sign-off
+    // is NOT (29 of 37), which is why no sentence here promises one.
+    // Known limit, unstated because no user surface exposes it: an EG-1 pulled
+    // through Ollama carries no manifest and keeps the 1.1 instruction.
+    Entry(
+      id: "eg1-1-2",
+      icon: "wand.and.stars",
+      title: "Introducing \"Email Formatting\" for EG-1",
+      description:
+        "With EG-1, you can now dictate emails aloud and have them automatically converted into clean, ready-to-send formats. The model retains all its standard text-polishing capabilities, too.",
+      version: "2.4.7"
+    ),
+
+    // #2649. Body is the founder's own, typo fixed. Every clause still checked:
+    // "484 MB" is `LocalEngineDescriptor.s1Mini.downloadSize`, bound to the
+    // delivery manifest by test; "free" and "offline" are the engine's design
+    // (bundled llama-server, no key); the three dials are the
+    // `S1ControlSettings` axes; the licensed spelling is asserted by
+    // `S1ControlLinePromptTests.displayNameIsLicenceExact`. The space
+    // comparison is real and checkable: `LocalEngineStatusCard` renders EG-1 at
+    // 2.9 GB and S1-mini at 484 MB.
+    Entry(
+      id: "s1-mini-local-polish",
+      icon: "cpu",
+      title: "Introducing \"S1-mini by Superwhisper\"",
+      description:
+        "S1-mini, Superwhisper's custom-tuned local model, is now available for offline polishing. It is completely free, downloads in just 484 MB, and gives you three quick dials to shape your text: Tone, Structure, and Context. EG-1 is still the go-to for maximum polish quality, but S1-mini delivers solid on-device results on a much smaller footprint.",
+      version: "2.4.7"
+    ),
+
+    // #2491 phases 1-4 (#2499, #2500, #2501, #2503). The founder-review repairs
+    // (#2504, #2505, #2509, #2606) carry NO copy: the whole page reaches users
+    // for the first time here, and RULE: whats-new-content-rules forbids repair
+    // copy on a first-time surface. Claims checked against the shipped source:
+    // "Dictionary" is `SettingsSection.wordCorrection.title`; the four sections
+    // are `DictionaryTab.label`; the per-word switch and the alias editor are
+    // `VocabularyPackDetailSheet`.
+    Entry(
+      id: "dictionary-page-rebuilt",
+      icon: "character.book.closed",
+      title: "Re-designed Your Words into Dictionary",
+      description:
+        "\"Your Words\" is now \"Dictionary.\" Vocab packs are fully editable, and the interface has been overhauled to make managing your custom vocabulary smoother and more intuitive.",
+      version: "2.4.7"
+    ),
+
+    // #2664, merged b0136b2e. The control and its label are `InputSocketCopy`;
+    // "more than one input" is the `inputChannelCount > 1` guard in
+    // `MultiInputAdvisoryHint`; "we remember it" is
+    // `SettingsManager.inputChannelByDeviceUID`, keyed per device UID.
+    //
+    // "ERROR MESSAGE" IS THE FOUNDER'S WORD AND IT STAYS. A draft of mine
+    // objected that `DictationNarrator.copy(for:)` renders an advisory notice
+    // rather than an error; he ruled that a person reading "Audio isn't
+    // capturing" is reading an error message, and he is right about the person.
+    // The "what was broken" half was then CUT entirely under his 2026-09-05
+    // register ruling: "No one cares what was broken. They just want to
+    // understand the experience and value." Scarlett is named because the #2664
+    // report was a Focusrite Scarlett 2i2; the help centre owns the
+    // per-generation wiring.
+    Entry(
+      id: "input-channel-selection",
+      icon: "cable.connector",
+      title: "Support for multi input devices",
+      description:
+        "Multi-input audio interfaces like the Focusrite Scarlett are now properly supported. Select your specific mic input channel in microphone settings to route your audio cleanly, with no more input error messages.",
+      version: "2.4.7"
+    ),
+
+    // #2578. Title and framing are the founder's. NOT "for new installs", which
+    // his first note said and he corrected himself: `SettingsManager.init`
+    // reads each key with `defaults.object(forKey:) as? Bool ?? default` and a
+    // `didSet` does not fire during initialization, so nothing is written back
+    // at load. Anyone who never touched these three switches picks up the new
+    // default on update, which is most people, not just fresh installs.
+    Entry(
+      id: "better-out-of-the-box-defaults",
+      icon: "sparkles",
+      title: "Introducing New Default Settings",
+      description:
+        "We're making some key functionalities on by default. They can still be toggled off in settings.",
+      version: "2.4.7"
+    ),
+
+    // #2614, merged dbcf8e65. TWO founder corrections shaped this one and both
+    // were right. First, it is not only a plumbing change: the release also
+    // grew the protected-word table from four languages to eight (pt, sv, sl,
+    // hr joined de, nl, da, no in `FillerRemovalStep.languageProtectedTokens`),
+    // each row grounded by `LanguageGateBenchmarkTests` on real engine output,
+    // and added a veto path that keeps the union of every row and skips the
+    // number rules when the language is unknown but known not to be English.
+    // Second, the copy says POLISHING, his word for everything after raw text,
+    // and does not distinguish the deterministic chain from AI Polish.
+    //
+    // ONE WORD OF HIS WAS CHANGED AND IT IS THE ONLY FACTUAL EDIT IN THE GROUP:
+    // he wrote "We've re-trained our polishing systems". Nothing was retrained.
+    // #2614 resolves the language once and hands it to the chain, and grew the
+    // protected-word table; the model weights are untouched by it. "taught" is
+    // the smallest word that keeps his sentence and makes it true. Declared to
+    // him rather than slipped in.
+    // Measurement kept out of the copy on purpose: 161 of 207 staged rows
+    // damaged before, 1 after. "Your real words stay put" is weaker than that,
+    // which is the direction RULE: verify-every-claim-in-an-entry wants. Two
+    // sentences is the whole entry, per the register ruling below.
+    Entry(
+      id: "language-aware-cleanup",
+      icon: "globe",
+      title: "Improved International Polishing",
+      description:
+        "We've taught our polishing systems to better recognize when to remove filler words depending on the language spoken.",
+      version: "2.4.7"
+    ),
+
+    // LAST, and COLLECTED at the founder's instruction on 2026-09-05: he marked
+    // these five "merge into 1 catch all note (1 sentence only)". The collective
+    // title is licensed by whats-new-protocol.md RULE: whats-new-content-rules
+    // on all four conditions: it is last, every other entry here is specifically
+    // titled, the title is written fresh rather than reusing v2.4.6's "The
+    // smaller wins", and no member is something a user goes looking for.
+    // `codex review` raises this as a P2 every time because it reads the
+    // prohibition literally; adjudicate against those four conditions and cite
+    // that row rather than re-asking the founder, who has already ruled here.
+    //
+    // Members, one sentence each: #2613 (shortcut recorder), #2606/#2497 (Quick
+    // Add keys), #2555/#2549 (microphone permission), #2093/#1833 (cloud polish
+    // budget), #2496 (spoken labels). Every clause checked: "Control Shift W" is
+    // `ShortcutRole.quickAdd`'s default; "fifteen seconds" is
+    // `LLMPolishStep.cloudBaseSeconds`; "Microphone access needed" and its
+    // "Open Settings" action are `PillCatalog`.
+    Entry(
+      id: "five-smaller-fixes-2-4-7",
+      icon: "wrench.and.screwdriver",
+      title: "Five smaller fixes",
+      description:
+        "The rest of what changed:",
+      bullets: [
+        "Moved Quick Add to Ctrl + Shift + W.",
+        "Added clearer microphone error handling: if access is blocked, you will see an alert with a direct shortcut to your system settings.",
+        "Upgraded the shortcut recorder to reliably capture entire key combos.",
+        "Bumped the OpenAI and Gemini request timeout from 5 seconds to 15 seconds to give complex polishing more room to finish.",
+        "Improved speech parsing so saying \"two B\" outputs as \"2B\".",
+      ],
+      version: "2.4.7"
+    ),
+
     // MARK: - v2.4.6
 
     // Every title and every collapsed line in this group was written or edited by
@@ -439,7 +577,6 @@ enum WhatsNewContent {
         "If your Mac's default microphone was a virtual one, the kind that Krisp, Loopback, BlackHole, an aggregate device or a meeting app installs, EnviousWispr took it at its word and recorded digital silence. Not quieter audio, nothing at all, every single time. Across the four releases we have data for, not one dictation on a device like that ever succeeded. The app now reads what the device actually is before binding to it, and picks a real microphone over one of these whenever you have one. If a virtual device is genuinely the only input on your Mac, it is still used, because refusing it would leave you with nothing to record with at all. If you tried EnviousWispr, got nothing back, and assumed it was broken: it was, and it is worth another go.",
       version: "2.4.5"
     ),
-
 
     // #2181, #2174, #2192, #2197, #2032, #2200, #2076, #1999, #2001, #2006.
     // A COLLECTED entry, permitted by whats-new-protocol.md
