@@ -86,6 +86,14 @@ enum WhatsNewContent {
     // 3. "The rest of what changed:" is mine, five words, because `bullets:`
     //    renders beneath a description and the empty-field guard refuses a
     //    blank one.
+    // 4. "your keyword followed by" was added to the Snippets sentence after
+    //    the cloud reviewer raised it as a P2 on PR #2686, and it is
+    //    REPRODUCIBLE, not hypothetical: `SnippetExpander` requires the keyword
+    //    immediately before the trigger, so a user who followed his sentence
+    //    literally and spoke only the trigger would get nothing and conclude
+    //    the headline feature is broken. `SnippetsView.keywordExample` already
+    //    tells users "say <keyword> <trigger>", so the note was the only
+    //    surface disagreeing with the app.
     //
     // Untouched though arguable, because they are his call and not wrong:
     // "Vocab packs are fully editable" (a pack word can be switched off, have
@@ -119,7 +127,7 @@ enum WhatsNewContent {
       icon: "text.badge.plus",
       title: "Introducing \"Snippets\"",
       description:
-        "Stop retyping the same information. Save your email address, LinkedIn, Calendly link, or common email templates as snippets. Speak your customizable trigger phrase, and the text drops straight into your active cursor field. New installs come preloaded with six examples to help you get started. To set it up: Settings > Snippets.",
+        "Stop retyping the same information. Save your email address, LinkedIn, Calendly link, or common email templates as snippets. Speak your keyword followed by your customizable trigger phrase, and the text drops straight into your active cursor field. New installs come preloaded with six examples to help you get started. To set it up: Settings > Snippets.",
       version: "2.4.7"
     ),
 
