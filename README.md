@@ -127,7 +127,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
 - **A second on-device polish model, S1-mini by Superwhisper.** A small open model for cleaning up dictation, now an option beside EG-1 in AI Polish settings. A 484 MB download, runs on your Mac, and free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. Happiest in English. EG-1 stays the recommended choice. (v2.4.7)
-- **Snippets.** Say a keyword, then a short phrase, and the text you saved is pasted character for character. A fresh install starts with six working examples to try. (v2.4.7)
+- **Snippets.** Say a keyword, then a short phrase, and the text you saved is pasted word for word. A fresh install starts with six working examples to try. (v2.4.7)
 - **More of EnviousWispr is switched on from the start.** Escape Recovery, Live Preview and the recording sounds are now on by default, and each is a switch you can turn off. Quick Add has moved to Control Shift W so it no longer shares a key with recording. (v2.4.7)
 - **Add a custom word to your dictionary with a click of a button.** Highlight a misheard word anywhere on macOS, press the Quick Add keybind, and save the right spelling without opening Settings. A small panel ranks it against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu. (v2.4.6)
 - **A new pill design for recording, and a practice run during setup.** Choose between recording pill designs in Appearance, and try dictation before onboarding ends. (v2.4.6)

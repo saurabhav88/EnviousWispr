@@ -4,9 +4,9 @@ description: "What AI Polish changes about your dictation, and what it is design
 category: "ai-polish"
 section: "Polish"
 order: 1
-keywords: ["polish", "ai polish", "cleanup", "clean up my text", "grammar", "punctuation", "tidy", "what does ai do", "editing"]
+keywords: ["polish", "ai polish", "cleanup", "clean up my text", "grammar", "punctuation", "tidy", "what does ai do", "editing", "email", "dictate an email", "email formatting", "paragraphs", "paragraph breaks", "bullet list", "make a list"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "s1-mini-by-superwhisper-and-writing-style"]
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 AI Polish is the optional step EnviousWispr runs after transcribing your speech, to tidy up what you said. It fixes grammar and punctuation, cuts filler words, and is instructed to keep your exact meaning and your language.
 
@@ -32,6 +32,16 @@ Every option is listed under **Settings** \> **AI Polish**, in three groups.
 - **On this Mac.** EG-1, our own model tuned for dictation, and the recommended choice. Apple Intelligence, built into macOS 26. S1-mini by Superwhisper, a small open model that is a 484 MB download. Nothing you dictate leaves your Mac with any of these.
 - **Your own setup.** Ollama, running an open model you choose, on your Mac or hosted.
 - **Cloud.** OpenAI, Google Gemini or Claude, with your own API key. These receive your transcribed text, never your audio.
+
+### How EG-1 lays out what you dictate
+
+From version 2.4.7, EG-1 gives your dictation a shape rather than returning one long paragraph. It gets this right most of the time rather than every time, so read anything long before you send it.
+
+- **A new topic starts a new paragraph.** When you move from one subject to the next, EG-1 usually puts a break there.
+- **A list you announce comes out as a list.** Say that you have three points and then give them, and you usually get three lines rather than one run-on sentence. This is the one it misses most often.
+- **An email gets a greeting on its own line.** Dictate a message start to finish and the opening line almost always sits above the body. A sign-off usually lands on its own line too, though less reliably than the greeting.
+
+This is layout, not content. The limits above still apply: EG-1 is not allowed to add anything you did not say, and it is not asked to write you a subject line.
 
 ### The default, and how to change it
 
