@@ -167,9 +167,53 @@ public final class ModelDeliveryHome {
         // constructs its own resolution is testing a struct rather than the
         // thing production runs, and would not notice the resolver changing
         // under it.
-        StorageRoot.resolve(systemApplicationSupport: $0, home: $0)
+        // DISTINCT candidates. Passing one URL as both aliases them: the first
+        // resolution records `.standard` for that directory, and the next one
+        // examines the same directory as `.homeFallback` first and rejects the
+        // mismatch. A fixture that cannot resolve twice is not exercising the
+        // resolver, it is exercising an accident.
+        StorageRoot.resolve(
+          systemApplicationSupport: $0.appendingPathComponent("AppSupport", isDirectory: true),
+          home: $0.appendingPathComponent("Home", isDirectory: true))
       } ?? StorageRoot.live
     let appSupportRoot = storage.dataDirectory.deletingLastPathComponent()
+
+    // #2697 release gate, P1: AN UNAVAILABLE RESOLUTION REGISTERS NOTHING.
+    //
+    // Refusing inside `ensureModelLocationReady()` closed the LOAD path and left
+    // two others open, which is the shape of a refusal that can be walked
+    // around: the startup staging sweep below deletes without asking anything,
+    // and the Settings Resume button reaches `ensureAvailable()` directly. Both
+    // mutate. Declining to build the registration at all is the only version of
+    // this refusal that every path inherits, because there is nothing left to
+    // call.
+    //
+    // The adapter then finds no handle and asks
+    // `ParakeetInstallLocation.directoryFromSystemApplicationSupport()`, which
+    // consults the same flag and returns `nil`, so the load refuses rather than
+    // resolving a path nobody may write to.
+    //
+    // SCOPE, and I am stating what the code DOES rather than what I set out to
+    // write: this `return` skips EVERY family, not only Parakeet. WhisperKit and
+    // EG-1 still compose their directories from `appSupportRoot` below, and if
+    // they registered here they would carry the same startup sweep and the same
+    // Resume path into a location nobody may write to. Refusing all three is
+    // therefore the correct behaviour and not merely the convenient one — but it
+    // is wider than the finding that prompted it, so it is named here rather
+    // than left for a reader to discover from the control flow.
+    //
+    // Moving those two onto the resolver is #2695's PR 2. This only stops them
+    // registering when storage is already known to be unusable.
+    guard !storage.isUnavailable else {
+      Task {
+        await AppLogger.shared.log(
+          "Model delivery: storage is unavailable, so no model family is registered "
+            + "and nothing will be written or deleted",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
+
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "parakeet-delivery-manifest", bundle: manifestBundle)
