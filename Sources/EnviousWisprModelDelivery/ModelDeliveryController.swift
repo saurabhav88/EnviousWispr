@@ -577,7 +577,20 @@ public actor ModelDeliveryController {
         try admission.promoteAndAdmit(
           stagedComponents: [], stagingDirectory: stagingDirectory(for: registration),
           untouchedComponents: validation.verifiedComponents)
+      } catch let failure as DeliveryFailure {
+        // #2691: pass CacheAdmission's own failure through, exactly as the
+        // post-fetch promote below already does. This arm used to replace every
+        // throw with the fixed detail "admit_in_place", discarding the two
+        // details that say WHICH half failed — `orphan_cleanup` and
+        // `post_promote_stamp:<component>`. #2690's reporter could therefore
+        // only ever see one generic word for a failure that had a specific
+        // cause, and neither he nor the telemetry could tell an unremovable
+        // entry from a bad post-promote stamp.
+        return await finishFailed(identity, failure, generation: generation)
       } catch {
+        // Anything that is not a DeliveryFailure keeps the old site-named
+        // detail: there is no better name for it, and the site is still the
+        // most useful thing we know.
         let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "admit_in_place")
         return await finishFailed(identity, failure, generation: generation)
       }
