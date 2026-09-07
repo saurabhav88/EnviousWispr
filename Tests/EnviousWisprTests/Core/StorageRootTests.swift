@@ -636,3 +636,95 @@ struct StorageRootWiringGuardTests {
       """)
   }
 }
+
+/// Taking a root is a RACE between processes of this app, and a single-threaded
+/// test cannot tell an atomic claim from a check-then-act one — both pass.
+/// `validation-discipline.md`
+/// RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act
+/// says the only way to test atomicity is to race it, so these do.
+///
+/// What is at stake: the old claim wrote a temporary file and renamed it into
+/// place, and a rename overwrites unconditionally. Between one process reading a
+/// root as free and writing its claim, another could commit an interrupted
+/// handoff there — and the rename would destroy it, which is exactly what the
+/// five readings of the record exist to prevent.
+@Suite(.tags(.productOutcome))
+struct StorageRootClaimRaceTests {
+
+  /// Collects results from many threads. `@unchecked Sendable` because the lock
+  /// is what makes it safe, and the compiler cannot see that.
+  private final class Box: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var outcomes: [StorageRoot.ClaimOutcome] = []
+    func add(_ outcome: StorageRoot.ClaimOutcome) {
+      lock.lock()
+      outcomes.append(outcome)
+      lock.unlock()
+    }
+  }
+
+  private func makeDirectory() throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-claim-race-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+
+  @Test("Exactly one of forty simultaneous claims wins")
+  func fortySimultaneousClaimsProduceOneWinner() throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let box = Box()
+
+    DispatchQueue.concurrentPerform(iterations: 40) { _ in
+      box.add(StorageRoot.claim(directory, as: .standard))
+    }
+
+    let outcomes = box.outcomes
+    #expect(outcomes.count == 40)
+    #expect(outcomes.filter { $0 == .claimed }.count == 1)
+    #expect(outcomes.filter { $0 == .lostRace }.count == 39)
+    #expect(outcomes.contains(.failed) == false)
+  }
+
+  /// **Weaker than its neighbours, and marked so the suite does not read as
+  /// uniformly strong.** Measured: this case stays GREEN against the pre-fix
+  /// rename-based claim, because a rename also leaves one whole readable
+  /// record. It catches a TORN write, not a lost one. The two cases either side
+  /// of it are what distinguish atomic from overwrite.
+  @Test("Forty simultaneous claims leave one whole, readable record")
+  func aRacedRootEndsWithOneIntactRecord() throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    DispatchQueue.concurrentPerform(iterations: 40) { _ in
+      _ = StorageRoot.claim(directory, as: .standard)
+    }
+
+    // Not "a file exists" — a file exists after a torn write too. The record has
+    // to still decode, and the root has to still classify as ours.
+    let data = try Data(
+      contentsOf: directory.appendingPathComponent(StorageRoot.recordFileName))
+    let record = try JSONDecoder().decode(StorageRoot.Record.self, from: data)
+    #expect(record.selection == .standard)
+    #expect(record.committed)
+    #expect(StorageRoot.claimState(of: directory, expecting: .standard) == .committed)
+  }
+
+  /// The finding itself, single-threaded and structural: with a record already
+  /// present, a claim must decline and write NOTHING. This is what makes the
+  /// race safe rather than merely unlikely.
+  @Test("A claim never writes over a half-finished move")
+  func aClaimDeclinesRatherThanOverwriteAnInterruptedHandoff() throws {
+    let directory = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let recordURL = directory.appendingPathComponent(StorageRoot.recordFileName)
+    try JSONEncoder().encode(
+      StorageRoot.Record(selection: .standard, committed: false, createdAt: Date())
+    ).write(to: recordURL)
+    let before = try Data(contentsOf: recordURL)
+
+    #expect(StorageRoot.claim(directory, as: .standard) == .lostRace)
+    #expect(try Data(contentsOf: recordURL) == before)
+  }
+}

@@ -226,17 +226,29 @@ public enum StorageRoot {
     // and claiming over one destroys the only evidence of what was happening
     // there. It is skipped as a candidate for BOTH use and claiming, and still
     // named in `exhausted` so a message can list every path considered.
-    var attempted: [URL] = []
-    if let standard {
-      attempted.append(standard)
-      if standardState == .unclaimed, claim(standard, as: .standard) {
-        return resolved(standard, .standard, systemApplicationSupport)
+    // A claim can LOSE to another process of this app that wrote its record
+    // between our read and our write. The kernel decides that, not us, and the
+    // loser must re-read rather than assume: whatever landed there is now the
+    // truth about that root.
+    func take(_ directory: URL, _ selection: Selection, _ state: ClaimState) -> Resolution? {
+      guard state == .unclaimed else { return nil }
+      switch claim(directory, as: selection) {
+      case .claimed:
+        return resolved(directory, selection, systemApplicationSupport)
+      case .lostRace:
+        return settle(directory, selection, claimState(of: directory, expecting: selection))
+      case .failed:
+        return nil
       }
     }
-    attempted.append(fallback)
-    if fallbackState == .unclaimed, claim(fallback, as: .homeFallback) {
-      return resolved(fallback, .homeFallback, systemApplicationSupport)
+
+    var attempted: [URL] = []
+    if let standard, let standardState {
+      attempted.append(standard)
+      if let taken = take(standard, .standard, standardState) { return taken }
     }
+    attempted.append(fallback)
+    if let taken = take(fallback, .homeFallback, fallbackState) { return taken }
 
     // Nothing is usable. Return the STANDARD path rather than inventing a third
     // destination, so the failure lands at the real write with the real path in
@@ -276,17 +288,61 @@ public enum StorageRoot {
   /// cannot see an unwritable child of a writable parent. The write is the
   /// record itself, so a successful claim leaves the evidence it needed to
   /// produce anyway.
-  private static func claim(_ directory: URL, as selection: Selection) -> Bool {
-    guard prepare(directory) else { return false }
-    let record = Record(selection: selection, committed: true, createdAt: Date())
+  /// What happened when we tried to take a root.
+  enum ClaimOutcome: Equatable {
+    /// This process wrote the record and owns the root.
+    case claimed
+    /// Somebody else got there between our read and our write. Their record
+    /// stands; re-read it rather than guessing.
+    case lostRace
+    /// The directory or the write refused. Try the next candidate.
+    case failed
+  }
+
+  /// Take a root by creating its record EXCLUSIVELY.
+  ///
+  /// **Not a temp-file-then-rename, and the difference is the whole point.** A
+  /// rename overwrites unconditionally, so between one process reading a root
+  /// as `unclaimed` and writing its claim, another process can commit an
+  /// interrupted handoff or a newer build's record there — and the rename
+  /// destroys it, which is the very thing the five readings exist to prevent
+  /// (cloud review round 4). `O_CREAT | O_EXCL` decides that race in the
+  /// kernel: exactly one caller creates the file and everybody else gets
+  /// `EEXIST`, with no window between the check and the act.
+  ///
+  /// Same reasoning as `validation-discipline.md`
+  /// RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act,
+  /// which is also why the test for this RACES it rather than calling it twice.
+  static func claim(_ directory: URL, as selection: Selection) -> ClaimOutcome {
+    guard prepare(directory) else { return .failed }
+    let recordURL = directory.appendingPathComponent(recordFileName)
+
+    let fd = Foundation.open(recordURL.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+    guard fd >= 0 else { return errno == EEXIST ? .lostRace : .failed }
+
+    let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     do {
-      try DurableJSONFile.write(
-        record, to: directory.appendingPathComponent(recordFileName),
-        tempPrefix: ".ew-storage-state")
-      return true
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      let record = Record(selection: selection, committed: true, createdAt: Date())
+      try handle.write(contentsOf: try encoder.encode(record))
+      guard fcntl(fd, F_FULLFSYNC) != -1 else { throw CocoaError(.fileWriteUnknown) }
+      try handle.close()
     } catch {
-      return false
+      // We created it, so we own the cleanup: a zero-length or half-written
+      // record left behind would read as `unreadable` to the next launch, which
+      // means "this root holds the user's data" and would be a lie.
+      try? handle.close()
+      try? FileManager.default.removeItem(at: recordURL)
+      return .failed
     }
+
+    let dirFD = Foundation.open(directory.path, O_RDONLY)
+    if dirFD >= 0 {
+      _ = fcntl(dirFD, F_FULLFSYNC)
+      close(dirFD)
+    }
+    return .claimed
   }
 
   /// Re-prove a directory that already carries a committed record.
