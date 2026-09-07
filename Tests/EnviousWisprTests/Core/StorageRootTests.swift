@@ -299,7 +299,7 @@ struct StorageRootTests {
         "case-\(UUID().uuidString)", isDirectory: true)
       try fm.createDirectory(at: directory, withIntermediateDirectories: true)
       try build(directory)
-      return StorageRoot.claimState(of: directory)
+      return StorageRoot.claimState(of: directory, expecting: .standard)
     }
 
     #expect(try stateOf { _ in } == .unclaimed)
@@ -338,9 +338,61 @@ struct StorageRootTests {
     #expect(
       try stateOf { directory in
         try JSONEncoder().encode(
+          StorageRoot.Record(selection: .homeFallback, committed: true, createdAt: Date())
+        ).write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
+      } == .incompatible, "describes the OTHER root")
+
+    #expect(
+      try stateOf { directory in
+        try JSONEncoder().encode(
           StorageRoot.Record(selection: .standard, committed: true, createdAt: Date())
         ).write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
       } == .committed)
+  }
+
+  /// A newer build that adds a `Selection` case, or changes a required field,
+  /// produces a record that will not decode as `Record` at all. Checking the
+  /// version AFTER the full decode meant the version gate never ran for exactly
+  /// the changes it exists to catch, and the root came back as merely damaged —
+  /// which PERMITS writes in this build's older layout.
+  @Test("A shape from the future is refused, not mistaken for damage")
+  func aFutureShapeIsRefusedRatherThanTreatedAsDamage() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try FileManager.default.createDirectory(
+      at: sandbox.fallbackCandidate, withIntermediateDirectories: true)
+    // Decodes as a version stamp, does NOT decode as a `Record`: the shape a
+    // newer build with a new `Selection` case would leave behind.
+    try Data(#"{"version":99,"selection":"cloud","committed":true}"#.utf8).write(
+      to: sandbox.fallbackCandidate.appendingPathComponent(StorageRoot.recordFileName))
+
+    #expect(
+      StorageRoot.claimState(of: sandbox.fallbackCandidate, expecting: .homeFallback)
+        == .incompatible)
+  }
+
+  /// A marker copied or restored into the other candidate. The fallback is
+  /// checked first, so a stale copy there would otherwise win over a healthy
+  /// standard root and point the app at a directory that never held its data.
+  @Test("A record that describes the other root is not evidence about this one")
+  func aRecordDescribingTheOtherRootIsRefused() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .standard, committed: true, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+    let recordURL = sandbox.fallbackCandidate.appendingPathComponent(
+      StorageRoot.recordFileName)
+    let before = try Data(contentsOf: recordURL)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.isUnavailable)
+    #expect(resolution.selection == .homeFallback)
+    // Never written over: the stray copy may be the only trace of what the user
+    // actually had.
+    #expect(try Data(contentsOf: recordURL) == before)
   }
 
   /// A recorded selection is a claim about the past, not a promise about today:

@@ -190,8 +190,8 @@ public enum StorageRoot {
     // the moment the claimed root recovers, hiding everything written in
     // between. Two data sets, silently interleaved, with nothing reporting it.
     // Refusing is worse for one launch and correct forever after.
-    let fallbackState = claimState(of: fallback)
-    let standardState = standard.map(claimState(of:))
+    let fallbackState = claimState(of: fallback, expecting: .homeFallback)
+    let standardState = standard.map { claimState(of: $0, expecting: .standard) }
 
     // Each state permits a different ACTION, and the mapping is stated once
     // here rather than re-derived per candidate.
@@ -400,7 +400,25 @@ public enum StorageRoot {
     case inFlight
   }
 
-  static func claimState(of directory: URL) -> ClaimState {
+  /// Just the version, decoded on its own.
+  ///
+  /// **The version gate has to be reachable for EVERY shape, which means
+  /// reading it BEFORE the full decode rather than after.** A newer build that
+  /// changes a required field or adds a `Selection` case produces a record that
+  /// fails to decode as `Record` at all — so a version check placed after the
+  /// full decode never runs for exactly the changes it exists to catch, and the
+  /// root is classified `unreadable`, which PERMITS WRITES in this build's older
+  /// layout. The gate was unreachable in the case that matters (cloud review
+  /// round 3).
+  private struct RecordVersion: Decodable {
+    let version: Int
+  }
+
+  /// - Parameter expecting: which candidate this directory IS. Passed in rather
+  ///   than derived from the path, because `resolve` already knows and matching
+  ///   on path text would be a proxy for the question — right until a path spells
+  ///   itself differently, which is exactly what the tests' own sandbox does.
+  static func claimState(of directory: URL, expecting expected: Selection) -> ClaimState {
     let recordURL = directory.appendingPathComponent(recordFileName)
     switch presence(of: recordURL) {
     case .absent:
@@ -409,15 +427,23 @@ public enum StorageRoot {
       return .unreadable
     case .present:
       guard let data = try? Data(contentsOf: recordURL) else { return .unreadable }
+      // Version FIRST, from a minimal envelope, so a newer shape is refused
+      // rather than mistaken for a damaged one.
+      guard let stamp = try? JSONDecoder().decode(RecordVersion.self, from: data) else {
+        return .unreadable
+      }
+      guard stamp.version <= Record.currentVersion else { return .incompatible }
       guard let record = try? JSONDecoder().decode(Record.self, from: data) else {
         return .unreadable
       }
-      // A compatible superset still decodes, so deciding from `committed` alone
-      // would accept a shape this build does not know, while an incompatible
-      // shape would land in the decode-failure branch above and be handled
-      // differently. Same record, two answers, depending on a property nobody
-      // chose. One classification for both.
-      guard record.version <= Record.currentVersion else { return .incompatible }
+      // **A record must describe the root it was found in.** A marker copied or
+      // restored into the other candidate would otherwise be honoured for
+      // whichever directory happens to hold it, and because the fallback is
+      // checked first a stale copy there would win over a healthy standard root.
+      // Selection evidence that contradicts its own location is not evidence:
+      // refuse, and never write over it, because the copy may be the only trace
+      // of what the user actually had.
+      guard record.selection == expected else { return .incompatible }
       return record.committed ? .committed : .inFlight
     }
   }
