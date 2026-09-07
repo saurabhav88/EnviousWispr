@@ -278,6 +278,15 @@ public final class ModelDeliveryHome {
       // It does not race the seam: every migration now goes through the
       // controller's single-flight coordinator, so a warm-up arriving mid-run
       // joins this task rather than starting a second on the same candidate.
+      //
+      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
+      // caller of this seam ACTS on the location and must honour a refusal:
+      // `resumeParakeetDownload` below guards on it, and
+      // `ParakeetEngineAdapter` throws on it. This call acts on nothing — a
+      // refusal means the migration inside simply did not run, which is the
+      // outcome we want. Enumerated rather than assumed:
+      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
+      // call sites, and this is the only one with nothing to refuse.
       Task { _ = await handle.ensureModelLocationReady() }
       wireObservers(identity: identity)
     } catch {
