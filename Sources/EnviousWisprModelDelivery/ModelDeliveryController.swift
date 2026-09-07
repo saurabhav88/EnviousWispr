@@ -670,15 +670,38 @@ public actor ModelDeliveryController {
     // way back, because the wait is exactly long enough for one to land.
     var donorOutcome = LegacyDonorImport.Outcome.none
     if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
-      donorOutcome = await Task.detached(priority: .utility) {
+      // Cloud round 2 P2: a detached task does NOT inherit cancellation, so the
+      // handle is held and cancelled explicitly. Without this, cancelling during
+      // a fallback copy leaves `cancel(_:)` waiting for the drain while the copy
+      // runs to completion.
+      let copyTask = Task.detached(priority: .utility) {
         LegacyDonorImport.reproduce(
           manifest: manifest, components: componentsToFetch, donor: donor, staging: staging,
           // Staging lives at `metadataDirectory/staging/<cacheKey>`, so the
           // metadata directory is the app-owned root staging must resolve inside.
           trustedRoot: registration.metadataDirectory)
-      }.value
+      }
+      let importResult = await withTaskCancellationHandler {
+        await copyTask.value
+      } onCancel: {
+        copyTask.cancel()
+      }
       guard entries[identity]?.generation == generation, !Task.isCancelled else {
         return finishCancelled(identity, generation: generation)
+      }
+      switch importResult {
+      case .imported(let outcome):
+        donorOutcome = outcome
+      case .unsafeStagingRoot(let detail):
+        // Cloud round 2 P1: a containment refusal is about the DESTINATION, so it
+        // must abandon the attempt. Treating it as an ordinary empty import would
+        // hand the same unsafe staging URL to the fetcher, which writes through
+        // it, and promotion would then move component roots out of whatever it
+        // resolves to — the exact write this type exists to prevent, reached by
+        // the code that just declined to perform it.
+        let failure = DeliveryFailure(
+          reason: .cacheRepairFailed, detail: "unsafe_staging:\(detail)")
+        return await finishFailed(identity, failure, generation: generation)
       }
       if donorOutcome.filesReproduced > 0 {
         await AppLogger.shared.log(

@@ -42,6 +42,23 @@ public enum LegacyDonorImport {
       filesReproduced: 0, bytesReproduced: 0, clonedThroughout: true)
   }
 
+  /// The result of one attempt, with REFUSAL kept distinct from "imported
+  /// nothing" (cloud round 2 P1).
+  ///
+  /// Collapsing the two was a real hole: an unsafe staging root returned an
+  /// empty `Outcome`, the caller read that as an ordinary miss, and then handed
+  /// the SAME unsafe staging URL to the fetcher, which writes through it — and
+  /// promotion then moves component roots out of whatever it resolves to. A
+  /// refusal here is a statement about the destination, not about the donor, so
+  /// the caller must abandon the attempt rather than continue without us.
+  public enum Result: Sendable, Equatable {
+    case imported(Outcome)
+    /// Staging does not resolve inside the trusted root, or resolves inside the
+    /// donor. Nothing was written. The caller MUST NOT proceed to fetch with
+    /// this staging directory.
+    case unsafeStagingRoot(detail: String)
+  }
+
   /// Copy every manifest file of `components` from `donor` into `staging`.
   ///
   /// Best-effort per file by design: a partial result is useful, because each
@@ -58,26 +75,45 @@ public enum LegacyDonorImport {
   public static func reproduce(
     manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL,
     trustedRoot: URL
-  ) -> Outcome {
+  ) -> Result {
     let fm = FileManager.default
-    guard fm.fileExists(atPath: donor.path) else { return .none }
 
-    // Establish the write boundary ONCE, before anything is created. Resolving
-    // the staging root against a trusted app-owned root is what makes the
-    // containment check below non-circular; refusing a staging root that lands
-    // inside the donor is the same statement said the other way round, kept
-    // because it is the failure that matters and it should be impossible to
-    // read this code and miss it.
-    guard let stagingRoot = resolved(staging), let trusted = resolved(trustedRoot),
-      contained(stagingRoot, in: trusted)
-    else { return .none }
-    if let donorRoot = resolved(donor), contained(stagingRoot, in: donorRoot) { return .none }
+    // Establish the write boundary ONCE, before anything is created.
+    //
+    // Cloud round 2 P2: staging normally does NOT exist yet on a first delivery
+    // attempt — the fetcher creates it later — so requiring it to pre-exist made
+    // this return empty for exactly the users the import is for, and every one of
+    // them would have re-downloaded 483 MB. So: judge the nearest EXISTING
+    // ancestor, create staging only once that ancestor is proven inside the
+    // trusted root, and resolve afterwards.
+    guard let trusted = resolved(trustedRoot) else {
+      return .unsafeStagingRoot(detail: "trusted_root_unresolvable")
+    }
+    guard let anchor = nearestExistingAncestor(of: staging), let anchorPath = resolved(anchor),
+      contained(anchorPath, in: trusted)
+    else { return .unsafeStagingRoot(detail: "staging_ancestor_outside_trusted_root") }
+    try? fm.createDirectory(at: staging, withIntermediateDirectories: true)
+    guard let stagingRoot = resolved(staging), contained(stagingRoot, in: trusted) else {
+      return .unsafeStagingRoot(detail: "staging_outside_trusted_root")
+    }
+    // Said the other way round as well, because this is the failure that matters
+    // and it must be impossible to read this code and miss it.
+    if let donorRoot = resolved(donor), contained(stagingRoot, in: donorRoot) {
+      return .unsafeStagingRoot(detail: "staging_inside_donor")
+    }
+
+    // Only now is the donor's absence an ordinary, safe miss.
+    guard fm.fileExists(atPath: donor.path) else { return .imported(.none) }
 
     var files = 0
     var bytes: Int64 = 0
     var everyCopyCloned = true
 
     for file in manifest.files where components.contains(file.component) {
+      // Cloud round 2 P2: cooperative cancellation. A fallback copy moves
+      // hundreds of megabytes, and `cancel(_:)` waits for the attempt to drain —
+      // without this the user's cancel sits pending until the whole copy ends.
+      if Task.isCancelled { break }
       let source = donor.appendingPathComponent(file.resolvedInstallPath)
       // Size is the cheap gate that keeps us from copying a whole tree of the
       // wrong revision. It is NOT the correctness check — that is the staged
@@ -99,8 +135,9 @@ public enum LegacyDonorImport {
       // directories under FluidAudio by the time a later guard declines the
       // copy. So walk up to the nearest ancestor that EXISTS, resolve THAT, and
       // require it inside the staging root; only then create the rest.
-      guard let anchor = Self.nearestExistingAncestor(of: destination),
-        let anchorPath = Self.resolved(anchor), Self.contained(anchorPath, in: stagingRoot)
+      guard let fileAnchor = Self.nearestExistingAncestor(of: destination),
+        let fileAnchorPath = Self.resolved(fileAnchor),
+        Self.contained(fileAnchorPath, in: stagingRoot)
       else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -131,9 +168,10 @@ public enum LegacyDonorImport {
       }
     }
 
-    return Outcome(
-      filesReproduced: files, bytesReproduced: bytes,
-      clonedThroughout: everyCopyCloned && files > 0)
+    return .imported(
+      Outcome(
+        filesReproduced: files, bytesReproduced: bytes,
+        clonedThroughout: everyCopyCloned && files > 0))
   }
 
   /// Whether `path` is the root itself or sits beneath it. Both arguments must

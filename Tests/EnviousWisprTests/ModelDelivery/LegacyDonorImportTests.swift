@@ -56,6 +56,17 @@ struct LegacyDonorImportTests {
     return result
   }
 
+  /// Unwraps the imported case, failing the test on a refusal. A refusal is a
+  /// different claim from an empty import and the suite must never silently read
+  /// one as the other.
+  private func imported(_ result: LegacyDonorImport.Result) throws -> LegacyDonorImport.Outcome {
+    guard case .imported(let outcome) = result else {
+      Issue.record("expected an import, got \(result)")
+      throw CancellationError()
+    }
+    return outcome
+  }
+
   @Test("the donor keeps every file, its bytes and its inode")
   func donorIsUntouched() throws {
     let (donor, staging, root) = try makeDirs()
@@ -69,8 +80,10 @@ struct LegacyDonorImportTests {
     let before = try fingerprint(of: donor)
     #expect(before.count == files.count + 1)
 
-    let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: staging, trustedRoot: root))
 
     #expect(outcome.filesReproduced == files.count)
     let after = try fingerprint(of: donor)
@@ -89,8 +102,10 @@ struct LegacyDonorImportTests {
     for f in files { try write(f.content, under: donor, path: f.path) }
     let manifest = try ManifestFixture.manifest(files: files)
 
-    let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: staging, trustedRoot: root))
 
     #expect(outcome.filesReproduced == files.count)
     #expect(outcome.bytesReproduced == files.reduce(Int64(0)) { $0 + Int64($1.content.count) })
@@ -111,13 +126,39 @@ struct LegacyDonorImportTests {
     try write(Data("{".utf8), under: donor, path: files[0].path)
     let manifest = try ManifestFixture.manifest(files: files)
 
-    let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: staging, trustedRoot: root))
 
     #expect(outcome.filesReproduced == files.count - 1)
     #expect(
       !FileManager.default.fileExists(
         atPath: staging.appendingPathComponent(files[0].path).path))
+  }
+
+  @Test("staging that does not exist yet is created, not treated as a refusal")
+  func firstInstallStagingIsCreated() throws {
+    // Cloud round 2 P2: on a first delivery attempt `metadataDirectory/staging/
+    // <cacheKey>` does not exist — the fetcher creates it later. Requiring it to
+    // pre-exist made the import return empty for exactly the users it is for, and
+    // every one of them would have re-downloaded the whole model.
+    let (donor, _, root) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    let unborn = root.appendingPathComponent("staging/cache-key", isDirectory: true)
+    #expect(!FileManager.default.fileExists(atPath: unborn.path))
+
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: unborn, trustedRoot: root))
+
+    #expect(outcome.filesReproduced == files.count)
+    for f in files {
+      #expect(try Data(contentsOf: unborn.appendingPathComponent(f.path)) == f.content)
+    }
   }
 
   @Test("a staging directory outside the trusted root is refused outright")
@@ -134,11 +175,23 @@ struct LegacyDonorImportTests {
     try FileManager.default.createSymbolicLink(at: aliased, withDestinationURL: donor)
     let before = try fingerprint(of: donor)
 
-    let outcome = LegacyDonorImport.reproduce(
+    let result = LegacyDonorImport.reproduce(
       manifest: manifest, components: Set(files.map(\.component)), donor: donor,
       staging: aliased, trustedRoot: donor)
 
-    #expect(outcome == .none)
+    // A REFUSAL, not an empty import. The caller aborts the whole attempt on
+    // this, because continuing would hand the same unsafe staging URL to the
+    // fetcher.
+    //
+    // The CASE is asserted, not the detail string. Several guards can catch this
+    // shape — the ancestor check fires before the inside-donor check here — and
+    // pinning which one would test the order of the implementation rather than
+    // the property that matters, which is that nothing was written and the
+    // caller is told to stop.
+    guard case .unsafeStagingRoot = result else {
+      Issue.record("expected a refusal, got \(result)")
+      return
+    }
     let after = try fingerprint(of: donor)
     #expect(after.count == before.count)
     for (path, expected) in before {
@@ -153,9 +206,10 @@ struct LegacyDonorImportTests {
     let manifest = try ManifestFixture.manifest(files: files)
     let missing = donor.appendingPathComponent("never-existed", isDirectory: true)
 
-    let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: missing,
-      staging: staging, trustedRoot: root)
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: missing,
+        staging: staging, trustedRoot: root))
 
     #expect(outcome == .none)
     #expect(try fingerprint(of: staging).isEmpty)
