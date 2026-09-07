@@ -185,6 +185,50 @@ struct LegacyDonorMigrationTests {
       "an unreadable donor must leave the question open for the next launch")
   }
 
+  @Test("a file that goes bad AFTER the move is repaired from the donor, not the network")
+  func repairAfterCompletionUsesTheDonor() async throws {
+    let world = try makeWorld()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: world.donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    let reg = registration(world, manifest: manifest)
+    _ = await LegacyDonorMigration.migrate(registration: reg)
+    #expect(
+      LegacyDonorMigration.recordedState(
+        metadataDirectory: world.metadata, manifest: manifest) == .completed)
+
+    // Damage one file, same size, so only a hash can see it. Measured on the
+    // founder's machine: without `ignoringRecord` this repaired by downloading
+    // 483 MB with a complete donor copy on disk the whole time, which offline is
+    // not a slower repair but no model at all.
+    let victim = world.install.appendingPathComponent(files[0].path)
+    try Data(repeating: 0, count: files[0].content.count).write(to: victim)
+
+    let repaired = await LegacyDonorMigration.migrate(
+      registration: reg, ignoringRecord: true)
+
+    #expect(repaired.didAnything)
+    #expect(try Data(contentsOf: victim) == files[0].content)
+  }
+
+  @Test("a repair attempt never resurrects a model the user deleted")
+  func repairHonoursDeclined() async throws {
+    let world = try makeWorld()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: world.donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    LegacyDonorMigration.record(
+      .declined, metadataDirectory: world.metadata, manifest: manifest)
+
+    // `ignoringRecord` overrides `completed`, which is a stale answer about a
+    // finished move. It must NOT override `declined`, which is a decision.
+    let outcome = await LegacyDonorMigration.migrate(
+      registration: registration(world, manifest: manifest), ignoringRecord: true)
+
+    #expect(outcome == .none)
+    #expect(!FileManager.default.fileExists(atPath: world.install.path))
+  }
+
   // MARK: - What must never reach the user
 
   @Test("a donor file of the RIGHT SIZE but the wrong bytes is never published")

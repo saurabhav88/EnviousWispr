@@ -651,8 +651,43 @@ public actor ModelDeliveryController {
       return .cancelled(resumable: true)
     }
 
-    let componentsToFetch = Set(manifest.filesByComponent.map(\.component))
+    var componentsToFetch = Set(manifest.filesByComponent.map(\.component))
       .subtracting(validation.verifiedComponents)
+
+    // #2697, found by Live UAT rather than by review: REPAIR FROM THE DONOR
+    // BEFORE THE NETWORK.
+    //
+    // Migration runs once at launch and records `completed`, which is the right
+    // answer to "has the one-time move happened". It is the wrong answer to "may
+    // we look at the donor again". Measured on the founder's machine: corrupting
+    // ONE file in the owned installation produced `repaired=1 sources=1
+    // final_source=our_copy` — a real 483 MB download — with a complete donor
+    // copy sitting on disk the whole time. Offline, that is not a slower repair;
+    // it is no model.
+    //
+    // Before the disk preflight below, deliberately: components recovered here
+    // shrink the fetch set, so the headroom check asks for what is still missing
+    // rather than for bytes we have just put back. This writes into the INSTALL
+    // directory and never into staging, so the D3 rule that no staging or
+    // network write precedes the preflight still holds.
+    //
+    // `declined` is still honoured inside `migrate`, so a model the user
+    // deliberately removed is not resurrected by a repair attempt.
+    if !componentsToFetch.isEmpty, registration.legacyDonorDirectory != nil {
+      let recovered = await LegacyDonorMigration.migrate(
+        registration: registration, ignoringRecord: true)
+      if recovered.didAnything {
+        await AppLogger.shared.log(
+          "Model delivery repaired \(recovered.componentsPublished) component(s) from the "
+            + "legacy shared directory before any network use",
+          level: .info, category: "Delivery")
+        guard entries[identity]?.generation == generation, !Task.isCancelled else {
+          return finishCancelled(identity, generation: generation)
+        }
+        let recheck = await admission.validateExistingCache()
+        componentsToFetch.subtract(recheck.verifiedComponents)
+      }
+    }
     // Repair means something WAS there and got replaced — a cold install's
     // all-missing components are a normal first download, not a repair
     // (code-diff r1 P3: first-run metrics must not read as repair storms).

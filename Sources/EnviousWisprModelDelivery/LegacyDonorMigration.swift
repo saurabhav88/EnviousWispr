@@ -139,8 +139,15 @@ public enum LegacyDonorMigration {
   ///   verified. The hash pass over a 445 MB file is multi-second, and the
   ///   sessionless wedge guard reads silence as a wedge, so this must tick
   ///   during the work rather than after each file completes.
+  /// - Parameter ignoringRecord: run even when the durable record says
+  ///   `completed`. Used by REPAIR: the record answers "has the one-time move
+  ///   happened", never "may we look at the donor again". A file that goes bad
+  ///   months later is a different question, and answering it from the record
+  ///   sends an offline user to the network for bytes sitting on their disk.
+  ///   `declined` is still honoured — a model the user deleted stays deleted.
   public static func migrate(
     registration: DeliveryRegistration,
+    ignoringRecord: Bool = false,
     onProgress: (@Sendable () -> Void)? = nil
   ) async -> Outcome {
     let manifest = registration.manifest
@@ -149,8 +156,14 @@ public enum LegacyDonorMigration {
     let fm = FileManager.default
 
     // Already answered, either way. `declined` is the load-bearing half: without
-    // it, deleting the model would be undone by the next launch.
-    if recordedState(metadataDirectory: metadata, manifest: manifest) != nil { return .none }
+    // it, deleting the model would be undone by the next launch — and it is
+    // honoured even under `ignoringRecord`, because a deliberate removal is a
+    // decision, not a stale cache entry.
+    switch recordedState(metadataDirectory: metadata, manifest: manifest) {
+    case .declined: return .none
+    case .completed where !ignoringRecord: return .none
+    case .completed, nil: break
+    }
 
     let admission = CacheAdmission(
       manifest: manifest, installDirectory: install, metadataDirectory: metadata)
@@ -161,6 +174,9 @@ public enum LegacyDonorMigration {
       record(.completed, metadataDirectory: metadata, manifest: manifest)
       return .none
     }
+    // Under `ignoringRecord` the caller has ALREADY validated and found broken
+    // components, so a second opinion from `isAdmitted()` is not needed and the
+    // marker may still be stale from before the damage.
 
     // No donor is the normal state for a new user and for anyone who never had
     // FluidAudio installed, and recording it is what stops us walking the
