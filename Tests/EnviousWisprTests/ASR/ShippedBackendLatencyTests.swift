@@ -30,7 +30,13 @@ private enum ShippedBackendLatencyFixture {
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
     return DeliveryRegistration(
       manifest: manifest,
-      installDirectory: AsrModels.defaultCacheDirectory(for: .v3),
+      // #2697: OUR directory, which is where the app admits since #2483. This
+      // read `AsrModels.defaultCacheDirectory(for: .v3)` — FluidAudio's shared
+      // tree — so `parakeetIsAdmitted()` was asking whether a marker existed in
+      // a directory the app no longer writes. The gate and the load below now
+      // name one value, so the test cannot enable itself against one directory
+      // and measure another.
+      installDirectory: ParakeetInstallLocation.directory(appSupport: appSupport),
       metadataDirectory: appSupport.appending(
         path: "EnviousWispr/ModelDelivery", directoryHint: .isDirectory))
   }
@@ -118,7 +124,8 @@ struct ShippedBackendLatencyTests {
     let backend = ParakeetBackend()
     do {
       try await backend.prepare(
-        cacheOnly: true, modelDirectory: ParakeetBackend.vendorSharedDirectory,
+        cacheOnly: true,
+        modelDirectory: try ShippedBackendLatencyFixture.parakeetRegistration().installDirectory,
         progressCallback: nil)
       let warmup = try await backend.transcribe(audioSamples: samples, options: .default)
       ShippedBackendLatencyFixture.requireExpectedTranscript(warmup, backend: "Parakeet warm-up")

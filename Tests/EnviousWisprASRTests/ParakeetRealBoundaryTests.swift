@@ -16,8 +16,11 @@ private enum ParakeetRealBoundaryFixture {
     "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
 
   static var shippedModelIsInstalled: Bool {
-    let cache = AsrModels.defaultCacheDirectory(for: .v3)
-    return AsrModels.modelsExist(at: cache, version: .v3)
+    // #2697: OUR directory. This asked FluidAudio's shared tree whether the
+    // shipped model was installed, so the receipt for "the shipped model
+    // transcribes" was taken against another app's copy rather than against the
+    // bytes EnviousWispr admits.
+    return AsrModels.modelsExist(at: ParakeetInstallLocation.live, version: .v3)
   }
 
   static func normalizedWords(_ text: String) -> String {
@@ -50,7 +53,7 @@ struct ParakeetRealBoundaryTests {
       let backend = ParakeetBackend()
       do {
         try await backend.prepare(
-          cacheOnly: true, modelDirectory: ParakeetBackend.vendorSharedDirectory,
+          cacheOnly: true, modelDirectory: ParakeetInstallLocation.live,
           progressCallback: nil)
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
         await backend.unload()

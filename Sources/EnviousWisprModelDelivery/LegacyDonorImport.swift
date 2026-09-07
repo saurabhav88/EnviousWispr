@@ -64,9 +64,14 @@ public enum LegacyDonorImport {
   /// the caller must abandon the attempt rather than continue without us.
   public enum Result: Sendable, Equatable {
     case imported(Outcome)
-    /// Staging, or an ancestor of it, resolves inside the donor. Nothing was
-    /// written. The caller MUST NOT proceed to fetch with this staging
-    /// directory, because the fetcher would write through it.
+    /// Staging, an ancestor of it, or the parent of one manifest file resolves
+    /// somewhere the caller does not own. The caller MUST NOT proceed to fetch
+    /// with this staging directory, because the fetcher would write through it.
+    ///
+    /// **A refusal raised inside the per-file loop can follow files that were
+    /// already cloned into staging (#2697).** It is a statement about the
+    /// DESTINATION, never a count of what was written, so the caller abandons
+    /// the attempt rather than reading a partial import as progress.
     case unsafeStagingRoot(detail: String)
   }
 
@@ -121,6 +126,32 @@ public enum LegacyDonorImport {
       // hundreds of megabytes, and `cancel(_:)` waits for the attempt to drain —
       // without this the user's cancel sits pending until the whole copy ends.
       if Task.isCancelled { break }
+      let destination = staging.appendingPathComponent(file.resolvedInstallPath)
+
+      // #2697: CONTAINMENT IS DECIDED BEFORE ANYTHING TOUCHES THE LEAF, and the
+      // order is the whole fix. This guard used to sit BELOW the symlink-leaf
+      // removal, so a staging component linked into the donor let
+      // `removeItem(at: destination)` delete a DONOR directory entry — from the
+      // one type whose entire promise is that it never writes there.
+      //
+      // #2697: and a failure REFUSES THE ATTEMPT rather than skipping the file.
+      // Skipping was never sufficient: `ManifestFetchTask` writes into this same
+      // staging directory with no containment check of its own
+      // (`ModelDeliveryController.swift` hands it the same URL), so declining to
+      // copy one file does not stop the fetcher writing through the same unsafe
+      // parent moments later. The refusal is the only thing that stops it.
+      //
+      // The anchor is the nearest EXISTING ancestor, so nothing is created
+      // before the question is answered. Both halves are load-bearing: rejecting
+      // only the donor lets a staging component symlinked to an UNRELATED
+      // directory pass, and `createDirectory` then makes manifest subdirectories
+      // there.
+      guard let fileAnchor = Self.nearestExistingAncestor(of: destination),
+        let fileAnchorPath = Self.resolved(fileAnchor),
+        !Self.contained(fileAnchorPath, in: donorRoot),
+        Self.contained(fileAnchorPath, in: stagingRoot)
+      else { return .unsafeStagingRoot(detail: "file_ancestor_outside_staging") }
+
       let source = donor.appendingPathComponent(file.resolvedInstallPath)
       // Size is the cheap gate that keeps us from copying a whole tree of the
       // wrong revision. It is NOT the correctness check — that is the staged
@@ -128,7 +159,6 @@ public enum LegacyDonorImport {
       // not reported as if it did.
       guard CacheAdmission.sizeMatches(url: source, expected: file.sizeBytes) else { continue }
 
-      let destination = staging.appendingPathComponent(file.resolvedInstallPath)
       // A staged SYMLINK is removed, not skipped (cloud round 6). `fileExists`
       // FOLLOWS links, so a staged leaf pointing into the donor read as an
       // ordinary resumable file: the fetcher then hashed THROUGH the link,
@@ -151,30 +181,14 @@ public enum LegacyDonorImport {
         // attempt into a failed one. The fetcher owns "is this staged file good".
         continue
       }
-      // Cloud round P2: check containment BEFORE creating anything. Creating the
-      // parents first and validating afterwards is too late — if an existing
-      // staging component is a symlink into the shared tree,
-      // `createIntermediateDirectories` follows it and has already made
-      // directories under FluidAudio by the time a later guard declines the
-      // copy. So walk up to the nearest ancestor that EXISTS, resolve THAT, and
-      // require it inside the staging root; only then create the rest.
-      guard let fileAnchor = Self.nearestExistingAncestor(of: destination),
-        let fileAnchorPath = Self.resolved(fileAnchor),
-        // Both halves, and the staging half is the one round 5 caught: rejecting
-        // only the donor let a staging component symlinked to some UNRELATED
-        // directory pass, and `createDirectory` then made manifest subdirectories
-        // there before the post-creation check noticed. Checking the anchor needs
-        // nothing created first, so there is no reason to learn it late.
-        !Self.contained(fileAnchorPath, in: donorRoot),
-        Self.contained(fileAnchorPath, in: stagingRoot)
-      else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
       // And again after creating, because the step above can itself traverse a
-      // link that appeared between the two.
+      // link that appeared between the two. #2697: also a refusal, for the same
+      // reason the pre-creation guard above is one.
       guard let parent = Self.resolved(destination.deletingLastPathComponent()),
         !Self.contained(parent, in: donorRoot), Self.contained(parent, in: stagingRoot)
-      else { continue }
+      else { return .unsafeStagingRoot(detail: "file_parent_outside_staging") }
 
       if cloneItem(at: source, to: destination) {
         files += 1
