@@ -588,10 +588,30 @@ public actor ModelDeliveryController {
         // entry from a bad post-promote stamp.
         return await finishFailed(identity, failure, generation: generation)
       } catch {
-        // Anything that is not a DeliveryFailure keeps the old site-named
-        // detail: there is no better name for it, and the site is still the
-        // most useful thing we know.
-        let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "admit_in_place")
+        // Everything else is a Cocoa error from one of the FIVE untyped `try`
+        // sites this call can actually reach, and until #2691's follow-up they all
+        // arrived as the bare word `admit_in_place`: removing the marker, creating
+        // the install directory, reading attributes for the stamp, creating the
+        // METADATA directory, and writing the marker.
+        //
+        // Five, not seven: this arm passes `stagedComponents: []`, so the
+        // component loop at `CacheAdmission.swift:245-252` never iterates and its
+        // remove/move throws belong to the post-fetch call alone. Counted by
+        // reading what THIS call site reaches rather than what the function
+        // contains, which is the distinction a first draft of this comment got
+        // wrong. #2690's reporter throws at the metadata directory — his
+        // `Application Support` is root-owned, so it cannot be created — and the
+        // typed pass-through above does not reach him, because `FileManager` does
+        // not mint `DeliveryFailure`.
+        //
+        // So carry the underlying error's identity. Domain and code ONLY: they
+        // name EACCES in one word without putting a path, a home directory or a
+        // user name into telemetry or a log line, and they are a closed set, so
+        // this cannot become unbounded cardinality.
+        let underlying = error as NSError
+        let failure = DeliveryFailure(
+          reason: .cacheRepairFailed,
+          detail: "admit_in_place:\(underlying.domain):\(underlying.code)")
         return await finishFailed(identity, failure, generation: generation)
       }
       // No fetch happened (existing file adopted in place — the #1363 EG-1
