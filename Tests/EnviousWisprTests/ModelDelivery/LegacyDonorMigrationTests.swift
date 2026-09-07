@@ -211,6 +211,12 @@ struct LegacyDonorMigrationTests {
     for (path, value) in before { #expect(after[path]?.1 == value.1, "donor inode changed") }
   }
 
+  // #if DEBUG because `stallHook` is DEBUG-only: it is a lifecycle pause for
+  // Live UAT, not something a shipped build should carry. The RELEASE lane
+  // compiles this test bundle too (`build-for-testing`), which a local Dev
+  // build never does — so an unguarded reference builds clean locally and
+  // fails only in CI.
+  #if DEBUG
   @Test("a removal during a migration is not overwritten by that migration")
   func declinedIsNotOverwrittenByAnInFlightMigration() async throws {
     let world = try makeWorld()
@@ -237,6 +243,7 @@ struct LegacyDonorMigrationTests {
         metadataDirectory: world.metadata, manifest: manifest) == .declined,
       "a deliberate removal must survive a migration that was already running")
   }
+  #endif
 
   @Test("an EMPTY or truncated record reads as absent, not as a claim")
   func corruptRecordReadsAsAbsent() async throws {
@@ -299,6 +306,12 @@ struct LegacyDonorMigrationTests {
     #expect(outcome.componentsPublished <= 1)
   }
 
+  // #if DEBUG because `stallHook` is DEBUG-only: it is a lifecycle pause for
+  // Live UAT, not something a shipped build should carry. The RELEASE lane
+  // compiles this test bundle too (`build-for-testing`), which a local Dev
+  // build never does — so an unguarded reference builds clean locally and
+  // fails only in CI.
+  #if DEBUG
   @Test("an interruption after cloning leaves nothing half-installed")
   func interruptionPublishesNothing() async throws {
     let world = try makeWorld()
@@ -334,7 +347,14 @@ struct LegacyDonorMigrationTests {
       }
     }
   }
+  #endif
 
+  // #if DEBUG because `stallHook` is DEBUG-only: it is a lifecycle pause for
+  // Live UAT, not something a shipped build should carry. The RELEASE lane
+  // compiles this test bundle too (`build-for-testing`), which a local Dev
+  // build never does — so an unguarded reference builds clean locally and
+  // fails only in CI.
+  #if DEBUG
   @Test("a cancel between verifying and publishing publishes nothing")
   func cancelAfterVerifyPublishesNothing() async throws {
     let world = try makeWorld()
@@ -364,6 +384,7 @@ struct LegacyDonorMigrationTests {
       LegacyDonorMigration.recordedState(
         metadataDirectory: world.metadata, manifest: manifest) == nil)
   }
+  #endif
 
   @Test("an install directory resolving inside the donor is refused")
   func installInsideDonorIsRefused() async throws {
