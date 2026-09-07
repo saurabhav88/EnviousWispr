@@ -170,13 +170,16 @@ public enum LegacyDonorMigration {
 
     // The common case for everyone who is already fine: the cheap admitted check,
     // not a hash pass. Recording it here is what stops this running again.
-    if admission.isAdmitted() {
+    // Under `ignoringRecord` the caller has ALREADY validated and found broken
+    // components, so this fast path is SKIPPED rather than consulted: the marker
+    // records size and mtime, and a file replaced with same-size garbage keeps
+    // both. Taking it here would answer "already fine" about an installation the
+    // caller has just proven is not, and the comment that used to sit under this
+    // block said so while the code did the opposite (review B).
+    if !ignoringRecord, admission.isAdmitted() {
       record(.completed, metadataDirectory: metadata, manifest: manifest)
       return .none
     }
-    // Under `ignoringRecord` the caller has ALREADY validated and found broken
-    // components, so a second opinion from `isAdmitted()` is not needed and the
-    // marker may still be stale from before the damage.
 
     // No donor is the normal state for a new user and for anyone who never had
     // FluidAudio installed, and recording it is what stops us walking the

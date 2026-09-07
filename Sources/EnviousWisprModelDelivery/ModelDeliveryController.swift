@@ -241,12 +241,32 @@ public actor ModelDeliveryController {
   /// racing two into the same candidate directory.
   @discardableResult
   public func ensureLegacyMigration(
-    _ registration: DeliveryRegistration, onProgress: (@Sendable () -> Void)? = nil
+    _ registration: DeliveryRegistration, ignoringRecord: Bool = false,
+    onProgress: (@Sendable () -> Void)? = nil
   ) async -> LegacyDonorMigration.Outcome {
     let identity = registration.manifest.identity
-    if let existing = migrationsInFlight[identity] { return await existing.value }
+    // Review C: EVERY migration goes through here, launch and repair alike.
+    // `runAttempt` used to call `migrate` directly, which bypassed this map — so
+    // a repair and the launch migration could run at once, on the SAME candidate
+    // directory, each deleting it while the other was copying, verifying or
+    // publishing into it. Actor isolation does not help: `migrate` is
+    // nonisolated and releases this actor at every await.
+    //
+    // Joining is bounded: a run clears its own entry, so the loop advances
+    // unless a third caller keeps arriving, and the cap makes even that
+    // terminate rather than spin.
+    var joins = 0
+    while let existing = migrationsInFlight[identity], joins < 4 {
+      let prior = await existing.value
+      joins += 1
+      // An ordinary caller is satisfied by whatever the run it joined did. A
+      // REPAIR is not: it exists because validation has already found broken
+      // components, and the run it joined may have declined on a `completed`
+      // record it was never asked to ignore.
+      if !ignoringRecord { return prior }
+    }
     let task = Task { await LegacyDonorMigration.migrate(
-      registration: registration, onProgress: onProgress) }
+      registration: registration, ignoringRecord: ignoringRecord, onProgress: onProgress) }
     migrationsInFlight[identity] = task
     let outcome = await task.value
     migrationsInFlight[identity] = nil
@@ -644,7 +664,7 @@ public actor ModelDeliveryController {
     // sessionless wedge guard reads silence as a wedge, and a multi-second
     // hash pass must not be silent (D6 state 4).
     let controllerForTicks = self
-    let validation = await admission.validateExistingCache(onFileValidated: { _ in
+    var validation = await admission.validateExistingCache(onFileValidated: { _ in
       Task { await controllerForTicks.tickValidating(identity, generation: generation) }
     })
     guard entries[identity]?.generation == generation, !Task.isCancelled else {
@@ -674,8 +694,7 @@ public actor ModelDeliveryController {
     // `declined` is still honoured inside `migrate`, so a model the user
     // deliberately removed is not resurrected by a repair attempt.
     if !componentsToFetch.isEmpty, registration.legacyDonorDirectory != nil {
-      let recovered = await LegacyDonorMigration.migrate(
-        registration: registration, ignoringRecord: true)
+      let recovered = await ensureLegacyMigration(registration, ignoringRecord: true)
       if recovered.didAnything {
         await AppLogger.shared.log(
           "Model delivery repaired \(recovered.componentsPublished) component(s) from the "
@@ -684,8 +703,14 @@ public actor ModelDeliveryController {
         guard entries[identity]?.generation == generation, !Task.isCancelled else {
           return finishCancelled(identity, generation: generation)
         }
-        let recheck = await admission.validateExistingCache()
-        componentsToFetch.subtract(recheck.verifiedComponents)
+        // Review C, P2: the recheck REPLACES the earlier result rather than
+        // only shrinking the fetch set. The repair-prep loop below deletes
+        // every component in `validation.failedComponents`, so leaving the
+        // stale set in place deleted the very components the donor had just
+        // repaired — A and B fail, the donor fixes A, cleanup deletes A again,
+        // and the fetch only asks for B. Recovery defeating itself.
+        validation = await admission.validateExistingCache()
+        componentsToFetch.subtract(validation.verifiedComponents)
       }
     }
     // Repair means something WAS there and got replaced — a cold install's

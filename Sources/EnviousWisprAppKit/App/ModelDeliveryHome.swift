@@ -188,27 +188,35 @@ public final class ModelDeliveryHome {
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
       Task { await controller.sweepSupersededStaging(registration) }
-      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
-      //
-      // The seam that guarantees it has run lives in the engine adapter's
-      // warm-up, and warm-up is driven by a recording session — so without this
-      // line the whole migration, including a multi-second hash of 483 MB, is
-      // paid by the user's FIRST TAKE after updating. Starting it here moves that
-      // cost into launch, where nobody is waiting on it.
-      //
-      // This does not replace the seam and does not race it: `ensureLegacyMigration`
-      // is single-flight per identity, so a warm-up arriving mid-migration awaits
-      // THIS task rather than starting a second one, and a warm-up arriving after
-      // it finishes reads the durable record and returns immediately.
-      Task { await controller.ensureLegacyMigration(registration) }
+
       // The kill-switch store is INJECTED, exactly as its two siblings below
       // are (`:whisperKitHandle`, `:whisperPreviewHandle`). Omitting it made
       // this handle resolve `nil` to the real operational suite, so no test
       // could exercise the family flag without writing a live delivery kill
       // switch onto a developer's machine (#2139). Production is unchanged:
       // the only caller that passes a non-nil value is the test suite.
-      parakeetHandle = ParakeetDeliveryHandle(
+      let handle = ParakeetDeliveryHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      parakeetHandle = handle
+      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
+      //
+      // The seam that guarantees it has run lives in the engine adapter's
+      // warm-up, and warm-up is driven by a recording session — so without this
+      // the whole migration, including a hash of 483 MB, is paid by the user's
+      // FIRST TAKE after updating. Starting it here moves that cost to launch,
+      // where nobody is waiting on it. Measured on the founder's machine: the
+      // migration itself is ~1s.
+      //
+      // Through the HANDLE rather than the controller (review A, P2). The handle
+      // supplies the progress tick; the controller call takes one and launch had
+      // none to give, so a warm-up that JOINED the launch migration inherited a
+      // run reporting nothing — and the sessionless wedge guard reads silence as
+      // a wedge. One door, one tick, whoever arrives first.
+      //
+      // It does not race the seam: every migration now goes through the
+      // controller's single-flight coordinator, so a warm-up arriving mid-run
+      // joins this task rather than starting a second on the same candidate.
+      Task { _ = await handle.ensureModelLocationReady() }
       wireObservers(identity: identity)
     } catch {
       Task {
