@@ -317,8 +317,25 @@ public enum StorageRoot {
     guard prepare(directory) else { return .failed }
     let recordURL = directory.appendingPathComponent(recordFileName)
 
-    let fd = Foundation.open(recordURL.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
-    guard fd >= 0 else { return errno == EEXIST ? .lostRace : .failed }
+    // Write the whole record to a private temp file FIRST, then publish it with
+    // `link`, which both fails `EEXIST` atomically and can only ever make a
+    // COMPLETE file appear at the final path.
+    //
+    // Creating the final path directly with `O_CREAT | O_EXCL` won the race but
+    // published an EMPTY file that then filled in: a losing process reading it
+    // mid-write saw partial JSON, classified the root `unreadable` — which means
+    // "this root holds the user's data" — and used it (cloud review round 5).
+    // `rename` has the opposite defect: it publishes atomically and overwrites
+    // unconditionally, which is what round 4 removed. `link` is the primitive
+    // with both properties, and `validation-discipline.md`
+    // RULE: a-single-threaded-test-cannot-distinguish-atomic-from-check-then-act
+    // already prescribes it: measured there at 40 concurrent callers, `ln`
+    // returned exactly one winner 8 races out of 8 while `mv -n` produced two
+    // and three simultaneous winners.
+    let stagingURL = directory.appendingPathComponent(
+      ".ew-storage-state.\(UUID().uuidString).tmp")
+    let fd = Foundation.open(stagingURL.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+    guard fd >= 0 else { return .failed }
 
     let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     do {
@@ -329,13 +346,15 @@ public enum StorageRoot {
       guard fcntl(fd, F_FULLFSYNC) != -1 else { throw CocoaError(.fileWriteUnknown) }
       try handle.close()
     } catch {
-      // We created it, so we own the cleanup: a zero-length or half-written
-      // record left behind would read as `unreadable` to the next launch, which
-      // means "this root holds the user's data" and would be a lie.
       try? handle.close()
-      try? FileManager.default.removeItem(at: recordURL)
+      try? FileManager.default.removeItem(at: stagingURL)
       return .failed
     }
+
+    let published = link(stagingURL.path, recordURL.path) == 0
+    let linkErrno = errno
+    try? FileManager.default.removeItem(at: stagingURL)
+    guard published else { return linkErrno == EEXIST ? .lostRace : .failed }
 
     let dirFD = Foundation.open(directory.path, O_RDONLY)
     if dirFD >= 0 {
@@ -434,7 +453,7 @@ public enum StorageRoot {
   /// case nobody classified.
   ///
   /// Nothing here ever writes over a root that is not `unclaimed`.
-  enum ClaimState: Equatable {
+  enum ClaimState: Equatable, Hashable {
     /// No record. Free to claim.
     case unclaimed
     /// Committed, and this build understands the shape. Use it if it still

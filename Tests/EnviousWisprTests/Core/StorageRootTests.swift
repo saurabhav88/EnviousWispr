@@ -711,6 +711,54 @@ struct StorageRootClaimRaceTests {
     #expect(StorageRoot.claimState(of: directory, expecting: .standard) == .committed)
   }
 
+  /// Round 5. Winning the race is not enough: the record must never be VISIBLE
+  /// in a half-written state.
+  ///
+  /// Creating the final path with `O_CREAT | O_EXCL` and then filling it in
+  /// published an EMPTY file that grew. A losing process reading it mid-write
+  /// saw partial JSON, classified the root `unreadable` — which in this design
+  /// means "this root holds the user's data" — and used it. Publishing by
+  /// `link` from a finished temp file cannot produce that state: the name
+  /// either does not exist, or names a complete record.
+  ///
+  /// Readers run CONCURRENTLY with the writers, because the whole question is
+  /// what a reader sees during the write. A reader that only runs afterwards
+  /// passes against both designs.
+  @Test("No reader ever sees a half-written record")
+  func aConcurrentReaderNeverSeesAPartialRecord() throws {
+    for _ in 0..<20 {
+      let directory = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: directory) }
+      let seen = SeenStates()
+
+      DispatchQueue.concurrentPerform(iterations: 24) { index in
+        if index.isMultiple(of: 2) {
+          _ = StorageRoot.claim(directory, as: .standard)
+        } else {
+          seen.add(StorageRoot.claimState(of: directory, expecting: .standard))
+        }
+      }
+
+      // `unclaimed` (got there first) and `committed` (saw the finished record)
+      // are the only two honest answers. `unreadable` here would mean a reader
+      // caught the file mid-write and would have treated the root as holding
+      // the user's data.
+      #expect(seen.states.contains(.unreadable) == false)
+      #expect(seen.states.contains(.incompatible) == false)
+      #expect(seen.states.contains(.inFlight) == false)
+    }
+  }
+
+  private final class SeenStates: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var states: Set<StorageRoot.ClaimState> = []
+    func add(_ state: StorageRoot.ClaimState) {
+      lock.lock()
+      states.insert(state)
+      lock.unlock()
+    }
+  }
+
   /// The finding itself, single-threaded and structural: with a record already
   /// present, a claim must decline and write NOTHING. This is what makes the
   /// race safe rather than merely unlikely.
