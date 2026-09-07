@@ -129,12 +129,28 @@ public enum LegacyDonorImport {
       guard CacheAdmission.sizeMatches(url: source, expected: file.sizeBytes) else { continue }
 
       let destination = staging.appendingPathComponent(file.resolvedInstallPath)
-      // Second-pass finding 9: an existing staged file is LEFT ALONE. An earlier
-      // attempt can have staged a complete, correct file; replacing it with a
-      // same-size donor copy that is corrupt turns a resumable offline attempt
-      // into a failed one. The fetcher already owns "is this staged file good"
-      // and will resume or discard it, so this path must not pre-empt that.
-      guard !fm.fileExists(atPath: destination.path) else { continue }
+      // A staged SYMLINK is removed, not skipped (cloud round 6). `fileExists`
+      // FOLLOWS links, so a staged leaf pointing into the donor read as an
+      // ordinary resumable file: the fetcher then hashed THROUGH the link,
+      // passed, and promotion moved the link — not independent bytes — into the
+      // owned install directory. The admitted cache would have been a pointer at
+      // the donor, so another FluidAudio app replacing its own copy would break
+      // ours, and the vendor would still be handed a path reaching the shared
+      // tree. That defeats the entire change. `.isSymbolicLinkKey` reports the
+      // URL itself rather than its target, which is the no-follow read this
+      // needs. Removing it touches STAGING, which is ours, and the fetcher never
+      // creates symlinks — so a link here is never something we staged.
+      let leafIsSymlink =
+        (try? destination.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+      if leafIsSymlink {
+        try? fm.removeItem(at: destination)
+      } else if fm.fileExists(atPath: destination.path) {
+        // Round 2 finding 9: an existing REAL staged file is left alone. An
+        // earlier attempt can have staged a complete, correct file; replacing it
+        // with a same-size donor copy that is corrupt turns a resumable offline
+        // attempt into a failed one. The fetcher owns "is this staged file good".
+        continue
+      }
       // Cloud round P2: check containment BEFORE creating anything. Creating the
       // parents first and validating afterwards is too late — if an existing
       // staging component is a symlink into the shared tree,

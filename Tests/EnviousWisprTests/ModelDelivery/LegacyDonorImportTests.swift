@@ -115,6 +115,41 @@ struct LegacyDonorImportTests {
     }
   }
 
+  @Test("a staged file that is a symlink into the donor is replaced with real bytes")
+  func stagedSymlinkLeafIsNotTreatedAsResumable() throws {
+    // Cloud round 6. `fileExists` FOLLOWS links, so a staged leaf pointing at the
+    // donor read as an ordinary resumable file and was skipped; the fetcher then
+    // hashed through the link, passed, and promotion moved the LINK into the
+    // owned install directory. The admitted cache would have been a pointer at
+    // somebody else's file — another FluidAudio app replacing its copy would
+    // break ours — which is the opposite of what this whole change is for.
+    let (donor, staging, _) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+
+    let leaf = staging.appendingPathComponent(files[0].path)
+    try FileManager.default.createDirectory(
+      at: leaf.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: leaf, withDestinationURL: donor.appendingPathComponent(files[0].path))
+
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: staging))
+
+    #expect(outcome.filesReproduced == files.count)
+    // The staged leaf is now REAL BYTES, not a link, and its content is right.
+    let isLink =
+      (try? leaf.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+    #expect(!isLink, "staged leaf is still a symlink into the donor")
+    #expect(try Data(contentsOf: leaf) == files[0].content)
+    // And the donor's own file is untouched.
+    #expect(
+      try Data(contentsOf: donor.appendingPathComponent(files[0].path)) == files[0].content)
+  }
+
   @Test("a donor file of the wrong size is left behind, not copied")
   func wrongSizeIsSkipped() throws {
     let (donor, staging, root) = try makeDirs()
