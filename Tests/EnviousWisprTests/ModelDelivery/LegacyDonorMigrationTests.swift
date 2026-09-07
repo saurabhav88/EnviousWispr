@@ -238,6 +238,41 @@ struct LegacyDonorMigrationTests {
       "a deliberate removal must survive a migration that was already running")
   }
 
+  @Test("an EMPTY or truncated record reads as absent, not as a claim")
+  func corruptRecordReadsAsAbsent() async throws {
+    let world = try makeWorld()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: world.donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    let url = LegacyDonorMigration.recordURL(
+      metadataDirectory: world.metadata, manifest: manifest)
+    try FileManager.default.createDirectory(
+      at: world.metadata, withIntermediateDirectories: true)
+
+    // The state only a PANIC produces. `.atomic` gives a rename without an
+    // fsync, so the name can land while the bytes do not: a present, zero-length
+    // record where there was either nothing or something complete. That is a
+    // THIRD input, and treating it as "something is recorded here" would strand a
+    // user whose model was never actually migrated.
+    for corrupt in [Data(), Data("{".utf8), Data("not json at all".utf8)] {
+      try corrupt.write(to: url)
+      #expect(
+        LegacyDonorMigration.recordedState(
+          metadataDirectory: world.metadata, manifest: manifest) == nil,
+        "a \(corrupt.count)-byte record must read as absent")
+    }
+
+    // And the migration must actually proceed on that input, not merely report
+    // `nil` from the reader.
+    try Data().write(to: url)
+    let outcome = await LegacyDonorMigration.migrate(
+      registration: registration(world, manifest: manifest))
+    #expect(outcome.componentsPublished == 2)
+    #expect(
+      LegacyDonorMigration.recordedState(
+        metadataDirectory: world.metadata, manifest: manifest) == .completed)
+  }
+
   // MARK: - What must never reach the user
 
   @Test("a donor file of the RIGHT SIZE but the wrong bytes is never published")
