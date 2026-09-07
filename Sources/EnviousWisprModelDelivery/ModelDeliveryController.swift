@@ -241,36 +241,27 @@ public actor ModelDeliveryController {
   /// racing two into the same candidate directory.
   @discardableResult
   public func ensureLegacyMigration(
-    _ registration: DeliveryRegistration, ignoringRecord: Bool = false,
-    onProgress: (@Sendable () -> Void)? = nil
+    _ registration: DeliveryRegistration, onProgress: (@Sendable () -> Void)? = nil
   ) async -> LegacyDonorMigration.Outcome {
     let identity = registration.manifest.identity
-    // EVERY migration goes through here, launch and repair alike, and they run
-    // ONE AT A TIME per model.
+    // Plain single-flight. Every caller here is an ORDINARY one — launch and
+    // warm-up, both through `ParakeetDeliveryHandle` — so joining an in-flight
+    // run and returning its result is the whole requirement.
     //
-    // `runAttempt` used to call `migrate` directly, so a repair and the launch
-    // migration could run at once on the SAME candidate directory, each deleting
-    // it while the other copied, verified or published into it. Actor isolation
-    // excludes nothing here: `migrate` is nonisolated and releases this actor at
-    // every await.
-    //
-    // A bounded JOIN was the first attempt and it was a hole, not a guard
-    // (round 3): after N joins it started a run anyway, and its unconditional
-    // clear could erase a DIFFERENT run's entry. This is a CHAIN instead — each
-    // request waits for its predecessor inside its own task, so exclusivity does
-    // not depend on how many callers arrive, and there is no cap to be wrong.
-    // The slot is cleared only by the run that still owns it.
-    let previous = migrationsInFlight[identity]
+    // This was a chain with a forced-repair variant, a join cap and an ownership
+    // protocol, because repair used to come through here too. Three review
+    // rounds found three defects in that machinery, every one in the HANDOFF
+    // rather than in the work. Repair now reads the donor into the attempt's own
+    // staging (`LegacyDonorMigration.stageFromDonor`), shares nothing with this
+    // path, and the machinery it needed is deleted rather than fixed a fourth
+    // time.
+    if let existing = migrationsInFlight[identity] { return await existing.value }
     let task = Task {
-      if let previous { _ = await previous.value }
-      return await LegacyDonorMigration.migrate(
-        registration: registration, ignoringRecord: ignoringRecord, onProgress: onProgress)
+      await LegacyDonorMigration.migrate(registration: registration, onProgress: onProgress)
     }
     migrationsInFlight[identity] = task
     let outcome = await task.value
-    // Only if we are still the tail. A later request has already replaced us and
-    // is waiting on this task; clearing unconditionally would strand it.
-    if migrationsInFlight[identity] == task { migrationsInFlight[identity] = nil }
+    migrationsInFlight[identity] = nil
     if outcome.didAnything {
       await AppLogger.shared.log(
         "Model delivery migrated \(outcome.componentsPublished) component(s), "
@@ -665,79 +656,20 @@ public actor ModelDeliveryController {
     // sessionless wedge guard reads silence as a wedge, and a multi-second
     // hash pass must not be silent (D6 state 4).
     let controllerForTicks = self
-    var validation = await admission.validateExistingCache(onFileValidated: { _ in
+    let validation = await admission.validateExistingCache(onFileValidated: { _ in
       Task { await controllerForTicks.tickValidating(identity, generation: generation) }
     })
     guard entries[identity]?.generation == generation, !Task.isCancelled else {
       return .cancelled(resumable: true)
     }
 
-    var componentsToFetch = Set(manifest.filesByComponent.map(\.component))
+    let componentsToFetch = Set(manifest.filesByComponent.map(\.component))
       .subtracting(validation.verifiedComponents)
-    // Captured HERE, before donor repair below replaces `validation`. Repair
-    // ACCOUNTING and repair DECISIONS are different questions: what to delete and
-    // fetch must read the refreshed answer, what to REPORT must read the original,
-    // or a component the donor fixed vanishes from the count entirely.
-    let originallyFailedComponents = validation.failedComponents
 
-    // #2697, found by Live UAT rather than by review: REPAIR FROM THE DONOR
-    // BEFORE THE NETWORK.
-    //
-    // Migration runs once at launch and records `completed`, which is the right
-    // answer to "has the one-time move happened". It is the wrong answer to "may
-    // we look at the donor again". Measured on the founder's machine: corrupting
-    // ONE file in the owned installation produced `repaired=1 sources=1
-    // final_source=our_copy` — a real 483 MB download — with a complete donor
-    // copy sitting on disk the whole time. Offline, that is not a slower repair;
-    // it is no model.
-    //
-    // Before the disk preflight below, deliberately: components recovered here
-    // shrink the fetch set, so the headroom check asks for what is still missing
-    // rather than for bytes we have just put back. This writes into the INSTALL
-    // directory and never into staging, so the D3 rule that no staging or
-    // network write precedes the preflight still holds.
-    //
-    // `declined` is still honoured inside `migrate`, so a model the user
-    // deliberately removed is not resurrected by a repair attempt.
-    if !componentsToFetch.isEmpty, registration.legacyDonorDirectory != nil {
-      let recovered = await ensureLegacyMigration(registration, ignoringRecord: true)
-      if recovered.didAnything {
-        await AppLogger.shared.log(
-          "Model delivery repaired \(recovered.componentsPublished) component(s) from the "
-            + "legacy shared directory before any network use",
-          level: .info, category: "Delivery")
-        // Round 3, P2: re-checked AFTER the migration's suspension, not before
-        // it. The earlier check cannot speak for a cancel that arrives during a
-        // multi-second clone-and-hash, and a cancelled attempt must not reach
-        // the component deletion or the promotion below.
-        guard entries[identity]?.generation == generation, !Task.isCancelled else {
-          return finishCancelled(identity, generation: generation)
-        }
-        // The recheck REPLACES the earlier result rather than only shrinking the
-        // fetch set. The repair-prep loop below deletes
-        // every component in `validation.failedComponents`, so leaving the
-        // stale set in place deleted the very components the donor had just
-        // repaired — A and B fail, the donor fixes A, cleanup deletes A again,
-        // and the fetch only asks for B. Recovery defeating itself.
-        validation = await admission.validateExistingCache()
-        // And again after THAT suspension. A full hash pass over 483 MB is the
-        // longest window in this function; a cancel landing inside it would
-        // otherwise still reach the deletions below.
-        guard entries[identity]?.generation == generation, !Task.isCancelled else {
-          return finishCancelled(identity, generation: generation)
-        }
-        componentsToFetch.subtract(validation.verifiedComponents)
-      }
-    }
     // Repair means something WAS there and got replaced — a cold install's
     // all-missing components are a normal first download, not a repair
     // (code-diff r1 P3: first-run metrics must not read as repair storms).
-    //
-    // Round 3, P3: `originallyFailedComponents`, captured above BEFORE donor
-    // repair could replace `validation`. A component the donor fixes leaves the
-    // refreshed failed set, so counting there reports a partial donor repair
-    // followed by a download as fewer repairs than actually happened.
-    let repairedCount = originallyFailedComponents.filter {
+    let repairedCount = validation.failedComponents.filter {
       admission.componentHasAnyFile($0)
     }.count
 
@@ -818,7 +750,25 @@ public actor ModelDeliveryController {
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
     let stagedBytes = stagedByteCount(of: fetchFiles, in: staging)
     let verifiedInPlaceBytes = manifest.totalBytes - fetchFiles.reduce(0) { $0 + $1.sizeBytes }
-    let remainingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
+    // #2697: bytes the DONOR can supply are not bytes we have to make room to
+    // download. This is a stat-only reckoning — nothing is read, copied or
+    // written here — so the D3 rule that no staging or network write precedes
+    // the preflight still holds.
+    //
+    // Without it, a user whose model is complete in the legacy shared directory
+    // and whose disk is nearly full is refused with `insufficientDisk` while
+    // every byte they need sits on the same volume, one clone away. That was
+    // the defect this issue opened on.
+    let donorSuppliableBytes: Int64 = {
+      guard let donor = registration.legacyDonorDirectory else { return 0 }
+      return fetchFiles.reduce(Int64(0)) { sum, file in
+        let candidate = donor.appendingPathComponent(file.resolvedInstallPath)
+        return CacheAdmission.sizeMatches(url: candidate, expected: file.sizeBytes)
+          ? sum + file.sizeBytes : sum
+      }
+    }()
+    let remainingBytes =
+      fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes - donorSuppliableBytes
     let required = Int64(Double(max(0, remainingBytes)) * manifest.admission.headroomFactor)
     let otherReservations = entries.reduce(Int64(0)) { sum, kv in
       kv.key == identity ? sum : sum + kv.value.reservedBytes
@@ -855,6 +805,35 @@ public actor ModelDeliveryController {
       let failure = DeliveryFailure(
         reason: .cacheRepairFailed, detail: "unsafe_staging:outside_metadata")
       return await finishFailed(identity, failure, generation: generation)
+    }
+
+    // #2697: REPAIR FROM THE DONOR BEFORE THE NETWORK, and it is a plain read
+    // into the staging directory the fetcher is about to write into.
+    //
+    // Measured on the founder's machine: corrupting ONE file in the owned
+    // installation used to repair by downloading 483 MB with a complete donor
+    // copy on disk the whole time. Offline that is not a slower repair, it is no
+    // model.
+    //
+    // Nothing here decides anything. `ManifestFetchTask` below verifies every
+    // staged file's size and SHA-256 and skips the ones that pass, and
+    // `promoteAndAdmit` moves only what verified — so a donor file that is
+    // stale, truncated or from another revision costs one clone and falls
+    // through to a normal download. This is the same shape #2483 shipped, kept
+    // deliberately dumb: the coordinator, chain and shared candidate directory
+    // that a smarter version needed produced three defects in three review
+    // rounds, all in the handoff rather than in the work.
+    if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
+      let staged = await LegacyDonorMigration.stageFromDonor(
+        manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return finishCancelled(identity, generation: generation)
+      }
+      if staged.files > 0 {
+        await AppLogger.shared.log(
+          "Model delivery staged \(staged.files) file(s), \(staged.bytes) bytes from the "
+            + "legacy shared directory before any network use", level: .info, category: "Delivery")
+      }
     }
 
     // Accepted: this is the attempt_started line (accept-gated, EG-1

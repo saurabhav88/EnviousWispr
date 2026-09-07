@@ -185,48 +185,57 @@ struct LegacyDonorMigrationTests {
       "an unreadable donor must leave the question open for the next launch")
   }
 
-  @Test("a file that goes bad AFTER the move is repaired from the donor, not the network")
-  func repairAfterCompletionUsesTheDonor() async throws {
+  @Test("a repair reads the donor into staging and leaves the donor untouched")
+  func repairStagesFromTheDonor() async throws {
     let world = try makeWorld()
     let files = ManifestFixture.smallFiles
     for f in files { try write(f.content, under: world.donor, path: f.path) }
     let manifest = try ManifestFixture.manifest(files: files)
-    let reg = registration(world, manifest: manifest)
-    _ = await LegacyDonorMigration.migrate(registration: reg)
-    #expect(
-      LegacyDonorMigration.recordedState(
-        metadataDirectory: world.metadata, manifest: manifest) == .completed)
+    let staging = world.metadata.appendingPathComponent("staging/x", isDirectory: true)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    let before = try fingerprint(of: world.donor)
 
-    // Damage one file, same size, so only a hash can see it. Measured on the
-    // founder's machine: without `ignoringRecord` this repaired by downloading
-    // 483 MB with a complete donor copy on disk the whole time, which offline is
-    // not a slower repair but no model at all.
-    let victim = world.install.appendingPathComponent(files[0].path)
-    try Data(repeating: 0, count: files[0].content.count).write(to: victim)
+    // The repair path is a plain read into the attempt's OWN staging. It shares
+    // no candidate directory with the launch migration, which is why the
+    // coordinator and chain that once guarded that sharing are gone.
+    let staged = await LegacyDonorMigration.stageFromDonor(
+      manifest: manifest, components: Set(files.map(\.component)),
+      donor: world.donor, staging: staging)
 
-    let repaired = await LegacyDonorMigration.migrate(
-      registration: reg, ignoringRecord: true)
-
-    #expect(repaired.didAnything)
-    #expect(try Data(contentsOf: victim) == files[0].content)
+    #expect(staged.files == files.count)
+    for f in files {
+      #expect(try Data(contentsOf: staging.appendingPathComponent(f.path)) == f.content)
+    }
+    let after = try fingerprint(of: world.donor)
+    #expect(before.keys.sorted() == after.keys.sorted())
+    for (path, value) in before { #expect(after[path]?.1 == value.1, "donor inode changed") }
   }
 
-  @Test("a repair attempt never resurrects a model the user deleted")
-  func repairHonoursDeclined() async throws {
+  @Test("a removal during a migration is not overwritten by that migration")
+  func declinedIsNotOverwrittenByAnInFlightMigration() async throws {
     let world = try makeWorld()
     let files = ManifestFixture.smallFiles
     for f in files { try write(f.content, under: world.donor, path: f.path) }
     let manifest = try ManifestFixture.manifest(files: files)
-    LegacyDonorMigration.record(
-      .declined, metadataDirectory: world.metadata, manifest: manifest)
 
-    // `ignoringRecord` overrides `completed`, which is a stale answer about a
-    // finished move. It must NOT override `declined`, which is a decision.
-    let outcome = await LegacyDonorMigration.migrate(
-      registration: registration(world, manifest: manifest), ignoringRecord: true)
+    // A removal lands while the migration is between publishing and recording.
+    // The migration must not write `completed` over the `declined` the removal
+    // just wrote: a decision outranks a stale observation, whichever finished
+    // first.
+    LegacyDonorMigration.stallHook = { point in
+      if point == "after_publish" {
+        LegacyDonorMigration.record(
+          .declined, metadataDirectory: world.metadata, manifest: manifest)
+      }
+    }
+    defer { LegacyDonorMigration.stallHook = nil }
 
-    #expect(outcome == .none)
-    #expect(!FileManager.default.fileExists(atPath: world.install.path))
+    _ = await LegacyDonorMigration.migrate(registration: registration(world, manifest: manifest))
+
+    #expect(
+      LegacyDonorMigration.recordedState(
+        metadataDirectory: world.metadata, manifest: manifest) == .declined,
+      "a deliberate removal must survive a migration that was already running")
   }
 
   // MARK: - What must never reach the user

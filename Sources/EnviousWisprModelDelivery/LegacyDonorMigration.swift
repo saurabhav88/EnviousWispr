@@ -139,15 +139,8 @@ public enum LegacyDonorMigration {
   ///   verified. The hash pass over a 445 MB file is multi-second, and the
   ///   sessionless wedge guard reads silence as a wedge, so this must tick
   ///   during the work rather than after each file completes.
-  /// - Parameter ignoringRecord: run even when the durable record says
-  ///   `completed`. Used by REPAIR: the record answers "has the one-time move
-  ///   happened", never "may we look at the donor again". A file that goes bad
-  ///   months later is a different question, and answering it from the record
-  ///   sends an offline user to the network for bytes sitting on their disk.
-  ///   `declined` is still honoured — a model the user deleted stays deleted.
   public static func migrate(
     registration: DeliveryRegistration,
-    ignoringRecord: Bool = false,
     onProgress: (@Sendable () -> Void)? = nil
   ) async -> Outcome {
     let manifest = registration.manifest
@@ -159,24 +152,14 @@ public enum LegacyDonorMigration {
     // it, deleting the model would be undone by the next launch — and it is
     // honoured even under `ignoringRecord`, because a deliberate removal is a
     // decision, not a stale cache entry.
-    switch recordedState(metadataDirectory: metadata, manifest: manifest) {
-    case .declined: return .none
-    case .completed where !ignoringRecord: return .none
-    case .completed, nil: break
-    }
+    if recordedState(metadataDirectory: metadata, manifest: manifest) != nil { return .none }
 
     let admission = CacheAdmission(
       manifest: manifest, installDirectory: install, metadataDirectory: metadata)
 
     // The common case for everyone who is already fine: the cheap admitted check,
     // not a hash pass. Recording it here is what stops this running again.
-    // Under `ignoringRecord` the caller has ALREADY validated and found broken
-    // components, so this fast path is SKIPPED rather than consulted: the marker
-    // records size and mtime, and a file replaced with same-size garbage keeps
-    // both. Taking it here would answer "already fine" about an installation the
-    // caller has just proven is not, and the comment that used to sit under this
-    // block said so while the code did the opposite (review B).
-    if !ignoringRecord, admission.isAdmitted() {
+    if admission.isAdmitted() {
       record(.completed, metadataDirectory: metadata, manifest: manifest)
       return .none
     }
@@ -345,7 +328,14 @@ public enum LegacyDonorMigration {
     // costs one size check per file, and the donor is a directory other apps write.
     if componentsPublished > 0 && !Task.isCancelled {
       let validation = await admission.validateExistingCache()
-      if validation.failedComponents.isEmpty {
+      // Re-read the record AFTER that hash pass. Round 4: a removal can land
+      // during it, and writing `completed` on top of the `declined` it just wrote
+      // would let the NEXT launch resurrect a model the user deliberately
+      // deleted. A decision outranks a stale observation, whichever finished
+      // first.
+      if validation.failedComponents.isEmpty,
+        recordedState(metadataDirectory: metadata, manifest: manifest) != .declined
+      {
         record(.completed, metadataDirectory: metadata, manifest: manifest)
       }
     }
@@ -356,6 +346,67 @@ public enum LegacyDonorMigration {
         bytesReproduced: bytesReproduced, clonedThroughout: clonedThroughout)
     }
     return partial()
+  }
+
+  // MARK: - Donor read for REPAIR
+
+  /// Copy the donor's copies of `components` into the attempt's OWN staging
+  /// directory, for a repair. Returns files and bytes staged.
+  ///
+  /// **Deliberately not the migration path above, and that separation is the
+  /// point (round 4).** Repair used to run `migrate` with an `ignoringRecord`
+  /// flag, which meant a repair and the launch migration shared one candidate
+  /// directory and needed a coordinator, a chain and a cancellation protocol to
+  /// keep them apart. Three review rounds found three defects in that machinery,
+  /// each in the handoff rather than in the work, so the machinery is gone.
+  ///
+  /// This writes where the FETCHER already writes. `ManifestFetchTask` verifies
+  /// every staged file's size and SHA-256 and skips the ones that pass, and
+  /// `CacheAdmission.promoteAndAdmit` moves only what verified — so a donor file
+  /// that is stale, truncated or from another revision costs one clone and falls
+  /// through to a normal download. Nothing here decides anything; it only makes
+  /// bytes available to code that already checks them.
+  ///
+  /// Staging safety is the caller's existing `StagingSafety` check, unchanged.
+  public static func stageFromDonor(
+    manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL
+  ) async -> (files: Int, bytes: Int64) {
+    let fm = FileManager.default
+    guard PathSafety.resolvedPath(donor) != nil else { return (0, 0) }
+    var files = 0
+    var bytes: Int64 = 0
+    var clonedThroughout = true
+    for file in manifest.files where components.contains(file.component) {
+      if Task.isCancelled { break }
+      let source = donor.appendingPathComponent(file.resolvedInstallPath)
+      guard CacheAdmission.sizeMatches(url: source, expected: file.sizeBytes) else { continue }
+      let destination = staging.appendingPathComponent(file.resolvedInstallPath)
+      // Containment decided BEFORE anything touches the leaf, and a failure
+      // refuses the file rather than the attempt: staging itself was already
+      // proven safe by the caller, so a bad component here is a local oddity,
+      // not a statement about the destination.
+      guard PathSafety.resolvesInside(destination, root: staging) else { continue }
+      try? fm.createDirectory(
+        at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+      // A staged SYMLINK is removed, never followed: `fileExists` follows links,
+      // so a staged leaf pointing into the donor would be hashed THROUGH the
+      // link and promoted as if it were our own bytes.
+      let leafIsSymlink =
+        (try? destination.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+      if leafIsSymlink {
+        try? fm.removeItem(at: destination)
+      } else if fm.fileExists(atPath: destination.path) {
+        continue
+      }
+      guard
+        await reproduce(
+          from: source, to: destination, sizeBytes: file.sizeBytes,
+          clonedThroughout: &clonedThroughout)
+      else { continue }
+      files += 1
+      bytes += file.sizeBytes
+    }
+    return (files, bytes)
   }
 
   // MARK: - Publication
