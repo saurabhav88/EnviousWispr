@@ -69,13 +69,25 @@ public enum LegacyDonorImport {
       guard CacheAdmission.sizeMatches(url: source, expected: file.sizeBytes) else { continue }
 
       let destination = staging.appendingPathComponent(file.resolvedInstallPath)
+      // Second-pass finding 9: an existing staged file is LEFT ALONE. An earlier
+      // attempt can have staged a complete, correct file; replacing it with a
+      // same-size donor copy that is corrupt turns a resumable offline attempt
+      // into a failed one. The fetcher already owns "is this staged file good"
+      // and will resume or discard it, so this path must not pre-empt that.
+      guard !fm.fileExists(atPath: destination.path) else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-      // A leftover from an earlier attempt would make both copy paths fail with
-      // EEXIST. Removing it touches STAGING, never the donor.
-      if fm.fileExists(atPath: destination.path) {
-        try? fm.removeItem(at: destination)
-      }
+      // Second-pass finding 7: prove the destination's PARENT really is inside
+      // staging before writing through it. A symlinked component directory in
+      // staging would otherwise let `copyItem` resolve out of the staging tree
+      // and write into the donor — which would make this type's read-only
+      // promise false by exactly the route the promise is about. `realpath`
+      // resolves every link in the chain; a parent that will not resolve, or
+      // resolves outside staging, means skip the file and let it download.
+      guard let stagingRoot = Self.resolved(staging),
+        let parent = Self.resolved(destination.deletingLastPathComponent()),
+        parent == stagingRoot || parent.hasPrefix(stagingRoot + "/")
+      else { continue }
 
       if cloneItem(at: source, to: destination) {
         files += 1
@@ -101,6 +113,17 @@ public enum LegacyDonorImport {
     return Outcome(
       filesReproduced: files, bytesReproduced: bytes,
       clonedThroughout: everyCopyCloned && files > 0)
+  }
+
+  /// The fully link-resolved path, or nil when it does not resolve.
+  ///
+  /// `realpath(3)` rather than `URL.resolvingSymlinksInPath()`, which this
+  /// repo documents as insufficient for the `/private/tmp` case that every
+  /// temporary-directory test runs in.
+  private static func resolved(_ url: URL) -> String? {
+    var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+    guard realpath(url.path, &buffer) != nil else { return nil }
+    return String(cString: buffer)
   }
 
   /// APFS copy-on-write. Both paths end up independent — writing to one never

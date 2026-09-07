@@ -1,3 +1,4 @@
+import EnviousWisprASR
 import Foundation
 import Testing
 
@@ -144,20 +145,36 @@ struct ParakeetInstallLocationTests {
   func installDirectoryIsOurs() {
     let root = URL(fileURLWithPath: "/tmp/appsupport", isDirectory: true)
     let install = ParakeetInstallLocation.directory(appSupport: root)
-    #expect(install.path == "/tmp/appsupport/EnviousWispr/Models/parakeet-tdt-0.6b-v3-coreml")
+    // Literal on purpose, not derived from `repoFolderName`: this pins the
+    // SHAPE of the path independently, so a change to that constant has to be
+    // deliberate here too. The constant's agreement with FluidAudio is the
+    // separate test below.
+    #expect(install.path == "/tmp/appsupport/EnviousWispr/Models/parakeet-tdt-0.6b-v3")
     #expect(!install.path.contains("FluidAudio"))
   }
 
-  @Test("the last path component is the repo folder name FluidAudio reconstructs")
+  @Test("our folder name is the one FluidAudio itself reconstructs")
   func lastComponentSurvivesVendorReconstruction() {
+    // Second-pass finding 10: the ORACLE is FluidAudio, not our own constant.
+    // Reconstructing the expected value from `repoFolderName` compared that
+    // constant with itself, so the one drift worth catching — the vendor
+    // renaming its repo folder while our constant stands still — passed.
+    // `ParakeetBackend.defaultModelDirectory` is `AsrModels.defaultCacheDirectory`,
+    // whose last component IS the vendor's own `repo.folderName`.
+    let vendorFolderName = ParakeetBackend.defaultModelDirectory.lastPathComponent
+    // One literal, not a concatenation: `#expect`'s second argument is a
+    // `Comment`, which a `+` expression cannot convert to.
+    #expect(
+      ParakeetInstallLocation.repoFolderName == vendorFolderName,
+      "FluidAudio's repo folder is now \(vendorFolderName); our install directory is no longer the one its loader reconstructs")
+
     let root = URL(fileURLWithPath: "/tmp/appsupport", isDirectory: true)
     let install = ParakeetInstallLocation.directory(appSupport: root)
-    #expect(install.lastPathComponent == ParakeetInstallLocation.repoFolderName)
     // What AsrModels.repoPath(from:) does: drop the last component, re-append
-    // the repo folder name. A location that does not survive that round trip is
-    // one the runtime would look for somewhere else.
+    // the vendor's folder name. A location that does not survive that round
+    // trip is one the runtime would look for somewhere else.
     let reconstructed = install.deletingLastPathComponent()
-      .appendingPathComponent(ParakeetInstallLocation.repoFolderName, isDirectory: true)
+      .appendingPathComponent(vendorFolderName, isDirectory: true)
     #expect(reconstructed.standardizedFileURL == install.standardizedFileURL)
   }
 
@@ -165,7 +182,7 @@ struct ParakeetInstallLocationTests {
   func donorIsTheOldSharedDirectory() {
     let root = URL(fileURLWithPath: "/tmp/appsupport", isDirectory: true)
     let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: root)
-    #expect(donor.path == "/tmp/appsupport/FluidAudio/Models/parakeet-tdt-0.6b-v3-coreml")
+    #expect(donor.path == "/tmp/appsupport/FluidAudio/Models/parakeet-tdt-0.6b-v3")
     #expect(donor != ParakeetInstallLocation.directory(appSupport: root))
   }
 }

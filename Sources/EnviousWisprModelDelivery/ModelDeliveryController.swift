@@ -662,15 +662,26 @@ public actor ModelDeliveryController {
     //
     // The donor is read-only (`LegacyDonorImport`), so nothing here can damage
     // the directory the user's other apps share.
+    //
+    // Second-pass finding 8: DETACHED. Without a cloning filesystem this copies
+    // hundreds of megabytes synchronously, and running that on the controller
+    // actor would lock out every other delivery call — including the cancel the
+    // user just pressed — for the whole copy. Cancellation is re-checked on the
+    // way back, because the wait is exactly long enough for one to land.
     var donorOutcome = LegacyDonorImport.Outcome.none
     if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
-      donorOutcome = LegacyDonorImport.reproduce(
-        manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+      donorOutcome = await Task.detached(priority: .utility) {
+        LegacyDonorImport.reproduce(
+          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+      }.value
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return finishCancelled(identity, generation: generation)
+      }
       if donorOutcome.filesReproduced > 0 {
         await AppLogger.shared.log(
           "Model delivery reproduced \(donorOutcome.filesReproduced) file(s), "
             + "\(donorOutcome.bytesReproduced) bytes, from the legacy shared directory "
-            + "(cloned: \(donorOutcome.clonedThroughout)) — no download needed for those files",
+            + "(cloned: \(donorOutcome.clonedThroughout)) — awaiting hash verification",
           level: .info, category: "Delivery")
       }
     }

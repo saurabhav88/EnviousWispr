@@ -28,7 +28,17 @@ public enum ParakeetInstallLocation {
   /// re-appends `repo.folderName` — so a directory named anything else would
   /// make our install location and the runtime's lookup location disagree while
   /// both looked correct in isolation.
-  public static let repoFolderName = "parakeet-tdt-0.6b-v3-coreml"
+  ///
+  /// **It is NOT the Hugging Face repo slug**, and the two differ by exactly the
+  /// suffix that makes them look interchangeable. `Repo.name` is
+  /// `parakeet-tdt-0.6b-v3-coreml`; `Repo.folderName` falls through to
+  /// `name.replacingOccurrences(of: "-coreml", with: "")`
+  /// (`ModelNames.swift:265-266`), so the directory FluidAudio actually uses is
+  /// this one. Taking the value from our own delivery manifest — which carries
+  /// the slug — produced a directory the loader would never look in. The test
+  /// `lastComponentSurvivesVendorReconstruction` reads the vendor's value at
+  /// runtime rather than restating it here, which is what caught that.
+  public static let repoFolderName = "parakeet-tdt-0.6b-v3"
 
   /// Our owned install directory beneath a given Application Support root.
   ///
