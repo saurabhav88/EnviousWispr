@@ -1031,7 +1031,7 @@ struct CustomWordsManagerLockingTests {
 
     let durableSource = try String(
       contentsOf: RepoRoot.sourceURL(
-        "Sources/EnviousWisprPostProcessing/DurableJSONFile.swift"),
+        "Sources/EnviousWisprCore/DurableJSONFile.swift"),
       encoding: .utf8)
     let durableWriteSlice = try functionBody(
       in: durableSource,

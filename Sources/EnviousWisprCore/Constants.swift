@@ -30,22 +30,25 @@ public enum AppConstants {
   public static let pendingClockSkewTolerance: TimeInterval = 60
   public static let onboardingWindowTitle = "Setup"
 
-  /// Application Support directory for EnviousWispr.
-  /// Falls back to a temporary directory if Application Support is unavailable.
-  public static var appSupportURL: URL {
-    if let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first {
-      return appSupport.appendingPathComponent(appSupportDir, isDirectory: true)
-    }
-    let fallback = FileManager.default.temporaryDirectory.appendingPathComponent(
-      appSupportDir, isDirectory: true)
-    NSLog(
-      "[EnviousWispr] WARNING: Application Support directory unavailable, using fallback: \(fallback.path)"
-    )
-    return fallback
-  }
+  /// The directory EnviousWispr writes into. Sole owner: `StorageRoot`.
+  ///
+  /// **Deliberately still the STANDARD path, not `StorageRoot.live` (#2695).**
+  /// Switching the stores to a resolved root before the verified data handoff
+  /// exists would take an existing user's dictation history and recoverable
+  /// recordings out of the app the moment their data directory turned
+  /// read-only: the files stay on disk, the app reads only the new root, and
+  /// repairing the machine does not bring them back because the new root stays
+  /// authoritative by design. Reproduced by Codex against the real resolver.
+  /// The switch lands with the handoff.
+  ///
+  /// **The previous temporary-directory fallback is deleted, and its deletion
+  /// is the point.** It handled an ABSENT lookup result only, so it could not
+  /// fire for the case that actually reaches users — a lookup that returns the
+  /// standard path while that path is unwritable (#2690) — and its destination
+  /// was purgeable by the system, so a user whose dictation history landed
+  /// there lost it with nothing reporting the loss. A fallback that cannot fire
+  /// when it is needed and loses data when it does is worse than none.
+  public static var appSupportURL: URL { StorageRoot.standardDirectory }
 }
 
 // MARK: - Speech Segment
