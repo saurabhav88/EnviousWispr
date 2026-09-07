@@ -588,12 +588,18 @@ public actor ModelDeliveryController {
         // entry from a bad post-promote stamp.
         return await finishFailed(identity, failure, generation: generation)
       } catch {
-        // Everything else is a Cocoa error from one of `promoteAndAdmit`'s SEVEN
-        // untyped `try` sites, and until #2691's follow-up they all arrived as the
-        // bare word `admit_in_place`. That is most of the function: removing the
-        // marker, creating the install directory, replacing and moving components,
-        // reading attributes, creating the METADATA directory, and writing the
-        // marker. #2690's reporter throws at the metadata directory — his
+        // Everything else is a Cocoa error from one of the FIVE untyped `try`
+        // sites this call can actually reach, and until #2691's follow-up they all
+        // arrived as the bare word `admit_in_place`: removing the marker, creating
+        // the install directory, reading attributes for the stamp, creating the
+        // METADATA directory, and writing the marker.
+        //
+        // Five, not seven: this arm passes `stagedComponents: []`, so the
+        // component loop at `CacheAdmission.swift:245-252` never iterates and its
+        // remove/move throws belong to the post-fetch call alone. Counted by
+        // reading what THIS call site reaches rather than what the function
+        // contains, which is the distinction a first draft of this comment got
+        // wrong. #2690's reporter throws at the metadata directory — his
         // `Application Support` is root-owned, so it cannot be created — and the
         // typed pass-through above does not reach him, because `FileManager` does
         // not mint `DeliveryFailure`.
