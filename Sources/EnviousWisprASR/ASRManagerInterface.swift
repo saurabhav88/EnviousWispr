@@ -122,6 +122,12 @@ public protocol ASRManagerInterface: AnyObject {
   /// download). Set by `ParakeetEngineAdapter` from the delivery flag before
   /// each warm-up. Both conformers honor it on their Parakeet prepare path.
   var parakeetCacheOnly: Bool { get set }
+  /// #2483: the Parakeet install directory the HOST selected. Set by
+  /// `ParakeetEngineAdapter` alongside `parakeetCacheOnly` before each warm-up.
+  /// Both conformers pass it to their Parakeet prepare path; neither resolves a
+  /// directory of its own, because every default they could reach is
+  /// FluidAudio's shared cache, which EnviousWispr does not own.
+  var parakeetModelDirectory: URL { get set }
   func loadModel() async throws
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
@@ -185,6 +191,15 @@ extension ASRManagerInterface {
   /// (mocks never download).
   public var parakeetCacheOnly: Bool {
     get { false }
+    set {}
+  }
+
+  /// #2483 safe default for test doubles, same shape as `parakeetCacheOnly`
+  /// above and safe for the same reason: BOTH production conformers declare
+  /// real storage, so their witnesses win, and a mock never loads a model, so
+  /// the value it reports is never used to touch the filesystem.
+  public var parakeetModelDirectory: URL {
+    get { ParakeetBackend.defaultModelDirectory }
     set {}
   }
 }

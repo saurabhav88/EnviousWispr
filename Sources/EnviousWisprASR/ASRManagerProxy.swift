@@ -126,6 +126,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// warm-up; false = legacy in-service download path, bit-for-bit.
   public var parakeetCacheOnly = false
 
+  /// #2483 chunk 1: the install directory sent to the helper on every load.
+  /// Defaults to today's value so this chunk changes no behaviour; chunk 2
+  /// injects the app-owned directory from the delivery registration and this
+  /// default goes away. Not optional on purpose — a nil here would have to be
+  /// resolved somewhere, and every place that could resolve it picks the
+  /// shared tree.
+  public var parakeetModelDirectory: URL = ParakeetBackend.defaultModelDirectory
+
   /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
   /// proxy-level error on the load path (nil connection, interface/selector
   /// mismatch, remote-proxy failure), drop the connection so the NEXT call
@@ -292,7 +300,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
-          proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
+          proxy.loadModel(
+            backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly,
+            modelDirectoryPath: self.parakeetModelDirectory.path
+          ) {
             nsError in
             // #1525 PR I-B: reconstruct the typed, conforming error from the
             // surviving NSError domain/code before throwing to the adapter.

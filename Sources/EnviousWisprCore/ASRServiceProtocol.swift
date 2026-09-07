@@ -23,8 +23,18 @@ import Foundation
   ///     the service loads the host-admitted cache with FluidAudio's offline
   ///     switch armed and can NEVER download; a cache miss throws typed.
   ///     False preserves the legacy in-service download path bit-for-bit.
+  ///   - modelDirectoryPath: #2483 — the install directory the HOST selected,
+  ///     as a filesystem path. The helper never resolves a directory of its
+  ///     own: every default it could reach is FluidAudio's shared cache, which
+  ///     EnviousWispr does not own. There is deliberately NO empty-string or
+  ///     nil fallback — an unusable value throws, because a fallback here is
+  ///     indistinguishable from correctness downstream and would silently
+  ///     select the one tree we are trying to stop touching. Host and helper
+  ///     ship in one signed bundle, so there is no version skew to absorb.
   ///   - reply: nil on success, NSError on failure.
-  func loadModel(backendType: String, cacheOnly: Bool, reply: @escaping (NSError?) -> Void)
+  func loadModel(
+    backendType: String, cacheOnly: Bool, modelDirectoryPath: String,
+    reply: @escaping (NSError?) -> Void)
 
   /// Unload the current model and free memory.
   func unloadModel(reply: @escaping () -> Void)

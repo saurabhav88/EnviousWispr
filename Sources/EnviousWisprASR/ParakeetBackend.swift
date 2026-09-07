@@ -33,12 +33,30 @@ public actor ParakeetBackend: ASRBackend {
 
   public init() {}
 
+  /// The directory FluidAudio would pick for itself.
+  ///
+  /// #2483 chunk 1: this exists so the rest of `EnviousWisprASR` — which does
+  /// not import FluidAudio — can name today's value while the model directory
+  /// becomes an INJECTED parameter rather than something each load site
+  /// resolves on its own. This chunk is a semantic no-op: every caller passes
+  /// exactly this, so behaviour is byte-identical.
+  ///
+  /// It is FluidAudio's SHARED per-repo cache, which EnviousWispr does not own
+  /// (#2483). Chunk 2 changes what the host SELECTS, not this accessor, and
+  /// this accessor must not become the answer anywhere the host can supply one.
+  public static var defaultModelDirectory: URL {
+    AsrModels.defaultCacheDirectory(for: .v3)
+  }
+
   public func prepare() async throws {
-    try await prepare(cacheOnly: false, progressCallback: nil)
+    try await prepare(
+      cacheOnly: false, modelDirectory: Self.defaultModelDirectory, progressCallback: nil)
   }
 
   public func prepare(progressCallback: ProgressCallback?) async throws {
-    try await prepare(cacheOnly: false, progressCallback: progressCallback)
+    try await prepare(
+      cacheOnly: false, modelDirectory: Self.defaultModelDirectory,
+      progressCallback: progressCallback)
   }
 
   /// #1348 Phase 2: whether this process may let FluidAudio touch the
@@ -75,7 +93,14 @@ public actor ParakeetBackend: ASRBackend {
   /// FluidAudio's own offline switch armed — zero network in this process.
   /// The legacy path (`cacheOnly: false`) stays byte-identical for the
   /// staged-rollout window (D5 §5), minus the deleted inert checksum no-op.
-  public func prepare(cacheOnly: Bool, progressCallback: ProgressCallback?) async throws {
+  /// - Parameter modelDirectory: the repo-shaped directory to load from or
+  ///   download into. Both vendor entry points below normalise a repo-shaped
+  ///   path identically (`AsrModels.load(from:)` re-derives it through
+  ///   `repoPath`, and `download(to:)` derives its own parent), so passing
+  ///   `Self.defaultModelDirectory` here is exactly the pre-#2483 behaviour.
+  public func prepare(
+    cacheOnly: Bool, modelDirectory: URL, progressCallback: ProgressCallback?
+  ) async throws {
     let handler = Self.makeLoadProgressHandler(progressCallback)
 
     Self.configureOfflineMode(cacheOnly: cacheOnly)
@@ -85,9 +110,11 @@ public actor ParakeetBackend: ASRBackend {
         // Delivery-managed: the default cache was admitted by the host's hash
         // gate before this call; offlineMode (armed above) turns any gap
         // into a typed throw the host maps to its repair path.
-        loadedModels = try await AsrModels.loadFromCache(version: .v3, progressHandler: handler)
+        loadedModels = try await AsrModels.load(
+          from: modelDirectory, version: .v3, progressHandler: handler)
       } else {
-        loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
+        loadedModels = try await AsrModels.downloadAndLoad(
+          to: modelDirectory, version: .v3, progressHandler: handler)
       }
       self.fluidModels = loadedModels
 

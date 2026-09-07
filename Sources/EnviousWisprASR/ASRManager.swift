@@ -30,6 +30,9 @@ public final class ASRManager: ASRManagerInterface {
   /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
   /// `ASRManagerInterface.parakeetCacheOnly`).
   public var parakeetCacheOnly = false
+  /// #2483 chunk 1: see `ASRManagerProxy.parakeetModelDirectory` — same
+  /// contract, same temporary default, replaced by injection in chunk 2.
+  public var parakeetModelDirectory: URL = ParakeetBackend.defaultModelDirectory
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
@@ -156,7 +159,9 @@ public final class ASRManager: ASRManagerInterface {
         // not a kernel-side identity gate (capability rule applies to
         // adapters/kernel; injected test mocks keep the legacy path).
         if self.parakeetCacheOnly, let parakeet = self.parakeetBackend as? ParakeetBackend {
-          try await parakeet.prepare(cacheOnly: true, progressCallback: progress)
+          try await parakeet.prepare(
+            cacheOnly: true, modelDirectory: self.parakeetModelDirectory,
+            progressCallback: progress)
         } else {
           try await self.parakeetBackend.prepare(progressCallback: progress)
         }
