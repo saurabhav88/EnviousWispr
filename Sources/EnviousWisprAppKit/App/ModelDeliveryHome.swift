@@ -193,22 +193,27 @@ public final class ModelDeliveryHome {
     // consults the same flag and returns `nil`, so the load refuses rather than
     // resolving a path nobody may write to.
     //
-    // SCOPE, and I am stating what the code DOES rather than what I set out to
-    // write: this `return` skips EVERY family, not only Parakeet. WhisperKit and
-    // EG-1 still compose their directories from `appSupportRoot` below, and if
-    // they registered here they would carry the same startup sweep and the same
-    // Resume path into a location nobody may write to. Refusing all three is
-    // therefore the correct behaviour and not merely the convenient one — but it
-    // is wider than the finding that prompted it, so it is named here rather
-    // than left for a reader to discover from the control flow.
+    // SCOPE, counted from the registrations below rather than remembered: this
+    // `return` skips the THREE this initializer builds — Parakeet (:219),
+    // WhisperKit transcription (:292) and WhisperKit preview (:334). All three
+    // would otherwise carry the same startup sweep and the same Resume path into
+    // a location nobody may write to, so refusing all three is correct rather
+    // than merely convenient. It is still wider than the finding that prompted
+    // it, which is why it is named here instead of left in the control flow.
     //
-    // Moving those two onto the resolver is #2695's PR 2. This only stops them
-    // registering when storage is already known to be unusable.
+    // EG-1 is NOT one of them and is not protected by this line. It is
+    // constructed separately (`WisprBootstrapper`), and whether it needs the
+    // same refusal is UNVERIFIED here. An earlier version of this comment said
+    // "every family" and named EG-1; that was wrong, and a wrong scope claim in
+    // a comment is worse than none because the next reader stops counting.
+    //
+    // Moving the WhisperKit pair onto the resolver is #2695's PR 2. This only
+    // stops them registering when storage is already known to be unusable.
     guard !storage.isUnavailable else {
       Task {
         await AppLogger.shared.log(
-          "Model delivery: storage is unavailable, so no model family is registered "
-            + "and nothing will be written or deleted",
+          "Model delivery: storage is unavailable, so Parakeet and both WhisperKit "
+            + "registrations are skipped and nothing will be written or deleted for them",
           level: .info, category: "Delivery")
       }
       return
