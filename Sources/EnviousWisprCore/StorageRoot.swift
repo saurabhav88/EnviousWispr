@@ -84,15 +84,22 @@ public enum StorageRoot {
     /// lookup returns nothing. **Read-only, for locating another vendor's
     /// shared cache. Never a write destination.**
     public let systemApplicationSupport: URL?
+    /// **Always DESCRIBES `dataDirectory`, on every result including an
+    /// unavailable one.** The two fields may never disagree: a consumer reading
+    /// `selection` to decide which root to name in a message, or whether this
+    /// install has already moved, must not be told the opposite of what
+    /// `dataDirectory` says.
     public let selection: Selection
     /// Every candidate tried, in order, when nothing was usable. Empty on a
     /// successful resolution. Named so the user-facing message can list the
     /// real paths rather than a category.
     public let exhausted: [URL]
-    /// `true` when no candidate accepted a write. `dataDirectory` then holds
-    /// the STANDARD path, so failures surface at the real write site exactly as
-    /// they do today rather than being redirected into a third location that
-    /// looks like it worked.
+    /// `true` when no candidate accepted a write. `dataDirectory` then holds the
+    /// path the failure should be REPORTED against — the standard directory
+    /// where one exists, or the claimed root that stopped accepting writes — so
+    /// the error names a path a person would recognise rather than a temporary
+    /// directory they have never seen. **It is not a destination.** Branch on
+    /// this, never on `dataDirectory` being non-nil.
     public let isUnavailable: Bool
   }
 
@@ -185,13 +192,15 @@ public enum StorageRoot {
     // Refusing is worse for one launch and correct forever after.
     if isClaimed(fallback) {
       guard proveWritable(fallback) else {
-        return unavailable(fallback, attempted: [fallback], systemApplicationSupport)
+        return unavailable(
+          fallback, .homeFallback, attempted: [fallback], systemApplicationSupport)
       }
       return resolved(fallback, .homeFallback, systemApplicationSupport)
     }
     if let standard, isClaimed(standard) {
       guard proveWritable(standard) else {
-        return unavailable(standard, attempted: [standard], systemApplicationSupport)
+        return unavailable(
+          standard, .standard, attempted: [standard], systemApplicationSupport)
       }
       return resolved(standard, .standard, systemApplicationSupport)
     }
@@ -212,16 +221,28 @@ public enum StorageRoot {
     // Nothing is usable. Return the STANDARD path rather than inventing a third
     // destination, so the failure lands at the real write with the real path in
     // the error, unchanged from the behaviour this change replaces.
-    return unavailable(standard ?? fallback, attempted: attempted, systemApplicationSupport)
+    if let standard {
+      return unavailable(standard, .standard, attempted: attempted, systemApplicationSupport)
+    }
+    return unavailable(fallback, .homeFallback, attempted: attempted, systemApplicationSupport)
   }
 
+  /// **`selection` always DESCRIBES `dataDirectory`, including here.** The
+  /// first version hardcoded `.standard` while returning whichever directory it
+  /// had named, so a committed home fallback that stopped accepting writes came
+  /// back as `dataDirectory: <home>/EnviousWispr` with `selection: .standard`.
+  /// A consumer reading `selection` to decide anything — which root to mention
+  /// in a message, whether this install has already moved — would have been told
+  /// the opposite of the truth, and the two fields would have disagreed with
+  /// nothing reporting it (cloud review of PR #2698).
   private static func unavailable(
-    _ directory: URL, attempted: [URL], _ systemApplicationSupport: URL?
+    _ directory: URL, _ selection: Selection, attempted: [URL],
+    _ systemApplicationSupport: URL?
   ) -> Resolution {
     Resolution(
       dataDirectory: directory,
       systemApplicationSupport: systemApplicationSupport,
-      selection: .standard,
+      selection: selection,
       exhausted: attempted,
       isUnavailable: true)
   }

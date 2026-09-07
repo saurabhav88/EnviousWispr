@@ -236,8 +236,48 @@ struct StorageRootTests {
     #expect(resolution.isUnavailable)
     #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
     #expect(resolution.exhausted == [sandbox.fallbackCandidate])
+    // The two fields must agree. Reporting `.standard` beside the fallback's
+    // path tells a caller the opposite of the truth about whether this install
+    // has already moved, and nothing would report the disagreement.
+    #expect(resolution.selection == .homeFallback)
     // The other root must not have been claimed behind the user's back.
     #expect(FileManager.default.fileExists(atPath: sandbox.standardCandidate.path) == false)
+  }
+
+  /// The invariant behind the case above, asserted across every shape a
+  /// resolution can take rather than at the one site review happened to name.
+  @Test("What we chose always describes where we point, on every outcome")
+  func selectionAlwaysDescribesTheDataDirectory() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+
+    func check(_ resolution: StorageRoot.Resolution, _ label: Comment) {
+      switch resolution.selection {
+      case .standard:
+        #expect(resolution.dataDirectory == sandbox.standardCandidate, label)
+      case .homeFallback:
+        #expect(resolution.dataDirectory == sandbox.fallbackCandidate, label)
+      }
+    }
+
+    check(
+      StorageRoot.resolve(systemApplicationSupport: sandbox.appSupport, home: sandbox.home),
+      "healthy machine")
+
+    try sandbox.lock(sandbox.appSupport)
+    check(
+      StorageRoot.resolve(systemApplicationSupport: sandbox.appSupport, home: sandbox.home),
+      "Application Support unwritable, fallback taken")
+
+    try sandbox.lock(sandbox.home)
+    check(
+      StorageRoot.resolve(systemApplicationSupport: sandbox.appSupport, home: sandbox.home),
+      "nothing writable")
+
+    sandbox.unlockAll()
+    check(
+      StorageRoot.resolve(systemApplicationSupport: nil, home: sandbox.home),
+      "no system lookup at all")
   }
 
   /// The three-valued read. `try? Data(contentsOf:)` answers `nil` both for
