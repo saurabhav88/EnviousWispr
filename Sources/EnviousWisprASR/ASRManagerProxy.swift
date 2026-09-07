@@ -246,6 +246,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     guard activeBackendType == .parakeet else {
       throw ASRManagerNotOwnedError(backend: activeBackendType)
     }
+    // Review C1: this REFUSES, and the previous version did not. It sent `""`
+    // to the helper, which rejects an empty path — so a host-side refusal
+    // arrived at the user as a helper-side parse error, and the claim that an
+    // unset directory throws was true of the in-process manager only.
+    guard parakeetModelDirectory != nil else { throw ParakeetModelDirectoryUnsetError() }
     // If a load is already in progress, await it instead of starting a new one.
     if let existing = inFlightLoadTask {
       try await existing.value
@@ -304,10 +309,9 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
-          // #2697: the helper is never handed a guessed path. An unset directory
-          // is a refusal, not an empty string — `ASRServiceHandler` already
-          // rejects an empty path, and sending one would turn a host-side
-          // refusal into a helper-side parse error.
+          // Refused at the top of `loadModel()`, so this is never the empty
+          // string in practice; the fallback exists only because the optional
+          // cannot be re-narrowed across the actor hop.
           let directoryPath = self.parakeetModelDirectory?.path ?? ""
           proxy.loadModel(
             backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly,

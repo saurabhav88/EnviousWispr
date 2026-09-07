@@ -188,6 +188,19 @@ public final class ModelDeliveryHome {
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
       Task { await controller.sweepSupersededStaging(registration) }
+      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
+      //
+      // The seam that guarantees it has run lives in the engine adapter's
+      // warm-up, and warm-up is driven by a recording session — so without this
+      // line the whole migration, including a multi-second hash of 483 MB, is
+      // paid by the user's FIRST TAKE after updating. Starting it here moves that
+      // cost into launch, where nobody is waiting on it.
+      //
+      // This does not replace the seam and does not race it: `ensureLegacyMigration`
+      // is single-flight per identity, so a warm-up arriving mid-migration awaits
+      // THIS task rather than starting a second one, and a warm-up arriving after
+      // it finishes reads the durable record and returns immediately.
+      Task { await controller.ensureLegacyMigration(registration) }
       // The kill-switch store is INJECTED, exactly as its two siblings below
       // are (`:whisperKitHandle`, `:whisperPreviewHandle`). Omitting it made
       // this handle resolve `nil` to the real operational suite, so no test

@@ -74,13 +74,24 @@ enum PathSafety {
   }
 
   /// Whether `subject`, or the nearest ancestor of it that exists, resolves
-  /// inside `root`.
+  /// inside `root` — or inside the nearest ancestor of `root` that exists.
   ///
-  /// Fails CLOSED: an unresolvable root or a subject with no existing ancestor
-  /// answers `false`, because the only honest answer to "is this inside a place
-  /// I own" when the question cannot be evaluated is no.
+  /// **Both sides use the nearest EXISTING ancestor, and the root side is the
+  /// half that matters on a first run.** Resolving `root` directly fails when it
+  /// has not been created yet, which on a fresh install is every root we are
+  /// about to make. A check that answers "unsafe" there refuses the first
+  /// migration of every new user — the same first-install regression that broke
+  /// #2483 twice, and the reason the fixture for this creates nothing but the
+  /// donor.
+  ///
+  /// It is not weaker where it counts. Nothing that does not exist can be
+  /// redirected; a symlink has to BE there to send a write somewhere else, and
+  /// an existing redirected component is exactly what the anchor lands on.
+  ///
+  /// Still fails CLOSED when neither side can be resolved at all.
   static func resolvesInside(_ subject: URL, root: URL) -> Bool {
-    guard let rootPath = resolvedPath(root),
+    guard let rootAnchor = nearestExistingAncestor(of: root),
+      let rootPath = resolvedPath(rootAnchor),
       let anchor = nearestExistingAncestor(of: subject),
       let anchorPath = resolvedPath(anchor)
     else { return false }

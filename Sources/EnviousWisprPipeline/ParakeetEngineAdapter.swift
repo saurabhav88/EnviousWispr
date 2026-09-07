@@ -336,12 +336,19 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // branch below never got it. Whatever the flag says, the location is made
     // ready first, and a REFUSAL arrives as `nil` rather than as a path that
     // looks fine.
-    let readyDirectory = await delivery?.ensureModelLocationReady()
-    // A missing handle means no manifest loaded, so nothing has said where the
-    // model lives. `nil` travels to `loadModel()`, which refuses. It is NOT
-    // replaced with a directory of our own choosing here: that substitution is
-    // exactly what made a refusal invisible.
-    asrManager.parakeetModelDirectory = readyDirectory
+    // Review B4: a missing HANDLE is not a refusal and must not be treated as
+    // one. It means the bundled manifest failed to load, so there is no
+    // registration and nothing has judged anything — while the user may still
+    // have a perfectly good model in our own directory. Assigning `nil` there
+    // made an existing installation unloadable to fix a problem it does not
+    // have. A handle that EXISTS and returns `nil` has genuinely refused, and
+    // that still travels to `loadModel()` as a refusal.
+    if let delivery {
+      asrManager.parakeetModelDirectory = await delivery.ensureModelLocationReady()
+    } else {
+      asrManager.parakeetModelDirectory =
+        ParakeetInstallLocation.directoryFromSystemApplicationSupport()
+    }
     if let delivery, delivery.isEnabled() {
       deliveryActive = true
       asrManager.parakeetCacheOnly = true

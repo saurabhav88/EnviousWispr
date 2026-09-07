@@ -203,6 +203,15 @@ public enum LegacyDonorMigration {
 
     let candidateRoot = metadata.appendingPathComponent(
       "legacy-migration/\(manifest.identity.cacheKey)", isDirectory: true)
+    // Review P1: the recursive delete below is the most dangerous line in this
+    // type, and it was unguarded. If `legacy-migration` is a symlink to some
+    // other directory holding a child of that name, `removeItem` deletes the
+    // FAR SIDE. Neither the install-versus-donor check above nor the staging
+    // check elsewhere protects this path — they answer about different
+    // directories. So the candidate's own ancestry is proven to sit inside the
+    // metadata directory we own, against the nearest EXISTING ancestor, before
+    // anything is deleted, created or cloned here.
+    guard PathSafety.resolvesInside(candidateRoot, root: metadata) else { return .none }
     // A candidate left by an interrupted run is DISCARDED, never resumed. It was
     // never verified as a whole, and resuming onto it would let a file that
     // happened to match its size be inherited rather than re-proven.
@@ -217,61 +226,79 @@ public enum LegacyDonorMigration {
     for (component, componentFiles) in manifest.filesByComponent {
       if Task.isCancelled { break }
 
-      // Build the whole component in the candidate, from valid OWNED files plus
-      // donor files. Owned files first: a partially complete installation is
-      // repaired rather than replaced, which is the offline case that would
-      // otherwise need the network.
-      var built = true
-      for file in componentFiles {
+      // TWO ATTEMPTS, and the second one is review finding B1. The first prefers
+      // the user's OWN files so a partially complete installation is repaired
+      // rather than replaced — the offline case that would otherwise need the
+      // network. But an owned file is chosen by SIZE, and a same-size corrupt
+      // file then fails the hash and used to take the whole component down with
+      // it, leaving an offline user with no model while a perfectly good donor
+      // copy sat on disk. So a failed first attempt retries from the donor
+      // alone before the component is abandoned.
+      var verified = false
+      for attempt in [Attempt.preferOwned, .donorOnly] {
         if Task.isCancelled { return partial() }
-        let destination = candidateRoot.appendingPathComponent(file.resolvedInstallPath)
-        try? fm.createDirectory(
-          at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-
-        let owned = install.appendingPathComponent(file.resolvedInstallPath)
-        let donated = donorRoot.appendingPathComponent(file.resolvedInstallPath)
-        // Size is the cheap gate for CHOOSING a source. It is not the
-        // correctness check — that is the candidate hash below — so a size match
-        // here proves nothing and is not treated as if it did.
-        let source: URL? =
-          CacheAdmission.sizeMatches(url: owned, expected: file.sizeBytes)
-          ? owned
-          : (CacheAdmission.sizeMatches(url: donated, expected: file.sizeBytes) ? donated : nil)
-        guard let source else {
-          built = false
-          break
-        }
-        guard cloneItem(at: source, to: destination) else {
-          clonedThroughout = false
-          built = false
-          break
-        }
-        filesReproduced += 1
-        bytesReproduced += file.sizeBytes
-        onProgress?()
-      }
-      await stall("after_clone")
-      guard built else {
         try? fm.removeItem(at: candidateRoot.appendingPathComponent(component))
-        continue
-      }
 
-      // Verify the CANDIDATE, never the donor. The donor can be rewritten by its
-      // owner while we read it, so a hash taken there is a statement about a file
-      // we did not keep. These are the bytes that will be published.
-      var verified = true
-      for file in componentFiles {
-        if Task.isCancelled { return partial() }
-        let staged = candidateRoot.appendingPathComponent(file.resolvedInstallPath)
-        guard CacheAdmission.sizeMatches(url: staged, expected: file.sizeBytes),
-          await CacheAdmission.streamingSHA256(of: staged) == file.sha256
-        else {
-          verified = false
+        var built = true
+        for file in componentFiles {
+          if Task.isCancelled { return partial() }
+          let destination = candidateRoot.appendingPathComponent(file.resolvedInstallPath)
+          try? fm.createDirectory(
+            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+          let owned = install.appendingPathComponent(file.resolvedInstallPath)
+          let donated = donorRoot.appendingPathComponent(file.resolvedInstallPath)
+          // Size is the cheap gate for CHOOSING a source. It is not the
+          // correctness check — that is the candidate hash below — so a size
+          // match here proves nothing and is not treated as if it did.
+          var source: URL?
+          if attempt == .preferOwned,
+            CacheAdmission.sizeMatches(url: owned, expected: file.sizeBytes)
+          {
+            source = owned
+          } else if CacheAdmission.sizeMatches(url: donated, expected: file.sizeBytes) {
+            source = donated
+          }
+          guard let source else {
+            built = false
+            break
+          }
+          guard
+            await reproduce(
+              from: source, to: destination, sizeBytes: file.sizeBytes,
+              clonedThroughout: &clonedThroughout)
+          else {
+            built = false
+            break
+          }
+          filesReproduced += 1
+          bytesReproduced += file.sizeBytes
+          onProgress?()
+        }
+        await stall("after_clone")
+        guard built else { continue }
+
+        // Verify the CANDIDATE, never the donor. The donor can be rewritten by
+        // its owner while we read it, so a hash taken there is a statement about
+        // a file we did not keep. These are the bytes that will be published.
+        var attemptVerified = true
+        for file in componentFiles {
+          if Task.isCancelled { return partial() }
+          let staged = candidateRoot.appendingPathComponent(file.resolvedInstallPath)
+          guard CacheAdmission.sizeMatches(url: staged, expected: file.sizeBytes),
+            await CacheAdmission.streamingSHA256(of: staged) == file.sha256
+          else {
+            attemptVerified = false
+            break
+          }
+          onProgress?()
+        }
+        await stall("after_verify")
+        if attemptVerified {
+          verified = true
           break
         }
-        onProgress?()
       }
-      await stall("after_verify")
       guard verified else {
         try? fm.removeItem(at: candidateRoot.appendingPathComponent(component))
         continue
@@ -335,6 +362,88 @@ public enum LegacyDonorMigration {
       return true
     } catch {
       return false
+    }
+  }
+
+  // MARK: - Reproducing one file
+
+  /// Which sources an attempt is allowed to use. See the two-attempt loop above.
+  private enum Attempt {
+    /// The user's own valid files first, so a partial installation is repaired.
+    case preferOwned
+    /// Donor only, for when a same-size owned file failed its hash.
+    case donorOnly
+  }
+
+  /// Clone if the filesystem can, copy if it cannot.
+  ///
+  /// **The fallback is back after being deleted, and the deletion was the
+  /// mistake (review B2).** Clone-only looked like a clean simplification: both
+  /// directories normally sit on one volume, so `clonefile` all but always
+  /// works. But `EXDEV`, `ENOSPC`, `EEXIST` and `EACCES` are all real, and when
+  /// one fires the user is not merely slower — an OFFLINE user with a complete
+  /// model on disk gets nothing at all, because the only other route to bytes is
+  /// the network. Reproducible model bytes are a fine reason to accept a
+  /// re-download; they are not a reason to accept "cannot dictate".
+  ///
+  /// The copy is chunked and checks cancellation between chunks because the
+  /// largest single file in the shipped manifest is 445 MB, and a check only
+  /// between FILES would let a cancel wait for almost the whole thing.
+  private static func reproduce(
+    from source: URL, to destination: URL, sizeBytes: Int64,
+    clonedThroughout: inout Bool
+  ) async -> Bool {
+    if cloneItem(at: source, to: destination) { return true }
+    clonedThroughout = false
+    // A clone costs almost nothing; a copy allocates every byte. Refuse rather
+    // than start one that cannot finish, because a half-written file whose size
+    // happened to match would be inherited by a later attempt as if it were
+    // staged and good.
+    guard hasRoomFor(sizeBytes, at: destination) else { return false }
+    do {
+      try copyInterruptibly(from: source, to: destination)
+      return true
+    } catch {
+      // Leave nothing half-written behind, including on cancellation.
+      try? FileManager.default.removeItem(at: destination)
+      return false
+    }
+  }
+
+  /// Whether the destination's filesystem has room for `bytes`, with the same
+  /// headroom the delivery preflight uses for a download.
+  private static func hasRoomFor(_ bytes: Int64, at destination: URL) -> Bool {
+    let directory = destination.deletingLastPathComponent()
+    guard
+      let values = try? directory.resourceValues(forKeys: [
+        .volumeAvailableCapacityForImportantUsageKey
+      ]),
+      let available = values.volumeAvailableCapacityForImportantUsage
+    else {
+      // Could not ask. Allow the copy and let it fail honestly rather than
+      // refusing on an answer we do not have.
+      return true
+    }
+    return available > bytes
+  }
+
+  /// Copies in chunks, aborting between chunks when the task is cancelled.
+  private static func copyInterruptibly(from source: URL, to destination: URL) throws {
+    let reader = try FileHandle(forReadingFrom: source)
+    defer { try? reader.close() }
+    guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    let writer = try FileHandle(forWritingTo: destination)
+    defer { try? writer.close() }
+    // 4 MiB: large enough that syscall overhead is irrelevant against a 445 MB
+    // file, small enough that a cancel is felt immediately.
+    let chunkBytes = 4 * 1024 * 1024
+    while true {
+      if Task.isCancelled { throw CancellationError() }
+      let chunk = try reader.read(upToCount: chunkBytes) ?? Data()
+      if chunk.isEmpty { break }
+      try writer.write(contentsOf: chunk)
     }
   }
 

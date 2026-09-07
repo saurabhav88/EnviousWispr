@@ -91,7 +91,18 @@ public final class ParakeetDeliveryHandle {
     onProgress: (@Sendable () -> Void)? = nil
   ) async -> URL? {
     guard ModelDeliveryController.installLocationIsSafe(registration) else { return nil }
-    await controller.ensureLegacyMigration(registration, onProgress: onProgress)
+    // Review A1: migration hashes whole files, and the sessionless wedge guard
+    // reads SILENCE as a wedge. Without a tick, a migration slow enough to
+    // matter is indistinguishable from a hang, and the user is told the app is
+    // stuck while it is working. The validating phase is the right one: the
+    // guard PARKS on it rather than judging it, which is exactly the contract
+    // for a multi-second hash the user did not ask for.
+    let tick: @Sendable () -> Void = {
+      ProgressFile.shared.write(
+        fraction: 0, phase: ModelLoadStallPolicy.validatingCachePhase, detail: "")
+      onProgress?()
+    }
+    await controller.ensureLegacyMigration(registration, onProgress: tick)
     return registration.installDirectory
   }
 

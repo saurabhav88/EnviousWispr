@@ -496,14 +496,22 @@ public actor ModelDeliveryController {
     // the failure that matters is "deleted but not recorded"; the reverse leaves
     // a model that is present and simply never migrated again, which validation
     // and repair already handle.
-    guard
-      LegacyDonorMigration.record(
-        .declined, metadataDirectory: registration.metadataDirectory,
-        manifest: registration.manifest)
-    else {
-      let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "remove:record_declined")
-      setState(identity, .failed(failure))
-      return .failed(failure)
+    //
+    // Review B3: scoped to families that HAVE a donor. Only those can be
+    // resurrected by migration, and requiring a new file to be written before a
+    // deletion is allowed would otherwise refuse the user who is deleting a
+    // model precisely BECAUSE the disk is full — for families where nothing
+    // could have brought it back anyway.
+    if registration.legacyDonorDirectory != nil {
+      guard
+        LegacyDonorMigration.record(
+          .declined, metadataDirectory: registration.metadataDirectory,
+          manifest: registration.manifest)
+      else {
+        let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "remove:record_declined")
+        setState(identity, .failed(failure))
+        return .failed(failure)
+      }
     }
     // #2697: then DRAIN any live migration before deleting. `migrate` is a
     // nonisolated async function, so it releases this actor at every await and a

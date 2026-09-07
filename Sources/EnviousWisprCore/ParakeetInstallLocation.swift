@@ -77,6 +77,31 @@ public enum ParakeetInstallLocation {
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
+  /// Our directory resolved from the system Application Support lookup, for the
+  /// ONE caller that has no registration to read one from: the engine adapter
+  /// when the bundled manifest failed to load, so no `ParakeetDeliveryHandle`
+  /// exists at all.
+  ///
+  /// **This is not `live` coming back, and the difference is the whole point
+  /// (review B4).** `live` was reachable from six sites and answered every one
+  /// of them silently, so a caller that had not been told where the model lives
+  /// got a confident answer and a REFUSAL was indistinguishable from a working
+  /// path. This is reachable from exactly one site, in the branch where nothing
+  /// has refused anything, because there is no registration to refuse.
+  ///
+  /// **It must never be used to satisfy a refusal.** A handle that exists and
+  /// returns `nil` has REFUSED, and the only correct response to that is to fail
+  /// the load. Deleting the model's directory here instead would put us back
+  /// inside a location somebody already judged unsafe.
+  public static func directoryFromSystemApplicationSupport() -> URL? {
+    guard
+      let appSupport = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask
+      ).first
+    else { return nil }
+    return directory(appSupport: appSupport)
+  }
+
   // `live` was here, and it is DELETED (#2697).
   //
   // It resolved the Application Support root itself and was reachable from six
