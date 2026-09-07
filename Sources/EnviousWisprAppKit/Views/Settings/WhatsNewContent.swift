@@ -55,6 +55,64 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.8
+
+    // #2483, #2691 and #2697, merged fe044f6e / 85ddc26e / d49494f3. ONE user
+    // story across three PRs, told once: the speech model moved into a folder of
+    // our own, and everything else in those PRs is repair to a move no user has
+    // run yet. Per whats-new-protocol RULE: whats-new-content-rules, a change
+    // reaching users for the FIRST time carries no repair copy — nobody ran the
+    // version being repaired, so #2697's fixes to #2483 are invisible by
+    // construction and are not narrated.
+    //
+    // The measurements stay HERE rather than in the copy, where the claim sweep
+    // still needs them. Measured on the founder's machine, 2026-09-07: 23 files,
+    // 483,256,769 bytes, reused in 0.8-1.0 seconds by copy-on-write clone; the
+    // shared FluidAudio directory byte- and inode-identical after every one of
+    // eleven force-killed runs; a damaged file repaired from that directory
+    // fetching under 50 MB where the same test before the fix fetched 200-600 MB.
+    //
+    // "reused in seconds" is the only near-numeric claim in the copy and it is
+    // deliberately vague against a measured 0.8-1.0s, because the number is this
+    // machine's and a slower Mac is not being promised anything.
+    //
+    // THE REPAIR ENTRY WAS SCOPED after cloud review (#2701). It said the repair
+    // uses "what is already on your Mac", which is only true when a valid donor
+    // copy exists: on a FRESH install, or once the legacy FluidAudio directory
+    // has been removed, or when that directory holds the same damaged file,
+    // there is no second copy and the fetch supplies the component. Both halves
+    // are now stated, so the sentence is true in every case rather than in the
+    // one I was picturing. The surviving claim — that only the missing piece is
+    // fetched, not the whole model — holds either way and is measured.
+    //
+    // NOT WRITTEN, and the reasoning belongs here rather than in a review thread:
+    // review asked for an entry covering the user whose Application Support is
+    // unwritable, because #2697 routes the model and its metadata through
+    // `StorageRoot` and that user can now get a model where 2.4.7 could not
+    // create one. That is real and it is proven at the unit level. It is NOT
+    // written up, because their dictation history and custom words still resolve
+    // to the unwritable path and still fail (#2695 PR 2 closes that), and no end
+    // to end run on such a machine exists. An entry would promise a working app
+    // to someone who will still hit failures. It belongs in the release that
+    // finishes the job.
+    Entry(
+      id: "model-lives-in-our-own-folder",
+      icon: "folder.badge.gearshape",
+      title: "The speech model now lives in its own folder",
+      description:
+        "EnviousWispr keeps its speech model somewhere that belongs to it, and leaves every other app's files alone. If the model is already on your Mac it gets reused in seconds instead of downloaded again, even if you are offline.",
+      version: "2.4.8"
+    ),
+
+    Entry(
+      id: "model-repairs-itself",
+      icon: "arrow.triangle.2.circlepath",
+      title: "A damaged speech model fixes itself",
+      description:
+        "If part of the speech model goes missing or gets corrupted, EnviousWispr repairs it on its own. Where a copy is already on your Mac it uses that one. Otherwise it fetches just the missing piece instead of the whole model.",
+      version: "2.4.8"
+    ),
+
     // MARK: - v2.4.7
 
     // **THIS GROUP IS OPEN AND 2.4.6 HAS SHIPPED** (tag v2.4.6, 2026-08-28), so
