@@ -66,3 +66,23 @@ Every row above drives the real product end to end, including the real microphon
 - Donor `size inode path` listing identical before and after.
 - Nothing under `FluidAudio/` created, modified, moved or deleted. Proven by listing, not by reading the code.
 - No password prompt, no ownership or permission change anywhere (founder ruling, 2026-09-07).
+
+---
+
+## Two oracles that look right and are not
+
+Both cost a false FAIL during the real run, and both are the same shape: a field
+that is PRESENT either way read as if it meant one way.
+
+**`final_source` does NOT mean a download happened.** It appears on every
+fetch-path admission, including one where every file was already staged and
+skipped. Judging "did the repair go to the network" on its presence reports a
+failure on a repair that never touched the network.
+**The oracle is the BYTES bucket in the same line**: `bytes=200mb_600mb` is a real
+483 MB download, `bytes=under_50mb` is not. Measured both ways on the same
+machine, before and after the fix.
+
+**The durable record is written AFTER the files land.** A wait that returns as
+soon as 23 files exist and then reads the record sees `None`, because the run is
+still hashing to confirm the whole installed set before recording. Gate on the
+record itself, never on the file count and then the record.
