@@ -83,7 +83,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-        staging: staging, trustedRoot: root))
+        staging: staging))
 
     #expect(outcome.filesReproduced == files.count)
     let after = try fingerprint(of: donor)
@@ -105,7 +105,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-        staging: staging, trustedRoot: root))
+        staging: staging))
 
     #expect(outcome.filesReproduced == files.count)
     #expect(outcome.bytesReproduced == files.reduce(Int64(0)) { $0 + Int64($1.content.count) })
@@ -129,7 +129,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-        staging: staging, trustedRoot: root))
+        staging: staging))
 
     #expect(outcome.filesReproduced == files.count - 1)
     #expect(
@@ -164,7 +164,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-        staging: staging, trustedRoot: trustedRoot))
+        staging: staging))
 
     #expect(outcome.filesReproduced == files.count)
     for f in files {
@@ -188,7 +188,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-        staging: unborn, trustedRoot: root))
+        staging: unborn))
 
     #expect(outcome.filesReproduced == files.count)
     for f in files {
@@ -212,7 +212,7 @@ struct LegacyDonorImportTests {
 
     let result = LegacyDonorImport.reproduce(
       manifest: manifest, components: Set(files.map(\.component)), donor: donor,
-      staging: aliased, trustedRoot: donor)
+      staging: aliased)
 
     // A REFUSAL, not an empty import. The caller aborts the whole attempt on
     // this, because continuing would hand the same unsafe staging URL to the
@@ -244,7 +244,7 @@ struct LegacyDonorImportTests {
     let outcome = try imported(
       LegacyDonorImport.reproduce(
         manifest: manifest, components: Set(files.map(\.component)), donor: missing,
-        staging: staging, trustedRoot: root))
+        staging: staging))
 
     #expect(outcome == .none)
     #expect(try fingerprint(of: staging).isEmpty)

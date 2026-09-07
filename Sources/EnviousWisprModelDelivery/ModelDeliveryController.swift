@@ -676,10 +676,7 @@ public actor ModelDeliveryController {
       // runs to completion.
       let copyTask = Task.detached(priority: .utility) {
         LegacyDonorImport.reproduce(
-          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging,
-          // Staging lives at `metadataDirectory/staging/<cacheKey>`, so the
-          // metadata directory is the app-owned root staging must resolve inside.
-          trustedRoot: registration.metadataDirectory)
+          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
       }
       let importResult = await withTaskCancellationHandler {
         await copyTask.value

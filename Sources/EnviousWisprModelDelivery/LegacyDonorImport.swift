@@ -53,9 +53,9 @@ public enum LegacyDonorImport {
   /// the caller must abandon the attempt rather than continue without us.
   public enum Result: Sendable, Equatable {
     case imported(Outcome)
-    /// Staging does not resolve inside the trusted root, or resolves inside the
-    /// donor. Nothing was written. The caller MUST NOT proceed to fetch with
-    /// this staging directory.
+    /// Staging, or an ancestor of it, resolves inside the donor. Nothing was
+    /// written. The caller MUST NOT proceed to fetch with this staging
+    /// directory, because the fetcher would write through it.
     case unsafeStagingRoot(detail: String)
   }
 
@@ -67,49 +67,39 @@ public enum LegacyDonorImport {
   /// simply yields fewer files.
   ///
   /// - Parameter donor: a directory this process may only read.
-  /// - Parameter trustedRoot: an app-owned directory that `staging` must resolve
-  ///   inside. Without it, containment is circular: proving the destination sits
-  ///   under `staging` says nothing when `staging` is itself a symlink into the
-  ///   donor's tree, and every copy would then land exactly where this type
-  ///   promises never to write.
   public static func reproduce(
-    manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL,
-    trustedRoot: URL
+    manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL
   ) -> Result {
     let fm = FileManager.default
 
-    // Establish the write boundary ONCE, before anything is created.
+    // THE WHOLE GUARD, and it is deliberately this small.
     //
-    // **NOTHING HERE MAY REQUIRE A DIRECTORY TO ALREADY EXIST.** That mistake has
-    // now been made twice on this branch, in the same shape, and each time it
-    // broke the case the code exists to serve: round 2 required `staging`, which
-    // the fetcher creates later, so no existing user could import; round 3
-    // required `trustedRoot`, which `promoteAndAdmit` creates only after a
-    // successful fetch, so no NEW user could download at all. On a first install
-    // none of these paths exist yet — that is the normal state, not the edge
-    // case. `realpath` needs a real path, so every check below resolves the
-    // nearest EXISTING ancestor, proves containment there, and only then creates.
-    guard let trusted = ensureResolvedDirectory(trustedRoot) else {
-      return .unsafeStagingRoot(detail: "trusted_root_uncreatable")
-    }
-    // The boundary itself must not live inside the donor, or everything below is
-    // contained in the wrong tree.
-    if let donorRoot = resolved(donor), contained(trusted, in: donorRoot) {
-      return .unsafeStagingRoot(detail: "trusted_root_inside_donor")
-    }
+    // An earlier version proved staging sat inside a "trusted root" as well.
+    // That apparatus produced four defects across three review rounds — two of
+    // which would have broken the product for every user — and the fourth was
+    // that it CREATED the trusted root before checking it, so an ancestor
+    // symlinked into the donor got directories made inside the donor by the very
+    // code meant to prevent writes there. It was also never load-bearing:
+    // `ManifestFetchTask` writes into this same staging directory with no such
+    // check and always has, so guarding one writer among several was a door in a
+    // wall with other doors open.
+    //
+    // The hazard is exactly one sentence — "could a copy of mine land inside the
+    // donor" — and that is now exactly one question, asked against the nearest
+    // EXISTING ancestor first, so nothing is created before it is answered.
+    guard let donorRoot = resolved(donor) else { return .imported(.none) }
     guard let anchor = nearestExistingAncestor(of: staging), let anchorPath = resolved(anchor),
-      contained(anchorPath, in: trusted)
-    else { return .unsafeStagingRoot(detail: "staging_ancestor_outside_trusted_root") }
-    guard let stagingRoot = ensureResolvedDirectory(staging), contained(stagingRoot, in: trusted)
-    else { return .unsafeStagingRoot(detail: "staging_outside_trusted_root") }
-    // Said the other way round as well, because this is the failure that matters
-    // and it must be impossible to read this code and miss it.
-    if let donorRoot = resolved(donor), contained(stagingRoot, in: donorRoot) {
+      !contained(anchorPath, in: donorRoot)
+    else { return .unsafeStagingRoot(detail: "staging_ancestor_inside_donor") }
+    if !fm.fileExists(atPath: staging.path) {
+      try? fm.createDirectory(at: staging, withIntermediateDirectories: true)
+    }
+    guard let stagingRoot = resolved(staging) else {
+      return .unsafeStagingRoot(detail: "staging_uncreatable")
+    }
+    guard !contained(stagingRoot, in: donorRoot) else {
       return .unsafeStagingRoot(detail: "staging_inside_donor")
     }
-
-    // Only now is the donor's absence an ordinary, safe miss.
-    guard fm.fileExists(atPath: donor.path) else { return .imported(.none) }
 
     var files = 0
     var bytes: Int64 = 0
@@ -143,14 +133,14 @@ public enum LegacyDonorImport {
       // require it inside the staging root; only then create the rest.
       guard let fileAnchor = Self.nearestExistingAncestor(of: destination),
         let fileAnchorPath = Self.resolved(fileAnchor),
-        Self.contained(fileAnchorPath, in: stagingRoot)
+        !Self.contained(fileAnchorPath, in: donorRoot)
       else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
       // And again after creating, because the step above can itself traverse a
       // link that appeared between the two.
       guard let parent = Self.resolved(destination.deletingLastPathComponent()),
-        Self.contained(parent, in: stagingRoot)
+        !Self.contained(parent, in: donorRoot), Self.contained(parent, in: stagingRoot)
       else { continue }
 
       if cloneItem(at: source, to: destination) {
@@ -184,20 +174,6 @@ public enum LegacyDonorImport {
       Outcome(
         filesReproduced: files, bytesReproduced: bytes,
         clonedThroughout: everyCopyCloned && files > 0))
-  }
-
-  /// Creates `url` if it is not there, then returns its fully resolved path.
-  ///
-  /// The whole point is that a directory which does not exist yet is ORDINARY on
-  /// a first install, and `realpath` cannot resolve one. Returning nil means the
-  /// directory could not be created at all — a real failure worth refusing on,
-  /// such as an unwritable parent — not merely that it was absent a moment ago.
-  private static func ensureResolvedDirectory(_ url: URL) -> String? {
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: url.path) {
-      try? fm.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-    return resolved(url)
   }
 
   /// Whether `path` is the root itself or sits beneath it. Both arguments must
