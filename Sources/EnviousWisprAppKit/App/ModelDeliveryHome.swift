@@ -159,9 +159,17 @@ public final class ModelDeliveryHome {
     appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil
   ) {
     self.engineMutationScope = engineMutationScope
-    let appSupportRoot =
-      appSupportOverride
-      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    // #2695: ONE owner answers "where may we write". `dataDirectory` already
+    // includes `EnviousWispr`, so nothing here appends it.
+    let storage =
+      appSupportOverride.map {
+        // Through the REAL resolver, not a hand-built value: a test that
+        // constructs its own resolution is testing a struct rather than the
+        // thing production runs, and would not notice the resolver changing
+        // under it.
+        StorageRoot.resolve(systemApplicationSupport: $0, home: $0)
+      } ?? StorageRoot.live
+    let appSupportRoot = storage.dataDirectory.deletingLastPathComponent()
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "parakeet-delivery-manifest", bundle: manifestBundle)
@@ -174,16 +182,21 @@ public final class ModelDeliveryHome {
         // other apps' files (#2483) and blocked installs we could not sweep
         // (#2690). `ParakeetInstallLocation` owns the name, including why the
         // last path component must stay `parakeet-tdt-0.6b-v3-coreml`.
-        installDirectory: ParakeetInstallLocation.directory(appSupport: appSupportRoot),
-        metadataDirectory:
-          appSupportRoot
-          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true),
+        installDirectory: ParakeetInstallLocation.directory(
+          dataDirectory: storage.dataDirectory),
+        metadataDirectory: storage.dataDirectory
+          .appendingPathComponent("ModelDelivery", isDirectory: true),
         // #2483: where this model USED to live, offered read-only so an existing
         // copy — ours from before the move, or another FluidAudio app's — is
         // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
         // suite passing an override never reads the real shared directory.
-        legacyDonorDirectory: ParakeetInstallLocation.legacySharedDonor(
-          appSupport: appSupportRoot))
+        // The donor is resolved from the SYSTEM lookup every time, independently
+        // of which candidate won for our data. `nil` means there is no such
+        // directory — never "could not ask" — which is what makes recording its
+        // absence safe.
+        legacyDonorDirectory: storage.systemApplicationSupport.map {
+          ParakeetInstallLocation.legacySharedDonor(appSupport: $0)
+        })
       parakeetIdentity = identity
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.

@@ -397,7 +397,8 @@ struct ParakeetInstallLocationTests {
   @Test("the install path names no other vendor")
   func installPathIsOurs() {
     let root = URL(filePath: "/tmp/appsupport-fixture")
-    let install = ParakeetInstallLocation.directory(appSupport: root)
+    let install = ParakeetInstallLocation.directory(
+      dataDirectory: root.appendingPathComponent("EnviousWispr", isDirectory: true))
     #expect(!install.path.contains("FluidAudio"))
     #expect(install.path.contains("EnviousWispr"))
   }
@@ -418,7 +419,8 @@ struct ParakeetInstallLocationTests {
   func donorIsASibling() {
     let root = URL(filePath: "/tmp/appsupport-fixture")
     let donor = ParakeetInstallLocation.legacySharedDonor(appSupport: root)
-    let install = ParakeetInstallLocation.directory(appSupport: root)
+    let install = ParakeetInstallLocation.directory(
+      dataDirectory: root.appendingPathComponent("EnviousWispr", isDirectory: true))
     #expect(donor != install)
     #expect(!donor.path.hasPrefix(install.path))
     #expect(!install.path.hasPrefix(donor.path))

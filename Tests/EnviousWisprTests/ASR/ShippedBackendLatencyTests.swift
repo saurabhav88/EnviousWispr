@@ -36,7 +36,8 @@ private enum ShippedBackendLatencyFixture {
       // a directory the app no longer writes. The gate and the load below now
       // name one value, so the test cannot enable itself against one directory
       // and measure another.
-      installDirectory: ParakeetInstallLocation.directory(appSupport: appSupport),
+      installDirectory: ParakeetInstallLocation.directory(
+        dataDirectory: appSupport.appendingPathComponent("EnviousWispr", isDirectory: true)),
       metadataDirectory: appSupport.appending(
         path: "EnviousWispr/ModelDelivery", directoryHint: .isDirectory))
   }

@@ -19,9 +19,10 @@ private enum ParakeetRealBoundaryFixture {
   /// property was deleted because it answered from an assumed root wherever it
   /// was reached; a test naming the root out loud is the honest replacement.
   static var installDirectory: URL {
-    ParakeetInstallLocation.directory(
-      appSupport: FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0])
+    // Through the same owner production uses (#2695), not a hand-built path: a
+    // receipt for "the shipped model transcribes" must read the directory the
+    // app actually installs into, or it can pass against bytes nobody ships.
+    ParakeetInstallLocation.directory(dataDirectory: StorageRoot.live.dataDirectory)
   }
 
   static var shippedModelIsInstalled: Bool {

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Reproduces model bytes a user already has, from a directory we may only READ,
@@ -76,9 +77,14 @@ public enum LegacyDonorMigration {
     return record.state
   }
 
-  /// Writes the record durably. `.atomic` renames a fully written temporary file
-  /// into place, so a crash mid-write leaves the previous state rather than a
-  /// truncated one.
+  /// Writes the record durably.
+  ///
+  /// `DurableJSONFile` (#2695), not `Data.write(options: .atomic)`. Both give a
+  /// rename, so only a complete file can appear; only this one also does
+  /// `F_FULLFSYNC` and fsyncs the directory, so the NAME cannot land while the
+  /// bytes are still in the volume's cache. A force-kill never lost the rename,
+  /// which is why the earlier version passed every test run on the founder's
+  /// machine; a power cut can, and that is the case no test here reaches.
   @discardableResult
   public static func record(
     _ state: RecordedState, metadataDirectory: URL, manifest: DeliveryManifest
@@ -87,9 +93,9 @@ public enum LegacyDonorMigration {
     do {
       try FileManager.default.createDirectory(
         at: metadataDirectory, withIntermediateDirectories: true)
-      let data = try JSONEncoder().encode(
-        Record(state: state, manifestDigest: manifest.manifestDigest))
-      try data.write(to: url, options: .atomic)
+      try DurableJSONFile.write(
+        Record(state: state, manifestDigest: manifest.manifestDigest), to: url,
+        tempPrefix: "legacy-migration")
       return true
     } catch {
       return false

@@ -55,9 +55,14 @@ public enum ParakeetInstallLocation {
   /// A sibling of `EnviousWispr/Models/whisper`, which the multilingual family
   /// has used since #1386 PR-2. Parakeet was the last family still installing
   /// into somebody else's directory.
-  public static func directory(appSupport: URL) -> URL {
-    appSupport
-      .appendingPathComponent("EnviousWispr/Models", isDirectory: true)
+  /// Takes the resolved DATA DIRECTORY, which already includes `EnviousWispr`
+  /// (#2695). It used to take that directory's PARENT and append `EnviousWispr`
+  /// itself, which double-nests the moment a resolver hands down a data root —
+  /// and under the home fallback there is no parent to append to that means
+  /// anything.
+  public static func directory(dataDirectory: URL) -> URL {
+    dataDirectory
+      .appendingPathComponent("Models", isDirectory: true)
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
@@ -71,6 +76,11 @@ public enum ParakeetInstallLocation {
   /// tree in our code sits next to the rule about it. **Nothing may pass this
   /// value as an install directory, a staging directory, or anything else a
   /// write or delete can reach.**
+  /// Takes the SYSTEM Application Support lookup, never our data directory. The
+  /// donor is another vendor's tree and a SIBLING of ours, so it cannot be
+  /// derived from where we ended up writing — and under the home fallback,
+  /// walking up from our directory lands in the user's home and resolves to
+  /// nothing, silently, exactly when the fallback is in play.
   public static func legacySharedDonor(appSupport: URL) -> URL {
     appSupport
       .appendingPathComponent("FluidAudio/Models", isDirectory: true)
@@ -94,12 +104,13 @@ public enum ParakeetInstallLocation {
   /// the load. Deleting the model's directory here instead would put us back
   /// inside a location somebody already judged unsafe.
   public static func directoryFromSystemApplicationSupport() -> URL? {
-    guard
-      let appSupport = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask
-      ).first
-    else { return nil }
-    return directory(appSupport: appSupport)
+    let resolution = StorageRoot.live
+    // `isUnavailable` with a real `dataDirectory` is a state, not a
+    // contradiction: the path is there for an error message to NAME, never as a
+    // destination. Taking it because it is non-nil is the whole defect the flag
+    // exists to prevent.
+    guard !resolution.isUnavailable else { return nil }
+    return directory(dataDirectory: resolution.dataDirectory)
   }
 
   // `live` was here, and it is DELETED (#2697).

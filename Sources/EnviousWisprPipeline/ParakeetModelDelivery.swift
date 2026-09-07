@@ -90,6 +90,12 @@ public final class ParakeetDeliveryHandle {
   public func ensureModelLocationReady(
     onProgress: (@Sendable () -> Void)? = nil
   ) async -> URL? {
+    // #2695: an UNAVAILABLE resolution refuses here, and refusing is the whole
+    // point of returning an optional. `isUnavailable` can be true while
+    // `dataDirectory` still holds a real path — that path is for an error
+    // message to NAME, never a destination — so taking it because it is non-nil
+    // is exactly the defect the flag exists to prevent.
+    guard !StorageRoot.live.isUnavailable else { return nil }
     guard ModelDeliveryController.installLocationIsSafe(registration) else { return nil }
     // Review A1: migration hashes whole files, and the sessionless wedge guard
     // reads SILENCE as a wedge. Without a tick, a migration slow enough to
