@@ -50,9 +50,12 @@ struct StorageRootTests {
     /// on every case that locks something, so a failing assertion still leaves
     /// the machine clean.
     func unlockAll() {
-      for directory in [appSupport, home, root] {
+      for directory in [standardCandidate, fallbackCandidate, appSupport, home, root] {
         try? FileManager.default.setAttributes(
           [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try? FileManager.default.setAttributes(
+          [.posixPermissions: 0o600],
+          ofItemAtPath: directory.appendingPathComponent(StorageRoot.recordFileName).path)
       }
     }
 
@@ -212,8 +215,14 @@ struct StorageRootTests {
 
   /// A recorded selection is a claim about the past, not a promise about today:
   /// an external drive can be gone, a network home unmounted, permissions changed.
-  @Test("A recorded selection is re-proved, not trusted")
-  func aRecordedSelectionThatNoLongerWritesIsAbandoned() throws {
+  ///
+  /// But a chosen root that stops accepting writes must REFUSE, never hand over
+  /// to the other one. Handing over shows the other root's contents as this
+  /// install's history, writes new records into it, and then switches back the
+  /// moment the chosen root recovers, hiding everything written in between. Two
+  /// data sets silently interleaved, with nothing reporting it.
+  @Test("A chosen root that stops accepting writes refuses rather than switching")
+  func aRecordedSelectionThatNoLongerWritesRefusesRatherThanSwitching() throws {
     let sandbox = try Sandbox()
     defer { sandbox.tearDown() }
     try writeRecord(
@@ -224,8 +233,50 @@ struct StorageRootTests {
     let resolution = StorageRoot.resolve(
       systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
 
-    #expect(resolution.selection == .standard)
-    #expect(resolution.isUnavailable == false)
+    #expect(resolution.isUnavailable)
+    #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
+    #expect(resolution.exhausted == [sandbox.fallbackCandidate])
+    // The other root must not have been claimed behind the user's back.
+    #expect(FileManager.default.fileExists(atPath: sandbox.standardCandidate.path) == false)
+  }
+
+  /// The three-valued read. `try? Data(contentsOf:)` answers `nil` both for
+  /// "there is no record" and for "there is one and I could not read it". A
+  /// caller that treats the second as the first sends someone who has already
+  /// moved back to the standard directory and orphans everything written since.
+  @Test("A record we cannot read still counts as a claim")
+  func anUnreadableRecordStillCountsAsAClaim() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .homeFallback, committed: true, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o000],
+      ofItemAtPath: sandbox.fallbackCandidate.appendingPathComponent(
+        StorageRoot.recordFileName
+      ).path)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
+  }
+
+  @Test("A damaged record still counts as a claim")
+  func aDamagedRecordStillCountsAsAClaim() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try FileManager.default.createDirectory(
+      at: sandbox.fallbackCandidate, withIntermediateDirectories: true)
+    try Data("this is not the record you are looking for".utf8).write(
+      to: sandbox.fallbackCandidate.appendingPathComponent(StorageRoot.recordFileName))
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
   }
 
   // MARK: - Things that are not our directory
@@ -317,5 +368,49 @@ struct StorageRootTests {
     // The standard path, so the eventual write fails with the path a person
     // would recognise rather than a temporary directory they have never seen.
     #expect(resolution.dataDirectory == sandbox.standardCandidate)
+  }
+}
+
+/// The stores must not read a RESOLVED root until the verified data handoff
+/// exists (#2695 PR 2).
+///
+/// Codex reproduced the consequence against the real resolver: an existing
+/// installation whose data directory turns read-only commits an empty fallback,
+/// `TranscriptStore` and `RecoverySpoolStore` then read only from there, and the
+/// person's saved history and recoverable recordings leave the app while staying
+/// on disk. Repairing the machine does not bring them back, because the chosen
+/// root stays authoritative by design.
+///
+/// A comment saying "do not wire this yet" has no enforcer and would be deleted
+/// by the first person who thought the wiring was obviously right. This fails
+/// the build instead.
+@Suite(.tags(.driftGuard))
+struct StorageRootWiringGuardTests {
+
+  @Test("The stores' path stays the plain standard directory until the handoff lands")
+  func appSupportURLDoesNotReadTheResolvedRoot() throws {
+    let source = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprCore/Constants.swift"),
+      encoding: .utf8)
+
+    // Match the DECLARATION LINE, never the whole file. A whole-file match
+    // cannot tell an ACTION on `StorageRoot.live` from PROSE about it, and the
+    // doc comment on this very property explains at length why it does not use
+    // `live` — so the file-wide version fired on the sentence saying the guard
+    // holds. Same proxy defect the review rules name: comparing a RENDERING
+    // when the question is REACHABILITY.
+    let declaration = try #require(
+      source.split(separator: "\n").first { $0.contains("static var appSupportURL") },
+      "`AppConstants.appSupportURL` has been renamed or removed; this guard is now blind.")
+
+    #expect(declaration.contains("StorageRoot.standardDirectory"))
+    #expect(
+      declaration.contains("StorageRoot.live") == false,
+      """
+      `AppConstants.appSupportURL` reaches every existing store. Pointing it at \
+      a resolved root before the verified handoff exists removes a real user's \
+      dictation history and recovery spools from the app. Ship the handoff in \
+      the same change, or leave this pointing at the standard directory.
+      """)
   }
 }

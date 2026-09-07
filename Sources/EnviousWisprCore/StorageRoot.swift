@@ -115,6 +115,38 @@ public enum StorageRoot {
     home: FileManager.default.homeDirectoryForCurrentUser
   )
 
+  /// The standard directory as a PLAIN PATH, with no probing and no fallback
+  /// selection. What every existing install already uses.
+  ///
+  /// **This exists because a store may not be switched to `live` until the data
+  /// handoff exists, and shipping the switch without the handoff would lose a
+  /// real user's history.** Codex review of this change reproduced it against
+  /// the actual resolver: an existing installation whose data directory turns
+  /// read-only would commit an empty fallback, `TranscriptStore` and
+  /// `RecoverySpoolStore` would then read only from there, and the person's
+  /// saved history and recoverable recordings would vanish from the app while
+  /// still sitting on disk. Repairing the machine would not bring them back,
+  /// because the fallback stays authoritative by design.
+  ///
+  /// So the stores keep this path until the verified handoff lands (#2695 PR 2).
+  /// `live`'s first production consumer is model delivery (#2697), where the
+  /// bytes are reproducible and nothing can be orphaned.
+  ///
+  /// The only behaviour change here is the destination when the system lookup
+  /// returns NOTHING at all. That used to be `temporaryDirectory`, which macOS
+  /// purges; it is now the home folder, which is durable and the user's own.
+  /// That is not a root SWITCH — when the lookup is empty there is no standard
+  /// directory for anything to have been written to.
+  public static var standardDirectory: URL {
+    if let appSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory, in: .userDomainMask
+    ).first {
+      return appSupport.appendingPathComponent(AppConstants.appSupportDir, isDirectory: true)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(AppConstants.appSupportDir, isDirectory: true)
+  }
+
   // MARK: - Resolution
 
   /// Decide which root is authoritative.
@@ -145,16 +177,22 @@ public enum StorageRoot {
     // machine must not silently flip back: the standard directory may still
     // hold a stale copy from before the move, and returning to it would present
     // old history as current while hiding everything written since.
-    if let record = readRecord(in: fallback), record.committed,
-      record.selection == .homeFallback,
-      proveWritable(fallback)
-    {
+    // **A claimed root that cannot be written is UNAVAILABLE, never a reason to
+    // use the other one.** Handing over would present the other root's contents
+    // as this install's history, write new records into it, and then switch back
+    // the moment the claimed root recovers, hiding everything written in
+    // between. Two data sets, silently interleaved, with nothing reporting it.
+    // Refusing is worse for one launch and correct forever after.
+    if isClaimed(fallback) {
+      guard proveWritable(fallback) else {
+        return unavailable(fallback, attempted: [fallback], systemApplicationSupport)
+      }
       return resolved(fallback, .homeFallback, systemApplicationSupport)
     }
-    if let standard, let record = readRecord(in: standard), record.committed,
-      record.selection == .standard,
-      proveWritable(standard)
-    {
+    if let standard, isClaimed(standard) {
+      guard proveWritable(standard) else {
+        return unavailable(standard, attempted: [standard], systemApplicationSupport)
+      }
       return resolved(standard, .standard, systemApplicationSupport)
     }
 
@@ -174,8 +212,14 @@ public enum StorageRoot {
     // Nothing is usable. Return the STANDARD path rather than inventing a third
     // destination, so the failure lands at the real write with the real path in
     // the error, unchanged from the behaviour this change replaces.
-    return Resolution(
-      dataDirectory: standard ?? fallback,
+    return unavailable(standard ?? fallback, attempted: attempted, systemApplicationSupport)
+  }
+
+  private static func unavailable(
+    _ directory: URL, attempted: [URL], _ systemApplicationSupport: URL?
+  ) -> Resolution {
+    Resolution(
+      dataDirectory: directory,
       systemApplicationSupport: systemApplicationSupport,
       selection: .standard,
       exhausted: attempted,
@@ -253,17 +297,71 @@ public enum StorageRoot {
   /// a staged file that was a symlink into another application's directory read
   /// as an ordinary file, and promotion moved the LINK rather than the bytes
   /// (#2694 review). Ask `lstat` instead, which does not follow.
+  /// Fails CLOSED: a `lstat` we could not complete answers "unsafe", not
+  /// "fine". `fileExists` already told us something is there, so a stat that
+  /// then fails is an anomaly, and the cost of being wrong here is every future
+  /// write landing inside another application's directory.
   private static func isSymbolicLink(_ url: URL) -> Bool {
     var info = stat()
-    guard lstat(url.path, &info) == 0 else { return false }
+    guard lstat(url.path, &info) == 0 else { return true }
     return (info.st_mode & S_IFMT) == S_IFLNK
   }
 
-  private static func readRecord(in directory: URL) -> Record? {
-    guard
-      let data = try? Data(contentsOf: directory.appendingPathComponent(recordFileName))
-    else { return nil }
-    return try? JSONDecoder().decode(Record.self, from: data)
+  /// Has this directory already been chosen by an earlier launch?
+  ///
+  /// **The record's LOCATION carries the selection; its contents are only a
+  /// cross-check.** That is deliberate, and it is what stops a three-valued
+  /// question collapsing into two. `try? Data(contentsOf:)` returns `nil` both
+  /// for "there is no record" and for "there is a record and I could not read
+  /// it", and a caller that treats the second as the first sends a user who has
+  /// already moved back to the standard directory, orphaning everything written
+  /// since the move. Silent, and not recoverable by a later launch.
+  ///
+  /// So presence is answered by `lstat`, which distinguishes absence from every
+  /// other reason, and an unreadable or undecodable record is treated as a
+  /// CLAIM rather than as absence. That is the conservative direction: honouring
+  /// a record we cannot read costs a re-proof of writability, which runs anyway;
+  /// ignoring one costs the user their data.
+  ///
+  /// A record we CAN read still has to say `committed`. A half-written selection
+  /// is what a future data handoff leaves behind before it starts moving files,
+  /// and obeying that would point the app at an incomplete copy.
+  private static func isClaimed(_ directory: URL) -> Bool {
+    let recordURL = directory.appendingPathComponent(recordFileName)
+    switch presence(of: recordURL) {
+    case .absent:
+      return false
+    case .unreadable:
+      return true
+    case .present:
+      guard let data = try? Data(contentsOf: recordURL) else { return true }
+      guard let record = try? JSONDecoder().decode(Record.self, from: data) else { return true }
+      return record.committed
+    }
+  }
+
+  private enum Presence {
+    case absent
+    case present
+    /// Something is there, or something prevented us from finding out. Both are
+    /// handled as "assume it is there", because the cost of being wrong that way
+    /// is a wasted probe and the cost of being wrong the other way is data.
+    case unreadable
+  }
+
+  /// `lstat`, not `fileExists`, and not `try? Data(contentsOf:)`.
+  ///
+  /// `fileExists` follows symlinks and collapses every failure into `false`.
+  /// `lstat`'s errno separates the one answer that means absence — `ENOENT`, or
+  /// `ENOTDIR` when a path component is a file — from every other reason a stat
+  /// can fail.
+  private static func presence(of url: URL) -> Presence {
+    var info = stat()
+    if lstat(url.path, &info) == 0 { return .present }
+    switch errno {
+    case ENOENT, ENOTDIR: return .absent
+    default: return .unreadable
+    }
   }
 
   private static func resolved(
