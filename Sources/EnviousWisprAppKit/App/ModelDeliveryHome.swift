@@ -764,6 +764,14 @@ public final class ModelDeliveryHome {
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
       _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+        // Cloud review P2: JOIN the launch migration before the attempt. Resume
+        // called `ensureAvailable()` straight through, so pressing it while the
+        // launch migration was still publishing put an attempt — which deletes
+        // failed components — alongside a migration that publishes them.
+        // `ensureModelLocationReady()` is the single-flight door, so this waits
+        // for that run rather than racing it, and `nil` from it is a refusal
+        // this path must honour like any other.
+        guard await handle.ensureModelLocationReady() != nil else { return }
         _ = await handle.ensureAvailable()
       }
     }

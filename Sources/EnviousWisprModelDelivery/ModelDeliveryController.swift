@@ -767,9 +767,29 @@ public actor ModelDeliveryController {
           ? sum + file.sizeBytes : sum
       }
     }()
-    let remainingBytes =
-      fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes - donorSuppliableBytes
-    let required = Int64(Double(max(0, remainingBytes)) * manifest.admission.headroomFactor)
+    // Cloud review P2: the donor subtraction decides the REFUSAL and must not
+    // decide the RESERVATION, because it rests on a SIZE match and a size match
+    // is not a correctness check. A donor file of the right size and the wrong
+    // bytes is staged, fails its hash inside `ManifestFetchTask`, and is
+    // downloaded after all — so a reservation that had already discounted it
+    // leaves a nearly-full disk to discover the shortfall as ENOSPC mid-fetch.
+    //
+    // Split, because the two numbers answer different questions. REFUSING asks
+    // "might this user already have the bytes", and refusing someone whose model
+    // is complete one clone away is the defect this issue opened on. RESERVING
+    // asks "how much must I hold back from other families", and the honest
+    // answer there is the worst case, where the donor turns out to be stale.
+    //
+    // The residue is stated rather than argued away: a user with a STALE donor
+    // AND a nearly-full disk now reaches the fetch and can hit ENOSPC, where a
+    // pessimistic refusal would have stopped earlier with a cleaner message.
+    // That trade is deliberate — the optimistic half is common and the stale
+    // half is rare, and today's code refuses the common one.
+    let missingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
+    let remainingBytes = max(0, missingBytes - donorSuppliableBytes)
+    let required = Int64(Double(remainingBytes) * manifest.admission.headroomFactor)
+    let reservedRequirement = Int64(
+      Double(max(0, missingBytes)) * manifest.admission.headroomFactor)
     let otherReservations = entries.reduce(Int64(0)) { sum, kv in
       kv.key == identity ? sum : sum + kv.value.reservedBytes
     }
@@ -785,8 +805,10 @@ public actor ModelDeliveryController {
       return await finishFailed(identity, failure, generation: generation)
     }
     if var entry = entries[identity] {
-      entry.reservedBytes = required
-      entry.reservationRemainingBase = max(0, remainingBytes)
+      // The pessimistic figure: what this attempt could still need if every
+      // donor file turns out to be stale.
+      entry.reservedBytes = reservedRequirement
+      entry.reservationRemainingBase = max(0, missingBytes)
       entry.reservationProgressBaseline = verifiedInPlaceBytes + stagedBytes
       entry.reservationHeadroom = manifest.admission.headroomFactor
       entries[identity] = entry
@@ -823,12 +845,14 @@ public actor ModelDeliveryController {
     // deliberately dumb: the coordinator, chain and shared candidate directory
     // that a smarter version needed produced three defects in three review
     // rounds, all in the handoff rather than in the work.
+    var donorStagedFiles = 0
     if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
       let staged = await LegacyDonorMigration.stageFromDonor(
         manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
       guard entries[identity]?.generation == generation, !Task.isCancelled else {
         return finishCancelled(identity, generation: generation)
       }
+      donorStagedFiles = staged.files
       if staged.files > 0 {
         await AppLogger.shared.log(
           "Model delivery staged \(staged.files) file(s), \(staged.bytes) bytes from the "
@@ -838,12 +862,12 @@ public actor ModelDeliveryController {
 
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
-    // #2697: the donor term is gone with the importer. Migration now happens
-    // before the attempt and lands in the INSTALL directory, so bytes it
-    // reproduced arrive as verified-in-place components, never as staged
-    // partials, and counting them here would have described a resume that did
-    // not happen.
-    let resumed = stagedBytes > 0
+    // Cloud review P2: donor-staged files count. `stagedBytes` is measured
+    // BEFORE `stageFromDonor` runs, so a repair that took every byte from the
+    // donor and downloaded nothing was reporting `resumed: false` — describing a
+    // cold fetch that did not happen. The removed importer counted its own
+    // reproduced files here for exactly this reason.
+    let resumed = stagedBytes > 0 || donorStagedFiles > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
     setState(
