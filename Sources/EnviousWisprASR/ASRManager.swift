@@ -34,7 +34,7 @@ public final class ASRManager: ASRManagerInterface {
   /// directory, never the vendor's, so an entry point that loads without going
   /// through `ParakeetEngineAdapter` — `ActiveEngineOperation.load` does exactly
   /// that — cannot reach FluidAudio's shared tree by omission.
-  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
+  public var parakeetModelDirectory: URL?
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
@@ -171,8 +171,14 @@ public final class ASRManager: ASRManagerInterface {
         // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
         // takes the protocol overload now.
         if let parakeet = self.parakeetBackend as? ParakeetBackend {
+          // #2697: refuse rather than resolve one of our own. `nil` means the
+          // location seam either has not run or REFUSED, and both must fail
+          // loudly here instead of loading from an assumed directory.
+          guard let directory = self.parakeetModelDirectory else {
+            throw ParakeetModelDirectoryUnsetError()
+          }
           try await parakeet.prepare(
-            cacheOnly: self.parakeetCacheOnly, modelDirectory: self.parakeetModelDirectory,
+            cacheOnly: self.parakeetCacheOnly, modelDirectory: directory,
             progressCallback: progress)
         } else {
           try await self.parakeetBackend.prepare(progressCallback: progress)

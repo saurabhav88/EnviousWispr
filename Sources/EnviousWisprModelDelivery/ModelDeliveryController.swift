@@ -11,7 +11,7 @@ public struct DeliveryRegistration: Sendable {
   /// only READ. Set for Parakeet, whose install directory moved out of
   /// FluidAudio's shared tree and whose users' bytes are still sitting in it.
   /// `nil` for every other family, none of which ever installed anywhere but its
-  /// own directory. Never a write or delete target — see `LegacyDonorImport`.
+  /// own directory. Never a write or delete target — see `LegacyDonorMigration`.
   public let legacyDonorDirectory: URL?
 
   public init(
@@ -206,6 +206,62 @@ public actor ModelDeliveryController {
   public func isAdmitted(_ registration: DeliveryRegistration) -> Bool {
     admission(for: registration).isAdmitted()
   }
+
+  /// Whether the install directory is somewhere we may safely create, replace and
+  /// delete (#2697).
+  ///
+  /// `false` when it resolves into the legacy donor — a pathname assumption
+  /// everywhere else in this layer, and the one that would put our own deletes
+  /// and the vendor's downloads back inside another app's tree. Answered against
+  /// the nearest EXISTING ancestor, so asking costs nothing and creates nothing.
+  ///
+  /// **A `false` here must reach every load path as a refusal.** The reason it is
+  /// public: a caller that cannot see this verdict resolves a directory of its
+  /// own, and then the refusal is indistinguishable from a working location.
+  public nonisolated static func installLocationIsSafe(_ registration: DeliveryRegistration) -> Bool
+  {
+    guard let donor = registration.legacyDonorDirectory,
+      let donorPath = PathSafety.resolvedPath(donor)
+    else { return true }
+    guard let anchor = PathSafety.nearestExistingAncestor(of: registration.installDirectory),
+      let anchorPath = PathSafety.resolvedPath(anchor)
+    else { return true }
+    return !PathSafety.contained(anchorPath, in: donorPath)
+  }
+
+  /// Bring the install directory up to the manifest from bytes the user already
+  /// has, before anything reads that directory (#2697).
+  ///
+  /// **Actor-isolated on purpose.** Publication must not interleave with
+  /// `remove()`, `repair()` or an attempt's validation, all of which live on this
+  /// actor. That shared isolation IS the exclusion; a free function would have
+  /// needed a second lock that could disagree with this one.
+  ///
+  /// **Single-flight.** Concurrent callers await one migration rather than
+  /// racing two into the same candidate directory.
+  @discardableResult
+  public func ensureLegacyMigration(
+    _ registration: DeliveryRegistration, onProgress: (@Sendable () -> Void)? = nil
+  ) async -> LegacyDonorMigration.Outcome {
+    let identity = registration.manifest.identity
+    if let existing = migrationsInFlight[identity] { return await existing.value }
+    let task = Task { await LegacyDonorMigration.migrate(
+      registration: registration, onProgress: onProgress) }
+    migrationsInFlight[identity] = task
+    let outcome = await task.value
+    migrationsInFlight[identity] = nil
+    if outcome.didAnything {
+      await AppLogger.shared.log(
+        "Model delivery migrated \(outcome.componentsPublished) component(s), "
+          + "\(outcome.filesReproduced) file(s), \(outcome.bytesReproduced) bytes "
+          + "from the legacy shared directory (cloned: \(outcome.clonedThroughout))",
+        level: .info, category: "Delivery")
+    }
+    return outcome
+  }
+
+  /// One live migration per identity. See `ensureLegacyMigration`.
+  private var migrationsInFlight: [ModelIdentity: Task<LegacyDonorMigration.Outcome, Never>] = [:]
 
   /// Emit a `flag_active` proof for a flag whose effect lives OUTSIDE an
   /// attempt (the `enabled=false` legacy bypass never reaches `runAttempt`,
@@ -433,6 +489,32 @@ public actor ModelDeliveryController {
     _ = await cancel(identity)
     let admission = admission(for: registration)
     let fm = FileManager.default
+    // #2697: record the deliberate removal BEFORE deleting anything, and refuse
+    // to delete if it cannot be recorded. Migration resurrects a model whose
+    // install directory is empty, so without this line the next launch would
+    // helpfully undo the removal the user just asked for. Written first because
+    // the failure that matters is "deleted but not recorded"; the reverse leaves
+    // a model that is present and simply never migrated again, which validation
+    // and repair already handle.
+    guard
+      LegacyDonorMigration.record(
+        .declined, metadataDirectory: registration.metadataDirectory,
+        manifest: registration.manifest)
+    else {
+      let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "remove:record_declined")
+      setState(identity, .failed(failure))
+      return .failed(failure)
+    }
+    // #2697: then DRAIN any live migration before deleting. `migrate` is a
+    // nonisolated async function, so it releases this actor at every await and a
+    // publish can otherwise land between the deletions below — putting a
+    // component back moments after the user asked for it to go. Cancelling is
+    // not enough on its own; the wait is what makes the deletion the last write.
+    if let live = migrationsInFlight[identity] {
+      live.cancel()
+      _ = await live.value
+      migrationsInFlight[identity] = nil
+    }
     do {
       // (1) Marker first: the admission truth. After this isAdmitted() is false.
       if fm.fileExists(atPath: admission.markerURL.path) {
@@ -671,67 +753,29 @@ public actor ModelDeliveryController {
       entries[identity] = entry
     }
 
-    // #2483: reproduce what the user already has, before any network.
-    //
-    // Deliberately AFTER the preflight above, which has just reserved headroom
-    // for exactly these bytes — a clone usually needs almost none, a fallback
-    // copy needs all of them, and neither is known in advance. Files land in
-    // staging; `ManifestFetchTask` then verifies each one's size and SHA-256 and
-    // skips the ones that pass, so a successful import turns this attempt into a
-    // zero-byte download and a rejected one costs only the copy.
-    //
-    // The donor is read-only (`LegacyDonorImport`), so nothing here can damage
-    // the directory the user's other apps share.
-    //
-    // Second-pass finding 8: DETACHED. Without a cloning filesystem this copies
-    // hundreds of megabytes synchronously, and running that on the controller
-    // actor would lock out every other delivery call — including the cancel the
-    // user just pressed — for the whole copy. Cancellation is re-checked on the
-    // way back, because the wait is exactly long enough for one to land.
-    var donorOutcome = LegacyDonorImport.Outcome.none
-    if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
-      // Cloud round 2 P2: a detached task does NOT inherit cancellation, so the
-      // handle is held and cancelled explicitly. Without this, cancelling during
-      // a fallback copy leaves `cancel(_:)` waiting for the drain while the copy
-      // runs to completion.
-      let copyTask = Task.detached(priority: .utility) {
-        LegacyDonorImport.reproduce(
-          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
-      }
-      let importResult = await withTaskCancellationHandler {
-        await copyTask.value
-      } onCancel: {
-        copyTask.cancel()
-      }
-      guard entries[identity]?.generation == generation, !Task.isCancelled else {
-        return finishCancelled(identity, generation: generation)
-      }
-      switch importResult {
-      case .imported(let outcome):
-        donorOutcome = outcome
-      case .unsafeStagingRoot(let detail):
-        // Cloud round 2 P1: a containment refusal is about the DESTINATION, so it
-        // must abandon the attempt. Treating it as an ordinary empty import would
-        // hand the same unsafe staging URL to the fetcher, which writes through
-        // it, and promotion would then move component roots out of whatever it
-        // resolves to — the exact write this type exists to prevent, reached by
-        // the code that just declined to perform it.
-        let failure = DeliveryFailure(
-          reason: .cacheRepairFailed, detail: "unsafe_staging:\(detail)")
-        return await finishFailed(identity, failure, generation: generation)
-      }
-      if donorOutcome.filesReproduced > 0 {
-        await AppLogger.shared.log(
-          "Model delivery reproduced \(donorOutcome.filesReproduced) file(s), "
-            + "\(donorOutcome.bytesReproduced) bytes, from the legacy shared directory "
-            + "(cloned: \(donorOutcome.clonedThroughout)) — awaiting hash verification",
-          level: .info, category: "Delivery")
-      }
+    // #2697: the staging directory a fetch writes THROUGH must be somewhere we
+    // own. This check used to be a side effect of the donor importer that ran
+    // here; the importer moved out (`LegacyDonorMigration`, which runs before an
+    // attempt and writes into the install directory, not staging), and the check
+    // had to survive on its own terms rather than as somebody else's by-product.
+    // `ManifestFetchTask` below writes into staging with no containment check of
+    // its own, and promotion then moves component roots out of whatever staging
+    // resolves to.
+    guard StagingSafety.isSafe(staging: staging, metadataDirectory: registration.metadataDirectory)
+    else {
+      let failure = DeliveryFailure(
+        reason: .cacheRepairFailed, detail: "unsafe_staging:outside_metadata")
+      return await finishFailed(identity, failure, generation: generation)
     }
 
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
-    let resumed = stagedBytes > 0 || donorOutcome.filesReproduced > 0
+    // #2697: the donor term is gone with the importer. Migration now happens
+    // before the attempt and lands in the INSTALL directory, so bytes it
+    // reproduced arrive as verified-in-place components, never as staged
+    // partials, and counting them here would have described a resume that did
+    // not happen.
+    let resumed = stagedBytes > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
     setState(

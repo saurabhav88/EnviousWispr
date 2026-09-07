@@ -577,20 +577,14 @@ import Testing
 
     // MARK: ParakeetBackend — FluidAudio's own manager, one layer below
     // ASRManager's `.prepare()`/`.startStreaming()`. Same inherited coverage.
-    // The two bare `prepare()` overloads below both forward, implicit-`self`,
-    // to this file's own `prepare(cacheOnly:progressCallback:)` — the same
-    // instance already reached (for the no-callback overload) via
-    // `whisperKitBackend.prepare()`-shaped external calls, or (for the
-    // callback overload) via `ASRManager`'s `self.parakeetBackend.prepare(
-    // progressCallback:)`, both already counted, `transitivelyCoveredByCaller`.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "prepare",
-      text: "try await prepare(",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "prepare",
-      text: "try await prepare(",
-      classification: .transitivelyCoveredByCaller),
+    //
+    // #2697: the two bare `prepare()` overloads USED to forward, implicit-`self`,
+    // to this file's own `prepare(cacheOnly:modelDirectory:progressCallback:)`,
+    // and both forwards were counted here as `transitivelyCoveredByCaller`. They
+    // no longer forward: they throw `ParakeetModelDirectoryUnsetError`, because
+    // forwarding meant resolving an install directory nobody had chosen. Two
+    // rows removed rather than reclassified — the calls are gone, not
+    // recategorised.
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "loadModels",
       text: "try await manager.loadModels(loadedModels)",

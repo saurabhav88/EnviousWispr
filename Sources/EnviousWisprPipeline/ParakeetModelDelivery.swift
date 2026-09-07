@@ -74,6 +74,27 @@ public final class ParakeetDeliveryHandle {
     await controller.ensureModelAvailable(registration)
   }
 
+  /// The install directory, once it is safe to read and once anything the user
+  /// already has on disk has been brought into it (#2697).
+  ///
+  /// **The single door.** Every consumer of the Parakeet location goes through
+  /// this, including the kill-switch branch, which is the whole point: donor
+  /// migration used to live inside a delivery attempt, so the one branch that
+  /// runs no attempt got no migration and re-downloaded 483 MB online, or could
+  /// not warm up at all offline, with a complete copy on disk the whole time.
+  ///
+  /// Returns `nil` when the location is REFUSED — currently when it resolves
+  /// inside the donor. A refusal must never be substitutable by a caller
+  /// resolving a path of its own, which is why nothing else may answer this
+  /// question.
+  public func ensureModelLocationReady(
+    onProgress: (@Sendable () -> Void)? = nil
+  ) async -> URL? {
+    guard ModelDeliveryController.installLocationIsSafe(registration) else { return nil }
+    await controller.ensureLegacyMigration(registration, onProgress: onProgress)
+    return registration.installDirectory
+  }
+
   /// One-shot repair after a cache-only load failure (grounded r1 revision 7;
   /// bounded to a single retry by the adapter).
   public func repair() async -> ModelDeliveryController.DeliveryOutcome {

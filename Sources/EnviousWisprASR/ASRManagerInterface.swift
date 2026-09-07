@@ -127,7 +127,16 @@ public protocol ASRManagerInterface: AnyObject {
   /// Both conformers pass it to their Parakeet prepare path; neither resolves a
   /// directory of its own, because every default they could reach is
   /// FluidAudio's shared cache, which EnviousWispr does not own.
-  var parakeetModelDirectory: URL { get set }
+  ///
+  /// **OPTIONAL, and that is the enforcement (#2697).** It was non-optional with
+  /// a default, and the default silently answered an assumed location — so a
+  /// caller that never reached the host's assignment got a working-looking path
+  /// instead of an error, and a REFUSAL by the location seam was indistinguishable
+  /// from a missing manifest. `nil` means nobody has said where the model is, and
+  /// both conformers refuse to load rather than guess. A non-optional URL would
+  /// only have forced initialisation, not prevented initialisation with another
+  /// guess.
+  var parakeetModelDirectory: URL? { get set }
   func loadModel() async throws
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
@@ -194,12 +203,15 @@ extension ASRManagerInterface {
     set {}
   }
 
-  /// #2483 safe default for test doubles, same shape as `parakeetCacheOnly`
-  /// above and safe for the same reason: BOTH production conformers declare
-  /// real storage, so their witnesses win, and a mock never loads a model, so
-  /// the value it reports is never used to touch the filesystem.
-  public var parakeetModelDirectory: URL {
-    get { ParakeetInstallLocation.live }
-    set {}
-  }
+}
+
+/// Thrown when a Parakeet load is asked for before anything has said WHERE the
+/// model lives (#2697).
+///
+/// Its existence is the point. The previous shape answered an assumed directory
+/// instead, so a caller that skipped the host's assignment loaded from a location
+/// nobody had verified, and a refusal from the location seam looked exactly like
+/// a working path.
+public struct ParakeetModelDirectoryUnsetError: Error, Equatable {
+  public init() {}
 }

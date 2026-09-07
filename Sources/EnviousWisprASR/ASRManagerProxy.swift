@@ -136,7 +136,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// path to the helper. Not optional on purpose: a nil would have to be resolved
   /// somewhere, and the only thing available to resolve it with is the vendor's
   /// own answer.
-  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
+  public var parakeetModelDirectory: URL?
 
   /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
   /// proxy-level error on the load path (nil connection, interface/selector
@@ -304,9 +304,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
+          // #2697: the helper is never handed a guessed path. An unset directory
+          // is a refusal, not an empty string — `ASRServiceHandler` already
+          // rejects an empty path, and sending one would turn a host-side
+          // refusal into a helper-side parse error.
+          let directoryPath = self.parakeetModelDirectory?.path ?? ""
           proxy.loadModel(
             backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly,
-            modelDirectoryPath: self.parakeetModelDirectory.path
+            modelDirectoryPath: directoryPath
           ) {
             nsError in
             // #1525 PR I-B: reconstruct the typed, conforming error from the

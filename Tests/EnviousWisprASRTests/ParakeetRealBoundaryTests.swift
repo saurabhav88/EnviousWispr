@@ -15,12 +15,21 @@ private enum ParakeetRealBoundaryFixture {
   static let expectedTranscript =
     "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
 
+  /// #2697: resolved here rather than by a property on the location type. That
+  /// property was deleted because it answered from an assumed root wherever it
+  /// was reached; a test naming the root out loud is the honest replacement.
+  static var installDirectory: URL {
+    ParakeetInstallLocation.directory(
+      appSupport: FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0])
+  }
+
   static var shippedModelIsInstalled: Bool {
     // #2697: OUR directory. This asked FluidAudio's shared tree whether the
     // shipped model was installed, so the receipt for "the shipped model
     // transcribes" was taken against another app's copy rather than against the
     // bytes EnviousWispr admits.
-    return AsrModels.modelsExist(at: ParakeetInstallLocation.live, version: .v3)
+    return AsrModels.modelsExist(at: installDirectory, version: .v3)
   }
 
   static func normalizedWords(_ text: String) -> String {
@@ -53,7 +62,7 @@ struct ParakeetRealBoundaryTests {
       let backend = ParakeetBackend()
       do {
         try await backend.prepare(
-          cacheOnly: true, modelDirectory: ParakeetInstallLocation.live,
+          cacheOnly: true, modelDirectory: ParakeetRealBoundaryFixture.installDirectory,
           progressCallback: nil)
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
         await backend.unload()

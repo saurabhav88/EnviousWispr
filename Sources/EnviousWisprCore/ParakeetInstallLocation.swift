@@ -63,7 +63,7 @@ public enum ParakeetInstallLocation {
 
   /// The directory Parakeet used to install into, kept ONLY as a read-only
   /// donor so an existing copy can be reproduced rather than re-downloaded
-  /// (`LegacyDonorImport`).
+  /// (`LegacyDonorMigration`).
   ///
   /// This is FluidAudio's shared per-repo cache. It is spelled out here rather
   /// than taken from `AsrModels.defaultCacheDirectory` so that this module does
@@ -77,20 +77,19 @@ public enum ParakeetInstallLocation {
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
-  /// The live location, for the one caller that has no injected root: the
-  /// engine adapter's legacy branch, which runs when delivery is switched off
-  /// or its manifest failed to load and therefore has no registration to read a
-  /// directory from.
-  ///
-  /// It resolves the REAL Application Support root even under a test that
-  /// redirected the delivery layer's root. That divergence is deliberate and
-  /// narrow: any caller holding a `ParakeetDeliveryHandle` must read the
-  /// handle's own `installDirectory` instead, so the only path reaching this
-  /// property is the one with nothing better to read. What it must never do is
-  /// resolve FluidAudio's shared directory, and it cannot.
-  public static var live: URL {
-    let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    return directory(appSupport: appSupport)
-  }
+  // `live` was here, and it is DELETED (#2697).
+  //
+  // It resolved the Application Support root itself and was reachable from six
+  // places, so any caller that had not been told where the model lives got a
+  // confident answer instead of an error — and a REFUSAL by the location seam was
+  // indistinguishable from a working path. Deleting it is what makes the refusal
+  // real: `ASRManagerInterface.parakeetModelDirectory` is now optional with no
+  // default, both `loadModel()` implementations throw
+  // `ParakeetModelDirectoryUnsetError` on `nil`, and
+  // `ParakeetDeliveryHandle.ensureModelLocationReady()` is the only producer.
+  //
+  // It also blocked a second workstream: a self-resolving root cannot be
+  // redirected, and #2695 has to move the data root for users whose Application
+  // Support is not writable. `directory(appSupport:)` takes the root as a
+  // parameter and always did; this property was the one thing that did not.
 }

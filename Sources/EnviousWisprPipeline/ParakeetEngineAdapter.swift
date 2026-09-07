@@ -331,13 +331,20 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // loads cache-only and can never download. Flag off (or no handle) =
     // legacy path, bit-for-bit.
     let deliveryActive: Bool
+    // #2697: ONE awaited door, taken before the branch rather than inside it.
+    // Migration used to live inside `ensureAvailable()`, so the kill-switch
+    // branch below never got it. Whatever the flag says, the location is made
+    // ready first, and a REFUSAL arrives as `nil` rather than as a path that
+    // looks fine.
+    let readyDirectory = await delivery?.ensureModelLocationReady()
+    // A missing handle means no manifest loaded, so nothing has said where the
+    // model lives. `nil` travels to `loadModel()`, which refuses. It is NOT
+    // replaced with a directory of our own choosing here: that substitution is
+    // exactly what made a refusal invisible.
+    asrManager.parakeetModelDirectory = readyDirectory
     if let delivery, delivery.isEnabled() {
       deliveryActive = true
       asrManager.parakeetCacheOnly = true
-      // #2483: the load layer is TOLD where to look, from the registration the
-      // controller actually admitted into. Set before `ensureAvailable()` so a
-      // throw below cannot leave the manager pointing at a stale location.
-      asrManager.parakeetModelDirectory = delivery.installDirectory
       switch await delivery.ensureAvailable() {
       case .admitted:
         break
@@ -349,16 +356,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     } else {
       deliveryActive = false
       asrManager.parakeetCacheOnly = false
-      // #2483: the legacy branch gets our directory TOO, and this is the half
+      // #2483: the legacy branch uses our directory TOO, and this is the half
       // that closes the vendor's own deletion. With `cacheOnly` false,
       // FluidAudio's offline switch is off, so `ModelHub.loadModels` may purge
       // the whole repo directory after a failed load and may write a vocabulary
       // file into it. Both are acceptable inside a directory we own and were
-      // never acceptable inside FluidAudio's shared one. A handle that exists
-      // but is switched off still knows the admitted location; only a missing
-      // or unregistered handle falls back, and its fallback is still ours.
-      asrManager.parakeetModelDirectory =
-        delivery?.installDirectory ?? ParakeetInstallLocation.live
+      // never acceptable inside FluidAudio's shared one.
+      //
+      // #2697: the directory is assigned above, before this branch, and it has
+      // already been migrated. This branch used to resolve its own fallback,
+      // which is why a user on the kill switch re-downloaded a model they
+      // already had — and, offline, could not warm up at all.
       delivery?.noteLegacyPathActive()
     }
 
