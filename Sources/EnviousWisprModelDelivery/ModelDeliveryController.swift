@@ -245,31 +245,32 @@ public actor ModelDeliveryController {
     onProgress: (@Sendable () -> Void)? = nil
   ) async -> LegacyDonorMigration.Outcome {
     let identity = registration.manifest.identity
-    // Review C: EVERY migration goes through here, launch and repair alike.
-    // `runAttempt` used to call `migrate` directly, which bypassed this map — so
-    // a repair and the launch migration could run at once, on the SAME candidate
-    // directory, each deleting it while the other was copying, verifying or
-    // publishing into it. Actor isolation does not help: `migrate` is
-    // nonisolated and releases this actor at every await.
+    // EVERY migration goes through here, launch and repair alike, and they run
+    // ONE AT A TIME per model.
     //
-    // Joining is bounded: a run clears its own entry, so the loop advances
-    // unless a third caller keeps arriving, and the cap makes even that
-    // terminate rather than spin.
-    var joins = 0
-    while let existing = migrationsInFlight[identity], joins < 4 {
-      let prior = await existing.value
-      joins += 1
-      // An ordinary caller is satisfied by whatever the run it joined did. A
-      // REPAIR is not: it exists because validation has already found broken
-      // components, and the run it joined may have declined on a `completed`
-      // record it was never asked to ignore.
-      if !ignoringRecord { return prior }
+    // `runAttempt` used to call `migrate` directly, so a repair and the launch
+    // migration could run at once on the SAME candidate directory, each deleting
+    // it while the other copied, verified or published into it. Actor isolation
+    // excludes nothing here: `migrate` is nonisolated and releases this actor at
+    // every await.
+    //
+    // A bounded JOIN was the first attempt and it was a hole, not a guard
+    // (round 3): after N joins it started a run anyway, and its unconditional
+    // clear could erase a DIFFERENT run's entry. This is a CHAIN instead — each
+    // request waits for its predecessor inside its own task, so exclusivity does
+    // not depend on how many callers arrive, and there is no cap to be wrong.
+    // The slot is cleared only by the run that still owns it.
+    let previous = migrationsInFlight[identity]
+    let task = Task {
+      if let previous { _ = await previous.value }
+      return await LegacyDonorMigration.migrate(
+        registration: registration, ignoringRecord: ignoringRecord, onProgress: onProgress)
     }
-    let task = Task { await LegacyDonorMigration.migrate(
-      registration: registration, ignoringRecord: ignoringRecord, onProgress: onProgress) }
     migrationsInFlight[identity] = task
     let outcome = await task.value
-    migrationsInFlight[identity] = nil
+    // Only if we are still the tail. A later request has already replaced us and
+    // is waiting on this task; clearing unconditionally would strand it.
+    if migrationsInFlight[identity] == task { migrationsInFlight[identity] = nil }
     if outcome.didAnything {
       await AppLogger.shared.log(
         "Model delivery migrated \(outcome.componentsPublished) component(s), "
@@ -673,6 +674,11 @@ public actor ModelDeliveryController {
 
     var componentsToFetch = Set(manifest.filesByComponent.map(\.component))
       .subtracting(validation.verifiedComponents)
+    // Captured HERE, before donor repair below replaces `validation`. Repair
+    // ACCOUNTING and repair DECISIONS are different questions: what to delete and
+    // fetch must read the refreshed answer, what to REPORT must read the original,
+    // or a component the donor fixed vanishes from the count entirely.
+    let originallyFailedComponents = validation.failedComponents
 
     // #2697, found by Live UAT rather than by review: REPAIR FROM THE DONOR
     // BEFORE THE NETWORK.
@@ -700,23 +706,38 @@ public actor ModelDeliveryController {
           "Model delivery repaired \(recovered.componentsPublished) component(s) from the "
             + "legacy shared directory before any network use",
           level: .info, category: "Delivery")
+        // Round 3, P2: re-checked AFTER the migration's suspension, not before
+        // it. The earlier check cannot speak for a cancel that arrives during a
+        // multi-second clone-and-hash, and a cancelled attempt must not reach
+        // the component deletion or the promotion below.
         guard entries[identity]?.generation == generation, !Task.isCancelled else {
           return finishCancelled(identity, generation: generation)
         }
-        // Review C, P2: the recheck REPLACES the earlier result rather than
-        // only shrinking the fetch set. The repair-prep loop below deletes
+        // The recheck REPLACES the earlier result rather than only shrinking the
+        // fetch set. The repair-prep loop below deletes
         // every component in `validation.failedComponents`, so leaving the
         // stale set in place deleted the very components the donor had just
         // repaired — A and B fail, the donor fixes A, cleanup deletes A again,
         // and the fetch only asks for B. Recovery defeating itself.
         validation = await admission.validateExistingCache()
+        // And again after THAT suspension. A full hash pass over 483 MB is the
+        // longest window in this function; a cancel landing inside it would
+        // otherwise still reach the deletions below.
+        guard entries[identity]?.generation == generation, !Task.isCancelled else {
+          return finishCancelled(identity, generation: generation)
+        }
         componentsToFetch.subtract(validation.verifiedComponents)
       }
     }
     // Repair means something WAS there and got replaced — a cold install's
     // all-missing components are a normal first download, not a repair
     // (code-diff r1 P3: first-run metrics must not read as repair storms).
-    let repairedCount = validation.failedComponents.filter {
+    //
+    // Round 3, P3: `originallyFailedComponents`, captured above BEFORE donor
+    // repair could replace `validation`. A component the donor fixes leaves the
+    // refreshed failed set, so counting there reports a partial donor repair
+    // followed by a download as fewer repairs than actually happened.
+    let repairedCount = originallyFailedComponents.filter {
       admission.componentHasAnyFile($0)
     }.count
 

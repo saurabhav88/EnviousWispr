@@ -80,7 +80,20 @@ def log_since(offset: int) -> str:
 
 
 def launch():
-    subprocess.run(["open", "-a", str(APP)], check=True)
+    """Launch, retrying a LaunchServices refusal.
+
+    `open` can return -600 for a few hundred milliseconds after a SIGKILL, while
+    macOS still has the dead process registered. That is a race in the harness,
+    not in the app, so it retries rather than failing the case it was about to
+    measure."""
+    last = None
+    for _ in range(10):
+        r = subprocess.run(["open", "-a", str(APP)], capture_output=True, text=True)
+        if r.returncode == 0:
+            return
+        last = r.stderr.strip()
+        time.sleep(0.5)  # settle: LaunchServices still holds the killed process
+    raise SystemExit(f"could not launch after 10 attempts: {last}")
 
 
 def wait_for(predicate, seconds: float, what: str) -> bool:
