@@ -466,6 +466,8 @@ import Testing
         MemberSignature(condition: nil, signature: "var downloadPhase: String { get }"),
         MemberSignature(condition: nil, signature: "var downloadDetail: String { get }"),
         MemberSignature(condition: nil, signature: "var parakeetCacheOnly: Bool { get set }"),
+        MemberSignature(
+          condition: nil, signature: "var parakeetModelDirectory: URL { get set }"),
         MemberSignature(condition: nil, signature: "func loadModel() async throws"),
         MemberSignature(condition: nil, signature: "func unloadModel() async"),
         MemberSignature(
@@ -506,6 +508,11 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public var parakeetCacheOnly: Bool {\n    get { false }\n    set {}\n  }"),
+        MemberSignature(
+          condition: nil,
+          signature:
+            "public var parakeetModelDirectory: URL {\n    get { ParakeetInstallLocation.live }\n    set {}\n  }"
+        ),
       ]),
     "ASREngineAdapter": Surface(
       name: "ASREngineAdapter", file: "Sources/EnviousWisprPipeline/ASREngineAdapter.swift",
@@ -652,7 +659,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "func loadModel(backendType: String, cacheOnly: Bool, reply: @escaping (NSError?) -> Void)"
+            "func loadModel(\n    backendType: String, cacheOnly: Bool, modelDirectoryPath: String,\n    reply: @escaping (NSError?) -> Void)"
         ),
         MemberSignature(condition: nil, signature: "func unloadModel(reply: @escaping () -> Void)"),
         MemberSignature(
@@ -714,7 +721,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "public func prepare(cacheOnly: Bool, progressCallback: ProgressCallback?) async throws"
+            "public func prepare(\n    cacheOnly: Bool, modelDirectory: URL, progressCallback: ProgressCallback?\n  ) async throws"
         ),
       ]),
   ]

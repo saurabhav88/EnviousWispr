@@ -7,11 +7,21 @@ public struct DeliveryRegistration: Sendable {
   public let manifest: DeliveryManifest
   public let installDirectory: URL
   public let metadataDirectory: URL
+  /// #2483: a directory that may already hold this model, which this process may
+  /// only READ. Set for Parakeet, whose install directory moved out of
+  /// FluidAudio's shared tree and whose users' bytes are still sitting in it.
+  /// `nil` for every other family, none of which ever installed anywhere but its
+  /// own directory. Never a write or delete target — see `LegacyDonorImport`.
+  public let legacyDonorDirectory: URL?
 
-  public init(manifest: DeliveryManifest, installDirectory: URL, metadataDirectory: URL) {
+  public init(
+    manifest: DeliveryManifest, installDirectory: URL, metadataDirectory: URL,
+    legacyDonorDirectory: URL? = nil
+  ) {
     self.manifest = manifest
     self.installDirectory = installDirectory
     self.metadataDirectory = metadataDirectory
+    self.legacyDonorDirectory = legacyDonorDirectory
   }
 }
 
@@ -567,7 +577,20 @@ public actor ModelDeliveryController {
         try admission.promoteAndAdmit(
           stagedComponents: [], stagingDirectory: stagingDirectory(for: registration),
           untouchedComponents: validation.verifiedComponents)
+      } catch let failure as DeliveryFailure {
+        // #2691: pass CacheAdmission's own failure through, exactly as the
+        // post-fetch promote below already does. This arm used to replace every
+        // throw with the fixed detail "admit_in_place", discarding the two
+        // details that say WHICH half failed — `orphan_cleanup` and
+        // `post_promote_stamp:<component>`. #2690's reporter could therefore
+        // only ever see one generic word for a failure that had a specific
+        // cause, and neither he nor the telemetry could tell an unremovable
+        // entry from a bad post-promote stamp.
+        return await finishFailed(identity, failure, generation: generation)
       } catch {
+        // Anything that is not a DeliveryFailure keeps the old site-named
+        // detail: there is no better name for it, and the site is still the
+        // most useful thing we know.
         let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "admit_in_place")
         return await finishFailed(identity, failure, generation: generation)
       }
@@ -628,9 +651,67 @@ public actor ModelDeliveryController {
       entries[identity] = entry
     }
 
+    // #2483: reproduce what the user already has, before any network.
+    //
+    // Deliberately AFTER the preflight above, which has just reserved headroom
+    // for exactly these bytes — a clone usually needs almost none, a fallback
+    // copy needs all of them, and neither is known in advance. Files land in
+    // staging; `ManifestFetchTask` then verifies each one's size and SHA-256 and
+    // skips the ones that pass, so a successful import turns this attempt into a
+    // zero-byte download and a rejected one costs only the copy.
+    //
+    // The donor is read-only (`LegacyDonorImport`), so nothing here can damage
+    // the directory the user's other apps share.
+    //
+    // Second-pass finding 8: DETACHED. Without a cloning filesystem this copies
+    // hundreds of megabytes synchronously, and running that on the controller
+    // actor would lock out every other delivery call — including the cancel the
+    // user just pressed — for the whole copy. Cancellation is re-checked on the
+    // way back, because the wait is exactly long enough for one to land.
+    var donorOutcome = LegacyDonorImport.Outcome.none
+    if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
+      // Cloud round 2 P2: a detached task does NOT inherit cancellation, so the
+      // handle is held and cancelled explicitly. Without this, cancelling during
+      // a fallback copy leaves `cancel(_:)` waiting for the drain while the copy
+      // runs to completion.
+      let copyTask = Task.detached(priority: .utility) {
+        LegacyDonorImport.reproduce(
+          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+      }
+      let importResult = await withTaskCancellationHandler {
+        await copyTask.value
+      } onCancel: {
+        copyTask.cancel()
+      }
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return finishCancelled(identity, generation: generation)
+      }
+      switch importResult {
+      case .imported(let outcome):
+        donorOutcome = outcome
+      case .unsafeStagingRoot(let detail):
+        // Cloud round 2 P1: a containment refusal is about the DESTINATION, so it
+        // must abandon the attempt. Treating it as an ordinary empty import would
+        // hand the same unsafe staging URL to the fetcher, which writes through
+        // it, and promotion would then move component roots out of whatever it
+        // resolves to — the exact write this type exists to prevent, reached by
+        // the code that just declined to perform it.
+        let failure = DeliveryFailure(
+          reason: .cacheRepairFailed, detail: "unsafe_staging:\(detail)")
+        return await finishFailed(identity, failure, generation: generation)
+      }
+      if donorOutcome.filesReproduced > 0 {
+        await AppLogger.shared.log(
+          "Model delivery reproduced \(donorOutcome.filesReproduced) file(s), "
+            + "\(donorOutcome.bytesReproduced) bytes, from the legacy shared directory "
+            + "(cloned: \(donorOutcome.clonedThroughout)) — awaiting hash verification",
+          level: .info, category: "Delivery")
+      }
+    }
+
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
-    let resumed = stagedBytes > 0
+    let resumed = stagedBytes > 0 || donorOutcome.filesReproduced > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
     setState(

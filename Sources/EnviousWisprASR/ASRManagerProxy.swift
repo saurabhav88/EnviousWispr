@@ -126,6 +126,18 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// warm-up; false = legacy in-service download path, bit-for-bit.
   public var parakeetCacheOnly = false
 
+  /// #2483: the install directory sent to the helper on every load.
+  ///
+  /// **Defaults to OUR directory, not the vendor's.** `ParakeetEngineAdapter`
+  /// injects the registration's exact location before each warm-up, which is what
+  /// keeps a test-redirected root honest — but it is not the only entry point.
+  /// `ActiveEngineOperation.load` calls `loadModel()` directly for launch recovery
+  /// and Diagnostics, and with a vendor default here that load sent the shared
+  /// path to the helper. Not optional on purpose: a nil would have to be resolved
+  /// somewhere, and the only thing available to resolve it with is the vendor's
+  /// own answer.
+  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
+
   /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
   /// proxy-level error on the load path (nil connection, interface/selector
   /// mismatch, remote-proxy failure), drop the connection so the NEXT call
@@ -292,7 +304,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
-          proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {
+          proxy.loadModel(
+            backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly,
+            modelDirectoryPath: self.parakeetModelDirectory.path
+          ) {
             nsError in
             // #1525 PR I-B: reconstruct the typed, conforming error from the
             // surviving NSError domain/code before throwing to the adapter.

@@ -30,6 +30,11 @@ public final class ASRManager: ASRManagerInterface {
   /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
   /// `ASRManagerInterface.parakeetCacheOnly`).
   public var parakeetCacheOnly = false
+  /// #2483: see `ASRManagerProxy.parakeetModelDirectory`. The default is OUR
+  /// directory, never the vendor's, so an entry point that loads without going
+  /// through `ParakeetEngineAdapter` — `ActiveEngineOperation.load` does exactly
+  /// that — cannot reach FluidAudio's shared tree by omission.
+  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
@@ -155,8 +160,20 @@ public final class ASRManager: ASRManagerInterface {
         // downcasts to the concrete backend this manager itself constructed —
         // not a kernel-side identity gate (capability rule applies to
         // adapters/kernel; injected test mocks keep the legacy path).
-        if self.parakeetCacheOnly, let parakeet = self.parakeetBackend as? ParakeetBackend {
-          try await parakeet.prepare(cacheOnly: true, progressCallback: progress)
+        //
+        // #2483 second-pass finding 1/2/5: the downcast is no longer gated on
+        // `parakeetCacheOnly`. It used to be, and the `else` then reached
+        // `prepare(progressCallback:)`, whose convenience overload resolves
+        // FluidAudio's SHARED directory — so switching delivery off sent the
+        // in-process path straight back to the tree this whole change exists to
+        // stop touching, with downloading enabled. The XPC path never had that
+        // hole because the proxy passes the directory on every load. Only a
+        // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
+        // takes the protocol overload now.
+        if let parakeet = self.parakeetBackend as? ParakeetBackend {
+          try await parakeet.prepare(
+            cacheOnly: self.parakeetCacheOnly, modelDirectory: self.parakeetModelDirectory,
+            progressCallback: progress)
         } else {
           try await self.parakeetBackend.prepare(progressCallback: progress)
         }

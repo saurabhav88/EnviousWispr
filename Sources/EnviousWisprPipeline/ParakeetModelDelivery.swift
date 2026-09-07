@@ -41,6 +41,13 @@ public final class ParakeetDeliveryHandle {
   private let registration: DeliveryRegistration
   private let defaults: UserDefaults
 
+  /// #2483: where this handle admits bytes, so the adapter can tell the load
+  /// layer the same location rather than resolving one of its own. Reading it
+  /// from the registration is what keeps a test-redirected root honest — a
+  /// second derivation would silently disagree with the directory the
+  /// controller actually wrote to.
+  public var installDirectory: URL { registration.installDirectory }
+
   public init(
     controller: ModelDeliveryController, registration: DeliveryRegistration,
     defaults: UserDefaults? = nil

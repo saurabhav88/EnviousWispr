@@ -490,7 +490,7 @@ import Testing
     // `retryDecode`/row-22 warmUp) callers alike.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
-      text: "try await parakeet.prepare(cacheOnly: true, progressCallback: progress)",
+      text: "try await parakeet.prepare(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
@@ -528,7 +528,7 @@ import Testing
     // MARK: ASRManagerProxy — the XPC-fronted mirror of ASRManager.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "loadModel",
-      text: "proxy.loadModel(backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly) {",
+      text: "proxy.loadModel(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "startStreaming",
@@ -585,11 +585,11 @@ import Testing
     // progressCallback:)`, both already counted, `transitivelyCoveredByCaller`.
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "prepare",
-      text: "try await prepare(cacheOnly: false, progressCallback: nil)",
+      text: "try await prepare(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "prepare",
-      text: "try await prepare(cacheOnly: false, progressCallback: progressCallback)",
+      text: "try await prepare(",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "loadModels",
@@ -634,7 +634,7 @@ import Testing
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "prepare",
-      text: "try await backend.prepare(cacheOnly: cacheOnly) { fraction, phase, detail in",
+      text: "try await backend.prepare(cacheOnly: cacheOnly, modelDirectory: modelDirectory) {",
       classification: .transitivelyCoveredByCaller),
 
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity

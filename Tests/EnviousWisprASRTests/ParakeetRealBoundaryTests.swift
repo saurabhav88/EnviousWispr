@@ -49,7 +49,9 @@ struct ParakeetRealBoundaryTests {
     let result: EnviousWisprCore.ASRResult = try await withParakeetOfflineModeExclusion {
       let backend = ParakeetBackend()
       do {
-        try await backend.prepare(cacheOnly: true, progressCallback: nil)
+        try await backend.prepare(
+          cacheOnly: true, modelDirectory: ParakeetBackend.vendorSharedDirectory,
+          progressCallback: nil)
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
         await backend.unload()
         return result

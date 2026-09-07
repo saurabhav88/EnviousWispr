@@ -117,7 +117,9 @@ struct ShippedBackendLatencyTests {
       path: ShippedBackendLatencyFixture.audioURL.path)
     let backend = ParakeetBackend()
     do {
-      try await backend.prepare(cacheOnly: true, progressCallback: nil)
+      try await backend.prepare(
+        cacheOnly: true, modelDirectory: ParakeetBackend.vendorSharedDirectory,
+        progressCallback: nil)
       let warmup = try await backend.transcribe(audioSamples: samples, options: .default)
       ShippedBackendLatencyFixture.requireExpectedTranscript(warmup, backend: "Parakeet warm-up")
 

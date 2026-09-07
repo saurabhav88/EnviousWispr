@@ -134,14 +134,20 @@ public final class ModelDeliveryHome {
   /// so tests pass a bundle pointed at the SAME committed manifest files
   /// instead of a divergent fixture. Internal, not public — no other
   /// consumer needs it.
-  /// - Parameter appSupportOverride: roots the metadata and WhisperKit install
-  ///   directories somewhere other than the user's real Application Support.
+  /// - Parameter appSupportOverride: roots the metadata and EVERY model install
+  ///   directory somewhere other than the user's real Application Support.
   ///   Production never passes it. Tests do, because construction now runs a
   ///   no-fetch launch probe against those directories, and a suite that reads
   ///   the real ones has a fixture that changes depending on whether the machine
-  ///   running it has ever used the feature. Parakeet's ASR cache is deliberately
-  ///   NOT rerouted: it comes from `AsrModels.defaultCacheDirectory` and is not
-  ///   part of what the probe touches.
+  ///   running it has ever used the feature.
+  ///
+  ///   **#2483 changed this parameter's reach.** It previously said Parakeet's
+  ///   cache was "deliberately NOT rerouted", which was true only because that
+  ///   cache was `AsrModels.defaultCacheDirectory` — FluidAudio's shared tree,
+  ///   which no override of ours could or should move. Parakeet now installs
+  ///   beneath this root like the other two families, so the override reroutes
+  ///   it as well and a suite passing one no longer reads or writes the real
+  ///   FluidAudio directory at all.
   /// - Parameter deliveryFlagDefaults: where the delivery kill switches are read
   ///   from. Production never passes it, so both handles fall back to the shared
   ///   suite exactly as before. Tests pass an in-memory suite, because the guard
@@ -162,10 +168,22 @@ public final class ModelDeliveryHome {
       let identity = manifest.identity
       let registration = DeliveryRegistration(
         manifest: manifest,
-        installDirectory: AsrModels.defaultCacheDirectory(for: .v3),
+        // #2483: our own directory, a sibling of `Models/whisper` below. This
+        // was `AsrModels.defaultCacheDirectory(for: .v3)` — FluidAudio's SHARED
+        // per-repo cache — from #1348 Phase 2 until now, which is what deleted
+        // other apps' files (#2483) and blocked installs we could not sweep
+        // (#2690). `ParakeetInstallLocation` owns the name, including why the
+        // last path component must stay `parakeet-tdt-0.6b-v3-coreml`.
+        installDirectory: ParakeetInstallLocation.directory(appSupport: appSupportRoot),
         metadataDirectory:
           appSupportRoot
-          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true))
+          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true),
+        // #2483: where this model USED to live, offered read-only so an existing
+        // copy — ours from before the move, or another FluidAudio app's — is
+        // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
+        // suite passing an override never reads the real shared directory.
+        legacyDonorDirectory: ParakeetInstallLocation.legacySharedDonor(
+          appSupport: appSupportRoot))
       parakeetIdentity = identity
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.

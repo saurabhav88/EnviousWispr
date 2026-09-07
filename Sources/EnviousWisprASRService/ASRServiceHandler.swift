@@ -38,10 +38,22 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
   // MARK: - Model Lifecycle
 
-  func loadModel(backendType: String, cacheOnly: Bool, reply: @escaping (NSError?) -> Void) {
+  func loadModel(
+    backendType: String, cacheOnly: Bool, modelDirectoryPath: String,
+    reply: @escaping (NSError?) -> Void
+  ) {
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
       do {
+        // #2483: fail closed. An empty path is the only value that could send
+        // this process back to a vendor default, and that default is the shared
+        // FluidAudio tree. Throwing costs one typed load failure the host
+        // already handles; guessing costs somebody else's model files.
+        guard !modelDirectoryPath.isEmpty else {
+          throw XPCASRTransportError.requestDecodingFailed(
+            "loadModel: empty modelDirectoryPath")
+        }
+        let modelDirectory = URL(fileURLWithPath: modelDirectoryPath, isDirectory: true)
         // Unload previous backend before loading new one
         self.parakeetBackend = nil
 
@@ -66,7 +78,8 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           // armed inside prepare so this process can never download. The
           // progress callback still feeds the shared file for the COMPILE/
           // LOAD phase (the download phase is host-fed under delivery mode).
-          try await backend.prepare(cacheOnly: cacheOnly) { fraction, phase, detail in
+          try await backend.prepare(cacheOnly: cacheOnly, modelDirectory: modelDirectory) {
+            fraction, phase, detail in
             // Hot path — runs on URLSession delegate thread. File write is fast.
             progressFile.write(fraction: fraction, phase: phase, detail: detail)
           }
