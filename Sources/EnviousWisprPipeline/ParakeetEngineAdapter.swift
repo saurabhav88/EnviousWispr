@@ -334,6 +334,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     if let delivery, delivery.isEnabled() {
       deliveryActive = true
       asrManager.parakeetCacheOnly = true
+      // #2483: the load layer is TOLD where to look, from the registration the
+      // controller actually admitted into. Set before `ensureAvailable()` so a
+      // throw below cannot leave the manager pointing at a stale location.
+      asrManager.parakeetModelDirectory = delivery.installDirectory
       switch await delivery.ensureAvailable() {
       case .admitted:
         break
@@ -345,6 +349,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     } else {
       deliveryActive = false
       asrManager.parakeetCacheOnly = false
+      // #2483: the legacy branch gets our directory TOO, and this is the half
+      // that closes the vendor's own deletion. With `cacheOnly` false,
+      // FluidAudio's offline switch is off, so `ModelHub.loadModels` may purge
+      // the whole repo directory after a failed load and may write a vocabulary
+      // file into it. Both are acceptable inside a directory we own and were
+      // never acceptable inside FluidAudio's shared one. A handle that exists
+      // but is switched off still knows the admitted location; only a missing
+      // or unregistered handle falls back, and its fallback is still ours.
+      asrManager.parakeetModelDirectory =
+        delivery?.installDirectory ?? ParakeetInstallLocation.live
       delivery?.noteLegacyPathActive()
     }
 
