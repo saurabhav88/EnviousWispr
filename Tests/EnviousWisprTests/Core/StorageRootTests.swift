@@ -1,0 +1,321 @@
+import Foundation
+import Testing
+
+@testable import EnviousWisprCore
+
+/// When these fail, the user's dictation history, custom words and snippets go
+/// somewhere the app will not look for them again, or the app refuses to start
+/// on a machine where it could have worked (#2695).
+///
+/// Every case drives the REAL filesystem inside a private temporary sandbox,
+/// because the whole subject of `StorageRoot` is whether a directory actually
+/// accepts a write. A fake `FileManager` would answer the question the type
+/// exists to stop us assuming.
+@Suite(.tags(.productOutcome))
+struct StorageRootTests {
+
+  // MARK: - Sandbox
+
+  /// Two independent roots standing in for the machine's Application Support
+  /// directory and the account's home directory.
+  private struct Sandbox {
+    let root: URL
+    let appSupport: URL
+    let home: URL
+
+    init() throws {
+      root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-storage-root-\(UUID().uuidString)", isDirectory: true)
+      appSupport = root.appendingPathComponent("ApplicationSupport", isDirectory: true)
+      home = root.appendingPathComponent("Home", isDirectory: true)
+      try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    }
+
+    var standardCandidate: URL {
+      appSupport.appendingPathComponent(AppConstants.appSupportDir, isDirectory: true)
+    }
+    var fallbackCandidate: URL {
+      home.appendingPathComponent(AppConstants.appSupportDir, isDirectory: true)
+    }
+
+    /// Take away the right to CREATE inside a directory without deleting it, the
+    /// way #2690's machine did. `0o500` is read plus traverse, no write.
+    func lock(_ directory: URL) throws {
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o500], ofItemAtPath: directory.path)
+    }
+
+    /// Restore write access so the sandbox can be removed. Called from `defer`
+    /// on every case that locks something, so a failing assertion still leaves
+    /// the machine clean.
+    func unlockAll() {
+      for directory in [appSupport, home, root] {
+        try? FileManager.default.setAttributes(
+          [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+      }
+    }
+
+    func tearDown() {
+      unlockAll()
+      try? FileManager.default.removeItem(at: root)
+    }
+  }
+
+  private func writeRecord(
+    _ record: StorageRoot.Record, into directory: URL
+  ) throws {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let data = try JSONEncoder().encode(record)
+    try data.write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
+  }
+
+  private func readRecord(from directory: URL) throws -> StorageRoot.Record {
+    let data = try Data(
+      contentsOf: directory.appendingPathComponent(StorageRoot.recordFileName))
+    return try JSONDecoder().decode(StorageRoot.Record.self, from: data)
+  }
+
+  private func permissions(of url: URL) throws -> Int {
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    let number = try #require(attributes[.posixPermissions] as? NSNumber)
+    return number.intValue
+  }
+
+  // MARK: - The ordinary machine
+
+  @Test("A healthy Mac uses Application Support and writes down that it did")
+  func healthyMachineSelectsStandardAndRecordsIt() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .standard)
+    #expect(resolution.dataDirectory == sandbox.standardCandidate)
+    #expect(resolution.isUnavailable == false)
+    #expect(resolution.exhausted.isEmpty)
+
+    let record = try readRecord(from: sandbox.standardCandidate)
+    #expect(record.selection == .standard)
+    #expect(record.committed)
+    #expect(record.version == StorageRoot.Record.currentVersion)
+  }
+
+  @Test("A created root is readable only by its owner")
+  func aCreatedRootIsOwnerOnly() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+
+    _ = StorageRoot.resolve(systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(try permissions(of: sandbox.standardCandidate) == 0o700)
+  }
+
+  // MARK: - #2690's machine
+
+  @Test("An Application Support directory we cannot write to sends us to the home folder")
+  func unwritableApplicationSupportFallsBackToHome() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try sandbox.lock(sandbox.appSupport)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
+    #expect(resolution.isUnavailable == false)
+
+    let record = try readRecord(from: sandbox.fallbackCandidate)
+    #expect(record.selection == .homeFallback)
+    #expect(record.committed)
+  }
+
+  /// The donor question. Another vendor's shared model cache is a SIBLING of our
+  /// standard directory, so it can only be found through the system lookup. If
+  /// the fallback's win overwrote or cleared this value, the donor would become
+  /// underivable exactly when the fallback fires, and the miss would look clean.
+  @Test("The system's own Application Support path survives the fallback winning")
+  func theVendorLookupIsCarriedThroughUnchangedWhenTheFallbackWins() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try sandbox.lock(sandbox.appSupport)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(resolution.systemApplicationSupport == sandbox.appSupport)
+    #expect(resolution.systemApplicationSupport != resolution.dataDirectory)
+  }
+
+  // MARK: - Remembering, and never quietly going back
+
+  /// The case that makes the record worth having. A machine gets repaired, or
+  /// the user is moved to a new Mac by Migration Assistant, and Application
+  /// Support works again. Everything written since the move lives in the home
+  /// folder. Returning to the standard directory would show the user an empty
+  /// or stale history and hide the real one, with nothing reporting it.
+  @Test("Once we have moved, a repaired Application Support does not take us back")
+  func aCommittedFallbackIsKeptEvenWhenTheStandardPathWorksAgain() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .homeFallback, committed: true, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+
+    // Application Support is perfectly writable in this case.
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
+    #expect(FileManager.default.fileExists(atPath: sandbox.standardCandidate.path) == false)
+  }
+
+  @Test("A recorded standard selection is honoured without re-deciding")
+  func aCommittedStandardRecordIsHonoured() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    let earlier = Date(timeIntervalSince1970: 1)
+    try writeRecord(
+      StorageRoot.Record(selection: .standard, committed: true, createdAt: earlier),
+      into: sandbox.standardCandidate)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .standard)
+    // The existing record is left as it was rather than restamped, which is how
+    // a later reader can tell when this install first chose its root.
+    #expect(try readRecord(from: sandbox.standardCandidate).createdAt == earlier)
+  }
+
+  /// A half-written selection must not be obeyed. `committed: false` is what a
+  /// future data handoff writes before it starts moving files, so treating it as
+  /// authoritative would point the app at a directory holding an incomplete copy.
+  @Test("A selection that was never committed is not obeyed")
+  func anUncommittedRecordIsNotAuthoritative() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .homeFallback, committed: false, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .standard)
+  }
+
+  /// A recorded selection is a claim about the past, not a promise about today:
+  /// an external drive can be gone, a network home unmounted, permissions changed.
+  @Test("A recorded selection is re-proved, not trusted")
+  func aRecordedSelectionThatNoLongerWritesIsAbandoned() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .homeFallback, committed: true, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+    try sandbox.lock(sandbox.fallbackCandidate)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .standard)
+    #expect(resolution.isUnavailable == false)
+  }
+
+  // MARK: - Things that are not our directory
+
+  /// `fileExists` follows symlinks, and this project has already paid for that
+  /// once: a staged file that was a symlink into another application's directory
+  /// read as an ordinary file, and promotion moved the link rather than the
+  /// bytes. A symlink where our root belongs must never be adopted, because
+  /// everything we then write lands in whatever it points at.
+  @Test("A symlink where our folder belongs is refused, not followed")
+  func aSymlinkWhereOurDirectoryBelongsIsRefused() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    let elsewhere = sandbox.root.appendingPathComponent("SomeoneElse", isDirectory: true)
+    try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: sandbox.standardCandidate, withDestinationURL: elsewhere)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: elsewhere.appendingPathComponent(StorageRoot.recordFileName).path) == false)
+  }
+
+  @Test("A file where our folder belongs is refused and left untouched")
+  func aFileWhereOurDirectoryBelongsIsRefusedAndLeftAlone() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    let contents = Data("not ours".utf8)
+    try contents.write(to: sandbox.standardCandidate)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(try Data(contentsOf: sandbox.standardCandidate) == contents)
+  }
+
+  /// The founder's binding constraint, as an assertion rather than a comment.
+  /// Changing a permission is the mechanism that caused #2690, and on a
+  /// company-managed Mac doing it could get the user in trouble with their
+  /// employer. So a directory that already exists is used as it is or not at all.
+  @Test("An existing folder's permissions are never changed")
+  func anExistingDirectorysPermissionsAreNeverChanged() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try FileManager.default.createDirectory(
+      at: sandbox.standardCandidate, withIntermediateDirectories: true,
+      attributes: [.posixPermissions: 0o755])
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.selection == .standard)
+    #expect(try permissions(of: sandbox.standardCandidate) == 0o755)
+  }
+
+  // MARK: - Nowhere to go
+
+  @Test("With no system lookup at all we still reach the home folder")
+  func anAbsentSystemLookupStillResolvesToTheHomeFallback() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+
+    let resolution = StorageRoot.resolve(systemApplicationSupport: nil, home: sandbox.home)
+
+    #expect(resolution.selection == .homeFallback)
+    #expect(resolution.dataDirectory == sandbox.fallbackCandidate)
+    #expect(resolution.systemApplicationSupport == nil)
+  }
+
+  /// The honest terminal state. There is no third location, and inventing one
+  /// would hide the failure rather than end it.
+  @Test("When nothing accepts a write we say so and name what we tried")
+  func nothingWritableReportsUnavailableAndListsWhatItTried() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try sandbox.lock(sandbox.appSupport)
+    try sandbox.lock(sandbox.home)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.isUnavailable)
+    #expect(resolution.exhausted == [sandbox.standardCandidate, sandbox.fallbackCandidate])
+    // The standard path, so the eventual write fails with the path a person
+    // would recognise rather than a temporary directory they have never seen.
+    #expect(resolution.dataDirectory == sandbox.standardCandidate)
+  }
+}

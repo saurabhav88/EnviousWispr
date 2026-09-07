@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Writes a backup file to a destination the user chose (#1680, PR-E1).

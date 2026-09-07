@@ -30,22 +30,17 @@ public enum AppConstants {
   public static let pendingClockSkewTolerance: TimeInterval = 60
   public static let onboardingWindowTitle = "Setup"
 
-  /// Application Support directory for EnviousWispr.
-  /// Falls back to a temporary directory if Application Support is unavailable.
-  public static var appSupportURL: URL {
-    if let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first {
-      return appSupport.appendingPathComponent(appSupportDir, isDirectory: true)
-    }
-    let fallback = FileManager.default.temporaryDirectory.appendingPathComponent(
-      appSupportDir, isDirectory: true)
-    NSLog(
-      "[EnviousWispr] WARNING: Application Support directory unavailable, using fallback: \(fallback.path)"
-    )
-    return fallback
-  }
+  /// The directory EnviousWispr writes into, proven usable rather than assumed
+  /// (#2695). Sole owner: `StorageRoot`.
+  ///
+  /// **The previous temporary-directory fallback is deleted, and its deletion
+  /// is the point.** It handled an ABSENT lookup result only, so it could not
+  /// fire for the case that actually reaches users — a lookup that returns the
+  /// standard path while that path is unwritable (#2690) — and its destination
+  /// was purgeable by the system, so a user whose dictation history landed
+  /// there lost it with nothing reporting the loss. A fallback that cannot fire
+  /// when it is needed and loses data when it does is worse than none.
+  public static var appSupportURL: URL { StorageRoot.live.dataDirectory }
 }
 
 // MARK: - Speech Segment
