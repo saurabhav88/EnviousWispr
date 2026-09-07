@@ -15,6 +15,17 @@ import Foundation
 /// rather than a check that could be wrong: there is no write API on this path
 /// to reach.
 ///
+/// **KNOWN LIMIT, deliberately not closed: path checks are not atomic.** A hostile
+/// process running as the same user can replace a checked directory with a symlink
+/// between the check and the copy, and only descriptor-relative no-follow
+/// operations would close that. It is not closed here because the attacker it
+/// requires already has the capability the attack would gain: anything that can
+/// write inside our staging directory can write into the donor directly, without
+/// involving us. The promise this type makes is that OUR code does not write in
+/// the donor, not that a same-user attacker cannot. Cloud review round 5,
+/// classified HYPOTHETICAL per `validation-discipline.md`
+/// RULE: validate-automated-review-findings.
+///
 /// **It also does not verify.** Files land in the caller's staging directory,
 /// and `ManifestFetchTask` already refuses to skip a staged file unless its size
 /// AND streaming SHA-256 match the manifest (`ManifestFetchTask.swift:144-148`),
@@ -133,7 +144,13 @@ public enum LegacyDonorImport {
       // require it inside the staging root; only then create the rest.
       guard let fileAnchor = Self.nearestExistingAncestor(of: destination),
         let fileAnchorPath = Self.resolved(fileAnchor),
-        !Self.contained(fileAnchorPath, in: donorRoot)
+        // Both halves, and the staging half is the one round 5 caught: rejecting
+        // only the donor let a staging component symlinked to some UNRELATED
+        // directory pass, and `createDirectory` then made manifest subdirectories
+        // there before the post-creation check noticed. Checking the anchor needs
+        // nothing created first, so there is no reason to learn it late.
+        !Self.contained(fileAnchorPath, in: donorRoot),
+        Self.contained(fileAnchorPath, in: stagingRoot)
       else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
