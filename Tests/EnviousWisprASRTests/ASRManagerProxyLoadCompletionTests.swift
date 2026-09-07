@@ -42,6 +42,11 @@ struct ASRManagerProxyLoadCompletionTests {
     // registration leak would still mask real pending state).
     let proxy = ASRManagerProxy(
       engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
+    // #2697: the proxy now REFUSES a load when nothing has said where the
+    // model lives, so this test must say. Without it the refusal fires first
+    // and the transport error under test is never reached — which is the
+    // guard working, not this test's subject.
+    proxy.parakeetModelDirectory = URL(filePath: "/tmp/parakeet-fixture")
     await #expect(throws: XPCASRTransportError.self) {
       try await proxy.loadModel()
     }

@@ -72,6 +72,11 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
 
 @MainActor
 final class RouterTestASRManager: ASRManagerInterface {
+  /// #2697: real storage, because the protocol no longer carries a default.
+  /// The default answered an assumed install directory, so a double that never
+  /// set one still reported a usable path. `nil` means nobody has said where the
+  /// model is, which is what a double that loads nothing should say.
+  var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded: Bool = false
   var isStreaming: Bool = false

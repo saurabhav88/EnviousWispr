@@ -74,6 +74,44 @@ public final class ParakeetDeliveryHandle {
     await controller.ensureModelAvailable(registration)
   }
 
+  /// The install directory, once it is safe to read and once anything the user
+  /// already has on disk has been brought into it (#2697).
+  ///
+  /// **The single door.** Every consumer of the Parakeet location goes through
+  /// this, including the kill-switch branch, which is the whole point: donor
+  /// migration used to live inside a delivery attempt, so the one branch that
+  /// runs no attempt got no migration and re-downloaded 483 MB online, or could
+  /// not warm up at all offline, with a complete copy on disk the whole time.
+  ///
+  /// Returns `nil` when the location is REFUSED — currently when it resolves
+  /// inside the donor. A refusal must never be substitutable by a caller
+  /// resolving a path of its own, which is why nothing else may answer this
+  /// question.
+  public func ensureModelLocationReady(
+    onProgress: (@Sendable () -> Void)? = nil
+  ) async -> URL? {
+    // #2695: an UNAVAILABLE resolution refuses here, and refusing is the whole
+    // point of returning an optional. `isUnavailable` can be true while
+    // `dataDirectory` still holds a real path — that path is for an error
+    // message to NAME, never a destination — so taking it because it is non-nil
+    // is exactly the defect the flag exists to prevent.
+    guard !StorageRoot.live.isUnavailable else { return nil }
+    guard ModelDeliveryController.installLocationIsSafe(registration) else { return nil }
+    // Review A1: migration hashes whole files, and the sessionless wedge guard
+    // reads SILENCE as a wedge. Without a tick, a migration slow enough to
+    // matter is indistinguishable from a hang, and the user is told the app is
+    // stuck while it is working. The validating phase is the right one: the
+    // guard PARKS on it rather than judging it, which is exactly the contract
+    // for a multi-second hash the user did not ask for.
+    let tick: @Sendable () -> Void = {
+      ProgressFile.shared.write(
+        fraction: 0, phase: ModelLoadStallPolicy.validatingCachePhase, detail: "")
+      onProgress?()
+    }
+    await controller.ensureLegacyMigration(registration, onProgress: tick)
+    return registration.installDirectory
+  }
+
   /// One-shot repair after a cache-only load failure (grounded r1 revision 7;
   /// bounded to a single retry by the adapter).
   public func repair() async -> ModelDeliveryController.DeliveryOutcome {

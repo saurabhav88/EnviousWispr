@@ -11,7 +11,7 @@ public struct DeliveryRegistration: Sendable {
   /// only READ. Set for Parakeet, whose install directory moved out of
   /// FluidAudio's shared tree and whose users' bytes are still sitting in it.
   /// `nil` for every other family, none of which ever installed anywhere but its
-  /// own directory. Never a write or delete target — see `LegacyDonorImport`.
+  /// own directory. Never a write or delete target — see `LegacyDonorMigration`.
   public let legacyDonorDirectory: URL?
 
   public init(
@@ -206,6 +206,74 @@ public actor ModelDeliveryController {
   public func isAdmitted(_ registration: DeliveryRegistration) -> Bool {
     admission(for: registration).isAdmitted()
   }
+
+  /// Whether the install directory is somewhere we may safely create, replace and
+  /// delete (#2697).
+  ///
+  /// `false` when it resolves into the legacy donor — a pathname assumption
+  /// everywhere else in this layer, and the one that would put our own deletes
+  /// and the vendor's downloads back inside another app's tree. Answered against
+  /// the nearest EXISTING ancestor, so asking costs nothing and creates nothing.
+  ///
+  /// **A `false` here must reach every load path as a refusal.** The reason it is
+  /// public: a caller that cannot see this verdict resolves a directory of its
+  /// own, and then the refusal is indistinguishable from a working location.
+  public nonisolated static func installLocationIsSafe(_ registration: DeliveryRegistration) -> Bool
+  {
+    guard let donor = registration.legacyDonorDirectory,
+      let donorPath = PathSafety.resolvedPath(donor)
+    else { return true }
+    guard let anchor = PathSafety.nearestExistingAncestor(of: registration.installDirectory),
+      let anchorPath = PathSafety.resolvedPath(anchor)
+    else { return true }
+    return !PathSafety.contained(anchorPath, in: donorPath)
+  }
+
+  /// Bring the install directory up to the manifest from bytes the user already
+  /// has, before anything reads that directory (#2697).
+  ///
+  /// **Actor-isolated on purpose.** Publication must not interleave with
+  /// `remove()`, `repair()` or an attempt's validation, all of which live on this
+  /// actor. That shared isolation IS the exclusion; a free function would have
+  /// needed a second lock that could disagree with this one.
+  ///
+  /// **Single-flight.** Concurrent callers await one migration rather than
+  /// racing two into the same candidate directory.
+  @discardableResult
+  public func ensureLegacyMigration(
+    _ registration: DeliveryRegistration, onProgress: (@Sendable () -> Void)? = nil
+  ) async -> LegacyDonorMigration.Outcome {
+    let identity = registration.manifest.identity
+    // Plain single-flight. Every caller here is an ORDINARY one — launch and
+    // warm-up, both through `ParakeetDeliveryHandle` — so joining an in-flight
+    // run and returning its result is the whole requirement.
+    //
+    // This was a chain with a forced-repair variant, a join cap and an ownership
+    // protocol, because repair used to come through here too. Three review
+    // rounds found three defects in that machinery, every one in the HANDOFF
+    // rather than in the work. Repair now reads the donor into the attempt's own
+    // staging (`LegacyDonorMigration.stageFromDonor`), shares nothing with this
+    // path, and the machinery it needed is deleted rather than fixed a fourth
+    // time.
+    if let existing = migrationsInFlight[identity] { return await existing.value }
+    let task = Task {
+      await LegacyDonorMigration.migrate(registration: registration, onProgress: onProgress)
+    }
+    migrationsInFlight[identity] = task
+    let outcome = await task.value
+    migrationsInFlight[identity] = nil
+    if outcome.didAnything {
+      await AppLogger.shared.log(
+        "Model delivery migrated \(outcome.componentsPublished) component(s), "
+          + "\(outcome.filesReproduced) file(s), \(outcome.bytesReproduced) bytes "
+          + "from the legacy shared directory (cloned: \(outcome.clonedThroughout))",
+        level: .info, category: "Delivery")
+    }
+    return outcome
+  }
+
+  /// One live migration per identity. See `ensureLegacyMigration`.
+  private var migrationsInFlight: [ModelIdentity: Task<LegacyDonorMigration.Outcome, Never>] = [:]
 
   /// Emit a `flag_active` proof for a flag whose effect lives OUTSIDE an
   /// attempt (the `enabled=false` legacy bypass never reaches `runAttempt`,
@@ -433,6 +501,40 @@ public actor ModelDeliveryController {
     _ = await cancel(identity)
     let admission = admission(for: registration)
     let fm = FileManager.default
+    // #2697: record the deliberate removal BEFORE deleting anything, and refuse
+    // to delete if it cannot be recorded. Migration resurrects a model whose
+    // install directory is empty, so without this line the next launch would
+    // helpfully undo the removal the user just asked for. Written first because
+    // the failure that matters is "deleted but not recorded"; the reverse leaves
+    // a model that is present and simply never migrated again, which validation
+    // and repair already handle.
+    //
+    // Review B3: scoped to families that HAVE a donor. Only those can be
+    // resurrected by migration, and requiring a new file to be written before a
+    // deletion is allowed would otherwise refuse the user who is deleting a
+    // model precisely BECAUSE the disk is full — for families where nothing
+    // could have brought it back anyway.
+    if registration.legacyDonorDirectory != nil {
+      guard
+        LegacyDonorMigration.record(
+          .declined, metadataDirectory: registration.metadataDirectory,
+          manifest: registration.manifest)
+      else {
+        let failure = DeliveryFailure(reason: .cacheRepairFailed, detail: "remove:record_declined")
+        setState(identity, .failed(failure))
+        return .failed(failure)
+      }
+    }
+    // #2697: then DRAIN any live migration before deleting. `migrate` is a
+    // nonisolated async function, so it releases this actor at every await and a
+    // publish can otherwise land between the deletions below — putting a
+    // component back moments after the user asked for it to go. Cancelling is
+    // not enough on its own; the wait is what makes the deletion the last write.
+    if let live = migrationsInFlight[identity] {
+      live.cancel()
+      _ = await live.value
+      migrationsInFlight[identity] = nil
+    }
     do {
       // (1) Marker first: the admission truth. After this isAdmitted() is false.
       if fm.fileExists(atPath: admission.markerURL.path) {
@@ -563,6 +665,7 @@ public actor ModelDeliveryController {
 
     let componentsToFetch = Set(manifest.filesByComponent.map(\.component))
       .subtracting(validation.verifiedComponents)
+
     // Repair means something WAS there and got replaced — a cold install's
     // all-missing components are a normal first download, not a repair
     // (code-diff r1 P3: first-run metrics must not read as repair storms).
@@ -647,8 +750,46 @@ public actor ModelDeliveryController {
     let fetchFiles = manifest.files.filter { componentsToFetch.contains($0.component) }
     let stagedBytes = stagedByteCount(of: fetchFiles, in: staging)
     let verifiedInPlaceBytes = manifest.totalBytes - fetchFiles.reduce(0) { $0 + $1.sizeBytes }
-    let remainingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
-    let required = Int64(Double(max(0, remainingBytes)) * manifest.admission.headroomFactor)
+    // #2697: bytes the DONOR can supply are not bytes we have to make room to
+    // download. This is a stat-only reckoning — nothing is read, copied or
+    // written here — so the D3 rule that no staging or network write precedes
+    // the preflight still holds.
+    //
+    // Without it, a user whose model is complete in the legacy shared directory
+    // and whose disk is nearly full is refused with `insufficientDisk` while
+    // every byte they need sits on the same volume, one clone away. That was
+    // the defect this issue opened on.
+    let donorSuppliableBytes: Int64 = {
+      guard let donor = registration.legacyDonorDirectory else { return 0 }
+      return fetchFiles.reduce(Int64(0)) { sum, file in
+        let candidate = donor.appendingPathComponent(file.resolvedInstallPath)
+        return CacheAdmission.sizeMatches(url: candidate, expected: file.sizeBytes)
+          ? sum + file.sizeBytes : sum
+      }
+    }()
+    // Cloud review P2: the donor subtraction decides the REFUSAL and must not
+    // decide the RESERVATION, because it rests on a SIZE match and a size match
+    // is not a correctness check. A donor file of the right size and the wrong
+    // bytes is staged, fails its hash inside `ManifestFetchTask`, and is
+    // downloaded after all — so a reservation that had already discounted it
+    // leaves a nearly-full disk to discover the shortfall as ENOSPC mid-fetch.
+    //
+    // Split, because the two numbers answer different questions. REFUSING asks
+    // "might this user already have the bytes", and refusing someone whose model
+    // is complete one clone away is the defect this issue opened on. RESERVING
+    // asks "how much must I hold back from other families", and the honest
+    // answer there is the worst case, where the donor turns out to be stale.
+    //
+    // The residue is stated rather than argued away: a user with a STALE donor
+    // AND a nearly-full disk now reaches the fetch and can hit ENOSPC, where a
+    // pessimistic refusal would have stopped earlier with a cleaner message.
+    // That trade is deliberate — the optimistic half is common and the stale
+    // half is rare, and today's code refuses the common one.
+    let missingBytes = fetchFiles.reduce(Int64(0)) { $0 + $1.sizeBytes } - stagedBytes
+    let remainingBytes = max(0, missingBytes - donorSuppliableBytes)
+    let required = Int64(Double(remainingBytes) * manifest.admission.headroomFactor)
+    let reservedRequirement = Int64(
+      Double(max(0, missingBytes)) * manifest.admission.headroomFactor)
     let otherReservations = entries.reduce(Int64(0)) { sum, kv in
       kv.key == identity ? sum : sum + kv.value.reservedBytes
     }
@@ -664,74 +805,69 @@ public actor ModelDeliveryController {
       return await finishFailed(identity, failure, generation: generation)
     }
     if var entry = entries[identity] {
-      entry.reservedBytes = required
-      entry.reservationRemainingBase = max(0, remainingBytes)
+      // The pessimistic figure: what this attempt could still need if every
+      // donor file turns out to be stale.
+      entry.reservedBytes = reservedRequirement
+      entry.reservationRemainingBase = max(0, missingBytes)
       entry.reservationProgressBaseline = verifiedInPlaceBytes + stagedBytes
       entry.reservationHeadroom = manifest.admission.headroomFactor
       entries[identity] = entry
     }
 
-    // #2483: reproduce what the user already has, before any network.
+    // #2697: the staging directory a fetch writes THROUGH must be somewhere we
+    // own. This check used to be a side effect of the donor importer that ran
+    // here; the importer moved out (`LegacyDonorMigration`, which runs before an
+    // attempt and writes into the install directory, not staging), and the check
+    // had to survive on its own terms rather than as somebody else's by-product.
+    // `ManifestFetchTask` below writes into staging with no containment check of
+    // its own, and promotion then moves component roots out of whatever staging
+    // resolves to.
+    guard StagingSafety.isSafe(staging: staging, metadataDirectory: registration.metadataDirectory)
+    else {
+      let failure = DeliveryFailure(
+        reason: .cacheRepairFailed, detail: "unsafe_staging:outside_metadata")
+      return await finishFailed(identity, failure, generation: generation)
+    }
+
+    // #2697: REPAIR FROM THE DONOR BEFORE THE NETWORK, and it is a plain read
+    // into the staging directory the fetcher is about to write into.
     //
-    // Deliberately AFTER the preflight above, which has just reserved headroom
-    // for exactly these bytes — a clone usually needs almost none, a fallback
-    // copy needs all of them, and neither is known in advance. Files land in
-    // staging; `ManifestFetchTask` then verifies each one's size and SHA-256 and
-    // skips the ones that pass, so a successful import turns this attempt into a
-    // zero-byte download and a rejected one costs only the copy.
+    // Measured on the founder's machine: corrupting ONE file in the owned
+    // installation used to repair by downloading 483 MB with a complete donor
+    // copy on disk the whole time. Offline that is not a slower repair, it is no
+    // model.
     //
-    // The donor is read-only (`LegacyDonorImport`), so nothing here can damage
-    // the directory the user's other apps share.
-    //
-    // Second-pass finding 8: DETACHED. Without a cloning filesystem this copies
-    // hundreds of megabytes synchronously, and running that on the controller
-    // actor would lock out every other delivery call — including the cancel the
-    // user just pressed — for the whole copy. Cancellation is re-checked on the
-    // way back, because the wait is exactly long enough for one to land.
-    var donorOutcome = LegacyDonorImport.Outcome.none
+    // Nothing here decides anything. `ManifestFetchTask` below verifies every
+    // staged file's size and SHA-256 and skips the ones that pass, and
+    // `promoteAndAdmit` moves only what verified — so a donor file that is
+    // stale, truncated or from another revision costs one clone and falls
+    // through to a normal download. This is the same shape #2483 shipped, kept
+    // deliberately dumb: the coordinator, chain and shared candidate directory
+    // that a smarter version needed produced three defects in three review
+    // rounds, all in the handoff rather than in the work.
+    var donorStagedFiles = 0
     if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
-      // Cloud round 2 P2: a detached task does NOT inherit cancellation, so the
-      // handle is held and cancelled explicitly. Without this, cancelling during
-      // a fallback copy leaves `cancel(_:)` waiting for the drain while the copy
-      // runs to completion.
-      let copyTask = Task.detached(priority: .utility) {
-        LegacyDonorImport.reproduce(
-          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
-      }
-      let importResult = await withTaskCancellationHandler {
-        await copyTask.value
-      } onCancel: {
-        copyTask.cancel()
-      }
+      let staged = await LegacyDonorMigration.stageFromDonor(
+        manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
       guard entries[identity]?.generation == generation, !Task.isCancelled else {
         return finishCancelled(identity, generation: generation)
       }
-      switch importResult {
-      case .imported(let outcome):
-        donorOutcome = outcome
-      case .unsafeStagingRoot(let detail):
-        // Cloud round 2 P1: a containment refusal is about the DESTINATION, so it
-        // must abandon the attempt. Treating it as an ordinary empty import would
-        // hand the same unsafe staging URL to the fetcher, which writes through
-        // it, and promotion would then move component roots out of whatever it
-        // resolves to — the exact write this type exists to prevent, reached by
-        // the code that just declined to perform it.
-        let failure = DeliveryFailure(
-          reason: .cacheRepairFailed, detail: "unsafe_staging:\(detail)")
-        return await finishFailed(identity, failure, generation: generation)
-      }
-      if donorOutcome.filesReproduced > 0 {
+      donorStagedFiles = staged.files
+      if staged.files > 0 {
         await AppLogger.shared.log(
-          "Model delivery reproduced \(donorOutcome.filesReproduced) file(s), "
-            + "\(donorOutcome.bytesReproduced) bytes, from the legacy shared directory "
-            + "(cloned: \(donorOutcome.clonedThroughout)) — awaiting hash verification",
-          level: .info, category: "Delivery")
+          "Model delivery staged \(staged.files) file(s), \(staged.bytes) bytes from the "
+            + "legacy shared directory before any network use", level: .info, category: "Delivery")
       }
     }
 
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
-    let resumed = stagedBytes > 0 || donorOutcome.filesReproduced > 0
+    // Cloud review P2: donor-staged files count. `stagedBytes` is measured
+    // BEFORE `stageFromDonor` runs, so a repair that took every byte from the
+    // donor and downloaded nothing was reporting `resumed: false` — describing a
+    // cold fetch that did not happen. The removed importer counted its own
+    // reproduced files here for exactly this reason.
+    let resumed = stagedBytes > 0 || donorStagedFiles > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
     setState(

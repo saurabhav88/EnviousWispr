@@ -159,9 +159,66 @@ public final class ModelDeliveryHome {
     appSupportOverride: URL? = nil, deliveryFlagDefaults: UserDefaults? = nil
   ) {
     self.engineMutationScope = engineMutationScope
-    let appSupportRoot =
-      appSupportOverride
-      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    // #2695: ONE owner answers "where may we write". `dataDirectory` already
+    // includes `EnviousWispr`, so nothing here appends it.
+    let storage =
+      appSupportOverride.map {
+        // Through the REAL resolver, not a hand-built value: a test that
+        // constructs its own resolution is testing a struct rather than the
+        // thing production runs, and would not notice the resolver changing
+        // under it.
+        // DISTINCT candidates. Passing one URL as both aliases them: the first
+        // resolution records `.standard` for that directory, and the next one
+        // examines the same directory as `.homeFallback` first and rejects the
+        // mismatch. A fixture that cannot resolve twice is not exercising the
+        // resolver, it is exercising an accident.
+        StorageRoot.resolve(
+          systemApplicationSupport: $0.appendingPathComponent("AppSupport", isDirectory: true),
+          home: $0.appendingPathComponent("Home", isDirectory: true))
+      } ?? StorageRoot.live
+    let appSupportRoot = storage.dataDirectory.deletingLastPathComponent()
+
+    // #2697 release gate, P1: AN UNAVAILABLE RESOLUTION REGISTERS NOTHING.
+    //
+    // Refusing inside `ensureModelLocationReady()` closed the LOAD path and left
+    // two others open, which is the shape of a refusal that can be walked
+    // around: the startup staging sweep below deletes without asking anything,
+    // and the Settings Resume button reaches `ensureAvailable()` directly. Both
+    // mutate. Declining to build the registration at all is the only version of
+    // this refusal that every path inherits, because there is nothing left to
+    // call.
+    //
+    // The adapter then finds no handle and asks
+    // `ParakeetInstallLocation.directoryFromSystemApplicationSupport()`, which
+    // consults the same flag and returns `nil`, so the load refuses rather than
+    // resolving a path nobody may write to.
+    //
+    // SCOPE, counted from the registrations below rather than remembered: this
+    // `return` skips the THREE this initializer builds — Parakeet (:219),
+    // WhisperKit transcription (:292) and WhisperKit preview (:334). All three
+    // would otherwise carry the same startup sweep and the same Resume path into
+    // a location nobody may write to, so refusing all three is correct rather
+    // than merely convenient. It is still wider than the finding that prompted
+    // it, which is why it is named here instead of left in the control flow.
+    //
+    // EG-1 is NOT one of them and is not protected by this line. It is
+    // constructed separately (`WisprBootstrapper`), and whether it needs the
+    // same refusal is UNVERIFIED here. An earlier version of this comment said
+    // "every family" and named EG-1; that was wrong, and a wrong scope claim in
+    // a comment is worse than none because the next reader stops counting.
+    //
+    // Moving the WhisperKit pair onto the resolver is #2695's PR 2. This only
+    // stops them registering when storage is already known to be unusable.
+    guard !storage.isUnavailable else {
+      Task {
+        await AppLogger.shared.log(
+          "Model delivery: storage is unavailable, so Parakeet and both WhisperKit "
+            + "registrations are skipped and nothing will be written or deleted for them",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
+
     do {
       let manifest = try DeliveryManifest.loadBundled(
         resource: "parakeet-delivery-manifest", bundle: manifestBundle)
@@ -174,28 +231,63 @@ public final class ModelDeliveryHome {
         // other apps' files (#2483) and blocked installs we could not sweep
         // (#2690). `ParakeetInstallLocation` owns the name, including why the
         // last path component must stay `parakeet-tdt-0.6b-v3-coreml`.
-        installDirectory: ParakeetInstallLocation.directory(appSupport: appSupportRoot),
-        metadataDirectory:
-          appSupportRoot
-          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true),
+        installDirectory: ParakeetInstallLocation.directory(
+          dataDirectory: storage.dataDirectory),
+        metadataDirectory: storage.dataDirectory
+          .appendingPathComponent("ModelDelivery", isDirectory: true),
         // #2483: where this model USED to live, offered read-only so an existing
         // copy — ours from before the move, or another FluidAudio app's — is
         // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
         // suite passing an override never reads the real shared directory.
-        legacyDonorDirectory: ParakeetInstallLocation.legacySharedDonor(
-          appSupport: appSupportRoot))
+        // The donor is resolved from the SYSTEM lookup every time, independently
+        // of which candidate won for our data. `nil` means there is no such
+        // directory — never "could not ask" — which is what makes recording its
+        // absence safe.
+        legacyDonorDirectory: storage.systemApplicationSupport.map {
+          ParakeetInstallLocation.legacySharedDonor(appSupport: $0)
+        })
       parakeetIdentity = identity
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
       Task { await controller.sweepSupersededStaging(registration) }
+
       // The kill-switch store is INJECTED, exactly as its two siblings below
       // are (`:whisperKitHandle`, `:whisperPreviewHandle`). Omitting it made
       // this handle resolve `nil` to the real operational suite, so no test
       // could exercise the family flag without writing a live delivery kill
       // switch onto a developer's machine (#2139). Production is unchanged:
       // the only caller that passes a non-nil value is the test suite.
-      parakeetHandle = ParakeetDeliveryHandle(
+      let handle = ParakeetDeliveryHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      parakeetHandle = handle
+      // #2697: START THE MIGRATION AT LAUNCH, not at the first dictation.
+      //
+      // The seam that guarantees it has run lives in the engine adapter's
+      // warm-up, and warm-up is driven by a recording session — so without this
+      // the whole migration, including a hash of 483 MB, is paid by the user's
+      // FIRST TAKE after updating. Starting it here moves that cost to launch,
+      // where nobody is waiting on it. Measured on the founder's machine: the
+      // migration itself is ~1s.
+      //
+      // Through the HANDLE rather than the controller (review A, P2). The handle
+      // supplies the progress tick; the controller call takes one and launch had
+      // none to give, so a warm-up that JOINED the launch migration inherited a
+      // run reporting nothing — and the sessionless wedge guard reads silence as
+      // a wedge. One door, one tick, whoever arrives first.
+      //
+      // It does not race the seam: every migration now goes through the
+      // controller's single-flight coordinator, so a warm-up arriving mid-run
+      // joins this task rather than starting a second on the same candidate.
+      //
+      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
+      // caller of this seam ACTS on the location and must honour a refusal:
+      // `resumeParakeetDownload` below guards on it, and
+      // `ParakeetEngineAdapter` throws on it. This call acts on nothing — a
+      // refusal means the migration inside simply did not run, which is the
+      // outcome we want. Enumerated rather than assumed:
+      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
+      // call sites, and this is the only one with nothing to refuse.
+      Task { _ = await handle.ensureModelLocationReady() }
       wireObservers(identity: identity)
     } catch {
       Task {
@@ -681,6 +773,14 @@ public final class ModelDeliveryHome {
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
       _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+        // Cloud review P2: JOIN the launch migration before the attempt. Resume
+        // called `ensureAvailable()` straight through, so pressing it while the
+        // launch migration was still publishing put an attempt — which deletes
+        // failed components — alongside a migration that publishes them.
+        // `ensureModelLocationReady()` is the single-flight door, so this waits
+        // for that run rather than racing it, and `nil` from it is a refusal
+        // this path must honour like any other.
+        guard await handle.ensureModelLocationReady() != nil else { return }
         _ = await handle.ensureAvailable()
       }
     }

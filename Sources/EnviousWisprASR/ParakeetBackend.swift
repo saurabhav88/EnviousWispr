@@ -47,15 +47,19 @@ public actor ParakeetBackend: ASRBackend {
     AsrModels.defaultCacheDirectory(for: .v3)
   }
 
+  /// #2697: the protocol's directory-less overloads REFUSE.
+  ///
+  /// They used to resolve a location themselves, which is how a caller that
+  /// never passed one still got a model — from a directory nobody had verified.
+  /// `ASRManager` reaches the real `prepare(cacheOnly:modelDirectory:)` for every
+  /// production load, so these two are only reachable by a caller that has not
+  /// said where the model lives, and the honest answer to that is an error.
   public func prepare() async throws {
-    try await prepare(
-      cacheOnly: false, modelDirectory: ParakeetInstallLocation.live, progressCallback: nil)
+    throw ParakeetModelDirectoryUnsetError()
   }
 
   public func prepare(progressCallback: ProgressCallback?) async throws {
-    try await prepare(
-      cacheOnly: false, modelDirectory: ParakeetInstallLocation.live,
-      progressCallback: progressCallback)
+    throw ParakeetModelDirectoryUnsetError()
   }
 
   /// #1348 Phase 2: whether this process may let FluidAudio touch the

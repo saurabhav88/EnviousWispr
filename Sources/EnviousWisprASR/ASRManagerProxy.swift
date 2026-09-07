@@ -136,7 +136,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// path to the helper. Not optional on purpose: a nil would have to be resolved
   /// somewhere, and the only thing available to resolve it with is the vendor's
   /// own answer.
-  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
+  public var parakeetModelDirectory: URL?
 
   /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
   /// proxy-level error on the load path (nil connection, interface/selector
@@ -246,6 +246,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     guard activeBackendType == .parakeet else {
       throw ASRManagerNotOwnedError(backend: activeBackendType)
     }
+    // Review C1: this REFUSES, and the previous version did not. It sent `""`
+    // to the helper, which rejects an empty path — so a host-side refusal
+    // arrived at the user as a helper-side parse error, and the claim that an
+    // unset directory throws was true of the in-process manager only.
+    guard parakeetModelDirectory != nil else { throw ParakeetModelDirectoryUnsetError() }
     // If a load is already in progress, await it instead of starting a new one.
     if let existing = inFlightLoadTask {
       try await existing.value
@@ -304,9 +309,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
         let callEraID = self.connection.map(ObjectIdentifier.init)
         self.serviceProxy { proxy in
           let cacheOnly = self.parakeetCacheOnly && self.activeBackendType == .parakeet
+          // Refused at the top of `loadModel()`, so this is never the empty
+          // string in practice; the fallback exists only because the optional
+          // cannot be re-narrowed across the actor hop.
+          let directoryPath = self.parakeetModelDirectory?.path ?? ""
           proxy.loadModel(
             backendType: self.activeBackendType.rawValue, cacheOnly: cacheOnly,
-            modelDirectoryPath: self.parakeetModelDirectory.path
+            modelDirectoryPath: directoryPath
           ) {
             nsError in
             // #1525 PR I-B: reconstruct the typed, conforming error from the

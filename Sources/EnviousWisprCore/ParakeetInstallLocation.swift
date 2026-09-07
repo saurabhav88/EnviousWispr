@@ -55,15 +55,20 @@ public enum ParakeetInstallLocation {
   /// A sibling of `EnviousWispr/Models/whisper`, which the multilingual family
   /// has used since #1386 PR-2. Parakeet was the last family still installing
   /// into somebody else's directory.
-  public static func directory(appSupport: URL) -> URL {
-    appSupport
-      .appendingPathComponent("EnviousWispr/Models", isDirectory: true)
+  /// Takes the resolved DATA DIRECTORY, which already includes `EnviousWispr`
+  /// (#2695). It used to take that directory's PARENT and append `EnviousWispr`
+  /// itself, which double-nests the moment a resolver hands down a data root —
+  /// and under the home fallback there is no parent to append to that means
+  /// anything.
+  public static func directory(dataDirectory: URL) -> URL {
+    dataDirectory
+      .appendingPathComponent("Models", isDirectory: true)
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
   /// The directory Parakeet used to install into, kept ONLY as a read-only
   /// donor so an existing copy can be reproduced rather than re-downloaded
-  /// (`LegacyDonorImport`).
+  /// (`LegacyDonorMigration`).
   ///
   /// This is FluidAudio's shared per-repo cache. It is spelled out here rather
   /// than taken from `AsrModels.defaultCacheDirectory` so that this module does
@@ -71,26 +76,56 @@ public enum ParakeetInstallLocation {
   /// tree in our code sits next to the rule about it. **Nothing may pass this
   /// value as an install directory, a staging directory, or anything else a
   /// write or delete can reach.**
+  /// Takes the SYSTEM Application Support lookup, never our data directory. The
+  /// donor is another vendor's tree and a SIBLING of ours, so it cannot be
+  /// derived from where we ended up writing — and under the home fallback,
+  /// walking up from our directory lands in the user's home and resolves to
+  /// nothing, silently, exactly when the fallback is in play.
   public static func legacySharedDonor(appSupport: URL) -> URL {
     appSupport
       .appendingPathComponent("FluidAudio/Models", isDirectory: true)
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
-  /// The live location, for the one caller that has no injected root: the
-  /// engine adapter's legacy branch, which runs when delivery is switched off
-  /// or its manifest failed to load and therefore has no registration to read a
-  /// directory from.
+  /// Our directory resolved from the system Application Support lookup, for the
+  /// ONE caller that has no registration to read one from: the engine adapter
+  /// when the bundled manifest failed to load, so no `ParakeetDeliveryHandle`
+  /// exists at all.
   ///
-  /// It resolves the REAL Application Support root even under a test that
-  /// redirected the delivery layer's root. That divergence is deliberate and
-  /// narrow: any caller holding a `ParakeetDeliveryHandle` must read the
-  /// handle's own `installDirectory` instead, so the only path reaching this
-  /// property is the one with nothing better to read. What it must never do is
-  /// resolve FluidAudio's shared directory, and it cannot.
-  public static var live: URL {
-    let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    return directory(appSupport: appSupport)
+  /// **This is not `live` coming back, and the difference is the whole point
+  /// (review B4).** `live` was reachable from six sites and answered every one
+  /// of them silently, so a caller that had not been told where the model lives
+  /// got a confident answer and a REFUSAL was indistinguishable from a working
+  /// path. This is reachable from exactly one site, in the branch where nothing
+  /// has refused anything, because there is no registration to refuse.
+  ///
+  /// **It must never be used to satisfy a refusal.** A handle that exists and
+  /// returns `nil` has REFUSED, and the only correct response to that is to fail
+  /// the load. Deleting the model's directory here instead would put us back
+  /// inside a location somebody already judged unsafe.
+  public static func directoryFromSystemApplicationSupport() -> URL? {
+    let resolution = StorageRoot.live
+    // `isUnavailable` with a real `dataDirectory` is a state, not a
+    // contradiction: the path is there for an error message to NAME, never as a
+    // destination. Taking it because it is non-nil is the whole defect the flag
+    // exists to prevent.
+    guard !resolution.isUnavailable else { return nil }
+    return directory(dataDirectory: resolution.dataDirectory)
   }
+
+  // `live` was here, and it is DELETED (#2697).
+  //
+  // It resolved the Application Support root itself and was reachable from six
+  // places, so any caller that had not been told where the model lives got a
+  // confident answer instead of an error — and a REFUSAL by the location seam was
+  // indistinguishable from a working path. Deleting it is what makes the refusal
+  // real: `ASRManagerInterface.parakeetModelDirectory` is now optional with no
+  // default, both `loadModel()` implementations throw
+  // `ParakeetModelDirectoryUnsetError` on `nil`, and
+  // `ParakeetDeliveryHandle.ensureModelLocationReady()` is the only producer.
+  //
+  // It also blocked a second workstream: a self-resolving root cannot be
+  // redirected, and #2695 has to move the data root for users whose Application
+  // Support is not writable. `directory(appSupport:)` takes the root as a
+  // parameter and always did; this property was the one thing that did not.
 }

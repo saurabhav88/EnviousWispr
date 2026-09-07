@@ -15,9 +15,22 @@ private enum ParakeetRealBoundaryFixture {
   static let expectedTranscript =
     "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
 
+  /// #2697: resolved here rather than by a property on the location type. That
+  /// property was deleted because it answered from an assumed root wherever it
+  /// was reached; a test naming the root out loud is the honest replacement.
+  static var installDirectory: URL {
+    // Through the same owner production uses (#2695), not a hand-built path: a
+    // receipt for "the shipped model transcribes" must read the directory the
+    // app actually installs into, or it can pass against bytes nobody ships.
+    ParakeetInstallLocation.directory(dataDirectory: StorageRoot.live.dataDirectory)
+  }
+
   static var shippedModelIsInstalled: Bool {
-    let cache = AsrModels.defaultCacheDirectory(for: .v3)
-    return AsrModels.modelsExist(at: cache, version: .v3)
+    // #2697: OUR directory. This asked FluidAudio's shared tree whether the
+    // shipped model was installed, so the receipt for "the shipped model
+    // transcribes" was taken against another app's copy rather than against the
+    // bytes EnviousWispr admits.
+    return AsrModels.modelsExist(at: installDirectory, version: .v3)
   }
 
   static func normalizedWords(_ text: String) -> String {
@@ -50,7 +63,7 @@ struct ParakeetRealBoundaryTests {
       let backend = ParakeetBackend()
       do {
         try await backend.prepare(
-          cacheOnly: true, modelDirectory: ParakeetBackend.vendorSharedDirectory,
+          cacheOnly: true, modelDirectory: ParakeetRealBoundaryFixture.installDirectory,
           progressCallback: nil)
         let result = try await backend.transcribe(audioSamples: samples, options: .default)
         await backend.unload()

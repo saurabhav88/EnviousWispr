@@ -467,7 +467,7 @@ import Testing
         MemberSignature(condition: nil, signature: "var downloadDetail: String { get }"),
         MemberSignature(condition: nil, signature: "var parakeetCacheOnly: Bool { get set }"),
         MemberSignature(
-          condition: nil, signature: "var parakeetModelDirectory: URL { get set }"),
+          condition: nil, signature: "var parakeetModelDirectory: URL? { get set }"),
         MemberSignature(condition: nil, signature: "func loadModel() async throws"),
         MemberSignature(condition: nil, signature: "func unloadModel() async"),
         MemberSignature(
@@ -508,11 +508,6 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public var parakeetCacheOnly: Bool {\n    get { false }\n    set {}\n  }"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "public var parakeetModelDirectory: URL {\n    get { ParakeetInstallLocation.live }\n    set {}\n  }"
-        ),
       ]),
     "ASREngineAdapter": Surface(
       name: "ASREngineAdapter", file: "Sources/EnviousWisprPipeline/ASREngineAdapter.swift",
