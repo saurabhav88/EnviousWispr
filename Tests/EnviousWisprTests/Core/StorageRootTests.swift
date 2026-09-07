@@ -59,9 +59,21 @@ struct StorageRootTests {
       }
     }
 
+    /// Restores write access to everything under the sandbox before removing
+    /// it. Cases deliberately create unreadable files and unwritable
+    /// directories, and a `removeItem` over one of those fails silently and
+    /// leaves the machine littered.
     func tearDown() {
       unlockAll()
-      try? FileManager.default.removeItem(at: root)
+      let fm = FileManager.default
+      if let walker = fm.enumerator(atPath: root.path) {
+        for case let relative as String in walker {
+          try? fm.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: root.appendingPathComponent(relative).path)
+        }
+      }
+      try? fm.removeItem(at: root)
     }
   }
 
@@ -207,10 +219,128 @@ struct StorageRootTests {
       StorageRoot.Record(selection: .homeFallback, committed: false, createdAt: Date()),
       into: sandbox.fallbackCandidate)
 
+    let recordURL = sandbox.fallbackCandidate.appendingPathComponent(
+      StorageRoot.recordFileName)
+    let before = try Data(contentsOf: recordURL)
+
     let resolution = StorageRoot.resolve(
       systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
 
     #expect(resolution.selection == .standard)
+    // And the half-finished record is left exactly as it was, so whatever was
+    // moving can be resumed or reported.
+    #expect(try Data(contentsOf: recordURL) == before)
+  }
+
+  /// The costly version of the case above. An interrupted handoff left a
+  /// `committed: false` record in the fallback, and the standard directory is
+  /// unwritable. Treating "not committed" as "not claimed" made the fallback
+  /// look free, and the next step CLAIMED it — stamping a committed record over
+  /// the only evidence that a move was half done, and presenting a partial copy
+  /// as a complete one.
+  @Test("An interrupted move is never claimed over, even with nowhere else to go")
+  func anInterruptedHandoffIsNeverOverwritten() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(selection: .homeFallback, committed: false, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+    let recordURL = sandbox.fallbackCandidate.appendingPathComponent(
+      StorageRoot.recordFileName)
+    let before = try Data(contentsOf: recordURL)
+    try sandbox.lock(sandbox.appSupport)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    #expect(resolution.isUnavailable)
+    #expect(try Data(contentsOf: recordURL) == before)
+  }
+
+  /// A record written by a NEWER build. A compatible superset still decodes, so
+  /// deciding from `committed` alone would accept a shape this build does not
+  /// understand, while an incompatible shape would take the decode-failure path
+  /// and be handled differently — same record, two answers, depending on a
+  /// property nobody chose. Both are refused the same way, so downgrading and
+  /// upgrading again loses nothing.
+  @Test("A record from a newer build is neither used nor overwritten")
+  func aRecordFromANewerBuildIsNeitherUsedNorOverwritten() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    try writeRecord(
+      StorageRoot.Record(
+        version: StorageRoot.Record.currentVersion + 1,
+        selection: .homeFallback, committed: true, createdAt: Date()),
+      into: sandbox.fallbackCandidate)
+    let recordURL = sandbox.fallbackCandidate.appendingPathComponent(
+      StorageRoot.recordFileName)
+    let before = try Data(contentsOf: recordURL)
+
+    let resolution = StorageRoot.resolve(
+      systemApplicationSupport: sandbox.appSupport, home: sandbox.home)
+
+    // Refused rather than used, because the shape is unknown; and refused
+    // rather than fallen through, because the data is HERE.
+    #expect(resolution.isUnavailable)
+    #expect(resolution.selection == .homeFallback)
+    #expect(try Data(contentsOf: recordURL) == before)
+  }
+
+  /// The class behind both findings above, enumerated rather than described.
+  /// Every answer the record file can give, and what each must mean.
+  @Test("Every state a record can be in is classified, and only one is claimable")
+  func everyRecordStateIsClassified() throws {
+    let sandbox = try Sandbox()
+    defer { sandbox.tearDown() }
+    let fm = FileManager.default
+
+    func stateOf(_ build: (URL) throws -> Void) throws -> StorageRoot.ClaimState {
+      let directory = sandbox.root.appendingPathComponent(
+        "case-\(UUID().uuidString)", isDirectory: true)
+      try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+      try build(directory)
+      return StorageRoot.claimState(of: directory)
+    }
+
+    #expect(try stateOf { _ in } == .unclaimed)
+
+    #expect(
+      try stateOf { directory in
+        try Data("not a record".utf8).write(
+          to: directory.appendingPathComponent(StorageRoot.recordFileName))
+      } == .unreadable, "undecodable")
+
+    #expect(
+      try stateOf { directory in
+        try JSONEncoder().encode(
+          StorageRoot.Record(selection: .standard, committed: false, createdAt: Date())
+        ).write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
+      } == .inFlight, "handoff in flight")
+
+    #expect(
+      try stateOf { directory in
+        try JSONEncoder().encode(
+          StorageRoot.Record(
+            version: StorageRoot.Record.currentVersion + 1,
+            selection: .standard, committed: true, createdAt: Date())
+        ).write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
+      } == .incompatible, "written by a newer build")
+
+    #expect(
+      try stateOf { directory in
+        let url = directory.appendingPathComponent(StorageRoot.recordFileName)
+        try JSONEncoder().encode(
+          StorageRoot.Record(selection: .standard, committed: true, createdAt: Date())
+        ).write(to: url)
+        try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+      } == .unreadable, "unreadable")
+
+    #expect(
+      try stateOf { directory in
+        try JSONEncoder().encode(
+          StorageRoot.Record(selection: .standard, committed: true, createdAt: Date())
+        ).write(to: directory.appendingPathComponent(StorageRoot.recordFileName))
+      } == .committed)
   }
 
   /// A recorded selection is a claim about the past, not a promise about today:

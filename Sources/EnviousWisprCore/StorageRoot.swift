@@ -190,31 +190,51 @@ public enum StorageRoot {
     // the moment the claimed root recovers, hiding everything written in
     // between. Two data sets, silently interleaved, with nothing reporting it.
     // Refusing is worse for one launch and correct forever after.
-    if isClaimed(fallback) {
-      guard proveWritable(fallback) else {
+    let fallbackState = claimState(of: fallback)
+    let standardState = standard.map(claimState(of:))
+
+    // Each state permits a different ACTION, and the mapping is stated once
+    // here rather than re-derived per candidate.
+    func settle(_ directory: URL, _ selection: Selection, _ state: ClaimState) -> Resolution? {
+      switch state {
+      case .unclaimed, .inFlight:
+        // Nothing of this install's is here, or what is here is a partial copy
+        // whose originals stand in the other root. Move on.
+        return nil
+      case .committed, .unreadable:
+        guard proveWritable(directory) else {
+          return unavailable(
+            directory, selection, attempted: [directory], systemApplicationSupport)
+        }
+        return resolved(directory, selection, systemApplicationSupport)
+      case .incompatible:
         return unavailable(
-          fallback, .homeFallback, attempted: [fallback], systemApplicationSupport)
+          directory, selection, attempted: [directory], systemApplicationSupport)
       }
-      return resolved(fallback, .homeFallback, systemApplicationSupport)
-    }
-    if let standard, isClaimed(standard) {
-      guard proveWritable(standard) else {
-        return unavailable(
-          standard, .standard, attempted: [standard], systemApplicationSupport)
-      }
-      return resolved(standard, .standard, systemApplicationSupport)
     }
 
-    // No committed selection, so choose one and record it.
+    if let settled = settle(fallback, .homeFallback, fallbackState) { return settled }
+    if let standard, let standardState,
+      let settled = settle(standard, .standard, standardState)
+    {
+      return settled
+    }
+
+    // No authoritative selection, so choose one and record it — but ONLY over a
+    // root that is genuinely unclaimed. A `.reserved` root is spoken for by an
+    // interrupted handoff, a record we could not read, or a newer build's shape,
+    // and claiming over one destroys the only evidence of what was happening
+    // there. It is skipped as a candidate for BOTH use and claiming, and still
+    // named in `exhausted` so a message can list every path considered.
     var attempted: [URL] = []
     if let standard {
       attempted.append(standard)
-      if claim(standard, as: .standard) {
+      if standardState == .unclaimed, claim(standard, as: .standard) {
         return resolved(standard, .standard, systemApplicationSupport)
       }
     }
     attempted.append(fallback)
-    if claim(fallback, as: .homeFallback) {
+    if fallbackState == .unclaimed, claim(fallback, as: .homeFallback) {
       return resolved(fallback, .homeFallback, systemApplicationSupport)
     }
 
@@ -347,17 +367,58 @@ public enum StorageRoot {
   /// A record we CAN read still has to say `committed`. A half-written selection
   /// is what a future data handoff leaves behind before it starts moving files,
   /// and obeying that would point the app at an incomplete copy.
-  private static func isClaimed(_ directory: URL) -> Bool {
+  /// What the record in a directory says about that directory.
+  ///
+  /// **Five states, because a `Bool` was one answer to two different questions
+  /// and both review rounds landed on that.** "May I claim this root?" and "is
+  /// this root usable?" are not the same question, and the states below differ
+  /// in WHICH ACTION they permit, not merely in how they arose. Enumerated from
+  /// what the file can actually contain rather than from the findings, so a
+  /// sixth reading would have to be a new member of this list rather than a
+  /// case nobody classified.
+  ///
+  /// Nothing here ever writes over a root that is not `unclaimed`.
+  enum ClaimState: Equatable {
+    /// No record. Free to claim.
+    case unclaimed
+    /// Committed, and this build understands the shape. Use it if it still
+    /// accepts a write.
+    case committed
+    /// A record is there and we could not read or decode it. We only ever write
+    /// one after committing, so THIS ROOT HOLDS THE USER'S DATA. Use it if it
+    /// still accepts a write: falling through to the other root would present
+    /// that root's contents as this install's history and orphan what is here.
+    case unreadable
+    /// Written by a NEWER build, whose shape this one cannot interpret. The data
+    /// is here, so falling through would orphan it; the meaning is unknown, so
+    /// using it could write our layout into a root that means something else.
+    /// Refuse, loudly, and leave it untouched — upgrading again loses nothing.
+    case incompatible
+    /// A handoff that did not finish. The copy here is partial and the ORIGINALS
+    /// still stand in the other root, so this is the one state where moving on
+    /// to the other root is correct rather than dangerous.
+    case inFlight
+  }
+
+  static func claimState(of directory: URL) -> ClaimState {
     let recordURL = directory.appendingPathComponent(recordFileName)
     switch presence(of: recordURL) {
     case .absent:
-      return false
+      return .unclaimed
     case .unreadable:
-      return true
+      return .unreadable
     case .present:
-      guard let data = try? Data(contentsOf: recordURL) else { return true }
-      guard let record = try? JSONDecoder().decode(Record.self, from: data) else { return true }
-      return record.committed
+      guard let data = try? Data(contentsOf: recordURL) else { return .unreadable }
+      guard let record = try? JSONDecoder().decode(Record.self, from: data) else {
+        return .unreadable
+      }
+      // A compatible superset still decodes, so deciding from `committed` alone
+      // would accept a shape this build does not know, while an incompatible
+      // shape would land in the decode-failure branch above and be handled
+      // differently. Same record, two answers, depending on a property nobody
+      // chose. One classification for both.
+      guard record.version <= Record.currentVersion else { return .incompatible }
+      return record.committed ? .committed : .inFlight
     }
   }
 
