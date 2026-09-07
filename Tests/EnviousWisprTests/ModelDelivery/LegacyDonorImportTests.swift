@@ -137,6 +137,41 @@ struct LegacyDonorImportTests {
         atPath: staging.appendingPathComponent(files[0].path).path))
   }
 
+  @Test("a first install, where neither our metadata root nor staging exists yet")
+  func firstInstallCreatesEveryDirectoryItNeeds() throws {
+    // The regression this branch shipped TWICE, in the same shape. Round 2
+    // required `staging` to pre-exist; round 3 required `trustedRoot` to
+    // pre-exist, and `trustedRoot` is only created by `promoteAndAdmit` AFTER a
+    // successful fetch — so on a genuinely fresh install neither is there and the
+    // import refused, which the controller turns into a failed attempt. Every new
+    // user would have failed to download the model at all.
+    //
+    // The earlier tests could not see it because the fixture pre-created both.
+    // This one creates NOTHING except the donor.
+    let base = FileManager.default.temporaryDirectory
+      .appendingPathComponent("fresh-\(UUID().uuidString)", isDirectory: true)
+    let donor = base.appendingPathComponent("donor", isDirectory: true)
+    try FileManager.default.createDirectory(at: donor, withIntermediateDirectories: true)
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+
+    let trustedRoot = base.appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)
+    let staging = trustedRoot.appendingPathComponent("staging/cache-key", isDirectory: true)
+    #expect(!FileManager.default.fileExists(atPath: trustedRoot.path))
+    #expect(!FileManager.default.fileExists(atPath: staging.path))
+
+    let outcome = try imported(
+      LegacyDonorImport.reproduce(
+        manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+        staging: staging, trustedRoot: trustedRoot))
+
+    #expect(outcome.filesReproduced == files.count)
+    for f in files {
+      #expect(try Data(contentsOf: staging.appendingPathComponent(f.path)) == f.content)
+    }
+  }
+
   @Test("staging that does not exist yet is created, not treated as a refusal")
   func firstInstallStagingIsCreated() throws {
     // Cloud round 2 P2: on a first delivery attempt `metadataDirectory/staging/

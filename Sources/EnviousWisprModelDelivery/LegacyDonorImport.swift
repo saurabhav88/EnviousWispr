@@ -80,22 +80,28 @@ public enum LegacyDonorImport {
 
     // Establish the write boundary ONCE, before anything is created.
     //
-    // Cloud round 2 P2: staging normally does NOT exist yet on a first delivery
-    // attempt — the fetcher creates it later — so requiring it to pre-exist made
-    // this return empty for exactly the users the import is for, and every one of
-    // them would have re-downloaded 483 MB. So: judge the nearest EXISTING
-    // ancestor, create staging only once that ancestor is proven inside the
-    // trusted root, and resolve afterwards.
-    guard let trusted = resolved(trustedRoot) else {
-      return .unsafeStagingRoot(detail: "trusted_root_unresolvable")
+    // **NOTHING HERE MAY REQUIRE A DIRECTORY TO ALREADY EXIST.** That mistake has
+    // now been made twice on this branch, in the same shape, and each time it
+    // broke the case the code exists to serve: round 2 required `staging`, which
+    // the fetcher creates later, so no existing user could import; round 3
+    // required `trustedRoot`, which `promoteAndAdmit` creates only after a
+    // successful fetch, so no NEW user could download at all. On a first install
+    // none of these paths exist yet — that is the normal state, not the edge
+    // case. `realpath` needs a real path, so every check below resolves the
+    // nearest EXISTING ancestor, proves containment there, and only then creates.
+    guard let trusted = ensureResolvedDirectory(trustedRoot) else {
+      return .unsafeStagingRoot(detail: "trusted_root_uncreatable")
+    }
+    // The boundary itself must not live inside the donor, or everything below is
+    // contained in the wrong tree.
+    if let donorRoot = resolved(donor), contained(trusted, in: donorRoot) {
+      return .unsafeStagingRoot(detail: "trusted_root_inside_donor")
     }
     guard let anchor = nearestExistingAncestor(of: staging), let anchorPath = resolved(anchor),
       contained(anchorPath, in: trusted)
     else { return .unsafeStagingRoot(detail: "staging_ancestor_outside_trusted_root") }
-    try? fm.createDirectory(at: staging, withIntermediateDirectories: true)
-    guard let stagingRoot = resolved(staging), contained(stagingRoot, in: trusted) else {
-      return .unsafeStagingRoot(detail: "staging_outside_trusted_root")
-    }
+    guard let stagingRoot = ensureResolvedDirectory(staging), contained(stagingRoot, in: trusted)
+    else { return .unsafeStagingRoot(detail: "staging_outside_trusted_root") }
     // Said the other way round as well, because this is the failure that matters
     // and it must be impossible to read this code and miss it.
     if let donorRoot = resolved(donor), contained(stagingRoot, in: donorRoot) {
@@ -155,8 +161,14 @@ public enum LegacyDonorImport {
       everyCopyCloned = false
       // Fall back to a real copy, which allocates. The caller has already
       // reserved headroom for exactly this case.
+      //
+      // CHUNKED, not `FileManager.copyItem`. Cancelling a Swift task does not
+      // interrupt a synchronous `copyItem`, and the shipped manifest's encoder
+      // weight is 445,187,200 bytes — about 92% of the import — so a check
+      // between files would let a cancel wait for almost the entire copy while
+      // `cancel(_:)` blocks on the drain.
       do {
-        try fm.copyItem(at: source, to: destination)
+        try copyInterruptibly(from: source, to: destination)
         files += 1
         bytes += file.sizeBytes
       } catch {
@@ -172,6 +184,20 @@ public enum LegacyDonorImport {
       Outcome(
         filesReproduced: files, bytesReproduced: bytes,
         clonedThroughout: everyCopyCloned && files > 0))
+  }
+
+  /// Creates `url` if it is not there, then returns its fully resolved path.
+  ///
+  /// The whole point is that a directory which does not exist yet is ORDINARY on
+  /// a first install, and `realpath` cannot resolve one. Returning nil means the
+  /// directory could not be created at all — a real failure worth refusing on,
+  /// such as an unwritable parent — not merely that it was absent a moment ago.
+  private static func ensureResolvedDirectory(_ url: URL) -> String? {
+    let fm = FileManager.default
+    if !fm.fileExists(atPath: url.path) {
+      try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+    return resolved(url)
   }
 
   /// Whether `path` is the root itself or sits beneath it. Both arguments must
@@ -204,6 +230,31 @@ public enum LegacyDonorImport {
     var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
     guard realpath(url.path, &buffer) != nil else { return nil }
     return String(cString: buffer)
+  }
+
+  /// Copies in chunks, aborting between chunks when the task is cancelled.
+  ///
+  /// Throws `CancellationError` on abort so the caller's existing catch removes
+  /// the partial file — a half-written file whose size happened to match would
+  /// otherwise be skipped by the fetcher as "already staged" and then fail its
+  /// hash.
+  private static func copyInterruptibly(from source: URL, to destination: URL) throws {
+    let reader = try FileHandle(forReadingFrom: source)
+    defer { try? reader.close() }
+    guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    let writer = try FileHandle(forWritingTo: destination)
+    defer { try? writer.close() }
+    // 4 MiB: large enough that the syscall overhead is irrelevant against a
+    // 445 MB file, small enough that a cancel is felt immediately.
+    let chunkBytes = 4 * 1024 * 1024
+    while true {
+      if Task.isCancelled { throw CancellationError() }
+      let chunk = try reader.read(upToCount: chunkBytes) ?? Data()
+      if chunk.isEmpty { break }
+      try writer.write(contentsOf: chunk)
+    }
   }
 
   /// APFS copy-on-write. Both paths end up independent — writing to one never
