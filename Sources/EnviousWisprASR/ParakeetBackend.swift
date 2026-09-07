@@ -33,29 +33,28 @@ public actor ParakeetBackend: ASRBackend {
 
   public init() {}
 
-  /// The directory FluidAudio would pick for itself.
+  /// FluidAudio's SHARED per-repo cache — the directory EnviousWispr does NOT
+  /// own and must never write in (#2483).
   ///
-  /// #2483 chunk 1: this exists so the rest of `EnviousWisprASR` — which does
-  /// not import FluidAudio — can name today's value while the model directory
-  /// becomes an INJECTED parameter rather than something each load site
-  /// resolves on its own. This chunk is a semantic no-op: every caller passes
-  /// exactly this, so behaviour is byte-identical.
-  ///
-  /// It is FluidAudio's SHARED per-repo cache, which EnviousWispr does not own
-  /// (#2483). Chunk 2 changes what the host SELECTS, not this accessor, and
-  /// this accessor must not become the answer anywhere the host can supply one.
-  public static var defaultModelDirectory: URL {
+  /// **Named for what it is, not as a default.** It was `defaultModelDirectory`,
+  /// and that name is how it ended up as the fallback in three separate places;
+  /// each of those was a route back into the shared tree. Nothing may use this as
+  /// a fallback. It survives for exactly one purpose: it is the ORACLE for
+  /// `ParakeetInstallLocation.repoFolderName`, because its last path component is
+  /// the vendor's own `Repo.folderName`, and a test reads it at runtime so our
+  /// constant cannot drift from the directory the loader reconstructs.
+  public static var vendorSharedDirectory: URL {
     AsrModels.defaultCacheDirectory(for: .v3)
   }
 
   public func prepare() async throws {
     try await prepare(
-      cacheOnly: false, modelDirectory: Self.defaultModelDirectory, progressCallback: nil)
+      cacheOnly: false, modelDirectory: ParakeetInstallLocation.live, progressCallback: nil)
   }
 
   public func prepare(progressCallback: ProgressCallback?) async throws {
     try await prepare(
-      cacheOnly: false, modelDirectory: Self.defaultModelDirectory,
+      cacheOnly: false, modelDirectory: ParakeetInstallLocation.live,
       progressCallback: progressCallback)
   }
 
@@ -97,7 +96,7 @@ public actor ParakeetBackend: ASRBackend {
   ///   download into. Both vendor entry points below normalise a repo-shaped
   ///   path identically (`AsrModels.load(from:)` re-derives it through
   ///   `repoPath`, and `download(to:)` derives its own parent), so passing
-  ///   `Self.defaultModelDirectory` here is exactly the pre-#2483 behaviour.
+  ///   a repo-shaped path here behaves identically either way.
   public func prepare(
     cacheOnly: Bool, modelDirectory: URL, progressCallback: ProgressCallback?
   ) async throws {

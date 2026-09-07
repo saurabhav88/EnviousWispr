@@ -511,7 +511,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "public var parakeetModelDirectory: URL {\n    get { ParakeetBackend.defaultModelDirectory }\n    set {}\n  }"
+            "public var parakeetModelDirectory: URL {\n    get { ParakeetInstallLocation.live }\n    set {}\n  }"
         ),
       ]),
     "ASREngineAdapter": Surface(

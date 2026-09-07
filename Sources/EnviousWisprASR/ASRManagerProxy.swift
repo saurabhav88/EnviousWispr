@@ -126,13 +126,17 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// warm-up; false = legacy in-service download path, bit-for-bit.
   public var parakeetCacheOnly = false
 
-  /// #2483 chunk 1: the install directory sent to the helper on every load.
-  /// Defaults to today's value so this chunk changes no behaviour; chunk 2
-  /// injects the app-owned directory from the delivery registration and this
-  /// default goes away. Not optional on purpose — a nil here would have to be
-  /// resolved somewhere, and every place that could resolve it picks the
-  /// shared tree.
-  public var parakeetModelDirectory: URL = ParakeetBackend.defaultModelDirectory
+  /// #2483: the install directory sent to the helper on every load.
+  ///
+  /// **Defaults to OUR directory, not the vendor's.** `ParakeetEngineAdapter`
+  /// injects the registration's exact location before each warm-up, which is what
+  /// keeps a test-redirected root honest — but it is not the only entry point.
+  /// `ActiveEngineOperation.load` calls `loadModel()` directly for launch recovery
+  /// and Diagnostics, and with a vendor default here that load sent the shared
+  /// path to the helper. Not optional on purpose: a nil would have to be resolved
+  /// somewhere, and the only thing available to resolve it with is the vendor's
+  /// own answer.
+  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
 
   /// #1348 Phase 2 (grounded r2 blocker 1 — forced helper recycle): after a
   /// proxy-level error on the load path (nil connection, interface/selector

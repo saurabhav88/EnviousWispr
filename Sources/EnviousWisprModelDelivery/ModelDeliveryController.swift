@@ -672,7 +672,10 @@ public actor ModelDeliveryController {
     if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
       donorOutcome = await Task.detached(priority: .utility) {
         LegacyDonorImport.reproduce(
-          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+          manifest: manifest, components: componentsToFetch, donor: donor, staging: staging,
+          // Staging lives at `metadataDirectory/staging/<cacheKey>`, so the
+          // metadata directory is the app-owned root staging must resolve inside.
+          trustedRoot: registration.metadataDirectory)
       }.value
       guard entries[identity]?.generation == generation, !Task.isCancelled else {
         return finishCancelled(identity, generation: generation)

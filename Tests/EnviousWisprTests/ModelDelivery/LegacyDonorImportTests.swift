@@ -1,4 +1,5 @@
 import EnviousWisprASR
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -14,7 +15,9 @@ import Testing
 @Suite("Legacy donor import (#2483)", .tags(.productOutcome))
 struct LegacyDonorImportTests {
 
-  private func makeDirs() throws -> (donor: URL, staging: URL) {
+  /// `root` doubles as the app-owned trusted root the import requires staging to
+  /// resolve inside. In production that is the delivery metadata directory.
+  private func makeDirs() throws -> (donor: URL, staging: URL, root: URL) {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("donor-\(UUID().uuidString)", isDirectory: true)
     let donor = root.appendingPathComponent("donor", isDirectory: true)
@@ -22,7 +25,7 @@ struct LegacyDonorImportTests {
     for dir in [donor, staging] {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
-    return (donor, staging)
+    return (donor, staging, root)
   }
 
   private func write(_ content: Data, under root: URL, path: String) throws {
@@ -55,7 +58,7 @@ struct LegacyDonorImportTests {
 
   @Test("the donor keeps every file, its bytes and its inode")
   func donorIsUntouched() throws {
-    let (donor, staging) = try makeDirs()
+    let (donor, staging, root) = try makeDirs()
     let files = ManifestFixture.smallFiles
     for f in files { try write(f.content, under: donor, path: f.path) }
     // A file no manifest of ours names. Under the pre-#2483 behaviour this is
@@ -67,7 +70,7 @@ struct LegacyDonorImportTests {
     #expect(before.count == files.count + 1)
 
     let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging)
+      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
 
     #expect(outcome.filesReproduced == files.count)
     let after = try fingerprint(of: donor)
@@ -81,13 +84,13 @@ struct LegacyDonorImportTests {
 
   @Test("every manifest file lands in staging with the donor's bytes")
   func filesReachStaging() throws {
-    let (donor, staging) = try makeDirs()
+    let (donor, staging, root) = try makeDirs()
     let files = ManifestFixture.smallFiles
     for f in files { try write(f.content, under: donor, path: f.path) }
     let manifest = try ManifestFixture.manifest(files: files)
 
     let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging)
+      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
 
     #expect(outcome.filesReproduced == files.count)
     #expect(outcome.bytesReproduced == files.reduce(Int64(0)) { $0 + Int64($1.content.count) })
@@ -99,7 +102,7 @@ struct LegacyDonorImportTests {
 
   @Test("a donor file of the wrong size is left behind, not copied")
   func wrongSizeIsSkipped() throws {
-    let (donor, staging) = try makeDirs()
+    let (donor, staging, root) = try makeDirs()
     let files = ManifestFixture.smallFiles
     for f in files { try write(f.content, under: donor, path: f.path) }
     // A truncated or different-revision copy. It must not reach staging, where
@@ -109,7 +112,7 @@ struct LegacyDonorImportTests {
     let manifest = try ManifestFixture.manifest(files: files)
 
     let outcome = LegacyDonorImport.reproduce(
-      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging)
+      manifest: manifest, components: Set(files.map(\.component)), donor: donor, staging: staging, trustedRoot: root)
 
     #expect(outcome.filesReproduced == files.count - 1)
     #expect(
@@ -117,16 +120,42 @@ struct LegacyDonorImportTests {
         atPath: staging.appendingPathComponent(files[0].path).path))
   }
 
+  @Test("a staging directory outside the trusted root is refused outright")
+  func stagingMustResolveInsideTheTrustedRoot() throws {
+    // Cloud round P2: proving the destination sits under `staging` says nothing
+    // if `staging` itself resolves into the donor's tree. Here staging IS a
+    // symlink into the donor, which is the shape that would have turned every
+    // copy into a write inside the directory this type promises never to touch.
+    let (donor, _, root) = try makeDirs()
+    let files = ManifestFixture.smallFiles
+    for f in files { try write(f.content, under: donor, path: f.path) }
+    let manifest = try ManifestFixture.manifest(files: files)
+    let aliased = root.appendingPathComponent("aliased-staging", isDirectory: true)
+    try FileManager.default.createSymbolicLink(at: aliased, withDestinationURL: donor)
+    let before = try fingerprint(of: donor)
+
+    let outcome = LegacyDonorImport.reproduce(
+      manifest: manifest, components: Set(files.map(\.component)), donor: donor,
+      staging: aliased, trustedRoot: donor)
+
+    #expect(outcome == .none)
+    let after = try fingerprint(of: donor)
+    #expect(after.count == before.count)
+    for (path, expected) in before {
+      #expect(after[path]?.1 == expected.1, "donor inode changed at \(path)")
+    }
+  }
+
   @Test("a donor that is not there costs nothing and reports nothing")
   func absentDonorIsNotAFailure() throws {
-    let (donor, staging) = try makeDirs()
+    let (donor, staging, root) = try makeDirs()
     let files = ManifestFixture.smallFiles
     let manifest = try ManifestFixture.manifest(files: files)
     let missing = donor.appendingPathComponent("never-existed", isDirectory: true)
 
     let outcome = LegacyDonorImport.reproduce(
       manifest: manifest, components: Set(files.map(\.component)), donor: missing,
-      staging: staging)
+      staging: staging, trustedRoot: root)
 
     #expect(outcome == .none)
     #expect(try fingerprint(of: staging).isEmpty)
@@ -159,9 +188,9 @@ struct ParakeetInstallLocationTests {
     // Reconstructing the expected value from `repoFolderName` compared that
     // constant with itself, so the one drift worth catching — the vendor
     // renaming its repo folder while our constant stands still — passed.
-    // `ParakeetBackend.defaultModelDirectory` is `AsrModels.defaultCacheDirectory`,
+    // `ParakeetBackend.vendorSharedDirectory` is `AsrModels.defaultCacheDirectory`,
     // whose last component IS the vendor's own `repo.folderName`.
-    let vendorFolderName = ParakeetBackend.defaultModelDirectory.lastPathComponent
+    let vendorFolderName = ParakeetBackend.vendorSharedDirectory.lastPathComponent
     // One literal, not a concatenation: `#expect`'s second argument is a
     // `Comment`, which a `+` expression cannot convert to.
     #expect(

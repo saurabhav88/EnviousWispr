@@ -50,11 +50,28 @@ public enum LegacyDonorImport {
   /// simply yields fewer files.
   ///
   /// - Parameter donor: a directory this process may only read.
+  /// - Parameter trustedRoot: an app-owned directory that `staging` must resolve
+  ///   inside. Without it, containment is circular: proving the destination sits
+  ///   under `staging` says nothing when `staging` is itself a symlink into the
+  ///   donor's tree, and every copy would then land exactly where this type
+  ///   promises never to write.
   public static func reproduce(
-    manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL
+    manifest: DeliveryManifest, components: Set<String>, donor: URL, staging: URL,
+    trustedRoot: URL
   ) -> Outcome {
     let fm = FileManager.default
     guard fm.fileExists(atPath: donor.path) else { return .none }
+
+    // Establish the write boundary ONCE, before anything is created. Resolving
+    // the staging root against a trusted app-owned root is what makes the
+    // containment check below non-circular; refusing a staging root that lands
+    // inside the donor is the same statement said the other way round, kept
+    // because it is the failure that matters and it should be impossible to
+    // read this code and miss it.
+    guard let stagingRoot = resolved(staging), let trusted = resolved(trustedRoot),
+      contained(stagingRoot, in: trusted)
+    else { return .none }
+    if let donorRoot = resolved(donor), contained(stagingRoot, in: donorRoot) { return .none }
 
     var files = 0
     var bytes: Int64 = 0
@@ -75,18 +92,22 @@ public enum LegacyDonorImport {
       // into a failed one. The fetcher already owns "is this staged file good"
       // and will resume or discard it, so this path must not pre-empt that.
       guard !fm.fileExists(atPath: destination.path) else { continue }
+      // Cloud round P2: check containment BEFORE creating anything. Creating the
+      // parents first and validating afterwards is too late — if an existing
+      // staging component is a symlink into the shared tree,
+      // `createIntermediateDirectories` follows it and has already made
+      // directories under FluidAudio by the time a later guard declines the
+      // copy. So walk up to the nearest ancestor that EXISTS, resolve THAT, and
+      // require it inside the staging root; only then create the rest.
+      guard let anchor = Self.nearestExistingAncestor(of: destination),
+        let anchorPath = Self.resolved(anchor), Self.contained(anchorPath, in: stagingRoot)
+      else { continue }
       try? fm.createDirectory(
         at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-      // Second-pass finding 7: prove the destination's PARENT really is inside
-      // staging before writing through it. A symlinked component directory in
-      // staging would otherwise let `copyItem` resolve out of the staging tree
-      // and write into the donor — which would make this type's read-only
-      // promise false by exactly the route the promise is about. `realpath`
-      // resolves every link in the chain; a parent that will not resolve, or
-      // resolves outside staging, means skip the file and let it download.
-      guard let stagingRoot = Self.resolved(staging),
-        let parent = Self.resolved(destination.deletingLastPathComponent()),
-        parent == stagingRoot || parent.hasPrefix(stagingRoot + "/")
+      // And again after creating, because the step above can itself traverse a
+      // link that appeared between the two.
+      guard let parent = Self.resolved(destination.deletingLastPathComponent()),
+        Self.contained(parent, in: stagingRoot)
       else { continue }
 
       if cloneItem(at: source, to: destination) {
@@ -113,6 +134,27 @@ public enum LegacyDonorImport {
     return Outcome(
       filesReproduced: files, bytesReproduced: bytes,
       clonedThroughout: everyCopyCloned && files > 0)
+  }
+
+  /// Whether `path` is the root itself or sits beneath it. Both arguments must
+  /// already be `realpath`-resolved; comparing unresolved paths here would be the
+  /// same mistake one level down.
+  private static func contained(_ path: String, in root: String) -> Bool {
+    path == root || path.hasPrefix(root + "/")
+  }
+
+  /// The closest ancestor of `url` that exists on disk, so containment can be
+  /// judged without creating anything first.
+  private static func nearestExistingAncestor(of url: URL) -> URL? {
+    var candidate = url.deletingLastPathComponent()
+    let fm = FileManager.default
+    while candidate.path != "/" {
+      if fm.fileExists(atPath: candidate.path) { return candidate }
+      let parent = candidate.deletingLastPathComponent()
+      guard parent.path != candidate.path else { break }
+      candidate = parent
+    }
+    return fm.fileExists(atPath: candidate.path) ? candidate : nil
   }
 
   /// The fully link-resolved path, or nil when it does not resolve.

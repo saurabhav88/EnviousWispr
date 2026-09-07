@@ -21,6 +21,16 @@ import Foundation
 /// download of the same pinned revision either. Same reasoning the founder
 /// ratified for the other shared cache on 2026-07-16
 /// (`whisperkit-research.md` FACT: documents-huggingface-is-a-shared-cache-not-ours).
+///
+/// **Lives in Core on purpose (#2483 cloud round).** It started in the delivery
+/// module, which meant `EnviousWisprASR` could not name it and had to default to
+/// `ParakeetBackend`'s vendor directory instead. Three separate holes came out of
+/// that one fact — the XPC path, the in-process legacy branch, and
+/// `ActiveEngineOperation.load`, which reaches `loadModel()` without ever passing
+/// through the adapter that injects. Patching entry points was losing to a
+/// reviewer who could always find another; making the DEFAULT ours closes the set,
+/// because a site that forgets to inject now fails safe instead of falling into
+/// somebody else's directory.
 public enum ParakeetInstallLocation {
   /// The directory's last path component, and it is load-bearing rather than
   /// cosmetic. FluidAudio reconstructs a repo directory from whatever parent it

@@ -199,7 +199,7 @@ extension ASRManagerInterface {
   /// real storage, so their witnesses win, and a mock never loads a model, so
   /// the value it reports is never used to touch the filesystem.
   public var parakeetModelDirectory: URL {
-    get { ParakeetBackend.defaultModelDirectory }
+    get { ParakeetInstallLocation.live }
     set {}
   }
 }

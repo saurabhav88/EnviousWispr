@@ -30,9 +30,11 @@ public final class ASRManager: ASRManagerInterface {
   /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
   /// `ASRManagerInterface.parakeetCacheOnly`).
   public var parakeetCacheOnly = false
-  /// #2483 chunk 1: see `ASRManagerProxy.parakeetModelDirectory` — same
-  /// contract, same temporary default, replaced by injection in chunk 2.
-  public var parakeetModelDirectory: URL = ParakeetBackend.defaultModelDirectory
+  /// #2483: see `ASRManagerProxy.parakeetModelDirectory`. The default is OUR
+  /// directory, never the vendor's, so an entry point that loads without going
+  /// through `ParakeetEngineAdapter` — `ActiveEngineOperation.load` does exactly
+  /// that — cannot reach FluidAudio's shared tree by omission.
+  public var parakeetModelDirectory: URL = ParakeetInstallLocation.live
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
