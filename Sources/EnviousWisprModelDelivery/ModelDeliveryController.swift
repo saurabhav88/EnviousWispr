@@ -7,11 +7,21 @@ public struct DeliveryRegistration: Sendable {
   public let manifest: DeliveryManifest
   public let installDirectory: URL
   public let metadataDirectory: URL
+  /// #2483: a directory that may already hold this model, which this process may
+  /// only READ. Set for Parakeet, whose install directory moved out of
+  /// FluidAudio's shared tree and whose users' bytes are still sitting in it.
+  /// `nil` for every other family, none of which ever installed anywhere but its
+  /// own directory. Never a write or delete target — see `LegacyDonorImport`.
+  public let legacyDonorDirectory: URL?
 
-  public init(manifest: DeliveryManifest, installDirectory: URL, metadataDirectory: URL) {
+  public init(
+    manifest: DeliveryManifest, installDirectory: URL, metadataDirectory: URL,
+    legacyDonorDirectory: URL? = nil
+  ) {
     self.manifest = manifest
     self.installDirectory = installDirectory
     self.metadataDirectory = metadataDirectory
+    self.legacyDonorDirectory = legacyDonorDirectory
   }
 }
 
@@ -628,9 +638,33 @@ public actor ModelDeliveryController {
       entries[identity] = entry
     }
 
+    // #2483: reproduce what the user already has, before any network.
+    //
+    // Deliberately AFTER the preflight above, which has just reserved headroom
+    // for exactly these bytes — a clone usually needs almost none, a fallback
+    // copy needs all of them, and neither is known in advance. Files land in
+    // staging; `ManifestFetchTask` then verifies each one's size and SHA-256 and
+    // skips the ones that pass, so a successful import turns this attempt into a
+    // zero-byte download and a rejected one costs only the copy.
+    //
+    // The donor is read-only (`LegacyDonorImport`), so nothing here can damage
+    // the directory the user's other apps share.
+    var donorOutcome = LegacyDonorImport.Outcome.none
+    if let donor = registration.legacyDonorDirectory, !componentsToFetch.isEmpty {
+      donorOutcome = LegacyDonorImport.reproduce(
+        manifest: manifest, components: componentsToFetch, donor: donor, staging: staging)
+      if donorOutcome.filesReproduced > 0 {
+        await AppLogger.shared.log(
+          "Model delivery reproduced \(donorOutcome.filesReproduced) file(s), "
+            + "\(donorOutcome.bytesReproduced) bytes, from the legacy shared directory "
+            + "(cloned: \(donorOutcome.clonedThroughout)) — no download needed for those files",
+          level: .info, category: "Delivery")
+      }
+    }
+
     // Accepted: this is the attempt_started line (accept-gated, EG-1
     // discipline; resumed truth from disk).
-    let resumed = stagedBytes > 0
+    let resumed = stagedBytes > 0 || donorOutcome.filesReproduced > 0
     emit(identity, .attemptStarted(resumed: resumed))
     let startedAt = ContinuousClock.now
     setState(

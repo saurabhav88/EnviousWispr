@@ -41,6 +41,22 @@ public enum ParakeetInstallLocation {
       .appendingPathComponent(repoFolderName, isDirectory: true)
   }
 
+  /// The directory Parakeet used to install into, kept ONLY as a read-only
+  /// donor so an existing copy can be reproduced rather than re-downloaded
+  /// (`LegacyDonorImport`).
+  ///
+  /// This is FluidAudio's shared per-repo cache. It is spelled out here rather
+  /// than taken from `AsrModels.defaultCacheDirectory` so that this module does
+  /// not depend on FluidAudio, and so the one remaining mention of the shared
+  /// tree in our code sits next to the rule about it. **Nothing may pass this
+  /// value as an install directory, a staging directory, or anything else a
+  /// write or delete can reach.**
+  public static func legacySharedDonor(appSupport: URL) -> URL {
+    appSupport
+      .appendingPathComponent("FluidAudio/Models", isDirectory: true)
+      .appendingPathComponent(repoFolderName, isDirectory: true)
+  }
+
   /// The live location, for the one caller that has no injected root: the
   /// engine adapter's legacy branch, which runs when delivery is switched off
   /// or its manifest failed to load and therefore has no registration to read a

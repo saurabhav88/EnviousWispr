@@ -177,7 +177,13 @@ public final class ModelDeliveryHome {
         installDirectory: ParakeetInstallLocation.directory(appSupport: appSupportRoot),
         metadataDirectory:
           appSupportRoot
-          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true))
+          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true),
+        // #2483: where this model USED to live, offered read-only so an existing
+        // copy — ours from before the move, or another FluidAudio app's — is
+        // reproduced instead of re-downloaded. Rooted at `appSupportRoot` so a
+        // suite passing an override never reads the real shared directory.
+        legacyDonorDirectory: ParakeetInstallLocation.legacySharedDonor(
+          appSupport: appSupportRoot))
       parakeetIdentity = identity
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
