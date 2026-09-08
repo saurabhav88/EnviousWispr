@@ -281,15 +281,23 @@ struct KernelFinalizationWiring {
     // Takes the RESOLVED language, so it must be called after resolution, not
     // before it (grounded review r1: the snapshot used to be taken above the
     // deadline, where the language is not yet known).
-    // #1946: `async @Sendable`, not `@MainActor`. The production default below
-    // still hops to the main actor, so runtime behaviour is unchanged — the
-    // change exists so a test can inject a closure that stalls HERE without
-    // occupying the main actor. Blocking a synchronous `@MainActor` seam also
-    // blocks `withOrderedDeadline`'s timer, which is `Task { @MainActor }`
+    // #1946: `async @Sendable`, not `@MainActor`. The async seam exists so a
+    // test can inject a closure that stalls HERE without occupying the main
+    // actor. Blocking a synchronous `@MainActor` seam also blocks
+    // `withOrderedDeadline`'s timer, which is `Task { @MainActor }`
     // (`TaskTimeout.swift:127-132`), so the timeout could never fire and the
     // hop-stall case was untestable by construction (grounded r1).
+    // The production default no longer hops to the main actor (#1946). The hop
+    // was never needed: `SeamCasingOracleRuntime.snapshot(for:)` is nonisolated
+    // and does its whole job under that type's own lock, making no synchronous
+    // spell-checker call. It cost exactly as long as the main thread happened to
+    // be occupied, 1:1 (measured 2026-08-10,
+    // issue-1946-artifacts/2026-08-10-hop-vs-pool.out).
+    // The decision lease is unaffected. `snapshot(for:)` takes the lease and
+    // `drain` admits a preparation under the SAME lock, so that handshake is
+    // serialised by the lock and never by the main actor.
     seamCasingOracle: @escaping @Sendable (String?) async -> SeamCasingOracle = {
-      language in await MainActor.run { SeamCasingOracleRuntime.snapshot(for: language) }
+      language in SeamCasingOracleRuntime.snapshot(for: language)
     },
     // Paired with the seam above. A READY snapshot holds a lease that stops the
     // preparation drain entering the shared spell checker underneath a decision
@@ -790,10 +798,14 @@ struct KernelFinalizationWiring {
             // discarded-on-timeout one, since the deadline cannot preempt this
             // closure and it always runs to completion.
             let oracleSnapshot = await seamCasingOracle(resolution.language)
-            // Its OWN duration, because the phase cannot separate this hop from
+            // Its OWN duration, because the phase cannot separate the fetch from
             // repair's own work — both sit in `.repair(oracleTouched: false)`.
-            // Measured 2026-08-10: this hop costs exactly as long as the main
-            // thread is occupied, 1:1 (issue-1946-artifacts/2026-08-10-hop-vs-pool.out).
+            // This used to be a main-actor hop that cost exactly as long as the
+            // main thread happened to be occupied, 1:1 (measured 2026-08-10,
+            // issue-1946-artifacts/2026-08-10-hop-vs-pool.out). The production
+            // default stopped hopping in #1946, so the mark now measures the
+            // runtime's own lock-guarded fetch. It stays because an injected
+            // test closure can still stall here.
             gate.mark(.oracleFetched)
             // Release ONLY IF a lease was actually taken. `snapshot(for:)` leases
             // on a ready answer and not on a refusal, so an unconditional release
