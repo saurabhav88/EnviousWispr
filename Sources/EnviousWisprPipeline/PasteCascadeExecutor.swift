@@ -602,6 +602,7 @@ internal final class PasteCascadeExecutor {
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.
       let tier1Start = CFAbsoluteTimeGetCurrent()
+      logPasteTimingStart(step: "ax_direct_write", bundleId: bundleId)
       let insert = PasteService.insertViaAccessibility(
         legacy: request.legacyText,
         repaired: request.repairedText,
@@ -659,6 +660,7 @@ internal final class PasteCascadeExecutor {
       let app = request.targetApp, !app.isTerminated
     {
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
+      logPasteTimingStart(step: "tier2_activate", bundleId: bundleId)
       let activation = await activate(app)
       let activated = activation.activated
       let elapsed = activation.elapsed
@@ -812,6 +814,7 @@ internal final class PasteCascadeExecutor {
         } else {
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
+          logPasteTimingStart(step: "tier2b_applescript", bundleId: bundleId)
           let appleScriptSucceeded = PasteService.pasteViaAppleScript(pid: app.processIdentifier)
           logPasteTiming(
             step: "tier2b_applescript",
@@ -847,6 +850,7 @@ internal final class PasteCascadeExecutor {
       let app = request.targetApp, !app.isTerminated
     {
       let tier2cActivationStart = CFAbsoluteTimeGetCurrent()
+      logPasteTimingStart(step: "tier2c_activate", bundleId: bundleId)
       let activation = await activate(app)
       logPasteTiming(
         step: "tier2c_activate",
@@ -1355,6 +1359,21 @@ internal final class PasteCascadeExecutor {
       await AppLogger.shared.log(
         "step=\(step) elapsed_ms=\(String(format: "%.1f", elapsedMs)) "
           + "outcome=\(outcome) bundle_id=\(bundleId)",
+        level: .info, category: "PasteTiming")
+    }
+  }
+
+  /// Cloud review (PR #2716): a completion-only log line is silent for the
+  /// one case it exists to catch — a call that never returns. If the target
+  /// AX provider or System Events blocks indefinitely, control never reaches
+  /// `logPasteTiming`, so a genuine hang is indistinguishable from a tier
+  /// that was never entered. This pairs with it: call immediately before the
+  /// risky call, so a hang shows a `start` line with no matching completion,
+  /// naming exactly which step is stuck.
+  private func logPasteTimingStart(step: String, bundleId: String) {
+    Task {
+      await AppLogger.shared.log(
+        "step=\(step) start bundle_id=\(bundleId)",
         level: .info, category: "PasteTiming")
     }
   }
