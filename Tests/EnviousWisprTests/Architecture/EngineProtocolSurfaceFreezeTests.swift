@@ -386,7 +386,6 @@ import Testing
       "protocol", "WhisperKitTranscribing",
       "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", nil
     ),
-    ("protocol", "ASRServiceProtocol", "Sources/EnviousWisprCore/ASRServiceProtocol.swift", nil),
     (
       "protocol", "ASREngineTelemetryProviding",
       "Sources/EnviousWisprPipeline/KernelTelemetryState.swift", nil
@@ -499,8 +498,6 @@ import Testing
             "var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)? { get set }"
         ),
         MemberSignature(condition: nil, signature: "var feedsSharedProgressFile: Bool { get }"),
-        MemberSignature(
-          condition: nil, signature: "var onServiceInterrupted: (() -> Void)? { get set }"),
         // #1908: HEAVY wedge-recovery requirement — see `ASRManager
         // .attemptWedgeRecoveryUnload()` / `ASRManagerProxy`'s no-op default.
         MemberSignature(condition: nil, signature: "func attemptWedgeRecoveryUnload() async"),
@@ -679,49 +676,6 @@ import Testing
             "func transcribe(\n    audioArray: [Float], decodeOptions: DecodingOptions?,\n    shouldContinueDecoding: (@Sendable () -> Bool)?\n  ) async throws -> [TranscriptionResult]"
         ),
         MemberSignature(condition: nil, signature: "func encodeText(_ text: String) -> [Int]"),
-      ]),
-    "ASRServiceProtocol": Surface(
-      name: "ASRServiceProtocol", file: "Sources/EnviousWisprCore/ASRServiceProtocol.swift",
-      header: "protocol ASRServiceProtocol",
-      members: [
-        MemberSignature(condition: nil, signature: "func ping(reply: @escaping (String) -> Void)"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func loadModel(\n    backendType: String, cacheOnly: Bool, modelDirectoryPath: String,\n    reply: @escaping (NSError?) -> Void)"
-        ),
-        MemberSignature(condition: nil, signature: "func unloadModel(reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: nil, signature: "func getModelState(reply: @escaping (Bool, Bool) -> Void)"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func transcribeSamples(\n    _ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool,\n    speechSegmentsData: Data?,\n    reply: @escaping (Data?, NSError?) -> Void)"
-        ),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func startStreaming(\n    operationID: String, language: String, enableTimestamps: Bool,\n    reply: @escaping (NSError?) -> Void)"
-        ),
-        MemberSignature(
-          condition: nil, signature: "func feedAudioBuffer(_ data: Data, frameCount: Int)"),
-        MemberSignature(
-          condition: nil,
-          signature: "func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void)"
-        ),
-        MemberSignature(condition: nil, signature: "func cancelStreaming()"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void)"),
-        MemberSignature(
-          condition: "DEBUG",
-          signature: "func armBatchDecodeHold(trialID: String, reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: "DEBUG",
-          signature: "func releaseBatchDecode(trialID: String, reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: "DEBUG", signature: "func clearBatchDecodeFault(reply: @escaping () -> Void)"),
       ]),
     "ASREngineTelemetryProviding": Surface(
       name: "ASREngineTelemetryProviding",

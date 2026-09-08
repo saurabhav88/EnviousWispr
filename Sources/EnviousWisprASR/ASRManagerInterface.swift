@@ -226,11 +226,6 @@ public protocol ASRManagerInterface: AnyObject {
   /// manager must opt IN to file-backed stall detection.
   var feedsSharedProgressFile: Bool { get }
 
-  // Crash notification — fires when XPC ASR service dies during an active session.
-  // Wired by the App-side router to route to the active pipeline (same pattern as
-  // the capture manager's `onEngineInterrupted`).
-  var onServiceInterrupted: (() -> Void)? { get set }
-
   #if DEBUG
     // #1908: #1707 Phase 2 batch-decode fault oracle. Both conformers already
     // implement these; declared on the protocol so `BatchDecodeFaultController`

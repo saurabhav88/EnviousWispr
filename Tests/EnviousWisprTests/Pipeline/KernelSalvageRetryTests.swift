@@ -105,7 +105,13 @@ struct KernelSalvageRetryTests {
     // after recovery, so the ladder's `!isStreamingSession` gate stayed
     // false and this retry never fired.
     ctx.engine.behavior = .emptyThenScripted(text: "salvaged streaming take", emptyCalls: 1)
-    kernel.externalASRInterrupted()
+    // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+    // entry point) was deleted along with the XPC path it bridged; drive the
+    // SAME `routeASRInterruption(sid:)` internal path through its other live
+    // production caller instead — `adapter.onEngineInterrupted`
+    // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+    // exposes via `fireEngineInterrupted()` for exactly this purpose.
+    ctx.engine.fireEngineInterrupted()
     await ctx.wrapper.drainUntilConcluded()
 
     #expect(
@@ -145,7 +151,13 @@ struct KernelSalvageRetryTests {
     // isolates the EARLIER conditioning-time fix from the later
     // salvage-ladder fix already covered above.
     ctx.engine.behavior = .batchSuccess(text: "recovered take")
-    kernel.externalASRInterrupted()
+    // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+    // entry point) was deleted along with the XPC path it bridged; drive the
+    // SAME `routeASRInterruption(sid:)` internal path through its other live
+    // production caller instead — `adapter.onEngineInterrupted`
+    // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+    // exposes via `fireEngineInterrupted()` for exactly this purpose.
+    ctx.engine.fireEngineInterrupted()
     await ctx.wrapper.drainUntilConcluded()
 
     #expect(kernel.recordingOutcome == .completed)
@@ -185,7 +197,9 @@ struct KernelSalvageRetryTests {
     #expect(kernel.lastSalvagedLeadTrimMs == nil)
   }
 
-  @Test("no candidates (healthy-shaped capture) → no retry, terminal unchanged from A11 (#1920 renamed it)")
+  @Test(
+    "no candidates (healthy-shaped capture) → no retry, terminal unchanged from A11 (#1920 renamed it)"
+  )
   func noCandidatesMeansNoRetry() async {
     let ctx = makeContext(behavior: .emptyThenScripted(text: "never", emptyCalls: 99))
     await ctx.wrapper.apply(.start)

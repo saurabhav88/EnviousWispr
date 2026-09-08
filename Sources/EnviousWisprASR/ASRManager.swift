@@ -14,7 +14,6 @@ public final class ASRManager: ASRManagerInterface {
   public private(set) var downloadProgress: Double = 0
   public private(set) var downloadPhase: String = ""
   public private(set) var downloadDetail: String = ""
-  public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
   /// #1707 Phase 3 (§3.2, row 7) / #1741 Chunk 3 — the mutation-side capability
   /// guarding `unloadModel()`'s idle-timer unload, a background actor unrelated
   /// to any active session, so recovery must never race it. Required at
@@ -666,4 +665,36 @@ public final class ASRManager: ASRManagerInterface {
       await (parakeetBackend as? ParakeetBackend)?.clearBatchDecodeFault()
     }
   #endif
+}
+
+/// #1908: relocated from the now-deleted `ASRManagerProxy.swift` — this
+/// manager's own `performLoadRacingCancellation()` is its sole user, so it
+/// moves with it rather than gaining a new file of its own.
+final class OneShotContinuationASR<T: Sendable>: @unchecked Sendable {
+  private var continuation: CheckedContinuation<T, any Error>?
+  private let lock = NSLock()
+
+  init(_ continuation: CheckedContinuation<T, any Error>) {
+    self.continuation = continuation
+  }
+
+  func resume(returning value: T) {
+    lock.lock()
+    let cont = continuation
+    continuation = nil
+    lock.unlock()
+    cont?.resume(returning: value)
+  }
+
+  func resume(throwing error: any Error) {
+    lock.lock()
+    let cont = continuation
+    continuation = nil
+    lock.unlock()
+    cont?.resume(throwing: error)
+  }
+}
+
+extension OneShotContinuationASR where T == Void {
+  func resume() { resume(returning: ()) }
 }

@@ -441,7 +441,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
 
     do {
-      try await loadModelWithTransportRecovery()
+      try await asrManager.loadModel()
     } catch let error
       where deliveryActive
       && !(error is ASRLoadSupersededError)
@@ -468,35 +468,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // same two-signal reasoning (r10): cancellation first, then generation.
       try Task.checkCancellation()
       guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
-      try await loadModelWithTransportRecovery()
+      try await asrManager.loadModel()
     }
     // #959: a superseded load throws from `loadModel()`, but recheck readiness
     // anyway so any "returned but not actually loaded" path reports failure to
     // `ensureEngineWarm()` instead of a false "warm-up succeeded".
     guard asrManager.isModelLoaded else { throw ASRLoadSupersededError() }
-  }
-
-  /// One load with one-shot stale-helper recovery, ANY mode (code-diff r3):
-  /// a proxy-level error (incl. an old helper rejecting the new selector
-  /// after an app update) already recycled the connection in the proxy's
-  /// errorHandler; the retry connects to the freshly spawned helper. A
-  /// second transport failure propagates.
-  ///
-  /// #1388 retry-vs-cancel policy (this adapter's side of the contract): the
-  /// catch matches ONLY transport errors, so `ASRLoadCancelledError` — a user
-  /// Cancel or the wedge guard's teardown — propagates without a retry. That
-  /// is load-bearing, not incidental: the cancel resume was deliberately
-  /// typed as a non-transport error so this one-shot recovery can never
-  /// silently restart a load the user just cancelled. Do not widen the catch.
-  private func loadModelWithTransportRecovery() async throws {
-    do {
-      try await asrManager.loadModel()
-    } catch let error as XPCASRTransportError where error.isServiceUnreachable {
-      // #1525 PR I-B: narrowed from a bare type-check — the 6 new
-      // codec/transport cases are not stale-helper-retry-eligible; retrying
-      // a reload for, say, `.requestDecodingFailed` would mask a real bug.
-      try await asrManager.loadModel()
-    }
   }
 
   /// Latest phase string observed by the in-flight `loadProgressTickReporter`,
@@ -883,22 +860,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // outcome alone — an honest, non-atomic signal (§3.2's documented limit).
     let session = sessionID
     let generation = retryGeneration
-    // GitHub cloud review (PR #1725): a per-call XPC proxy error
-    // (`ASRManagerProxy.transcribe`'s `onProxyError` -> `.serviceUnreachable`)
-    // never clears `isModelLoaded`/`connection` — only the connection's OWN
-    // interruption/invalidation handler does that. So `readiness` can still
-    // read `.ready` even though the PRIMARY decode's own failure proves the
-    // connection is actually dead, and the check below would then skip
-    // repair entirely, re-attempting the same broken proxy and exhausting
-    // the one retry instead of reconnecting. `.serviceUnreachable`
-    // specifically (not the other `XPCASRTransportError` cases, which are
-    // encoding/decoding issues a reconnect would not fix — mirrors this same
-    // file's existing one-shot transport-retry classification) forces
-    // `cancelInFlightLoad()` to make the mirror honest before the existing
-    // gate below decides whether to repair.
-    if readiness == .ready, (lastFailureError as? XPCASRTransportError) == .serviceUnreachable {
-      asrManager.cancelInFlightLoad()
-    }
     if readiness != .ready {
       do {
         try await warmUp()

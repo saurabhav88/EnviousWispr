@@ -70,43 +70,6 @@ import Testing
     #expect(manager.loadModelCount == 0)
   }
 
-  // MARK: Stale-helper transport recovery (#1525 PR I-B)
-
-  @Test("warmUp() retries once and succeeds after XPCASRTransportError.serviceUnreachable")
-  func warmUpRetriesOnServiceUnreachable() async throws {
-    let manager = StubParakeetASRManager()
-    manager.loadModelError = XPCASRTransportError.serviceUnreachable
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.warmUp()
-    #expect(manager.loadModelCount == 2)
-    #expect(manager.isModelLoaded)
-  }
-
-  /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 6 new
-  /// codec/transport cases are NOT "the XPC service is unreachable" — a bare
-  /// `catch is XPCASRTransportError` would have retried a reload for, say,
-  /// `.requestDecodingFailed`, masking a real codec bug.
-  @Test(
-    "warmUp() does NOT retry on the new XPCASRTransportError cases — they propagate",
-    arguments: [
-      XPCASRTransportError.requestEncodingFailed("x"),
-      .invalidSamplePayload("x"),
-      .requestDecodingFailed("x"),
-      .modelNotLoaded,
-      .responseEncodingFailed("x"),
-      .responseDecodingFailed("x"),
-    ]
-  )
-  func warmUpDoesNotRetryOnNewTransportCases(error: XPCASRTransportError) async throws {
-    let manager = StubParakeetASRManager()
-    manager.loadModelError = error
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
-    await #expect(throws: XPCASRTransportError.self) {
-      try await adapter.warmUp()
-    }
-    #expect(manager.loadModelCount == 1)
-  }
-
   // MARK: Load-tick heartbeat (Codex review, #1908 chunk A+B)
 
   @Test(
@@ -862,47 +825,6 @@ import Testing
   }
 
   @Test(
-    "GitHub cloud review (PR #1725): a stale-readiness proxy error (readiness still .ready but the primary failed via .serviceUnreachable) forces a real reconnect before the retry, not a no-op warmUp()"
-  )
-  func retryDecodeForcesReconnectAfterStaleReadinessTransportFailure() async throws {
-    let manager = StubParakeetASRManager()
-    manager.isModelLoaded = true
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: false)
-    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
-
-    // Primary decode fails via a per-call XPC proxy error — the STUB, like
-    // the real onProxyError path, never clears isModelLoaded on this error.
-    manager.transcribeError = XPCASRTransportError.serviceUnreachable
-    let primaryOutcome = await adapter.finalize(batchSamples: nil)
-    guard case .failed = primaryOutcome else {
-      Issue.record("expected the primary decode to fail, got \(primaryOutcome)")
-      return
-    }
-    #expect(
-      manager.isModelLoaded,
-      "onProxyError never clears isModelLoaded — the stale mirror this bug depends on")
-    #expect((adapter.lastFailureError as? XPCASRTransportError) == .serviceUnreachable)
-
-    // Retry: the stale readiness mirror alone would skip repair entirely.
-    manager.transcribeError = nil
-    manager.transcribeResult = makeResult("reconnected retry text")
-    let retryOutcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
-    guard case .transcript(let result) = retryOutcome else {
-      Issue.record("expected the retry to succeed after a forced reconnect, got \(retryOutcome)")
-      return
-    }
-    #expect(result.text == "reconnected retry text")
-    #expect(
-      manager.cancelInFlightLoadCount == 1,
-      "must force the stale readiness mirror to reflect the actually-dead connection")
-    #expect(
-      manager.loadModelCount == 1,
-      "warmUp() must perform a REAL reload, not a no-op on the stale isModelLoaded flag")
-  }
-
-  @Test(
     "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
   )
   func retryDecodeTimeoutScalesWithSampleCount() {
@@ -980,8 +902,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
-  /// Settable so a test can inject a SPECIFIC error (e.g.
-  /// `XPCASRTransportError.serviceUnreachable`) rather than the fixed
+  /// Settable so a test can inject a SPECIFIC error rather than the fixed
   /// `FakeASRError.decode` `transcribeThrows` always throws. Checked first.
   var transcribeError: (any Error)?
   /// When set, `feedAudio` throws — models a transient ASR/XPC feed failure that

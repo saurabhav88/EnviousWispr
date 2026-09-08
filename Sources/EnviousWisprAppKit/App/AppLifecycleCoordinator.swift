@@ -310,7 +310,6 @@ final class AppLifecycleCoordinator {
       if DebugFaultEndpoint.isRequested {
         let endpoint = DebugFaultEndpoint(
           audioCapture: audioCapture as? AudioCaptureManager,
-          asrProxy: asrManager as? ASRManagerProxy,
           kernelDriver: kernelDriver,
           whisperKitKernelDriver: whisperKitKernelDriver,
           activeBackend: { [weak self] in

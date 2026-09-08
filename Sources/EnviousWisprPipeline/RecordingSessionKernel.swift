@@ -3414,14 +3414,6 @@ final class RecordingSessionKernel {
     deliverRecordingExitIfCurrent(.audioInterruption, sid: currentSessionID)
   }
 
-  /// Route an external ASR-XPC interruption (the ASR helper crashing,
-  /// equivalent in shape to the adapter's own engine-crash) into the FSM.
-  /// Mirror of the internal `routeASRInterruption(sid:)` path.
-  func externalASRInterrupted() {
-    guard recordingOutcome == nil else { return }
-    routeASRInterruption(sid: currentSessionID)
-  }
-
   /// Route an external capture-stall into the FSM. Replaces the removed
   /// `audioCapture.onCaptureStalled` subscription. The driver fans the
   /// `CaptureStallContext` to the telemetry observer separately (PR-4b.4);

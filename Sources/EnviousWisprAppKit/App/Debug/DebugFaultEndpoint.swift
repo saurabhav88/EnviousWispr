@@ -25,7 +25,7 @@
   ///   Every command must carry the matching token in its first line.
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
-  ///   `force_cancel`, `force_xpc_kill` (ASR helper), `query_state`,
+  ///   `force_cancel`, `query_state`,
   ///   `force_zero_fill(mode,N,trialID)`, `query_fault_status(trialID)` (#1317
   ///   proof-bench; the last two drive the DEBUG all-zero injector directly on
   ///   the in-process `AudioCaptureManager` — #1543); `fail_batch_decode(backend)`,
@@ -60,7 +60,6 @@
     // MARK: - Dependencies (concrete manager/pipeline types — DEBUG seams live here)
 
     private let audioCapture: AudioCaptureManager?
-    private let asrProxy: ASRManagerProxy?
     private let kernelDriver: KernelDictationDriver
     private let whisperKitKernelDriver: KernelDictationDriver
     private let activeBackend: () -> ASRBackendType
@@ -76,13 +75,12 @@
     private let tokenPath: URL
     private let queue = DispatchQueue(label: "com.enviouswispr.debug.fault-endpoint")
 
-    /// Construct the endpoint. The audio manager / ASR proxy refs are optional so
+    /// Construct the endpoint. The audio manager ref is optional so
     /// the endpoint still functions in environments where the heart-path is
     /// stubbed out (preview/test app builds); commands targeting absent
     /// dependencies reply `ERR no_dependency`.
     init(
       audioCapture: AudioCaptureManager?,
-      asrProxy: ASRManagerProxy?,
       kernelDriver: KernelDictationDriver,
       whisperKitKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
@@ -90,7 +88,6 @@
       batchDecodeFaultController: BatchDecodeFaultController? = nil
     ) {
       self.audioCapture = audioCapture
-      self.asrProxy = asrProxy
       self.kernelDriver = kernelDriver
       self.whisperKitKernelDriver = whisperKitKernelDriver
       self.activeBackend = activeBackend
@@ -269,11 +266,6 @@
 
       case "clear_readiness_lost":
         ActiveEngineOperation.forceNextReadinessLost = false
-        return "OK"
-
-      case "force_xpc_kill":
-        guard let asrProxy else { return "ERR no_dependency" }
-        asrProxy.forceConnectionTerminationNow()
         return "OK"
 
       // #1714: force / clear "no system default input". Both refuse while

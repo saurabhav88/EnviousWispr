@@ -305,17 +305,12 @@ final class RecordingStarter {
     // re-presses after "Ready" and that re-press runs the full warm path below.
     // Placed after the polish-error reset (cleared on every entry), before the
     // AX-refresh / overlay / prewarm block.
-    // #959: a not-ready press is EITHER a warm-respawn (idle-reaped warm model,
-    // re-warm ~0.2s → fall through and record) OR a genuine cold boot (#879 pill,
-    // no session). `resolveNotReadyPress` owns that decision off this type.
     if readinessAtEntry != .ready {
-      let warmRespawn = ColdPressGuard.resolveNotReadyPress(
+      ColdPressGuard.handle(
         overlay: recordingOverlay, active: active,
-        backendTag: backend.rawValue,
-        readiness: readinessAtEntry, modelUnloadPolicy: settings.modelUnloadPolicy)
-      if !warmRespawn { return .noRecording }
+        backendTag: backend.rawValue, readiness: readinessAtEntry)
+      return .noRecording
     }
-    let isWarmRespawn = readinessAtEntry != .ready
     // #1171 — committed to minting on `active` (selected == active confirmed above,
     // no switch in flight). Hold the start-window state-gate so the coordinator
     // cannot switch the engine out from under us across the preWarm / recovery-arm
@@ -393,11 +388,6 @@ final class RecordingStarter {
       return .noRecording
     }
     let preWarmMs = Self.elapsedMs(since: pttStart)
-    // #959: set the warm-respawn overlay latch ONLY here — after every pre-toggle
-    // abort guard has passed and immediately before the kernel dispatch — so an
-    // aborted start never leaves a latch set (which would wrongly morph a later
-    // genuine-cold press's overlay). The driver clears it at `.recording`/terminal.
-    if isWarmRespawn { active.beginWarmRespawnOverlay() }
     do {
       let config = await makeSessionConfig(triggerSource: .pttHotkey, armRecovery: true)
       // #1063 PR1: the recovery-arm await widened the pre-session window. If PTT
@@ -522,7 +512,6 @@ final class RecordingStarter {
     let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
-    var isWarmRespawn = false
     if isStartingFromIdle {
       // #1063 PR2 — recovery hold, same as the PTT path. A toggle that would START
       // while recovery holds the engine mints no session: show the pill and bail.
@@ -550,13 +539,11 @@ final class RecordingStarter {
         return
       }
       if active.engineReadiness != .ready {
-        // #959: warm-respawn falls through to record; genuine cold keeps the
-        // #879 pill. Same decision helper as the PTT path.
-        isWarmRespawn = ColdPressGuard.resolveNotReadyPress(
+        // #879 — same cold-boot press safety as the PTT path.
+        ColdPressGuard.handle(
           overlay: recordingOverlay, active: active,
-          backendTag: backend.rawValue,
-          readiness: active.engineReadiness, modelUnloadPolicy: settings.modelUnloadPolicy)
-        if !isWarmRespawn { return }
+          backendTag: backend.rawValue, readiness: active.engineReadiness)
+        return
       }
     }
     // #1171 — committed to a START on `active` (selected == active confirmed in the
@@ -566,9 +553,6 @@ final class RecordingStarter {
     if isStartingFromIdle { beginMinting() }
     defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
-    // #959: set the overlay latch immediately before the kernel dispatch (toggle
-    // has no pre-warm abort path, but keep the set-just-before-dispatch rule).
-    if isWarmRespawn { active.beginWarmRespawnOverlay() }
     let toggleStart = ContinuousClock.now
     do {
       // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
