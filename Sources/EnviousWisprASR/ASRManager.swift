@@ -62,11 +62,13 @@ public final class ASRManager: ASRManagerInterface {
   /// there — closing the gap where an abandoned attempt's late vendor
   /// completion still passed `ParakeetBackend`'s OWN generation check
   /// (nothing had told it the manager gave up) and leaked a live streaming
-  /// session. `nil` for a non-Parakeet backend, and cleared by
-  /// `startStreaming()` itself the moment the vendor call returns — nothing
-  /// can invalidate in the gapless synchronous code after that (MainActor
-  /// cannot interleave without a suspension point), so nothing needs it past
-  /// that point.
+  /// session. `nil` for a non-Parakeet backend. `startStreaming()` clears it
+  /// when its own vendor call returns — but ONLY if it still holds THIS
+  /// attempt's own generation (round 9, cloud review P2): a timed-out
+  /// attempt's vendor call can still be suspended when a retry starts,
+  /// reserves its own generation, and overwrites this property with its own
+  /// tuple; an unconditional clear would wipe the retry's tracking the
+  /// moment the abandoned call's vendor call finally returns.
   private var streamingStartBackendAttempt: (backend: ParakeetBackend, generation: UInt64)?
 
   /// #959 single-flight identity (see `ASRManagerProxy.loadTaskSeq`).
@@ -249,24 +251,50 @@ public final class ASRManager: ASRManagerInterface {
   /// `cancelInFlightLoad()` can unblock every awaiting caller even when the
   /// vendor call itself never observes cancellation (confirmed it does not).
   ///
-  /// The continuation is registered SYNCHRONOUSLY, before the real work is
-  /// even started — `withCheckedThrowingContinuation`'s closure runs
-  /// immediately when the coroutine suspends, so there is no window in
-  /// which `cancelInFlightLoad()` could fire before `pendingLoadCompletion`
-  /// exists. (An earlier draft raced two task-group children instead, which
-  /// left a real window where the fast-throwing child could resume-and-clear
-  /// the completion before the continuation-registering child had even run,
-  /// leaking an unresumed `CheckedContinuation` — a Swift runtime fatal
-  /// error. This shape cannot do that: exactly one path ever calls the
-  /// underlying `cont.resume`, guarded by `OneShotContinuationASR`'s
-  /// resume-once lock, whichever of "cancel" or "real work finished" gets
-  /// there first.)
+  /// The continuation is registered before the real work is started — once
+  /// THIS closure starts running, nothing can interleave before
+  /// `self.pendingLoadCompletion = completion` (synchronous code, no
+  /// suspension point). (An earlier draft raced two task-group children
+  /// instead, which left a real window where the fast-throwing child could
+  /// resume-and-clear the completion before the continuation-registering
+  /// child had even run, leaking an unresumed `CheckedContinuation` — a
+  /// Swift runtime fatal error. This shape cannot do that: exactly one path
+  /// ever calls the underlying `cont.resume`, guarded by
+  /// `OneShotContinuationASR`'s resume-once lock, whichever of "cancel" or
+  /// "real work finished" gets there first.)
+  ///
+  /// #1908 round 9 (cloud review P2): that guarantee is about THIS
+  /// function's own synchronous prefix, not about the gap BEFORE it starts.
+  /// `loadModel()` publishes `inFlightLoadTask` and returns control to the
+  /// scheduler before the freshly-created task's body (this function) ever
+  /// runs — actor scheduling gives no FIFO guarantee, so
+  /// `cancelInFlightLoad()` can win that race, cancel the task, and bump
+  /// `loadGeneration` while `pendingLoadCompletion` is still nil. The
+  /// `Task.isCancelled` check at the top of the closure below closes that
+  /// earlier window too.
   private func performLoadRacingCancellation() async throws {
     let gen = loadGeneration
     try await withCheckedThrowingContinuation {
       [weak self] (cont: CheckedContinuation<Void, any Error>) in
       guard let self else {
         cont.resume()
+        return
+      }
+      // #1908 round 9 (cloud review P2): `cancelInFlightLoad()` can run
+      // between `loadModel()` publishing this task's handle and this
+      // closure running (actor scheduling gives no FIFO guarantee) — it
+      // cancels the task and bumps `loadGeneration` before
+      // `pendingLoadCompletion` exists to resume, so without this check
+      // this closure would go on to register a completion and start a real
+      // vendor load anyway, capturing the ALREADY-bumped generation as if
+      // nothing had happened. The caller then never gets cancellation's
+      // promised EARLY release — it waits for the real load, and if that
+      // vendor call never returns, it never returns at all. Checking the
+      // task's own cancellation flag here, before registering anything,
+      // closes that window; cancellation arriving AFTER registration still
+      // goes through `pendingLoadCompletion` below as before.
+      guard !Task.isCancelled else {
+        cont.resume(throwing: ASRLoadCancelledError())
         return
       }
       let completion = OneShotContinuationASR(cont)
@@ -446,7 +474,31 @@ public final class ASRManager: ASRManagerInterface {
       // be reserved inside `ParakeetBackend.startStreaming()` itself.
       let backendGen = parakeet.reserveStreamingGeneration()
       streamingStartBackendAttempt = (parakeet, backendGen)
-      defer { streamingStartBackendAttempt = nil }
+      // #1908 round 9 (cloud review P2): clear ONLY if this is still OUR
+      // tuple. A timed-out attempt's vendor call can still be suspended
+      // below when a retry starts, reserves its OWN generation, and
+      // overwrites `streamingStartBackendAttempt` with its own tuple; an
+      // unconditional clear here, once this (abandoned) call's vendor call
+      // finally returns, would wipe the RETRY's tracking — reopening the
+      // exact leak/race this property exists to close, for the retry
+      // instead of for this attempt.
+      //
+      // Checks BACKEND IDENTITY too (`attempt.backend === parakeet`), not
+      // only the generation number: `performLoad()` can publish a
+      // REPLACEMENT `ParakeetBackend` instance, and each backend's counter
+      // starts at zero — an abandoned attempt on the OLD backend and a
+      // retry on the NEW one can hold the identical generation number.
+      // Without the identity check, matching on the number alone would let
+      // the old backend's defer clear the new backend's tuple even though
+      // they are not the same attempt at all.
+      defer {
+        if let attempt = streamingStartBackendAttempt,
+          attempt.backend === parakeet,
+          attempt.generation == backendGen
+        {
+          streamingStartBackendAttempt = nil
+        }
+      }
       try await parakeet.startStreaming(options: options, generation: backendGen)
     } else {
       // Non-Parakeet (or an injected test backend): no backend-level
