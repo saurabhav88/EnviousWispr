@@ -35,7 +35,6 @@ from faultInjection import (  # noqa: E402
     _assert_dictation_recovers,
     _parse_query_state,
     evaluate_trial,
-    list_xpc_service_pids,
     query_state,
     run_scenario,
 )
@@ -46,10 +45,12 @@ from faultInjection import (  # noqa: E402
 # #1543: A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were removed with
 # the audio-capture boundary (both tested deleted host-side proxy DEBUG
 # commands); audio interruption is covered by the Lane B real-hardware matrix.
+# #1908: A3_asr_xpc_kill (Parakeet-only, ASR XPC kill) was removed too —
+# ASR runs in-process for both backends now, so the same gauntlet list
+# covers both.
 PARAKEET_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
-    "A3_asr_xpc_kill",
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",
@@ -58,7 +59,6 @@ PARAKEET_GAUNTLET = [
 WHISPERKIT_GAUNTLET = [
     "A1_rapid_stop_start",
     "A2_esc_cancel",
-    # A3 (ASR XPC kill) is Parakeet-only — WhisperKit ASR is in-process.
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",
@@ -72,37 +72,22 @@ def health_check(backend_key: str) -> dict:
     Checks:
       1. Active backend's pipeline state is idle/complete/ready (NOT
          error — issue #555 means error states leave the overlay stuck).
-      2. XPC helper count is sane for the backend. #1543 removed the audio
-         capture helper (capture is in-process), so the only service helper left
-         is the ASR one — and WhisperKit's ASR is in-process too. Parakeet
-         therefore expects the ASR helper present (1, up to 2 across a respawn);
-         WhisperKit expects zero service helpers (up to 1 tolerated if a
-         Parakeet-backed helper lingers from a prior scenario).
-      3. A recovery dictation cycle reaches a non-error terminal state.
+      2. A recovery dictation cycle reaches a non-error terminal state.
+
+    #1908: this used to also check the live XPC service helper count was in
+    an expected range per backend. Both backends run ASR in-process now, so
+    there is no helper process left to count.
     """
     parsed = _parse_query_state(query_state())
     pipeline_state = parsed.get(backend_key, "")
-    helpers = list_xpc_service_pids()
 
     state_ok = pipeline_state in {"idle", "complete", "ready"}
-    if backend_key == "whisperkit":
-        helpers_ok = len(helpers) <= 1
-    else:
-        helpers_ok = 1 <= len(helpers) <= 2
 
     if not state_ok:
         return {
             "healthy": False,
             "reason": f"pipeline state {pipeline_state!r} not idle/complete/ready",
             "pipeline_state": pipeline_state,
-            "helpers": helpers,
-        }
-    if not helpers_ok:
-        return {
-            "healthy": False,
-            "reason": f"helper count {len(helpers)} out of expected range",
-            "pipeline_state": pipeline_state,
-            "helpers": helpers,
         }
 
     recovery = _assert_dictation_recovers()
@@ -111,13 +96,11 @@ def health_check(backend_key: str) -> dict:
             "healthy": False,
             "reason": "post-scenario recovery dictation failed",
             "pipeline_state": pipeline_state,
-            "helpers": helpers,
             "recovery": recovery,
         }
     return {
         "healthy": True,
         "pipeline_state": pipeline_state,
-        "helpers": helpers,
         "recovery_terminal_state": recovery.get("second_cycle_terminal_state"),
     }
 
@@ -185,13 +168,11 @@ def _main(argv: list[str]) -> int:
         })
         if not health["healthy"]:
             print(f"  health FAIL: {health['reason']}")
-            print(f"  pipeline_state={health['pipeline_state']}, "
-                  f"helpers={health['helpers']}")
+            print(f"  pipeline_state={health['pipeline_state']}")
             print(f"\n!!! gauntlet aborted at {scenario} — app no longer healthy !!!")
             print(f"    {len(scenarios) - i} scenarios skipped: {scenarios[i:]}")
             break
         print(f"  health OK  pipeline={health['pipeline_state']}  "
-              f"helpers={len(health['helpers'])}  "
               f"recovery={health['recovery_terminal_state']}")
 
     print("\n=== Summary ===")

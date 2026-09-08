@@ -12,10 +12,8 @@ APP_LOG="${HOME}/Library/Logs/EnviousWispr/app.log"
 APP_BUNDLE_ID="com.enviouswispr.app.dev"
 DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
 DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
-# #913 PR4: the Xcode-built dev bundle names XPC dirs by product name, not bundle
-# id (the retired hand-rolled bundler used `com.enviouswispr.*.xpc`). #1543:
-# audio capture is in-process now — only the ASR helper remains.
-DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService"
+# #1543: audio capture moved in-process. #1908: the ASR (transcription) engine did too,
+# so no XPC helper remains at all.
 LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
 TAIL_PID=""
 GREP_PID=""
@@ -54,8 +52,8 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  if [[ ! -x "$DEV_APP_BINARY" || ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
-    echo "dev app bundle executable(s) missing at $DEV_APP_PATH." >&2
+  if [[ ! -x "$DEV_APP_BINARY" ]]; then
+    echo "dev app bundle executable missing at $DEV_APP_PATH." >&2
     echo "Run scripts/build-dev-app.sh first, then rerun this script." >&2
     exit 2
   fi
@@ -92,25 +90,22 @@ enable_app_file_logging() {
   fi
 
   # Quit ALL running dev instances: Cocoa quit first (only Cocoa terminate runs
-  # applicationWillTerminate, letting the audio/ASR helpers exit cleanly —
-  # Tests/RuntimeUAT/SCENARIOS.md; a raw kill here could leave helpers alive and
-  # contaminate the signpost capture), then a path-scoped TERM/wait/KILL sweep
-  # to enforce the one-dev-instance policy (the bundle-id quit alone is
-  # unreliable when several worktrees share the .dev id).
+  # applicationWillTerminate, letting recording/model state tear down cleanly —
+  # Tests/RuntimeUAT/SCENARIOS.md; a raw kill here could contaminate the signpost
+  # capture), then a path-scoped TERM/wait/KILL sweep to enforce the one-dev-instance
+  # policy (the bundle-id quit alone is unreliable when several worktrees share the
+  # .dev id). #1908: audio capture and the ASR engine both run in-process now, so
+  # there is no separate helper process left to reap.
   osascript <<OSA 2>/dev/null || true
 if application id "$APP_BUNDLE_ID" is running then
   tell application id "$APP_BUNDLE_ID" to quit
 end if
 OSA
   dev_pids() { pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
-  helper_pids() { pgrep -f "EnviousWispr Local.app/Contents/XPCServices/" 2>/dev/null || true; }
   for _ in $(seq 1 50); do [ -z "$(dev_pids)" ] && break; sleep 0.1; done
   for pid in $(dev_pids); do kill -TERM "$pid" 2>/dev/null || true; done
   for _ in $(seq 1 50); do [ -z "$(dev_pids)" ] && break; sleep 0.1; done
   for pid in $(dev_pids); do kill -9 "$pid" 2>/dev/null || true; done
-  # Reap any orphaned audio/ASR helpers so they can't pollute the benchmark.
-  for _ in $(seq 1 30); do [ -z "$(helper_pids)" ] && break; sleep 0.1; done
-  for pid in $(helper_pids); do kill -TERM "$pid" 2>/dev/null || true; done
   sleep 0.3
 
   open "$DEV_APP_PATH"

@@ -41,8 +41,6 @@ BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
 DEV_CERT_NAME="EnviousWispr Dev"
 DEV_BUNDLE_ID="com.enviouswispr.app.dev"
-ASR_XPC="EnviousWisprASRService.xpc"
-ASR_XPC_ID="com.enviouswispr.asrservice.dev"
 
 cd "$PROJECT_ROOT"
 
@@ -157,7 +155,6 @@ ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 # Strict verification BEFORE copying out of DerivedData (copies can pick up
 # FileProvider xattrs that break --strict; we copy with --norsrc + xattr -cr).
 echo "==> Step 5: Verifying signatures (strict, in DerivedData)..."
-codesign --verify --strict "$BUILT_APP/Contents/XPCServices/$ASR_XPC"
 codesign --verify --strict "$BUILT_APP"
 
 # ─── Step 6: Deploy to build/EnviousWispr Local.app ───────────────────────────
@@ -177,8 +174,6 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: app executable missing/not executable"; exit 1; }
 [ "$(plutil -extract SUFeedURL raw "$APP_PATH/Contents/Info.plist")" = "" ] \
   || { echo "ERROR: dev SUFeedURL must be blank"; exit 1; }
-[ "$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/XPCServices/$ASR_XPC/Contents/Info.plist")" = "$ASR_XPC_ID" ] \
-  || { echo "ERROR: asr XPC id mismatch"; exit 1; }
 # #1271: EG-1 inference server + manifest must ship in Resources. On dev the
 # binary runs with its ad-hoc linker signature (no hardened runtime); release
 # signs it Developer ID in build-release-dmg.sh step [5.5/6].
@@ -196,7 +191,6 @@ done
 
 # Post-copy signature verification (non-strict: ditto+xattr can perturb xattrs
 # but not the seal; this confirms the copied bundle is still validly signed).
-codesign --verify "$APP_PATH/Contents/XPCServices/$ASR_XPC"
 codesign --verify "$APP_PATH"
 
 # ─── Step 8: Launch ───────────────────────────────────────────────────────────

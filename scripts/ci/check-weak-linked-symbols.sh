@@ -557,11 +557,13 @@ fi
 #
 # The count above was printed and never asserted, so `find` or `file` failing — or the layout
 # moving under a future Xcode — would report "scanned: 0" and pass. This bundle ships
-# `Contents/Frameworks` and `Contents/XPCServices/EnviousWisprASRService.xpc`, both of which
-# contain Mach-O, so zero cannot be an honest answer for this product. Bundle mode only; a
-# plain file legitimately has nothing embedded, which is the self-test's contract.
+# `Contents/Frameworks`, which contains Mach-O, so zero cannot be an honest answer for this
+# product. (#1908: this bundle used to also ship
+# `Contents/XPCServices/EnviousWisprASRService.xpc` — deleted along with the last XPC helper;
+# Frameworks alone is still enough to make zero dishonest.) Bundle mode only; a plain file
+# legitimately has nothing embedded, which is the self-test's contract.
 if [ "$IS_BUNDLE" -eq 1 ] && [ "$embedded_arm64_count" -eq 0 ]; then
-  die "no embedded arm64 Mach-O file was inspected in $TARGET (found $embedded_count Mach-O in total). This app ships arm64 frameworks and an arm64 XPC service, so nothing inspected means the scan broke or the bundle is built for the wrong architecture, not that it is clean" 2
+  die "no embedded arm64 Mach-O file was inspected in $TARGET (found $embedded_count Mach-O in total). This app ships arm64 frameworks, so nothing inspected means the scan broke or the bundle is built for the wrong architecture, not that it is clean" 2
 fi
 
 if [ "$status" -ne 0 ]; then
