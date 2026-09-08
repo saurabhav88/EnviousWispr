@@ -410,7 +410,29 @@ final class RecoveryCoordinator {
       errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
   }
 
-  private static func errorDomainBucket(for error: any Error) -> String {
+  /// `RecoverySpoolStoreError`'s four cases all carry a real POSIX `errno` as their
+  /// associated `Int32` (cloud review, PR #2717). Bridging the enum to `NSError`
+  /// does not surface that value as `.domain`/`.code` — it yields Swift's own
+  /// synthesized domain/case-index instead, so every marker-write or
+  /// directory-sync failure was reported as `error_domain=other` with a
+  /// meaningless code, unable to distinguish disk-full from permission-denied
+  /// from a generic I/O fault. Unwrap explicitly, same as `RecoveryKeyStoreError`
+  /// below.
+  private static func spoolStoreErrno(for error: any Error) -> Int32? {
+    guard let spoolError = error as? RecoverySpoolStoreError else { return nil }
+    switch spoolError {
+    case .attemptMarkerWriteFailed(let code), .readinessRetryMarkerWriteFailed(let code),
+      .escapeMarkerWriteFailed(let code), .discardMarkerWriteFailed(let code):
+      return code
+    }
+  }
+
+  // `internal`, not `private`: direct unit-testing of the domain/code bucketing
+  // needs to reach these without a live telemetry sink — same reasoning
+  // `PendingSession`/`requestDisposal` already use for their own directly-tested
+  // static logic.
+  static func errorDomainBucket(for error: any Error) -> String {
+    if spoolStoreErrno(for: error) != nil { return "posix" }
     switch error {
     case let nsError as NSError where nsError.domain == NSCocoaErrorDomain: return "cocoa"
     case let nsError as NSError where nsError.domain == NSPOSIXErrorDomain: return "posix"
@@ -420,10 +442,11 @@ final class RecoveryCoordinator {
 
   /// `RecoveryKeyStoreError.deleteFailed(OSStatus)` bridges to `NSError` without surfacing its
   /// associated OSStatus as `.code`. Unwrap explicitly; every other error keeps its bridged NSError code.
-  private static func errorCode(for error: any Error) -> Int {
+  static func errorCode(for error: any Error) -> Int {
     if let keyError = error as? RecoveryKeyStoreError, case .deleteFailed(let status) = keyError {
       return Int(status)
     }
+    if let errno = spoolStoreErrno(for: error) { return Int(errno) }
     return (error as NSError).code
   }
 

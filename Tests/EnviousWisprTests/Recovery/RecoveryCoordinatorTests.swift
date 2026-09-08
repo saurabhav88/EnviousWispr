@@ -414,6 +414,30 @@ struct RecoveryCoordinatorTests {
     )
   }
 
+  @Test(
+    "cloud review PR #2717: RecoverySpoolStoreError's real errno survives telemetry bucketing, for all four cases"
+  )
+  func spoolStoreErrorsUnwrapToRealPosixCode() {
+    let cases: [(RecoverySpoolStoreError, Int32)] = [
+      (.attemptMarkerWriteFailed(EACCES), EACCES),
+      (.readinessRetryMarkerWriteFailed(ENOSPC), ENOSPC),
+      (.escapeMarkerWriteFailed(EISDIR), EISDIR),
+      (.discardMarkerWriteFailed(EIO), EIO),
+    ]
+    for (error, expectedErrno) in cases {
+      #expect(
+        RecoveryCoordinator.errorDomainBucket(for: error) == "posix",
+        "\(error) must bucket as posix, not fall through to 'other'")
+      #expect(
+        RecoveryCoordinator.errorCode(for: error) == Int(expectedErrno),
+        "\(error) must report the real errno \(expectedErrno), not a synthesized enum case code")
+    }
+    // Two-way control: an error with no special-cased unwrap still falls
+    // through to the ordinary bridged NSError reading, unchanged.
+    struct PlainError: Error {}
+    #expect(RecoveryCoordinator.errorDomainBucket(for: PlainError()) == "other")
+  }
+
   // MARK: - #1740 launch-replay save failure deletes
 
   @Test("launch-replay .failed(.save) destroys the spool AND the key")
@@ -938,7 +962,8 @@ struct RecoveryCoordinatorTests {
     await h.coordinator.scanAndRecover()
     await h.coordinator.awaitDiscardOperationsForTesting()
     #expect(h.replayer.replayedIDs.isEmpty)
-    #expect((try? h.keyStore.retrieve(for: id)) != nil,
+    #expect(
+      (try? h.keyStore.retrieve(for: id)) != nil,
       "a failed refresh cannot erase the proof from the prior successful commit")
     #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
   }

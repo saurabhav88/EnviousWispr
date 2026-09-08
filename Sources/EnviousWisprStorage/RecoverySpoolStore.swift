@@ -507,6 +507,19 @@ public struct RecoverySpoolStore: Sendable {
           recoverySessionID: recoverySessionID, triggeredAt: triggeredAt, takeID: takeID))
       return true
     } catch {
+      // Cloud review (PR #2717): the caller's own fallback to the coordinator's
+      // marker-aware destructor is NOT synchronous — `finishTerminal(.cancelled)`
+      // only sets state the lifecycle observer reacts to on a LATER MainActor
+      // turn (a queued Task). A process exit inside that gap would leave this
+      // spool with no Escape marker and no discard marker at all, so the next
+      // launch replays a take the user cancelled — the exact resurrection this
+      // whole mechanism exists to prevent. Best-effort, synchronous, right here:
+      // this does NOT decide destruction (still exclusively the coordinator's
+      // job, whenever it gets to it) — it only makes sure the "never replay"
+      // evidence survives a crash between now and then. A later, real write
+      // for the same id (the coordinator's own normal disposal flow) simply
+      // reconfirms the same marker; harmless.
+      try? writeDiscardMarker(for: recoverySessionID)
       return false
     }
   }
@@ -545,8 +558,10 @@ public struct RecoverySpoolStore: Sendable {
   /// Establish durability for evidence left by a prior process without
   /// allocating or replacing its marker. Presence alone is not a sync receipt.
   public func synchronizeExistingDiscardEvidence(for recoverySessionID: String) throws -> Bool {
-    for url in [discardMarkerURL(for: recoverySessionID),
-                discardMarkerTempURL(for: recoverySessionID)] {
+    for url in [
+      discardMarkerURL(for: recoverySessionID),
+      discardMarkerTempURL(for: recoverySessionID),
+    ] {
       let fd = Foundation.open(url.path, O_RDONLY)
       guard fd >= 0 else {
         let code = errno

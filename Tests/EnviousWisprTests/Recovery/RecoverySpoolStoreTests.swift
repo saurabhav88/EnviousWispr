@@ -439,7 +439,7 @@ struct RecoverySpoolStoreTests {
   /// failure path must also DESTROY the spool — which costs the user exactly what
   /// pressing cancel already costs them, and is what the caller falls back to.
   @Test(
-    "prepare fails: returns false and leaves the spool for the CALLER's own destructive-cancel fallback"
+    "prepare fails: returns false, writes a discard marker as crash-window evidence, and leaves the spool for the CALLER's own destructive-cancel fallback"
   )
   func prepareEscapeRecoveryFailsClosed() async throws {
     // #1807 (§D2): this used to destroy the spool directly here — a second,
@@ -448,6 +448,14 @@ struct RecoverySpoolStoreTests {
     // exactly what it always documented: "the caller performs today's
     // ordinary destructive cancel" — which is `RecoveryCoordinator`'s own
     // marker-aware destructor, not a duplicate one living here.
+    //
+    // Cloud review (PR #2717): the caller's fallback is NOT synchronous —
+    // `finishTerminal(.cancelled)` only sets state a LATER MainActor turn
+    // reacts to, so a process exit between this call returning and that later
+    // turn running would leave no evidence at all. This method now writes the
+    // discard marker itself, synchronously, as a best-effort crash-window
+    // closer — never a destruction decision, just evidence a decision was
+    // already made.
     let store = makeStore()
     let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
     await writeSpool(
@@ -466,6 +474,9 @@ struct RecoverySpoolStoreTests {
     #expect(
       try store.listSpoolSessionIDs() == ["doomed"],
       "Storage does not destroy it directly — that is the caller's job now")
+    #expect(
+      store.hasDiscardMarker(for: "doomed") == .final,
+      "a crash right after this call must not resurrect a take the user cancelled")
   }
 
   /// An interrupted marker write is EVIDENCE, not absence.
