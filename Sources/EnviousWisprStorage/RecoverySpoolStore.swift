@@ -49,7 +49,6 @@ public struct RecoverySpoolStore: Sendable {
   /// The `recoverySessionID`s of every spool file currently on disk.
   public func listSpoolSessionIDs() throws -> [String] {
     let fm = FileManager.default
-    guard fm.fileExists(atPath: directory.path) else { return [] }
     let entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
     return
       entries

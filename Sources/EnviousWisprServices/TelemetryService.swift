@@ -1844,6 +1844,26 @@ public final class TelemetryService {
       ])
   }
 
+  /// #1807: fires ONLY when `RecoveryCoordinator.destroySpoolAndKey`'s spool or key delete throws.
+  /// Event absence does not establish that #1807 is fixed — a `component=spool` failure means the
+  /// spool-and-sidecar deletion operation threw; the audio may already have been removed before a
+  /// sidecar-only failure.
+  ///
+  /// Privacy: shape only — component/source labels, a bucketed error domain, and a numeric error
+  /// code. Never a path, description, `userInfo`, or recovery id.
+  public func recoveryDeletionFailed(
+    component: String, source: String, errorDomain: String, errorCode: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "recovery.deletion_failed",
+      properties: [
+        "component": component,
+        "source": source,
+        "error_domain": errorDomain,
+        "error_code": errorCode,
+      ])
+  }
+
   public func recoveryPressBlocked(asrBackend: String) {
     PostHogSDK.shared.capture(
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])

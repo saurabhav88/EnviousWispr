@@ -299,7 +299,7 @@ final class RecoveryCoordinator {
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
   /// deletion stays best-effort and swallowed; this is diagnosis only.
-  private func emitDeletionFailed(component: String, source: DestructionSource) {
+  private func emitDeletionFailed(component: String, source: DestructionSource, error: any Error) {
     // #1762 r5: reports the ACTION and its result, nothing further. Five review
     // rounds went to disposition clauses here — "stays on disk", "already
     // deleted", "a future launch will retry" — and each was wrong in some real
@@ -316,6 +316,26 @@ final class RecoveryCoordinator {
     } else {
       SentryBreadcrumb.add(stage: "recovery", message: "deletion_failed", data: data)
     }
+    TelemetryService.shared.recoveryDeletionFailed(
+      component: component, source: source.rawValue,
+      errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
+  }
+
+  private static func errorDomainBucket(for error: any Error) -> String {
+    switch error {
+    case let nsError as NSError where nsError.domain == NSCocoaErrorDomain: return "cocoa"
+    case let nsError as NSError where nsError.domain == NSPOSIXErrorDomain: return "posix"
+    default: return "other"
+    }
+  }
+
+  /// `RecoveryKeyStoreError.deleteFailed(OSStatus)` bridges to `NSError` without surfacing its
+  /// associated OSStatus as `.code`. Unwrap explicitly; every other error keeps its bridged NSError code.
+  private static func errorCode(for error: any Error) -> Int {
+    if let keyError = error as? RecoveryKeyStoreError, case .deleteFailed(let status) = keyError {
+      return Int(status)
+    }
+    return (error as NSError).code
   }
 
   /// #1740 (founder Gate 2): did a SPENT attempt's cleanup actually happen?
@@ -362,7 +382,7 @@ final class RecoveryCoordinator {
       }
       emitCleanupOutcome(component: "spool", source: source, succeeded: true)
     } catch {
-      emitDeletionFailed(component: "spool", source: source)
+      emitDeletionFailed(component: "spool", source: source, error: error)
       emitCleanupOutcome(component: "spool", source: source, succeeded: false)
     }
     // Key deletion ALWAYS runs, detached, even after a spool failure.
@@ -394,7 +414,7 @@ final class RecoveryCoordinator {
         }
       } catch {
         await MainActor.run {
-          self.emitDeletionFailed(component: "key", source: source)
+          self.emitDeletionFailed(component: "key", source: source, error: error)
           self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
         }
       }
