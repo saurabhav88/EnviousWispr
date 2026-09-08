@@ -601,6 +601,7 @@ internal final class PasteCascadeExecutor {
       tiersAttempted.append(.axDirect)
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.
+      let tier1Start = CFAbsoluteTimeGetCurrent()
       let insert = PasteService.insertViaAccessibility(
         legacy: request.legacyText,
         repaired: request.repairedText,
@@ -608,6 +609,18 @@ internal final class PasteCascadeExecutor {
         element: element,
         requireFocusedElementMatch: request.targetElementIsRetried,
         boundMessagingTimeout: policy.boundTier1MessagingTimeout)
+      // Case name only, never `\(insert.writeCall)` — both cases carry the
+      // dictated text as an associated value, and this log is meant to be
+      // read straight off disk, not redacted first.
+      let tier1Outcome: String
+      switch insert.writeCall {
+      case .notAttempted: tier1Outcome = "not_attempted"
+      case .succeeded: tier1Outcome = "succeeded"
+      case .failed: tier1Outcome = "failed"
+      }
+      logPasteTiming(
+        step: "ax_direct_write", elapsedMs: (CFAbsoluteTimeGetCurrent() - tier1Start) * 1000,
+        outcome: tier1Outcome, bundleId: bundleId)
       copiesBeforeImage = insert.copiesBeforeImage
       if case .succeeded = insert.writeCall { copiesSetterReached = true }
       if case .failed = insert.writeCall { copiesSetterReached = true }
@@ -645,9 +658,14 @@ internal final class PasteCascadeExecutor {
       systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
+      let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
       let activation = await activate(app)
       let activated = activation.activated
       let elapsed = activation.elapsed
+      logPasteTiming(
+        step: "tier2_activate",
+        elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2ActivationStart) * 1000,
+        outcome: activated ? "activated" : "not_activated", bundleId: bundleId)
 
       if activated {
         // Revalidated AFTER activation, because bringing the app frontmost is
@@ -696,7 +714,10 @@ internal final class PasteCascadeExecutor {
           let snapshot: ClipboardSnapshot? =
             request.restoreClipboardAfterPaste
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-            : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
+            : {
+              ClipboardCleanup.deliveryClaimsBoard()
+              return nil
+            }()
           submittedKind = payload.kind
           copiesSubmittedLengths.append(payload.text.utf16.count)
           #if DEBUG
@@ -755,7 +776,10 @@ internal final class PasteCascadeExecutor {
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
+          : {
+            ClipboardCleanup.deliveryClaimsBoard()
+            return nil
+          }()
         submittedKind = payload.kind
         copiesSubmittedLengths.append(payload.text.utf16.count)
         #if DEBUG
@@ -787,7 +811,13 @@ internal final class PasteCascadeExecutor {
             bundleId: bundleId)
         } else {
           tiersAttempted.append(.appleScript)
-          if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
+          let tier2bStart = CFAbsoluteTimeGetCurrent()
+          let appleScriptSucceeded = PasteService.pasteViaAppleScript(pid: app.processIdentifier)
+          logPasteTiming(
+            step: "tier2b_applescript",
+            elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2bStart) * 1000,
+            outcome: appleScriptSucceeded ? "succeeded" : "refused", bundleId: bundleId)
+          if appleScriptSucceeded {
             tier = .appleScript
           } else {
             tierFailures["applescript"] = "refused"
@@ -816,7 +846,12 @@ internal final class PasteCascadeExecutor {
       systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
+      let tier2cActivationStart = CFAbsoluteTimeGetCurrent()
       let activation = await activate(app)
+      logPasteTiming(
+        step: "tier2c_activate",
+        elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2cActivationStart) * 1000,
+        outcome: activation.activated ? "activated" : "not_activated", bundleId: bundleId)
       if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
@@ -826,7 +861,10 @@ internal final class PasteCascadeExecutor {
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
+          : {
+            ClipboardCleanup.deliveryClaimsBoard()
+            return nil
+          }()
         // Selected through the same owner as every other route. A container
         // target should never HAVE a candidate — the context reader refuses any
         // role that is not a text role — but this route asks the same question
@@ -1302,6 +1340,23 @@ internal final class PasteCascadeExecutor {
         "target_bundle_id": bundleId,
       ]
     )
+  }
+
+  /// #2705 Phase 2: per-call timing for the exact operations #2633 found
+  /// unbounded. Deliberately a plain local debug-log line, not a Sentry
+  /// breadcrumb or telemetry event — the goal is something readable with
+  /// `tail -f ~/Library/Logs/EnviousWispr/app.log \| grep PasteTiming` while
+  /// reproducing the freeze on purpose, not a fleet-wide signal. Wall-clock
+  /// (`CFAbsoluteTimeGetCurrent`), not any self-reported elapsed a callee
+  /// hands back, because a callee's own accounting is exactly what #2633's
+  /// activation loop got wrong (its `elapsed` counted intended sleeps only).
+  private func logPasteTiming(step: String, elapsedMs: Double, outcome: String, bundleId: String) {
+    Task {
+      await AppLogger.shared.log(
+        "step=\(step) elapsed_ms=\(String(format: "%.1f", elapsedMs)) "
+          + "outcome=\(outcome) bundle_id=\(bundleId)",
+        level: .info, category: "PasteTiming")
+    }
   }
 }
 
