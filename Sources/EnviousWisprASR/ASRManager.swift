@@ -424,9 +424,23 @@ public final class ASRManager: ASRManagerInterface {
     guard isStreaming, let activeBackend else {
       throw ASRError.streamingNotSupported
     }
-    let result = try await activeBackend.finalizeStreaming()
-    isStreaming = false
-    return result
+    // #1908 Codex review: clear BEFORE branching on success/failure, ported
+    // from `ASRManagerProxy.finalizeStreaming` (unconditional `isStreaming =
+    // false` right after the vendor call returns, before its error is even
+    // inspected). Clearing only after a successful `try await` left the flag
+    // `true` on a thrown error — the adapter's own batch rescue can still
+    // recover the transcript, but `unloadModel()` refuses while `isStreaming`
+    // is true, so the model stayed resident forever after a session that hit
+    // this leg, with nothing left to clear it (the session is already closed
+    // by the time this returns).
+    do {
+      let result = try await activeBackend.finalizeStreaming()
+      isStreaming = false
+      return result
+    } catch {
+      isStreaming = false
+      throw error
+    }
   }
 
   /// Cancel an active streaming session, discarding partial results.

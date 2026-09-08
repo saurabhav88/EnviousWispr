@@ -144,6 +144,36 @@ import Testing
     _ = await warmTask.value
   }
 
+  // MARK: Streaming-start deadline (Codex review round 3, #1908)
+
+  @Test(
+    "beginSession(streaming:) falls back to batch instead of hanging forever when startStreaming outlasts the deadline — ParakeetBackend.startStreaming reaches the same silent FluidAudio loadModels(_:) call the cold-load wedge fix covers, and nothing previously bounded it in-process"
+  )
+  func beginSessionFallsBackWhenStreamingStartWedges() async throws {
+    let manager = StubParakeetASRManager()
+    manager.startStreamingDelay = .milliseconds(300)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 0.05)
+    try await adapter.warmUp()
+    let sid = SessionID()
+    // Must return promptly (well under the fake's 300ms delay) rather than
+    // hanging until the vendor call itself finishes.
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    #expect(manager.startStreamingCount == 1, "the vendor call was genuinely attempted")
+
+    manager.transcribeResult = makeResult("batch fallback")
+    let outcome = await adapter.finalize(batchSamples: [0.1, 0.2])
+    #expect(
+      manager.finalizeStreamingCount == 0,
+      "a wedged start must leave streamingActive false, so finalize takes the batch path")
+    #expect(manager.transcribeCount == 1, "finalize must decode via the batch path instead")
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript via batch decode, got \(outcome)")
+      return
+    }
+    #expect(result.text == "batch fallback")
+  }
+
   // MARK: Streaming finalize + batch rescue (§3.2a)
 
   @Test("finalize: streaming success returns the streaming transcript")
@@ -933,6 +963,12 @@ final class StubParakeetASRManager: ASRManagerInterface {
   // Configurable behavior
   var supportsStreaming = true
   var startStreamingThrows = false
+  /// #1908: when set, `startStreaming()` sleeps this long before returning —
+  /// models a vendor call slower than the adapter's deadline, so a test can
+  /// exercise `attemptStreamingStart`'s timeout branch deterministically
+  /// without an unresolved gate (which would leak a suspended continuation
+  /// for the rest of the test process).
+  var startStreamingDelay: Duration?
   var finalizeStreamingThrows = false
   var finalizeStreamingResult = ASRResult(
     text: "default", language: "en", duration: 1, processingTime: 0, backendType: .parakeet)
@@ -1023,6 +1059,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func startStreaming(options: TranscriptionOptions) async throws {
     startStreamingCount += 1
+    if let startStreamingDelay {
+      try? await Task.sleep(for: startStreamingDelay)  // settle: deliberately outlasts the caller's own deadline under test
+    }
     if startStreamingThrows { throw FakeASRError.streamingSetup }
     isStreaming = true
   }

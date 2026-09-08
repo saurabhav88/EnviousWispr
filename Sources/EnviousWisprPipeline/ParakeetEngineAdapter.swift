@@ -553,8 +553,27 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     asrManager.cancelIdleTimer()
 
     if streaming, await asrManager.activeBackendSupportsStreaming {
-      do {
-        try await asrManager.startStreaming(options: options)
+      // #1908 Codex review: `startStreaming` reaches the same silent-compile-step
+      // vendor call as the cold-load wedge fixed in `warmUp()`
+      // (`ParakeetBackend.startStreaming` also calls FluidAudio's
+      // `loadModels(_:)`), but nothing observes ITS progress the way
+      // `warmUp()`'s heartbeat now does — there is no natural mid-call signal
+      // to watch for a single, non-phased vendor call. The retired XPC proxy
+      // bounded this via `withASRXPCOperationSignal`'s cross-process watchdog;
+      // that mechanism has no in-process analog (nothing else needs a
+      // side-channel file to know whether an in-process await is progressing).
+      // A flat deadline is the direct in-process replacement: on expiry this
+      // falls into the SAME "streaming setup failed, use batch" handling as
+      // every other streaming-start failure below, so a genuine vendor wedge
+      // degrades to batch decode instead of parking `beginSession()` (and the
+      // kernel awaiting it) forever.
+      let outcome = await withDeadline(seconds: asrInterruptionRecoveryDeadlineSec) {
+        [weak self, options] () -> StreamingStartOutcome in
+        guard let self else { return .cancelled }
+        return await self.attemptStreamingStart(options: options)
+      }
+      switch outcome {
+      case .succeeded:
         streamingActive = true
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming ASR started",
@@ -563,7 +582,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           "Streaming ASR started during recording",
           level: .info, category: "Pipeline"
         )
-      } catch is CancellationError {
+      case .cancelled:
         // #1654 (cloud review P2): a cancelled start is not a failure and must not be
         // counted as one. Behaviour is otherwise identical to the failure arm below —
         // same flag, same fall-through — so this changes what we RECORD, not what we do.
@@ -574,14 +593,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // have matched app-side cancellation only and let the real case straight through
         // to the emit below. The mirror of the finalize leg's own cancellation arm.
         streamingActive = false
-      } catch {
+      case .failed(let category, let description):
         // Streaming setup failed — fall back to batch decode after stop. Not a
         // session failure; the batch rescue over `retainedPCM` covers it.
         streamingActive = false
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
         await AppLogger.shared.log(
-          "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
+          "Streaming ASR failed to start, will use batch: \(description)",
           level: .info, category: "Pipeline"
         )
         // #1654: until now this leg emitted NOTHING — a breadcrumb and a debug-only log,
@@ -602,9 +621,56 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         TelemetryService.shared.limbFailureObserved(
           limb: "asr_streaming", operation: "start",
           result: "failed",
-          errorCategory: Self.streamingErrorCategory(error),
+          errorCategory: category,
+          durationMs: nil)
+      case nil:
+        // #1908: the vendor call never returned within the deadline — a genuine
+        // wedge, not an ordinary failure. `withDeadline`'s cancel is best-effort
+        // (cannot preempt a call that never checks cancellation), so the
+        // abandoned vendor Task may keep running in the background; this session
+        // gives up on it and falls back to batch, same as `.failed` above.
+        streamingActive = false
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming start wedged, will use batch", level: .warning)
+        await AppLogger.shared.log(
+          "Streaming ASR start timed out after \(asrInterruptionRecoveryDeadlineSec)s, will use batch",
+          level: .info, category: "Pipeline"
+        )
+        TelemetryService.shared.limbFailureObserved(
+          limb: "asr_streaming", operation: "start",
+          result: "failed",
+          errorCategory: "asr.streaming_start_wedged",
           durationMs: nil)
       }
+    }
+  }
+
+  /// Sendable outcome shuttled out of `withDeadline` in `beginSession` —
+  /// `any Error` is not itself `Sendable`, so the category/description this
+  /// file's own telemetry needs are computed inside `attemptStreamingStart`
+  /// (still isolated to `self`/MainActor) and carried out as plain strings
+  /// instead.
+  private enum StreamingStartOutcome: Sendable {
+    case succeeded
+    case cancelled
+    case failed(category: String, description: String)
+  }
+
+  /// Body of `withDeadline`'s operation closure in `beginSession`, pulled out
+  /// to an `async` method so the call itself performs the MainActor hop —
+  /// `withDeadline`'s `operation` is `@Sendable`, not `@MainActor`, so a
+  /// synchronous `self.asrManager` property read directly inside that closure
+  /// cannot compile; an `await self.method()` call can, the same way
+  /// `recoverFromASRInterruption`'s own deadline closure calls `self.warmUp()`.
+  private func attemptStreamingStart(options: TranscriptionOptions) async -> StreamingStartOutcome {
+    do {
+      try await asrManager.startStreaming(options: options)
+      return .succeeded
+    } catch is CancellationError {
+      return .cancelled
+    } catch {
+      return .failed(
+        category: Self.streamingErrorCategory(error), description: error.localizedDescription)
     }
   }
 
