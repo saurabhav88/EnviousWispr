@@ -629,6 +629,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // (cannot preempt a call that never checks cancellation), so the
         // abandoned vendor Task may keep running in the background; this session
         // gives up on it and falls back to batch, same as `.failed` above.
+        // Codex review P1: invalidate it FIRST, before falling back — otherwise
+        // its late completion can still publish streaming state (`isStreaming`,
+        // `ParakeetBackend.streamingManager`) behind this session's back and
+        // corrupt whatever the NEXT session sets up.
+        await asrManager.cancelInFlightStreamingStart()
         streamingActive = false
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming start wedged, will use batch", level: .warning)

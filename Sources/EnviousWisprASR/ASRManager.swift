@@ -450,6 +450,20 @@ public final class ASRManager: ASRManagerInterface {
     isStreaming = false
   }
 
+  /// #1908 Codex review: invalidate an in-flight `startStreaming()` a caller
+  /// gave up waiting on (e.g. `ParakeetEngineAdapter.beginSession()`'s
+  /// deadline). Deliberately NOT `cancelStreaming()` — that guards on
+  /// `isStreaming`, which is still `false` here (the abandoned attempt never
+  /// reached its own `isStreaming = true` line). Forwards unconditionally to
+  /// `activeBackend.cancelStreaming()`, whose concrete `ParakeetBackend`
+  /// conformer bumps its own streaming generation so the abandoned attempt's
+  /// late completion cannot publish `streamingManager` behind a newer
+  /// session's back — the same class `cancelInFlightLoad()` closes on the
+  /// load side.
+  public func cancelInFlightStreamingStart() async {
+    await activeBackend?.cancelStreaming()
+  }
+
   /// Unload the active backend, freeing model RAM.
   /// Refuses to unload if a streaming session is active — cancel streaming first.
   public func unloadModel() async {

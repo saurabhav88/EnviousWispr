@@ -21,6 +21,16 @@ public actor ParakeetBackend: ASRBackend {
   // Streaming ASR state
   private var streamingManager: SlidingWindowAsrManager?
   private var streamingStartTime: CFAbsoluteTime = 0
+  /// #1908 Codex review: bumped by `cancelStreaming()` (including the
+  /// caller-abandoned path via `cancelInFlightStreamingStart()`) and checked
+  /// by `startStreaming()` right before it would publish `streamingManager`.
+  /// FluidAudio's `loadModels`/`startStreaming` calls do not observe
+  /// `Task.isCancelled`, so a superseded attempt keeps running in the
+  /// background; without this check its late completion would publish a
+  /// stale manager over whatever a newer session already started. Same
+  /// fresh-instance/publish-only-if-current shape as `ASRManager.performLoad`'s
+  /// `loadGeneration` guard.
+  private var streamingGeneration: UInt64 = 0
 
   public var supportsStreaming: Bool { true }
 
@@ -333,6 +343,13 @@ public actor ParakeetBackend: ASRBackend {
       streamingManager = nil
     }
 
+    // #1908: this attempt's identity. Bumped again by `cancelStreaming()` if
+    // a caller gives up on this call before it returns (deadline expiry) —
+    // checked below, right before publish, so a superseded attempt can never
+    // overwrite what a newer attempt already published.
+    streamingGeneration &+= 1
+    let myGeneration = streamingGeneration
+
     // #1678: the lock must reach BOTH decode paths. Wiring only the batch call
     // would give a locked user cross-alphabet protection on one path and not
     // the other, with nothing in the UI to say which they were on.
@@ -350,6 +367,14 @@ public actor ParakeetBackend: ASRBackend {
       // deliberately excluded above rather than classified — a cancelled stream is not a
       // failure and must never acquire a failure identity.
       throw Self.streamingThrowable(for: error, operation: .start)
+    }
+    // #1908: a caller that abandoned this attempt (deadline expiry) bumps
+    // `streamingGeneration` via `cancelStreaming()` — never publish over
+    // whatever that caller, or a newer session's own `startStreaming()`, set
+    // up in the meantime. Cancel what THIS attempt built instead of leaking it.
+    guard streamingGeneration == myGeneration else {
+      await manager.cancel()
+      throw CancellationError()
     }
     self.streamingManager = manager
     self.streamingStartTime = CFAbsoluteTimeGetCurrent()
@@ -434,6 +459,11 @@ public actor ParakeetBackend: ASRBackend {
   }
 
   public func cancelStreaming() async {
+    // #1908: bump UNCONDITIONALLY, including when `streamingManager` is still
+    // nil — this is also the abandon signal for an in-flight `startStreaming()`
+    // that has not published anything yet (`ASRManager.cancelInFlightStreamingStart()`
+    // reaches here even while `isStreaming` is false).
+    streamingGeneration &+= 1
     if let manager = streamingManager {
       await manager.cancel()
       streamingManager = nil
@@ -441,6 +471,9 @@ public actor ParakeetBackend: ASRBackend {
   }
 
   public func unload() async {
+    // #1908: same reason as `cancelStreaming()` — an in-flight `startStreaming()`
+    // must not publish over an unload that already ran.
+    streamingGeneration &+= 1
     if let streaming = streamingManager {
       await streaming.cancel()
       streamingManager = nil

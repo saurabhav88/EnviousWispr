@@ -160,6 +160,10 @@ import Testing
     // hanging until the vendor call itself finishes.
     try await adapter.beginSession(sid, options: .default, streaming: true)
     #expect(manager.startStreamingCount == 1, "the vendor call was genuinely attempted")
+    #expect(
+      manager.cancelInFlightStreamingStartCount == 1,
+      "a timed-out attempt must be invalidated so its late completion cannot publish streaming state behind this session's back (Codex review round 4)"
+    )
 
     manager.transcribeResult = makeResult("batch fallback")
     let outcome = await adapter.finalize(batchSamples: [0.1, 0.2])
@@ -1007,6 +1011,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var cancelStreamingCount = 0
   var transcribeCount = 0
   var cancelInFlightLoadCount = 0
+  var cancelInFlightStreamingStartCount = 0
   var cancelIdleTimerCount = 0
   var lastUnloadPolicy: ModelUnloadPolicy?
   var lastTranscribeSamples: [Float] = []
@@ -1109,6 +1114,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
+  func cancelInFlightStreamingStart() { cancelInFlightStreamingStartCount += 1 }
   func cancelInFlightLoad() {
     cancelInFlightLoadCount += 1
     // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which
