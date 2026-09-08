@@ -410,6 +410,25 @@ final class RecoveryCoordinator {
       errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
   }
 
+  /// #1807 (cloud review, PR #2717): SEPARATE from `emitDeletionFailed` on purpose. Failing to
+  /// ESTABLISH the discard marker (this) and failing to DELETE an already-established one
+  /// (`emitDeletionFailed(component: "marker", ...)`) are different severities — this one means the
+  /// crash-safety evidence never existed at all — and `recoveryDeletionFailed`'s own contract is
+  /// scoped to delete failures only. Reusing it here would make production telemetry unable to tell
+  /// the two apart.
+  private func emitMarkerPersistenceFailed(source: DestructionSource, error: any Error) {
+    RecoveryLog.line("marker WRITE FAILED (\(source.rawValue))")
+    let data = ["component": "marker", "source": source.rawValue]
+    if let sink = deletionFailureBreadcrumbForTesting {
+      sink("recovery", "marker_persistence_failed", data)
+    } else {
+      SentryBreadcrumb.add(stage: "recovery", message: "marker_persistence_failed", data: data)
+    }
+    TelemetryService.shared.recoveryMarkerPersistenceFailed(
+      source: source.rawValue,
+      errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
+  }
+
   /// `RecoverySpoolStoreError`'s four cases all carry a real POSIX `errno` as their
   /// associated `Int32` (cloud review, PR #2717). Bridging the enum to `NSError`
   /// does not surface that value as `.domain`/`.code` — it yields Swift's own
@@ -685,7 +704,7 @@ final class RecoveryCoordinator {
         return true
       } catch {
         await MainActor.run {
-          self.emitDeletionFailed(component: "marker", source: source, error: error)
+          self.emitMarkerPersistenceFailed(source: source, error: error)
         }
         return false
       }

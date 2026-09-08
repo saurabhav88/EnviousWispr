@@ -438,6 +438,37 @@ struct RecoveryCoordinatorTests {
     #expect(RecoveryCoordinator.errorDomainBucket(for: PlainError()) == "other")
   }
 
+  @Test(
+    "cloud review PR #2717: failing to WRITE the discard marker reports marker_persistence_failed, never deletion_failed"
+  )
+  func markerWriteFailureUsesItsOwnTelemetryEvent() async throws {
+    struct InjectedMarkerWriteFailure: Error {}
+    let h = Self.makeHarness()
+    let log = CrumbLog()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw InjectedMarkerWriteFailure() }
+    h.coordinator.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let crumbs = log.crumbs
+    #expect(
+      crumbs.contains(
+        Crumb(
+          stage: "recovery", message: "marker_persistence_failed",
+          data: ["component": "marker", "source": "history_save_failed"])),
+      "establishing evidence failed — the higher-severity event")
+    #expect(
+      !crumbs.contains(where: {
+        $0.message == "deletion_failed" && $0.data["component"] == "marker"
+      }),
+      "a write failure must never be reported as a delete failure — they mean very different things"
+    )
+  }
+
   // MARK: - #1740 launch-replay save failure deletes
 
   @Test("launch-replay .failed(.save) destroys the spool AND the key")
