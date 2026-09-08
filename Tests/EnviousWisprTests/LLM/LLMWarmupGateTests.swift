@@ -87,6 +87,21 @@ struct LLMWarmupGateTests {
     let session = freshSession()
     let now = Date()
 
+    // The FLOOR, and it is the only thing here that can see the constant change.
+    // Both boundaries below are derived FROM `warmWindowSeconds`, deliberately, so
+    // that changing the window length is a product decision rather than a test
+    // edit — but that also means they move with it: at a window of ZERO,
+    // `justInside` is one second BEFORE the success and `justOutside` one second
+    // after, and both assertions still hold. The 2026-09-07 battery measured
+    // exactly that (#2632 row 2): `warmWindowSeconds = 0` left this case green and
+    // was caught only incidentally by `acceptedPolishMarksWarm`, which asks at
+    // `now` itself. So the derived arithmetic proves the ORDERING and this line
+    // proves there is a window at all. A minute is the floor because a window
+    // shorter than one dictation cannot suppress the second warm-up it exists for.
+    #expect(
+      LLMNetworkSession.warmWindowSeconds >= 60,
+      "a warm window shorter than a minute is not a window")
+
     #expect(session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: now))
     session.releaseWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", succeededAt: now)
 
