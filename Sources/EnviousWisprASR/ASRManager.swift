@@ -411,21 +411,27 @@ public final class ASRManager: ASRManagerInterface {
   /// Start streaming ASR on the active backend. Falls back silently if unsupported.
   /// If a streaming session is already active, cancels it first to prevent double-session state.
   public func startStreaming(options: TranscriptionOptions = .default) async throws {
+    // #1908 Codex review round 6: captured as the FIRST statement, before
+    // ANY suspension — round 5's fix captured this after the two awaits
+    // below, so a caller's timeout bumping `streamingStartGeneration` DURING
+    // either of them (not only during the vendor call itself) let this
+    // attempt silently adopt the POST-abandon generation as its own baseline
+    // and pass the check at the bottom unconditionally.
+    let gen = streamingStartGeneration
     guard let activeBackend, await activeBackend.supportsStreaming else { return }
     // Cancel any existing session before starting a new one
     if isStreaming {
       await activeBackend.cancelStreaming()
       isStreaming = false
     }
-    // #1908 Codex review round 5: captured BEFORE the vendor call, checked
-    // AFTER it returns. A caller that gave up waiting (deadline expiry) bumps
-    // `streamingStartGeneration` via `cancelInFlightStreamingStart()`; if that
-    // happened while this call was still in flight, the vendor call can still
-    // complete successfully here — `ParakeetBackend`'s own generation guard
-    // does not stop THIS, since nothing superseded ITS attempt. Refuse to
-    // resurrect `isStreaming` for an attempt nobody is listening for anymore.
-    let gen = streamingStartGeneration
     try await activeBackend.startStreaming(options: options)
+    // #1908 Codex review round 5: a caller that gave up waiting (deadline
+    // expiry) bumps `streamingStartGeneration` via
+    // `cancelInFlightStreamingStart()`; if that happened while this call was
+    // still in flight, the vendor call can still complete successfully here
+    // — `ParakeetBackend`'s own generation guard does not stop THIS, since
+    // nothing superseded ITS attempt. Refuse to resurrect `isStreaming` for
+    // an attempt nobody is listening for anymore.
     guard gen == streamingStartGeneration else {
       await activeBackend.cancelStreaming()
       throw CancellationError()
@@ -490,8 +496,20 @@ public final class ASRManager: ASRManagerInterface {
   /// independently, actor-serialization-correct against a late completion
   /// racing a NEWER session's `startStreaming()`, regardless of when this
   /// fire-and-forget cleanup actually lands.
+  ///
+  /// #1908 Codex review round 6: also clears `isStreaming` synchronously,
+  /// unconditionally. `withOrderedDeadline` races two Tasks on a `claim()`
+  /// lock that decides who RESUMES the caller — it does not gate an
+  /// operation's own side effects. The vendor call can run to completion,
+  /// pass `startStreaming()`'s own generation check (nothing had bumped it
+  /// YET), and set `isStreaming = true`, and STILL lose the outer `claim()`
+  /// race to this timeout by a hair — `onTimeout` and the operation's own
+  /// completion are that close. Forcing `isStreaming` false here makes the
+  /// caller's observed outcome (a timeout) consistent with manager state
+  /// regardless of which side technically finished its own check first.
   public func cancelInFlightStreamingStart() {
     streamingStartGeneration &+= 1
+    isStreaming = false
     let backend = activeBackend
     Task { await backend?.cancelStreaming() }
   }
