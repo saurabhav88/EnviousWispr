@@ -277,6 +277,16 @@ public final class ASRManager: ASRManagerInterface {
     downloadProgress = 0
     downloadPhase = ModelLoadStallPolicy.listingPhase
     downloadDetail = ""
+    // #1908 Codex review: clear any stale shared-progress entry (e.g. a
+    // `validatingCachePhase` write left by delivery's legacy-migration check,
+    // `ParakeetModelDelivery.ensureModelLocationReady`) before this attempt's
+    // own event-driven writes begin. Ported from `ASRManagerProxy.loadModel`,
+    // itself tracking a prior Codex finding (2026-05-07) on the same class:
+    // a stale phase left in the file mis-arms/mis-parks the SESSIONLESS wedge
+    // guard (`SessionlessLoadWedgeGuard`, which reads this file directly, not
+    // the kernel-facing tick stream) if the vendor then hangs before its
+    // first real progress callback.
+    ProgressFile.shared.clear()
 
     guard activeBackendType == .parakeet else {
       // #1386 PR-2: WhisperKit does not load here. Callers that reach this
