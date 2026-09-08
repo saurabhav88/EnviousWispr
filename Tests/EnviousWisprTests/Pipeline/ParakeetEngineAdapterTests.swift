@@ -107,6 +107,43 @@ import Testing
     #expect(manager.loadModelCount == 1)
   }
 
+  // MARK: Load-tick heartbeat (Codex review, #1908 chunk A+B)
+
+  @Test(
+    "warmUp() keeps feeding the kernel's load-tick stream during a silent gap in the vendor's own progress callback — RecordingSessionKernel.detectLoadWedge's 1-second window was calibrated against a constant 125ms heartbeat, and real FluidAudio compilation goes silent for multi-second stretches with no callback at all"
+  )
+  func warmUpTicksDuringSilentVendorGap() async throws {
+    let manager = StubParakeetASRManager()
+    manager.gateLoadModel = true
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let stream = try #require(
+      adapter.loadProgress, "Parakeet always exposes a load-progress stream (D5)")
+    let warmTask = Task { @MainActor in try? await adapter.warmUp() }
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // The manager NEVER calls `loadProgressTickReporter` while gated — this
+    // models FluidAudio's `loadModels(_:)` compile step, which emits no
+    // vendor progress callback at all. Ticks observed here can only be the
+    // adapter's own heartbeat, not a forwarded vendor event.
+    var ticksObserved = 0
+    let observer = Task {
+      for await _ in stream {
+        ticksObserved += 1
+        if ticksObserved >= 2 { return }
+      }
+    }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    while ticksObserved < 2, ContinuousClock.now < deadline { await Task.yield() }
+    observer.cancel()
+    #expect(
+      ticksObserved >= 2,
+      "the adapter must keep ticking the kernel's wedge watcher on its own cadence even when the vendor reports no progress, or a healthy multi-second silent compile step reads as a stall"
+    )
+
+    manager.releaseLoadGate()
+    _ = await warmTask.value
+  }
+
   // MARK: Streaming finalize + batch rescue (§3.2a)
 
   @Test("finalize: streaming success returns the streaming transcript")

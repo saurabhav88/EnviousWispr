@@ -319,7 +319,29 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       self?.lastObservedPhase = phase
       self?.emitLoadTick()
     }
+    // #1908 Codex review: `RecordingSessionKernel.detectLoadWedge`'s 1-second
+    // silence window (`wedgeStallTicks = 10` at a 100ms kernel tick) was
+    // calibrated against the retired XPC proxy's unconditional 125ms polling
+    // timer, which fed a tick every cycle REGARDLESS of real vendor progress
+    // (`ASRManagerProxy.startProgressPolling`, #445 — "feed ... even on ticks
+    // where the file hasn't moved"). FluidAudio's own `loadModels(_:)`
+    // compile step (`ParakeetBackend.prepare`) emits no progress callback at
+    // all, so wiring the kernel's ticks straight to real vendor events (as
+    // this function otherwise now does) trips the wedge detector on every
+    // ordinary cold load. This heartbeat restores that exact polling cadence
+    // for the kernel-facing tick stream ONLY — it does not touch
+    // `ProgressFile`, which stays event-driven in `ASRManager.performLoad`.
+    let heartbeat = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 125_000_000)
+        guard let self, !Task.isCancelled, self.warmUpGeneration == myWarmUpGeneration else {
+          return
+        }
+        self.emitLoadTick()
+      }
+    }
     defer {
+      heartbeat.cancel()
       if warmUpGeneration == myWarmUpGeneration {
         asrManager.loadProgressTickReporter = nil
         isLoadInFlight = false
