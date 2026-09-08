@@ -91,14 +91,28 @@ public actor ParakeetBackend: ASRBackend {
   /// actor-isolated task that reclaims the manager IF it is still the one
   /// published under this exact generation — never a newer one, which is
   /// what `publishedStreamingGeneration` is for.
-  nonisolated func invalidateStreamingGeneration(_ generation: UInt64) {
+  ///
+  /// #1908 round 12 (cloud review P2): RETURNS that task rather than firing
+  /// it detached. A caller that can itself `await` (`ASRManager.cancelStreaming()`,
+  /// unlike the synchronous `onTimeout` this exists for) MUST await the
+  /// SAME task, not race it with its own separate reclaim attempt — two
+  /// concurrent calls to `reclaimIfPublished` for one generation are
+  /// harmlessly idempotent (the second sees nothing left to clear), but
+  /// "harmless" here meant the awaited one could see nothing to reclaim and
+  /// return immediately while the detached one was still mid-`manager.cancel()`
+  /// — the caller believed cancellation was complete while a live
+  /// microphone/CoreML session was still tearing down. `@discardableResult`
+  /// so the synchronous `onTimeout` caller (which cannot await regardless)
+  /// keeps compiling unchanged.
+  @discardableResult
+  nonisolated func invalidateStreamingGeneration(_ generation: UInt64) -> Task<Void, Never>? {
     let invalidated = streamingGeneration.withLock { current -> Bool in
       guard current == generation else { return false }
       current &+= 1
       return true
     }
-    guard invalidated else { return }
-    Task { await self.reclaimIfPublished(generation: generation) }
+    guard invalidated else { return nil }
+    return Task { await self.reclaimIfPublished(generation: generation) }
   }
 
   /// Cancel and clear `streamingManager` ONLY if it is still the exact

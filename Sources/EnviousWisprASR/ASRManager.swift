@@ -572,20 +572,34 @@ public final class ASRManager: ASRManagerInterface {
   }
 
   /// Cancel an active streaming session, discarding partial results.
+  ///
+  /// #1908 round 12 (cloud review P2): awaits `cancelInFlightStreamingStart`'s
+  /// OWN reclaim task rather than separately calling `reclaimIfPublished`
+  /// itself — two independent calls to reclaim the same generation are
+  /// individually harmless (idempotent), but racing them meant this method
+  /// could see "nothing left to reclaim" and return immediately while the
+  /// OTHER one (the detached task `cancelInFlightStreamingStart` fires for
+  /// the synchronous-`onTimeout` caller) was still mid-`manager.cancel()` —
+  /// so this returned believing cancellation was complete while a live
+  /// microphone/CoreML session was still tearing down in the background.
   public func cancelStreaming() async {
     guard isStreaming, let activeBackend else { return }
-    let attempt = streamingStartBackendAttempt
+    let hadBackendAttempt = streamingStartBackendAttempt != nil
+    var reclaimTask: Task<Void, Never>?
     if let attemptID = streamingStartID {
-      cancelInFlightStreamingStart(attemptID: attemptID)
+      reclaimTask = cancelInFlightStreamingStart(attemptID: attemptID)
     }
     isStreaming = false
-    if let attempt {
-      // Reclaim the exact stream this attempt owns — never "whichever
-      // stream is current" (round 7's lesson: that could be a replacement).
-      await attempt.backend.reclaimIfPublished(generation: attempt.generation)
-    } else {
+    if let reclaimTask {
+      await reclaimTask.value
+    } else if !hadBackendAttempt {
       await activeBackend.cancelStreaming()
     }
+    // else: a Parakeet attempt existed but `cancelInFlightStreamingStart`
+    // returned nil — already invalidated by something else in the same
+    // synchronous prefix (cannot happen in practice; nothing interleaves
+    // before this method's own first suspension), so there is nothing left
+    // to reclaim.
   }
 
   /// #1908 round 11: synchronously abandon ONLY the attempt named by
@@ -606,14 +620,21 @@ public final class ASRManager: ASRManagerInterface {
   /// #1908 round 8: reaches into the backend narrowly —
   /// `invalidateStreamingGeneration(_:)` only bumps if the backend's counter
   /// still matches the exact generation reserved for THIS attempt.
-  public func cancelInFlightStreamingStart(attemptID: UUID) {
-    guard streamingStartID == attemptID else { return }
+  ///
+  /// #1908 round 12: returns the backend's own reclaim task (or `nil` if
+  /// there was nothing to invalidate) so an `async` caller that can await —
+  /// `cancelStreaming()`, unlike the synchronous `onTimeout` this method
+  /// primarily exists for — can wait for the SAME cancellation rather than
+  /// racing a redundant one of its own. `@discardableResult` so `onTimeout`
+  /// (which cannot await regardless) keeps compiling unchanged.
+  @discardableResult
+  public func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>? {
+    guard streamingStartID == attemptID else { return nil }
     streamingStartID = nil
     isStreaming = false
-    if let attempt = streamingStartBackendAttempt {
-      streamingStartBackendAttempt = nil
-      attempt.backend.invalidateStreamingGeneration(attempt.generation)
-    }
+    guard let attempt = streamingStartBackendAttempt else { return nil }
+    streamingStartBackendAttempt = nil
+    return attempt.backend.invalidateStreamingGeneration(attempt.generation)
   }
 
   /// Unload the active backend, freeing model RAM.
