@@ -98,6 +98,25 @@ extension ASRManagerNotOwnedError: StableSentryErrorIdentity {
 // `ModelLoadWatchdog.WedgeError` — the pipeline driver classifies on it and
 // does not import this module.
 
+/// #1908: thrown when a Parakeet load attempt would rewrite FluidAudio's
+/// process-global `ModelHub.offlineMode` to a value DIFFERENT from what an
+/// already-admitted, still-in-flight attempt is using. `ModelHub.offlineMode`
+/// is not scoped to any one `ParakeetBackend` instance — fresh-backend-per-
+/// attempt (see `ASRManager`) closes the per-instance race but not this one,
+/// so a conflicting-mode attempt is refused outright rather than allowed to
+/// race the shared write. A same-mode attempt is never refused.
+public struct ParakeetOfflineModeConflictError: Error, Equatable {
+  public init() {}
+}
+
+extension ParakeetOfflineModeConflictError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprASR.ParakeetOfflineModeConflictError#1"
+  }
+
+  public var sentrySemanticID: String { "asr.offline_mode_conflict" }
+}
+
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.
@@ -165,6 +184,14 @@ public protocol ASRManagerInterface: AnyObject {
   /// to terminate the service-side load. Equivalent to manual app restart.
   func cancelInFlightLoad()
 
+  /// #1908: the HEAVY half of issue #445 wedge recovery, called ONLY after
+  /// `cancelInFlightLoad()`. In-process, a deadline-bounded, fail-open attempt
+  /// to unload the currently-published backend — WhisperKit's
+  /// `recoverFromWedge()` pattern, ported. `ASRManagerProxy`'s XPC connection
+  /// invalidation already does the equivalent job, so it keeps the protocol
+  /// extension's no-op default rather than overriding.
+  func attemptWedgeRecoveryUnload() async
+
   /// Issue #445: per-tick callback for the load-progress polling stream.
   /// Set by the dictation kernel for the duration of one `loadModel()`
   /// call so the pipeline-owned `LoadProgressWatcher` receives mtime + phase
@@ -187,12 +214,39 @@ public protocol ASRManagerInterface: AnyObject {
   // Wired by the App-side router to route to the active pipeline (same pattern as
   // the capture manager's `onEngineInterrupted`).
   var onServiceInterrupted: (() -> Void)? { get set }
+
+  #if DEBUG
+    // #1908: #1707 Phase 2 batch-decode fault oracle. Both conformers already
+    // implement these; declared on the protocol so `BatchDecodeFaultController`
+    // (`EnviousWisprPipeline`) can reach whichever is live through the
+    // existential instead of downcasting to `ASRManagerProxy` specifically —
+    // that downcast is what silently went dark the moment the proxy stopped
+    // being constructed (#1908 grounded review).
+    func armBatchDecodeHold(trialID: String) async
+    func releaseBatchDecode(trialID: String) async
+    func clearBatchDecodeFault() async
+  #endif
 }
 
 extension ASRManagerInterface {
   /// #1339 safe default: managers do NOT feed the shared progress file unless
   /// they explicitly opt in (`ASRManagerProxy` does).
   public var feedsSharedProgressFile: Bool { false }
+
+  /// #1908 safe default: a conformer with no HEAVY wedge-recovery step (today,
+  /// `ASRManagerProxy` — its `cancelInFlightLoad()` XPC connection invalidation
+  /// already does the equivalent job) does nothing extra here.
+  public func attemptWedgeRecoveryUnload() async {}
+
+  #if DEBUG
+    /// #1908 safe defaults for test doubles: a mock backend has no real
+    /// decode to fault-inject against, so arming/releasing/clearing is a
+    /// no-op. Both production conformers (`ASRManager`, `ASRManagerProxy`)
+    /// declare real implementations, so their witnesses win.
+    public func armBatchDecodeHold(trialID: String) async {}
+    public func releaseBatchDecode(trialID: String) async {}
+    public func clearBatchDecodeFault() async {}
+  #endif
 
   /// #1348 safe default for test doubles: no delivery mode. BOTH production
   /// conformers (`ASRManager`, `ASRManagerProxy`) declare real storage, so

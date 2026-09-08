@@ -28,7 +28,8 @@ struct ASRManagerBackendInjectionTests {
     // refused admission gate wins the race: prepare() returns normally, readiness
     // does not follow.
     let parakeet = FakeASRBackend(initiallyReady: false, readyAfterPrepare: false)
-    let manager = ASRManager(engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     // The defect: this does NOT throw. `loadModel` records readiness
     // (`isModelLoaded = ready`) instead of requiring it, so every caller that
@@ -50,7 +51,7 @@ struct ASRManagerBackendInjectionTests {
   func switchBackendFromLoadedResetsIsModelLoaded() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     // Drive the manager to "loaded" via the public loadModel path. Because
     // FakeASRBackend reports ready, loadModel completes synchronously after
@@ -67,7 +68,7 @@ struct ASRManagerBackendInjectionTests {
   func switchBackendUnloadsPreviousBackend() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
     try await manager.loadModel()
 
     await manager.switchBackend(to: .whisperKit)
@@ -80,7 +81,7 @@ struct ASRManagerBackendInjectionTests {
   func switchBackendSameTypeIsNoOp() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
     try await manager.loadModel()
 
     await manager.switchBackend(to: .parakeet)
@@ -97,7 +98,7 @@ struct ASRManagerBackendInjectionTests {
   func setInitialBackendTypeAfterLoadResetsFlags() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
     try await manager.loadModel()
     #expect(manager.isModelLoaded == true)
 
@@ -122,27 +123,39 @@ struct ASRManagerLoadGenerationTests {
     while await backend.prepareCount < count { await Task.yield() }
   }
 
-  @Test("a load superseded by cancelInFlightLoad mid-flight throws and stays unloaded")
+  @Test(
+    "a load superseded by cancelInFlightLoad mid-flight releases the caller EARLY with ASRLoadCancelledError, before the vendor call itself returns (#1908)"
+  )
   func cancelInFlightLoadSupersedes() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     let loadTask = Task { @MainActor in
-      await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
+      // #1908: `cancelInFlightLoad()` resumes the caller directly with
+      // `ASRLoadCancelledError` — matching `ASRManagerProxy`'s existing
+      // contract — rather than waiting for the vendor call to notice the
+      // generation bump on its own eventual completion. This is the fix for
+      // the parity gap grounded review found: a vendor call that never
+      // observes `Task.isCancelled` must not be able to hang this caller.
+      await #expect(throws: ASRLoadCancelledError.self) { try await manager.loadModel() }
     }
     await waitForPrepareEntered(parakeet)
-    manager.cancelInFlightLoad()  // bumps the generation while the load is parked
-    await parakeet.releaseGate()
-    await loadTask.value
+    manager.cancelInFlightLoad()  // bumps the generation AND releases the caller immediately
+    await loadTask.value  // must NOT need `releaseGate()` first — that is the point of the fix
     #expect(manager.isModelLoaded == false, "a superseded load must not resurrect readiness")
+
+    // The vendor call itself is still parked in the background (orphaned,
+    // per the plan's accepted-risk note) — release it so the suite does not
+    // leak a hung Task past this test.
+    await parakeet.releaseGate()
   }
 
   @Test("unloadModel during an in-flight load supersedes it (bump-before-guard, Codex r2)")
   func unloadDuringInFlightLoadSupersedes() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
@@ -160,7 +173,7 @@ struct ASRManagerLoadGenerationTests {
   func sameBackendSwitchDoesNotSupersede() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     let loadTask = Task { @MainActor in try await manager.loadModel() }
     await waitForPrepareEntered(parakeet)
@@ -179,7 +192,7 @@ struct ASRManagerLoadGenerationTests {
   func realSwitchDuringInFlightLoadStartsFresh() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     let loadTask = Task { @MainActor in
       await #expect(throws: ASRLoadSupersededError.self) { try await manager.loadModel() }
@@ -212,7 +225,7 @@ struct ASRManagerLoadGenerationTests {
   func loadModelRefusesNonOwnedBackend() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
     manager.setInitialBackendType(.whisperKit)
 
     // WhisperKit loads in-process behind its relocation gate, never here. A
@@ -230,7 +243,7 @@ struct ASRManagerLoadGenerationTests {
   func transcribeRefusesNonOwnedBackend() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
     manager.setInitialBackendType(.whisperKit)
 
     await #expect(throws: ASRManagerNotOwnedError(backend: .whisperKit)) {
@@ -242,7 +255,7 @@ struct ASRManagerLoadGenerationTests {
   func noStreamingSupportForNonOwnedBackend() async throws {
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
-      parakeetBackend: FakeASRBackend(initiallyReady: true))
+      parakeetBackendFactory: { FakeASRBackend(initiallyReady: true) })
     manager.setInitialBackendType(.whisperKit)
     #expect(await manager.activeBackendSupportsStreaming == false)
   }
@@ -253,7 +266,7 @@ struct ASRManagerLoadGenerationTests {
   func unloadDuringInFlightLoadRetiresTaskSoRetryStartsFresh() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
-      engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { parakeet })
 
     // Load A parks in prepare() holding generation G.
     let loadTask = Task { @MainActor in

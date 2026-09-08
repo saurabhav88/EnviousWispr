@@ -24,8 +24,10 @@ public final class ASRManager: ASRManagerInterface {
   /// library product and `EngineMutationScope` is itself only
   /// `package`-visible, so a wider property could not hold it.
   package let engineMutationScope: EngineMutationScope
-  /// Issue #445: in-process variant. Tests do not drive a progress-file stream,
-  /// so this stays unset at runtime; the protocol requires it.
+  /// Issue #445: in-process variant, fed from `loadModel()`'s progress
+  /// callback on the same event-driven basis `ASRManagerProxy`'s XPC round
+  /// trip already uses — never a fixed cadence (#1908: forwarding a timer
+  /// tick here would manufacture progress the kernel counts as real).
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
   /// #1348 Phase 2: delivery-managed Parakeet loads are cache-only (see
   /// `ASRManagerInterface.parakeetCacheOnly`).
@@ -35,6 +37,10 @@ public final class ASRManager: ASRManagerInterface {
   /// through `ParakeetEngineAdapter` — `ActiveEngineOperation.load` does exactly
   /// that — cannot reach FluidAudio's shared tree by omission.
   public var parakeetModelDirectory: URL?
+  /// #1908: this manager's `loadModel()` progress also lands in the shared
+  /// file, matching `ASRManagerProxy`'s existing opt-in — the sessionless
+  /// warm-up wedge guard depends on it regardless of transport.
+  public var feedsSharedProgressFile: Bool { true }
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
@@ -46,6 +52,16 @@ public final class ASRManager: ASRManagerInterface {
   /// #959 single-flight identity (see `ASRManagerProxy.loadTaskSeq`).
   private var loadTaskSeq: UInt64 = 0
   private var activeLoadTaskID: UInt64 = 0
+
+  /// #1908: the pending `loadModel()` caller(s)' escape hatch. `loadModel()`
+  /// races the real vendor work against this continuation; `cancelInFlightLoad()`
+  /// resumes it directly with `ASRLoadCancelledError` so a caller is released
+  /// even when the underlying vendor call does not observe `Task.isCancelled`
+  /// (confirmed it does not — FluidAudio's loader ignores cancellation).
+  /// Ports `ASRManagerProxy.pendingLoadCompletion`'s exact contract: resumed
+  /// on EVERY exit path, never left dangling. `OneShotContinuationASR` also
+  /// lives in this module so it survives `ASRManagerProxy`'s eventual deletion.
+  private var pendingLoadCompletion: OneShotContinuationASR<Void>?
 
   /// Bump the load generation so an in-flight load completion is superseded, and
   /// log the `ready → notReady` transition tagged with cause. Called before any
@@ -63,14 +79,63 @@ public final class ASRManager: ASRManagerInterface {
   }
 
   // Phase G5: existential-typed for test injection. Production callers pass
-  // nothing; the defaults preserve today's wiring exactly. Tests pass fakes
-  // that report `isReady=true` without a real model load, unblocking
-  // reset-branch coverage in `setInitialBackendType` and `switchBackend`.
+  // nothing; the default factory preserves today's wiring exactly. Tests pass
+  // a factory returning a fake that reports `isReady=true` without a real
+  // model load, unblocking reset-branch coverage in `setInitialBackendType`
+  // and `switchBackend`.
+  //
+  // #1908: a FACTORY, not a stored instance — every `loadModel()` attempt
+  // constructs a FRESH backend and only publishes it into `parakeetBackend`
+  // on success, mirroring `ASRServiceHandler.swift:58-89`'s existing
+  // fresh-backend-per-load behavior across XPC helper respawns. An abandoned
+  // or wedged attempt's candidate is therefore never the instance any other
+  // caller (`transcribe`, `startStreaming`, `unloadModel`, …) can reach —
+  // closing the race a shared single instance would otherwise have. Tests
+  // that inject a factory returning the SAME fake every call keep their
+  // existing sequential-behavior assertions unchanged (identity comparisons
+  // in `loadModel()` below become no-ops for them); a test proving the
+  // abandon-then-retry race must inject a factory returning DISTINCT fakes.
+  private let parakeetBackendFactory: () -> any ASRBackend
   private var parakeetBackend: any ASRBackend
 
-  package init(engineMutationScope: EngineMutationScope, parakeetBackend: (any ASRBackend)? = nil) {
+  /// #1908: FluidAudio's `ModelHub.offlineMode` (`ParakeetBackend.configureOfflineMode`)
+  /// is a process-global static, NOT scoped to any one backend instance —
+  /// fresh-backend-per-attempt does not isolate it (grounded review round 2).
+  /// Serialize admission so a load attempt whose vendor call has not yet
+  /// returned holds this value until it does; a conflicting-mode attempt is
+  /// refused before it can race the write, a same-mode attempt proceeds
+  /// (writing the identical value again is harmless — order cannot change
+  /// what a concurrent reader observes when every writer agrees on the value).
+  private var offlineModeAdmittedValue: Bool?
+  private var offlineModeAdmissionCount = 0
+
+  private func admitOfflineMode(cacheOnly: Bool) throws {
+    if let admitted = offlineModeAdmittedValue {
+      guard admitted == cacheOnly else {
+        throw ParakeetOfflineModeConflictError()
+      }
+      offlineModeAdmissionCount += 1
+      return
+    }
+    offlineModeAdmittedValue = cacheOnly
+    offlineModeAdmissionCount = 1
+  }
+
+  private func releaseOfflineModeAdmission() {
+    guard offlineModeAdmissionCount > 0 else { return }
+    offlineModeAdmissionCount -= 1
+    if offlineModeAdmissionCount == 0 {
+      offlineModeAdmittedValue = nil
+    }
+  }
+
+  package init(
+    engineMutationScope: EngineMutationScope,
+    parakeetBackendFactory: @escaping () -> any ASRBackend = { ParakeetBackend() }
+  ) {
     self.engineMutationScope = engineMutationScope
-    self.parakeetBackend = parakeetBackend ?? ParakeetBackend()
+    self.parakeetBackendFactory = parakeetBackendFactory
+    self.parakeetBackend = parakeetBackendFactory()
   }
 
   /// The active backend WHEN THIS MANAGER OWNS IT — nil for WhisperKit.
@@ -120,6 +185,15 @@ public final class ASRManager: ASRManagerInterface {
     // a later `loadModel()` for the new backend starts fresh, not joins the stale.
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
+    // #1908: deliberately NOT resuming `pendingLoadCompletion` here — that
+    // early-release is scoped to `cancelInFlightLoad()` only (matching
+    // `ASRManagerProxy`, which never touches `pendingLoadCompletion` from its
+    // own switch/unload paths either). A switch is an ORDINARY lifecycle
+    // transition, not a hung load recovery; a caller still awaiting the
+    // superseded load keeps its existing, tested contract — it observes the
+    // real work finish and gets `ASRLoadSupersededError()` from the
+    // generation check in `performLoad`, unchanged.
+    //
     // Switching AWAY from WhisperKit unloads nothing here: the adapter owns that
     // model's lifecycle, and the instance this manager used to unload was never
     // the one holding real weights.
@@ -139,65 +213,7 @@ public final class ASRManager: ASRManagerInterface {
 
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      // #959: capture the load generation; refuse to mark loaded if superseded.
-      let gen = self.loadGeneration
-      self.downloadProgress = 0
-      self.downloadPhase = ModelLoadStallPolicy.listingPhase
-      self.downloadDetail = ""
-
-      // For Parakeet, use the progress-reporting variant so in-process path also reports progress.
-      if self.activeBackendType == .parakeet {
-        let progress: ProgressCallback = { [weak self] fraction, phase, detail in
-          Task { @MainActor [weak self] in
-            guard let self, !self.isModelLoaded else { return }
-            self.downloadProgress = fraction
-            self.downloadPhase = phase
-            self.downloadDetail = detail
-          }
-        }
-        // #1348 Phase 2: cache-only is Parakeet+FluidAudio-concrete behavior
-        // (the offline switch lives in that library), so the delivery mode
-        // downcasts to the concrete backend this manager itself constructed —
-        // not a kernel-side identity gate (capability rule applies to
-        // adapters/kernel; injected test mocks keep the legacy path).
-        //
-        // #2483 second-pass finding 1/2/5: the downcast is no longer gated on
-        // `parakeetCacheOnly`. It used to be, and the `else` then reached
-        // `prepare(progressCallback:)`, whose convenience overload resolves
-        // FluidAudio's SHARED directory — so switching delivery off sent the
-        // in-process path straight back to the tree this whole change exists to
-        // stop touching, with downloading enabled. The XPC path never had that
-        // hole because the proxy passes the directory on every load. Only a
-        // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
-        // takes the protocol overload now.
-        if let parakeet = self.parakeetBackend as? ParakeetBackend {
-          // #2697: refuse rather than resolve one of our own. `nil` means the
-          // location seam either has not run or REFUSED, and both must fail
-          // loudly here instead of loading from an assumed directory.
-          guard let directory = self.parakeetModelDirectory else {
-            throw ParakeetModelDirectoryUnsetError()
-          }
-          try await parakeet.prepare(
-            cacheOnly: self.parakeetCacheOnly, modelDirectory: directory,
-            progressCallback: progress)
-        } else {
-          try await self.parakeetBackend.prepare(progressCallback: progress)
-        }
-      } else {
-        // #1386 PR-2: WhisperKit does not load here. Callers that reach this
-        // with WhisperKit active are on the retired route and must go through
-        // the gated adapter (`ASRManagerNotOwnedError` says so out loud rather
-        // than silently loading nothing or, worse, mapping past the gate).
-        throw ASRManagerNotOwnedError(backend: self.activeBackendType)
-      }
-      self.downloadProgress = 1.0
-      self.downloadPhase = ""
-      self.downloadDetail = ""
-      // #959: read readiness first, THEN guard, so a cancel/unload/switch that
-      // landed during the `isReady` await can't be overwritten by a stale write.
-      let ready = await self.parakeetBackend.isReady
-      guard gen == self.loadGeneration else { throw ASRLoadSupersededError() }
-      self.isModelLoaded = ready
+      try await self.performLoadRacingCancellation()
     }
     loadTaskSeq &+= 1
     let myTaskID = loadTaskSeq
@@ -207,6 +223,154 @@ public final class ASRManager: ASRManagerInterface {
     // handle if it is still ours, so a superseded load can't clear a retry's task.
     defer { if activeLoadTaskID == myTaskID { inFlightLoadTask = nil } }
     try await task.value
+  }
+
+  /// #1908: races the real vendor load against an early-release signal so
+  /// `cancelInFlightLoad()` can unblock every awaiting caller even when the
+  /// vendor call itself never observes cancellation (confirmed it does not).
+  ///
+  /// The continuation is registered SYNCHRONOUSLY, before the real work is
+  /// even started — `withCheckedThrowingContinuation`'s closure runs
+  /// immediately when the coroutine suspends, so there is no window in
+  /// which `cancelInFlightLoad()` could fire before `pendingLoadCompletion`
+  /// exists. (An earlier draft raced two task-group children instead, which
+  /// left a real window where the fast-throwing child could resume-and-clear
+  /// the completion before the continuation-registering child had even run,
+  /// leaking an unresumed `CheckedContinuation` — a Swift runtime fatal
+  /// error. This shape cannot do that: exactly one path ever calls the
+  /// underlying `cont.resume`, guarded by `OneShotContinuationASR`'s
+  /// resume-once lock, whichever of "cancel" or "real work finished" gets
+  /// there first.)
+  private func performLoadRacingCancellation() async throws {
+    let gen = loadGeneration
+    try await withCheckedThrowingContinuation {
+      [weak self] (cont: CheckedContinuation<Void, any Error>) in
+      guard let self else {
+        cont.resume()
+        return
+      }
+      let completion = OneShotContinuationASR(cont)
+      self.pendingLoadCompletion = completion
+      // The real work runs in its own unstructured Task so it can keep
+      // running orphaned in the background if `cancelInFlightLoad()` beats
+      // it to resuming `completion` — matching the accepted risk this
+      // plan documents for a vendor call that will not cooperate.
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        do {
+          try await self.performLoad(generation: gen)
+          completion.resume()
+        } catch {
+          completion.resume(throwing: error)
+        }
+        // Only clear if this attempt's completion is still the current one —
+        // a cancel that already cleared it (or a newer attempt's own
+        // registration) must not be clobbered by a late-finishing orphan.
+        if self.pendingLoadCompletion === completion {
+          self.pendingLoadCompletion = nil
+        }
+      }
+    }
+  }
+
+  private func performLoad(generation gen: UInt64) async throws {
+    downloadProgress = 0
+    downloadPhase = ModelLoadStallPolicy.listingPhase
+    downloadDetail = ""
+
+    guard activeBackendType == .parakeet else {
+      // #1386 PR-2: WhisperKit does not load here. Callers that reach this
+      // with WhisperKit active are on the retired route and must go through
+      // the gated adapter (`ASRManagerNotOwnedError` says so out loud rather
+      // than silently loading nothing or, worse, mapping past the gate).
+      throw ASRManagerNotOwnedError(backend: activeBackendType)
+    }
+
+    // #1908: a FRESH candidate for this attempt — never published until it
+    // succeeds, so an abandoned attempt can never mutate the instance a
+    // successor or any other caller is using.
+    let candidate = parakeetBackendFactory()
+    var published = false
+    defer {
+      // Any exit that never published `candidate` — superseded, cancelled,
+      // or a thrown error — must still release whatever resources its own
+      // `prepare()` may have allocated. Dropping the reference alone does
+      // NOT run FluidAudio's `cleanup()` (no `deinit` performs it), so this
+      // is the ONLY thing that frees a superseded attempt's real resources.
+      if !published {
+        Task { await candidate.unload() }
+      }
+    }
+
+    let progress: ProgressCallback = { [weak self] fraction, phase, detail in
+      Task { @MainActor [weak self] in
+        guard let self, gen == self.loadGeneration, !self.isModelLoaded else { return }
+        self.downloadProgress = fraction
+        self.downloadPhase = phase
+        self.downloadDetail = detail
+        // #1908: event-driven only — never a fixed cadence. A timer-driven
+        // write here would manufacture a fresh timestamp during a genuine
+        // hang and hide the wedge from the sessionless guard, which reads
+        // this file's mtime as its stale-progress baseline.
+        ProgressFile.shared.write(fraction: fraction, phase: phase, detail: detail)
+        self.loadProgressTickReporter?(Date(), phase)
+      }
+    }
+
+    // #1348 Phase 2: cache-only is Parakeet+FluidAudio-concrete behavior
+    // (the offline switch lives in that library), so the delivery mode
+    // downcasts to the concrete backend this manager itself constructed —
+    // not a kernel-side identity gate (capability rule applies to
+    // adapters/kernel; injected test mocks keep the legacy path).
+    //
+    // #2483 second-pass finding 1/2/5: the downcast is no longer gated on
+    // `parakeetCacheOnly`. It used to be, and the `else` then reached
+    // `prepare(progressCallback:)`, whose convenience overload resolves
+    // FluidAudio's SHARED directory — so switching delivery off sent the
+    // in-process path straight back to the tree this whole change exists to
+    // stop touching, with downloading enabled. The XPC path never had that
+    // hole because the proxy passes the directory on every load. Only a
+    // non-`ParakeetBackend` backend (an injected mock, which loads nothing)
+    // takes the protocol overload now.
+    if let parakeet = candidate as? ParakeetBackend {
+      // #2697: refuse rather than resolve one of our own. `nil` means the
+      // location seam either has not run or REFUSED, and both must fail
+      // loudly here instead of loading from an assumed directory.
+      guard let directory = parakeetModelDirectory else {
+        throw ParakeetModelDirectoryUnsetError()
+      }
+      // #1908: process-global offline-mode exclusion — see the property docs
+      // above. Refuses a conflicting-mode attempt BEFORE `prepare()` ever
+      // reaches FluidAudio's shared static; a same-mode attempt proceeds.
+      try admitOfflineMode(cacheOnly: parakeetCacheOnly)
+      defer { releaseOfflineModeAdmission() }
+      try await parakeet.prepare(
+        cacheOnly: parakeetCacheOnly, modelDirectory: directory,
+        progressCallback: progress)
+    } else {
+      try await candidate.prepare(progressCallback: progress)
+    }
+
+    downloadProgress = 1.0
+    downloadPhase = ""
+    downloadDetail = ""
+    // #959: read readiness first, THEN guard, so a cancel/unload/switch that
+    // landed during the `isReady` await can't be overwritten by a stale write.
+    let ready = await candidate.isReady
+    guard gen == loadGeneration else { throw ASRLoadSupersededError() }
+
+    // #1908: publish — retire whatever was previously current, then adopt
+    // the freshly-loaded instance as the ONLY thing anything else will
+    // touch. Retiring calls `.unload()` (not a bare drop) because
+    // `ParakeetBackend.unload()` awaits FluidAudio's own `cleanup()`, which
+    // ARC deallocation alone does not run.
+    let retiring = parakeetBackend
+    parakeetBackend = candidate
+    published = true
+    isModelLoaded = ready
+    if !(retiring === (candidate as AnyObject)) {
+      Task { await retiring.unload() }
+    }
   }
 
   // #879: the launch/onboarding warm-up entry (formerly `loadModelSilently` +
@@ -300,22 +464,56 @@ public final class ASRManager: ASRManagerInterface {
       // is still false and the guard would early-return with the stale handle live.
       self.inFlightLoadTask?.cancel()
       self.inFlightLoadTask = nil
+      // #1908: deliberately NOT resuming `pendingLoadCompletion` here — see
+      // the matching note in `switchBackend()`. Scoped to `cancelInFlightLoad()`
+      // only, matching `ASRManagerProxy`'s exact contract.
       guard self.isModelLoaded, let activeBackend = self.activeBackend else { return }
       await activeBackend.unload()
       self.isModelLoaded = false
     }
   }
 
-  /// Issue #445: in-process variant of the watchdog recovery. No XPC connection
-  /// to invalidate; just cancels the host-side task and resets state. The
-  /// next press triggers a fresh load. Mostly used in tests; production runs
-  /// against `ASRManagerProxy` which has the full connection-invalidate path.
+  /// Issue #445: in-process variant of the watchdog recovery. CHEAP and
+  /// non-blocking: resumes any pending waiter, supersedes the current load
+  /// generation, and cancels the host-side task. The next press triggers a
+  /// fresh load. Does NOT itself attempt a backend unload — that is the
+  /// separate, deadline-bounded `attemptWedgeRecoveryUnload()` below, called
+  /// only by the kernel's HEAVY wedge-recovery path so ordinary cheap
+  /// cancellation (a user-cancelled recording) is never blocked by it.
   public func cancelInFlightLoad() {
     // #959: supersede the current load first so a stale completion can't resurrect it.
     invalidateCurrentLoadGeneration(cause: "recoverFromWedge")
     inFlightLoadTask?.cancel()
     inFlightLoadTask = nil
+    // #1908: release any caller awaiting `loadModel()` even though the
+    // underlying vendor call keeps running orphaned in the background —
+    // it does not observe `Task.isCancelled` and cannot be interrupted from
+    // outside. `performLoad`'s own `defer` would otherwise be the only
+    // resumer, and it may never run if the vendor call itself never returns.
+    pendingLoadCompletion?.resume(throwing: ASRLoadCancelledError())
+    pendingLoadCompletion = nil
     isModelLoaded = false
+  }
+
+  /// #1908 issue #445 in-process HEAVY wedge recovery: a deadline-bounded,
+  /// fail-open attempt to unload the currently-published backend, so a load
+  /// wedged inside a vendor call that will not cooperate with cancellation
+  /// cannot block recovery indefinitely. Ports
+  /// `WhisperKitEngineAdapter.recoverFromWedge()`'s exact pattern (2.0s
+  /// default, `wedgeRecoveryUnloadDeadlineSec`-equivalent) rather than
+  /// inventing a new one. Call `cancelInFlightLoad()` FIRST to release any
+  /// waiter; this method targets the PUBLISHED backend only — an in-flight
+  /// load's freshly-constructed candidate (§`performLoad`) is never
+  /// reachable from outside the load task by design, so its own vendor call
+  /// may continue running in the background until it completes or the app
+  /// quits, matching WhisperKit's already-accepted risk for the identical
+  /// case. `ASRManagerProxy` relies on its own XPC connection invalidation
+  /// instead and does not override the protocol's no-op default.
+  public func attemptWedgeRecoveryUnload() async {
+    let captured = parakeetBackend
+    _ = await withDeadline(seconds: 2.0) {
+      await captured.unload()
+    }
   }
 
   /// Called by pipeline after a transcript is saved.
@@ -346,4 +544,23 @@ public final class ASRManager: ASRManagerInterface {
       }
     }
   }
+
+  #if DEBUG
+    // MARK: #1908 — #1707 Phase 2 batch-decode fault oracle forwarding.
+    // Reconnects the DEBUG fault-injection path `BatchDecodeFaultController`
+    // needs once it stops downcasting to the concrete `ASRManagerProxy` type
+    // (`WisprBootstrapper.swift`). Mirrors `ASRServiceHandler`'s existing
+    // `#if DEBUG` block exactly, minus the XPC reply plumbing.
+    public func armBatchDecodeHold(trialID: String) async {
+      await (parakeetBackend as? ParakeetBackend)?.armBatchDecodeHold(trialID: trialID)
+    }
+
+    public func releaseBatchDecode(trialID: String) async {
+      await (parakeetBackend as? ParakeetBackend)?.releaseBatchDecode(trialID: trialID)
+    }
+
+    public func clearBatchDecodeFault() async {
+      await (parakeetBackend as? ParakeetBackend)?.clearBatchDecodeFault()
+    }
+  #endif
 }

@@ -716,9 +716,19 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// ONLY by the kernel's load-wedge / finalize-wedge detectors.
   /// `cancelInFlightLoad()` is synchronous and non-blocking, so no deadline is
   /// needed for the Parakeet path.
+  ///
+  /// #1908: after XPC removal, `cancelInFlightLoad()` alone is no longer the
+  /// whole story — it releases any awaiting caller, but the vendor call
+  /// itself can keep running orphaned in the background (no more helper
+  /// process for the OS to reap). `attemptWedgeRecoveryUnload()` is the
+  /// deadline-bounded, fail-open follow-up (ports `WhisperKitEngineAdapter
+  /// .recoverFromWedge()`'s pattern) — a no-op on the still-live
+  /// `ASRManagerProxy` path (protocol default), so this stays correct while
+  /// both transports coexist during the migration.
   func recoverFromWedge() async {
     await discardSession()
     asrManager.cancelInFlightLoad()
+    await asrManager.attemptWedgeRecoveryUnload()
     // #1405: this recovery is now for MODEL-LOAD wedges only. The download owns
     // its own stall detection (the fetcher's request idle timeout), and the
     // wedge guard stays parked during the download phase — so a download is

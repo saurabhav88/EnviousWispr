@@ -331,6 +331,12 @@ import Testing
     "transcribe", "feedAudio", "finalizeStreaming", "cancelStreaming", "beginSession",
     "acceptAudio", "finalize", "observeLID", "makeStreamingSession", "cancelSessionlessWarmup",
     "unloadForRemoval", "transcribeSamples", "feedAudioBuffer",
+    // #1908: `attemptWedgeRecoveryUnload` unloads the currently-published
+    // backend (a real engine mutation, same class as `cancelInFlightLoad`
+    // beside it above) — ported to `ASRManagerInterface` alongside the XPC
+    // collapse. Its sole production call site is
+    // `ParakeetEngineAdapter.recoverFromWedge()`.
+    "attemptWedgeRecoveryUnload",
   ]
 
   /// A member-access reference (`adapter.warmUp`) or bare reference
@@ -492,10 +498,37 @@ import Testing
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
       text: "try await parakeet.prepare(",
       classification: .transitivelyCoveredByCaller),
+    // #1908: this generic-protocol prepare call now runs against the
+    // attempt-scoped `candidate` rather than the stored `self.parakeetBackend`
+    // — the fresh-backend-per-attempt refactor renamed the receiver, not the
+    // reachability. Same callers, same protection; the stale
+    // `self.parakeetBackend.prepare(...)` text entry is removed, not kept
+    // alongside this one.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
-      text: "try await self.parakeetBackend.prepare(progressCallback: progress)",
+      text: "try await candidate.prepare(progressCallback: progress)",
       classification: .transitivelyCoveredByCaller),
+    // #1908: `performLoad`'s defer-path cleanup of an attempt that was NEVER
+    // published to `self.parakeetBackend` — superseded, cancelled, or a
+    // thrown error before publish. Structurally safe by construction: `candidate`
+    // has no other referrer anywhere in the app (it is a plain local until
+    // publish), so nothing else can be mid-call on it when this fires.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "Task { await candidate.unload() }", classification: .structurallySafe),
+    // #1908: `performLoad`'s retire-the-old-backend step, fired immediately
+    // after `self.parakeetBackend` is reassigned to the new `candidate` —
+    // by that point no NEW caller can reach `retiring` through the manager.
+    // Same residual-risk profile this file already accepts for
+    // `switchBackend`'s own retire-and-replace unload directly above
+    // (`await activeBackend?.unload()`, `.structurallySafe`): an in-flight
+    // caller that captured the OLD backend reference synchronously before
+    // the swap could still be mid-await on it. Not a new risk introduced by
+    // the fresh-backend-per-attempt design — the identical shape as the
+    // existing accepted site.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "Task { await retiring.unload() }", classification: .structurallySafe),
     // `startStreaming(options:)` — reached via BenchmarkSuite's gated claim
     // AND `ParakeetEngineAdapter.beginSession`'s structurally-safe
     // (session-start / minting-window) call; its own protection is inherited.
@@ -507,6 +540,15 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
       text: "await activeBackend.unload()", classification: .gated),
+    // #1908: `attemptWedgeRecoveryUnload()`'s deadline-bounded cleanup of the
+    // currently-published backend. Its ONE caller,
+    // `ParakeetEngineAdapter.recoverFromWedge()`, is itself
+    // `.structurallySafe` (session-scoped load-wedge detector only, see the
+    // `cancelInFlightLoad` entry for that same method below) — this call is
+    // the very next line after that one in the same method, same reachability.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "await captured.unload()", classification: .transitivelyCoveredByCaller),
     // Idle-timer firing `unloadModel()` on itself. Safe regardless of when it
     // fires: `unloadModel()`'s OWN body re-acquires "asrManagerUnload"
     // internally on every call, by construction — not because of anything
@@ -731,6 +773,14 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
       matcher: "cancelInFlightLoad", text: "asrManager.cancelInFlightLoad()",
+      classification: .structurallySafe),
+    // #1908: `recoverFromWedge()`'s follow-up deadline-bounded unload
+    // attempt, added the line immediately after the `cancelInFlightLoad()`
+    // entry directly above — same method, same SESSION-scoped-only
+    // reachability, same protection.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
+      matcher: "attemptWedgeRecoveryUnload", text: "await asrManager.attemptWedgeRecoveryUnload()",
       classification: .structurallySafe),
     // `retryDecode()`'s repair-before-retry release — `retryDecode` itself is
     // session-scoped (called only from `RecordingSessionKernel`'s ASR-failure

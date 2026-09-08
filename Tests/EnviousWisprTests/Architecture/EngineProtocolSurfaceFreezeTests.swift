@@ -501,6 +501,18 @@ import Testing
         MemberSignature(condition: nil, signature: "var feedsSharedProgressFile: Bool { get }"),
         MemberSignature(
           condition: nil, signature: "var onServiceInterrupted: (() -> Void)? { get set }"),
+        // #1908: HEAVY wedge-recovery requirement — see `ASRManager
+        // .attemptWedgeRecoveryUnload()` / `ASRManagerProxy`'s no-op default.
+        MemberSignature(condition: nil, signature: "func attemptWedgeRecoveryUnload() async"),
+        // #1908: #1707 Phase 2 batch-decode fault oracle, ported from
+        // `ASRServiceHandler`'s `#if DEBUG` block onto the shared interface
+        // so `BatchDecodeFaultController` no longer needs a concrete
+        // `ASRManagerProxy` downcast.
+        MemberSignature(
+          condition: "DEBUG", signature: "func armBatchDecodeHold(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG", signature: "func releaseBatchDecode(trialID: String) async"),
+        MemberSignature(condition: "DEBUG", signature: "func clearBatchDecodeFault() async"),
         // Extension defaults.
         MemberSignature(
           condition: nil,
@@ -508,6 +520,18 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public var parakeetCacheOnly: Bool {\n    get { false }\n    set {}\n  }"),
+        MemberSignature(
+          condition: nil,
+          signature: "public func attemptWedgeRecoveryUnload() async"),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func armBatchDecodeHold(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func releaseBatchDecode(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func clearBatchDecodeFault() async"),
       ]),
     "ASREngineAdapter": Surface(
       name: "ASREngineAdapter", file: "Sources/EnviousWisprPipeline/ASREngineAdapter.swift",

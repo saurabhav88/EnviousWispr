@@ -823,7 +823,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
     /// decode (`ParakeetBackend.armBatchDecodeHold`, across XPC). Awaits the
     /// FULL round trip before returning — the acknowledged-arm barrier
     /// `BatchDecodeFaultController` depends on.
-    package func armBatchDecodeHold(trialID: String) async {
+    // #1908: `public`, not `package` — now an `ASRManagerInterface` protocol
+    // requirement (`#if DEBUG`), which is itself `public`; a witness must be
+    // at least as visible as the requirement it satisfies.
+    public func armBatchDecodeHold(trialID: String) async {
       try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
         serviceProxy { proxy in
@@ -838,7 +841,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
     /// Releases a previously-armed hold (`ParakeetBackend.releaseBatchDecode`,
     /// across XPC), letting the held decode proceed.
-    package func releaseBatchDecode(trialID: String) async {
+    public func releaseBatchDecode(trialID: String) async {
       try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
         serviceProxy { proxy in
@@ -854,7 +857,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
     /// Clears all armed/held state (`ParakeetBackend.clearBatchDecodeFault`,
     /// across XPC), so a forgotten trial from one Live UAT scenario cannot
     /// leak into the next.
-    package func clearBatchDecodeFault() async {
+    public func clearBatchDecodeFault() async {
       try? await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
         serviceProxy { proxy in
