@@ -602,7 +602,7 @@ internal final class PasteCascadeExecutor {
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.
       let tier1Start = CFAbsoluteTimeGetCurrent()
-      logPasteTimingStart(step: "ax_direct_write", bundleId: bundleId)
+      logPasteTimingStart(step: "ax_direct_write", startedAt: tier1Start, bundleId: bundleId)
       let insert = PasteService.insertViaAccessibility(
         legacy: request.legacyText,
         repaired: request.repairedText,
@@ -620,7 +620,8 @@ internal final class PasteCascadeExecutor {
       case .failed: tier1Outcome = "failed"
       }
       logPasteTiming(
-        step: "ax_direct_write", elapsedMs: (CFAbsoluteTimeGetCurrent() - tier1Start) * 1000,
+        step: "ax_direct_write", startedAt: tier1Start,
+        elapsedMs: (CFAbsoluteTimeGetCurrent() - tier1Start) * 1000,
         outcome: tier1Outcome, bundleId: bundleId)
       copiesBeforeImage = insert.copiesBeforeImage
       if case .succeeded = insert.writeCall { copiesSetterReached = true }
@@ -660,12 +661,13 @@ internal final class PasteCascadeExecutor {
       let app = request.targetApp, !app.isTerminated
     {
       let tier2ActivationStart = CFAbsoluteTimeGetCurrent()
-      logPasteTimingStart(step: "tier2_activate", bundleId: bundleId)
+      logPasteTimingStart(
+        step: "tier2_activate", startedAt: tier2ActivationStart, bundleId: bundleId)
       let activation = await activate(app)
       let activated = activation.activated
       let elapsed = activation.elapsed
       logPasteTiming(
-        step: "tier2_activate",
+        step: "tier2_activate", startedAt: tier2ActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2ActivationStart) * 1000,
         outcome: activated ? "activated" : "not_activated", bundleId: bundleId)
 
@@ -814,10 +816,11 @@ internal final class PasteCascadeExecutor {
         } else {
           tiersAttempted.append(.appleScript)
           let tier2bStart = CFAbsoluteTimeGetCurrent()
-          logPasteTimingStart(step: "tier2b_applescript", bundleId: bundleId)
+          logPasteTimingStart(
+            step: "tier2b_applescript", startedAt: tier2bStart, bundleId: bundleId)
           let appleScriptSucceeded = PasteService.pasteViaAppleScript(pid: app.processIdentifier)
           logPasteTiming(
-            step: "tier2b_applescript",
+            step: "tier2b_applescript", startedAt: tier2bStart,
             elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2bStart) * 1000,
             outcome: appleScriptSucceeded ? "succeeded" : "refused", bundleId: bundleId)
           if appleScriptSucceeded {
@@ -850,10 +853,11 @@ internal final class PasteCascadeExecutor {
       let app = request.targetApp, !app.isTerminated
     {
       let tier2cActivationStart = CFAbsoluteTimeGetCurrent()
-      logPasteTimingStart(step: "tier2c_activate", bundleId: bundleId)
+      logPasteTimingStart(
+        step: "tier2c_activate", startedAt: tier2cActivationStart, bundleId: bundleId)
       let activation = await activate(app)
       logPasteTiming(
-        step: "tier2c_activate",
+        step: "tier2c_activate", startedAt: tier2cActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2cActivationStart) * 1000,
         outcome: activation.activated ? "activated" : "not_activated", bundleId: bundleId)
       if activation.activated {
@@ -1350,46 +1354,50 @@ internal final class PasteCascadeExecutor {
   /// unbounded. Deliberately a plain local debug-log line, not a Sentry
   /// breadcrumb or telemetry event — the goal is something readable with
   /// `tail -f ~/Library/Logs/EnviousWispr/app.log \| grep PasteTiming` while
-  /// reproducing the freeze on purpose, not a fleet-wide signal. Wall-clock
-  /// (`CFAbsoluteTimeGetCurrent`), not any self-reported elapsed a callee
-  /// hands back, because a callee's own accounting is exactly what #2633's
-  /// activation loop got wrong (its `elapsed` counted intended sleeps only).
+  /// reproducing the freeze on purpose, not a fleet-wide signal.
   ///
-  /// `Task.detached`, not a plain `Task { }`, for the same reason as
-  /// `logPasteTimingStart` below — a plain `Task { }` here would inherit
-  /// this method's `@MainActor` isolation and only queue behind whatever
-  /// synchronous work runs next, rather than starting immediately.
-  private func logPasteTiming(step: String, elapsedMs: Double, outcome: String, bundleId: String) {
+  /// Three cloud-review rounds on PR #2716 found the same root property
+  /// missing three different ways: (1) a completion-only line is silent for
+  /// a call that never returns; (2) a plain `Task { }` inherits this
+  /// `@MainActor` method's isolation and only queues behind the very
+  /// blocking call it's meant to precede; (3) two independently-scheduled
+  /// `Task.detached` jobs (start and completion) have no guaranteed arrival
+  /// order at `AppLogger`, so a fast call can print its completion before
+  /// its own start line. All three are the same class: nothing about
+  /// WHEN or IN WHAT ORDER these lines physically get written can be
+  /// trusted, because they are best-effort diagnostic writes racing a path
+  /// this whole feature exists to observe without slowing down.
+  ///
+  /// The fix that closes the class rather than patching the next instance
+  /// of it: stop depending on write order or wall-clock write time
+  /// entirely. `startedAt` is captured SYNCHRONOUSLY, in true program
+  /// order, on the caller's own thread, before either log call is ever
+  /// scheduled — and it is embedded in BOTH the start and completion line.
+  /// A reader sorts or greps on `started_at` to recover true order and to
+  /// pair a start with its completion, regardless of which task actually
+  /// wins the race to reach `AppLogger` first. `Task.detached` (not a plain
+  /// `Task { }`) still matters for the start line specifically, so it has
+  /// a chance to begin running before a synchronous blocking call starves
+  /// it — but nothing about correctness depends on it succeeding.
+  private func logPasteTimingStart(step: String, startedAt: Double, bundleId: String) {
     Task.detached {
       await AppLogger.shared.log(
-        "step=\(step) elapsed_ms=\(String(format: "%.1f", elapsedMs)) "
-          + "outcome=\(outcome) bundle_id=\(bundleId)",
+        "step=\(step) started_at=\(String(format: "%.6f", startedAt)) start bundle_id=\(bundleId)",
         level: .info, category: "PasteTiming")
     }
   }
 
-  /// Cloud review (PR #2716): a completion-only log line is silent for the
-  /// one case it exists to catch — a call that never returns. If the target
-  /// AX provider or System Events blocks indefinitely, control never reaches
-  /// `logPasteTiming`, so a genuine hang is indistinguishable from a tier
-  /// that was never entered. This pairs with it: call immediately before the
-  /// risky call, so a hang shows a `start` line with no matching completion,
-  /// naming exactly which step is stuck.
-  ///
-  /// Cloud review (PR #2716, round 2): a plain `Task { }` created here
-  /// inherits this method's `@MainActor` isolation, so it only QUEUES on the
-  /// main actor rather than running immediately. The very next line is
-  /// exactly the synchronous, blocking call this breadcrumb exists to
-  /// precede, which occupies the main actor and starves that queued task —
-  /// so the "start" line would not actually reach the log until AFTER the
-  /// blocking call returns, defeating the whole point on the one path that
-  /// matters (a genuine hang). `Task.detached` inherits no actor, so it
-  /// begins running on its own thread immediately and can reach `AppLogger`
-  /// (a different actor) independent of whatever the main actor is doing.
-  private func logPasteTimingStart(step: String, bundleId: String) {
+  /// See `logPasteTimingStart` above for why `startedAt` (not just the
+  /// derived `elapsedMs`) is embedded here too — it is the join key and
+  /// sort key that makes physical write order irrelevant.
+  private func logPasteTiming(
+    step: String, startedAt: Double, elapsedMs: Double, outcome: String, bundleId: String
+  ) {
     Task.detached {
       await AppLogger.shared.log(
-        "step=\(step) start bundle_id=\(bundleId)",
+        "step=\(step) started_at=\(String(format: "%.6f", startedAt)) "
+          + "elapsed_ms=\(String(format: "%.1f", elapsedMs)) outcome=\(outcome) "
+          + "bundle_id=\(bundleId)",
         level: .info, category: "PasteTiming")
     }
   }
