@@ -232,10 +232,12 @@ struct RecoverySpoolStoreTests {
       reason: .cleanFinalized)
 
     #expect(try store.listSpoolSessionIDs() == ["alpha", "beta"])
-    try store.delete(recoverySessionID: "alpha")
+    try store.removeSpoolAudioDurably(recoverySessionID: "alpha")
+    try store.cleanupSpoolSidecars(recoverySessionID: "alpha")
     #expect(try store.listSpoolSessionIDs() == ["beta"])
     // Idempotent: deleting a missing spool is success.
-    try store.delete(recoverySessionID: "alpha")
+    try store.removeSpoolAudioDurably(recoverySessionID: "alpha")
+    try store.cleanupSpoolSidecars(recoverySessionID: "alpha")
   }
 
   // MARK: - One-attempt marker (#1063 PR2; broader meaning since #1740)
@@ -261,7 +263,8 @@ struct RecoverySpoolStoreTests {
       store: store, sessionID: "gamma", cipher: cipher, chunks: [[0.3]], reason: .cleanFinalized)
     try store.writeAttemptMarker(for: "gamma")
     #expect(store.hasAttemptMarker(for: "gamma"))
-    try store.delete(recoverySessionID: "gamma")
+    try store.removeSpoolAudioDurably(recoverySessionID: "gamma")
+    try store.cleanupSpoolSidecars(recoverySessionID: "gamma")
     #expect(!store.hasAttemptMarker(for: "gamma"), "spool delete cleared the marker")
     #expect(try store.listSpoolSessionIDs() == [])
   }
@@ -361,7 +364,8 @@ struct RecoverySpoolStoreTests {
 
     // A marker outliving its spool would tell the next launch that audio which
     // no longer exists was an escape recovery.
-    try store.delete(recoverySessionID: "delta")
+    try store.removeSpoolAudioDurably(recoverySessionID: "delta")
+    try store.cleanupSpoolSidecars(recoverySessionID: "delta")
     #expect(store.readEscapeMarker(for: "delta") == .absent, "spool delete cleared the marker")
 
     // Idempotent — a missing marker is success, not an error.
@@ -398,7 +402,7 @@ struct RecoverySpoolStoreTests {
       EscapeRecoveryMarker(recoverySessionID: id, triggeredAt: Date()))
 
     var threw = false
-    do { try store.delete(recoverySessionID: id) } catch { threw = true }
+    do { try store.cleanupSpoolSidecars(recoverySessionID: id) } catch { threw = true }
 
     #expect(threw, "the failure must surface, not be swallowed")
     #expect(
@@ -434,8 +438,16 @@ struct RecoverySpoolStoreTests {
   /// producing a PERMANENT History row for a dictation the user cancelled. So the
   /// failure path must also DESTROY the spool — which costs the user exactly what
   /// pressing cancel already costs them, and is what the caller falls back to.
-  @Test("prepare fails: returns false AND destroys the spool, leaving nothing to replay")
+  @Test(
+    "prepare fails: returns false and leaves the spool for the CALLER's own destructive-cancel fallback"
+  )
   func prepareEscapeRecoveryFailsClosed() async throws {
+    // #1807 (§D2): this used to destroy the spool directly here — a second,
+    // Storage-owned decider of final disposal, bypassing the coordinator's
+    // writer-quiescence join and discard marker entirely. `false` now means
+    // exactly what it always documented: "the caller performs today's
+    // ordinary destructive cancel" — which is `RecoveryCoordinator`'s own
+    // marker-aware destructor, not a duplicate one living here.
     let store = makeStore()
     let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
     await writeSpool(
@@ -443,13 +455,6 @@ struct RecoverySpoolStoreTests {
 
     // Block the marker write at its FIRST step: the temp path is already a
     // directory, so `open(…, O_CREAT | O_WRONLY)` fails with EISDIR.
-    //
-    // An earlier version of this test blocked the DESTINATION instead and proved
-    // nothing — macOS `replaceItemAt` happily replaces a non-empty directory with
-    // a file, so the write succeeded and the assertion caught my wrong assumption
-    // about the filesystem rather than a defect. The spool directory itself stays
-    // writable on purpose: sealing it would break the cleanup too, and then the
-    // test could not observe the destruction it exists to check.
     let tmpBlocker = store.directoryURL.appendingPathComponent(
       ".doomed.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
     try FileManager.default.createDirectory(at: tmpBlocker, withIntermediateDirectories: true)
@@ -459,8 +464,8 @@ struct RecoverySpoolStoreTests {
 
     #expect(ok == false, "the caller must be told to perform an ordinary cancel")
     #expect(
-      try store.listSpoolSessionIDs() == [],
-      "the spool is destroyed — a survivor with no marker replays as permanent History")
+      try store.listSpoolSessionIDs() == ["doomed"],
+      "Storage does not destroy it directly — that is the caller's job now")
   }
 
   /// An interrupted marker write is EVIDENCE, not absence.

@@ -89,7 +89,9 @@ final class RecoveryCoordinator {
     /// operation — guards a duplicate disposition call or a duplicate writer
     /// ack from starting a second marker write or deletion.
     var cleanupClaimed = false
-    var markerPersistence: Task<Void, Never>?
+    /// #1807 (§D2): `Bool` (not `Void`) — carries whether the write actually
+    /// succeeded, the first axis of `destroySpoolAndKey`'s decision table.
+    var markerPersistence: Task<Bool, Never>?
     /// Every caller awaiting this session's cleanup SETTLING, not merely being
     /// claimed. Production discards the `Task` it gets back; tests await it
     /// instead of a fixed delay (§11's test contract). Resolved exactly once,
@@ -359,6 +361,11 @@ final class RecoveryCoordinator {
   var destructionSpoolDeleteForTesting: ((String) throws -> Void)?
   // periphery:ignore - test seam
   var destructionKeyDeleteForTesting: (@Sendable (String) throws -> Void)?
+  /// #1807 §D2 test seam: force the discard-marker write to fail without a
+  /// real filesystem fault, so the decision table's "no durable evidence at
+  /// all" fallback cell is directly reachable from a test.
+  // periphery:ignore - test seam
+  var destructionMarkerWriteForTesting: (@Sendable (String) throws -> Void)?
   // periphery:ignore - test seam
   var deletionFailureBreadcrumbForTesting:
     (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
@@ -448,7 +455,7 @@ final class RecoveryCoordinator {
   @discardableResult
   private func destroySpoolAndKey(
     id: String, source: DestructionSource,
-    markerPersistence: Task<Void, Never>? = nil
+    markerPersistence: Task<Bool, Never>? = nil
   ) -> Task<Void, Never> {
     if let existing = discardOperations[id] { return existing }
     // #1807 round-2 correction (Codex chunk-3 review round 2, finding 1):
@@ -468,61 +475,113 @@ final class RecoveryCoordinator {
       markerPersistence
       ?? beginDiscardMarkerPersistence(recoverySessionID: id, source: source)
     return claimDiscardOperation(id: id) { [self] in
-      await marker.value
-      await performSpoolAndKeyDestruction(id: id, source: source).value
+      let markerCommitted = await marker.value
+      await performSpoolAndKeyDestruction(
+        id: id, source: source, markerCommitted: markerCommitted
+      ).value
     }
   }
 
+  /// #1807 (§D2) — the decision table's own home. `markerCommitted` is
+  /// "durable discard evidence: yes/no"; audio removal is tracked
+  /// SEPARATELY from sidecar cleanup (never inferred from a combined
+  /// result — `RecoverySpoolStore.delete()`'s old conflated shape is why
+  /// this method no longer calls it). Sidecars remain intact until audio
+  /// removal is durable. Then sidecar and key attempts fail independently.
+  ///
+  /// | durable discard evidence | audio removal confirmed | key action |
+  /// |---|---|---|
+  /// | yes | yes | delete |
+  /// | yes | no  | **retain key, retain discard evidence** |
+  /// | no  | yes | delete |
+  /// | no  | no  | best-effort erasure (today's existing fallback) |
+  ///
+  /// Discard evidence is removed LAST, only after CONFIRMED synced audio
+  /// removal — never before, and never when audio removal failed (the
+  /// interrupted-write / final marker is exactly what must survive that
+  /// case, so a future launch never resurrects it as a fresh orphan).
   private func performSpoolAndKeyDestruction(
-    id: String, source: DestructionSource
+    id: String, source: DestructionSource, markerCommitted: Bool
   ) -> Task<Void, Never> {
-    #if DEBUG
-      // #1755 chunk 6: crash-boundary hold — immediately before the spool
-      // attempt (seam or real store). Unarmed: no-op.
-      crashBoundaryController.boundaryReached(.beforeSpoolDelete)
-    #endif
-    do {
-      if let override = destructionSpoolDeleteForTesting {
-        try override(id)
-      } else {
-        try makeSpoolStore().delete(recoverySessionID: id)
-      }
-      emitCleanupOutcome(component: "spool", source: source, succeeded: true)
-    } catch {
-      emitDeletionFailed(component: "spool", source: source, error: error)
-      emitCleanupOutcome(component: "spool", source: source, succeeded: false)
-    }
-    // Key deletion ALWAYS runs, detached, even after a spool failure.
+    let store = makeSpoolStore()
+    let audioOverride = destructionSpoolDeleteForTesting
     let keyStore = self.keyStore
     let keyOverride = destructionKeyDeleteForTesting
-    // Capture self STRONGLY: the failure breadcrumb must survive coordinator
-    // deallocation racing the detached delete (a weak capture silently
-    // dropped it). The task is short-lived; the temporary strong retention
-    // ends when the task completes.
     #if DEBUG
       let crashBoundaryController = self.crashBoundaryController
     #endif
-    return Task.detached(priority: .utility) {
+    return Task { @MainActor [self] in
       #if DEBUG
-        // #1755 chunk 6: crash-boundary hold — immediately before the key
-        // attempt. While destruction_api_return is armed this call GATES
-        // (parks without publishing) so the caller-side hook can prove the
-        // live-ending API returned first.
-        crashBoundaryController.boundaryReached(.beforeKeyDelete)
+        crashBoundaryController.boundaryReached(.beforeSpoolDelete)
       #endif
-      do {
-        if let keyOverride {
-          try keyOverride(id)
-        } else {
-          try keyStore.delete(for: id)
+      let audioResult: Result<Void, any Error>
+      if let audioOverride {
+        // Existing actor-confined test seam; production disk work is detached.
+        audioResult = Result { try audioOverride(id) }
+      } else {
+        audioResult = await Task.detached(priority: .utility) {
+          Result { try store.removeSpoolAudioDurably(recoverySessionID: id) }
+        }.value
+      }
+      let audioRemovalConfirmed: Bool
+      switch audioResult {
+      case .success:
+        audioRemovalConfirmed = true
+      case .failure(let error):
+        audioRemovalConfirmed = false
+        emitDeletionFailed(component: "spool", source: source, error: error)
+      }
+
+      var sidecarCleanupSucceeded = true
+      if audioRemovalConfirmed {
+        let result = await Task.detached(priority: .utility) {
+          Result { try store.cleanupSpoolSidecars(recoverySessionID: id) }
+        }.value
+        if case .failure(let error) = result {
+          sidecarCleanupSucceeded = false
+          emitDeletionFailed(component: "spool", source: source, error: error)
         }
-        await MainActor.run {
-          self.emitCleanupOutcome(component: "key", source: source, succeeded: true)
+      }
+      emitCleanupOutcome(
+        component: "spool", source: source,
+        succeeded: audioRemovalConfirmed && sidecarCleanupSucceeded)
+
+      if markerCommitted && !audioRemovalConfirmed {
+        RecoveryLog.line("retaining key: durable discard evidence, unconfirmed audio removal")
+        return
+      }
+
+      let keyResult: Result<Void, any Error> = await Task.detached(priority: .utility) {
+        #if DEBUG
+          crashBoundaryController.boundaryReached(.beforeKeyDelete)
+        #endif
+        return Result {
+          if let keyOverride {
+            try keyOverride(id)
+          } else {
+            try keyStore.delete(for: id)
+          }
         }
-      } catch {
-        await MainActor.run {
-          self.emitDeletionFailed(component: "key", source: source, error: error)
-          self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
+      }.value
+      switch keyResult {
+      case .success:
+        emitCleanupOutcome(component: "key", source: source, succeeded: true)
+      case .failure(let error):
+        emitDeletionFailed(component: "key", source: source, error: error)
+        emitCleanupOutcome(component: "key", source: source, succeeded: false)
+      }
+
+      // Evidence is last; failed key/sidecar cleanup cannot prevent this attempt.
+      if audioRemovalConfirmed {
+        let result: Result<Void, any Error> = await Task.detached(priority: .utility) {
+          var firstFailure: (any Error)?
+          do { try store.deleteDiscardMarker(for: id) } catch { firstFailure = error }
+          do { try store.syncSpoolDirectory() } catch { firstFailure = firstFailure ?? error }
+          if let firstFailure { return .failure(firstFailure) }
+          return .success(())
+        }.value
+        if case .failure(let error) = result {
+          emitDeletionFailed(component: "marker", source: source, error: error)
         }
       }
     }
@@ -573,17 +632,28 @@ final class RecoveryCoordinator {
   }
 
   /// Begins immediately at disposition, and settles before destructive cleanup.
+  ///
+  /// #1807 (§D2): returns whether the write actually SUCCEEDED — "durable
+  /// discard evidence: yes/no" is the first axis of the decision table
+  /// `destroySpoolAndKey` applies once this settles.
   private func beginDiscardMarkerPersistence(
     recoverySessionID id: String, source: DestructionSource
-  ) -> Task<Void, Never> {
+  ) -> Task<Bool, Never> {
     let store = makeSpoolStore()
+    let override = destructionMarkerWriteForTesting
     return Task.detached(priority: .utility) { [self] in
       do {
-        try store.writeDiscardMarker(for: id)
+        if let override {
+          try override(id)
+        } else {
+          try store.writeDiscardMarker(for: id)
+        }
+        return true
       } catch {
         await MainActor.run {
           self.emitDeletionFailed(component: "marker", source: source, error: error)
         }
+        return false
       }
     }
   }
@@ -785,10 +855,19 @@ final class RecoveryCoordinator {
   /// `fireStateChangeIfNeeded()` call, and that same-launch wake must not
   /// rediscover a spool whose deletion failed.
   ///
-  /// NOTE: unlike launch replay, this spool carries NO attempt marker — no
-  /// replay ever ran for it. If deletion fails, a later launch gives it its
-  /// FIRST crash-recovery attempt, which is consistent with the one-attempt
-  /// rule. No-op when `id` is nil (armed only when recovery was on).
+  /// #1807 (founder decision, superseding the note this replaces): unlike
+  /// launch replay, this spool carries no ATTEMPT marker — no replay ever
+  /// ran for it. The original note here said that meant a later launch
+  /// would give a delete-failure survivor its FIRST crash-recovery attempt,
+  /// "consistent with the one-attempt rule." Codex's design review (Q3)
+  /// found this made `.historySaveFailed` the one destruction source that
+  /// could not honestly promise "never replay a concluded take" without an
+  /// explicit decision — the founder chose uniformity: this source now
+  /// writes the SAME durable no-replay marker (§D1) every other source
+  /// does, before its delete is even attempted, so a survivor is a
+  /// `.markedForDiscard` cleanup retry on the next scan, never a fresh
+  /// first-ever attempt. No special case remains. No-op when `id` is nil
+  /// (armed only when recovery was on).
   @discardableResult
   func handleHistorySaveFailed(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
@@ -936,6 +1015,36 @@ final class RecoveryCoordinator {
     RecoveryLog.line("scan finished")
   }
 
+  /// The production orphan-key sweep, returned so tests can await this operation
+  /// independently of the marker sweep that may legitimately retire its evidence.
+  @discardableResult
+  func startKeyOnlySweep() -> Task<Void, Never> {
+    let keyStore = self.keyStore
+    let makeSpoolStore = self.makeSpoolStore
+    return Task.detached(priority: .utility) { [weak self] in
+      let keyIDs = keyStore.listAccountIDs()
+      // #1807 (§C): a vanished coordinator must ABORT the sweep — it is not
+      // evidence the protection set is empty. `self?.protectedSessionIDs`
+      // reads nil only when `self` is nil, never when the set is genuinely
+      // empty (an empty dictionary's `.keys` is a real, non-nil, empty value).
+      guard let liveArmedKeys = await MainActor.run(body: { self?.protectedSessionIDs })
+      else { return }
+      let liveArmed = Set(liveArmedKeys)
+      // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
+      // an IO/permission error as "no spools" would delete keys for real `.ewrec`
+      // files. Abort the sweep instead — same discipline as the scan-start list.
+      guard let currentSpoolList = try? makeSpoolStore().listSpoolSessionIDs() else { return }
+      let currentSpools = Set(currentSpoolList)
+      for id in keyIDs where !liveArmed.contains(id) && !currentSpools.contains(id) {
+        // A failed audio-directory sync leaves a marker and a retained key.
+        // The marker-only sweep must establish durable absence before this
+        // orphan-key path can erase that key. Unreadability also defers.
+        guard makeSpoolStore().hasDiscardMarker(for: id) == .absent else { continue }
+        try? keyStore.delete(for: id)
+      }
+    }
+  }
+
   /// One full discovery + per-item-replay pass. Returns `true` exactly when
   /// the pass stopped because a live record-press was refused mid-scan (§3.1)
   /// — the signal `drainPendingRescan()` uses to stop draining outright rather
@@ -980,26 +1089,7 @@ final class RecoveryCoordinator {
     //     NOT swept (the stale scan-start snapshot would have missed it and deleted
     //     the key, making that recording undecryptable — r4 P2).
     // Only a key with NO spool now (and not live-armed) is a true key-only orphan.
-    let keyStore = self.keyStore
-    let makeSpoolStore = self.makeSpoolStore
-    Task.detached(priority: .utility) { [weak self] in
-      let keyIDs = keyStore.listAccountIDs()
-      // #1807 (§C): a vanished coordinator must ABORT the sweep — it is not
-      // evidence the protection set is empty. `self?.protectedSessionIDs`
-      // reads nil only when `self` is nil, never when the set is genuinely
-      // empty (an empty dictionary's `.keys` is a real, non-nil, empty value).
-      guard let liveArmedKeys = await MainActor.run(body: { self?.protectedSessionIDs })
-      else { return }
-      let liveArmed = Set(liveArmedKeys)
-      // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
-      // an IO/permission error as "no spools" would delete keys for real `.ewrec`
-      // files. Abort the sweep instead — same discipline as the scan-start list.
-      guard let currentSpoolList = try? makeSpoolStore().listSpoolSessionIDs() else { return }
-      let currentSpools = Set(currentSpoolList)
-      for id in keyIDs where !liveArmed.contains(id) && !currentSpools.contains(id) {
-        try? keyStore.delete(for: id)
-      }
-    }
+    startKeyOnlySweep()
 
     // Every sweep candidate claims the same per-session operation as disposal.
     let markerSweep = Task.detached(priority: .utility) { [weak self] in

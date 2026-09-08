@@ -143,28 +143,36 @@ public struct RecoverySpoolStore: Sendable {
       truncated: !sawCleanFinalize)
   }
 
-  /// Delete a spool file AND its recovery-attempt marker (#1063 PR2). Idempotent
-  /// — a missing file is success. Deleting the spool always clears its marker so
-  /// no stale marker outlives the spool it guarded (success and abandon paths
-  /// both route here).
-  public func delete(recoverySessionID: String) throws {
+  /// Remove ONLY the spool audio file, and durably sync that removal to the
+  /// containing directory (#1807 §D2). Kept separate from sidecar cleanup
+  /// below — the decision table needs to know specifically whether the AUDIO
+  /// is durably gone, independent of any sidecar's own fate. Idempotent — an
+  /// already-absent spool still counts as durable absence.
+  public func removeSpoolAudioDurably(recoverySessionID: String) throws {
     let url = spoolURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
-      // Spool already gone — still clear any marker below.
+      // Already gone — durable absence either way.
     }
-    // #2087: BOTH sidecars are attempted even if the first throws, then the
-    // first failure is surfaced. Chaining them with `try` looks equivalent and
-    // is not: the spool is already gone by this point, so nothing will ever scan
-    // this id again, and a sidecar skipped because its predecessor threw is
-    // orphaned permanently. An Escape marker left behind that way outlives the
-    // audio it describes with no path back to it.
-    //
-    // The spool still goes FIRST. It is the only file that carries recoverable
-    // audio, so if a partial failure must leave something behind, it should
-    // leave metadata a later delete is idempotent about — never audio whose
-    // provenance sidecar has already been destroyed.
+    try Self.syncDirectory(containing: url)
+  }
+
+  /// Clean up a spool's non-discard sidecars: the recovery-attempt, Escape,
+  /// and readiness-retry markers (#1063 PR2, #2087). Never the spool file
+  /// itself (#1807 §D2 tracks that separately via `removeSpoolAudioDurably`)
+  /// and never the discard marker — its own lifetime (retained until
+  /// confirmed, synced audio removal) is the coordinator's explicit
+  /// responsibility, not a sidecar's.
+  ///
+  /// #2087: BOTH sidecars are attempted even if the first throws, then the
+  /// first failure is surfaced. Chaining them with `try` looks equivalent and
+  /// is not: by the time this runs the spool is already gone (or is about to
+  /// be — callers run this alongside `removeSpoolAudioDurably`), so nothing
+  /// will ever scan this id again, and a sidecar skipped because its
+  /// predecessor threw is orphaned permanently. An Escape marker left behind
+  /// that way outlives the audio it describes with no path back to it.
+  public func cleanupSpoolSidecars(recoverySessionID: String) throws {
     var firstFailure: (any Error)?
     do { try deleteAttemptMarker(for: recoverySessionID) } catch { firstFailure = error }
     do { try deleteEscapeMarker(for: recoverySessionID) } catch {
@@ -467,16 +475,29 @@ public struct RecoverySpoolStore: Sendable {
   /// half-perform. Either the marker is durably on disk and this returns `true`,
   /// or nothing survives and it returns `false`.
   ///
-  /// **On failure it destroys the spool and its sidecars.** That looks harsh and
-  /// is the only honest option: a spool left behind with no readable marker is
-  /// replayed at the next launch as an ordinary crash rescue, producing a
-  /// PERMANENT History row for a dictation the user cancelled. Given the choice
-  /// between losing a take the user asked to discard and keeping one they never
-  /// agreed to keep, this loses the take — which is also exactly what today's
-  /// destructive cancel does, so the caller's fallback is unchanged behaviour.
+  /// #1807 (§D2) — superseding the original note this replaces: on failure this
+  /// used to destroy the spool and its sidecars DIRECTLY, bypassing every
+  /// coordinator-owned contract (the writer-quiescence join, the discard
+  /// marker, `pendingSessions`/`nextLaunchOnlyRecoveryIDs`) — a second,
+  /// independent decider of final disposal that Storage does not own and
+  /// should not make. **Storage does not import or call the coordinator**, so
+  /// the fix is NOT a new upward dependency here — it is simply not acting: on
+  /// failure this now ONLY returns `false`, and the CALLER's own existing
+  /// fallback (`RecordingSessionKernel`'s `prepareEscapeRecoveryIfNeeded`
+  /// already falls back to an ordinary destructive cancel, which reaches
+  /// `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave` with a
+  /// `.cancelled` ending — `shouldDeleteOnLiveEnding` already returns `true`
+  /// for it) does the SAME thing this used to do directly, but through the
+  /// coordinator's now marker-aware destructor instead of around it. The
+  /// original reasoning for why failure discards the take, not why it used to
+  /// delete directly, still holds and is preserved below.
   ///
-  /// Best-effort cleanup: if the destroy also fails there is nothing further to
-  /// try, and the caller has already been told to treat this as a plain cancel.
+  /// A spool left behind with no readable marker would be replayed at the next
+  /// launch as an ordinary crash rescue, producing a PERMANENT History row for
+  /// a dictation the user cancelled. Given the choice between losing a take
+  /// the user asked to discard and keeping one they never agreed to keep, the
+  /// caller's fallback loses the take — exactly what today's destructive
+  /// cancel already does.
   public func prepareEscapeRecovery(
     recoverySessionID: String, triggeredAt: Date, takeID: String?
   ) -> Bool {
@@ -486,7 +507,6 @@ public struct RecoverySpoolStore: Sendable {
           recoverySessionID: recoverySessionID, triggeredAt: triggeredAt, takeID: takeID))
       return true
     } catch {
-      try? delete(recoverySessionID: recoverySessionID)
       return false
     }
   }

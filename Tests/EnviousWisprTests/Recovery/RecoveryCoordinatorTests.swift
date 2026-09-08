@@ -317,9 +317,101 @@ struct RecoveryCoordinatorTests {
     #expect(
       emitted.first(where: { $0.component == "spool" })?.succeeded == false,
       "a thrown spool delete reports failure")
+    // #1807 §D2: a real armed session writes its discard marker durably, so
+    // this is the decision table's RETAIN cell (marker committed, audio
+    // removal failed) — the key delete is never attempted, so no "key"
+    // event exists at all.
+    #expect(
+      emitted.first(where: { $0.component == "key" }) == nil,
+      "marker committed + audio removal failed retains the key: no key attempt, no key telemetry")
+  }
+
+  @Test(
+    "cleanup telemetry: key deletion is still attempted when the marker itself failed to persist (§D2 best-effort fallback)"
+  )
+  func cleanupTelemetryStillAttemptsKeyWhenMarkerFails() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    // Both audio removal AND the marker fail: with no durable discard
+    // evidence at all, §D2 falls back to today's existing behavior — still
+    // attempt the key delete best-effort, rather than leaving it retained
+    // with nothing on disk to explain why.
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let emitted = sink.all
     #expect(
       emitted.first(where: { $0.component == "key" })?.succeeded == true,
-      "the key delete still ran and succeeded")
+      "no durable discard evidence exists: key delete still attempted and succeeds")
+  }
+
+  @Test(
+    "§D2 regression: the key-only sweep must not erase a retained key when the audio unlink succeeded but the directory sync did not"
+  )
+  func keyOnlySweepRespectsRetainedKey() async throws {
+    struct InjectedSyncFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    // Simulate "unlink succeeded, directory sync did not": the file is
+    // genuinely gone from disk (so a fresh `listSpoolSessionIDs()` will not
+    // see it) but the operation as a whole still reports failure, exactly
+    // like a real `removeSpoolAudioDurably` whose `syncDirectory` throws
+    // after the file is already removed.
+    h.coordinator.destructionSpoolDeleteForTesting = { sessionID in
+      try FileManager.default.removeItem(at: h.spoolStore.spoolURL(for: sessionID))
+      throw InjectedSyncFailure()
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    // §D2 RETAIN cell: marker committed (real armed session), audio removal
+    // failed — key and marker both survive the destructor itself.
+    #expect((try? h.keyStore.retrieve(for: id)) != nil, "destructor retained the key")
+    #expect(h.spoolStore.hasDiscardMarker(for: id) != .absent, "destructor retained the marker")
+
+    // Now run the independent key-only sweep. The spool file is truly gone
+    // from disk, so without the marker check this sweep would read the key
+    // as an ordinary orphan and erase it out from under the retention the
+    // destructor just chose.
+    // Run the production key sweep alone: a simultaneous marker sweep could
+    // legitimately sync absence and retire the evidence before the key check.
+    await h.coordinator.startKeyOnlySweep().value
+
+    #expect(
+      (try? h.keyStore.retrieve(for: id)) != nil,
+      "the key-only sweep must defer to the marker, not treat a synced-away spool as a plain orphan"
+    )
+  }
+
+  @Test(
+    "§D2 regression: sidecar cleanup is skipped (not attempted) when audio removal itself failed, preserving the replay-once evidence"
+  )
+  func sidecarsSurviveAFailedAudioRemoval() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    try h.spoolStore.writeAttemptMarker(for: id)
+    #expect(h.spoolStore.hasAttemptMarker(for: id))
+
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    #expect(
+      h.spoolStore.hasAttemptMarker(for: id),
+      "audio removal failed: sidecar cleanup must not even attempt to run, or the last evidence a replay was already tried is lost"
+    )
   }
 
   // MARK: - #1740 launch-replay save failure deletes
@@ -1448,11 +1540,13 @@ struct RecoveryCoordinatorTests {
     var value: Int { lock.withLock { count } }
   }
 
-  // Best-effort deletion stays best-effort (no retries, no escapes); the ONLY
-  // new behavior is one failure breadcrumb per failed component per
-  // destruction call, with exact shape and a fixed source label.
+  // Best-effort deletion stays best-effort (no retries, no escapes). §D2
+  // changes what "best-effort" means for the key: a real armed session's
+  // discard marker commits durably, so a spool (audio) failure now lands on
+  // the RETAIN cell — the key delete is never even attempted — rather than
+  // running unconditionally as it did before chunk 4.
   @Test(
-    "live-ending destruction: 2×2 spool/key failure matrix emits exactly one breadcrumb per failed component",
+    "live-ending destruction: 2×2 spool/key failure matrix — key retained (not attempted) exactly when audio removal fails with a committed marker",
     arguments: [false, true], [false, true])
   func deletionFailureMatrix(spoolFails: Bool, keyFails: Bool) async throws {
     let harness = Self.makeHarness()
@@ -1485,29 +1579,34 @@ struct RecoveryCoordinatorTests {
     await unwrapped.value
 
     #expect(spoolAttempts.value == 1, "spool attempt exactly once")
-    #expect(keyAttempts.value == 1, "key attempt exactly once, even after spool failure")
-    let expectedCount = (spoolFails ? 1 : 0) + (keyFails ? 1 : 0)
-    #expect(log.crumbs.count == expectedCount, "exactly one breadcrumb per failed component")
+
     if spoolFails {
+      // §D2 RETAIN cell: a real armed session's marker commits durably, so a
+      // failed audio removal keeps the key rather than attempting its delete.
+      #expect(
+        keyAttempts.value == 0, "audio removal failed with a committed marker: key never attempted")
+      #expect(
+        log.crumbs.count == 1,
+        "only the spool failure breadcrumb — keyFails is moot, no attempt was made")
       #expect(
         log.crumbs.contains(
           Crumb(
             stage: "recovery", message: "deletion_failed",
             data: ["component": "spool", "source": "live_ending"])),
         "exact spool failure breadcrumb")
-    }
-    if keyFails {
+    } else {
+      #expect(keyAttempts.value == 1, "audio removal succeeded: key delete attempted normally")
+      let expectedCount = keyFails ? 1 : 0
       #expect(
-        log.crumbs.contains(
-          Crumb(
-            stage: "recovery", message: "deletion_failed",
-            data: ["component": "key", "source": "live_ending"])),
-        "exact key failure breadcrumb")
-    }
-    if spoolFails && keyFails {
-      #expect(
-        Set(log.crumbs.map { $0.data["component"] ?? "" }) == ["spool", "key"],
-        "both-fail cell: one spool + one key, no duplicate")
+        log.crumbs.count == expectedCount, "a breadcrumb only if the key delete itself failed")
+      if keyFails {
+        #expect(
+          log.crumbs.contains(
+            Crumb(
+              stage: "recovery", message: "deletion_failed",
+              data: ["component": "key", "source": "live_ending"])),
+          "exact key failure breadcrumb")
+      }
     }
   }
 
