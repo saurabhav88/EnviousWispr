@@ -302,6 +302,126 @@ import Testing
           == false,
         "nothing was written for the starved take")
     }
+
+    // MARK: - 6. #1807 (§C) — `onRecoveryWriterQuiescent` ack firing
+
+    @Test(
+      "beginCapturePhase throwing before it ever reaches startRecoverySpooling still acks (round 2)"
+    )
+    func beginCapturePhaseThrowBeforeSpoolingStillAcks() async throws {
+      // No `startEnginePhase()` call, so `activeSource` is nil and
+      // `beginCapturePhase` throws before EVER reaching `startRecoverySpooling`
+      // — the exact gap Codex chunk-2 review round 2 found: a session that
+      // armed via `makeDirective` but whose capture-start failed before Audio
+      // ever spooled anything left its `pendingSessions` entry waiting on a
+      // writer ack that could never arrive from inside `startRecoverySpooling`
+      // itself (nothing in there ever runs).
+      let manager = AudioCaptureManager()
+      var acked: [String] = []
+      manager.onRecoveryWriterQuiescent = { acked.append($0) }
+
+      await #expect(throws: (any Error).self) {
+        _ = try await manager.beginCapturePhase(
+          recoverySessionID: "no-source-take", recoveryPayload: nil)
+      }
+
+      #expect(
+        acked == ["no-source-take"],
+        "beginCapturePhase's own defer must ack when it exits before startRecoverySpooling")
+    }
+
+    @Test("a decode failure fires the no-writer ack, using the separately-supplied id")
+    func decodeFailureFiresNoWriterAck() async throws {
+      let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
+      var acked: [String] = []
+      manager.onRecoveryWriterQuiescent = { acked.append($0) }
+
+      manager.armRecoverySpoolingForTesting(
+        recoverySessionID: "undecodable-take", payload: Data([0xFF, 0x00, 0x01]))
+
+      #expect(manager.debugRecoverySpoolWriter == nil, "no writer is created on decode failure")
+      #expect(
+        acked == ["undecodable-take"],
+        "the ack must fire using the id supplied independently of the payload, since decoding it is what failed"
+      )
+    }
+
+    @Test("a disabled directive fires the no-writer ack")
+    func disabledDirectiveFiresNoWriterAck() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
+      var acked: [String] = []
+      manager.onRecoveryWriterQuiescent = { acked.append($0) }
+      let directive = RecoverySpoolDirective(
+        enabled: false, recoverySessionID: "disabled-take",
+        spoolPath: dir.appendingPathComponent("disabled-take.\(RecoveryConstants.fileExtension)")
+          .path,
+        keyData: nil, settingsSnapshot: Self.snapshot())
+      let payload = try JSONEncoder().encode(directive)
+
+      manager.armRecoverySpoolingForTesting(recoverySessionID: "disabled-take", payload: payload)
+
+      #expect(manager.debugRecoverySpoolWriter == nil)
+      #expect(acked == ["disabled-take"])
+    }
+
+    @Test("a low-disk refusal fires the no-writer ack, using the decoded directive's own id")
+    func lowDiskRefusalFiresNoWriterAck() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in false }
+      var acked: [String] = []
+      manager.onRecoveryWriterQuiescent = { acked.append($0) }
+
+      manager.armRecoverySpoolingForTesting(
+        recoverySessionID: "starved-take",
+        payload: try Self.payload(sessionID: "starved-take", dir: dir))
+
+      #expect(manager.debugRecoverySpoolWriter == nil)
+      #expect(acked == ["starved-take"])
+    }
+
+    @Test(
+      "predecessor retirement acks the PREDECESSOR's id, never the successor's — closes the stale-completion hazard"
+    )
+    func predecessorRetirementAcksThePredecessorID() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
+      manager.isCapturing = true
+      var acked: [String] = []
+
+      manager.armRecoverySpoolingForTesting(
+        recoverySessionID: "predecessor",
+        payload: try Self.payload(sessionID: "predecessor", dir: dir))
+      #expect(acked.isEmpty, "the first arm alone must not ack anything yet")
+
+      let successorPayload = try Self.payload(sessionID: "successor", dir: dir)
+      // #1807 round-2 correction (Codex chunk-2 review, finding 5): the
+      // writer's own `finalize` completion (what `Self.drain` awaits) fires
+      // on the writer's write queue; the ACK fires from a SEPARATE MainActor
+      // task hop the `notifying:` adapter schedules on top of it (see
+      // `RecoverySpoolWriter.finalize(reason:notifying:)`). Draining the
+      // writer queue alone races that second hop. Wait on the ack ITSELF.
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        manager.onRecoveryWriterQuiescent = {
+          acked.append($0)
+          continuation.resume()
+        }
+        manager.armRecoverySpoolingForTesting(
+          recoverySessionID: "successor", payload: successorPayload)
+      }
+
+      #expect(
+        acked == ["predecessor"],
+        "retirement must ack the PREDECESSOR's captured id — never the successor's, and never twice"
+      )
+    }
   }
 
   /// Local stub for the teardown ingress above. Mirrors the stop-fence suite's

@@ -264,6 +264,28 @@ import Testing
       #expect(capturedIdentity == "asr.unrecognized_model_load_failure")
     }
 
+    // MARK: #1807 round 2 — a pre-Audio terminal still acknowledges recovery
+
+    /// `runForwardPath`'s `defer` (added for the recovery-key-safety-net fix,
+    /// issue #1807) must fire `recoveryCaptureDidNotStart` when the session
+    /// concludes BEFORE ever calling `beginCapturePhase` — a model-load
+    /// failure is exactly that shape. Without this, a session that armed
+    /// crash recovery but never reached Audio at all leaves its
+    /// `RecoveryCoordinator` protection entry waiting on a writer ack that
+    /// can now never arrive.
+    @Test("model-load failure acknowledges recovery without attempting capture")
+    func preAudioFailureAcknowledgesRecovery() async {
+      let (context, wrapper) = makeWrapper(
+        behavior: .failLoad(NSError(domain: "test", code: 1)))
+      wrapper.sessionConfigForTesting = .testDefault(recoverySessionID: "pre-audio-failure")
+
+      await apply(.start, to: wrapper, concluding: true)
+
+      #expect(wrapper.testKernel.recordingOutcome == .failed(.modelLoadFailed))
+      #expect(context.capture.beginCapturePhaseCallCount == 0)
+      #expect(context.capture.recoveryNotStartedIDs == ["pre-audio-failure"])
+    }
+
     // MARK: #959 — seam routing: ordinary terminal uses cheap cancel(), wedge uses recoverFromWedge()
 
     @Test("#959 an ordinary terminal routes through cheap cancel(), never recoverFromWedge()")

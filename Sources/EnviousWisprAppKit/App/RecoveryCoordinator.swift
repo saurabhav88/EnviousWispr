@@ -47,17 +47,55 @@ final class RecoveryCoordinator {
   private let existingRecoveryIDs: @MainActor () async -> Set<String>
   /// Whether a live dictation is in flight — the recovery-independent contention
   /// guard (a recording can arm in the launch window even with recovery OFF, so
-  /// `armedSessionID` alone wouldn't catch it). Recovery never runs the shared
-  /// engine while this is true; it defers to a future launch.
+  /// `pendingSessions` protection alone wouldn't catch it — recovery is OFF
+  /// means no directive, no protection entry, at all). Recovery never runs the
+  /// shared engine while this is true; it defers to a future launch.
   private let isDictationActive: @MainActor () -> Bool
 
-  /// The recovery session armed for the CURRENT recording, or nil. Set BEFORE
-  /// the directive's key is durably stored (so the launch scan can never delete a
-  /// key it snapshots mid-arm); cleared if that store fails, on durable save, or
-  /// when the recording ends without a durable save. Its remaining job in PR2 is
-  /// to let the launch scan PROTECT a live in-progress recording from a
-  /// concurrent-arm race. MainActor-confined.
-  private var armedSessionID: String?
+  /// #1807 (§C) — per-session protection, replacing the single-slot
+  /// `armedSessionID: String?` this used to be. Keyed by recovery session id.
+  /// ONLY covers LIVE-ARMED sessions from THIS launch (`makeDirective`
+  /// inserts, the four live `handle*` entry points retire) — a scan-discovered
+  /// orphan from a PRIOR process's crash never has an entry here, because no
+  /// writer in this process will ever touch it (§3c: `historyDedup`,
+  /// `replayOutcome`, and `userDiscard` call `destroySpoolAndKey` directly,
+  /// unchanged, exactly as before this chunk).
+  ///
+  /// A session stays protected (excluded from the scan's `recoverable` list
+  /// and the key-only sweep) not just until its final disposition is known,
+  /// but until its writer ALSO confirms it can never write to the spool again
+  /// AND the resulting cleanup operation (a destroy, or a plain retain) has
+  /// actually SETTLED — not merely been dispatched. A genuinely unfinished
+  /// writer stays protected; that is an intentional pending state, not a leak.
+  /// MainActor-confined, exactly like the slot it replaces.
+  ///
+  /// `internal`, not `private`: `Disposition.retain` must be nameable from
+  /// `requestDisposal`'s test-facing call site (see that function's doc).
+  struct PendingSession {
+    enum Disposition {
+      case destroy(DestructionSource)
+      case retain
+    }
+    /// nil until a `handle*` call installs it via `requestDisposal`. Refines
+    /// the plan's `finalDispositionKnown` boolean into an enum carrying the
+    /// actual action, per Codex plan-review round 2: "a Boolean and an
+    /// arbitrary callback are not the complete contract."
+    var disposition: Disposition?
+    /// Set by `acknowledgeWriterQuiescent`. Proof only that the writer (if one
+    /// ever existed) will never touch this spool again — NEVER proof it wrote
+    /// successfully (§2.5-4; the completion closure fires on error paths too).
+    var writerCanNeverWriteAgain = false
+    /// True once this coordinator has claimed the session's one cleanup
+    /// operation — guards a duplicate disposition call or a duplicate writer
+    /// ack from starting a second marker write or deletion.
+    var cleanupClaimed = false
+    /// Every caller awaiting this session's cleanup SETTLING, not merely being
+    /// claimed. Production discards the `Task` it gets back; tests await it
+    /// instead of a fixed delay (§11's test contract). Resolved exactly once,
+    /// inside `retireSettledSession`.
+    var settlementContinuations: [CheckedContinuation<Void, Never>] = []
+  }
+  private var pendingSessions: [String: PendingSession] = [:]
 
   /// True while an orphan is being actively replayed on the shared engine.
   /// DRIVES the recording gate: a record-press while true mints no session (shows
@@ -230,14 +268,17 @@ final class RecoveryCoordinator {
     guard let payload = try? JSONEncoder().encode(directive) else { return nil }
 
     // Protect this id from the launch scan BEFORE the key can land on disk.
-    // Ordering invariant: `armedSessionID` is set (synchronously, on the
-    // MainActor) no later than the key hits disk. The scan reads `armed` AFTER
-    // snapshotting the on-disk spools, so any spool it could have snapshotted was
-    // armed before this assignment and is therefore already protected — closing
-    // the mid-arm gap (Codex code-diff r4 P2). Cleared below if the durable store
-    // fails. (A concurrent double-arm overwrites this; the loser's key is an
-    // orphan a future launch scan recovers or sweeps — harmless.)
-    armedSessionID = recoverySessionID
+    // Ordering invariant: the `pendingSessions` entry is inserted
+    // (synchronously, on the MainActor) no later than the key hits disk. The
+    // scan reads pending membership AFTER snapshotting the on-disk spools, so
+    // any spool it could have snapshotted was armed before this assignment and
+    // is therefore already protected — closing the mid-arm gap (Codex
+    // code-diff r4 P2). Removed below if the durable store fails — no writer
+    // will ever exist for this id, so there is nothing left to protect or
+    // join against; this is NOT routed through `requestDisposal`/
+    // `acknowledgeWriterQuiescent` (#1807 §C), since a directive that never
+    // left the coordinator needs no Audio round-trip.
+    pendingSessions[recoverySessionID] = PendingSession()
 
     // Durably store the key off the MainActor BEFORE returning an enabled
     // payload. Fail-open: a store failure disables recovery for this take.
@@ -246,11 +287,12 @@ final class RecoveryCoordinator {
       (try? keyStore.store(keyData: keyData, for: recoverySessionID)) != nil
     }.value
     guard stored else {
-      // No durable key landed — un-protect so the scan isn't guarding a phantom
-      // and a later non-saved cleanup is a no-op. Guard the id in case a
-      // concurrent arm overwrote the slot (won't happen with sequential
-      // recordings, but keeps the clear precise).
-      if armedSessionID == recoverySessionID { armedSessionID = nil }
+      // No durable key landed — un-protect so the scan isn't guarding a
+      // phantom and a later non-saved cleanup is a no-op. Keyed by this exact
+      // fresh UUID, so a concurrent double-arm (a different id) is unaffected
+      // — unlike the single-slot `armedSessionID` this replaces, no id
+      // collision is possible here.
+      pendingSessions.removeValue(forKey: recoverySessionID)
       SentryBreadcrumb.captureError(
         RecoveryArmError.keyStoreFailed, category: .recoveryKeyStoreFailed, stage: "recording",
         extra: ["backend": backendType.rawValue])
@@ -262,7 +304,12 @@ final class RecoveryCoordinator {
 
   /// #1755 chunk 4 — fixed, low-cardinality labels for WHY a destruction ran.
   /// Closed enum: no caller-supplied strings, no configurability.
-  private enum DestructionSource: String {
+  ///
+  /// #1807: widened from `private` to `internal` — `PendingSession
+  /// .Disposition.destroy(DestructionSource)` is itself internal, and an
+  /// associated value cannot be more restrictive than the case that carries
+  /// it. Still constructible only within `EnviousWisprAppKit`.
+  enum DestructionSource: String {
     case durableSave = "durable_save"
     case liveEnding = "live_ending"
     case preStartAbort = "pre_start_abort"
@@ -421,6 +468,132 @@ final class RecoveryCoordinator {
     }
   }
 
+  // MARK: - #1807 (§C) — session-keyed protection + writer-completion join
+
+  /// A `handle*` call installs this LIVE-ARMED session's final disposition (a
+  /// specific `DestructionSource`, or `.retain` for "keep it"). Joins with
+  /// `acknowledgeWriterQuiescent` — cleanup runs only once BOTH facts are
+  /// known, whichever arrives second. Idempotent: a duplicate call for a
+  /// session whose disposition is already installed joins the existing
+  /// operation rather than starting another one. Returns a `Task` that
+  /// completes once this session's cleanup has SETTLED — claimed, and for a
+  /// destroy, its detached key-deletion work has finished — never merely
+  /// dispatched. Production callers discard it; tests await it instead of a
+  /// fixed delay (§11's test contract).
+  ///
+  /// `internal`, not `private`: the RETAIN branch of `PendingSession
+  /// .Disposition` is currently unreachable through any real
+  /// `RecordingRecoveryEnding` (every cell of `shouldDeleteOnLiveEnding`
+  /// returns true today) — exposed for direct testing of that branch, the
+  /// same reasoning `shouldDeleteOnLiveEnding`/`shouldDeleteAfterReplay`
+  /// already use for their own static, directly-tested predicates.
+  @discardableResult
+  func requestDisposal(
+    recoverySessionID id: String, disposition: PendingSession.Disposition
+  ) -> Task<Void, Never> {
+    // #1807 round-2 correction (Codex chunk-2 review, finding 2): a missing
+    // entry means either this id was never admitted, or it was already
+    // retired — NEVER manufacture a fresh one here. Doing so could strand a
+    // waiter (nothing will ever complete the phantom entry's other half) or
+    // let an already-cleaned-up session be re-processed.
+    guard var entry = pendingSessions[id] else { return Task {} }
+    if entry.disposition == nil, !entry.cleanupClaimed {
+      entry.disposition = disposition
+    }
+    return awaitSettlement(recoverySessionID: id, entry: entry)
+  }
+
+  /// The writer confirms it can never write to `id`'s spool again — fires for
+  /// a real writer's finalize AND for every explicit "no writer, ever"
+  /// acknowledgment (decode failure, disabled directive, low-disk refusal,
+  /// and a pre-start abort's own direct ack). Idempotent — a late/duplicate
+  /// ack for an already-claimed session joins silently. `internal`, not
+  /// `private`: `WisprBootstrapper` (same module, different file) wires
+  /// Audio's completion closure directly to this.
+  func acknowledgeWriterQuiescent(recoverySessionID id: String) {
+    // #1807 round-2 correction: same reasoning as `requestDisposal` above —
+    // a missing entry means never-admitted or already-retired, either way
+    // nothing to acknowledge.
+    guard var entry = pendingSessions[id] else { return }
+    guard !entry.cleanupClaimed else { return }
+    entry.writerCanNeverWriteAgain = true
+    pendingSessions[id] = entry
+    tryClaimAndRunCleanup(recoverySessionID: id)
+  }
+
+  /// Writes `entry` back, attempts the join, and returns a `Task` resolved on
+  /// settlement — now, if the join completes synchronously as part of this
+  /// very call; later, when the missing half arrives via the other entry
+  /// point above.
+  private func awaitSettlement(
+    recoverySessionID id: String, entry: PendingSession
+  ) -> Task<Void, Never> {
+    pendingSessions[id] = entry
+    if let settling = tryClaimAndRunCleanup(recoverySessionID: id) {
+      return settling
+    }
+    // #1807 round-2 correction (Codex chunk-2 review, finding 4): STRONG
+    // self capture, matching `destroySpoolAndKey`'s own established pattern
+    // ("the failure breadcrumb must survive coordinator deallocation racing
+    // the detached delete"). A `[weak self]` here can silently strand a
+    // waiter forever if the coordinator is released while this task is
+    // in flight — the continuation lives INSIDE `pendingSessions`, so a
+    // dropped `self` before the continuation registers means no path this
+    // task's own reference chain can rely on. The task is short-lived; the
+    // temporary strong retention ends when it completes.
+    return Task { @MainActor [self] in
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        guard var waiting = self.pendingSessions[id] else {
+          // Already retired — a same-launch race resolved it between the
+          // write above and this continuation being registered.
+          continuation.resume()
+          return
+        }
+        waiting.settlementContinuations.append(continuation)
+        self.pendingSessions[id] = waiting
+      }
+    }
+  }
+
+  /// The ONE place a session's cleanup operation is claimed and run, whichever
+  /// of `requestDisposal`/`acknowledgeWriterQuiescent` completes the join.
+  /// Returns the settling `Task` when it claimed and started cleanup just now;
+  /// nil when the join is still incomplete (leaves the entry protected) or was
+  /// already claimed by an earlier call.
+  @discardableResult
+  private func tryClaimAndRunCleanup(recoverySessionID id: String) -> Task<Void, Never>? {
+    guard var entry = pendingSessions[id],
+      let disposition = entry.disposition,
+      entry.writerCanNeverWriteAgain,
+      !entry.cleanupClaimed
+    else { return nil }
+    entry.cleanupClaimed = true
+    pendingSessions[id] = entry
+    // #1807 round-2 correction (finding 4): STRONG self capture in both
+    // branches below — see `awaitSettlement`'s identical note.
+    switch disposition {
+    case .retain:
+      return Task { @MainActor [self] in
+        self.retireSettledSession(recoverySessionID: id)
+      }
+    case .destroy(let source):
+      let inner = destroySpoolAndKey(id: id, source: source)
+      return Task { @MainActor [self] in
+        _ = await inner.value
+        self.retireSettledSession(recoverySessionID: id)
+      }
+    }
+  }
+
+  /// Remove a session's entry once its cleanup has genuinely settled, and
+  /// resume every caller awaiting settlement.
+  private func retireSettledSession(recoverySessionID id: String) {
+    guard let entry = pendingSessions.removeValue(forKey: id) else { return }
+    for continuation in entry.settlementContinuations {
+      continuation.resume()
+    }
+  }
+
   /// Delete-versus-retain for a live recording that ended without a durable
   /// save (#1464; policy cutover #1755, founder Gate 2 2026-07-23). An ending
   /// fired ⇒ the app was ALIVE ⇒ the user witnessed the outcome, got the one
@@ -506,12 +679,13 @@ final class RecoveryCoordinator {
   }
 
   /// A recording's transcript was durably saved — delete that session's spool +
-  /// key. Best-effort, off the user's path, idempotent. Returns the detached
-  /// work so tests can await it; callers discard it.
+  /// key. Best-effort, off the user's path, idempotent. Returns a `Task` that
+  /// completes once cleanup has SETTLED (#1807 §C: waits for the writer's own
+  /// confirmation it can never write again, not merely for disposition to be
+  /// known) so tests can await it; production callers discard it.
   @discardableResult
   func handleDurableSave(recoverySessionID id: String) -> Task<Void, Never> {
-    if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id, source: .durableSave)
+    requestDisposal(recoverySessionID: id, disposition: .destroy(.durableSave))
   }
 
   /// A `.complete` dictation whose History save FAILED (#1740). The live path
@@ -532,9 +706,8 @@ final class RecoveryCoordinator {
   @discardableResult
   func handleHistorySaveFailed(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
     nextLaunchOnlyRecoveryIDs.insert(id)
-    return destroySpoolAndKey(id: id, source: .historySaveFailed)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.historySaveFailed))
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save
@@ -556,7 +729,6 @@ final class RecoveryCoordinator {
     recoverySessionID id: String?, ending: RecordingRecoveryEnding
   ) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
     guard Self.shouldDeleteOnLiveEnding(ending) else {
       // #1762: the RETAIN branch. A live ending that keeps its spool is the one
       // that produces an orphan for a later launch to find, so it must not be
@@ -567,7 +739,11 @@ final class RecoveryCoordinator {
         RecoveryLog.line("live ending (\(ending)) — keeping the spool for a future launch")
       }
       nextLaunchOnlyRecoveryIDs.insert(id)
-      return nil
+      // #1807 (§C): retain still joins the writer-quiescence contract — the
+      // entry stays protected until the writer confirms it will never touch
+      // this spool again, exactly like the delete branch below. Only then is
+      // protection actually safe to drop.
+      return requestDisposal(recoverySessionID: id, disposition: .retain)
     }
     // #1762: the DELETE branch. Logged on REQUEST, before the destructor runs —
     // `emitDeletionFailed` only fires on failure, so a successful live-ending
@@ -583,7 +759,7 @@ final class RecoveryCoordinator {
     // failed one leaves the survivor as a next-launch item, consistent with
     // the best-effort crash-atomicity contract (§3.5).
     nextLaunchOnlyRecoveryIDs.insert(id)
-    return destroySpoolAndKey(id: id, source: .liveEnding)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.liveEnding))
   }
 
   /// A record-press aborted BEFORE a kernel session was minted (a PTT release or
@@ -595,8 +771,13 @@ final class RecoveryCoordinator {
   @discardableResult
   func handlePreStartAbort(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id, source: .preStartAbort)
+    // #1807 (§C): a pre-start abort means no kernel session was ever minted,
+    // so Audio never saw this id and no writer could ever exist for it —
+    // acknowledge that directly rather than waiting on a round-trip that will
+    // never arrive. Order versus `requestDisposal` below does not matter: the
+    // join completes once both halves are installed, whichever runs first.
+    acknowledgeWriterQuiescent(recoverySessionID: id)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.preStartAbort))
   }
 
   /// On launch, scan for orphan spools and recover them (#1063 PR2 — replaces
@@ -693,7 +874,6 @@ final class RecoveryCoordinator {
     // and finished must not read like a pass that stalled — that ambiguity is
     // the whole reason this issue exists.
     RecoveryLog.line("\(spoolIDs.count) spool(s) on disk")
-    let armed = armedSessionID
 
     // Sweep KEY-ONLY orphans first: a key whose spool was never written — a
     // recording that armed then crashed before the helper wrote the first frame.
@@ -704,11 +884,11 @@ final class RecoveryCoordinator {
     // its key to decrypt). Runs even when there are zero spools.
     //
     // Race-safe ordering (Codex code-diff r2 + r4 P2): inside the detached task,
-    // snapshot the keys FIRST, then read the live armed id AND re-list the spools
-    // FRESH (not the scan-start `spoolIDs` snapshot). Three protections, each read
-    // as late as possible so it sees the most recent state:
+    // snapshot the keys FIRST, then read the live-armed set AND re-list the
+    // spools FRESH (not the scan-start `spoolIDs` snapshot). Three protections,
+    // each read as late as possible so it sees the most recent state:
     //   - a key armed AFTER the key snapshot can't be in `keyIDs` (stored later);
-    //   - a currently-arming take is caught by the freshly-read `liveArmed`;
+    //   - a currently-arming take is caught by the freshly-read protection set;
     //   - a take that armed AND ENDED at a FAILURE terminal after the scan snapshot
     //     RETAINS its spool — re-listing spools fresh sees that spool, so its key is
     //     NOT swept (the stale scan-start snapshot would have missed it and deleted
@@ -718,13 +898,19 @@ final class RecoveryCoordinator {
     let makeSpoolStore = self.makeSpoolStore
     Task.detached(priority: .utility) { [weak self] in
       let keyIDs = keyStore.listAccountIDs()
-      let liveArmed = await MainActor.run { self?.armedSessionID }
+      // #1807 (§C): a vanished coordinator must ABORT the sweep — it is not
+      // evidence the protection set is empty. `self?.pendingSessions.keys`
+      // reads nil only when `self` is nil, never when the set is genuinely
+      // empty (an empty dictionary's `.keys` is a real, non-nil, empty value).
+      guard let liveArmedKeys = await MainActor.run(body: { self?.pendingSessions.keys })
+      else { return }
+      let liveArmed = Set(liveArmedKeys)
       // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
       // an IO/permission error as "no spools" would delete keys for real `.ewrec`
       // files. Abort the sweep instead — same discipline as the scan-start list.
       guard let currentSpoolList = try? makeSpoolStore().listSpoolSessionIDs() else { return }
       let currentSpools = Set(currentSpoolList)
-      for id in keyIDs where id != liveArmed && !currentSpools.contains(id) {
+      for id in keyIDs where !liveArmed.contains(id) && !currentSpools.contains(id) {
         try? keyStore.delete(for: id)
       }
     }
@@ -736,8 +922,18 @@ final class RecoveryCoordinator {
     // excluded; the contention guard below is the backstop.
     let alreadySaved = await existingRecoveryIDs()
 
+    // #1807 (§C): read the live-armed protection set FRESH, after the dedup
+    // await above, not the value that would have been captured before it — a
+    // take that armed DURING that suspension must be excluded too, matching
+    // the recheck-after-every-suspension requirement (§C, independent of §D).
+    let armedIDs = Set(pendingSessions.keys)
     var recoverable: [String] = []
-    for id in spoolIDs where id != armed {
+    // #1807 round-2 correction (Codex chunk-2 review, finding 3): also skip
+    // ids already held for a future launch — a spool this launch already
+    // failed to delete once (a live-ending or history-save-failure retry
+    // candidate) should not be retried through a SECOND, independent
+    // destroySpoolAndKey call from the dedup path this same pass.
+    for id in spoolIDs where !armedIDs.contains(id) && !nextLaunchOnlyRecoveryIDs.contains(id) {
       if alreadySaved.contains(id) {
         // Saved in a prior run's save→delete crash window: delete WITHOUT
         // re-transcribing (the dedup MUST precede any append — History forbids a
@@ -787,6 +983,16 @@ final class RecoveryCoordinator {
       // atomic handshake below, not inside it — the handshake itself still
       // has no `await` between its own check and claim.
       await Task.yield()
+      // #1807 round-2 correction (Codex chunk-2 review, finding 3): recheck
+      // pending membership and same-launch suppression immediately after
+      // this suspension, before replay admission — a take that armed, or a
+      // spool that got held for a future launch, DURING the yield above must
+      // not be replayed. Matches the recheck-after-every-suspension
+      // requirement (§C) and the identical recheck already applied to the
+      // dedup loop above, after its own `await`.
+      guard !pendingSessions.keys.contains(id), !nextLaunchOnlyRecoveryIDs.contains(id) else {
+        continue
+      }
       // Atomic per-item handshake (§3.1/§3.2) — ONE non-suspending MainActor
       // turn: checked and claimed here with no `await` between any step, so
       // there is no window between "checked" and "acted." Preserves the
@@ -873,7 +1079,13 @@ final class RecoveryCoordinator {
       default: disposition = willDelete ? "requesting deletion" : "keeping"
       }
       RecoveryLog.line("replay \(Self.logLabel(outcome)) — \(disposition)")
-      if willDelete {
+      // #1807 (§C): recheck the live-armed protection set fresh, after the
+      // `await replayer.replay(...)` suspension above — an orphan's id
+      // reusing a freshly-armed live session's id is not a real occurrence
+      // (fresh UUIDs per arm), but a direct destroy here must still defer to
+      // that session's own join rather than racing it, on the same recheck
+      // discipline the scan's dedup loop above follows.
+      if willDelete, !pendingSessions.keys.contains(id) {
         destroySpoolAndKey(id: id, source: .replayOutcome)
       }
       // Post the standalone success notice for a recording that landed in History.

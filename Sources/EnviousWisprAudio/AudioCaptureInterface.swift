@@ -180,6 +180,33 @@ public protocol AudioCaptureInterface: AnyObject {
   /// Every caller except the kernel uses the no-arg `beginCapturePhase()`
   /// convenience in the extension below.
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer>
+  /// #1807 — like `beginCapturePhase(recoveryPayload:)`, but also carries the
+  /// SAME recording's plain recovery session id, supplied independently of the
+  /// opaque `recoveryPayload` — never derived from it, since decoding the
+  /// payload is exactly what can fail. The kernel mints both from the same arm
+  /// (`RecoveryCoordinator.makeDirective`) and already carries the plain id on
+  /// `DictationSessionConfig`, so this costs it nothing to forward. Lets a
+  /// coordinator-side writer-completion join still name the session on a
+  /// decode failure or a disabled/low-disk refusal, not only on success.
+  /// Defaulted below to forward to the payload-only overload — every other
+  /// conformer (test fakes, simulator doubles) needs no change.
+  /// `AudioCaptureManager` overrides it with the real, id-aware implementation.
+  func beginCapturePhase(
+    recoverySessionID: String?, recoveryPayload: Data?
+  ) async throws -> AsyncStream<AVAudioPCMBuffer>
+  /// #1807 round 2 — the kernel calls this when it decides NOT to call
+  /// `beginCapturePhase` at all for an armed `recoverySessionID` (a terminal
+  /// before capture start: permission denial, an engine-start failure, an
+  /// ASR-adapter-start failure, and any future early exit in
+  /// `RecordingSessionKernel.runForwardPath`). Also fires from inside
+  /// `beginCapturePhase` itself when IT exits before reaching
+  /// `startRecoverySpooling` (e.g. no active source). Without this, a session
+  /// that armed but never actually spooled leaves its `pendingSessions` entry
+  /// waiting on a writer ack that will never arrive — safe for one launch
+  /// (§7/§9's accepted "writer completion never arrives" fallback), but never
+  /// closed until the next relaunch resets the in-memory table. Defaulted to
+  /// a no-op — only `AudioCaptureManager` needs it.
+  func recoveryCaptureDidNotStart(recoverySessionID: String)
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   /// Stop the capture session identified by `sessionID`, returning its samples.
   /// Fenced on the armed capture generation (#1579): a mismatched ID is a total
@@ -234,6 +261,20 @@ extension AudioCaptureInterface {
   public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
     try await beginCapturePhase(recoveryPayload: nil)
   }
+
+  /// #1807: default for every conformer that has no reason to track the plain
+  /// session id separately from the payload (test fakes, simulator doubles) —
+  /// forwards to the payload-only overload, ignoring `recoverySessionID`.
+  /// `AudioCaptureManager` overrides this with the real implementation.
+  public func beginCapturePhase(
+    recoverySessionID: String?, recoveryPayload: Data?
+  ) async throws -> AsyncStream<AVAudioPCMBuffer> {
+    try await beginCapturePhase(recoveryPayload: recoveryPayload)
+  }
+
+  /// #1807 round 2: no-op default — test fakes and simulator doubles have no
+  /// writer-completion join to notify. `AudioCaptureManager` overrides it.
+  public func recoveryCaptureDidNotStart(recoverySessionID: String) {}
 
   /// #1317: fail-closed default so every existing conformer (test fakes,
   /// simulator doubles) that has no reason to track this stays

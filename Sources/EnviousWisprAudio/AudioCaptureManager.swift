@@ -510,6 +510,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// `beginCapturePhase` and fed the authoritative captured samples on a poll
   /// loop. nil when recovery is off / failed to arm. MainActor-confined.
   private var recoverySpoolWriter: RecoverySpoolWriter?
+  /// #1807 — the SAME session's plain id, captured at writer-creation time and
+  /// cleared alongside `recoverySpoolWriter`. Read at finalize time instead of
+  /// re-deriving "whichever session is current" — closes the stale-completion
+  /// hazard where a late ack must resolve against the writer it actually
+  /// belonged to, never the manager's current session.
+  private var recoverySpoolWriterSessionID: String?
+  /// #1807 — fired exactly once per take that ever reached
+  /// `startRecoverySpooling`, meaning "this session's writer (if any) can never
+  /// write to its spool again." Fires for the no-writer cases too (decode
+  /// failure, disabled directive, low-disk refusal), not only after a real
+  /// writer finalizes. Set by the composition root; nil in every existing
+  /// caller and test, so unwired behavior is unchanged.
+  public var onRecoveryWriterQuiescent: (@MainActor @Sendable (String) -> Void)?
   /// Poll task feeding new captured samples to the writer. Cancelled on stop.
   private var recoveryFeedTask: Task<Void, Never>?
   /// High-water mark of `capturedSamples` already handed to the writer, so the
@@ -583,7 +596,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   ///      value (`RULE: read-the-bind-prepare-returned-never-re-derive-it`), and
   ///      it is also the only source of truth on the warm path, which fires no
   ///      callback at all.
-  private func prepareAndAttribute(_ source: any AudioInputSource) async throws -> BoundInputDevice {
+  private func prepareAndAttribute(_ source: any AudioInputSource) async throws -> BoundInputDevice
+  {
     latestInputResolutionAttempt = nil
     currentInputResolutionSource = nil
     source.onInputResolutionAttemptFinalized = { [weak self] attempt in
@@ -618,6 +632,30 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   public func beginCapturePhase(recoveryPayload: Data?) async throws
     -> AsyncStream<AVAudioPCMBuffer>
   {
+    try await beginCapturePhase(recoverySessionID: nil, recoveryPayload: recoveryPayload)
+  }
+
+  /// #1807 — real implementation, overriding the protocol's forwarding
+  /// default. `recoverySessionID` is the plain id the kernel mints alongside
+  /// `recoveryPayload` from the same arm; threading it in separately lets
+  /// `startRecoverySpooling` acknowledge "no writer will ever exist" even when
+  /// the payload fails to decode.
+  public func beginCapturePhase(
+    recoverySessionID: String?, recoveryPayload: Data?
+  ) async throws -> AsyncStream<AVAudioPCMBuffer> {
+    // #1807 round 2: this function has two exits before `startRecoverySpooling`
+    // below — the `activeSource` guard right here, and `source.startCapture()`
+    // throwing further down. A `defer` covers both (and any future one) without
+    // needing to touch each site: if we leave this function having never
+    // reached `startRecoverySpooling`, and the coordinator armed this id, tell
+    // it directly rather than leaving its join waiting on an ack that can now
+    // never arrive from inside `startRecoverySpooling` itself.
+    var reachedRecoverySpooling = false
+    defer {
+      if !reachedRecoverySpooling, let recoverySessionID {
+        recoveryCaptureDidNotStart(recoverySessionID: recoverySessionID)
+      }
+    }
     guard let source = activeSource else {
       throw AudioError.formatCreationFailed(
         source: "AudioCaptureManager.beginCapturePhase.no_active_source")
@@ -718,7 +756,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Crash-recovery limb: arm the spool from the directive AFTER capture is
     // live (the feed loop guards on `isCapturing`). Fail-open — never throws,
     // never gates the returned stream (heart path is byte-identical).
-    startRecoverySpooling(payload: recoveryPayload)
+    reachedRecoverySpooling = true
+    startRecoverySpooling(recoverySessionID: recoverySessionID, payload: recoveryPayload)
     #if DEBUG
       // Bake-off manager-side evidence companion (#1377 §3.5): pairs the app's
       // REQUEST (backend + requested device) with each source's own
@@ -1051,8 +1090,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// real device format a stub cannot provide — the same constraint that forced
     /// `installCapturedSourceForTesting`. Lets the predecessor-retirement tests
     /// assert against the REAL spool files rather than manager internals.
-    func armRecoverySpoolingForTesting(payload: Data?) {
-      startRecoverySpooling(payload: payload)
+    func armRecoverySpoolingForTesting(recoverySessionID: String? = nil, payload: Data?) {
+      startRecoverySpooling(recoverySessionID: recoverySessionID, payload: payload)
     }
 
     /// Test seam (#2594): pin the low-disk preflight's answer. `nil` restores the
@@ -1705,7 +1744,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     recoveryFeedTask = nil
   }
 
-  private func startRecoverySpooling(payload: Data?) {
+  /// #1807 round 2 — `AudioCaptureInterface` conformance. The kernel (or this
+  /// manager's own `beginCapturePhase`) calls this when it decides an armed
+  /// `recoverySessionID` will never reach a real writer at all. Same ack as a
+  /// real writer's finalize — "will never write again," never "wrote
+  /// successfully" — just fired without a writer ever having existed.
+  public func recoveryCaptureDidNotStart(recoverySessionID: String) {
+    onRecoveryWriterQuiescent?(recoverySessionID)
+  }
+
+  private func startRecoverySpooling(recoverySessionID: String?, payload: Data?) {
     // #1579 (defect 1b): RETIRE any predecessor before resetting, never drop it.
     // The old code nil'd `recoverySpoolWriter` and left `recoveryFeedTask` alive.
     // That task holds its writer strongly and guards only on `isCapturing` +
@@ -1721,13 +1769,37 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     recoveryFinalized = false
     recoveryFedSampleCount = 0
     recoverySpoolWriter = nil
+    recoverySpoolWriterSessionID = nil
+    // #1807: `recoverySessionID` must NEVER gate whether decoding/writer
+    // creation is attempted — only `payload` decides that, exactly as before
+    // this chunk. `recoverySessionID` is a SEPARATE channel used only to name
+    // the session for a no-writer ack when the payload itself can't (decode
+    // failure) — it is nil for every non-kernel caller (the no-arg
+    // convenience passes nil for both) and for every existing test that arms
+    // a payload directly without also naming a session id.
     guard let payload,
       let directive = try? JSONDecoder().decode(RecoverySpoolDirective.self, from: payload),
       directive.enabled
-    else { return }
+    else {
+      // #1807: decode failed, payload was nil, or recovery was explicitly
+      // disabled for this take — no writer will ever be created. Ack using
+      // the plain id supplied independently of this payload, when one was
+      // supplied; nil means the coordinator never protected anything here.
+      if let recoverySessionID {
+        onRecoveryWriterQuiescent?(recoverySessionID)
+      }
+      return
+    }
     // Low-disk preflight: don't start a spool when free space is already below
     // the watermark the heart path needs (History save / ASR temp / model cache).
-    guard hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else { return }
+    guard hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else {
+      // #1807: refused before a writer existed — same no-writer ack as above.
+      // Use the DECODED directive's own id here, not the separately-supplied
+      // parameter: decode already succeeded, so it is always available and
+      // guaranteed to be this take's real id.
+      onRecoveryWriterQuiescent?(directive.recoverySessionID)
+      return
+    }
 
     let writer = RecoverySpoolWriter(
       recoverySessionID: directive.recoverySessionID,
@@ -1736,6 +1808,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       settings: directive.settingsSnapshot)
     writer.start()
     recoverySpoolWriter = writer
+    recoverySpoolWriterSessionID = directive.recoverySessionID
     startRecoveryFeed(writer: writer, spoolPath: directive.spoolPath)
   }
 
@@ -1789,8 +1862,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       writer.append(Array(tail[recoveryFedSampleCount...]))
     }
     writer.flush()
-    writer.finalize(reason: .cleanFinalized)
-    recoverySpoolWriter = nil
+    finalizeWriterAndAck(writer, reason: .cleanFinalized)
   }
 
   /// Finalize the spool for a non-clean reason (low disk). Guarded so clean-stop
@@ -1800,8 +1872,28 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     recoveryFinalized = true
     recoveryFeedTask?.cancel()
     recoveryFeedTask = nil
-    writer.finalize(reason: reason)
+    finalizeWriterAndAck(writer, reason: reason)
+  }
+
+  /// #1807 — shared by `stopRecoverySpooling` and `finalizeRecovery`: finalize
+  /// the writer, then fire `onRecoveryWriterQuiescent` for the SAME session id
+  /// captured at writer-creation time (`recoverySpoolWriterSessionID`), never
+  /// re-read against "whatever session is current" — the exact stale-completion
+  /// hazard a late/superseded ack must not fall into. Fires on both healthy and
+  /// error paths, matching `finalize`'s own contract: "will never write again,"
+  /// not "wrote successfully."
+  private func finalizeWriterAndAck(
+    _ writer: RecoverySpoolWriter, reason: RecoverySpoolTerminationReason
+  ) {
+    let sessionID = recoverySpoolWriterSessionID
+    let ack = onRecoveryWriterQuiescent
     recoverySpoolWriter = nil
+    recoverySpoolWriterSessionID = nil
+    guard let sessionID, let ack else {
+      writer.finalize(reason: reason)
+      return
+    }
+    writer.finalize(reason: reason, notifying: { ack(sessionID) })
   }
 
   /// True when the spool volume has at least the low-disk watermark free. Reads

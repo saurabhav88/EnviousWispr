@@ -53,6 +53,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// scheduling the cleanup would look identical to one that gated it.
   private(set) var stopCaptureRefusedCallCount = 0
   private(set) var beginCapturePhaseCallCount = 0
+  /// #1807 round 2 — every id `recoveryCaptureDidNotStart` was called with, in
+  /// order. Proves the kernel's own `runForwardPath` defer fires on a
+  /// pre-Audio terminal (a session that armed recovery but never reached
+  /// `beginCapturePhase` at all).
+  private(set) var recoveryNotStartedIDs: [String] = []
   private(set) var preWarmCallCount = 0
   private(set) var abortPreWarmCallCount = 0
   private(set) var deliveredBufferCount = 0
@@ -224,6 +229,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
     if failEngineStartOnAttempt == startEnginePhaseCallCount {
       throw FakeCaptureError.engineStartFailed
     }
+  }
+
+  /// #1807 round 2 — `AudioCaptureInterface` conformance.
+  func recoveryCaptureDidNotStart(recoverySessionID: String) {
+    recoveryNotStartedIDs.append(recoverySessionID)
   }
 
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
