@@ -72,6 +72,14 @@ struct PasteServiceActivationTimeoutTests {
     // register with the Accessibility subsystem before it is a real target.
     // The loop exits on the real signal (the AX call itself succeeding); the
     // sleep is only the poll interval, bounded by the attempt cap below.
+    //
+    // Codex review found the gap this closes: without tracking whether the
+    // loop actually succeeded, an exhausted, never-registered fixture would
+    // still get frozen and the test would still pass — a never-registered
+    // target ALSO fails fast, with no help from the fix under test. That
+    // makes the pass meaningless rather than wrong, and indistinguishable
+    // from a real pass without this check.
+    var registered = false
     var attempts = 0
     while attempts < 20 {
       Thread.sleep(forTimeInterval: 0.1)  // deadline-fallback: poll interval; loop exits on the AX success check above it
@@ -80,8 +88,13 @@ struct PasteServiceActivationTimeoutTests {
       if AXUIElementSetAttributeValue(axApp, "AXFrontmost" as CFString, true as CFTypeRef)
         == .success
       {
+        registered = true
         break
       }
+    }
+    guard registered else {
+      process.terminate()
+      throw TestFixtureError.neverRegistered
     }
 
     guard kill(process.processIdentifier, SIGSTOP) == 0 else {
@@ -102,6 +115,7 @@ struct PasteServiceActivationTimeoutTests {
 
   private enum TestFixtureError: Error {
     case couldNotFreeze
+    case neverRegistered
   }
 
   @Test(
