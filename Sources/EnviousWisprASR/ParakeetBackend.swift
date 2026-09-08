@@ -2,6 +2,7 @@
 import EnviousWisprCore
 import EnviousWisprFluidAudioBridge
 @preconcurrency import FluidAudio
+import os
 
 // Disambiguate from FluidAudio.ASRResult — we always mean our own type.
 public typealias ASRResult = EnviousWisprCore.ASRResult
@@ -21,16 +22,54 @@ public actor ParakeetBackend: ASRBackend {
   // Streaming ASR state
   private var streamingManager: SlidingWindowAsrManager?
   private var streamingStartTime: CFAbsoluteTime = 0
-  /// #1908 Codex review: bumped by `cancelStreaming()` (including the
-  /// caller-abandoned path via `cancelInFlightStreamingStart()`) and checked
-  /// by `startStreaming()` right before it would publish `streamingManager`.
-  /// FluidAudio's `loadModels`/`startStreaming` calls do not observe
-  /// `Task.isCancelled`, so a superseded attempt keeps running in the
-  /// background; without this check its late completion would publish a
-  /// stale manager over whatever a newer session already started. Same
-  /// fresh-instance/publish-only-if-current shape as `ASRManager.performLoad`'s
-  /// `loadGeneration` guard.
-  private var streamingGeneration: UInt64 = 0
+  /// #1908 Codex review: bumped by every `startStreaming()` attempt (as its
+  /// FIRST statement, before any suspension — round 8 finding: capturing it
+  /// AFTER the "cancel existing" await let a second, concurrent
+  /// `startStreaming()` call run to completion and publish in the gap, so
+  /// the first call's late continuation then captured a NEWER generation
+  /// than it should have and overwrote the second call's just-published
+  /// stream), by `cancelStreaming()`, and by `unload()`. Checked by
+  /// `startStreaming()` after every suspension point, right before it would
+  /// act on anything the awaited call returned. FluidAudio's
+  /// `loadModels`/`startStreaming` calls do not observe `Task.isCancelled`,
+  /// so a superseded attempt keeps running in the background; without these
+  /// checks its late completion would publish a stale manager over whatever
+  /// a newer session already started. Same fresh-instance/publish-only-if-
+  /// current shape as `ASRManager.performLoad`'s `loadGeneration` guard.
+  ///
+  /// `nonisolated`, lock-backed rather than a plain actor-isolated `var`:
+  /// `cancelInFlightStreamingStart()` invalidates THIS attempt's generation
+  /// synchronously from `ASRManager`'s `@MainActor`, inside
+  /// `withOrderedDeadline`'s `onTimeout` — which the primitive's own
+  /// contract (`TaskTimeout.swift`) requires to stay synchronous and
+  /// non-suspending, so it cannot `await` into this actor to bump an
+  /// isolated var. Without this, an abandoned attempt's late vendor
+  /// completion still passes this actor's OWN generation check (nothing
+  /// here was told the manager gave up) and leaks a live streaming session
+  /// until the next `startStreaming()`/`unload()` call reclaims it.
+  private nonisolated let streamingGeneration = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+  /// Reserve this attempt's identity. Callable from any actor/isolation —
+  /// `startStreaming(options:)` calls it as its own first statement (this
+  /// actor); `ASRManager.startStreaming()` calls it from `@MainActor`,
+  /// synchronously, before entering `startStreaming(options:generation:)`,
+  /// so it can hand the reserved number to `cancelInFlightStreamingStart()`.
+  nonisolated func reserveStreamingGeneration() -> UInt64 {
+    streamingGeneration.withLock {
+      $0 &+= 1
+      return $0
+    }
+  }
+
+  /// Invalidate a specific in-flight attempt's generation without acquiring
+  /// this actor — the whole point (see the property doc above). Bumping
+  /// unconditionally (not "only if it still matches `generation`") would let
+  /// a call racing in from ANOTHER caller silently invalidate itself too;
+  /// comparing first keeps this a no-op once a newer attempt already holds
+  /// the counter.
+  nonisolated func invalidateStreamingGeneration(_ generation: UInt64) {
+    streamingGeneration.withLock { if $0 == generation { $0 &+= 1 } }
+  }
 
   public var supportsStreaming: Bool { true }
 
@@ -333,7 +372,35 @@ public actor ParakeetBackend: ASRBackend {
 
   // MARK: - Streaming ASR
 
+  /// Protocol path: self-reserves a generation. Other than `ASRManager`
+  /// (which needs the generation BEFORE calling in, so it can hand it to
+  /// `cancelInFlightStreamingStart()` — see `startStreaming(options:generation:)`
+  /// below), any caller (tests included) can use this directly.
   public func startStreaming(options: TranscriptionOptions) async throws {
+    try await startStreaming(options: options, generation: reserveStreamingGeneration())
+  }
+
+  /// #1908 round 8: takes an ALREADY-RESERVED generation rather than
+  /// reserving its own, so the caller (`ASRManager.startStreaming()`) can
+  /// reserve synchronously before entering this call and remember which
+  /// generation this attempt owns — the whole point being that
+  /// `cancelInFlightStreamingStart()` needs that number to invalidate
+  /// exactly this attempt if the caller gives up while this call is still
+  /// suspended below.
+  ///
+  /// Reserving happens as the LITERAL FIRST STATEMENT of whichever caller
+  /// does it (this method's own preamble here, or `startStreaming(options:)`
+  /// above), before any suspension. Reserving after the "cancel existing"
+  /// await below (the original #1908 shape) let a concurrent, newer
+  /// `startStreaming` call run its own full attempt and publish in the gap
+  /// while this one was still suspended at that await; this call would then
+  /// capture a generation NEWER than the one it should have raced against
+  /// and go on to overwrite the newer call's just-published stream.
+  /// Capturing first means whichever call's synchronous prefix runs first
+  /// (actor isolation guarantees only one runs at a time until it suspends)
+  /// gets the strictly-earlier number, and every check below then correctly
+  /// recognizes a call that started before a newer one as superseded.
+  func startStreaming(options: TranscriptionOptions, generation myGeneration: UInt64) async throws {
     guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
     // Cancel any existing streaming session before starting a new one.
@@ -342,13 +409,7 @@ public actor ParakeetBackend: ASRBackend {
       await existing.cancel()
       streamingManager = nil
     }
-
-    // #1908: this attempt's identity. Bumped again by `cancelStreaming()` if
-    // a caller gives up on this call before it returns (deadline expiry) —
-    // checked below, right before publish, so a superseded attempt can never
-    // overwrite what a newer attempt already published.
-    streamingGeneration &+= 1
-    let myGeneration = streamingGeneration
+    guard streamingGeneration.withLock({ $0 == myGeneration }) else { throw CancellationError() }
 
     // #1678: the lock must reach BOTH decode paths. Wiring only the batch call
     // would give a locked user cross-alphabet protection on one path and not
@@ -359,20 +420,27 @@ public actor ParakeetBackend: ASRBackend {
     do {
       // Vendor API: streaming starts via loadModels(_:) then startStreaming(source:).
       try await manager.loadModels(models)
+      guard streamingGeneration.withLock({ $0 == myGeneration }) else {
+        await manager.cancel()
+        throw CancellationError()
+      }
       try await manager.startStreaming(source: .microphone)
     } catch is CancellationError {
+      await manager.cancel()
       throw CancellationError()
     } catch {
       // #1654: pin a stable identity before this leaves the service. A cancellation is
       // deliberately excluded above rather than classified — a cancelled stream is not a
       // failure and must never acquire a failure identity.
+      await manager.cancel()
       throw Self.streamingThrowable(for: error, operation: .start)
     }
-    // #1908: a caller that abandoned this attempt (deadline expiry) bumps
-    // `streamingGeneration` via `cancelStreaming()` — never publish over
-    // whatever that caller, or a newer session's own `startStreaming()`, set
-    // up in the meantime. Cancel what THIS attempt built instead of leaking it.
-    guard streamingGeneration == myGeneration else {
+    // #1908: a caller that abandoned this attempt (deadline expiry, via
+    // `cancelInFlightStreamingStart()` -> `invalidateStreamingGeneration()`)
+    // or a newer session's own `startStreaming()` bumps `streamingGeneration`
+    // — never publish over whatever either of them set up in the meantime.
+    // Cancel what THIS attempt built instead of leaking it.
+    guard streamingGeneration.withLock({ $0 == myGeneration }) else {
       await manager.cancel()
       throw CancellationError()
     }
@@ -463,7 +531,7 @@ public actor ParakeetBackend: ASRBackend {
     // nil — this is also the abandon signal for an in-flight `startStreaming()`
     // that has not published anything yet (`ASRManager.cancelInFlightStreamingStart()`
     // reaches here even while `isStreaming` is false).
-    streamingGeneration &+= 1
+    _ = reserveStreamingGeneration()
     if let manager = streamingManager {
       await manager.cancel()
       streamingManager = nil
@@ -473,7 +541,7 @@ public actor ParakeetBackend: ASRBackend {
   public func unload() async {
     // #1908: same reason as `cancelStreaming()` — an in-flight `startStreaming()`
     // must not publish over an unload that already ran.
-    streamingGeneration &+= 1
+    _ = reserveStreamingGeneration()
     if let streaming = streamingManager {
       await streaming.cancel()
       streamingManager = nil

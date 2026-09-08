@@ -538,6 +538,15 @@ import Testing
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "startStreaming",
       text: "try await activeBackend.startStreaming(options: options)",
       classification: .transitivelyCoveredByCaller),
+    // #1908 round 8: the identical call, same function, same reachability —
+    // split into two branches so the Parakeet-concrete path can pass an
+    // already-reserved backend generation (see `streamingStartBackendAttempt`'s
+    // doc); the branch above stays as the non-Parakeet/test-backend fallback.
+    // Same claim inheritance as the entry directly above.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "startStreaming",
+      text: "try await parakeet.startStreaming(options: options, generation: backendGen)",
+      classification: .transitivelyCoveredByCaller),
     // The real unload, directly inside "asrManagerUnload"'s claim closure.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
@@ -602,6 +611,15 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
       text: "try await manager.startStreaming(source: .microphone)",
+      classification: .transitivelyCoveredByCaller),
+    // #1908 round 8: `startStreaming(options:)`'s own body, now a thin
+    // self-reserving forward to `startStreaming(options:generation:)` (added
+    // so `ASRManager` can reserve the generation itself and hand it to
+    // `cancelInFlightStreamingStart()` — same shape as the `ASRProtocol.swift`
+    // `prepare()` forward above). Crosses no new claim boundary of its own.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
+      text: "try await startStreaming(options: options, generation: reserveStreamingGeneration())",
       classification: .transitivelyCoveredByCaller),
 
     // MARK: ParakeetBackend — #1654 streaming error identity. Both sites match
