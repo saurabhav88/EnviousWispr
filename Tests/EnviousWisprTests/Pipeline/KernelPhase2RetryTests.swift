@@ -91,7 +91,8 @@ struct KernelPhase2RetryTests {
 
   // MARK: #1755 chunk 3 — transcribe-phase helper death enters the SAME retry
 
-  @Test("helper death mid-decode routes into the one Phase-2 retry, and a successful retry delivers")
+  @Test(
+    "helper death mid-decode routes into the one Phase-2 retry, and a successful retry delivers")
   func helperDeathMidDecodeRetriesAndDelivers() async {
     let ctx = makeContext(behavior: .heldFinalize)
     ctx.engine.retryDecodeResult = .transcript(
@@ -104,7 +105,13 @@ struct KernelPhase2RetryTests {
     #expect(ctx.engine.finalizeCallCount == 1)
 
     // Helper death arrives while the decode is suspended.
-    kernel.externalASRInterrupted()
+    // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+    // entry point) was deleted along with the XPC path it bridged; drive the
+    // SAME `routeASRInterruption(sid:)` internal path through its other live
+    // production caller instead — `adapter.onEngineInterrupted`
+    // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+    // exposes via `fireEngineInterrupted()` for exactly this purpose.
+    ctx.engine.fireEngineInterrupted()
     await ctx.wrapper.drainReadyWork()
 
     // No early terminal: the session keeps waiting for its own decode to fail.
@@ -134,7 +141,9 @@ struct KernelPhase2RetryTests {
     #expect(kernel.recordingOutcome != .asrInterrupted(wasRecording: false))
   }
 
-  @Test("helper death mid-decode with an exhausted retry ends .asrFailed and projects .asrRetryExhausted")
+  @Test(
+    "helper death mid-decode with an exhausted retry ends .asrFailed and projects .asrRetryExhausted"
+  )
   func helperDeathMidDecodeExhaustsOnce() async {
     let ctx = makeContext(behavior: .heldFinalize)
     ctx.engine.retryDecodeResult = .failed(.decodeFailed)
@@ -142,7 +151,13 @@ struct KernelPhase2RetryTests {
     let kernel = ctx.wrapper.testKernel
     #expect(ctx.engine.heldFinalizePending, "the initial finalize must be genuinely suspended")
 
-    kernel.externalASRInterrupted()
+    // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+    // entry point) was deleted along with the XPC path it bridged; drive the
+    // SAME `routeASRInterruption(sid:)` internal path through its other live
+    // production caller instead — `adapter.onEngineInterrupted`
+    // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+    // exposes via `fireEngineInterrupted()` for exactly this purpose.
+    ctx.engine.fireEngineInterrupted()
     await ctx.wrapper.drainReadyWork()
     #expect(kernel.recordingOutcome == nil, "no terminal may be published before finalize resolves")
     #expect(kernel.state == .delivering)
@@ -167,101 +182,100 @@ struct KernelPhase2RetryTests {
     #expect(kernel.pasteCount == 0)
   }
 
+  #if DEBUG
+    // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (kernel side)
 
-#if DEBUG
-  // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (kernel side)
+    private static func makeIsolatedBoundaryController() -> CrashBoundaryFaultController {
+      let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-cb-kernel-\(UUID().uuidString)", isDirectory: true)
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      return CrashBoundaryFaultController(
+        armFilePath: dir.appendingPathComponent("arm").path,
+        reachedFilePath: dir.appendingPathComponent("reached").path)
+    }
 
-  private static func makeIsolatedBoundaryController() -> CrashBoundaryFaultController {
-    let dir = FileManager.default.temporaryDirectory
-      .appendingPathComponent("ew-cb-kernel-\(UUID().uuidString)", isDirectory: true)
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    return CrashBoundaryFaultController(
-      armFilePath: dir.appendingPathComponent("arm").path,
-      reachedFilePath: dir.appendingPathComponent("reached").path)
-  }
-
-  /// Snapshot box the publication callback (fires on the hook's own thread,
-  /// before the park) writes into; the callback releases the hold immediately
-  /// so the flow completes — deterministic, no polling.
-  private final class BoundarySnapshot: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _fired = 0
-    private var _outcomeWasNil: Bool?
-    var fired: Int { lock.withLock { _fired } }
-    var outcomeWasNil: Bool? { lock.withLock { _outcomeWasNil } }
-    func record(outcomeWasNil: Bool) {
-      lock.withLock {
-        _fired += 1
-        if _outcomeWasNil == nil { _outcomeWasNil = outcomeWasNil }
+    /// Snapshot box the publication callback (fires on the hook's own thread,
+    /// before the park) writes into; the callback releases the hold immediately
+    /// so the flow completes — deterministic, no polling.
+    private final class BoundarySnapshot: @unchecked Sendable {
+      private let lock = NSLock()
+      private var _fired = 0
+      private var _outcomeWasNil: Bool?
+      var fired: Int { lock.withLock { _fired } }
+      var outcomeWasNil: Bool? { lock.withLock { _outcomeWasNil } }
+      func record(outcomeWasNil: Bool) {
+        lock.withLock {
+          _fired += 1
+          if _outcomeWasNil == nil { _outcomeWasNil = outcomeWasNil }
+        }
       }
     }
-  }
 
-  @Test("retry_exhaustion_decided fires after the diagnostic stamp, before terminal publication")
-  func retryExhaustionBoundaryHook() async {
-    let ctx = makeContext(behavior: .crashOnFinalize)
-    ctx.engine.retryDecodeResult = .failed(.decodeFailed)
-    let controller = Self.makeIsolatedBoundaryController()
-    ctx.wrapper.testKernel.crashBoundaryController = controller
-    defer { controller.clear() }
-    let snapshot = BoundarySnapshot()
-    let kernel = ctx.wrapper.testKernel
-    controller.onPublishForTesting = { _ in
-      // The hook fires on the kernel's MainActor context, synchronously.
-      MainActor.assumeIsolated {
-        snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+    @Test("retry_exhaustion_decided fires after the diagnostic stamp, before terminal publication")
+    func retryExhaustionBoundaryHook() async {
+      let ctx = makeContext(behavior: .crashOnFinalize)
+      ctx.engine.retryDecodeResult = .failed(.decodeFailed)
+      let controller = Self.makeIsolatedBoundaryController()
+      ctx.wrapper.testKernel.crashBoundaryController = controller
+      defer { controller.clear() }
+      let snapshot = BoundarySnapshot()
+      let kernel = ctx.wrapper.testKernel
+      controller.onPublishForTesting = { _ in
+        // The hook fires on the kernel's MainActor context, synchronously.
+        MainActor.assumeIsolated {
+          snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+        }
+        controller.releaseHeldForTesting()
       }
-      controller.releaseHeldForTesting()
+      #expect(controller.arm(trialID: "kb1", boundary: .retryExhaustionDecided))
+
+      await runToTerminal(ctx)
+
+      #expect(snapshot.fired == 1, "the boundary published exactly once")
+      #expect(
+        snapshot.outcomeWasNil == true,
+        "at the boundary the terminal was NOT yet published (hook sits before finishTerminal)")
+      #expect(controller.isReached(trialID: "kb1", boundary: .retryExhaustionDecided))
+      #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retryExhausted, "after the stamp")
+      #expect(kernel.recordingOutcome == .failed(.asrFailed))
     }
-    #expect(controller.arm(trialID: "kb1", boundary: .retryExhaustionDecided))
 
-    await runToTerminal(ctx)
-
-    #expect(snapshot.fired == 1, "the boundary published exactly once")
-    #expect(
-      snapshot.outcomeWasNil == true,
-      "at the boundary the terminal was NOT yet published (hook sits before finishTerminal)")
-    #expect(controller.isReached(trialID: "kb1", boundary: .retryExhaustionDecided))
-    #expect(ctx.wrapper.telemetryState.asrRetryOutcome == .retryExhausted, "after the stamp")
-    #expect(kernel.recordingOutcome == .failed(.asrFailed))
-  }
-
-  @Test("live_terminal_published fires exactly once, after the set-once outcome write")
-  func liveTerminalBoundaryHook() async {
-    let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
-    let controller = Self.makeIsolatedBoundaryController()
-    ctx.wrapper.testKernel.crashBoundaryController = controller
-    defer { controller.clear() }
-    let snapshot = BoundarySnapshot()
-    let kernel = ctx.wrapper.testKernel
-    controller.onPublishForTesting = { _ in
-      MainActor.assumeIsolated {
-        snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+    @Test("live_terminal_published fires exactly once, after the set-once outcome write")
+    func liveTerminalBoundaryHook() async {
+      let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
+      let controller = Self.makeIsolatedBoundaryController()
+      ctx.wrapper.testKernel.crashBoundaryController = controller
+      defer { controller.clear() }
+      let snapshot = BoundarySnapshot()
+      let kernel = ctx.wrapper.testKernel
+      controller.onPublishForTesting = { _ in
+        MainActor.assumeIsolated {
+          snapshot.record(outcomeWasNil: kernel.recordingOutcome == nil)
+        }
+        controller.releaseHeldForTesting()
       }
-      controller.releaseHeldForTesting()
+      #expect(controller.arm(trialID: "kb2", boundary: .liveTerminalPublished))
+
+      await runToTerminal(ctx)
+
+      #expect(snapshot.fired == 1, "one-shot: fired exactly once")
+      #expect(
+        snapshot.outcomeWasNil == false,
+        "at the boundary recordingOutcome was ALREADY set (hook sits after the set-once write)")
+      #expect(controller.isReached(trialID: "kb2", boundary: .liveTerminalPublished))
+      #expect(!controller.hasLiveArmForTesting, "consumed exactly once")
     }
-    #expect(controller.arm(trialID: "kb2", boundary: .liveTerminalPublished))
 
-    await runToTerminal(ctx)
+    @Test("unarmed sessions retain the exact pre-chunk behavior and never block")
+    func unarmedBoundaryControllerIsInert() async {
+      let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
+      ctx.wrapper.testKernel.crashBoundaryController = Self.makeIsolatedBoundaryController()
+      await runToTerminal(ctx)
+      #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+      #expect(ctx.paste.pasteCount == 1)
+    }
 
-    #expect(snapshot.fired == 1, "one-shot: fired exactly once")
-    #expect(
-      snapshot.outcomeWasNil == false,
-      "at the boundary recordingOutcome was ALREADY set (hook sits after the set-once write)")
-    #expect(controller.isReached(trialID: "kb2", boundary: .liveTerminalPublished))
-    #expect(!controller.hasLiveArmForTesting, "consumed exactly once")
-  }
-
-  @Test("unarmed sessions retain the exact pre-chunk behavior and never block")
-  func unarmedBoundaryControllerIsInert() async {
-    let ctx = makeContext(behavior: .batchSuccess(text: "hello"))
-    ctx.wrapper.testKernel.crashBoundaryController = Self.makeIsolatedBoundaryController()
-    await runToTerminal(ctx)
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
-    #expect(ctx.paste.pasteCount == 1)
-  }
-
-#endif
+  #endif
 
   @Test("a decode failure spends exactly one retry, and a successful retry delivers its own text")
   func decodeFailureRetriesOnceAndDelivers() async {
@@ -423,7 +437,13 @@ struct KernelPhase2RetryTests {
       ASRResult(
         text: "rescued after recovery", language: nil, duration: 0, processingTime: 0,
         backendType: .parakeet))
-    kernel.externalASRInterrupted()
+    // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+    // entry point) was deleted along with the XPC path it bridged; drive the
+    // SAME `routeASRInterruption(sid:)` internal path through its other live
+    // production caller instead — `adapter.onEngineInterrupted`
+    // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+    // exposes via `fireEngineInterrupted()` for exactly this purpose.
+    ctx.engine.fireEngineInterrupted()
     await ctx.wrapper.drainUntilConcluded()
 
     #expect(kernel.recordingOutcome == .completed)

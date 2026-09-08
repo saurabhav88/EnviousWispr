@@ -6,6 +6,7 @@ import EnviousWisprLLM
 import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
+import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -299,7 +300,9 @@ private final class FactoryFakeASRManager: ASRManagerInterface {
   {
     fatalError("not used")
   }
-  func startStreaming(options _: TranscriptionOptions) async throws { fatalError("not used") }
+  func startStreaming(options _: TranscriptionOptions, attemptID: UUID) async throws {
+    fatalError("not used")
+  }
   func feedAudio(_: AVAudioPCMBuffer) async throws { fatalError("not used") }
   func finalizeStreaming() async throws -> ASRResult { fatalError("not used") }
   func cancelStreaming() async { fatalError("not used") }

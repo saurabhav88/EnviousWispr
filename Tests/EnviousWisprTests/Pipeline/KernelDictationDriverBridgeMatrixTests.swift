@@ -18,11 +18,12 @@ import Testing
 // otherwise the test fails, surfacing the gap at commit time instead of at
 // PR-4b.4 cutover.
 //
-// Coverage scope: the 5 App-routed entries whose surface PR-4b.2 introduced
-// or made public — `stopAndTranscribe`, `handleEngineInterruption`,
-// `handleASRServiceInterruption`, `handleCaptureStall`, `reset`. The 4
-// `handle(event:)` toggle/preWarm/requestStop/cancel paths and the
-// `handle(.cancelRecording)` direct method are covered by existing
+// Coverage scope: the App-routed entries whose surface PR-4b.2 introduced or
+// made public — `stopAndTranscribe`, `handleEngineInterruption`,
+// `handleCaptureStall`, `reset`. (#1908: `handleASRServiceInterruption` and
+// its own matrix section here were deleted along with the XPC path they
+// bridged.) The 4 `handle(event:)` toggle/preWarm/requestStop/cancel paths
+// and the `handle(.cancelRecording)` direct method are covered by existing
 // `KernelDictationDriverTests` + `KernelDictationDriverSurfaceTests`.
 //
 // `#if DEBUG`-gated: the tests drive the kernel through `testForceTransition`.
@@ -168,60 +169,6 @@ import Testing
           fx.kernel.state == priorState,
           "stopAndTranscribe from \(placement) must be a no-op; kernel changed to \(fx.kernel.state)"
         )
-      }
-    }
-
-    // MARK: 2. handleASRServiceInterruption matrix
-
-    @Test(
-      "handleASRServiceInterruption: .live / delivering(.transcribing) routes via kernel (matrix #2)"
-    )
-    func asrInterruptionRecordingOrTranscribing() async {
-      // `.live → .asrInterrupted` depends on the live recording-exit
-      // continuation that the real forward path creates — the forced-state
-      // fixture has no continuation, so this matrix freeze covers only
-      // `delivering(.transcribing)`. #1755 chunk 3: that state ROUTES into the
-      // kernel and stays pending (the suspended decode's own failure enters
-      // the Phase-2 retry) — no early terminal, and no driver fallback error
-      // for a routable state. Retry behavior: `KernelPhase2RetryTests`.
-      let fx = makeFixture()
-      await place(fx.kernel, in: .deliveringTranscribing)
-      fx.driver.handleASRServiceInterruption()
-      await drain()
-      #expect(fx.kernel.recordingOutcome == nil, "no early terminal from a routable state")
-      #expect(fx.kernel.state == .delivering)
-      #expect(fx.kernel.deliveringPhase == .transcribing)
-      if case .error = fx.driver.state {
-        Issue.record("the driver must not manufacture its fallback error for a routable state")
-      }
-    }
-
-    @Test(
-      "handleASRServiceInterruption: arming/stopping/delivering(.finalizing) bridges to driver error (matrix #2)"
-    )
-    func asrInterruptionBridgesActiveNonRoutable() async {
-      for placement: Placement in [.arming, .stopping, .deliveringFinalizing] {
-        let fx = makeFixture()
-        await place(fx.kernel, in: placement)
-        fx.driver.handleASRServiceInterruption()
-        await drain()
-        // The driver's setTerminalReason sets the .error state; the kernel
-        // may be parked at any of several states depending on cancel
-        // semantics, but the driver's public state must be .error.
-        assertDriverIsError(fx.driver, reason: .asrInterrupted)
-      }
-    }
-
-    @Test("handleASRServiceInterruption: idle/concluded is a no-op (matrix #2)")
-    func asrInterruptionIdleOrTerminalIsNoOp() async {
-      for placement: Placement in [.idle, .concluded(.completed)] {
-        let fx = makeFixture()
-        await place(fx.kernel, in: placement)
-        let priorPipelineState = fx.driver.state
-        fx.driver.handleASRServiceInterruption()
-        await drain()
-        // No driver-side error set, no kernel transition.
-        #expect(fx.driver.state == priorPipelineState)
       }
     }
 

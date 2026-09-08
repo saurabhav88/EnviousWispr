@@ -192,15 +192,15 @@ import Testing
     #expect(await admitted.isLoaded == false)
   }
 
-  @Test("the ASR manager, its XPC proxy, and the helper own no WhisperKit backend")
+  @Test("the ASR manager owns no WhisperKit backend")
   func managerAndHelperNeverOwnAWhisperKitBackend() throws {
-    // These three are the routes PR-2 deleted. The helper is a separate process
-    // where the in-process gate provably cannot reach; the manager pair is the
-    // path recovery and Diagnostics used to take to get there.
+    // PR-2 deleted this route from the manager. #1908 deleted the other two
+    // members this list used to carry — `ASRManagerProxy.swift` (the XPC
+    // proxy) and `ASRServiceHandler.swift` (the helper it talked to) no
+    // longer exist; the manager is the sole remaining path recovery and
+    // Diagnostics use to reach the active engine.
     let retiredRoutes = [
-      "Sources/EnviousWisprASR/ASRManager.swift",
-      "Sources/EnviousWisprASR/ASRManagerProxy.swift",
-      "Sources/EnviousWisprASRService/ASRServiceHandler.swift",
+      "Sources/EnviousWisprASR/ASRManager.swift"
     ]
     var offenders: [String] = []
     for path in retiredRoutes {
@@ -229,18 +229,5 @@ import Testing
       recovery and Diagnostics reach the active engine through \
       ActiveEngineOperation.
       """)
-  }
-
-  @Test("the helper process never reads the user's Documents folder")
-  func helperNeverTouchesDocuments() throws {
-    // The helper used to probe ~/Documents/huggingface for readability in
-    // `ping()`. It is a second TCC toucher, in a process with no UI to explain
-    // the prompt, reporting on a folder the app no longer uses.
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprASRService/ASRServiceHandler.swift"),
-      encoding: .utf8)
-    #expect(
-      !source.contains("Documents/huggingface"),
-      "the ASR helper must not reach into the user's Documents folder")
   }
 }

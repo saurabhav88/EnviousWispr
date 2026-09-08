@@ -67,7 +67,6 @@ import Testing
     driver.onOverlayIntentChange = { _ in }  // #930 — App-consumed overlay channel
     driver.setTerminalReason(.modelWedged)
     driver.handleEngineInterruption(.engineLost)
-    driver.handleASRServiceInterruption()
     driver.reset()
     #expect(true, "reaching this line means the public surface compiled")
   }

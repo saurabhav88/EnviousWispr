@@ -4,8 +4,8 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
-@testable import EnviousWisprAppKit
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
@@ -137,13 +137,6 @@ struct ReadinessRetryTelemetryContractTests {
     #expect(classified != .cancelled, "cancelled is terminal — this is the #2132 trap")
   }
 
-  @Test("model-not-loaded is distinct from terminal XPC transport failures")
-  func modelNotLoadedHasItsOwnRecoveryClass() {
-    #expect(recoveryFailureClass(for: XPCASRTransportError.modelNotLoaded) == .xpcModelNotLoaded)
-    #expect(
-      recoveryFailureClass(for: XPCASRTransportError.requestDecodingFailed("x"))
-        == .xpcTransport)
-  }
 }
 
 // MARK: - The recovery outcome
@@ -267,303 +260,259 @@ struct ReadinessRetryTelemetryContractTests {
     }
   }
 
+  /// `.productOutcome`: when one of these fails, a dictation the user recorded is
+  /// gone. `.serialized` because the telemetry hook is process-global.
+  @Suite("Readiness retry recovery outcomes (#2207)", .serialized, .tags(.productOutcome))
+  @MainActor
+  struct ReadinessRetryRecoveryTests {
 
-/// `.productOutcome`: when one of these fails, a dictation the user recorded is
-/// gone. `.serialized` because the telemetry hook is process-global.
-@Suite("Readiness retry recovery outcomes (#2207)", .serialized, .tags(.productOutcome))
-@MainActor
-struct ReadinessRetryRecoveryTests {
+    /// ROW A. The first refusal keeps the recording and gives the attempt back.
+    /// Red here means a recording that was never decoded is being destroyed again.
+    @Test("the first refusal keeps the recording and spends one retry")
+    func firstEngineUnavailableRefusalGetsOneRetry() async throws {
+      let h = try Fixture.make()
+      h.asr.loadError = ASREngineNotReadyAfterLoadError()
 
-  /// ROW A. The first refusal keeps the recording and gives the attempt back.
-  /// Red here means a recording that was never decoded is being destroyed again.
-  @Test("the first refusal keeps the recording and spends one retry")
-  func firstEngineUnavailableRefusalGetsOneRetry() async throws {
-    let h = try Fixture.make()
-    h.asr.loadError = ASREngineNotReadyAfterLoadError()
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(outcome == .deferred, "the engine never looked at the audio")
+      #expect(h.store.hasReadinessRetryMarker(for: h.id), "the retry is now RECORDED, not implied")
+      #expect(!h.store.hasAttemptMarker(for: h.id), "cleared, so a later pass may retry")
+      #expect(h.spoolExists, "THE POINT: the recording is still on disk")
+      #expect(h.asr.transcribeCallCount == 0, "the load never succeeded, so nothing was decoded")
+
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "deferred")
+      #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
+      #expect(e.stringProps["retry_disposition"] == "granted")
+      // The audio reconstructed perfectly; only the engine was missing. Absent
+      // `audio_decrypted` reads as "nothing came out of the spool" — the inverse.
+      #expect(e.boolProps["audio_decrypted"] == true)
+      #expect(e.boolProps["camp_b_candidate"] == true)
     }
 
-    #expect(outcome == .deferred, "the engine never looked at the audio")
-    #expect(h.store.hasReadinessRetryMarker(for: h.id), "the retry is now RECORDED, not implied")
-    #expect(!h.store.hasAttemptMarker(for: h.id), "cleared, so a later pass may retry")
-    #expect(h.spoolExists, "THE POINT: the recording is still on disk")
-    #expect(h.asr.transcribeCallCount == 0, "the load never succeeded, so nothing was decoded")
+    /// ROW B — THE BOUND. Without it a permanently unready engine defers forever
+    /// and spools accumulate with nothing ever cleaning them up.
+    @Test("a second refusal is terminal, so a broken engine cannot defer forever")
+    func repeatedEngineUnavailableRefusalTerminates() async throws {
+      let h = try Fixture.make()
+      h.asr.loadError = ASREngineNotReadyAfterLoadError()
+      try h.store.writeReadinessRetryMarker(for: h.id)  // the retry is already spent
 
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "deferred")
-    #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
-    #expect(e.stringProps["retry_disposition"] == "granted")
-    // The audio reconstructed perfectly; only the engine was missing. Absent
-    // `audio_decrypted` reads as "nothing came out of the spool" — the inverse.
-    #expect(e.boolProps["audio_decrypted"] == true)
-    #expect(e.boolProps["camp_b_candidate"] == true)
-  }
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-  /// ROW B — THE BOUND. Without it a permanently unready engine defers forever
-  /// and spools accumulate with nothing ever cleaning them up.
-  @Test("a second refusal is terminal, so a broken engine cannot defer forever")
-  func repeatedEngineUnavailableRefusalTerminates() async throws {
-    let h = try Fixture.make()
-    h.asr.loadError = ASREngineNotReadyAfterLoadError()
-    try h.store.writeReadinessRetryMarker(for: h.id)  // the retry is already spent
-
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(outcome == .failed(.unrecoverable), "one retry, then we stop")
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "failed")
+      #expect(e.stringProps["retry_disposition"] == "exhausted")
+      #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
     }
 
-    #expect(outcome == .failed(.unrecoverable), "one retry, then we stop")
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "failed")
-    #expect(e.stringProps["retry_disposition"] == "exhausted")
-    #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
-  }
+    /// THE TRAP, specified so it cannot be satisfied trivially. Two independent
+    /// spools, two errors injected through the REAL load closure, one real replay
+    /// each. An earlier draft of this row was satisfiable by two mocked outcomes
+    /// and proved nothing about the live catch.
+    @Test("the two load-site refusals do not share an outcome")
+    func theTwoLoadSiteRefusalsDoNotShareAnOutcome() async throws {
+      let transient = try Fixture.make()
+      transient.asr.loadError = ASREngineNotReadyAfterLoadError()
+      let deterministic = try Fixture.make()
+      deterministic.asr.loadError = ASRError.notReady
 
-  /// #2221. The XPC helper accepted the request but had no model, so the audio
-  /// was never decoded and must survive one bounded retry.
-  @Test("the first XPC model-not-loaded refusal keeps the recording")
-  func firstXPCModelNotLoadedRefusalGetsOneRetry() async throws {
-    let h = try Fixture.make()
-    h.asr.transcribeError = XPCASRTransportError.modelNotLoaded
+      var transientOutcome: RecoveryReplayOutcome?
+      var deterministicOutcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        transientOutcome = await transient.replayer.replay(
+          recoverySessionID: transient.id, isAborted: { false })
+        deterministicOutcome = await deterministic.replayer.replay(
+          recoverySessionID: deterministic.id, isAborted: { false })
+      }
 
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(transientOutcome == .deferred, "the load RETURNED and readiness was false")
+      #expect(
+        deterministicOutcome == .failed(.unrecoverable),
+        "no model is admitted; retrying repeats this failure every launch forever")
+      #expect(transient.spoolExists, "kept")
+      #expect(transient.asr.transcribeCallCount == 0)
+      #expect(deterministic.asr.transcribeCallCount == 0)
+
+      let classes = box.recoveryEvents().compactMap { $0.stringProps["failure_class"] }
+      #expect(classes == ["load_returned_not_ready", "not_ready"], "one label each, never shared")
     }
 
-    #expect(outcome == .deferred)
-    #expect(h.store.hasReadinessRetryMarker(for: h.id), "the one retry is durably spent")
-    #expect(!h.store.hasAttemptMarker(for: h.id), "a later pass may use the recorded retry")
-    #expect(h.spoolExists, "the user's recording remains on disk")
-    #expect(h.asr.transcribeCallCount == 1, "the helper refused this request")
+    /// ROW C. The retry was earned and could not be recorded, so we must NOT clear
+    /// the attempt marker — a retry the budget never recorded is the hole the
+    /// bound exists to close.
+    @Test("a retry that cannot be persisted leaves the attempt spent")
+    func readinessRetryMarkerWriteFailureKeepsAttemptSpent() async throws {
+      let h = try Fixture.make(ops: Fixture.failingCommit())
+      h.asr.loadError = ASREngineNotReadyAfterLoadError()
 
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["outcome"] == "deferred")
-    #expect(e.stringProps["reason"] == "transcribe_error")
-    #expect(e.stringProps["failure_class"] == "xpc_model_not_loaded")
-    #expect(e.stringProps["retry_disposition"] == "granted")
-    #expect(e.boolProps["audio_decrypted"] == true)
-    #expect(e.boolProps["camp_b_candidate"] == true)
-  }
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-  @Test("a second XPC model-not-loaded refusal is terminal")
-  func repeatedXPCModelNotLoadedRefusalTerminates() async throws {
-    let h = try Fixture.make()
-    h.asr.transcribeError = XPCASRTransportError.modelNotLoaded
-    try h.store.writeReadinessRetryMarker(for: h.id)
+      #expect(outcome == .deferredPersistenceFailed)
+      #expect(!h.store.hasReadinessRetryMarker(for: h.id), "nothing committed")
+      #expect(h.store.hasAttemptMarker(for: h.id), "stands, so the next launch abandons")
+      #expect(h.spoolExists, "still not deleted — that is the whole point")
+      #expect(
+        !RecoveryCoordinator.shouldDeleteAfterReplay(.deferredPersistenceFailed),
+        "the coordinator is the sole destructor and must retain this outcome")
 
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["reason"] == "marker_write_failed")
+      #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
+      #expect(e.stringProps["retry_disposition"] == "persistence_failed")
+      #expect(e.boolProps["audio_decrypted"] == true)
+      #expect(e.boolProps["camp_b_candidate"] == true)
     }
 
-    #expect(outcome == .failed(.unrecoverable), "one retry, then the bound stops")
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["reason"] == "transcribe_error")
-    #expect(e.stringProps["failure_class"] == "xpc_model_not_loaded")
-    #expect(e.stringProps["retry_disposition"] == "exhausted")
-  }
+    /// ROW A's ORDERING, continuing into ROW D. The retry marker must COMMIT before
+    /// the attempt marker is cleared: a crash in that window has to abandon the
+    /// spool rather than mint an uncounted retry. Observed through a production
+    /// seam the subject itself fires — never inferred from timing.
+    @Test("the retry marker commits before the attempt marker is cleared")
+    func retryMarkerWritePrecedesAttemptMarkerClear() async throws {
+      let h = try Fixture.make()
+      h.asr.loadError = ASREngineNotReadyAfterLoadError()
 
-  /// THE TRAP, specified so it cannot be satisfied trivially. Two independent
-  /// spools, two errors injected through the REAL load closure, one real replay
-  /// each. An earlier draft of this row was satisfiable by two mocked outcomes
-  /// and proved nothing about the live catch.
-  @Test("the two load-site refusals do not share an outcome")
-  func theTwoLoadSiteRefusalsDoNotShareAnOutcome() async throws {
-    let transient = try Fixture.make()
-    transient.asr.loadError = ASREngineNotReadyAfterLoadError()
-    let deterministic = try Fixture.make()
-    deterministic.asr.loadError = ASRError.notReady
+      var bothPresentAtCommit = false
+      h.replayer.onReadinessRetryMarkerCommitted = { [store = h.store, id = h.id] in
+        bothPresentAtCommit =
+          store.hasReadinessRetryMarker(for: id) && store.hasAttemptMarker(for: id)
+      }
 
-    var transientOutcome: RecoveryReplayOutcome?
-    var deterministicOutcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      transientOutcome = await transient.replayer.replay(
-        recoverySessionID: transient.id, isAborted: { false })
-      deterministicOutcome = await deterministic.replayer.replay(
-        recoverySessionID: deterministic.id, isAborted: { false })
+      _ = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+
+      #expect(
+        bothPresentAtCommit,
+        "at the instant of commit BOTH markers exist; the reverse order would grant a retry nothing recorded"
+      )
     }
 
-    #expect(transientOutcome == .deferred, "the load RETURNED and readiness was false")
-    #expect(
-      deterministicOutcome == .failed(.unrecoverable),
-      "no model is admitted; retrying repeats this failure every launch forever")
-    #expect(transient.spoolExists, "kept")
-    #expect(transient.asr.transcribeCallCount == 0)
-    #expect(deterministic.asr.transcribeCallCount == 0)
+    /// ROW H, and it must be distinguishable from ROW C. Asserting only the routing
+    /// would pass whether cleanup succeeded, failed, or was never attempted.
+    @Test("a failed cleanup after a failed commit still holds the recording")
+    func readinessRetryMarkerWriteAndCleanupFailureStaysDeferred() async throws {
+      let cleanupAttempts = Counter()
+      let h = try Fixture.make(ops: Fixture.failingCommitAndCleanup(counter: cleanupAttempts))
+      h.asr.loadError = ASREngineNotReadyAfterLoadError()
 
-    let classes = box.recoveryEvents().compactMap { $0.stringProps["failure_class"] }
-    #expect(classes == ["load_returned_not_ready", "not_ready"], "one label each, never shared")
-  }
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-  /// ROW C. The retry was earned and could not be recorded, so we must NOT clear
-  /// the attempt marker — a retry the budget never recorded is the hole the
-  /// bound exists to close.
-  @Test("a retry that cannot be persisted leaves the attempt spent")
-  func readinessRetryMarkerWriteFailureKeepsAttemptSpent() async throws {
-    let h = try Fixture.make(ops: Fixture.failingCommit())
-    h.asr.loadError = ASREngineNotReadyAfterLoadError()
+      // THE DISTINCTION from row C. Without these two the case is row C rewritten.
+      #expect(cleanupAttempts.value == 1, "cleanup was ATTEMPTED exactly once")
+      #expect(cleanupAttempts.failuresRaised == 1, "and the injected failure was CONSUMED")
 
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(
+        outcome == .deferredPersistenceFailed, "a failed cleanup changes nothing for the user")
+      #expect(!h.store.hasReadinessRetryMarker(for: h.id))
+      #expect(h.store.hasAttemptMarker(for: h.id))
+      #expect(h.spoolExists)
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["reason"] == "marker_write_failed")
+      #expect(e.stringProps["retry_disposition"] == "persistence_failed")
     }
 
-    #expect(outcome == .deferredPersistenceFailed)
-    #expect(!h.store.hasReadinessRetryMarker(for: h.id), "nothing committed")
-    #expect(h.store.hasAttemptMarker(for: h.id), "stands, so the next launch abandons")
-    #expect(h.spoolExists, "still not deleted — that is the whole point")
-    #expect(
-      !RecoveryCoordinator.shouldDeleteAfterReplay(.deferredPersistenceFailed),
-      "the coordinator is the sole destructor and must retain this outcome")
+    /// The field must appear ONLY on the bounded readiness retry. Codex found it
+    /// leaking onto the transcribe-site deferral, where no budget is consulted and
+    /// no marker is written — which would have counted ordinary transcription
+    /// deferrals as failed readiness retries and corrupted the very split the
+    /// field exists to measure.
+    @Test("an unrelated deferral carries no retry disposition")
+    func transcribeSiteDeferralDoesNotClaimAReadinessRetry() async throws {
+      let h = try Fixture.make()
+      h.asr.transcribeError = ASRError.notReady  // the TRANSCRIBE site, not the load site
 
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["reason"] == "marker_write_failed")
-    #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
-    #expect(e.stringProps["retry_disposition"] == "persistence_failed")
-    #expect(e.boolProps["audio_decrypted"] == true)
-    #expect(e.boolProps["camp_b_candidate"] == true)
-  }
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-  /// ROW A's ORDERING, continuing into ROW D. The retry marker must COMMIT before
-  /// the attempt marker is cleared: a crash in that window has to abandon the
-  /// spool rather than mint an uncounted retry. Observed through a production
-  /// seam the subject itself fires — never inferred from timing.
-  @Test("the retry marker commits before the attempt marker is cleared")
-  func retryMarkerWritePrecedesAttemptMarkerClear() async throws {
-    let h = try Fixture.make()
-    h.asr.loadError = ASREngineNotReadyAfterLoadError()
-
-    var bothPresentAtCommit = false
-    h.replayer.onReadinessRetryMarkerCommitted = { [store = h.store, id = h.id] in
-      bothPresentAtCommit =
-        store.hasReadinessRetryMarker(for: id) && store.hasAttemptMarker(for: id)
+      #expect(outcome == .deferred, "unchanged #2205 behaviour")
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["failure_class"] == "not_ready")
+      #expect(
+        e.stringProps["retry_disposition"] == nil,
+        "no readiness retry happened here, so claiming one falsifies the dashboard")
+      #expect(!h.store.hasReadinessRetryMarker(for: h.id), "and no budget was spent")
     }
 
-    _ = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+    /// THE BRANCH THE ROW ABOVE CANNOT REACH, and the reason this test exists
+    /// separately: the leak Codex found was in the marker-clear CATCH, which only
+    /// runs when the clear throws. The success-path test passes whether or not that
+    /// catch is correct, and a mutation control proved exactly that — the leaked
+    /// field survived it. Reaching a function is not reaching its branch.
+    ///
+    /// The clear is forced to fail by making the spool directory read-only at the
+    /// last moment the attempt marker is already written: `onTranscribe` fires
+    /// after the marker write and before the refusal.
+    @Test("an unrelated deferral whose marker clear FAILS also claims no retry")
+    func transcribeSiteClearFailureDoesNotClaimAReadinessRetry() async throws {
+      let h = try Fixture.make()
+      let fm = FileManager.default
+      defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: h.spoolDir.path) }
 
-    #expect(
-      bothPresentAtCommit,
-      "at the instant of commit BOTH markers exist; the reverse order would grant a retry nothing recorded")
-  }
+      h.asr.transcribeError = ASRError.notReady
+      h.asr.onTranscribe = { [dir = h.spoolDir] in
+        try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+      }
 
-  /// ROW H, and it must be distinguishable from ROW C. Asserting only the routing
-  /// would pass whether cleanup succeeded, failed, or was never attempted.
-  @Test("a failed cleanup after a failed commit still holds the recording")
-  func readinessRetryMarkerWriteAndCleanupFailureStaysDeferred() async throws {
-    let cleanupAttempts = Counter()
-    let h = try Fixture.make(ops: Fixture.failingCommitAndCleanup(counter: cleanupAttempts))
-    h.asr.loadError = ASREngineNotReadyAfterLoadError()
+      var outcome: RecoveryReplayOutcome?
+      let box = await Fixture.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      }
 
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(outcome == .deferredMarkerClearFailed, "the branch under test was REACHED")
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["reason"] == "marker_clear_failed")
+      #expect(
+        e.stringProps["retry_disposition"] == nil,
+        "still no readiness retry here — this is the leak Codex found")
+      // The r2 fix must survive: the audio reconstructed, and saying otherwise is
+      // the #2205 defect.
+      #expect(e.boolProps["audio_decrypted"] == true)
     }
 
-    // THE DISTINCTION from row C. Without these two the case is row C rewritten.
-    #expect(cleanupAttempts.value == 1, "cleanup was ATTEMPTED exactly once")
-    #expect(cleanupAttempts.failuresRaised == 1, "and the injected failure was CONSUMED")
+    /// Spool deletion must ATTEMPT every readiness-retry artifact, and keep
+    /// attempting the others when one fails — the store's cleanup is best-effort
+    /// by design, so this asserts attempts, never guarantees.
+    @Test("deleting a spool clears its readiness-retry marker and interrupted temp")
+    func spoolDeletionAttemptsEveryReadinessRetryArtifact() async throws {
+      let h = try Fixture.make()
+      try h.store.writeReadinessRetryMarker(for: h.id)
+      let temp = h.spoolDir.appendingPathComponent(".\(h.id).readiness-retry.tmp")
+      try Data([0x31]).write(to: temp)
 
-    #expect(outcome == .deferredPersistenceFailed, "a failed cleanup changes nothing for the user")
-    #expect(!h.store.hasReadinessRetryMarker(for: h.id))
-    #expect(h.store.hasAttemptMarker(for: h.id))
-    #expect(h.spoolExists)
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["reason"] == "marker_write_failed")
-    #expect(e.stringProps["retry_disposition"] == "persistence_failed")
-  }
+      try h.store.delete(recoverySessionID: h.id)
 
-  /// The field must appear ONLY on the bounded readiness retry. Codex found it
-  /// leaking onto the transcribe-site deferral, where no budget is consulted and
-  /// no marker is written — which would have counted ordinary transcription
-  /// deferrals as failed readiness retries and corrupted the very split the
-  /// field exists to measure.
-  @Test("an unrelated deferral carries no retry disposition")
-  func transcribeSiteDeferralDoesNotClaimAReadinessRetry() async throws {
-    let h = try Fixture.make()
-    h.asr.transcribeError = ASRError.notReady  // the TRANSCRIBE site, not the load site
-
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+      #expect(!h.store.hasReadinessRetryMarker(for: h.id), "no stale marker outlives its spool")
+      #expect(
+        !FileManager.default.fileExists(atPath: temp.path),
+        "the interrupted-write temp goes too, or it is orphaned permanently")
     }
-
-    #expect(outcome == .deferred, "unchanged #2205 behaviour")
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["failure_class"] == "not_ready")
-    #expect(
-      e.stringProps["retry_disposition"] == nil,
-      "no readiness retry happened here, so claiming one falsifies the dashboard")
-    #expect(!h.store.hasReadinessRetryMarker(for: h.id), "and no budget was spent")
   }
 
-  /// THE BRANCH THE ROW ABOVE CANNOT REACH, and the reason this test exists
-  /// separately: the leak Codex found was in the marker-clear CATCH, which only
-  /// runs when the clear throws. The success-path test passes whether or not that
-  /// catch is correct, and a mutation control proved exactly that — the leaked
-  /// field survived it. Reaching a function is not reaching its branch.
-  ///
-  /// The clear is forced to fail by making the spool directory read-only at the
-  /// last moment the attempt marker is already written: `onTranscribe` fires
-  /// after the marker write and before the refusal.
-  @Test("an unrelated deferral whose marker clear FAILS also claims no retry")
-  func transcribeSiteClearFailureDoesNotClaimAReadinessRetry() async throws {
-    let h = try Fixture.make()
-    let fm = FileManager.default
-    defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: h.spoolDir.path) }
-
-    h.asr.transcribeError = ASRError.notReady
-    h.asr.onTranscribe = { [dir = h.spoolDir] in
-      try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
-    }
-
-    var outcome: RecoveryReplayOutcome?
-    let box = await Fixture.capturingTelemetry {
-      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
-    }
-
-    #expect(outcome == .deferredMarkerClearFailed, "the branch under test was REACHED")
-    let e = try #require(box.recoveryEvents().first)
-    #expect(e.stringProps["reason"] == "marker_clear_failed")
-    #expect(
-      e.stringProps["retry_disposition"] == nil,
-      "still no readiness retry here — this is the leak Codex found")
-    // The r2 fix must survive: the audio reconstructed, and saying otherwise is
-    // the #2205 defect.
-    #expect(e.boolProps["audio_decrypted"] == true)
+  /// Counts cleanup attempts so row H can prove it differs from row C.
+  final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var attempts = 0
+    private var failures = 0
+    var value: Int { lock.withLock { attempts } }
+    var failuresRaised: Int { lock.withLock { failures } }
+    func recordAttempt() { lock.withLock { attempts += 1 } }
+    func recordFailure() { lock.withLock { failures += 1 } }
   }
-
-  /// Spool deletion must ATTEMPT every readiness-retry artifact, and keep
-  /// attempting the others when one fails — the store's cleanup is best-effort
-  /// by design, so this asserts attempts, never guarantees.
-  @Test("deleting a spool clears its readiness-retry marker and interrupted temp")
-  func spoolDeletionAttemptsEveryReadinessRetryArtifact() async throws {
-    let h = try Fixture.make()
-    try h.store.writeReadinessRetryMarker(for: h.id)
-    let temp = h.spoolDir.appendingPathComponent(".\(h.id).readiness-retry.tmp")
-    try Data([0x31]).write(to: temp)
-
-    try h.store.delete(recoverySessionID: h.id)
-
-    #expect(!h.store.hasReadinessRetryMarker(for: h.id), "no stale marker outlives its spool")
-    #expect(
-      !FileManager.default.fileExists(atPath: temp.path),
-      "the interrupted-write temp goes too, or it is orphaned permanently")
-  }
-}
-
-/// Counts cleanup attempts so row H can prove it differs from row C.
-final class Counter: @unchecked Sendable {
-  private let lock = NSLock()
-  private var attempts = 0
-  private var failures = 0
-  var value: Int { lock.withLock { attempts } }
-  var failuresRaised: Int { lock.withLock { failures } }
-  func recordAttempt() { lock.withLock { attempts += 1 } }
-  func recordFailure() { lock.withLock { failures += 1 } }
-}
 
 #endif

@@ -64,8 +64,8 @@ def running_enviouswispr_instances():
         pid, exe = line.strip().split(None, 1)
         if pid == me:
             continue
-        # An EXACT suffix, so the app's own XPC service and `llama-server` - both
-        # inside the same bundle and both in this listing - are excluded.
+        # An EXACT suffix, so a sibling executable in the same bundle (e.g.
+        # `llama-server`) is excluded.
         if exe.endswith(".app/Contents/MacOS/EnviousWispr"):
             found[pid] = exe
     return found
@@ -167,12 +167,10 @@ def run_guard_cases():
         ("a path containing a space-hyphen is still counted", ONE + [
             "  444 /Users/x/EW - issue/build/EnviousWispr Local.app"
             "/Contents/MacOS/EnviousWispr"], 2, False),
-        # Same bundle, sibling executables. `comm` lists them, and an EXACT
-        # suffix is what keeps them out of the count; a substring test would
+        # Same bundle, a sibling executable. `comm` lists it, and an EXACT
+        # suffix is what keeps it out of the count; a substring test would
         # treble every instance.
-        ("the app's own XPC service and llama-server are not instances", ONE + [
-            "  555 /Users/x/EW/build/EnviousWispr Local.app/Contents/XPCServices"
-            "/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService",
+        ("llama-server (a bundled sibling executable) is not an instance", ONE + [
             "  556 /Users/x/EW/build/EnviousWispr Local.app/Contents/Resources"
             "/llama-server"], 1, True),
     ]

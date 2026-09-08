@@ -102,14 +102,6 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
-      - name: XPC error hygiene self-test
-        if: steps.changes.outputs.needs_build == 'true'
-        run: scripts/check-xpc-error-hygiene.sh --self-test
-
-      - name: XPC error hygiene
-        if: steps.changes.outputs.needs_build == 'true'
-        run: scripts/check-xpc-error-hygiene.sh
-
       - name: Run logic tests (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |

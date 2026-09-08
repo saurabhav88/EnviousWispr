@@ -5,8 +5,8 @@ import Testing
 
 @testable import EnviousWisprASR
 
-/// #1348 Phase 2: the service-side offline invariant + the proxy's forced
-/// helper recycle (grounded r2 blocker 1 / r3-precise test scope).
+/// #1348 Phase 2: the service-side offline invariant (grounded r2 blocker 1 /
+/// r3-precise test scope).
 @MainActor
 @Suite struct ParakeetDeliveryModeTests {
   /// Cache-only arms FluidAudio's own offline switch (`ModelHub.offlineMode`
@@ -83,33 +83,5 @@ import Testing
     #expect(emissions[3].0 == 1.0)
     #expect(emissions[3].1 == ModelLoadStallPolicy.installPhase)
     #expect(emissions[3].2 == "")
-  }
-
-  /// The recycle path: a proxy-level error drops the connection and marks
-  /// reinit, so the NEXT call respawns the helper from the current bundle.
-  /// Driven directly (the reachable behavior); the OS-level
-  /// remoteObjectProxyWithErrorHandler callback is integration-covered by
-  /// the drill matrix's teardown rows.
-  @Test func proxyErrorRecyclesConnection() {
-    let proxy = ASRManagerProxy(
-      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })  // no real XPC
-    #expect(!proxy.hasConnectionForTesting)
-    proxy.recycleConnectionAfterProxyError()
-    #expect(!proxy.hasConnectionForTesting)
-    #expect(proxy.needsReinitForTesting, "recycle must force reinit on the next call")
-  }
-
-  /// The XPC call carries cacheOnly ONLY for Parakeet — a WhisperKit-typed
-  /// proxy never flips the service's offline switch.
-  @Test func cacheOnlyIsParakeetScoped() {
-    let proxy = ASRManagerProxy(
-      engineMutationScope: .alwaysAllowedForTesting, connectionPreflight: { _ in })
-    proxy.parakeetCacheOnly = true
-    proxy.setInitialBackendType(.whisperKit)
-    #expect(proxy.activeBackendType == .whisperKit)
-    // The guard lives at the call site (`parakeetCacheOnly && backend ==
-    // .parakeet`); with WhisperKit active the computed cacheOnly is false.
-    let effectiveCacheOnly = proxy.parakeetCacheOnly && proxy.activeBackendType == .parakeet
-    #expect(!effectiveCacheOnly)
   }
 }

@@ -201,7 +201,7 @@ final class BenchmarkSuite {
       let streamingOutcome = await engineMutationScope.withClaim(site: "benchmarkSuiteStreaming") {
         var startedStreaming = false
         do {
-          try await asrManager.startStreaming(options: .default)
+          try await asrManager.startStreaming(options: .default, attemptID: UUID())
           startedStreaming = true
 
           // Chunk the samples into AVAudioPCMBuffers and feed them

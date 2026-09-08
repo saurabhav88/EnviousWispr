@@ -1,11 +1,11 @@
 @preconcurrency import AVFoundation
-@testable import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 import Security
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
@@ -78,7 +78,7 @@ struct RecoverySpoolReplayerTests {
         text: cannedText, language: options.language, duration: 1, processingTime: 1,
         backendType: activeBackendType)
     }
-    func startStreaming(options: TranscriptionOptions) async throws {}
+    func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {}
     func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {}
     func finalizeStreaming() async throws -> ASRResult {
       ASRResult(text: "", language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
@@ -179,7 +179,7 @@ struct RecoverySpoolReplayerTests {
       outputClassifierHolder: OutputClassifierHolder(),
       now: now,
       currentVocabulary: { (.empty, .empty) },
-        currentSnippets: { .empty })
+      currentSnippets: { .empty })
     return Harness(
       replayer: replayer, asr: asr,
       spoolStore: RecoverySpoolStore(directory: spoolDir), spoolDir: spoolDir, keyStore: keyStore,
@@ -762,63 +762,6 @@ struct RecoverySpoolReplayerTests {
       #expect(e.boolProps["audio_decrypted"] == true)
       #expect(e.boolProps["camp_b_candidate"] == true)
       #expect(e.stringProps["spool_seconds_bucket"] != nil)
-    }
-
-    @Test("transcribe failure on good audio is a Camp B candidate with a failure class")
-    func telemetryTranscribeFailIsCampBCandidate() async throws {
-      let h = Self.makeHarness()
-      let id = "tel-xpc-\(UUID().uuidString)"
-      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
-      h.asr.transcribeError = XPCASRTransportError.serviceUnreachable
-      let box = await Self.capturingTelemetry {
-        _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-      }
-      let e = try #require(box.recoveryEvents().first)
-      #expect(e.stringProps["outcome"] == "failed")
-      #expect(e.stringProps["reason"] == "transcribe_error")
-      #expect(e.stringProps["failure_class"] == "xpc_unreachable")
-      #expect(e.boolProps["audio_decrypted"] == true, "reconstruction succeeded ⇒ audio_decrypted")
-      #expect(
-        e.boolProps["camp_b_candidate"] == true, "good audio, failed transcribe ⇒ camp B candidate")
-      #expect(
-        e.stringProps["spool_seconds_bucket"] != nil, "bucket derived from reconstructed count")
-      // Privacy: never a raw NSError domain/code/description on the wire.
-      #expect(e.stringProps["domain"] == nil && e.intProps["code"] == nil)
-      #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
-    }
-
-    /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 5 generic
-    /// codec/transport cases are NOT "XPC unreachable" — a bare `is
-    /// XPCASRTransportError` type-check would have misclassified them,
-    /// corrupting recovery telemetry.
-    /// #2132 UPDATE: these now classify as `.xpc_transport` rather than
-    /// `.other`. The protection this test exists for is UNCHANGED and is the
-    /// reason it must not be deleted: a bare `is XPCASRTransportError` check
-    /// would call all five "unreachable", and the assertion below still fails if
-    /// anyone reintroduces that. The expected label is simply more specific now.
-    @Test(
-      "the new XPCASRTransportError cases are transport, never .xpcUnreachable",
-      arguments: [
-        XPCASRTransportError.requestEncodingFailed("x"),
-        .invalidSamplePayload("x"),
-        .requestDecodingFailed("x"),
-        .responseEncodingFailed("x"),
-        .responseDecodingFailed("x"),
-      ]
-    )
-    func telemetryNewTransportCasesClassifyAsOther(error: XPCASRTransportError) async throws {
-      let h = Self.makeHarness()
-      let id = "tel-xpc-new-\(UUID().uuidString)"
-      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
-      h.asr.transcribeError = error
-      let box = await Self.capturingTelemetry {
-        _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
-      }
-      let e = try #require(box.recoveryEvents().first)
-      #expect(e.stringProps["failure_class"] == "xpc_transport")
-      #expect(
-        e.stringProps["failure_class"] != "xpc_unreachable",
-        "the narrowing regression this test was written for (#1525 PR I-B)")
     }
 
     @Test("deferred (attempt-marker write failed) emits marker_write_failed")

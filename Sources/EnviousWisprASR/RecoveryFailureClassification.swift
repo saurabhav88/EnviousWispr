@@ -22,19 +22,11 @@ import EnviousWisprServices
 /// normalizer for its seam. No switch over `any Error` can be exhaustive, so the
 /// optional is the honest return type rather than a total-looking lie.
 package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass? {
-  // ORDER IS LOAD-BEARING: the unreachable-service case must be tested before
-  // the general transport case or the shipped `xpc_unreachable` series silently
-  // stops being produced. Pinned by "transcribe failure on good audio is a Camp B
-  // candidate with a failure class" in RecoverySpoolReplayerTests.
-  if let transport = error as? XPCASRTransportError {
-    switch transport {
-    case .serviceUnreachable: return .xpcUnreachable
-    case .modelNotLoaded: return .xpcModelNotLoaded
-    case .requestEncodingFailed, .invalidSamplePayload, .requestDecodingFailed,
-      .responseEncodingFailed, .responseDecodingFailed:
-      return .xpcTransport
-    }
-  }
+  // #1908: `XPCASRTransportError` (and the `.xpcUnreachable`/`.xpcModelNotLoaded`/
+  // `.xpcTransport` classification it drove) no longer has a producer — the last
+  // XPC helper collapsed in-process. Those three `RecoveryFailureClass` cases stay
+  // declared (RecoverySpoolReplayer's exhaustive switch is a live, general-purpose
+  // consumer, not XPC-specific) but this classifier can no longer produce them.
   // Three cancellation vehicles, one actionable class. `KernelDictationDriver`
   // already groups the latter two exactly this way.
   // BEFORE the supersede arm deliberately: both are post-load conditions, and

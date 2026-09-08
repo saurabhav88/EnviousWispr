@@ -240,14 +240,12 @@ package final class WisprBootstrapper {
       wake: { recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck() },
       onRefused: { site in TelemetryService.shared.recoveryEngineActionDeferred(site: site) })
 
-    // XPC ASR service — default ON. ASR inference runs in a separate XPC
-    // service process for memory isolation. Escape hatch:
-    // `defaults write ... useXPCASRService -bool false`.
-    let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? true
-    let asrManager: any ASRManagerInterface =
-      useXPCASR
-      ? ASRManagerProxy(engineMutationScope: engineMutationScope)
-      : ASRManager(engineMutationScope: engineMutationScope)
+    // #1908: ASR now always runs in-process, same as WhisperKit — the XPC
+    // helper this used to conditionally route to (`ASRManagerProxy` /
+    // `EnviousWisprASRService`) is deleted; macOS can no longer reclaim it
+    // out from under an idle dictation. The `useXPCASRService` selector and
+    // its `defaults write` escape hatch are retired along with it.
+    let asrManager: any ASRManagerInterface = ASRManager(engineMutationScope: engineMutationScope)
 
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
@@ -292,10 +290,11 @@ package final class WisprBootstrapper {
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     // owner of every batch-decode fault command, dispatching to whichever
-    // backend-specific mechanism it holds a reference to. `asrManager as?
-    // ASRManagerProxy` is nil when the in-process `ASRManager` escape hatch
-    // is active (`useXPCASRService=false`) — the Parakeet half of the oracle
-    // simply no-ops then, exactly like every other DEBUG-only fault seam.
+    // backend-specific mechanism it holds a reference to. #1908: passes the
+    // `ASRManagerInterface` existential directly rather than downcasting to
+    // the (now-deleted) concrete `ASRManagerProxy` type — that downcast is
+    // exactly what went silently dark when the composition root stopped
+    // constructing it.
     //
     // Codex r6: the CONTROLLER TYPE is deliberately not `#if DEBUG`-gated
     // (only its real-engine-boundary methods are, § the type's own header
@@ -308,7 +307,7 @@ package final class WisprBootstrapper {
     #if DEBUG
       let batchDecodeFaultController: BatchDecodeFaultController? = BatchDecodeFaultController(
         whisperKitBackend: whisperKitBackend,
-        asrManagerProxy: asrManager as? ASRManagerProxy)
+        asrManager: asrManager)
     #else
       let batchDecodeFaultController: BatchDecodeFaultController? = nil
     #endif

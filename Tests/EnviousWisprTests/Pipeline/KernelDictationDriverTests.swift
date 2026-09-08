@@ -661,12 +661,12 @@ import Testing
     #expect(
       Classify.classifyWarmupThrow(CancellationError(), guardFired: false) == .cancelled)
     #expect(
-      Classify.classifyWarmupThrow(XPCASRTransportError.serviceUnreachable, guardFired: true)
+      Classify.classifyWarmupThrow(ASRError.notReady, guardFired: true)
         == .wedge)
     #expect(
-      Classify.classifyWarmupThrow(XPCASRTransportError.serviceUnreachable, guardFired: false)
+      Classify.classifyWarmupThrow(ASRError.notReady, guardFired: false)
         == .failure,
-      "genuine service death (no guard fire) is a failure with the transport error")
+      "genuine failure (no guard fire) stays a failure with any non-cancellation error")
     #expect(
       Classify.classifyWarmupThrow(ASRLoadSupersededError(), guardFired: false) == .failure)
   }

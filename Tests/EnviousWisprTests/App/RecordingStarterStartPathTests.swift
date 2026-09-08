@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -8,7 +9,6 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -62,13 +62,17 @@ import EnviousWisprAppKitTestSupport
   /// `currentIntent == .cachingModel(engineLabel:)` was the only thing checking
   /// the label at all — through a value nobody sees.
   private static func showsColdBoot(_ overlay: OverlayDirector, engine: String) -> Bool {
-    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else { return false }
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else {
+      return false
+    }
     return notice.kind == .warmingUp
       && notice.secondaryText == DictationNarrator.coldStartSubtitle(engineLabel: engine)
   }
 
   private static func showsRecoveryOffer(_ overlay: OverlayDirector) -> Bool {
-    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else { return false }
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else {
+      return false
+    }
     return notice.kind == .recovery
   }
 
@@ -470,7 +474,8 @@ import EnviousWisprAppKitTestSupport
     // early-return mutation while still proving the cold branch was skipped.
     guard Self.showsRecording(fx.overlay) else {
       Issue.record(
-        "warm press must show the recording overlay; got \(String(describing: fx.overlay.renderModel.state.presentation?.content))")
+        "warm press must show the recording overlay; got \(String(describing: fx.overlay.renderModel.state.presentation?.content))"
+      )
       return
     }
   }
@@ -532,102 +537,6 @@ import EnviousWisprAppKitTestSupport
     #expect(fx.kernelDriver.state == .idle)
   }
 
-  // MARK: - #959 warm-respawn (idle XPC reclaim) press routing
-
-  /// A press on a not-ready engine whose model was reaped while idle
-  /// (`residentModelLostWhileIdle`) under the default `.never` policy must NOT
-  /// show the cold pill — it consumes the marker and falls through to the normal
-  /// start (which shows the recording overlay), so the user's press records.
-  @Test func warmRespawnStartConsumesMarkerAndSkipsColdPill() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = false  // → readiness .notReady
-    fx.kernelDriver.residentModelLostWhileIdle = true
-    fx.settings.modelUnloadPolicy = .never  // explicit: user keeps the model resident
-
-    _ = await fx.starter.start()
-
-    // Marker consumed (single press) and NO cold pill — the PTT fall-through
-    // shows the recording overlay instead.
-    #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
-    #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3") == false,
-      "a warm engine showed the cold-boot pill")
-    guard Self.showsRecording(fx.overlay) else {
-      Issue.record(
-        "warm-respawn must show the recording overlay; got \(String(describing: fx.overlay.renderModel.state.presentation?.content))")
-      return
-    }
-  }
-
-  @Test func warmRespawnToggleConsumesMarkerAndSkipsColdPill() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = false
-    fx.kernelDriver.residentModelLostWhileIdle = true
-    fx.settings.modelUnloadPolicy = .never
-
-    await fx.starter.toggle(source: .toggleHotkey)
-
-    #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
-    #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3") == false,
-      "a warm engine showed the cold-boot pill")
-  }
-
-  /// The marker only short-circuits the pill when the user keeps the model
-  /// resident (`.never`). Under a timed unload policy the user WANTS the model
-  /// gone, so a not-ready press is a genuine cold start: show the pill, keep the
-  /// marker (the cold branch does not consume it), mint no session.
-  @Test func warmRespawnRequiresNeverPolicy() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = false
-    fx.kernelDriver.residentModelLostWhileIdle = true
-    fx.settings.modelUnloadPolicy = .fiveMinutes
-
-    _ = await fx.starter.start()
-
-    #expect(fx.kernelDriver.state == .idle)
-    #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
-      "the honest cold-boot pill, naming the engine, is what the user must see")
-    #expect(fx.kernelDriver.residentModelLostWhileIdle == true)  // not consumed on cold branch
-  }
-
-  /// Adversarial (`matcher-set-adversarial-tests`): the marker in its
-  /// NON-intended class. A genuine cold boot (marker false) must STILL block —
-  /// the warm-respawn path must never fire for a never-loaded engine.
-  @Test func genuineColdWithMarkerUnsetStillBlocks() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-    fx.asr.isModelLoaded = false
-    #expect(fx.kernelDriver.residentModelLostWhileIdle == false)  // never reaped
-
-    _ = await fx.starter.start()
-
-    #expect(fx.kernelDriver.state == .idle)
-    #expect(
-      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
-      "the honest cold-boot pill, naming the engine, is what the user must see")
-  }
-
-  /// Driver-level: the overlay latch is set by `beginWarmRespawnOverlay()`, and a
-  /// successful load (`ensureEngineWarm` reaching `.ready`) drops a stale marker
-  /// so a later genuine cold boot still shows the pill.
-  @Test func driverLatchSetAndMarkerClearedOnWarm() async {
-    let fx = Self.makeFixture()
-    fx.asr.activeBackendType = .parakeet
-
-    #expect(fx.kernelDriver.warmRespawnInFlight == false)
-    fx.kernelDriver.beginWarmRespawnOverlay()
-    #expect(fx.kernelDriver.warmRespawnInFlight == true)
-
-    fx.kernelDriver.residentModelLostWhileIdle = true
-    fx.asr.isModelLoaded = true  // ensureEngineWarm sees readiness .ready
-    _ = await fx.kernelDriver.ensureEngineWarm(reason: .coldPress)
-    #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
-  }
   // MARK: - #1631 outcome mapping
 
   /// The mapping is a closed set of two inputs, so it is tested directly rather
@@ -639,7 +548,8 @@ import EnviousWisprAppKitTestSupport
       RecordingStartOutcome.make(pipelineActive: true, continuingSessionID: "S1")
         == .recording("S1"))
     // Active but no continuing session: an exit is already latched.
-    #expect(RecordingStartOutcome.make(pipelineActive: true, continuingSessionID: nil) == .noRecording)
+    #expect(
+      RecordingStartOutcome.make(pipelineActive: true, continuingSessionID: nil) == .noRecording)
     // Inactive covers the immediate-error case: PipelineState.error is not isActive.
     #expect(
       RecordingStartOutcome.make(pipelineActive: false, continuingSessionID: "S1") == .noRecording)

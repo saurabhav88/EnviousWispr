@@ -386,7 +386,6 @@ import Testing
       "protocol", "WhisperKitTranscribing",
       "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", nil
     ),
-    ("protocol", "ASRServiceProtocol", "Sources/EnviousWisprCore/ASRServiceProtocol.swift", nil),
     (
       "protocol", "ASREngineTelemetryProviding",
       "Sources/EnviousWisprPipeline/KernelTelemetryState.swift", nil
@@ -483,7 +482,8 @@ import Testing
         ),
         MemberSignature(
           condition: nil,
-          signature: "func startStreaming(options: TranscriptionOptions) async throws"),
+          signature:
+            "func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws"),
         MemberSignature(
           condition: nil, signature: "func feedAudio(_ buffer: AVAudioPCMBuffer) async throws"),
         MemberSignature(
@@ -499,8 +499,29 @@ import Testing
             "var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)? { get set }"
         ),
         MemberSignature(condition: nil, signature: "var feedsSharedProgressFile: Bool { get }"),
+        // #1908: HEAVY wedge-recovery requirement — see `ASRManager
+        // .attemptWedgeRecoveryUnload()` / `ASRManagerProxy`'s no-op default.
+        MemberSignature(condition: nil, signature: "func attemptWedgeRecoveryUnload() async"),
+        // #1908 (chunk A+B review rounds 4-5): invalidate an in-flight
+        // `startStreaming()` attempt a caller gave up waiting on — see
+        // `ASRManager.cancelInFlightStreamingStart()` / `ASRManagerProxy`'s
+        // no-op default (its own signal-watchdog already fully recovers).
+        // SYNCHRONOUS (round 5): must be callable from `withOrderedDeadline`'s
+        // non-async `onTimeout` for its ordering guarantee.
         MemberSignature(
-          condition: nil, signature: "var onServiceInterrupted: (() -> Void)? { get set }"),
+          condition: nil,
+          signature:
+            "@discardableResult\n  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?"
+        ),
+        // #1908: #1707 Phase 2 batch-decode fault oracle, ported from
+        // `ASRServiceHandler`'s `#if DEBUG` block onto the shared interface
+        // so `BatchDecodeFaultController` no longer needs a concrete
+        // `ASRManagerProxy` downcast.
+        MemberSignature(
+          condition: "DEBUG", signature: "func armBatchDecodeHold(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG", signature: "func releaseBatchDecode(trialID: String) async"),
+        MemberSignature(condition: "DEBUG", signature: "func clearBatchDecodeFault() async"),
         // Extension defaults.
         MemberSignature(
           condition: nil,
@@ -508,6 +529,23 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public var parakeetCacheOnly: Bool {\n    get { false }\n    set {}\n  }"),
+        MemberSignature(
+          condition: nil,
+          signature: "public func attemptWedgeRecoveryUnload() async"),
+        MemberSignature(
+          condition: nil,
+          signature:
+            "@discardableResult\n  public func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?"
+        ),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func armBatchDecodeHold(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func releaseBatchDecode(trialID: String) async"),
+        MemberSignature(
+          condition: "DEBUG",
+          signature: "public func clearBatchDecodeFault() async"),
       ]),
     "ASREngineAdapter": Surface(
       name: "ASREngineAdapter", file: "Sources/EnviousWisprPipeline/ASREngineAdapter.swift",
@@ -645,49 +683,6 @@ import Testing
             "func transcribe(\n    audioArray: [Float], decodeOptions: DecodingOptions?,\n    shouldContinueDecoding: (@Sendable () -> Bool)?\n  ) async throws -> [TranscriptionResult]"
         ),
         MemberSignature(condition: nil, signature: "func encodeText(_ text: String) -> [Int]"),
-      ]),
-    "ASRServiceProtocol": Surface(
-      name: "ASRServiceProtocol", file: "Sources/EnviousWisprCore/ASRServiceProtocol.swift",
-      header: "protocol ASRServiceProtocol",
-      members: [
-        MemberSignature(condition: nil, signature: "func ping(reply: @escaping (String) -> Void)"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func loadModel(\n    backendType: String, cacheOnly: Bool, modelDirectoryPath: String,\n    reply: @escaping (NSError?) -> Void)"
-        ),
-        MemberSignature(condition: nil, signature: "func unloadModel(reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: nil, signature: "func getModelState(reply: @escaping (Bool, Bool) -> Void)"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func transcribeSamples(\n    _ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool,\n    speechSegmentsData: Data?,\n    reply: @escaping (Data?, NSError?) -> Void)"
-        ),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func startStreaming(\n    operationID: String, language: String, enableTimestamps: Bool,\n    reply: @escaping (NSError?) -> Void)"
-        ),
-        MemberSignature(
-          condition: nil, signature: "func feedAudioBuffer(_ data: Data, frameCount: Int)"),
-        MemberSignature(
-          condition: nil,
-          signature: "func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void)"
-        ),
-        MemberSignature(condition: nil, signature: "func cancelStreaming()"),
-        MemberSignature(
-          condition: nil,
-          signature:
-            "func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void)"),
-        MemberSignature(
-          condition: "DEBUG",
-          signature: "func armBatchDecodeHold(trialID: String, reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: "DEBUG",
-          signature: "func releaseBatchDecode(trialID: String, reply: @escaping () -> Void)"),
-        MemberSignature(
-          condition: "DEBUG", signature: "func clearBatchDecodeFault(reply: @escaping () -> Void)"),
       ]),
     "ASREngineTelemetryProviding": Surface(
       name: "ASREngineTelemetryProviding",

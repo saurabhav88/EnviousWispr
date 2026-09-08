@@ -18,11 +18,12 @@ import Foundation
 /// - Output code == (error as NSError).code.
 /// - Output is securely codable over XPC by construction.
 ///
-/// Note: this sanitizer targets service→host XPC reply boundaries today. If
-/// future XPC methods pass `NSError` host→service (as a method argument, not
-/// a reply), those arguments must also be sanitized or the service will crash
-/// on decode. The CI check `scripts/check-xpc-error-hygiene.sh` guards against
-/// raw `safeReply(error as NSError)` regressions.
+/// Note: #1908 removed the last XPC service (the ASR helper), so there is no
+/// live service→host reply boundary left to sanitize; nothing in production
+/// calls this today. Kept as a general-purpose "flatten an NSError to one
+/// safely-codable key" utility, and because Sentry identity code that reasons
+/// about what a sanitizer like this would do to an error's `userInfo` (see
+/// `ParakeetStreamingSentryError`) still describes it by name.
 public enum XPCErrorSanitizer {
   /// Maximum depth of `NSUnderlyingErrorKey` ancestry to flatten. Real-world
   /// chains are usually ≤ 3-4; 8 is a failsafe against pathological recursion.

@@ -627,7 +627,13 @@ struct ExhaustedRetrySpoolDeletionTests {
       let kernel = wrapper.testKernel
 
       await startRecording(context)
-      kernel.externalASRInterrupted()
+      // #1908: `kernel.externalASRInterrupted()` (the App-routed XPC-crash
+      // entry point) was deleted along with the XPC path it bridged; drive
+      // the SAME `routeASRInterruption(sid:)` internal path through its
+      // other live production caller instead — `adapter.onEngineInterrupted`
+      // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+      // exposes for exactly this purpose.
+      context.engine.fireEngineInterrupted()
       await wrapper.drainUntilConcluded()
 
       #expect(
@@ -654,7 +660,8 @@ struct ExhaustedRetrySpoolDeletionTests {
       let kernel = wrapper.testKernel
 
       await startRecording(context)
-      kernel.externalASRInterrupted()
+      // #1908: see the identical substitution's comment above.
+      context.engine.fireEngineInterrupted()
       await wrapper.drainUntilConcluded()
 
       #expect(kernel.recordingOutcome == .asrInterrupted(wasRecording: true))

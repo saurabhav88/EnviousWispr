@@ -1,7 +1,6 @@
 import ProjectDescription
 
 let appBundleId = "com.enviouswispr.app"
-let asrServiceBundleId = "com.enviouswispr.asrservice"
 
 let deploymentTargets: DeploymentTargets = .macOS("14.0")
 
@@ -203,17 +202,10 @@ let appSettings = targetSettings(
   ]
 )
 
-let asrServiceSettings = targetSettings(
-  debugExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice.dev"],
-  devExtra: devSigningSettings.merging(
-    ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice.dev"]) { _, new in new },
-  releaseExtra: ["PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.asrservice"]
-)
-
-// First-party modules are NATIVE Tuist targets, statically linked. The app and
-// both XPC services each get their own copy of the code they need (no runtime
-// @rpath dependency on internal frameworks) — matching the current SwiftPM
-// behavior and the lowest-risk shape for heart-path XPC launch.
+// First-party modules are NATIVE Tuist targets, statically linked. The app
+// gets its own copy of the code it needs (no runtime @rpath dependency on
+// internal frameworks) — matching the current SwiftPM behavior. #1908: the
+// last XPC helper (ASR) collapsed in-process; no XPC target remains.
 func firstPartyLibrary(
   _ name: String,
   dependencies: [TargetDependency],
@@ -265,9 +257,9 @@ let project = Project(
     // ---- first-party modules (native static frameworks) ----
     firstPartyLibrary("EnviousWisprCore", dependencies: []),
     // Sentry-only privacy + crash-reporting leaf (#1174). The single home for
-    // the event sanitizer + the helper Sentry bootstrap, shared by the app (via
-    // Services) AND both XPC helpers — so the redactor has one source of truth
-    // and the Sentry SDK stays contained to exactly the modules that need it.
+    // the event sanitizer + the Sentry bootstrap, shared by the app (via
+    // Services) — so the redactor has one source of truth and the Sentry SDK
+    // stays contained to exactly the modules that need it.
     firstPartyLibrary(
       "EnviousWisprObservabilityCore",
       dependencies: [
@@ -486,30 +478,6 @@ let project = Project(
         .package(product: "Sparkle"),
       ]),
 
-    // ---- XPC services (audio capture is in-process since #1543; ASR stays isolated) ----
-    .target(
-      name: "EnviousWisprASRService",
-      destinations: .macOS,
-      product: .xpc,
-      productName: "EnviousWisprASRService",
-      bundleId: asrServiceBundleId,
-      deploymentTargets: deploymentTargets,
-      infoPlist: .file(path: "Sources/EnviousWisprASRService/Resources/Info.plist"),
-      sources: ["Sources/EnviousWisprASRService/**"],
-      entitlements: .file(
-        path: "Sources/EnviousWisprASRService/Resources/EnviousWisprASRService.entitlements"),
-      dependencies: [
-        .target(name: "EnviousWisprCore"),
-        .target(name: "EnviousWisprASR"),
-        .target(name: "EnviousWisprAudio"),
-        // Sentry-only crash-reporting bootstrap for this helper (#1174).
-        .target(name: "EnviousWisprObservabilityCore"),
-        .package(product: "WhisperKit"),
-        .package(product: "FluidAudio"),
-      ],
-      settings: asrServiceSettings
-    ),
-
     // ---- App ----
     .target(
       name: "EnviousWispr",
@@ -597,15 +565,14 @@ let project = Project(
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the
       // engine modules + WhisperKit + FluidAudio). Sparkle stays a direct app
-      // dep so Tuist embeds Sparkle.framework into the .app; the ASR XPC
-      // service stays direct so it bundles into Contents/XPCServices (#1543:
-      // the audio capture service was removed — capture is in-process).
+      // dep so Tuist embeds Sparkle.framework into the .app. #1908: no XPC
+      // helper remains — ASR collapsed in-process, following #1543's audio
+      // capture collapse.
       dependencies: [
         // #2455 C1: AppLive, not AppKit. The shell reaches the kit only THROUGH
         // the module that chooses live implementations.
         .target(name: "EnviousWisprAppLive"),
         .package(product: "Sparkle"),
-        .target(name: "EnviousWisprASRService"),
       ],
       settings: appSettings
     ),

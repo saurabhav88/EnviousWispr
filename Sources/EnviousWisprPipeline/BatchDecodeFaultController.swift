@@ -22,11 +22,16 @@ import Foundation
 @MainActor
 package final class BatchDecodeFaultController {
   private let whisperKitBackend: WhisperKitBackend?
-  private let asrManagerProxy: ASRManagerProxy?
+  // #1908: widened from the concrete `ASRManagerProxy?` to the shared
+  // interface — a hard downcast to the proxy type went silently dark
+  // (`nil`, no build error, no test failure) the moment the composition
+  // root stopped constructing `ASRManagerProxy`. Both conformers implement
+  // the three `#if DEBUG` batch-decode methods this type calls.
+  private let asrManager: (any ASRManagerInterface)?
 
-  package init(whisperKitBackend: WhisperKitBackend?, asrManagerProxy: ASRManagerProxy?) {
+  package init(whisperKitBackend: WhisperKitBackend?, asrManager: (any ASRManagerInterface)?) {
     self.whisperKitBackend = whisperKitBackend
-    self.asrManagerProxy = asrManagerProxy
+    self.asrManager = asrManager
   }
 
   // MARK: Adapter-boundary forced failures (§11.1)
@@ -136,7 +141,7 @@ package final class BatchDecodeFaultController {
       case .whisperKit:
         await whisperKitBackend?.armBatchDecodeHold(trialID: trialID)
       case .parakeet:
-        await asrManagerProxy?.armBatchDecodeHold(trialID: trialID)
+        await asrManager?.armBatchDecodeHold(trialID: trialID)
       }
     }
 
@@ -146,7 +151,7 @@ package final class BatchDecodeFaultController {
       case .whisperKit:
         await whisperKitBackend?.releaseBatchDecode(trialID: trialID)
       case .parakeet:
-        await asrManagerProxy?.releaseBatchDecode(trialID: trialID)
+        await asrManager?.releaseBatchDecode(trialID: trialID)
       }
     }
 
@@ -190,7 +195,7 @@ package final class BatchDecodeFaultController {
     package func clearBatchDecodeFault(trialID: String) async {
       kernelTimestamps = KernelTimestamps()
       await whisperKitBackend?.clearBatchDecodeFault()
-      await asrManagerProxy?.clearBatchDecodeFault()
+      await asrManager?.clearBatchDecodeFault()
       BatchDecodeFaultSnapshotFile.shared.clear()
     }
   #endif

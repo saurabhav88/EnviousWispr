@@ -225,8 +225,14 @@ struct ScenarioRunner {
       context.capture.failCaptureStart = true
     case .xpcCrash:
       // The ASR-interruption channel — distinct from the audio-interruption
-      // path (C6, not C5).
-      kernel?.externalASRInterrupted()
+      // path (C6, not C5). #1908: `kernel.externalASRInterrupted()` (the
+      // App-routed XPC-crash entry point) was deleted along with the XPC
+      // path it bridged; drive the SAME `routeASRInterruption(sid:)`
+      // internal path through its other live production caller instead —
+      // `adapter.onEngineInterrupted`
+      // (`RecordingSessionKernel.bindCaptureCallbacks`), which `FakeEngine`
+      // exposes via `fireEngineInterrupted()` for exactly this purpose.
+      context.engine.fireEngineInterrupted()
     }
   }
 

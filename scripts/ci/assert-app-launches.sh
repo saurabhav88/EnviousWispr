@@ -8,9 +8,15 @@
 #
 # Usage: assert-app-launches.sh <path-to-.app> [seconds-to-survive]
 #
-# Exit: 0 every bundled XPC service resolved its image under dyld AND the host survived the
-# wait; 1 a bundled service failed its dyld startup, or the host died (the reason is classified
-# in the output); 2 the check could not be performed.
+# Exit: 0 the host survived the wait; 1 the host died (the reason is classified in the output);
+# 2 the check could not be performed.
+#
+# #1908: this script used to also prove the bundled ASR XPC service's dyld startup directly —
+# libxpc's own "cannot be run directly" refusal, running the service binary outside its normal
+# launch path, was positive evidence the image resolved on this OS without needing a model or a
+# real XPC connection. The last XPC helper collapsed in-process; there is no `.xpc` bundle left
+# to probe, and the app's own launch (below) already exercises every symbol that code used to
+# reach.
 
 set -uo pipefail
 
@@ -46,12 +52,10 @@ BIN="$APP/Contents/MacOS/$NAME"
 chmod +x "$BIN" || die "could not restore the executable bit" 2
 
 # **Every Mach-O in the bundle, not just Contents/MacOS.** `upload-artifact` normalises uploads
-# to mode 0644, which strips the bit from the bundled XPC services too — including
-# `EnviousWisprASRService`, the transcription helper. The direct dyld probe below runs that
-# binary, so without this the probe would fail on a transport artefact rather than on anything
-# about the app — and the host, whose own failure would be nonfatal here, would survive the wait
-# either way. Restoring the bit is what makes a helper failure mean the helper, not the upload.
-# Restored by CONTENT so a future nested executable is covered without naming its directory.
+# to mode 0644, which strips the bit from every nested executable — Sparkle's bundled helpers
+# included. #1908: this used to also cover `EnviousWisprASRService`, the transcription XPC
+# helper, whose dyld startup a direct probe below used to run — that helper is gone, but a
+# future nested executable is still covered here by CONTENT, without naming its directory.
 restored=0
 while IFS= read -r macho; do
   [ -n "$macho" ] || continue
@@ -145,91 +149,6 @@ else
   echo "==> baseline ok: runner $RUNNER_VERSION is exactly at the deployment target $MINOS"
 fi
 
-# **The bundled services directory has to be there before the probe means anything.**
-# `EnviousWisprASRService` is the component this job most needs to exercise, and a bundle
-# without an `XPCServices` directory cannot start it. Asserted up front rather than skipped
-# quietly further down, because "the directory was not there" and "the helper did not start"
-# are different failures and only one of them is about the app.
-XPC_DIR="$APP/Contents/XPCServices"
-[ -d "$XPC_DIR" ] || die "no Contents/XPCServices in $APP; the transcription helper is not in this bundle, so a launch here cannot exercise it" 2
-
-# **The helper's own dyld startup, proven DIRECTLY rather than inferred from the process table.**
-#
-# Watching for `EnviousWisprASRService` to appear while the host ran was the wrong instrument in
-# both directions, and one review round found each:
-#
-#   - Absence does not mean broken. The warm-up that contacts the service runs after
-#     `delivery.ensureAvailable()`, so on a clean runner with no model cache the helper can
-#     legitimately never appear inside the window. Failing on that would redden the job for
-#     first-launch behaviour, which is how a check earns a bypass.
-#   - Presence does not mean working. A process that appears and then dies inside dyld
-#     initialisation still shows up, and its death is nonfatal to the host, so the run passes.
-#
-# Running the service binary directly settles both. libxpc refuses to host a service started this
-# way — but the refusal is issued by the runtime, which means dyld has already loaded and bound
-# the entire image by the time it is printed. So "an XPC Service cannot be run directly" is
-# positive evidence that this helper's linkage resolves on THIS OS, which is exactly the claim
-# this job exists to make, and it needs no model, no network and no XPC connection. A dyld
-# failure prints its own error instead and never reaches the refusal.
-#
-# Measured locally on the real service binary: exit 134 (SIGABRT) with that refusal on stderr.
-probe_xpc_dyld() {
-  local exe="$1" name plog pid waited code out dyld_hits xpc_hits
-  name=$(basename "$exe")
-  plog=$(mktemp)
-  "$exe" >"$plog" 2>&1 &
-  pid=$!
-  waited=0
-  while [ "$waited" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do sleep 1; waited=$((waited + 1)); done
-  kill -TERM "$pid" 2>/dev/null
-  wait "$pid" 2>/dev/null; code=$?
-  out=$(cat "$plog"); rm -f "$plog"
-
-  # Counted, never `grep -q`: under `set -o pipefail` a quiet grep exiting early kills `printf`
-  # with EPIPE and the condition reads false, which this repo has been bitten by twice.
-  dyld_hits=$(printf '%s' "$out" | /usr/bin/grep -cE "Symbol not found|Library not loaded|dyld\[|dyld:")
-  xpc_hits=$(printf '%s' "$out" | /usr/bin/grep -c "cannot be run directly")
-
-  if [ "$dyld_hits" -gt 0 ]; then
-    echo "FAIL: $name: dyld could not start it on macOS $(sw_vers -productVersion). This is the defect this job exists to catch, in the component that performs transcription." >&2
-    printf '%s\n' "$out" | sed 's/^/      /' >&2
-    return 1
-  fi
-  if [ "$xpc_hits" -gt 0 ]; then
-    echo "==> $name: dyld resolved its image (libxpc refused a direct start, exit $code) ✓"
-    return 0
-  fi
-  echo "FAIL: $name: neither a dyld error nor libxpc's refusal appeared, so this probe cannot say whether its image resolved. Exit $code, output below." >&2
-  printf '%s\n' "$out" | sed 's/^/      /' >&2
-  return 1
-}
-
-# **Each .xpc bundle's DECLARED executable, not every Mach-O underneath it.**
-#
-# The refusal this probe reads as proof is emitted by libxpc for a SERVICE. An `.xpc` may also
-# embed an ordinary dylib or helper — none does today, but nothing stops one appearing — and
-# running that would produce neither a dyld error nor the refusal, so the probe would report it
-# inconclusive and redden the job over a bundle where every real service loads fine. Reading
-# `CFBundleExecutable` asks each bundle which binary IS the service instead of guessing.
-if ! XPC_BUNDLES=$(find "$XPC_DIR" -type d -name "*.xpc" 2>/dev/null); then
-  die "find could not enumerate the XPC service bundles under $XPC_DIR; a partial list cannot certify them" 2
-fi
-xpc_probed=0
-while IFS= read -r xpcbundle; do
-  [ -n "$xpcbundle" ] || continue
-  [ -f "$xpcbundle/Contents/Info.plist" ] || die "$xpcbundle has no Contents/Info.plist, so this probe cannot tell which binary is the service" 2
-  svc=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$xpcbundle/Contents/Info.plist" 2>/dev/null)
-  [ -n "$svc" ] || die "no CFBundleExecutable in $xpcbundle/Contents/Info.plist, so this probe cannot tell which binary is the service" 2
-  xpcexe="$xpcbundle/Contents/MacOS/$svc"
-  [ -f "$xpcexe" ] || die "$xpcbundle declares executable '$svc' but $xpcexe does not exist" 2
-  xpc_probed=$((xpc_probed + 1))
-  probe_xpc_dyld "$xpcexe" || die "the bundled XPC service failed its own dyld startup" 1
-done <<EOF
-$XPC_BUNDLES
-EOF
-[ "$xpc_probed" -gt 0 ] || die "no .xpc bundle found under $XPC_DIR, so the transcription helper's startup was never exercised" 2
-echo "==> bundled XPC services whose dyld startup was proven: $xpc_probed"
-
 LOG=$(mktemp)
 "$BIN" >"$LOG" 2>&1 &
 PID=$!
@@ -254,25 +173,6 @@ done
 if kill -0 "$PID" 2>/dev/null; then
   echo "==> PASS: still running after ${elapsed}s on macOS $(sw_vers -productVersion)"
 
-  # **Did the transcription service actually start? A no is a FAILURE, not a note.**
-  #
-  # "The host survived" is a weak claim, and four review rounds in a row found ways this probe
-  # passed while `EnviousWisprASRService` never ran: it was not scanned, then it arrived
-  # non-executable, then it could be rejected as unsigned, and then its absence was merely
-  # printed. Each of the first three fixes removed one precondition without asserting the
-  # outcome; the fourth observed the outcome and still exited 0, so a workflow could report
-  # success having never started the component that performs transcription.
-  #
-  # The host process is NOT a proxy for the helper: the warm-up is started asynchronously and
-  # its failure is nonfatal to the host, which is exactly why the host outliving a dead helper
-  # is the expected shape of the bug rather than an unlikely one.
-  #
-  # **Basis for making it fatal, stated rather than assumed:** one measured run on this runner
-  # image (macOS 14.8.7, arm64, the tarball-transferred bundle) observed the helper running. One
-  # observation is enough to say the warm-up DOES fire in this environment, and therefore that
-  # its absence is a signal; it is not enough to characterise how reliably it fires. If this
-  # starts flapping red on runs where the app is fine, that reopens the question — the answer
-  # then is to make the helper start deterministically, not to go back to printing a note.
   kill -TERM "$PID" 2>/dev/null
   wait "$PID" 2>/dev/null
   # Surface early output even on success: a dyld warning that did not kill the process is

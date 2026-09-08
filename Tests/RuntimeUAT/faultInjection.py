@@ -64,7 +64,7 @@ APP_NAME = "EnviousWispr"
 class ScenarioMeta:
     name: str
     lane: str  # "A" | "B" | "B'"
-    family: str  # timing | stall | xpc | settings | app-quit | model-load | backend-switch | bt-route
+    family: str  # timing | stall | settings | app-quit | model-load | backend-switch | bt-route
     backends: list[str]  # ["parakeet"] | ["whisperKit"] | ["both"]
     runtime_budget_seconds: float
     founder_required: bool
@@ -170,10 +170,7 @@ def _find_app_pid() -> int:
     processes can be running at once (dev + production, or another
     worktree's dev build): a bare `pids[0]` pick is ambiguous, and callers
     that only read/write state through the DEBUG socket are protected by
-    `_read_token` raising on a token mismatch — but callers that derive a
-    real SIGKILL target from this PID (`_app_bundle_path`,
-    `force_xpc_process_kill`) need the RIGHT pid up front, not a
-    fail-loud-after-the-fact guard.
+    `_read_token` raising on a token mismatch.
 
     Codex code-diff r13: two DIFFERENT debug worktrees can each have their
     own live fault token at once (this project's single-dev-instance policy
@@ -216,30 +213,6 @@ def _find_app_pid() -> int:
             "unrelated instance(s) before running fault-injection scenarios."
         )
     return accepted[0]
-
-
-def _app_bundle_path() -> str:
-    """The `.app` bundle path of the SPECIFIC EnviousWispr instance under
-    fault-injection test (resolved via `_find_app_pid`'s token-verified
-    PID), e.g. `/Users/.../EnviousWispr-recovery-v2-p1/build/EnviousWispr
-    Local.app`. Used to scope real-process-kill fault injection
-    (`force_xpc_process_kill`) to THIS instance's own XPC helper only —
-    `EnviousWisprASRService` is reparented to launchd (PPID 1) on spawn, not
-    the requesting app, so process-tree ancestry can't be used to scope it;
-    each app bundle carries its own copy of the service under
-    `Contents/XPCServices/`, so the bundle path prefix is the reliable
-    discriminator between instances (Codex code-diff r12: a bare
-    `pgrep -f "EnviousWispr.*Service"` match kills every running instance's
-    helper, dev and production alike)."""
-    pid = _find_app_pid()
-    command = subprocess.check_output(
-        ["ps", "-ww", "-o", "command=", "-p", str(pid)], text=True
-    ).strip()
-    marker = ".app/"
-    idx = command.find(marker)
-    if idx == -1:
-        raise RuntimeError(f"could not find '.app/' in command for pid {pid}: {command!r}")
-    return command[: idx + len(".app")]
 
 
 def _read_token(pid: int) -> str:
@@ -286,64 +259,13 @@ def force_cancel() -> str:
     return send("force_cancel")
 
 
-def force_xpc_kill() -> str:
-    return send("force_xpc_kill")
-
-
-def _scoped_xpc_service_pids(bundle_path: str) -> list[str]:
-    """PIDs of `EnviousWisprASRService` processes whose executable lives
-    INSIDE `bundle_path` — the properly-scoped counterpart to
-    `list_xpc_service_pids()` (which matches every running instance
-    system-wide) for callers that are about to SIGKILL, not just count."""
-    try:
-        out = subprocess.check_output(
-            ["pgrep", "-f", "EnviousWispr.*Service"], text=True, stderr=subprocess.DEVNULL
-        )
-    except subprocess.CalledProcessError:
-        return []
-    matched = []
-    for pid_str in out.split():
-        pid = pid_str.strip()
-        if not pid:
-            continue
-        try:
-            command = subprocess.check_output(
-                ["ps", "-ww", "-o", "command=", "-p", pid], text=True
-            ).strip()
-        except subprocess.CalledProcessError:
-            continue  # process exited between pgrep and ps — not a match either way
-        if command.startswith(bundle_path):
-            matched.append(pid)
-    return matched
-
-
-def force_xpc_process_kill() -> list[str]:
-    """Kill the REAL ASR XPC helper process(es) with SIGKILL — a genuine
-    crash, distinct from `force_xpc_kill()`'s connection-only invalidation
-    (`forceConnectionTerminationNow`, which leaves the helper process alive
-    and the model resident). #1707 Codex code-diff r11: the connection-only
-    fault was measured at 99-127ms recovery and produced a 2.0s deadline
-    that then failed 4-of-5 real crash trials — a real process kill forces
-    launchd to respawn a genuinely fresh process and reload the model cold,
-    the actual ~4.2s p99 scenario the corrected 8.0s deadline protects.
-
-    Codex code-diff r12: scoped to THIS app instance's own XPC helper via
-    `_scoped_xpc_service_pids` — a bare `list_xpc_service_pids()` match
-    would SIGKILL every running instance's helper system-wide (another
-    worktree's dev build, or a production install running alongside it on
-    a shared machine), interrupting a real, unrelated dictation in
-    progress. Returns the PIDs that were killed (macOS respawns under new
-    PIDs)."""
-    pids = _scoped_xpc_service_pids(_app_bundle_path())
-    for pid in pids:
-        subprocess.run(["kill", "-9", pid], check=False)
-    return pids
-
-
 # #1543: audio capture is in-process now — the audio-boundary DEBUG commands
 # (force_audio_xpc_kill / force_proxy_buffer_drop / force_audio_wedge_start) and
-# their scenarios were removed with the audio-capture boundary. The ASR-service
-# kill (force_xpc_kill) and the in-process zero-fill injector below remain.
+# their scenarios were removed with the audio-capture boundary. #1908: ASR
+# followed audio in-process too, so the service-kill commands and helpers that
+# used to live here (force_xpc_kill, force_xpc_process_kill,
+# _scoped_xpc_service_pids) are gone as well — there is no separate helper
+# process left to kill. The in-process zero-fill injector below remains.
 
 
 # ─────────────────── #1317 proof-bench: zero-fill injector client ───────────────
@@ -443,43 +365,10 @@ def assert_terminated(timeout_s: float = 5.0) -> dict:
     return {"terminal": False, "state": last}
 
 
-def list_xpc_service_pids() -> list[str]:
-    """Return PIDs of all live EnviousWispr XPC service helpers
-    (`EnviousWisprASRService`; audio capture is in-process since #1543).
-
-    On macOS, XPC services are launchd-managed: invalidating the connection
-    does not terminate the helper process — launchd respawns it as needed.
-    The right "no leak" assertion is therefore a delta check: count after
-    the fault must not exceed count before.
-    """
-    try:
-        out = subprocess.check_output(
-            ["pgrep", "-f", "EnviousWispr.*Service"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        return [p.strip() for p in out.split() if p.strip()]
-    except subprocess.CalledProcessError:
-        return []
-
-
-def assert_no_xpc_leak(before: list[str]) -> dict:
-    """Confirm the XPC service helper count did not grow after a fault.
-
-    Returns `{"leaked": False, "before": [...], "after": [...]}` on a
-    pass; `leaked: True` if more service helpers exist now than before.
-    Identity changes (PID rotation) are expected and not a leak — only
-    a net increase is a leak.
-    """
-    after = list_xpc_service_pids()
-    return {"leaked": len(after) > len(before), "before": before, "after": after}
-
-
-# Backwards-compatible alias retained for existing scenarios that still call
-# the old name. New code should use `list_xpc_service_pids` + `assert_no_xpc_leak`.
-def assert_no_zombie() -> dict:
-    pids = list_xpc_service_pids()
-    return {"orphan_pids": pids}
+# #1908: list_xpc_service_pids / assert_no_xpc_leak / assert_no_zombie were
+# removed here — they counted live `EnviousWisprASRService` processes, and
+# #1908 deleted the last XPC service. There is no helper left to leak or
+# orphan.
 
 
 # ──────────────────────────── recording control helpers ────────────────────
@@ -828,7 +717,7 @@ class _TTSAudio:
     Usage:
         with _TTSAudio("the quick brown fox jumps over the lazy dog"):
             # recording is active here, audio is being captured
-            force_xpc_kill()
+            force_cancel()
     """
 
     def __init__(self, sentence: str = "the quick brown fox jumps over "
@@ -863,19 +752,16 @@ class _TTSAudio:
 #
 # Before any zero-fill trial is trusted, the harness proves the SINGLE running app
 # is exactly the build a manifest describes: one PID, its executable path == the
-# manifest path, and app + both embedded XPC helper SHA-256 hashes match. Two dev
-# builds share bundle id `com.enviouswispr.app.dev`, so the two A/B arms run
-# sequentially and identity is verified per trial (dev-bundle-id-collision).
+# manifest path, and the app's own SHA-256 hash matches. Two dev builds share
+# bundle id `com.enviouswispr.app.dev`, so the two A/B arms run sequentially
+# and identity is verified per trial (dev-bundle-id-collision).
 # Source SHA is manifest provenance stamped at build time, NOT inferred from
 # Info.plist (build-dev-app.sh stamps no git SHA).
 
-# Our embedded XPC executable inside the .app (audio capture is in-process since
-# #1543). Sparkle's Downloader/Installer are excluded — not ours.
+# #1543 moved audio capture in-process, #1908 moved ASR in-process too — the
+# app is the only executable left inside the .app worth hashing here.
+# Sparkle's Downloader/Installer are excluded — not ours.
 _APP_EXE_REL = "Contents/MacOS/EnviousWispr"
-_ASR_HELPER_REL = (
-    "Contents/XPCServices/EnviousWisprASRService.xpc/Contents/MacOS/"
-    "EnviousWisprASRService"
-)
 
 
 def compute_sha256(path) -> str:
@@ -888,8 +774,8 @@ def compute_sha256(path) -> str:
 
 
 def discover_bundle_executables(bundle_path) -> dict:
-    """Absolute paths of our three executables inside the .app:
-    {app, audio_helper, asr_helper}. Raises if any is missing.
+    """Absolute path of our one remaining executable inside the .app: {app}.
+    Raises if it is missing.
 
     abspath (NOT resolve): verify_running_identity compares app_path against the
     argv[0] that `ps` reports for an `open`-launched app, which is absolute but
@@ -899,7 +785,6 @@ def discover_bundle_executables(bundle_path) -> dict:
     bundle = Path(os.path.abspath(bundle_path))
     paths = {
         "app": bundle / _APP_EXE_REL,
-        "asr_helper": bundle / _ASR_HELPER_REL,
     }
     for label, p in paths.items():
         if not p.exists():
@@ -1213,7 +1098,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # DRIVEN THE WAY EVERY OTHER SCENARIO IN THIS FILE DRIVES A RECORDING:
     # `_start_recording_locked()` double-taps into hands-free lock, then
     # `_TTSAudio` streams real speech for as long as the `with` block runs.
-    # `A3_asr_xpc_kill` is the template.
+    # `A7_app_quit` and `A9_backend_switch_mid_record` are the template.
     #
     # The earlier version held the PTT key on a background thread through
     # `wispr_eyes.record_tts`, and it had two defects that a live run exposed on
@@ -1588,123 +1473,18 @@ def _read_asr_recovery_outcome(start_pos: int, timeout_s: float = 10.0) -> Optio
     return None
 
 
-@scenario(
-    ScenarioMeta(
-        name="A3_asr_xpc_kill",
-        lane="A",
-        family="xpc",
-        backends=["parakeet"],
-        runtime_budget_seconds=30.0,
-        founder_required=False,
-        negative_control="Remove ASREngineAdapter.recoverFromASRInterruption() / revert #1707; the dictation is discarded instead of salvaged",
-        description="ASR XPC connection invalidated mid-stream while TTS audio is flowing — #1707: the already-captured audio is salvaged (reconnect + decode) rather than the dictation being discarded; falls back to a terminal error only if reconnect genuinely fails, no XPC helper leak",
-    )
-)
-def A3_asr_xpc_kill(**_) -> dict:
-    """User behavior: dictation in progress with audio flowing, the ASR
-    XPC helper process crashes. #1707: the pipeline now salvages the
-    recording — it reconnects (through a genuinely respawned process, cold
-    model reload included) and decodes the audio already captured before
-    the crash, so the user gets their text pasted instead of losing the
-    dictation. Only a genuine reconnect failure surfaces a "service
-    crashed" message.
-
-    Notes 2026-07-20 (#1707 Codex code-diff r11):
-    - "Kill" means a real `kill -9` on the actual
-      `EnviousWisprASRService` process (`force_xpc_process_kill`), NOT
-      `force_xpc_kill()`'s `forceConnectionTerminationNow()` (which only
-      invalidates the connection object and leaves the helper process,
-      and its resident model, alive). An earlier version of this scenario
-      used the connection-only kill — recovery completed in ~100ms every
-      time, which never exercises the slow path a genuine crash takes
-      (~4.2s p99, cold model reload in a freshly-spawned process,
-      `docs/audits/2026-07-20-recovery-v2-phase1-asr-recovery-latency.txt`)
-      and would have silently let a regression in THAT path ship
-      undetected. macOS/launchd respawns the process under a new PID; the
-      leak assertion compares helper counts before/after, not "any helper
-      survives" (that would always be true and silently pass).
-    - TTS audio must be flowing so the crash lands while the ASR side is
-      actually streaming. Without audio, the kill exercises only the
-      disconnect path, not the mid-stream error wiring this scenario
-      claims to test.
-    - `assert_terminated`'s `_TERMINAL_TOKENS` accept both "complete" and
-      "error" as terminal, so reaching a terminal state alone no longer
-      proves the fix — a build that regressed back to the old discard
-      behavior would still pass that check.
-    - `salvage_succeeded` reads the kernel's own precomputed
-      "ASR recovery latency: ...outcome=..." log line
-      (`_read_asr_recovery_outcome`), not the final pipeline state. The
-      final RecordingOutcome can floor to `.asrInterrupted` even after a
-      genuinely SUCCESSFUL recovery if the captured audio's VAD-detectable
-      content quality is poor — verified directly (r11) with real OpenAI
-      TTS speech, not just the say/Evan fallback, and the interrupted take
-      still floored on a near-silent VAD read (peak ~0.006-0.009),
-      pointing at a mic/system-volume level issue on this machine/session
-      rather than TTS voice quality. Either way, the widened floor
-      (RecordingSessionKernel.interruptedTerminalFloor) correctly maps a
-      successful recovery whose decode legitimately finds no speech to
-      `.asrInterrupted`. That is a test-audio-capture confound, not a
-      recovery-mechanism regression, and gating on the final state alone
-      (an earlier version of this scenario, Codex code-diff r7) produced
-      exactly that false failure live.
-    - The poll budget (`_ASR_RECOVERY_POLL_TIMEOUT_S`) is deliberately wider
-      than the production recovery deadline (Codex code-diff r5): a legit
-      slow-but-successful salvage near that deadline still needs time to
-      decode/finalize/paste afterward, and a poll that expires mid-decode
-      would misreport a real success as a failure.
-    """
-    pre_helpers = list_xpc_service_pids()
-    if not _start_recording_locked():
-        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
-    with open(APP_LOG_PATH, encoding="utf-8", errors="replace") as fh:
-        fh.seek(0, 2)
-        log_start_pos = fh.tell()
-    with _TTSAudio():
-        time.sleep(1.0)  # let audio stream into ASR
-        killed_pids = force_xpc_process_kill()
-        terminated = assert_terminated(timeout_s=_ASR_RECOVERY_POLL_TIMEOUT_S)
-    leak = assert_no_xpc_leak(pre_helpers)
-    # #1707: the recovery mechanism's own verdict — see the docstring note
-    # above for why this, not the final pipeline state, is the gate.
-    recovery_log = _read_asr_recovery_outcome(log_start_pos)
-    salvage_succeeded = bool(recovery_log) and recovery_log["outcome"] == "readyForBatchDecode"
-    # Recovery check: a graceful failure that wedges the next dictation
-    # is indistinguishable from a crash. Confirm the user can actually
-    # keep dictating after the fault.
-    recovery = _assert_dictation_recovers()
-    outcome = {
-        "killed_pids": killed_pids, **terminated, **leak,
-        "recovery_log": recovery_log,
-        "salvage_succeeded": salvage_succeeded,
-        **recovery,
-    }
-    # A3 predates the evidence_valid/assertions schema (`evaluate_trial`
-    # passes any scenario missing that key unconditionally, "legacy scenario
-    # (no evidence schema)"), so the only way this scenario can fail is to
-    # raise — a returned `False` field is otherwise silently discarded and a
-    # regression would still report PASS (Codex code-diff r4). r8: gate on
-    # ALL three real invariants, not just recovery — a reconnect that
-    # succeeds but then leaks an XPC helper, or leaves the next dictation
-    # wedged, is still a real #1707 regression that `salvage_succeeded`
-    # alone would miss.
-    failures = []
-    if not salvage_succeeded:
-        failures.append("recoverFromASRInterruption() did not reach readyForBatchDecode")
-    if leak.get("leaked"):
-        failures.append("an XPC helper leaked after the salvage")
-    if not recovery.get("recovered"):
-        failures.append("the next dictation did not recover after the fault")
-    if failures:
-        raise AssertionError(f"A3 failed: {'; '.join(failures)}. {outcome}")
-    return outcome
-
-
 # #1543: scenarios A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were
 # removed with the audio-capture boundary — both tested the deleted host-side
 # proxy DEBUG commands. Real OS-level audio interruption testing (BT route flip,
 # Zoom/Discord coexistence) still lives in docs/LANE_B_AUDIO_TESTS.md; the
 # capture-stall watchdog is exercised in-process by the #1317 zero-fill
 # proof-bench scenarios below.
+#
+# #1908: A3_asr_xpc_kill was also removed here — it tested the ASR helper
+# process crashing mid-stream and reconnecting through a fresh respawn
+# (`force_xpc_process_kill`, `_read_asr_recovery_outcome`). ASR now runs
+# in-process, so there is no separate helper process left to crash
+# independently of the app itself; that failure mode no longer exists.
 
 
 _DEV_BUNDLE_ID = "com.enviouswispr.app.dev"
@@ -1826,28 +1606,29 @@ def A6_settings_storm(**_) -> dict:
         backends=["both"],
         runtime_budget_seconds=30.0,
         founder_required=False,
-        negative_control="Remove applicationWillTerminate cleanup in AppDelegate; orphan helper processes survive next launch",
-        description="Cocoa quit mid-recording with audio flowing — no orphan helpers survive, app relaunches cleanly, next dictation works",
+        negative_control="Remove applicationWillTerminate cleanup in AppDelegate; the app fails to relaunch cleanly or the next dictation does not recover",
+        description="Cocoa quit mid-recording with audio flowing — app relaunches cleanly, next dictation works",
     )
 )
 def A7_app_quit(**_) -> dict:
-    """User behavior: dictation in progress, user hits Cmd+Q. The app's
-    `applicationWillTerminate` must clean up audio + ASR helpers — no
-    orphan processes survive next launch. After relaunch the user must
-    be able to dictate again normally.
+    """User behavior: dictation in progress, user hits Cmd+Q. After relaunch
+    the user must be able to dictate again normally.
 
     Notes 2026-05-02:
     - Cocoa quit is the user-real path (osascript `quit`); SIGKILL
       (`kill -9`) bypasses applicationWillTerminate and would not
       exercise this scenario.
     - TTS audio must be flowing so the quit happens against an active
-      capture session (helpers actively allocated + connected), not an
-      idle pipeline.
+      capture session, not an idle pipeline.
     - After the quit, the harness relaunches the bundle with
       EW_FAULT_INJECTION=1 so the recovery cycle can run end-to-end
       through the normal dictation path.
+
+    #1908: audio capture and ASR both run in-process now (#1543, #1908), so
+    there is no separate helper process left to orphan or reap — this
+    scenario used to also assert no XPC service helper survived the quit;
+    that check is gone with the last helper it was checking for.
     """
-    pre_helpers = list_xpc_service_pids()
     if not _start_recording_locked():
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
     with _TTSAudio():
@@ -1859,13 +1640,6 @@ def A7_app_quit(**_) -> dict:
             check=False, capture_output=True,
         )
         exited_cleanly = _wait_for_app_exit(timeout_s=10.0)
-    # Give launchd a moment to reap helpers.
-    time.sleep(2.0)
-    post_helpers = list_xpc_service_pids()
-    # Negative-control assertion: no orphan helpers from the killed
-    # session. Helpers from before the test (pre_helpers) should be
-    # gone too — the app's lifecycle owns them.
-    orphans_remain = bool(post_helpers)
     # Relaunch + recovery cycle.
     relaunched = _relaunch_app()
     recovery = _assert_dictation_recovers() if relaunched["relaunched"] else {
@@ -1874,9 +1648,6 @@ def A7_app_quit(**_) -> dict:
     }
     return {
         "exited_cleanly": exited_cleanly,
-        "pre_helpers": pre_helpers,
-        "post_helpers": post_helpers,
-        "orphans_remain": orphans_remain,
         **relaunched,
         **recovery,
     }
@@ -2041,88 +1812,12 @@ APP_LOG_PATH = Path("~/Library/Logs/EnviousWispr/app.log").expanduser()
 # cannot occur with capture in-process (no line to wedge).
 
 
-@scenario(
-    ScenarioMeta(
-        name="A11_asr_kill_mid_model_load",
-        lane="A",
-        family="model-load",
-        backends=["parakeet"],
-        runtime_budget_seconds=30.0,
-        founder_required=False,
-        negative_control="Remove the pendingLoadCompletion resume from ASRManagerProxy's invalidation handler; the warm-up await hangs, isLoadInFlight never clears, and the recovery dictation stays blocked on a permanent 'warming' readiness (the #1388 119/126 defect)",
-        description="ASR XPC connection invalidated mid-MODEL-LOAD (not mid-stream, A3's shape) — the pending load continuation must resume with the typed transport error, the warm-up must reach a terminal outcome, and the next dictation must succeed",
-    )
-)
-def A11_asr_kill_mid_model_load(**_) -> dict:
-    """User behavior: the speech service dies while the model is LOADING
-    (cold press / launch warm-up), not while streaming. Before #1388 step 1
-    the pending load reply was never resumed on invalidation: the warm-up
-    await hung, the guard slot leaked, and no terminal telemetry ever fired
-    (119 of 126 production wedge fires reached no outcome). The contract now
-    requires the invalidation handler to resume the pending continuation
-    with `serviceUnreachable`; the adapter's one-shot transport retry then
-    reconnects to the respawned helper, so the user-visible outcome is a
-    clean recovery or an honest error — never a stuck 'warming' state.
-
-    #1388 notes:
-    - The first force_xpc_kill drops the resident model (the invalidation
-      handler clears isModelLoaded), so the next press takes the COLD path
-      and drives a real in-flight loadModel.
-    - The second force_xpc_kill lands ~0.4s into that load; Parakeet's load
-      floor is multi-second, so the mid-load window is comfortable. This is
-      a deliberate RACE PLACEMENT (the A8a precedent), not a wait-for-done —
-      there is no signal for "the load is now mid-flight" by design.
-    - Verdict is signal-based: pipeline state must reach a terminal token
-      and the recovery dictation must PASS (before the fix, the leaked
-      isLoadInFlight pinned readiness at 'warming' and blocked every
-      subsequent press — the discriminating oracle). The wedge guard must
-      NOT fire during the drill (the kill produces a typed error path, not
-      a silence the detector should claim).
-    """
-    log_offset = APP_LOG_PATH.stat().st_size if APP_LOG_PATH.exists() else 0
-    pre_helpers = list_xpc_service_pids()
-    # 1. Drop the resident model so the next press drives a real cold load.
-    reply_unload = force_xpc_kill()
-    time.sleep(1.0)  # settle: async invalidation handler must clear isModelLoaded before the press
-    # 2. A PTT press on the cold engine takes the BLOCKED cold-press path and
-    #    drives ensureEngineWarm(.coldPress) — the sessionless warm-up this
-    #    drill targets. First-run learning (2026-07-09): the MENU tap does NOT
-    #    take this path after an idle-reap kill — the #959 design lets a menu
-    #    press mint a session with an in-session re-warm, which is A3's shape,
-    #    not this drill's. Only the PTT press logs "press blocked" and arms
-    #    the sessionless guard.
-    _tap_rcmd()
-    time.sleep(0.2)  # settle: deliberate race placement inside the load window (A8a precedent)
-    # 3. Kill the service mid-load. On a warm file cache the cached load can
-    #    complete in <1s, so the kill may land AFTER completion — that run is
-    #    a benign miss, reported honestly via window_hit below, not a pass
-    #    that silently proved nothing.
-    reply_kill = force_xpc_kill()
-    terminated = assert_terminated(timeout_s=15.0)
-    leak = assert_no_xpc_leak(pre_helpers)
-    # 4. The contract's user-visible proof: dictation works after the fault.
-    #    The recovery window must ride out the post-kill respawn + reload
-    #    (multi-second); presses during 'warming' are refused by design.
-    time.sleep(8.0)  # settle: ride out the post-kill service respawn + model reload before the recovery cycle
-    recovery = _assert_dictation_recovers()
-
-    tail = ""
-    if APP_LOG_PATH.exists():
-        with open(APP_LOG_PATH, "r", errors="replace") as f:
-            f.seek(log_offset)
-            tail = f.read()
-    return {
-        "reply_unload": reply_unload,
-        "reply_kill": reply_kill,
-        **terminated,
-        **leak,
-        **recovery,
-        "wedge_guard_fired": "[WedgeGuard] sessionless wedge fired" in tail,
-        # The drill exercised its target seam only if the press was BLOCKED
-        # (sessionless path armed) — otherwise the kill landed on a different
-        # shape and this run proved recovery only.
-        "window_hit": "press blocked" in tail and "armed reason=cold_press" in tail,
-    }
+# #1908: A11_asr_kill_mid_model_load was removed here — it tested the ASR
+# helper process being killed WHILE the model was loading (the invalidation
+# handler resuming a pending load with a typed transport error, then a
+# reconnect to a respawned process). Like A3, that failure mode requires a
+# helper process that can crash independently of the app; ASR now runs
+# in-process, so it no longer exists.
 
 
 # ──────────────────────────── Lane B scenarios ────────────────────────────

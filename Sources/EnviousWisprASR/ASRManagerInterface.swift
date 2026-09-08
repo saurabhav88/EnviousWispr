@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import Foundation
 
 /// Thrown by `loadModel()` when the load it was running was superseded mid-flight
 /// by a `cancelInFlightLoad()` (wedge recovery), an `unloadModel()`, or a real
@@ -98,6 +99,25 @@ extension ASRManagerNotOwnedError: StableSentryErrorIdentity {
 // `ModelLoadWatchdog.WedgeError` — the pipeline driver classifies on it and
 // does not import this module.
 
+/// #1908: thrown when a Parakeet load attempt would rewrite FluidAudio's
+/// process-global `ModelHub.offlineMode` to a value DIFFERENT from what an
+/// already-admitted, still-in-flight attempt is using. `ModelHub.offlineMode`
+/// is not scoped to any one `ParakeetBackend` instance — fresh-backend-per-
+/// attempt (see `ASRManager`) closes the per-instance race but not this one,
+/// so a conflicting-mode attempt is refused outright rather than allowed to
+/// race the shared write. A same-mode attempt is never refused.
+public struct ParakeetOfflineModeConflictError: Error, Equatable {
+  public init() {}
+}
+
+extension ParakeetOfflineModeConflictError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprASR.ParakeetOfflineModeConflictError#1"
+  }
+
+  public var sentrySemanticID: String { "asr.offline_mode_conflict" }
+}
+
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.
@@ -149,7 +169,10 @@ public protocol ASRManagerInterface: AnyObject {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
   // Streaming transcription
-  func startStreaming(options: TranscriptionOptions) async throws
+  /// Create a fresh `attemptID` before scheduling the call and its deadline —
+  /// `cancelInFlightStreamingStart(attemptID:)` needs it to name exactly
+  /// this attempt (#1908 round 11).
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws
   func finalizeStreaming() async throws -> ASRResult
   func cancelStreaming() async
@@ -164,6 +187,43 @@ public protocol ASRManagerInterface: AnyObject {
   /// for `ASRManagerProxy` (XPC, production) this invalidates the connection
   /// to terminate the service-side load. Equivalent to manual app restart.
   func cancelInFlightLoad()
+
+  /// #1908: the HEAVY half of issue #445 wedge recovery, called ONLY after
+  /// `cancelInFlightLoad()`. In-process, a deadline-bounded, fail-open attempt
+  /// to unload the currently-published backend — WhisperKit's
+  /// `recoverFromWedge()` pattern, ported. `ASRManagerProxy`'s XPC connection
+  /// invalidation already does the equivalent job, so it keeps the protocol
+  /// extension's no-op default rather than overriding.
+  func attemptWedgeRecoveryUnload() async
+
+  /// #1908 Codex review (chunk A+B rounds 4-5, revised round 11): invalidate
+  /// an in-flight `startStreaming()` attempt that a caller has given up
+  /// waiting on (e.g. a deadline expiry), so its late completion cannot
+  /// resurrect streaming state behind the caller's back — the exact class
+  /// `cancelInFlightLoad()` exists for on the load side. Unlike
+  /// `cancelInFlightLoad()`, this fires even when `isStreaming` is still
+  /// `false` (the attempt never got that far), so it cannot be expressed as
+  /// an ordinary `cancelStreaming()` call, which guards on `isStreaming`.
+  ///
+  /// Pass the SAME `attemptID` given to `startStreaming(options:attemptID:)`.
+  /// A no-op if that id is not the currently tracked attempt — this must
+  /// never invalidate a NEWER attempt that has already replaced it.
+  ///
+  /// SYNCHRONOUS, not `async` — round 5's finding: a caller that awaits an
+  /// `async` invalidation before proceeding still leaves a window where the
+  /// abandoned vendor call can complete and publish first. A synchronous
+  /// method is callable from `withOrderedDeadline`'s non-async `onTimeout`,
+  /// which guarantees it runs BEFORE the timed-out caller resumes.
+  ///
+  /// #1908 round 12: returns the backend's own reclaim `Task` (or `nil` if
+  /// there was nothing to invalidate) so an `async` caller that CAN await —
+  /// unlike the synchronous `onTimeout` this method primarily exists for —
+  /// can wait for the SAME cancellation instead of racing a redundant one of
+  /// its own (`ASRManager.cancelStreaming()`,
+  /// `ParakeetEngineAdapter.discardSession()`). `@discardableResult` so
+  /// `onTimeout` keeps compiling unchanged.
+  @discardableResult
+  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?
 
   /// Issue #445: per-tick callback for the load-progress polling stream.
   /// Set by the dictation kernel for the duration of one `loadModel()`
@@ -183,16 +243,48 @@ public protocol ASRManagerInterface: AnyObject {
   /// manager must opt IN to file-backed stall detection.
   var feedsSharedProgressFile: Bool { get }
 
-  // Crash notification — fires when XPC ASR service dies during an active session.
-  // Wired by the App-side router to route to the active pipeline (same pattern as
-  // the capture manager's `onEngineInterrupted`).
-  var onServiceInterrupted: (() -> Void)? { get set }
+  #if DEBUG
+    // #1908: #1707 Phase 2 batch-decode fault oracle. Both conformers already
+    // implement these; declared on the protocol so `BatchDecodeFaultController`
+    // (`EnviousWisprPipeline`) can reach whichever is live through the
+    // existential instead of downcasting to `ASRManagerProxy` specifically —
+    // that downcast is what silently went dark the moment the proxy stopped
+    // being constructed (#1908 grounded review).
+    func armBatchDecodeHold(trialID: String) async
+    func releaseBatchDecode(trialID: String) async
+    func clearBatchDecodeFault() async
+  #endif
 }
 
 extension ASRManagerInterface {
   /// #1339 safe default: managers do NOT feed the shared progress file unless
   /// they explicitly opt in (`ASRManagerProxy` does).
   public var feedsSharedProgressFile: Bool { false }
+
+  /// #1908 safe default: a conformer with no HEAVY wedge-recovery step (today,
+  /// `ASRManagerProxy` — its `cancelInFlightLoad()` XPC connection invalidation
+  /// already does the equivalent job) does nothing extra here.
+  public func attemptWedgeRecoveryUnload() async {}
+
+  /// #1908 safe default: a test double has no real background vendor Task
+  /// whose late completion could corrupt state, so there is nothing to
+  /// invalidate. `ASRManager` overrides with the real implementation;
+  /// `ASRManagerProxy` relies on this same no-op — its own
+  /// `withASRXPCOperationSignal` watchdog already fully recovers a wedged
+  /// `startStreaming()` (invalidates the connection), so the caller-abandoned
+  /// gap this method exists to close never opens there.
+  @discardableResult
+  public func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>? { nil }
+
+  #if DEBUG
+    /// #1908 safe defaults for test doubles: a mock backend has no real
+    /// decode to fault-inject against, so arming/releasing/clearing is a
+    /// no-op. Both production conformers (`ASRManager`, `ASRManagerProxy`)
+    /// declare real implementations, so their witnesses win.
+    public func armBatchDecodeHold(trialID: String) async {}
+    public func releaseBatchDecode(trialID: String) async {}
+    public func clearBatchDecodeFault() async {}
+  #endif
 
   /// #1348 safe default for test doubles: no delivery mode. BOTH production
   /// conformers (`ASRManager`, `ASRManagerProxy`) declare real storage, so

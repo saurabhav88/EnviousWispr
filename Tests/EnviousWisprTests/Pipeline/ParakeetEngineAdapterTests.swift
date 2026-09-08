@@ -70,41 +70,75 @@ import Testing
     #expect(manager.loadModelCount == 0)
   }
 
-  // MARK: Stale-helper transport recovery (#1525 PR I-B)
+  // MARK: Load-tick heartbeat (Codex review, #1908 chunk A+B)
 
-  @Test("warmUp() retries once and succeeds after XPCASRTransportError.serviceUnreachable")
-  func warmUpRetriesOnServiceUnreachable() async throws {
+  @Test(
+    "warmUp() keeps feeding the kernel's load-tick stream during a silent gap in the vendor's own progress callback — RecordingSessionKernel.detectLoadWedge's 1-second window was calibrated against a constant 125ms heartbeat, and real FluidAudio compilation goes silent for multi-second stretches with no callback at all"
+  )
+  func warmUpTicksDuringSilentVendorGap() async throws {
     let manager = StubParakeetASRManager()
-    manager.loadModelError = XPCASRTransportError.serviceUnreachable
+    manager.gateLoadModel = true
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.warmUp()
-    #expect(manager.loadModelCount == 2)
-    #expect(manager.isModelLoaded)
+    let stream = try #require(
+      adapter.loadProgress, "Parakeet always exposes a load-progress stream (D5)")
+    let warmTask = Task { @MainActor in try? await adapter.warmUp() }
+    while manager.loadModelCount == 0 { await Task.yield() }
+
+    // The manager NEVER calls `loadProgressTickReporter` while gated — this
+    // models FluidAudio's `loadModels(_:)` compile step, which emits no
+    // vendor progress callback at all. Ticks observed here can only be the
+    // adapter's own heartbeat, not a forwarded vendor event.
+    var ticksObserved = 0
+    let observer = Task {
+      for await _ in stream {
+        ticksObserved += 1
+        if ticksObserved >= 2 { return }
+      }
+    }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    while ticksObserved < 2, ContinuousClock.now < deadline { await Task.yield() }
+    observer.cancel()
+    #expect(
+      ticksObserved >= 2,
+      "the adapter must keep ticking the kernel's wedge watcher on its own cadence even when the vendor reports no progress, or a healthy multi-second silent compile step reads as a stall"
+    )
+
+    manager.releaseLoadGate()
+    _ = await warmTask.value
   }
 
-  /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 6 new
-  /// codec/transport cases are NOT "the XPC service is unreachable" — a bare
-  /// `catch is XPCASRTransportError` would have retried a reload for, say,
-  /// `.requestDecodingFailed`, masking a real codec bug.
+  // MARK: Streaming-start deadline (Codex review round 3, #1908)
+
   @Test(
-    "warmUp() does NOT retry on the new XPCASRTransportError cases — they propagate",
-    arguments: [
-      XPCASRTransportError.requestEncodingFailed("x"),
-      .invalidSamplePayload("x"),
-      .requestDecodingFailed("x"),
-      .modelNotLoaded,
-      .responseEncodingFailed("x"),
-      .responseDecodingFailed("x"),
-    ]
+    "beginSession(streaming:) falls back to batch instead of hanging forever when startStreaming outlasts the deadline — ParakeetBackend.startStreaming reaches the same silent FluidAudio loadModels(_:) call the cold-load wedge fix covers, and nothing previously bounded it in-process"
   )
-  func warmUpDoesNotRetryOnNewTransportCases(error: XPCASRTransportError) async throws {
+  func beginSessionFallsBackWhenStreamingStartWedges() async throws {
     let manager = StubParakeetASRManager()
-    manager.loadModelError = error
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
-    await #expect(throws: XPCASRTransportError.self) {
-      try await adapter.warmUp()
+    manager.startStreamingDelay = .milliseconds(300)
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, asrInterruptionRecoveryDeadlineSec: 0.05)
+    try await adapter.warmUp()
+    let sid = SessionID()
+    // Must return promptly (well under the fake's 300ms delay) rather than
+    // hanging until the vendor call itself finishes.
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    #expect(manager.startStreamingCount == 1, "the vendor call was genuinely attempted")
+    #expect(
+      manager.cancelInFlightStreamingStartCount == 1,
+      "a timed-out attempt must be invalidated so its late completion cannot publish streaming state behind this session's back (Codex review round 4)"
+    )
+
+    manager.transcribeResult = makeResult("batch fallback")
+    let outcome = await adapter.finalize(batchSamples: [0.1, 0.2])
+    #expect(
+      manager.finalizeStreamingCount == 0,
+      "a wedged start must leave streamingActive false, so finalize takes the batch path")
+    #expect(manager.transcribeCount == 1, "finalize must decode via the batch path instead")
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript via batch decode, got \(outcome)")
+      return
     }
-    #expect(manager.loadModelCount == 1)
+    #expect(result.text == "batch fallback")
   }
 
   // MARK: Streaming finalize + batch rescue (§3.2a)
@@ -791,47 +825,6 @@ import Testing
   }
 
   @Test(
-    "GitHub cloud review (PR #1725): a stale-readiness proxy error (readiness still .ready but the primary failed via .serviceUnreachable) forces a real reconnect before the retry, not a no-op warmUp()"
-  )
-  func retryDecodeForcesReconnectAfterStaleReadinessTransportFailure() async throws {
-    let manager = StubParakeetASRManager()
-    manager.isModelLoaded = true
-    let adapter = ParakeetEngineAdapter(asrManager: manager)
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: false)
-    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
-
-    // Primary decode fails via a per-call XPC proxy error — the STUB, like
-    // the real onProxyError path, never clears isModelLoaded on this error.
-    manager.transcribeError = XPCASRTransportError.serviceUnreachable
-    let primaryOutcome = await adapter.finalize(batchSamples: nil)
-    guard case .failed = primaryOutcome else {
-      Issue.record("expected the primary decode to fail, got \(primaryOutcome)")
-      return
-    }
-    #expect(
-      manager.isModelLoaded,
-      "onProxyError never clears isModelLoaded — the stale mirror this bug depends on")
-    #expect((adapter.lastFailureError as? XPCASRTransportError) == .serviceUnreachable)
-
-    // Retry: the stale readiness mirror alone would skip repair entirely.
-    manager.transcribeError = nil
-    manager.transcribeResult = makeResult("reconnected retry text")
-    let retryOutcome = await adapter.retryDecode(inputSamples: [0.1, 0.2, 0.3])
-    guard case .transcript(let result) = retryOutcome else {
-      Issue.record("expected the retry to succeed after a forced reconnect, got \(retryOutcome)")
-      return
-    }
-    #expect(result.text == "reconnected retry text")
-    #expect(
-      manager.cancelInFlightLoadCount == 1,
-      "must force the stale readiness mirror to reflect the actually-dead connection")
-    #expect(
-      manager.loadModelCount == 1,
-      "warmUp() must perform a REAL reload, not a no-op on the stale isModelLoaded flag")
-  }
-
-  @Test(
     "#1707 Codex r8/r9: retryDecodeTimeoutSeconds(forSampleCount:) scales with audio length, not a flat constant"
   )
   func retryDecodeTimeoutScalesWithSampleCount() {
@@ -896,6 +889,12 @@ final class StubParakeetASRManager: ASRManagerInterface {
   // Configurable behavior
   var supportsStreaming = true
   var startStreamingThrows = false
+  /// #1908: when set, `startStreaming()` sleeps this long before returning —
+  /// models a vendor call slower than the adapter's deadline, so a test can
+  /// exercise `attemptStreamingStart`'s timeout branch deterministically
+  /// without an unresolved gate (which would leak a suspended continuation
+  /// for the rest of the test process).
+  var startStreamingDelay: Duration?
   var finalizeStreamingThrows = false
   var finalizeStreamingResult = ASRResult(
     text: "default", language: "en", duration: 1, processingTime: 0, backendType: .parakeet)
@@ -903,8 +902,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
-  /// Settable so a test can inject a SPECIFIC error (e.g.
-  /// `XPCASRTransportError.serviceUnreachable`) rather than the fixed
+  /// Settable so a test can inject a SPECIFIC error rather than the fixed
   /// `FakeASRError.decode` `transcribeThrows` always throws. Checked first.
   var transcribeError: (any Error)?
   /// When set, `feedAudio` throws — models a transient ASR/XPC feed failure that
@@ -934,6 +932,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var cancelStreamingCount = 0
   var transcribeCount = 0
   var cancelInFlightLoadCount = 0
+  var cancelInFlightStreamingStartCount = 0
   var cancelIdleTimerCount = 0
   var lastUnloadPolicy: ModelUnloadPolicy?
   var lastTranscribeSamples: [Float] = []
@@ -984,8 +983,11 @@ final class StubParakeetASRManager: ASRManagerInterface {
     return transcribeResult
   }
 
-  func startStreaming(options: TranscriptionOptions) async throws {
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
     startStreamingCount += 1
+    if let startStreamingDelay {
+      try? await Task.sleep(for: startStreamingDelay)  // settle: deliberately outlasts the caller's own deadline under test
+    }
     if startStreamingThrows { throw FakeASRError.streamingSetup }
     isStreaming = true
   }
@@ -1033,6 +1035,11 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
+  @discardableResult
+  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>? {
+    cancelInFlightStreamingStartCount += 1
+    return nil
+  }
   func cancelInFlightLoad() {
     cancelInFlightLoadCount += 1
     // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which

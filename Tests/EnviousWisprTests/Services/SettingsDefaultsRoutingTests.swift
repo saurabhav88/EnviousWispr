@@ -216,7 +216,10 @@ struct SettingsDefaultsRoutingTests {
   @Test("unifiedDefaultsKeys excludes per-build knobs")
   func exclusionsHold() {
     let keys = Set(SettingsManager.unifiedDefaultsKeys)
-    #expect(!keys.contains("useXPCASRService"))
+    // #1908: `useXPCASRService` is retired — `WisprBootstrapper` no longer
+    // reads it at all, so asserting its absence from the unified-key set no
+    // longer describes anything real. Removed rather than left as a
+    // pointless-but-harmless assertion about a deleted key.
     #expect(!keys.contains("accessibilityWarningDismissed"))
     // Removed setting (#734/#1533): the legacy `noiseSuppression` key is
     // migration-stripped on load, never part of the unified set.

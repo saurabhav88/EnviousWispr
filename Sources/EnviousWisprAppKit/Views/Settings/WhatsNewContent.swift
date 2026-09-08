@@ -55,6 +55,30 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.9
+
+    // #1908, merged onto main after v2.4.8 shipped (tag v2.4.8 exists), so this
+    // entry opens a new group per whats-new-protocol.md FACT: whats-new-grouping
+    // rather than joining the closed 2.4.8 group, where it would never surface an
+    // unread badge. currentContentVersion bumped to match.
+    //
+    // "so that freeze is gone" is a structural claim, not a best-effort one: the
+    // separate ASR helper process macOS could reclaim while idle is deleted, not
+    // merely made less likely to be reclaimed. There is nothing left for macOS to
+    // shut down behind the app's back. Measured cause before this fix, production
+    // 14 days: 1.54 idle reclaims per active user-day, 48.1% of active user-days
+    // affected, recovery p50 459ms / p95 1,881ms / p99 12,783ms with no on-screen
+    // indicator during the wait (`capability-map.md` FACT: retired-do-not-repropose,
+    // "Parakeet ASR over XPC" row).
+    Entry(
+      id: "no-more-freeze-after-idle",
+      icon: "bolt.fill",
+      title: "No more freeze after sitting idle",
+      description:
+        "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone.",
+      version: "2.4.9"
+    ),
+
     // MARK: - v2.4.8
 
     // #2483, #2691 and #2697, merged fe044f6e / 85ddc26e / d49494f3. ONE user

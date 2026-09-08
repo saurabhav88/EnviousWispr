@@ -6,9 +6,8 @@ import EnviousWisprServices
 import Foundation
 
 /// PR8 of #763 — App-level home composing the heart-path event routers.
-/// Holds three private collaborators (`AudioEventRouter`, `ASREventRouter`,
-/// `WedgeRecoveryRouter`) that install their callbacks on `audioCapture` /
-/// `asrManager` at construction.
+/// Holds two private collaborators (`AudioEventRouter`, `WedgeRecoveryRouter`)
+/// that install their callbacks on `audioCapture` at construction.
 ///
 /// PR9 of #763 — gains `dictationLifecycleCoordinator` as a fourth private
 /// collaborator. The lifecycle home owns pipeline state-change side effects,
@@ -36,8 +35,6 @@ final class DictationRuntime {
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
   // periphery:ignore - retain anchor: owns the audio event router (AVAudio observer + weak-self callbacks)
   private let audioEventRouter: AudioEventRouter
-  // periphery:ignore - retain anchor: owns the ASR event router (asrManager.onServiceInterrupted weak-self callback)
-  private let asrEventRouter: ASREventRouter
   // periphery:ignore - retain anchor: owns the wedge-recovery router (audioCapture weak-self callbacks)
   private let wedgeRecoveryRouter: WedgeRecoveryRouter
   private let hotkeyController: HotkeyController
@@ -80,11 +77,6 @@ final class DictationRuntime {
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
-    )
-    self.asrEventRouter = ASREventRouter(
-      asrManager: asrManager,
-      kernelDriver: kernelDriver,
-      whisperKitKernelDriver: whisperKitKernelDriver
     )
     self.wedgeRecoveryRouter = WedgeRecoveryRouter(
       audioCapture: audioCapture,
@@ -180,7 +172,6 @@ final class DictationRuntime {
     hotkeyController.install()
   }
 
-
   // MARK: - Facade (UI / menus / AppDelegate command surface)
 
   var hotkeyDescription: String { hotkeyController.hotkeyDescription }
@@ -193,7 +184,9 @@ final class DictationRuntime {
     await starter.toggle(source: source)
   }
 
-  func cancelRecording(trigger: UserCancelTrigger) async { await finalizer.cancel(trigger: trigger) }
+  func cancelRecording(trigger: UserCancelTrigger) async {
+    await finalizer.cancel(trigger: trigger)
+  }
 
   func resetActivePipeline() { finalizer.resetActive() }
 

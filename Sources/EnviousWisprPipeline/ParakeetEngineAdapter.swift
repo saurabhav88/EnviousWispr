@@ -319,7 +319,33 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       self?.lastObservedPhase = phase
       self?.emitLoadTick()
     }
+    // Preserve the retired proxy's kernel-facing polling cadence:
+    // bb6ec30e, ASRManagerProxy.swift:394-419. That local file poll bypassed
+    // XPC and reported unchanged mtimes; this adapter discarded the mtime.
+    // These ticks therefore establish neither vendor progress nor helper
+    // responsiveness. They prevent healthy silent load intervals from
+    // tripping the kernel's 1-second cadence detector.
+    //
+    // Inherited limitation (#1908 round 13 cloud review, not a regression —
+    // the retired proxy masked a live-but-hung helper the same way, per its
+    // own unconditional tick): a vendor load that never returns can keep
+    // this stream alive indefinitely. Completion, failure, or explicit load
+    // cancellation ends the await. The sessionless listing deadline is NOT
+    // a compile-duration budget (`LoadProgressWatcher.swift:470-482`), and
+    // no evidence-backed compile-duration deadline exists to bound this on
+    // (`code-validation.md RULE: timeout-numbers-need-distribution-evidence`).
+    // ProgressFile remains event-driven in `ASRManager.performLoad`.
+    let heartbeat = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 125_000_000)
+        guard let self, !Task.isCancelled, self.warmUpGeneration == myWarmUpGeneration else {
+          return
+        }
+        self.emitLoadTick()
+      }
+    }
     defer {
+      heartbeat.cancel()
       if warmUpGeneration == myWarmUpGeneration {
         asrManager.loadProgressTickReporter = nil
         isLoadInFlight = false
@@ -419,7 +445,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
 
     do {
-      try await loadModelWithTransportRecovery()
+      try await asrManager.loadModel()
     } catch let error
       where deliveryActive
       && !(error is ASRLoadSupersededError)
@@ -446,35 +472,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // same two-signal reasoning (r10): cancellation first, then generation.
       try Task.checkCancellation()
       guard warmUpGeneration == myWarmUpGeneration else { throw CancellationError() }
-      try await loadModelWithTransportRecovery()
+      try await asrManager.loadModel()
     }
     // #959: a superseded load throws from `loadModel()`, but recheck readiness
     // anyway so any "returned but not actually loaded" path reports failure to
     // `ensureEngineWarm()` instead of a false "warm-up succeeded".
     guard asrManager.isModelLoaded else { throw ASRLoadSupersededError() }
-  }
-
-  /// One load with one-shot stale-helper recovery, ANY mode (code-diff r3):
-  /// a proxy-level error (incl. an old helper rejecting the new selector
-  /// after an app update) already recycled the connection in the proxy's
-  /// errorHandler; the retry connects to the freshly spawned helper. A
-  /// second transport failure propagates.
-  ///
-  /// #1388 retry-vs-cancel policy (this adapter's side of the contract): the
-  /// catch matches ONLY transport errors, so `ASRLoadCancelledError` — a user
-  /// Cancel or the wedge guard's teardown — propagates without a retry. That
-  /// is load-bearing, not incidental: the cancel resume was deliberately
-  /// typed as a non-transport error so this one-shot recovery can never
-  /// silently restart a load the user just cancelled. Do not widen the catch.
-  private func loadModelWithTransportRecovery() async throws {
-    do {
-      try await asrManager.loadModel()
-    } catch let error as XPCASRTransportError where error.isServiceUnreachable {
-      // #1525 PR I-B: narrowed from a bare type-check — the 6 new
-      // codec/transport cases are not stale-helper-retry-eligible; retrying
-      // a reload for, say, `.requestDecodingFailed` would mask a real bug.
-      try await asrManager.loadModel()
-    }
   }
 
   /// Latest phase string observed by the in-flight `loadProgressTickReporter`,
@@ -501,12 +504,29 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: ASREngineAdapter — session lifecycle
 
+  /// #1908 round 11: this session's streaming-start attempt identity — kept
+  /// past `beginSession()` returning, because a deadline-abandoned attempt's
+  /// underlying vendor call is NOT serialized against a fresh session that
+  /// starts right after (`beginSession()` returns using batch fallback well
+  /// before the orphaned work unwinds). Every downstream check in this
+  /// method compares against it so a late callback from an abandoned
+  /// attempt can never act on behalf of a newer one.
+  private var streamingStartAttemptID: UUID?
+
   /// Begin a session. Opens a live stream only when the kernel asked for one
   /// (`streaming`) AND the backend supports it; on a streaming-setup failure it
   /// degrades to batch-after-stop — today's `streamingSetupSucceeded` fallback
   /// (old Parakeet pipeline). `streaming == false` (the user
   /// disabled live transcription) means batch decode after stop only.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
+    // #1908 round 11: abandon any prior session's still-outstanding
+    // streaming-start attempt before minting a new identity for this one —
+    // this session's own start must never be mistaken for the old one.
+    if let previous = streamingStartAttemptID {
+      asrManager.cancelInFlightStreamingStart(attemptID: previous)
+    }
+    let attemptID = UUID()
+    streamingStartAttemptID = attemptID
     // #1707: a new session invalidates any recovery attempt still pending
     // from a prior one — its post-await checks compare against this.
     recoveryGeneration &+= 1
@@ -530,9 +550,53 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // which cancels the idle timer at every session start.
     asrManager.cancelIdleTimer()
 
-    if streaming, await asrManager.activeBackendSupportsStreaming {
-      do {
-        try await asrManager.startStreaming(options: options)
+    let supportsStreaming: Bool
+    if streaming {
+      supportsStreaming = await asrManager.activeBackendSupportsStreaming
+    } else {
+      supportsStreaming = false
+    }
+    // #1908 round 11: re-check identity after the await above — a
+    // replacement session (or a cancel) could have run during it.
+    guard streamingStartAttemptID == attemptID, !isCancelled else { return }
+    if supportsStreaming {
+      // #1908 Codex review: `startStreaming` reaches the same silent-compile-step
+      // vendor call as the cold-load wedge fixed in `warmUp()`
+      // (`ParakeetBackend.startStreaming` also calls FluidAudio's
+      // `loadModels(_:)`), but nothing observes ITS progress the way
+      // `warmUp()`'s heartbeat now does — there is no natural mid-call signal
+      // to watch for a single, non-phased vendor call. The retired XPC proxy
+      // bounded this via `withASRXPCOperationSignal`'s cross-process watchdog;
+      // that mechanism has no in-process analog (nothing else needs a
+      // side-channel file to know whether an in-process await is progressing).
+      // A deadline is the direct in-process replacement: on expiry this falls
+      // into the SAME "streaming setup failed, use batch" handling as every
+      // other streaming-start failure below, so a genuine vendor wedge
+      // degrades to batch decode instead of parking `beginSession()` (and the
+      // kernel awaiting it) forever.
+      //
+      // `withOrderedDeadline`, not bare `withDeadline` (round 5 finding): the
+      // invalidation must complete BEFORE this function can observe the
+      // timeout, or the abandoned vendor call can still finish and resurrect
+      // `isStreaming` in the gap between the deadline firing and an `async`
+      // cleanup call actually reaching `ASRManager`. `onTimeout` runs
+      // synchronously to completion first — matches `recoverFromASRInterruption()`'s
+      // own use of this primitive for the exact same reason on the load side.
+      let outcome = await withOrderedDeadline(
+        seconds: asrInterruptionRecoveryDeadlineSec,
+        operation: { [weak self, options] () -> StreamingStartOutcome in
+          guard let self else { return .cancelled }
+          return await self.attemptStreamingStart(options: options, attemptID: attemptID)
+        },
+        onTimeout: { [weak self] in
+          self?.asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
+        }
+      )
+      // #1908 round 11: re-check identity after the deadline resolves — a
+      // replacement session (or a cancel) could have run while this awaited.
+      guard streamingStartAttemptID == attemptID, !isCancelled else { return }
+      switch outcome {
+      case .succeeded:
         streamingActive = true
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming ASR started",
@@ -541,7 +605,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           "Streaming ASR started during recording",
           level: .info, category: "Pipeline"
         )
-      } catch is CancellationError {
+      case .cancelled:
         // #1654 (cloud review P2): a cancelled start is not a failure and must not be
         // counted as one. Behaviour is otherwise identical to the failure arm below —
         // same flag, same fall-through — so this changes what we RECORD, not what we do.
@@ -552,14 +616,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // have matched app-side cancellation only and let the real case straight through
         // to the emit below. The mirror of the finalize leg's own cancellation arm.
         streamingActive = false
-      } catch {
+      case .failed(let category, let description):
         // Streaming setup failed — fall back to batch decode after stop. Not a
         // session failure; the batch rescue over `retainedPCM` covers it.
         streamingActive = false
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
         await AppLogger.shared.log(
-          "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
+          "Streaming ASR failed to start, will use batch: \(description)",
           level: .info, category: "Pipeline"
         )
         // #1654: until now this leg emitted NOTHING — a breadcrumb and a debug-only log,
@@ -577,12 +641,77 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // the value but the forward-looking CLAIM; a report emitted at time T must not
         // assert an outcome decided at time T+1. Whether the fallback delivered is the
         // finalize leg's and the terminal's to say.
+        //
+        // #1908 round 11: re-checked here too, not just before the switch —
+        // the `await AppLogger.shared.log(...)` just above is its own
+        // suspension point a replacement session could run during.
+        guard streamingStartAttemptID == attemptID, !isCancelled else { return }
         TelemetryService.shared.limbFailureObserved(
           limb: "asr_streaming", operation: "start",
           result: "failed",
-          errorCategory: Self.streamingErrorCategory(error),
+          errorCategory: category,
+          durationMs: nil)
+      case nil:
+        // #1908: the vendor call never returned within the deadline — a genuine
+        // wedge, not an ordinary failure. `onTimeout` (above) already ran
+        // `cancelInFlightStreamingStart()` to completion before this branch
+        // could ever be reached, so the abandoned attempt is already
+        // invalidated by the time this session falls back to batch, same as
+        // `.failed` above. `withOrderedDeadline`'s own best-effort task-cancel
+        // still cannot preempt a vendor call that ignores `Task.isCancelled` —
+        // the generation checks in `ASRManager.startStreaming()` and
+        // `ParakeetBackend.startStreaming()` are what actually stop a late
+        // completion from resurrecting state, not the cancel itself.
+        streamingActive = false
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming start wedged, will use batch", level: .warning)
+        await AppLogger.shared.log(
+          "Streaming ASR start timed out after \(asrInterruptionRecoveryDeadlineSec)s, will use batch",
+          level: .info, category: "Pipeline"
+        )
+        guard streamingStartAttemptID == attemptID, !isCancelled else { return }
+        TelemetryService.shared.limbFailureObserved(
+          limb: "asr_streaming", operation: "start",
+          result: "failed",
+          errorCategory: "asr.streaming_start_wedged",
           durationMs: nil)
       }
+    }
+  }
+
+  /// Sendable outcome shuttled out of `withDeadline` in `beginSession` —
+  /// `any Error` is not itself `Sendable`, so the category/description this
+  /// file's own telemetry needs are computed inside `attemptStreamingStart`
+  /// (still isolated to `self`/MainActor) and carried out as plain strings
+  /// instead.
+  private enum StreamingStartOutcome: Sendable {
+    case succeeded
+    case cancelled
+    case failed(category: String, description: String)
+  }
+
+  /// Body of `withDeadline`'s operation closure in `beginSession`, pulled out
+  /// to an `async` method so the call itself performs the MainActor hop —
+  /// `withDeadline`'s `operation` is `@Sendable`, not `@MainActor`, so a
+  /// synchronous `self.asrManager` property read directly inside that closure
+  /// cannot compile; an `await self.method()` call can, the same way
+  /// `recoverFromASRInterruption`'s own deadline closure calls `self.warmUp()`.
+  private func attemptStreamingStart(
+    options: TranscriptionOptions, attemptID: UUID
+  ) async -> StreamingStartOutcome {
+    // #1908 round 11: re-check before ever entering the manager — this
+    // closure can be scheduled after this attempt was already abandoned.
+    guard streamingStartAttemptID == attemptID, !isCancelled, !Task.isCancelled else {
+      return .cancelled
+    }
+    do {
+      try await asrManager.startStreaming(options: options, attemptID: attemptID)
+      return .succeeded
+    } catch is CancellationError {
+      return .cancelled
+    } catch {
+      return .failed(
+        category: Self.streamingErrorCategory(error), description: error.localizedDescription)
     }
   }
 
@@ -674,6 +803,26 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `recoverFromWedge()`: cancel streaming, clear per-session state. Touches
   /// neither the model load nor the XPC connection.
   private func discardSession() async {
+    // #1908 round 11: abandon this session's own outstanding streaming-start
+    // attempt too — cancel/recovery discarding the session must not leave a
+    // stale attemptID that a later `beginSession()` would then also have to
+    // abandon (harmless but pointless) or, worse, an attempt that keeps
+    // holding manager-level admission with nothing left tracking it.
+    //
+    // #1908 round 13 (cloud review P2): AWAIT the reclaim task this returns.
+    // `cancelInFlightStreamingStart` clears `ASRManager.isStreaming`
+    // synchronously as part of abandoning the attempt, so the `cancelStreaming()`
+    // call below — reached whenever `streamingActive` was true — finds
+    // `isStreaming` already `false` and returns immediately without ever
+    // touching the backend. Discarding the task here meant NOTHING awaited
+    // the actual `manager.cancel()`: this method returned believing the
+    // session was fully torn down while a live microphone/CoreML session
+    // could still be cancelling in the background.
+    var reclaimTask: Task<Void, Never>?
+    if let attemptID = streamingStartAttemptID {
+      streamingStartAttemptID = nil
+      reclaimTask = asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
+    }
     // #1707: covers `cancel()`, `recoverFromWedge()`, and transitively
     // `cancelSessionlessWarmup()` (which calls `cancel()`) — every heavy
     // lifecycle op that can start replacement work invalidates any pending
@@ -687,10 +836,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Drop feed-task handles — the tasks see `isTerminal` and skip; `finalize()`
     // after `cancel()` short-circuits to `.cancelled` and never drains.
     feedTasks.removeAll()
-    if streamingActive {
-      streamingActive = false
+    if let reclaimTask {
+      await reclaimTask.value
+    } else if streamingActive {
       await asrManager.cancelStreaming()
     }
+    streamingActive = false
   }
 
   /// #959 CHEAP, model-preserving discard — what every ordinary terminal
@@ -716,9 +867,19 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// ONLY by the kernel's load-wedge / finalize-wedge detectors.
   /// `cancelInFlightLoad()` is synchronous and non-blocking, so no deadline is
   /// needed for the Parakeet path.
+  ///
+  /// #1908: after XPC removal, `cancelInFlightLoad()` alone is no longer the
+  /// whole story — it releases any awaiting caller, but the vendor call
+  /// itself can keep running orphaned in the background (no more helper
+  /// process for the OS to reap). `attemptWedgeRecoveryUnload()` is the
+  /// deadline-bounded, fail-open follow-up (ports `WhisperKitEngineAdapter
+  /// .recoverFromWedge()`'s pattern) — a no-op on the still-live
+  /// `ASRManagerProxy` path (protocol default), so this stays correct while
+  /// both transports coexist during the migration.
   func recoverFromWedge() async {
     await discardSession()
     asrManager.cancelInFlightLoad()
+    await asrManager.attemptWedgeRecoveryUnload()
     // #1405: this recovery is now for MODEL-LOAD wedges only. The download owns
     // its own stall detection (the fetcher's request idle timeout), and the
     // wedge guard stays parked during the download phase — so a download is
@@ -767,22 +928,6 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // outcome alone — an honest, non-atomic signal (§3.2's documented limit).
     let session = sessionID
     let generation = retryGeneration
-    // GitHub cloud review (PR #1725): a per-call XPC proxy error
-    // (`ASRManagerProxy.transcribe`'s `onProxyError` -> `.serviceUnreachable`)
-    // never clears `isModelLoaded`/`connection` — only the connection's OWN
-    // interruption/invalidation handler does that. So `readiness` can still
-    // read `.ready` even though the PRIMARY decode's own failure proves the
-    // connection is actually dead, and the check below would then skip
-    // repair entirely, re-attempting the same broken proxy and exhausting
-    // the one retry instead of reconnecting. `.serviceUnreachable`
-    // specifically (not the other `XPCASRTransportError` cases, which are
-    // encoding/decoding issues a reconnect would not fix — mirrors this same
-    // file's existing one-shot transport-retry classification) forces
-    // `cancelInFlightLoad()` to make the mirror honest before the existing
-    // gate below decides whether to repair.
-    if readiness == .ready, (lastFailureError as? XPCASRTransportError) == .serviceUnreachable {
-      asrManager.cancelInFlightLoad()
-    }
     if readiness != .ready {
       do {
         try await warmUp()

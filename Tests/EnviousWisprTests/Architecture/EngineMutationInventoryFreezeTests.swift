@@ -331,6 +331,12 @@ import Testing
     "transcribe", "feedAudio", "finalizeStreaming", "cancelStreaming", "beginSession",
     "acceptAudio", "finalize", "observeLID", "makeStreamingSession", "cancelSessionlessWarmup",
     "unloadForRemoval", "transcribeSamples", "feedAudioBuffer",
+    // #1908: `attemptWedgeRecoveryUnload` unloads the currently-published
+    // backend (a real engine mutation, same class as `cancelInFlightLoad`
+    // beside it above) — ported to `ASRManagerInterface` alongside the XPC
+    // collapse. Its sole production call site is
+    // `ParakeetEngineAdapter.recoverFromWedge()`.
+    "attemptWedgeRecoveryUnload",
   ]
 
   /// A member-access reference (`adapter.warmUp`) or bare reference
@@ -350,15 +356,17 @@ import Testing
   /// reference with NO source-level spelling of the name at all (macro-
   /// generated code, or a call constructed via string-based reflection, e.g.
   /// `NSSelectorFromString("warmUp")`) is outside this test's reach — grep-
-  /// verified zero occurrences of either shape across the four scanned
+  /// verified zero occurrences of either shape across the scanned
   /// directories today. If EnviousWispr ever adopts one of those mechanisms
   /// for ASR mutation, it needs its own explicit policy, not a bigger
   /// version of this inventory.
+  ///
+  /// #1908: `Sources/EnviousWisprASRService` was a fourth root here — deleted
+  /// along with the directory when the last XPC helper collapsed in-process.
   private static let scannedRoots = [
     "Sources/EnviousWisprASR",
     "Sources/EnviousWisprPipeline",
     "Sources/EnviousWisprAppKit",
-    "Sources/EnviousWisprASRService",
   ]
 
   // MARK: Frozen classified inventory, re-derived from source and cross-
@@ -466,7 +474,8 @@ import Testing
     // MARK: BenchmarkSuite — direct call inside its own "benchmarkSuiteStreaming" claim.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: .default)", classification: .gated),
+      text: "try await asrManager.startStreaming(options: .default, attemptID: UUID())",
+      classification: .gated),
 
     // MARK: WisprBootstrapper — the sole `.switchBackend(to:)` call site
     // (frozen separately by `EngineSwitchOwnershipFreezeTests`). Protected by
@@ -492,10 +501,37 @@ import Testing
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
       text: "try await parakeet.prepare(",
       classification: .transitivelyCoveredByCaller),
+    // #1908: this generic-protocol prepare call now runs against the
+    // attempt-scoped `candidate` rather than the stored `self.parakeetBackend`
+    // — the fresh-backend-per-attempt refactor renamed the receiver, not the
+    // reachability. Same callers, same protection; the stale
+    // `self.parakeetBackend.prepare(...)` text entry is removed, not kept
+    // alongside this one.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "prepare",
-      text: "try await self.parakeetBackend.prepare(progressCallback: progress)",
+      text: "try await candidate.prepare(progressCallback: progress)",
       classification: .transitivelyCoveredByCaller),
+    // #1908: `performLoad`'s defer-path cleanup of an attempt that was NEVER
+    // published to `self.parakeetBackend` — superseded, cancelled, or a
+    // thrown error before publish. Structurally safe by construction: `candidate`
+    // has no other referrer anywhere in the app (it is a plain local until
+    // publish), so nothing else can be mid-call on it when this fires.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "Task { await candidate.unload() }", classification: .structurallySafe),
+    // #1908: `performLoad`'s retire-the-old-backend step, fired immediately
+    // after `self.parakeetBackend` is reassigned to the new `candidate` —
+    // by that point no NEW caller can reach `retiring` through the manager.
+    // Same residual-risk profile this file already accepts for
+    // `switchBackend`'s own retire-and-replace unload directly above
+    // (`await activeBackend?.unload()`, `.structurallySafe`): an in-flight
+    // caller that captured the OLD backend reference synchronously before
+    // the swap could still be mid-await on it. Not a new risk introduced by
+    // the fresh-backend-per-attempt design — the identical shape as the
+    // existing accepted site.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "Task { await retiring.unload() }", classification: .structurallySafe),
     // `startStreaming(options:)` — reached via BenchmarkSuite's gated claim
     // AND `ParakeetEngineAdapter.beginSession`'s structurally-safe
     // (session-start / minting-window) call; its own protection is inherited.
@@ -503,10 +539,28 @@ import Testing
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "startStreaming",
       text: "try await activeBackend.startStreaming(options: options)",
       classification: .transitivelyCoveredByCaller),
+    // #1908 round 8: the identical call, same function, same reachability —
+    // split into two branches so the Parakeet-concrete path can pass an
+    // already-reserved backend generation (see `streamingStartBackendAttempt`'s
+    // doc); the branch above stays as the non-Parakeet/test-backend fallback.
+    // Same claim inheritance as the entry directly above.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "startStreaming",
+      text: "try await parakeet.startStreaming(options: options, generation: backendGen)",
+      classification: .transitivelyCoveredByCaller),
     // The real unload, directly inside "asrManagerUnload"'s claim closure.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
       text: "await activeBackend.unload()", classification: .gated),
+    // #1908: `attemptWedgeRecoveryUnload()`'s deadline-bounded cleanup of the
+    // currently-published backend. Its ONE caller,
+    // `ParakeetEngineAdapter.recoverFromWedge()`, is itself
+    // `.structurallySafe` (session-scoped load-wedge detector only, see the
+    // `cancelInFlightLoad` entry for that same method below) — this call is
+    // the very next line after that one in the same method, same reachability.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unload",
+      text: "await captured.unload()", classification: .transitivelyCoveredByCaller),
     // Idle-timer firing `unloadModel()` on itself. Safe regardless of when it
     // fires: `unloadModel()`'s OWN body re-acquires "asrManagerUnload"
     // internally on every call, by construction — not because of anything
@@ -524,43 +578,6 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "unloadModel",
       text: "Task { await unloadModel() }", classification: .structurallySafe),
-
-    // MARK: ASRManagerProxy — the XPC-fronted mirror of ASRManager.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "loadModel",
-      text: "proxy.loadModel(",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "startStreaming",
-      text: "proxy.startStreaming(", classification: .transitivelyCoveredByCaller),
-    // Same reasoning as ASRManager's idle-timer trigger above.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "unloadModel",
-      text: "_ = Task<Void, Never> { await self?.unloadModel() }",
-      classification: .structurallySafe),
-    // `switchBackend`'s pre-switch drain — bare, implicit `self`. Same
-    // self-re-acquiring-claim reasoning as every other bare/optional
-    // `unloadModel()` call in this file.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "unloadModel",
-      text: "if isModelLoaded { await unloadModel() }", classification: .structurallySafe),
-    // `noteTranscriptionComplete`'s immediate-unload branch — the proxy-side
-    // twin of ASRManager's identical bare call above.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "unloadModel",
-      text: "Task { await unloadModel() }", classification: .structurallySafe),
-    // The real XPC forwarding call, a trailing-closure call
-    // (`proxy.unloadModel { cont.resume() }` — no parentheses), which the
-    // OLD regex-based scanner's `\.unloadModel\(` pattern could never match
-    // (it required a literal `(` immediately after the name) — a real gap in
-    // the retired scanner's coverage that the semantic, parser-based visitor
-    // now correctly closes (#1741 Chunk 10 round 6, found on first real run).
-    // Directly inside `unloadModel()`'s own "asrManagerProxyUnload" claim
-    // closure — nested inside `withCheckedContinuation`/`serviceProxy`'s
-    // synchronous callback setup, never crossing a new claim boundary.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "unloadModel",
-      text: "proxy.unloadModel {", classification: .gated),
 
     // MARK: ASRProtocol — the shared `ASRBackend` protocol extension's
     // default `prepare(progressCallback:)`, used by any conformer that does
@@ -596,6 +613,15 @@ import Testing
       file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
       text: "try await manager.startStreaming(source: .microphone)",
       classification: .transitivelyCoveredByCaller),
+    // #1908 round 8: `startStreaming(options:)`'s own body, now a thin
+    // self-reserving forward to `startStreaming(options:generation:)` (added
+    // so `ASRManager` can reserve the generation itself and hand it to
+    // `cancelInFlightStreamingStart()` — same shape as the `ASRProtocol.swift`
+    // `prepare()` forward above). Crosses no new claim boundary of its own.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ParakeetBackend.swift", matcher: "startStreaming",
+      text: "try await startStreaming(options: options, generation: reserveStreamingGeneration())",
+      classification: .transitivelyCoveredByCaller),
 
     // MARK: ParakeetBackend — #1654 streaming error identity. Both sites match
     // only because the word `finalize` appears in them; neither touches the
@@ -617,19 +643,6 @@ import Testing
       file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "loadModel",
       text: "if let seams = testSeams { return try await seams.loadModel(modelPath) }",
       classification: .dormant),
-
-    // MARK: ASRServiceHandler — the XPC helper process's two forwarding
-    // sites. No gate of its own is possible (a separate process); both are
-    // covered only because the client (ASRManagerProxy) never sends the
-    // message unless ITS OWN call chain already holds adequate protection.
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "startStreaming",
-      text: "try await parakeet.startStreaming(options: options)",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "prepare",
-      text: "try await backend.prepare(cacheOnly: cacheOnly, modelDirectory: modelDirectory) {",
-      classification: .transitivelyCoveredByCaller),
 
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity
     // detection), not the ASR engine. Matched only by method-name coincidence.
@@ -710,11 +723,14 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "loadModel",
       text: "try await asrManager.loadModel()", classification: .transitivelyCoveredByCaller),
-    // `beginSession()`'s streaming start — reached only at a session's own
-    // start, inside the minting window `isMintingAnySession` covers.
+    // #1908 round 11: a deadline can outlive `beginSession()`'s own minting
+    // window (a caller-abandoned attempt's vendor call keeps running in the
+    // background). `ASRManager` now holds start admission until the attempt
+    // actually unwinds, not just until its deadline fires, so a later start
+    // is refused outright rather than racing this one.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: options)",
+      text: "try await asrManager.startStreaming(options: options, attemptID: attemptID)",
       classification: .structurallySafe),
     // `cancel()`'s in-flight-load release — its dominant caller is genuine
     // session termination (structurally safe); its one sessionless caller
@@ -732,13 +748,20 @@ import Testing
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
       matcher: "cancelInFlightLoad", text: "asrManager.cancelInFlightLoad()",
       classification: .structurallySafe),
-    // `retryDecode()`'s repair-before-retry release — `retryDecode` itself is
-    // session-scoped (called only from `RecordingSessionKernel`'s ASR-failure
-    // handling mid-`.delivering`).
+    // #1908: `recoverFromWedge()`'s follow-up deadline-bounded unload
+    // attempt, added the line immediately after the `cancelInFlightLoad()`
+    // entry directly above — same method, same SESSION-scoped-only
+    // reachability, same protection.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift",
-      matcher: "cancelInFlightLoad", text: "asrManager.cancelInFlightLoad()",
+      matcher: "attemptWedgeRecoveryUnload", text: "await asrManager.attemptWedgeRecoveryUnload()",
       classification: .structurallySafe),
+    // #1908: `retryDecode()`'s stale-readiness-mirror repair-before-retry
+    // release used to live here — deleted along with the `XPCASRTransportError`
+    // branch that gated it (round-trip staleness that can only happen across
+    // an XPC boundary; the in-process manager's `isModelLoaded` never goes
+    // stale independently of a real connection object, so there was nothing
+    // left for this call to correct).
 
     // MARK: RecordingSessionKernel — every site below fires only from within
     // an active recording session (`.arming`/`.delivering`), which
@@ -932,59 +955,23 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
       text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
+    // #1908 round 5 added, round 7 removed: `startStreaming()`'s own
+    // generation-mismatch branch and `cancelInFlightStreamingStart()` both
+    // used to reach into the backend here too. Round 7 found that reaching
+    // into `activeBackend.cancelStreaming()` from an ABANDONED attempt's
+    // cleanup can cancel a NEWER session's already-published stream instead
+    // — `cancelStreaming()` cancels whichever stream is CURRENT, with no way
+    // to tell "the one this abandoned attempt made" from "the one a session
+    // that started right after made". Both cleanups now touch only this
+    // manager's own local state; the abandoned backend-level publish (if any)
+    // is reclaimed the next time anything calls `startStreaming()` (its own
+    // unconditional pre-start clear) or `unloadModel()` — both already
+    // correct to be unconditional, since at those points replacing/
+    // discarding whatever is current IS the intent.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "finalizeStreaming",
       text: "let result = try await activeBackend.finalizeStreaming()",
       classification: .transitivelyCoveredByCaller),
-
-    // MARK: ASRManagerProxy — new Chunk 11 XPC-client forwarding, same
-    // reasoning as the file's existing `loadModel`/`startStreaming` entries.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "transcribeSamples",
-      text: "proxy.transcribeSamples(", classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "feedAudioBuffer",
-      text: "proxy.feedAudioBuffer(data, frameCount: count)",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "finalizeStreaming",
-      text: "proxy.finalizeStreaming { resultData, nsError in",
-      classification: .transitivelyCoveredByCaller),
-    // #1749 — this XPC-client `cancelStreaming` forward is part of the same
-    // fire-and-forget chain `detachedAdapterCancel()` triggers on Parakeet;
-    // no reply is awaited, so it can still be in flight when recovery's gate
-    // opens.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "cancelStreaming",
-      text: "serviceProxy { proxy in proxy.cancelStreaming() }",
-      classification: .knownGap(
-        issue: 1749,
-        reason: "fire-and-forget XPC cancel forward, no reply awaited, part of the #1749 chain"
-      )),
-
-    // MARK: ASRServiceHandler — new Chunk 11 XPC-service forwarding, same
-    // reasoning as the file's existing `startStreaming`/`prepare` entries.
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "transcribe",
-      text: "let result = try await parakeet.transcribe(audioSamples: samples, options: options)",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "feedAudio",
-      text: "Task { try? await parakeet.feedAudio(unsafeBuffer) }",
-      classification: .transitivelyCoveredByCaller),
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "finalizeStreaming",
-      text: "let result = try await parakeet.finalizeStreaming()",
-      classification: .transitivelyCoveredByCaller),
-    // #1749 — the service-side twin of the XPC-client cancel forward above;
-    // spawns its own untracked `Task`, never awaited by the client.
-    CallSite(
-      file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "cancelStreaming",
-      text: "Task { await parakeet.cancelStreaming() }",
-      classification: .knownGap(
-        issue: 1749,
-        reason: "fire-and-forget XPC cancel forward, no reply awaited, part of the #1749 chain"
-      )),
 
     // MARK: ParakeetBackend — new Chunk 11 entry, same inherited coverage as
     // the file's existing `prepare`/`loadModels`/`startStreaming` entries:
@@ -1565,8 +1552,10 @@ import Testing
 
   @Test("a trailing-closure call with no parentheses at all is detected")
   func positiveControlTrailingClosureNoParensIsDetected() throws {
-    // The real entry in the frozen table (`ASRManagerProxy.swift`) proves
-    // this against live source; this fixture proves it in isolation.
+    // #1908: the real frozen-table entry that once proved this against live
+    // source (`ASRManagerProxy.swift`'s `proxy.unloadModel { cont.resume() }`)
+    // was deleted with the file; this fixture still proves the shape in
+    // isolation.
     #expect(
       try Self.hitCount(in: "proxy.unloadModel { cont.resume() }", matcher: "unloadModel") == 1)
   }
@@ -2011,8 +2000,11 @@ import Testing
       return (issue, reason)
     }
     #expect(
-      gaps.count == 18,
-      "expected exactly 18 `knownGap` entries (2 for #1745, 16 for #1749), found \(gaps.count)"
+      // #1908: was 18 (2 for #1745, 16 for #1749) — 2 of the #1749 entries
+      // were `ASRManagerProxy.swift`'s and `ASRServiceHandler.swift`'s own
+      // fire-and-forget `cancelStreaming` forwards, deleted with those files.
+      gaps.count == 16,
+      "expected exactly 16 `knownGap` entries (2 for #1745, 14 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
@@ -2032,11 +2024,15 @@ import Testing
   func knownGapAppliesOnlyToTheConfirmedUnsafeSites() {
     // Ground truth extracted directly from a failing run of this test with an
     // empty expectation (measure-with-the-real-tool, not hand-transcription) —
-    // 15 distinct sites; 18 total `knownGap` entries above, because identical
-    // TEXT collapses to one `SiteKey`: `ParakeetEngineAdapter.swift`'s two
-    // `transcribe(` sites, and `WhisperKitStreamingSession.swift`'s three, which
-    // all wrapped onto their own line when #2108 added the abort argument.
-    // Multiplicity survives only in Test 1's own multiset check, not here.
+    // 13 distinct sites (#1908: was 15 — `ASRManagerProxy.swift`'s and
+    // `ASRServiceHandler.swift`'s own fire-and-forget `cancelStreaming`
+    // forwards, both distinct text with no collapsing, were deleted with
+    // those files); 16 total `knownGap` entries above (#1908: was 18), because
+    // identical TEXT collapses to one `SiteKey`: `ParakeetEngineAdapter.swift`'s
+    // two `transcribe(` sites, and `WhisperKitStreamingSession.swift`'s three,
+    // which all wrapped onto their own line when #2108 added the abort
+    // argument. Multiplicity survives only in Test 1's own multiset check, not
+    // here.
     let expectedGapKeys: Set<SiteKey> = [
       // #1745
       SiteKey(
@@ -2063,12 +2059,6 @@ import Testing
       SiteKey(
         file: "Sources/EnviousWisprAppKit/App/RecoverySpoolReplayer.swift", matcher: "transcribe",
         text: "result = try await activeEngine.transcribe(recovered.samples, options)"),
-      SiteKey(
-        file: "Sources/EnviousWisprASR/ASRManagerProxy.swift", matcher: "cancelStreaming",
-        text: "serviceProxy { proxy in proxy.cancelStreaming() }"),
-      SiteKey(
-        file: "Sources/EnviousWisprASRService/ASRServiceHandler.swift", matcher: "cancelStreaming",
-        text: "Task { await parakeet.cancelStreaming() }"),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
         text:

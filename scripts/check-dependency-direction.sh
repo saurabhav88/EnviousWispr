@@ -15,7 +15,6 @@
 #                             enforcement. Adding the unit or ASR target to that loop's allowlist
 #                             would silently reopen the hole this epic exists to close.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
-#   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
 #   EnviousWisprASR        -> Core, Audio, FluidAudioBridge, Services (idle-unload mutation guards emit via TelemetryService; #1707 Phase 3)
 #   EnviousWisprFluidAudioBridge -> (no app deps; internal FluidAudio vendor-error classifier leaf; #1525 PR I-B)
@@ -66,7 +65,6 @@ permitted_imports_for() {
     # list at four.
     EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
-    EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
     EnviousWisprAppKitTestSupport) echo "EnviousWisprAppKit EnviousWisprCore" ;;
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;

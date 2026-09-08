@@ -12,7 +12,7 @@ Drive the harness from repo root:
 
 ```bash
 python3 Tests/RuntimeUAT/faultInjection.py list             # print menu
-python3 Tests/RuntimeUAT/faultInjection.py run A3_asr_xpc_kill
+python3 Tests/RuntimeUAT/faultInjection.py run A7_app_quit
 python3 Tests/RuntimeUAT/faultInjection.py query            # current state
 ```
 
@@ -22,7 +22,7 @@ Or via Python:
 import sys; sys.path.insert(0, "Tests/RuntimeUAT")
 from wispr_eyes import list_scenarios, run_scenario
 list_scenarios()
-run_scenario("A3_asr_xpc_kill")
+run_scenario("A7_app_quit")
 ```
 
 ## Index by symptom
@@ -30,12 +30,11 @@ run_scenario("A3_asr_xpc_kill")
 | Symptom (something broke in production?) | Scenario | Mechanism family |
 |---|---|---|
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
-| Dictation lost (or pipeline stuck) after ASR service crash | A3_asr_xpc_kill | xpc |
 | A recording saved by crash recovery is silently DELETED instead of recovered | R1_readiness_lost_after_load | recovery |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
-| Orphan helpers after force-quit | A7_app_quit | app-quit |
+| App does not relaunch/recover cleanly after force-quit | A7_app_quit | app-quit |
 | Cancel during Parakeet model load lingers | A8a_cancel_during_parakeet_load | model-load |
 | Cancel during WhisperKit model load leaves state inconsistent | A8b_cancel_during_whisperkit_load | model-load |
 | Switching backend mid-record aborts active recording | A9_backend_switch_mid_record | backend-switch |
@@ -83,14 +82,9 @@ Backends: both. Budget: 2s. Mechanism: timing.
 
 Start recording, wait 1s, dispatch `force_cancel` via the DEBUG endpoint. Pipeline reaches `.idle` within 2s. Equivalent in effect to a user pressing the cancel hotkey mid-record, but deterministic.
 
-**Negative control:** remove cancellation cleanup in `TranscriptionPipeline.cancelRecording()` — cancelled task lingers, audio capture not stopped, asserted via `assert_no_zombie()`.
+**Negative control:** remove cancellation cleanup in `TranscriptionPipeline.cancelRecording()` — cancelled task lingers, audio capture not stopped.
 
-### A3_asr_xpc_kill (Lane A — XPC)
-Backends: parakeet (WhisperKit ASR is in-process). Budget: 30s. Mechanism: xpc.
-
-Start recording, wait 1s, `kill -9` the real `EnviousWisprASRService` process (`force_xpc_process_kill` — a genuine crash, not `force_xpc_kill`'s connection-only invalidation, which leaves the helper alive and the model resident and never exercises the slow reload path). #1707: the pipeline salvages the already-captured audio — it reconnects through a freshly-respawned process (cold model reload included) and decodes rather than discarding the dictation, within the poll window (15s, deliberately wider than the production recovery deadline of 8.0s plus decode/finalize time). `assert_no_zombie` confirms no orphan ASR helper. `salvage_succeeded` reads the kernel's own precomputed recovery-outcome log line, not the final pipeline state — gates on whether the recovery mechanism itself succeeded, not on whether the captured audio also happened to be VAD-detectable (a separate, test-environment-dependent concern); a build that regressed to discarding the dictation on crash raises `AssertionError`, not a silent pass.
-
-**Negative control:** remove `ASREngineAdapter.recoverFromASRInterruption()` / revert #1707 (`RecordingSessionKernel`'s ASR-interruption salvage tail). The dictation is discarded instead of salvaged; `salvage_succeeded` is `False` and the scenario raises.
+**A3_asr_xpc_kill was removed (#1908)** — it drove a real `kill -9` on the ASR XPC helper process (`force_xpc_process_kill`) and proved the pipeline salvaged the already-captured audio through a respawned process. ASR now runs in-process, so there is no separate helper process left to crash independently of the app; that failure mode no longer exists.
 
 **A4_audio_xpc_kill and A5_proxy_buffer_drop_watchdog were removed (#1543)** — both drove the deleted host-side audio-capture proxy DEBUG commands, which cannot exist now that capture runs in-process. Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) is covered by the HITL Lane B matrix (`docs/LANE_B_AUDIO_TESTS.md`); the capture-stall watchdog is exercised in-process by the #1317 zero-fill proof-bench.
 
@@ -106,11 +100,13 @@ During an active recording, navigate to AI Polish settings. Toggle `wordCorrecti
 ### A7_app_quit (Lane A — app-quit)
 Backends: both. Budget: 10s. Mechanism: app-quit.
 
-During an active recording, invoke `Quit EnviousWispr` (Cocoa terminate via the menu). `applicationWillTerminate` runs, cleans up the ASR XPC helper + audio engine. Next launch starts clean — no orphan helper processes from `pgrep -x EnviousWisprASRService`.
+During an active recording, invoke `Quit EnviousWispr` (Cocoa terminate via the menu). `applicationWillTerminate` runs, cleans up the audio engine. Next launch starts clean and the next dictation recovers.
 
 **Out of scope:** raw `SIGTERM`, `kill -9`, force-quit. No `signal` / `DispatchSourceSignal` handler exists in the codebase; A7 validates only the Cocoa terminate path.
 
-**Negative control:** remove `applicationWillTerminate` cleanup in `AppDelegate`. Orphan helpers persist; `assert_no_zombie` returns non-empty `orphan_pids`.
+**Negative control:** remove `applicationWillTerminate` cleanup in `AppDelegate`. The app fails to relaunch cleanly or the next dictation does not recover.
+
+(#1908: audio capture and ASR both run in-process now, so this scenario used to also assert no orphan XPC service helper survived the quit — that check is gone with the last helper it was checking for.)
 
 ### A8a_cancel_during_parakeet_load (Lane A — model-load)
 Backends: parakeet. Budget: 3s. Mechanism: model-load.
@@ -137,12 +133,7 @@ During an active recording, attempt to flip `selectedBackend` via the Speech Eng
 XPC line-death start-retry (#1194), which cannot occur with capture in-process
 (no XPC line to wedge).
 
-### A11_asr_kill_mid_model_load (Lane A — model-load, #1388)
-Backends: parakeet. Budget: 30s. Mechanism: model-load.
-
-Kill the ASR XPC connection while the model is LOADING — not mid-stream (A3's shape) and not a user cancel (A8a's shape). Sequence: `force_xpc_kill` drops the resident model; a record press then drives the cold sessionless warm-up (`ensureEngineWarm(.coldPress)`) with a real in-flight `loadModel`; a second `force_xpc_kill` lands ~0.4s into it. The #1388 step-1 contract requires the invalidation handler to resume the pending load continuation with the typed transport error, so the warm-up reaches a terminal outcome and the adapter's one-shot transport retry reconnects to the respawned helper. Verdict: pipeline reaches a terminal token, no helper leak, the recovery dictation PASSES, and the wedge guard did NOT fire (`wedge_guard_fired == False` — the kill produces a typed error, not a detector-owned silence).
-
-**Negative control:** remove the `pendingLoadCompletion` resume from `ASRManagerProxy`'s invalidation handler — the warm-up await hangs, `isLoadInFlight` never clears, readiness pins at `warming`, and every subsequent press is blocked (the recovery dictation fails). This is precisely the pre-#1388 production defect (119 of 126 wedge fires with no terminal outcome).
+**A11_asr_kill_mid_model_load was removed (#1908)** — it killed the ASR XPC connection while the model was loading and proved the invalidation handler resumed the pending load with a typed transport error, then reconnected through a respawned helper. Like A3, that failure mode requires a helper process that can crash independently of the app; ASR now runs in-process, so it no longer exists.
 
 ### B1_bluetooth_route_flip (Lane B — bt-route, founder-required)
 Backends: both. Budget: 15s. Mechanism: bt-route.
@@ -188,12 +179,11 @@ Fixed command set (no arbitrary RPC):
 | Command | Effect |
 |---|---|
 | `force_cancel` | Invoke `forceCancelNow()` on the active backend's pipeline |
-| `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
 | `query_state` | Return current pipeline + backend state (one line, no side effects) |
 | `force_zero_fill(mode,N,trialID)` | #1317: arm the DEBUG all-zero injector in-process on `AudioCaptureManager` (#1543). `mode` ∈ {`zero_from_start`, `zero_after_samples`, `zero_next_samples`, `disarmed`}; `N` = LIVE-sample threshold/budget; `trialID` correlates the status query. |
 | `query_fault_status(trialID)` | #1317: read the in-process fault status (injector fields + manager source-incarnation). Fails CLOSED to `ERR` on an absent manager or trial-id mismatch. `armed` is not evidence of `hit`. |
 
-(#1543 removed `force_proxy_buffer_drop`, `force_audio_wedge_start`, and `force_audio_xpc_kill` with the audio-capture boundary.)
+(#1543 removed `force_proxy_buffer_drop`, `force_audio_wedge_start`, and `force_audio_xpc_kill` with the audio-capture boundary. #1908 removed `force_xpc_kill` with the last XPC service, the ASR helper.)
 
 ## Adding a new scenario
 

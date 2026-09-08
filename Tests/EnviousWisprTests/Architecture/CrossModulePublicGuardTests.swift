@@ -17,12 +17,12 @@ import Testing
     let sourcesRoot = RepoRoot.sourceURL("Sources")
     var offenders: [String] = []
 
-    // Exclude executable targets (app shell + XPC services). These are not
-    // libraries that other modules consume, so cross-module-public is not a
-    // meaningful concept for them.
+    // Exclude the executable target (app shell). #1908: the last XPC service
+    // was deleted, so it is no longer in this set. Not a library other
+    // modules consume, so cross-module-public is not a meaningful concept
+    // for it.
     let executableTargets: Set<String> = [
-      "EnviousWispr",
-      "EnviousWisprASRService",
+      "EnviousWispr"
     ]
 
     let modules = try FileManager.default.contentsOfDirectory(

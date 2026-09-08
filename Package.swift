@@ -249,19 +249,6 @@ let package = Package(
       path: "Sources/EnviousWisprAppKit",
       resources: [.process("Resources")]
     ),
-    .executableTarget(
-      name: "EnviousWisprASRService",
-      dependencies: [
-        "EnviousWisprCore",
-        "EnviousWisprASR",
-        "EnviousWisprAudio",
-        "EnviousWisprObservabilityCore",
-        .product(name: "WhisperKit", package: "argmax-oss-swift"),
-        "FluidAudio",
-      ],
-      path: "Sources/EnviousWisprASRService",
-      exclude: ["Resources"]
-    ),
     // #2455 C1 (#2458): the production composition root. Chooses the live
     // desktop-effect implementations and hands them to `WisprBootstrapper`,
     // whose init requires them.
