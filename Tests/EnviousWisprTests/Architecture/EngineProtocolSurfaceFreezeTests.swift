@@ -509,7 +509,10 @@ import Testing
         // SYNCHRONOUS (round 5): must be callable from `withOrderedDeadline`'s
         // non-async `onTimeout` for its ordering guarantee.
         MemberSignature(
-          condition: nil, signature: "func cancelInFlightStreamingStart(attemptID: UUID)"),
+          condition: nil,
+          signature:
+            "@discardableResult\n  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?"
+        ),
         // #1908: #1707 Phase 2 batch-decode fault oracle, ported from
         // `ASRServiceHandler`'s `#if DEBUG` block onto the shared interface
         // so `BatchDecodeFaultController` no longer needs a concrete
@@ -531,7 +534,9 @@ import Testing
           signature: "public func attemptWedgeRecoveryUnload() async"),
         MemberSignature(
           condition: nil,
-          signature: "public func cancelInFlightStreamingStart(attemptID: UUID)"),
+          signature:
+            "@discardableResult\n  public func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?"
+        ),
         MemberSignature(
           condition: "DEBUG",
           signature: "public func armBatchDecodeHold(trialID: String) async"),

@@ -214,7 +214,16 @@ public protocol ASRManagerInterface: AnyObject {
   /// abandoned vendor call can complete and publish first. A synchronous
   /// method is callable from `withOrderedDeadline`'s non-async `onTimeout`,
   /// which guarantees it runs BEFORE the timed-out caller resumes.
-  func cancelInFlightStreamingStart(attemptID: UUID)
+  ///
+  /// #1908 round 12: returns the backend's own reclaim `Task` (or `nil` if
+  /// there was nothing to invalidate) so an `async` caller that CAN await —
+  /// unlike the synchronous `onTimeout` this method primarily exists for —
+  /// can wait for the SAME cancellation instead of racing a redundant one of
+  /// its own (`ASRManager.cancelStreaming()`,
+  /// `ParakeetEngineAdapter.discardSession()`). `@discardableResult` so
+  /// `onTimeout` keeps compiling unchanged.
+  @discardableResult
+  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>?
 
   /// Issue #445: per-tick callback for the load-progress polling stream.
   /// Set by the dictation kernel for the duration of one `loadModel()`
@@ -264,7 +273,8 @@ extension ASRManagerInterface {
   /// `withASRXPCOperationSignal` watchdog already fully recovers a wedged
   /// `startStreaming()` (invalidates the connection), so the caller-abandoned
   /// gap this method exists to close never opens there.
-  public func cancelInFlightStreamingStart(attemptID: UUID) {}
+  @discardableResult
+  public func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>? { nil }
 
   #if DEBUG
     /// #1908 safe defaults for test doubles: a mock backend has no real

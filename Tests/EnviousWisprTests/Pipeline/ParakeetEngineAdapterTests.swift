@@ -1035,7 +1035,11 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
-  func cancelInFlightStreamingStart(attemptID: UUID) { cancelInFlightStreamingStartCount += 1 }
+  @discardableResult
+  func cancelInFlightStreamingStart(attemptID: UUID) -> Task<Void, Never>? {
+    cancelInFlightStreamingStartCount += 1
+    return nil
+  }
   func cancelInFlightLoad() {
     cancelInFlightLoadCount += 1
     // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which

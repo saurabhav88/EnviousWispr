@@ -319,18 +319,22 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       self?.lastObservedPhase = phase
       self?.emitLoadTick()
     }
-    // #1908 Codex review: `RecordingSessionKernel.detectLoadWedge`'s 1-second
-    // silence window (`wedgeStallTicks = 10` at a 100ms kernel tick) was
-    // calibrated against the retired XPC proxy's unconditional 125ms polling
-    // timer, which fed a tick every cycle REGARDLESS of real vendor progress
-    // (`ASRManagerProxy.startProgressPolling`, #445 — "feed ... even on ticks
-    // where the file hasn't moved"). FluidAudio's own `loadModels(_:)`
-    // compile step (`ParakeetBackend.prepare`) emits no progress callback at
-    // all, so wiring the kernel's ticks straight to real vendor events (as
-    // this function otherwise now does) trips the wedge detector on every
-    // ordinary cold load. This heartbeat restores that exact polling cadence
-    // for the kernel-facing tick stream ONLY — it does not touch
-    // `ProgressFile`, which stays event-driven in `ASRManager.performLoad`.
+    // Preserve the retired proxy's kernel-facing polling cadence:
+    // bb6ec30e, ASRManagerProxy.swift:394-419. That local file poll bypassed
+    // XPC and reported unchanged mtimes; this adapter discarded the mtime.
+    // These ticks therefore establish neither vendor progress nor helper
+    // responsiveness. They prevent healthy silent load intervals from
+    // tripping the kernel's 1-second cadence detector.
+    //
+    // Inherited limitation (#1908 round 13 cloud review, not a regression —
+    // the retired proxy masked a live-but-hung helper the same way, per its
+    // own unconditional tick): a vendor load that never returns can keep
+    // this stream alive indefinitely. Completion, failure, or explicit load
+    // cancellation ends the await. The sessionless listing deadline is NOT
+    // a compile-duration budget (`LoadProgressWatcher.swift:470-482`), and
+    // no evidence-backed compile-duration deadline exists to bound this on
+    // (`code-validation.md RULE: timeout-numbers-need-distribution-evidence`).
+    // ProgressFile remains event-driven in `ASRManager.performLoad`.
     let heartbeat = Task { @MainActor [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(nanoseconds: 125_000_000)
@@ -804,9 +808,20 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // stale attemptID that a later `beginSession()` would then also have to
     // abandon (harmless but pointless) or, worse, an attempt that keeps
     // holding manager-level admission with nothing left tracking it.
+    //
+    // #1908 round 13 (cloud review P2): AWAIT the reclaim task this returns.
+    // `cancelInFlightStreamingStart` clears `ASRManager.isStreaming`
+    // synchronously as part of abandoning the attempt, so the `cancelStreaming()`
+    // call below — reached whenever `streamingActive` was true — finds
+    // `isStreaming` already `false` and returns immediately without ever
+    // touching the backend. Discarding the task here meant NOTHING awaited
+    // the actual `manager.cancel()`: this method returned believing the
+    // session was fully torn down while a live microphone/CoreML session
+    // could still be cancelling in the background.
+    var reclaimTask: Task<Void, Never>?
     if let attemptID = streamingStartAttemptID {
       streamingStartAttemptID = nil
-      asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
+      reclaimTask = asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
     }
     // #1707: covers `cancel()`, `recoverFromWedge()`, and transitively
     // `cancelSessionlessWarmup()` (which calls `cancel()`) — every heavy
@@ -821,10 +836,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Drop feed-task handles — the tasks see `isTerminal` and skip; `finalize()`
     // after `cancel()` short-circuits to `.cancelled` and never drains.
     feedTasks.removeAll()
-    if streamingActive {
-      streamingActive = false
+    if let reclaimTask {
+      await reclaimTask.value
+    } else if streamingActive {
       await asrManager.cancelStreaming()
     }
+    streamingActive = false
   }
 
   /// #959 CHEAP, model-preserving discard — what every ordinary terminal
