@@ -1433,6 +1433,19 @@ final class RecordingSessionKernel {
       finishTerminal(.failed(.prepareFailed), sid: sid)
       return
     }
+    // #1807 round 2: this function has many `finishTerminal(...); return`
+    // exits between here and `beginCapturePhase` below (permission denial,
+    // an engine-start failure, an ASR-adapter-start failure, and any future
+    // one) — a `defer` covers all of them without needing to touch each site.
+    // If this session armed crash recovery and we leave without ever handing
+    // the directive to Audio, tell Audio directly so its writer-completion
+    // join isn't left waiting on an ack that can now never arrive.
+    var handedRecoveryToAudio = false
+    defer {
+      if !handedRecoveryToAudio, let id = config.recoverySessionID {
+        audioCapture.recoveryCaptureDidNotStart(recoverySessionID: id)
+      }
+    }
     // Push the frozen device UIDs BEFORE the capture source is built (PR-4.5
     // #3 — parity with old Parakeet pipeline `:1434-1439`). The capture
     // layer reads UIDs at source construction (the source is rebuilt between
@@ -1694,9 +1707,16 @@ final class RecordingSessionKernel {
     // rescue.
     audioCapture.onBufferCaptured = makeBufferCallback(sid)
     do {
+      // #1807 round 2: set BEFORE the call, not after — once `beginCapturePhase`
+      // is actually invoked, Audio's own `defer` (inside that function) owns
+      // acknowledging any exit before it reaches `startRecoverySpooling`,
+      // including this call throwing. This flag only answers "did the kernel
+      // even attempt to hand the directive off."
+      handedRecoveryToAudio = true
       // Forward the opaque crash-recovery directive (nil unless armed) to the
       // helper. The kernel never interprets it — recovery is a limb (#1063 PR1).
-      _ = try await audioCapture.beginCapturePhase(recoveryPayload: config.recoveryPayload)
+      _ = try await audioCapture.beginCapturePhase(
+        recoverySessionID: config.recoverySessionID, recoveryPayload: config.recoveryPayload)
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil

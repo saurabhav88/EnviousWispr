@@ -208,8 +208,15 @@ package final class WisprBootstrapper {
 
     // Audio capture runs in-process (#1543, D-028 — the separate XPC audio
     // helper was collapsed away). The ASR helper below stays isolated.
+    //
+    // #1807 (§C): kept as a separate, concretely-typed reference so its
+    // `onRecoveryWriterQuiescent` closure can be wired to `recoveryCoordinator`
+    // once that exists below — the closure lives on the concrete type, not
+    // the `AudioCaptureInterface` protocol, so every other conformer (test
+    // fakes, simulator doubles) needs no change.
+    let audioCaptureManager = AudioCaptureManager()
     let audioCapture: any AudioCaptureInterface = InputResolutionTelemetryReporting.observing(
-      AudioCaptureManager())
+      audioCaptureManager)
 
     // #1707 Phase 3 (§3.2): the atomic mutual-exclusion primitive between
     // crash-recovery replay and every OTHER engine-mutating operation. One
@@ -974,6 +981,14 @@ package final class WisprBootstrapper {
     // `engineMutationScope`'s wake closure (constructed before `asrManager`,
     // above) can reach it.
     recoveryCoordinatorForEngineMutationScope = recoveryCoordinator
+    // #1807 (§C) — the one narrow Audio→Coordinator wire this chunk adds:
+    // Audio's writer-completion ack (fired for a real writer AND for every
+    // explicit no-writer case) tells the coordinator's per-session join that
+    // this session's writer will never touch its spool again. Direct wiring,
+    // no Pipeline involvement — matches the plan's proposed shape.
+    audioCaptureManager.onRecoveryWriterQuiescent = { [weak recoveryCoordinator] sessionID in
+      recoveryCoordinator?.acknowledgeWriterQuiescent(recoverySessionID: sessionID)
+    }
     // #1063 PR2: the "recovering" pill's Discard action.
 
     // #1464: after a leftover recording lands in History, post the standalone green

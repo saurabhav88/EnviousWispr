@@ -1,3 +1,4 @@
+import Darwin
 import EnviousWisprCore
 import Foundation
 
@@ -49,7 +50,6 @@ public struct RecoverySpoolStore: Sendable {
   /// The `recoverySessionID`s of every spool file currently on disk.
   public func listSpoolSessionIDs() throws -> [String] {
     let fm = FileManager.default
-    guard fm.fileExists(atPath: directory.path) else { return [] }
     let entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
     return
       entries
@@ -143,28 +143,36 @@ public struct RecoverySpoolStore: Sendable {
       truncated: !sawCleanFinalize)
   }
 
-  /// Delete a spool file AND its recovery-attempt marker (#1063 PR2). Idempotent
-  /// — a missing file is success. Deleting the spool always clears its marker so
-  /// no stale marker outlives the spool it guarded (success and abandon paths
-  /// both route here).
-  public func delete(recoverySessionID: String) throws {
+  /// Remove ONLY the spool audio file, and durably sync that removal to the
+  /// containing directory (#1807 §D2). Kept separate from sidecar cleanup
+  /// below — the decision table needs to know specifically whether the AUDIO
+  /// is durably gone, independent of any sidecar's own fate. Idempotent — an
+  /// already-absent spool still counts as durable absence.
+  public func removeSpoolAudioDurably(recoverySessionID: String) throws {
     let url = spoolURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
-      // Spool already gone — still clear any marker below.
+      // Already gone — durable absence either way.
     }
-    // #2087: BOTH sidecars are attempted even if the first throws, then the
-    // first failure is surfaced. Chaining them with `try` looks equivalent and
-    // is not: the spool is already gone by this point, so nothing will ever scan
-    // this id again, and a sidecar skipped because its predecessor threw is
-    // orphaned permanently. An Escape marker left behind that way outlives the
-    // audio it describes with no path back to it.
-    //
-    // The spool still goes FIRST. It is the only file that carries recoverable
-    // audio, so if a partial failure must leave something behind, it should
-    // leave metadata a later delete is idempotent about — never audio whose
-    // provenance sidecar has already been destroyed.
+    try Self.syncDirectory(containing: url)
+  }
+
+  /// Clean up a spool's non-discard sidecars: the recovery-attempt, Escape,
+  /// and readiness-retry markers (#1063 PR2, #2087). Never the spool file
+  /// itself (#1807 §D2 tracks that separately via `removeSpoolAudioDurably`)
+  /// and never the discard marker — its own lifetime (retained until
+  /// confirmed, synced audio removal) is the coordinator's explicit
+  /// responsibility, not a sidecar's.
+  ///
+  /// #2087: BOTH sidecars are attempted even if the first throws, then the
+  /// first failure is surfaced. Chaining them with `try` looks equivalent and
+  /// is not: by the time this runs the spool is already gone (or is about to
+  /// be — callers run this alongside `removeSpoolAudioDurably`), so nothing
+  /// will ever scan this id again, and a sidecar skipped because its
+  /// predecessor threw is orphaned permanently. An Escape marker left behind
+  /// that way outlives the audio it describes with no path back to it.
+  public func cleanupSpoolSidecars(recoverySessionID: String) throws {
     var firstFailure: (any Error)?
     do { try deleteAttemptMarker(for: recoverySessionID) } catch { firstFailure = error }
     do { try deleteEscapeMarker(for: recoverySessionID) } catch {
@@ -467,16 +475,29 @@ public struct RecoverySpoolStore: Sendable {
   /// half-perform. Either the marker is durably on disk and this returns `true`,
   /// or nothing survives and it returns `false`.
   ///
-  /// **On failure it destroys the spool and its sidecars.** That looks harsh and
-  /// is the only honest option: a spool left behind with no readable marker is
-  /// replayed at the next launch as an ordinary crash rescue, producing a
-  /// PERMANENT History row for a dictation the user cancelled. Given the choice
-  /// between losing a take the user asked to discard and keeping one they never
-  /// agreed to keep, this loses the take — which is also exactly what today's
-  /// destructive cancel does, so the caller's fallback is unchanged behaviour.
+  /// #1807 (§D2) — superseding the original note this replaces: on failure this
+  /// used to destroy the spool and its sidecars DIRECTLY, bypassing every
+  /// coordinator-owned contract (the writer-quiescence join, the discard
+  /// marker, `pendingSessions`/`nextLaunchOnlyRecoveryIDs`) — a second,
+  /// independent decider of final disposal that Storage does not own and
+  /// should not make. **Storage does not import or call the coordinator**, so
+  /// the fix is NOT a new upward dependency here — it is simply not acting: on
+  /// failure this now ONLY returns `false`, and the CALLER's own existing
+  /// fallback (`RecordingSessionKernel`'s `prepareEscapeRecoveryIfNeeded`
+  /// already falls back to an ordinary destructive cancel, which reaches
+  /// `RecoveryCoordinator.handleRecordingEndedWithoutDurableSave` with a
+  /// `.cancelled` ending — `shouldDeleteOnLiveEnding` already returns `true`
+  /// for it) does the SAME thing this used to do directly, but through the
+  /// coordinator's now marker-aware destructor instead of around it. The
+  /// original reasoning for why failure discards the take, not why it used to
+  /// delete directly, still holds and is preserved below.
   ///
-  /// Best-effort cleanup: if the destroy also fails there is nothing further to
-  /// try, and the caller has already been told to treat this as a plain cancel.
+  /// A spool left behind with no readable marker would be replayed at the next
+  /// launch as an ordinary crash rescue, producing a PERMANENT History row for
+  /// a dictation the user cancelled. Given the choice between losing a take
+  /// the user asked to discard and keeping one they never agreed to keep, the
+  /// caller's fallback loses the take — exactly what today's destructive
+  /// cancel already does.
   public func prepareEscapeRecovery(
     recoverySessionID: String, triggeredAt: Date, takeID: String?
   ) -> Bool {
@@ -486,7 +507,19 @@ public struct RecoverySpoolStore: Sendable {
           recoverySessionID: recoverySessionID, triggeredAt: triggeredAt, takeID: takeID))
       return true
     } catch {
-      try? delete(recoverySessionID: recoverySessionID)
+      // Cloud review (PR #2717): the caller's own fallback to the coordinator's
+      // marker-aware destructor is NOT synchronous — `finishTerminal(.cancelled)`
+      // only sets state the lifecycle observer reacts to on a LATER MainActor
+      // turn (a queued Task). A process exit inside that gap would leave this
+      // spool with no Escape marker and no discard marker at all, so the next
+      // launch replays a take the user cancelled — the exact resurrection this
+      // whole mechanism exists to prevent. Best-effort, synchronous, right here:
+      // this does NOT decide destruction (still exclusively the coordinator's
+      // job, whenever it gets to it) — it only makes sure the "never replay"
+      // evidence survives a crash between now and then. A later, real write
+      // for the same id (the coordinator's own normal disposal flow) simply
+      // reconfirms the same marker; harmless.
+      try? writeDiscardMarker(for: recoverySessionID)
       return false
     }
   }
@@ -507,6 +540,199 @@ public struct RecoverySpoolStore: Sendable {
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
       return
     }
+  }
+
+  // MARK: - Discard marker (#1807 §D1)
+
+  /// Sidecar path for a spool's discard marker (`<id>.discard`).
+  private func discardMarkerURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      "\(recoverySessionID).\(RecoveryConstants.discardMarkerFileExtension)")
+  }
+
+  private func discardMarkerTempURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      ".\(recoverySessionID).\(RecoveryConstants.discardMarkerFileExtension).tmp")
+  }
+
+  /// Establish durability for evidence left by a prior process without
+  /// allocating or replacing its marker. Presence alone is not a sync receipt.
+  public func synchronizeExistingDiscardEvidence(for recoverySessionID: String) throws -> Bool {
+    for url in [
+      discardMarkerURL(for: recoverySessionID),
+      discardMarkerTempURL(for: recoverySessionID),
+    ] {
+      let fd = Foundation.open(url.path, O_RDONLY)
+      guard fd >= 0 else {
+        let code = errno
+        if code == ENOENT { continue }
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+      }
+      defer { Foundation.close(fd) }
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno)
+      }
+      try Self.syncDirectory(containing: url)
+      return true
+    }
+    return false
+  }
+
+  /// Commit the no-replay decision before attempting destructive cleanup.
+  /// Success means the marker bytes AND the final directory entry are durable
+  /// — this is the readiness-retry marker's full durable-write shape
+  /// (temp → `F_FULLFSYNC` → atomic rename → `syncDirectory`), directory sync
+  /// included, because the marker's whole purpose (surviving a crash) depends
+  /// on the rename itself being durable, not merely the bytes.
+  ///
+  /// Retain this marker until the session cannot create another spool, the
+  /// audio has been removed, and that removal is durably synchronized. Only
+  /// then may cleanup remove the marker.
+  ///
+  /// A failed marker write is not permission to retain replayable discarded
+  /// audio — the caller falls back to today's unconditional key-erasure path.
+  public func writeDiscardMarker(for recoverySessionID: String) throws {
+    let url = discardMarkerURL(for: recoverySessionID)
+    let tmpURL = discardMarkerTempURL(for: recoverySessionID)
+    let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+    guard fd >= 0 else { throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno) }
+    let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+    // #1807 round-2 correction (Codex chunk-3 review, finding 3): NEVER remove
+    // `tmpURL` on any failure below — an interrupted write is evidence a
+    // committed decision was underway, and `.interruptedTemp` reads must find
+    // it. Every `errno` read is captured IMMEDIATELY at its own failure site,
+    // not after an intervening Foundation call, which can silently clobber it.
+    do {
+      // Presence is the signal; a single byte gives fsync something to flush.
+      try handle.write(contentsOf: Data([0x31]))
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        let code = errno
+        try? handle.close()
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+      }
+      try handle.close()
+    } catch let error as RecoverySpoolStoreError {
+      throw error
+    } catch {
+      // #1807 round-2 correction (Codex chunk-3 review round 2, finding 2):
+      // `try? handle.close()` below is ITSELF a syscall that can overwrite
+      // `errno` before it's read — the exact staleness bug this whole
+      // correction pass exists to close. Read the code from the THROWN
+      // error instead (Foundation's write failure already carries the real
+      // POSIX code, captured at throw time), never from a fresh `errno` read
+      // after `close()`.
+      let nsError = error as NSError
+      let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+      let posix = nsError.domain == NSPOSIXErrorDomain ? nsError : underlying
+      let code: Int32
+      if let posix, posix.domain == NSPOSIXErrorDomain {
+        code = Int32(exactly: posix.code) ?? EIO
+      } else {
+        code = EIO
+      }
+      try? handle.close()
+      throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+    }
+    // Atomic rename via raw POSIX `rename(2)`, not `FileManager.replaceItemAt`/
+    // `moveItem` (unlike the sibling markers) — POSIX guarantees `rename(2)`
+    // atomically replaces an existing destination, which matters more here:
+    // never removing the temp on failure means the caller must be able to
+    // trust THIS call's all-or-nothing semantics exactly, not a higher-level
+    // API's.
+    guard Darwin.rename(tmpURL.path, url.path) == 0 else {
+      throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno)
+    }
+    // The file's own bytes are already fsynced; the rename lives in the
+    // containing DIRECTORY, a separate durability question — see the
+    // readiness-retry marker's identical `syncDirectory` call for why this
+    // matters more here than for the attempt/Escape markers, which skip it.
+    try Self.syncDirectory(containing: url)
+  }
+
+  /// Read a spool's discard-marker state. FOUR-valued — `.unreadable` must
+  /// never collapse into `.absent` (the exact `fileExists`-boolean mistake §A
+  /// already fixed once in this file): a probe attempts to actually OPEN each
+  /// path and distinguishes `ENOENT` (genuinely absent) from any other errno
+  /// (permission denied, I/O error — cannot tell, so defer rather than assume
+  /// safety either way).
+  public func hasDiscardMarker(for recoverySessionID: String) -> DiscardMarkerState {
+    switch Self.probeMarkerFile(discardMarkerURL(for: recoverySessionID)) {
+    case .present: return .final
+    case .unreadable: return .unreadable
+    case .absent:
+      switch Self.probeMarkerFile(discardMarkerTempURL(for: recoverySessionID)) {
+      case .present: return .interruptedTemp
+      case .absent: return .absent
+      case .unreadable: return .unreadable
+      }
+    }
+  }
+
+  private enum MarkerFileProbe { case present, absent, unreadable }
+
+  private static func probeMarkerFile(_ url: URL) -> MarkerFileProbe {
+    let fd = Foundation.open(url.path, O_RDONLY)
+    if fd >= 0 {
+      Foundation.close(fd)
+      return .present
+    }
+    return errno == ENOENT ? .absent : .unreadable
+  }
+
+  /// Delete a spool's discard marker (both the final marker and any
+  /// interrupted-write temp — the temp goes FIRST, matching
+  /// `deleteReadinessRetryMarker`/`deleteEscapeMarker`). Idempotent — a
+  /// missing marker is success. Callers must only call this once durable
+  /// audio removal is confirmed; this method itself enforces no ordering.
+  public func deleteDiscardMarker(for recoverySessionID: String) throws {
+    // #1807 round-2 correction (Codex chunk-3 review, finding 3 follow-up):
+    // attempt BOTH removals independently, matching `delete(recoverySessionID:)`'s
+    // own established idiom in this file — a `for`-loop chained through `try`
+    // would let a temp-removal failure prevent even ATTEMPTING the final
+    // marker's removal, orphaning it permanently.
+    var firstFailure: (any Error)?
+    do {
+      try FileManager.default.removeItem(at: discardMarkerTempURL(for: recoverySessionID))
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      // Absence is success.
+    } catch {
+      firstFailure = error
+    }
+    do {
+      try FileManager.default.removeItem(at: discardMarkerURL(for: recoverySessionID))
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      // Absence is success.
+    } catch {
+      if firstFailure == nil { firstFailure = error }
+    }
+    if let firstFailure { throw firstFailure }
+  }
+
+  /// Every session id currently carrying a discard marker (final OR
+  /// interrupted-temp) — the population the marker-only-survivor sweep (#1807
+  /// §D1) scans, alongside the ordinary `.ewrec` listing `listSpoolSessionIDs`
+  /// already provides. Fails closed exactly like `listSpoolSessionIDs`: a
+  /// directory-listing error must not be read as "no markers," since that
+  /// would let the sweep retire evidence it never actually inspected.
+  public func listDiscardMarkerSessionIDs() throws -> [String] {
+    let entries = try FileManager.default.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: nil)
+    let markerExtension = RecoveryConstants.discardMarkerFileExtension
+    return
+      entries
+      .compactMap { url -> String? in
+        // Matches both `<id>.discard` and the interrupted-write `.<id>.discard.tmp`
+        // — a marker-only survivor's evidence can be either, and the sweep must
+        // see both to retire them (§D1: "interrupted-temp also never replays").
+        if url.pathExtension == markerExtension {
+          return url.deletingPathExtension().lastPathComponent
+        }
+        let name = url.lastPathComponent
+        guard name.hasPrefix("."), name.hasSuffix(".\(markerExtension).tmp") else { return nil }
+        let withoutLeadingDot = name.dropFirst()
+        return String(withoutLeadingDot.dropLast(".\(markerExtension).tmp".count))
+      }
+      .sorted()
   }
 
   /// Create the directory at 0700, drop the Spotlight marker, and exclude it
@@ -583,6 +809,10 @@ public enum RecoverySpoolStoreError: Error, Equatable {
   /// dictation the user cancelled, which is worse than the discard they asked
   /// for and were expecting (#2087).
   case escapeMarkerWriteFailed(Int32)
+  /// The discard marker could not be written durably (carries `errno`, #1807
+  /// §D1). NOT permission to retain replayable discarded audio — the caller
+  /// falls back to today's unconditional key-erasure path.
+  case discardMarkerWriteFailed(Int32)
 }
 
 /// The three outcomes of reading a spool's Escape Recovery marker (#2087).
@@ -595,4 +825,20 @@ public enum EscapeMarkerRead: Equatable, Sendable {
   case absent
   case valid(EscapeRecoveryMarker)
   case malformed
+}
+
+/// The four outcomes of reading a spool's discard marker (#1807 §D1).
+/// `.unreadable` must never collapse into `.absent` — see `hasDiscardMarker`'s
+/// doc for why a probe, not a boolean `fileExists`, distinguishes them.
+public enum DiscardMarkerState: Equatable, Sendable {
+  /// Never replay; safe to request cleanup.
+  case final
+  /// Also never replay — mirrors `readEscapeMarker`'s `.malformed`-from-temp
+  /// precedent: an interrupted write is evidence of a committed decision, not
+  /// absence of one.
+  case interruptedTemp
+  /// Ordinary recovery eligibility checks apply.
+  case absent
+  /// DEFER this spool this pass — never treat as absent.
+  case unreadable
 }

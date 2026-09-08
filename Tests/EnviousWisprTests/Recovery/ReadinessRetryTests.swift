@@ -495,7 +495,7 @@ struct ReadinessRetryTelemetryContractTests {
       let temp = h.spoolDir.appendingPathComponent(".\(h.id).readiness-retry.tmp")
       try Data([0x31]).write(to: temp)
 
-      try h.store.delete(recoverySessionID: h.id)
+      try h.store.cleanupSpoolSidecars(recoverySessionID: h.id)
 
       #expect(!h.store.hasReadinessRetryMarker(for: h.id), "no stale marker outlives its spool")
       #expect(

@@ -125,6 +125,21 @@ struct RecoveryCoordinatorTests {
     try Data([1, 2, 3]).write(to: store.spoolURL(for: id))
   }
 
+  /// #1807 (§C): real admission for destructor tests that predate the join.
+  /// `requestDisposal`/`acknowledgeWriterQuiescent` refuse to manufacture a
+  /// `pendingSessions` entry for an id they don't already recognize (round-2
+  /// correction, Codex chunk-2 review finding 2) — so every test that reaches
+  /// the join now needs a REAL admitted id, not an arbitrary unarmed one
+  /// (§11's test contract). Writes no spool/key itself; callers still do that
+  /// with the returned id, matching each test's own existing shape.
+  private static func armRealSession(_ h: Harness) async throws -> String {
+    try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false)
+    ).recoverySessionID
+  }
+
   // MARK: - Arm + durable save (PR1 behavior, unchanged)
 
   @Test("recovery off ⇒ no directive")
@@ -174,9 +189,11 @@ struct RecoveryCoordinatorTests {
   @Test("durable save deletes that session's spool + key")
   func durableSaveDeletes() async throws {
     let h = Self.makeHarness()
-    let id = "session-\(UUID().uuidString)"
+    // #1807 (§C): real admission — see `armRealSession`'s doc.
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
     try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     await h.coordinator.handleDurableSave(recoverySessionID: id).value
     #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
@@ -187,9 +204,10 @@ struct RecoveryCoordinatorTests {
   @Test("live History-save failure destroys the spool AND the key")
   func historySaveFailureDestroysSpoolAndKey() async throws {
     let h = Self.makeHarness()
-    let id = "histsavefail-\(UUID().uuidString)"
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
     try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     let task = h.coordinator.handleHistorySaveFailed(recoverySessionID: id)
     await task?.value
     #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
@@ -218,11 +236,12 @@ struct RecoveryCoordinatorTests {
   @Test("live History-save failure suppresses same-launch rediscovery even when delete throws")
   func historySaveFailureSuppressesBeforeDestroying() async throws {
     let h = Self.makeHarness()
-    let id = "suppress-\(UUID().uuidString)"
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
     struct InjectedDeleteFailure: Error {}
     h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
     h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
     // The spool survived the failed delete...
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
@@ -260,15 +279,15 @@ struct RecoveryCoordinatorTests {
     }
 
     // Spent attempt: the live History-save-failure path.
-    let spent = "tele-spent-\(UUID().uuidString)"
+    let spent = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, spent)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: spent)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: spent)
     await h.coordinator.handleHistorySaveFailed(recoverySessionID: spent)?.value
 
     // NOT a spent attempt: an ordinary successful dictation.
-    let healthy = "tele-healthy-\(UUID().uuidString)"
+    let healthy = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, healthy)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: healthy)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: healthy)
     await h.coordinator.handleDurableSave(recoverySessionID: healthy).value
 
     let emitted = sink.all
@@ -287,19 +306,167 @@ struct RecoveryCoordinatorTests {
     h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
       sink.add(source, component, ok)
     }
-    let id = "tele-fail-\(UUID().uuidString)"
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
     h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
     h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
 
     let emitted = sink.all
     #expect(
       emitted.first(where: { $0.component == "spool" })?.succeeded == false,
       "a thrown spool delete reports failure")
+    // #1807 §D2: a real armed session writes its discard marker durably, so
+    // this is the decision table's RETAIN cell (marker committed, audio
+    // removal failed) — the key delete is never attempted, so no "key"
+    // event exists at all.
+    #expect(
+      emitted.first(where: { $0.component == "key" }) == nil,
+      "marker committed + audio removal failed retains the key: no key attempt, no key telemetry")
+  }
+
+  @Test(
+    "cleanup telemetry: key deletion is still attempted when the marker itself failed to persist (§D2 best-effort fallback)"
+  )
+  func cleanupTelemetryStillAttemptsKeyWhenMarkerFails() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let sink = CleanupSink()
+    h.coordinator.cleanupTelemetryForTesting = { source, component, ok in
+      sink.add(source, component, ok)
+    }
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    // Both audio removal AND the marker fail: with no durable discard
+    // evidence at all, §D2 falls back to today's existing behavior — still
+    // attempt the key delete best-effort, rather than leaving it retained
+    // with nothing on disk to explain why.
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.destructionKeyDeleteForTesting = { _ in }
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let emitted = sink.all
     #expect(
       emitted.first(where: { $0.component == "key" })?.succeeded == true,
-      "the key delete still ran and succeeded")
+      "no durable discard evidence exists: key delete still attempted and succeeds")
+  }
+
+  @Test(
+    "§D2 regression: the key-only sweep must not erase a retained key when the audio unlink succeeded but the directory sync did not"
+  )
+  func keyOnlySweepRespectsRetainedKey() async throws {
+    struct InjectedSyncFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    // Simulate "unlink succeeded, directory sync did not": the file is
+    // genuinely gone from disk (so a fresh `listSpoolSessionIDs()` will not
+    // see it) but the operation as a whole still reports failure, exactly
+    // like a real `removeSpoolAudioDurably` whose `syncDirectory` throws
+    // after the file is already removed.
+    h.coordinator.destructionSpoolDeleteForTesting = { sessionID in
+      try FileManager.default.removeItem(at: h.spoolStore.spoolURL(for: sessionID))
+      throw InjectedSyncFailure()
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    // §D2 RETAIN cell: marker committed (real armed session), audio removal
+    // failed — key and marker both survive the destructor itself.
+    #expect((try? h.keyStore.retrieve(for: id)) != nil, "destructor retained the key")
+    #expect(h.spoolStore.hasDiscardMarker(for: id) != .absent, "destructor retained the marker")
+
+    // Now run the independent key-only sweep. The spool file is truly gone
+    // from disk, so without the marker check this sweep would read the key
+    // as an ordinary orphan and erase it out from under the retention the
+    // destructor just chose.
+    // Run the production key sweep alone: a simultaneous marker sweep could
+    // legitimately sync absence and retire the evidence before the key check.
+    await h.coordinator.startKeyOnlySweep().value
+
+    #expect(
+      (try? h.keyStore.retrieve(for: id)) != nil,
+      "the key-only sweep must defer to the marker, not treat a synced-away spool as a plain orphan"
+    )
+  }
+
+  @Test(
+    "§D2 regression: sidecar cleanup is skipped (not attempted) when audio removal itself failed, preserving the replay-once evidence"
+  )
+  func sidecarsSurviveAFailedAudioRemoval() async throws {
+    struct InjectedDeleteFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    try h.spoolStore.writeAttemptMarker(for: id)
+    #expect(h.spoolStore.hasAttemptMarker(for: id))
+
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    #expect(
+      h.spoolStore.hasAttemptMarker(for: id),
+      "audio removal failed: sidecar cleanup must not even attempt to run, or the last evidence a replay was already tried is lost"
+    )
+  }
+
+  @Test(
+    "cloud review PR #2717: RecoverySpoolStoreError's real errno survives telemetry bucketing, for all four cases"
+  )
+  func spoolStoreErrorsUnwrapToRealPosixCode() {
+    let cases: [(RecoverySpoolStoreError, Int32)] = [
+      (.attemptMarkerWriteFailed(EACCES), EACCES),
+      (.readinessRetryMarkerWriteFailed(ENOSPC), ENOSPC),
+      (.escapeMarkerWriteFailed(EISDIR), EISDIR),
+      (.discardMarkerWriteFailed(EIO), EIO),
+    ]
+    for (error, expectedErrno) in cases {
+      #expect(
+        RecoveryCoordinator.errorDomainBucket(for: error) == "posix",
+        "\(error) must bucket as posix, not fall through to 'other'")
+      #expect(
+        RecoveryCoordinator.errorCode(for: error) == Int(expectedErrno),
+        "\(error) must report the real errno \(expectedErrno), not a synthesized enum case code")
+    }
+    // Two-way control: an error with no special-cased unwrap still falls
+    // through to the ordinary bridged NSError reading, unchanged.
+    struct PlainError: Error {}
+    #expect(RecoveryCoordinator.errorDomainBucket(for: PlainError()) == "other")
+  }
+
+  @Test(
+    "cloud review PR #2717: failing to WRITE the discard marker reports marker_persistence_failed, never deletion_failed"
+  )
+  func markerWriteFailureUsesItsOwnTelemetryEvent() async throws {
+    struct InjectedMarkerWriteFailure: Error {}
+    let h = Self.makeHarness()
+    let log = CrumbLog()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw InjectedMarkerWriteFailure() }
+    h.coordinator.deletionFailureBreadcrumbForTesting = { stage, message, data in
+      log.crumbs.append(Crumb(stage: stage, message: message, data: data))
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+
+    let crumbs = log.crumbs
+    #expect(
+      crumbs.contains(
+        Crumb(
+          stage: "recovery", message: "marker_persistence_failed",
+          data: ["component": "marker", "source": "history_save_failed"])),
+      "establishing evidence failed — the higher-severity event")
+    #expect(
+      !crumbs.contains(where: {
+        $0.message == "deletion_failed" && $0.data["component"] == "marker"
+      }),
+      "a write failure must never be reported as a delete failure — they mean very different things"
+    )
   }
 
   // MARK: - #1740 launch-replay save failure deletes
@@ -332,9 +499,9 @@ struct RecoveryCoordinatorTests {
       .cancelled(.user(.cancelButton)), .cancelled(.systemOrFault),
     ]
     for ending in allEndings {
-      let id = "del-\(UUID().uuidString)"
+      let id = try await Self.armRealSession(h)
       try Self.writeSpool(h.spoolStore, id)
-      try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+      h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
       let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
         recoverySessionID: id, ending: ending)
       let unwrapped = try #require(task, "\(ending) must return the destruction work")
@@ -428,6 +595,17 @@ struct RecoveryCoordinatorTests {
     }
   }
 
+  /// #1807 round-2 (Codex chunk-3 review, finding 1): `destroySpoolAndKey`'s
+  /// spool delete is no longer synchronous with its caller — it now waits for
+  /// marker persistence to settle FIRST (crash-safety: the marker must be
+  /// durable before a destructive delete that might fail partway). Same poll
+  /// idiom as `awaitKeyDeleted`.
+  private static func awaitSpoolGone(_ store: RecoverySpoolStore, id: String) async {
+    for _ in 0..<200 where FileManager.default.fileExists(atPath: store.spoolURL(for: id).path) {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll interval; loop cond is the signal
+    }
+  }
+
   @Test("the coordinator deletes the spool + key after a .recovered replay")
   func recoveredReplayDeletes() async throws {
     let h = Self.makeHarness()
@@ -476,9 +654,9 @@ struct RecoveryCoordinatorTests {
   @Test("pre-start abort deletes the just-armed spool + key")
   func preStartAbortDeletes() async throws {
     let h = Self.makeHarness()
-    let id = "abort-\(UUID().uuidString)"
+    // #1807 (§C): real admission — see `armRealSession`'s doc.
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
     await h.coordinator.handlePreStartAbort(recoverySessionID: id)?.value
     #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
@@ -488,6 +666,364 @@ struct RecoveryCoordinatorTests {
   func preStartAbortNoopWhenNil() {
     let h = Self.makeHarness()
     #expect(h.coordinator.handlePreStartAbort(recoverySessionID: nil) == nil)
+  }
+
+  // MARK: - #1807 (§C) — session-keyed protection + writer-completion join
+
+  /// The join's whole reason to exist: disposition alone must NOT destroy
+  /// anything until the writer also confirms it can never write again. Uses
+  /// REAL arming (`makeDirective`), not an arbitrary unarmed id — the test
+  /// contract §11 requires this.
+  @Test("disposition alone does not destroy — the writer's own ack is required too")
+  func dispositionAloneDoesNotDestroy() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    // Disposition arrives, but the writer has not acked yet.
+    let task = h.coordinator.handleDurableSave(recoverySessionID: id)
+    // Give any accidental synchronous destruction a chance to run before
+    // asserting it did not — a flaky pass here would hide a real defect.
+    await Task.yield()
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "disposition alone must not destroy — the writer has not confirmed quiescence")
+
+    // The writer confirms — NOW the join completes and cleanup runs.
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await task.value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  /// The symmetric order: the writer's ack arrives FIRST, disposition second.
+  /// Cleanup must still fire exactly once, only after both halves land.
+  @Test("writer ack before disposition still joins correctly (order-independent)")
+  func writerAckBeforeDispositionStillJoins() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await Task.yield()
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "an ack with no disposition yet must not destroy anything")
+
+    await h.coordinator.handleDurableSave(recoverySessionID: id).value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+  }
+
+  /// Two sessions arming close together (the overlapping-arms race, Codex Q5)
+  /// must BOTH stay protected — a single-slot `armedSessionID` could only
+  /// guard one of them.
+  @Test("two sessions arming close together both stay protected through the scan")
+  func overlappingArmsBothProtected() async throws {
+    let h = Self.makeHarness()
+    let first = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let second = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    #expect(first.recoverySessionID != second.recoverySessionID)
+    try Self.writeSpool(h.spoolStore, first.recoverySessionID)
+    try Self.writeSpool(h.spoolStore, second.recoverySessionID)
+
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "neither pending session is a scan-eligible orphan")
+    #expect(
+      FileManager.default.fileExists(
+        atPath: h.spoolStore.spoolURL(for: first.recoverySessionID).path),
+      "first arm's spool survives the scan")
+    #expect(
+      FileManager.default.fileExists(
+        atPath: h.spoolStore.spoolURL(for: second.recoverySessionID).path),
+      "second arm's spool survives the scan")
+  }
+
+  /// Two sessions arming close together, one fully disposed while the other
+  /// stays pending — proves per-session state does not cross-contaminate (the
+  /// central case §C exists for: a completion must resolve against the
+  /// session it belongs to, never "whichever session is current").
+  @Test("one session's completed join does not affect the other's pending protection")
+  func independentSessionsDoNotCrossContaminate() async throws {
+    let h = Self.makeHarness()
+    let a = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let b = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    try Self.writeSpool(h.spoolStore, a.recoverySessionID)
+    try Self.writeSpool(h.spoolStore, b.recoverySessionID)
+
+    // A completes fully (both halves land).
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: a.recoverySessionID)
+    await h.coordinator.handleDurableSave(recoverySessionID: a.recoverySessionID).value
+    #expect(
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: a.recoverySessionID).path))
+
+    // B never received either half — still fully protected.
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "B is still pending, not a scan-eligible orphan")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: b.recoverySessionID).path),
+      "B's spool must survive — A's completion must not have touched it")
+  }
+
+  /// A retain disposition (the future-proof branch in
+  /// `handleRecordingEndedWithoutDurableSave`) also joins on the writer's ack
+  /// before releasing protection — not just the destroy branch.
+  @Test("a retain disposition also waits for the writer ack before releasing protection")
+  func retainDispositionAlsoJoins() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    // Retain via `requestDisposal` directly (mirrors the currently-unreachable
+    // retain branch in `handleRecordingEndedWithoutDurableSave` — see
+    // `liveEndingPredicate` for why every real ending currently deletes).
+    let task = h.coordinator.requestDisposal(recoverySessionID: id, disposition: .retain)
+    await Task.yield()
+    // Still protected — the scan must not touch it while the join is pending.
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "a still-pending retain must not be scan-eligible")
+
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await task.value
+    // Retained, not destroyed — the spool and key are both untouched.
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+    // And now genuinely retired — a fresh scan treats it as an ordinary orphan.
+    h.replayer.outcomeByDefault = .recovered
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [id], "once retired, ordinary scan eligibility applies")
+  }
+
+  // MARK: - #1807 (§D1) — durable discard marker: write, read, restart cleanup
+
+  private static func awaitMarker(
+    _ store: RecoverySpoolStore, id: String, expected: DiscardMarkerState
+  ) async {
+    for _ in 0..<200 where store.hasDiscardMarker(for: id) != expected {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll interval; loop cond is the signal
+    }
+  }
+
+  @Test("a real disposal writes the discard marker, independently of the writer-quiescence join")
+  func disposalWritesDiscardMarker() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    // Disposition arrives, but the writer has NOT acked yet — marker
+    // persistence must still begin (§D2's ordering item 2, inherited by §D1:
+    // "marker persistence begins as soon as final disposition arrives").
+    let task = h.coordinator.requestDisposal(
+      recoverySessionID: id, disposition: .destroy(.durableSave))
+    await Self.awaitMarker(h.spoolStore, id: id, expected: .final)
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+
+    // Join still completes normally afterward.
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await task.value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+  }
+
+  @Test("a .retain disposition never writes a discard marker")
+  func retainDispositionWritesNoMarker() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.requestDisposal(recoverySessionID: id, disposition: .retain).value
+
+    #expect(
+      h.spoolStore.hasDiscardMarker(for: id) == .absent,
+      "a marker means \"never replay\" — the opposite of retaining for a future launch")
+  }
+
+  @Test("scan excludes a .final-marked spool from replay and retries cleanup, not a fresh decision")
+  func scanRetriesAMarkedForDiscardSurvivor() async throws {
+    let h = Self.makeHarness()
+    let id = "marked-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    try h.spoolStore.writeDiscardMarker(for: id)
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(h.replayer.replayedIDs.isEmpty, "a committed discard decision vetoes replay")
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+    #expect(
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "the retry actually deletes — this is cleanup, not a stall")
+  }
+
+  @Test("scan excludes an .interruptedTemp-marked spool from replay too")
+  func scanRetriesAnInterruptedMarkerSurvivor() async throws {
+    let h = Self.makeHarness()
+    let id = "interrupted-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let tmp = h.spoolStore.directoryURL.appendingPathComponent(
+      ".\(id).\(RecoveryConstants.discardMarkerFileExtension).tmp")
+    try Data([0x31]).write(to: tmp)
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(
+      h.replayer.replayedIDs.isEmpty,
+      "an interrupted marker write is evidence of a committed decision, not absence of one")
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+  }
+
+  @Test("an unreadable discard marker defers a listed spool without deleting it")
+  func unreadableDiscardMarkerDefersRealCandidate() async throws {
+    let h = Self.makeHarness()
+    let id = "unreadable-marker"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let marker = h.spoolStore.directoryURL.appendingPathComponent("\(id).discard")
+    try FileManager.default.createSymbolicLink(
+      atPath: marker.path, withDestinationPath: marker.lastPathComponent)
+    #expect(try h.spoolStore.listSpoolSessionIDs().contains(id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .unreadable)
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+    #expect(h.replayer.replayedIDs.isEmpty)
+    #expect(try h.spoolStore.listSpoolSessionIDs().contains(id))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
+  @Test("a genuine unmarked crash-orphan still reaches recovery (positive control)")
+  func unmarkedOrphanStillReplays() async throws {
+    let h = Self.makeHarness()
+    let id = "unmarked-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.replayer.outcomeByDefault = .recovered
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(
+      h.replayer.replayedIDs == [id],
+      "the marker veto must not accidentally block ordinary recovery")
+  }
+
+  @Test("marker-only-survivor sweep retires an orphaned marker with no matching spool")
+  func markerOnlySurvivorSweepRetires() async throws {
+    let h = Self.makeHarness()
+    let id = "orphan-marker-\(UUID().uuidString)"
+    try h.spoolStore.writeDiscardMarker(for: id)
+    // No `.ewrec` file for this id at all — a marker-only survivor.
+
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .absent)
+  }
+
+  @Test(
+    "marker-only-survivor sweep SKIPS a session still pending in this launch (lifetime gate)")
+  func markerOnlySurvivorSweepRespectsLifetimeGate() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    // Disposition arrives (marker-write begins) but the writer never acks —
+    // this session stays in `pendingSessions` indefinitely, exactly the
+    // "pending writer, marker maybe written, no .ewrec yet" case the lifetime
+    // gate exists to distinguish from a genuine survivor.
+    let disposal = h.coordinator.requestDisposal(
+      recoverySessionID: id, disposition: .destroy(.durableSave))
+    await Self.awaitMarker(h.spoolStore, id: id, expected: .final)
+
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+
+    #expect(
+      h.spoolStore.hasDiscardMarker(for: id) == .final,
+      "still pending in this launch — the sweep must not touch it")
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await disposal.value
+  }
+
+  @Test("a cleanup retry preserves a previously committed discard decision")
+  func retryKeepsPreviouslyCommittedEvidence() async throws {
+    struct UnlinkFailure: Error {}
+    struct MarkerRewriteFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw UnlinkFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw MarkerRewriteFailure() }
+    await h.coordinator.scanAndRecover()
+    await h.coordinator.awaitDiscardOperationsForTesting()
+    #expect(h.replayer.replayedIDs.isEmpty)
+    #expect(
+      (try? h.keyStore.retrieve(for: id)) != nil,
+      "a failed refresh cannot erase the proof from the prior successful commit")
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+  }
+
+  @Test("marker-only retry completes cleanup of sidecars retained after failed audio sync")
+  func markerOnlyRetryFinishesRetainedSidecars() async throws {
+    struct SyncFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    try h.spoolStore.writeAttemptMarker(for: id)
+    h.coordinator.destructionSpoolDeleteForTesting = { sessionID in
+      try FileManager.default.removeItem(at: h.spoolStore.spoolURL(for: sessionID))
+      throw SyncFailure()
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+    #expect(try h.spoolStore.listSpoolSessionIDs().isEmpty)
+    #expect(h.spoolStore.hasAttemptMarker(for: id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+
+    h.coordinator.destructionSpoolDeleteForTesting = nil
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+    #expect(!h.spoolStore.hasAttemptMarker(for: id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .absent)
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+    #expect(h.replayer.replayedIDs.isEmpty)
   }
 
   // MARK: - Launch scan + recover
@@ -521,6 +1057,9 @@ struct RecoveryCoordinatorTests {
     try Self.writeSpool(h.spoolStore, fresh)
     await h.coordinator.scanAndRecover()
     #expect(h.replayer.replayedIDs == [fresh], "saved id deduped, not replayed")
+    // #1807 round-2: the delete now waits for marker persistence first (not
+    // synchronous with `scanAndRecover()` returning) — poll for it.
+    await Self.awaitSpoolGone(h.spoolStore, id: saved)
     #expect(
       !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: saved).path),
       "deduped orphan deleted")
@@ -605,9 +1144,9 @@ struct RecoveryCoordinatorTests {
     // the launch/wake scan has nothing left to replay, which removes the
     // same-launch race population at the source instead of suppressing it.
     let h = Self.makeHarness()
-    let id = "live-fail-\(UUID().uuidString)"
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
       recoverySessionID: id, ending: .failed)
     let unwrapped = try #require(task, ".failed now returns destruction work")
@@ -868,9 +1407,13 @@ struct RecoveryCoordinatorTests {
 
     // **cleanupArm, observed by its EFFECT**, since the seam discards the Task
     // the coordinator returns. The spool for an aborted arm must be gone.
-    let aborted = "aborted-\(UUID().uuidString)"
+    // #1807 (§C): reuses `armed.recoverySessionID` — the join now requires a
+    // REAL admitted id (`requestDisposal`/`acknowledgeWriterQuiescent` refuse
+    // to manufacture an entry for one they don't recognize, round-2
+    // correction, Codex chunk-2 review finding 2) — see `armRealSession`'s
+    // doc for the general pattern this test inlines against `armed` instead.
+    let aborted = armed.recoverySessionID
     try Self.writeSpool(h.spoolStore, aborted)
-    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: aborted)
     await access.cleanupArm(aborted)
     for _ in 0..<100_000
     where FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path) {
@@ -921,6 +1464,9 @@ struct RecoveryCoordinatorTests {
     #expect(h.replayer.abortedSeen == [true], "isAborted read true after Discard bumped generation")
     #expect(!h.coordinator.isRecovering, "gate cleared")
     #expect(h.resetEngineCount.value == 1, "Discard hard-reset the shared engine")
+    // #1807 round-2: the delete now waits for marker persistence first (not
+    // synchronous with `scanAndRecover()` returning) — poll for it.
+    await Self.awaitSpoolGone(h.spoolStore, id: id)
     #expect(
       !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
       "Discard deleted the orphan the user was waiting on")
@@ -1099,11 +1645,13 @@ struct RecoveryCoordinatorTests {
     var value: Int { lock.withLock { count } }
   }
 
-  // Best-effort deletion stays best-effort (no retries, no escapes); the ONLY
-  // new behavior is one failure breadcrumb per failed component per
-  // destruction call, with exact shape and a fixed source label.
+  // Best-effort deletion stays best-effort (no retries, no escapes). §D2
+  // changes what "best-effort" means for the key: a real armed session's
+  // discard marker commits durably, so a spool (audio) failure now lands on
+  // the RETAIN cell — the key delete is never even attempted — rather than
+  // running unconditionally as it did before chunk 4.
   @Test(
-    "live-ending destruction: 2×2 spool/key failure matrix emits exactly one breadcrumb per failed component",
+    "live-ending destruction: 2×2 spool/key failure matrix — key retained (not attempted) exactly when audio removal fails with a committed marker",
     arguments: [false, true], [false, true])
   func deletionFailureMatrix(spoolFails: Bool, keyFails: Bool) async throws {
     let harness = Self.makeHarness()
@@ -1125,8 +1673,10 @@ struct RecoveryCoordinatorTests {
     }
 
     // Drive the REAL live-ending destruction route with a delete-class ending.
+    let matrixID = try await Self.armRealSession(harness)
+    coordinator.acknowledgeWriterQuiescent(recoverySessionID: matrixID)
     let task = coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: "matrix-\(spoolFails)-\(keyFails)", ending: .discarded)
+      recoverySessionID: matrixID, ending: .discarded)
     let unwrapped = try #require(task, "a delete-class ending must return the detached work")
     // Awaiting the destruction task IS the completion proof: the key attempt
     // increments inline and the key-failure breadcrumb's MainActor emission is
@@ -1134,29 +1684,34 @@ struct RecoveryCoordinatorTests {
     await unwrapped.value
 
     #expect(spoolAttempts.value == 1, "spool attempt exactly once")
-    #expect(keyAttempts.value == 1, "key attempt exactly once, even after spool failure")
-    let expectedCount = (spoolFails ? 1 : 0) + (keyFails ? 1 : 0)
-    #expect(log.crumbs.count == expectedCount, "exactly one breadcrumb per failed component")
+
     if spoolFails {
+      // §D2 RETAIN cell: a real armed session's marker commits durably, so a
+      // failed audio removal keeps the key rather than attempting its delete.
+      #expect(
+        keyAttempts.value == 0, "audio removal failed with a committed marker: key never attempted")
+      #expect(
+        log.crumbs.count == 1,
+        "only the spool failure breadcrumb — keyFails is moot, no attempt was made")
       #expect(
         log.crumbs.contains(
           Crumb(
             stage: "recovery", message: "deletion_failed",
             data: ["component": "spool", "source": "live_ending"])),
         "exact spool failure breadcrumb")
-    }
-    if keyFails {
+    } else {
+      #expect(keyAttempts.value == 1, "audio removal succeeded: key delete attempted normally")
+      let expectedCount = keyFails ? 1 : 0
       #expect(
-        log.crumbs.contains(
-          Crumb(
-            stage: "recovery", message: "deletion_failed",
-            data: ["component": "key", "source": "live_ending"])),
-        "exact key failure breadcrumb")
-    }
-    if spoolFails && keyFails {
-      #expect(
-        Set(log.crumbs.map { $0.data["component"] ?? "" }) == ["spool", "key"],
-        "both-fail cell: one spool + one key, no duplicate")
+        log.crumbs.count == expectedCount, "a breadcrumb only if the key delete itself failed")
+      if keyFails {
+        #expect(
+          log.crumbs.contains(
+            Crumb(
+              stage: "recovery", message: "deletion_failed",
+              data: ["component": "key", "source": "live_ending"])),
+          "exact key failure breadcrumb")
+      }
     }
   }
 
@@ -1187,8 +1742,17 @@ struct RecoveryCoordinatorTests {
     coordinator?.deletionFailureBreadcrumbForTesting = { stage, message, data in
       log.crumbs.append(Crumb(stage: stage, message: message, data: data))
     }
+    // #1807 (§C): real admission — see `armRealSession`'s doc. Armed directly
+    // against `coordinator` (not via the helper) since this test tracks it as
+    // a separately-nilled optional.
+    let lifetimeID = try #require(
+      await coordinator?.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false)
+    ).recoverySessionID
+    coordinator?.acknowledgeWriterQuiescent(recoverySessionID: lifetimeID)
     let task = try #require(coordinator).handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: "lifetime", ending: .discarded)
+      recoverySessionID: lifetimeID, ending: .discarded)
     let unwrapped = try #require(task)
     await entry.wait()  // entry — resumes immediately if it already fired
     harness = nil
@@ -1205,145 +1769,159 @@ struct RecoveryCoordinatorTests {
       "the strong capture must deliver the breadcrumb after ownership release")
   }
 
-#if DEBUG
-  // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
+  #if DEBUG
+    // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
 
-  private static func makeBoundaryController() -> CrashBoundaryFaultController {
-    let dir = FileManager.default.temporaryDirectory
-      .appendingPathComponent("ew-cb-coord-\(UUID().uuidString)", isDirectory: true)
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    return CrashBoundaryFaultController(
-      armFilePath: dir.appendingPathComponent("arm").path,
-      reachedFilePath: dir.appendingPathComponent("reached").path)
-  }
-
-  @Test("before_spool_delete fires before the spool attempt; release lets deletion proceed")
-  func beforeSpoolDeleteHook() async throws {
-    let h = Self.makeHarness()
-    let controller = Self.makeBoundaryController()
-    h.coordinator.crashBoundaryController = controller
-    defer { controller.clear() }
-    let spoolAttempted = AtomicCounter()
-    let attemptsAtBoundary = AtomicCounter()
-    h.coordinator.destructionSpoolDeleteForTesting = { _ in spoolAttempted.increment() }
-    h.coordinator.destructionKeyDeleteForTesting = { _ in }
-    controller.onPublishForTesting = { _ in
-      // Publication callback fires synchronously at the hook, BEFORE the
-      // spool attempt; record and release immediately (no polling).
-      for _ in 0..<spoolAttempted.value { attemptsAtBoundary.increment() }
-      controller.releaseHeldForTesting()
+    private static func makeBoundaryController() -> CrashBoundaryFaultController {
+      let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-cb-coord-\(UUID().uuidString)", isDirectory: true)
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      return CrashBoundaryFaultController(
+        armFilePath: dir.appendingPathComponent("arm").path,
+        reachedFilePath: dir.appendingPathComponent("reached").path)
     }
-    #expect(controller.arm(trialID: "cb1", boundary: .beforeSpoolDelete))
 
-    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: "cb-spool", ending: .failed)
-    let unwrapped = try #require(task)
-    await unwrapped.value
-
-    #expect(controller.isReached(trialID: "cb1", boundary: .beforeSpoolDelete))
-    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the spool attempt")
-    #expect(spoolAttempted.value == 1, "release lets the real attempt proceed")
-  }
-
-  @Test("before_key_delete fires inside the detached task before the key attempt")
-  func beforeKeyDeleteHook() async throws {
-    let h = Self.makeHarness()
-    let controller = Self.makeBoundaryController()
-    h.coordinator.crashBoundaryController = controller
-    defer { controller.clear() }
-    let keyAttempted = AtomicCounter()
-    let attemptsAtBoundary = AtomicCounter()
-    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
-    h.coordinator.destructionKeyDeleteForTesting = { _ in keyAttempted.increment() }
-    controller.onPublishForTesting = { _ in
-      for _ in 0..<keyAttempted.value { attemptsAtBoundary.increment() }
-      controller.releaseHeldForTesting()
-    }
-    #expect(controller.arm(trialID: "cb2", boundary: .beforeKeyDelete))
-
-    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: "cb-key", ending: .failed)
-    let unwrapped = try #require(task)
-    await unwrapped.value
-
-    #expect(controller.isReached(trialID: "cb2", boundary: .beforeKeyDelete))
-    #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the key attempt")
-    #expect(keyAttempted.value == 1, "release lets the real attempt proceed")
-  }
-
-  @Test("destruction_api_return: key deletion gated across the API return; caller hook publishes after")
-  func destructionAPIReturnHookOrdering() async throws {
-    let h = Self.makeHarness()
-    let controller = Self.makeBoundaryController()
-    h.coordinator.crashBoundaryController = controller
-    defer { controller.clear() }
-    let keyAttempted = AtomicCounter()
-    h.coordinator.destructionSpoolDeleteForTesting = { _ in }
-    // The key-delete seam SIGNALS entry so the gated schedule is provable
-    // without any polling: the gate parks BEFORE the seam runs, so entry
-    // never fires while gated.
-    let keyEntered = OneShotSignal()
-    h.coordinator.destructionKeyDeleteForTesting = { _ in
-      keyAttempted.increment()
-      keyEntered.signal()
-    }
-    // Observe the real detached key path REACHING the gate — `keyAttempted ==
-    // 0` alone could mean the detached task simply has not started yet.
-    let gateDecision = OneShotSignal()
-    let gateDecisionLock = NSLock()
-    nonisolated(unsafe) var keyWasGated: Bool?
-    controller.onKeyDeleteGateDecisionForTesting = { decision in
-      gateDecisionLock.withLock {
-        if keyWasGated == nil { keyWasGated = decision }
+    @Test("before_spool_delete fires before the spool attempt; release lets deletion proceed")
+    func beforeSpoolDeleteHook() async throws {
+      let h = Self.makeHarness()
+      let controller = Self.makeBoundaryController()
+      h.coordinator.crashBoundaryController = controller
+      defer { controller.clear() }
+      let spoolAttempted = AtomicCounter()
+      let attemptsAtBoundary = AtomicCounter()
+      h.coordinator.destructionSpoolDeleteForTesting = { _ in spoolAttempted.increment() }
+      h.coordinator.destructionKeyDeleteForTesting = { _ in }
+      controller.onPublishForTesting = { _ in
+        // Publication callback fires synchronously at the hook, BEFORE the
+        // spool attempt; record and release immediately (no polling).
+        for _ in 0..<spoolAttempted.value { attemptsAtBoundary.increment() }
+        controller.releaseHeldForTesting()
       }
-      gateDecision.signal()
+      #expect(controller.arm(trialID: "cb1", boundary: .beforeSpoolDelete))
+
+      // #1807 (§C): real admission — see `armRealSession`'s doc.
+      let cbSpoolID = try await Self.armRealSession(h)
+      h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: cbSpoolID)
+      let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: cbSpoolID, ending: .failed)
+      let unwrapped = try #require(task)
+      await unwrapped.value
+
+      #expect(controller.isReached(trialID: "cb1", boundary: .beforeSpoolDelete))
+      #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the spool attempt")
+      #expect(spoolAttempted.value == 1, "release lets the real attempt proceed")
     }
-    #expect(controller.arm(trialID: "cb3", boundary: .destructionAPIReturn))
 
-    // The API must return while the key path is gated.
-    let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
-      recoverySessionID: "cb-api", ending: .failed)
-    let unwrapped = try #require(task, "the API returned while the key path is gated")
-    await gateDecision.wait()
-    #expect(
-      gateDecisionLock.withLock { keyWasGated } == true,
-      "the real detached key path reached the API-return gate")
-    #expect(keyAttempted.value == 0, "key deletion has not passed its pre-point")
-    #expect(
-      !controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn),
-      "gating alone must not publish")
+    @Test("before_key_delete fires inside the detached task before the key attempt")
+    func beforeKeyDeleteHook() async throws {
+      let h = Self.makeHarness()
+      let controller = Self.makeBoundaryController()
+      h.coordinator.crashBoundaryController = controller
+      defer { controller.clear() }
+      let keyAttempted = AtomicCounter()
+      let attemptsAtBoundary = AtomicCounter()
+      h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+      h.coordinator.destructionKeyDeleteForTesting = { _ in keyAttempted.increment() }
+      controller.onPublishForTesting = { _ in
+        for _ in 0..<keyAttempted.value { attemptsAtBoundary.increment() }
+        controller.releaseHeldForTesting()
+      }
+      #expect(controller.arm(trialID: "cb2", boundary: .beforeKeyDelete))
 
-    // The caller-side hook (what DictationRuntime's closure runs after the
-    // API returns) publishes and parks on a background thread; its
-    // publication callback releases every hold, freeing the gated key path.
-    let published = OneShotSignal()
-    controller.onPublishForTesting = { _ in
-      controller.releaseHeldForTesting()
-      published.signal()
+      // #1807 (§C): real admission — see `armRealSession`'s doc.
+      let cbKeyID = try await Self.armRealSession(h)
+      h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: cbKeyID)
+      let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: cbKeyID, ending: .failed)
+      let unwrapped = try #require(task)
+      await unwrapped.value
+
+      #expect(controller.isReached(trialID: "cb2", boundary: .beforeKeyDelete))
+      #expect(attemptsAtBoundary.value == 0, "the boundary sits BEFORE the key attempt")
+      #expect(keyAttempted.value == 1, "release lets the real attempt proceed")
     }
-    let callerDone = OneShotSignal()
-    Thread.detachNewThread {
-      controller.boundaryReached(.destructionAPIReturn)
-      callerDone.signal()
+
+    @Test(
+      "destruction_api_return: key deletion gated across the API return; caller hook publishes after"
+    )
+    func destructionAPIReturnHookOrdering() async throws {
+      let h = Self.makeHarness()
+      let controller = Self.makeBoundaryController()
+      h.coordinator.crashBoundaryController = controller
+      defer { controller.clear() }
+      let keyAttempted = AtomicCounter()
+      h.coordinator.destructionSpoolDeleteForTesting = { _ in }
+      // The key-delete seam SIGNALS entry so the gated schedule is provable
+      // without any polling: the gate parks BEFORE the seam runs, so entry
+      // never fires while gated.
+      let keyEntered = OneShotSignal()
+      h.coordinator.destructionKeyDeleteForTesting = { _ in
+        keyAttempted.increment()
+        keyEntered.signal()
+      }
+      // Observe the real detached key path REACHING the gate — `keyAttempted ==
+      // 0` alone could mean the detached task simply has not started yet.
+      let gateDecision = OneShotSignal()
+      let gateDecisionLock = NSLock()
+      nonisolated(unsafe) var keyWasGated: Bool?
+      controller.onKeyDeleteGateDecisionForTesting = { decision in
+        gateDecisionLock.withLock {
+          if keyWasGated == nil { keyWasGated = decision }
+        }
+        gateDecision.signal()
+      }
+      #expect(controller.arm(trialID: "cb3", boundary: .destructionAPIReturn))
+
+      // #1807 (§C): real admission — see `armRealSession`'s doc.
+      let cbAPIID = try await Self.armRealSession(h)
+      h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: cbAPIID)
+      // The API must return while the key path is gated.
+      let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
+        recoverySessionID: cbAPIID, ending: .failed)
+      let unwrapped = try #require(task, "the API returned while the key path is gated")
+      await gateDecision.wait()
+      #expect(
+        gateDecisionLock.withLock { keyWasGated } == true,
+        "the real detached key path reached the API-return gate")
+      #expect(keyAttempted.value == 0, "key deletion has not passed its pre-point")
+      #expect(
+        !controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn),
+        "gating alone must not publish")
+
+      // The caller-side hook (what DictationRuntime's closure runs after the
+      // API returns) publishes and parks on a background thread; its
+      // publication callback releases every hold, freeing the gated key path.
+      let published = OneShotSignal()
+      controller.onPublishForTesting = { _ in
+        controller.releaseHeldForTesting()
+        published.signal()
+      }
+      let callerDone = OneShotSignal()
+      Thread.detachNewThread {
+        controller.boundaryReached(.destructionAPIReturn)
+        callerDone.signal()
+      }
+      await published.wait()
+      await callerDone.wait()
+      await keyEntered.wait()
+      await unwrapped.value
+      #expect(controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn))
+      #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
     }
-    await published.wait()
-    await callerDone.wait()
-    await keyEntered.wait()
-    await unwrapped.value
-    #expect(controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn))
-    #expect(keyAttempted.value == 1, "the gated key deletion completed after release")
-  }
 
-#endif
+  #endif
 
-  @Test("a FAILED live-ending spool delete is suppressed from the same-launch rescan (PR #1761 cloud P2)")
+  @Test(
+    "a FAILED live-ending spool delete is suppressed from the same-launch rescan (PR #1761 cloud P2)"
+  )
   func failedLiveDeleteSuppressedSameLaunch() async throws {
     let h = Self.makeHarness()
     struct InjectedDeleteFailure: Error {}
     h.coordinator.destructionSpoolDeleteForTesting = { _ in throw InjectedDeleteFailure() }
     h.coordinator.destructionKeyDeleteForTesting = { _ in }
-    let id = "suppress-\(UUID().uuidString)"
+    let id = try await Self.armRealSession(h)
     try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
     let task = h.coordinator.handleRecordingEndedWithoutDurableSave(
       recoverySessionID: id, ending: .failed)
     let unwrapped = try #require(task)

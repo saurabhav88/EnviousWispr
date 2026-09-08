@@ -214,6 +214,18 @@ public final class RecoverySpoolWriter: @unchecked Sendable {
     }
   }
 
+  /// #1807 — adapts `finalize(reason:completion:)` for a MainActor caller. Fires
+  /// on BOTH healthy and error paths, exactly like the base overload: it proves
+  /// "this writer will never touch the file again," never "wrote successfully."
+  /// Must not be read as marker-persistence confirmation — that is a separate,
+  /// later check (the discard marker's own durability, not this ack).
+  public func finalize(
+    reason: RecoverySpoolTerminationReason,
+    notifying completion: @escaping @MainActor @Sendable () -> Void
+  ) {
+    finalize(reason: reason, completion: { Task { @MainActor in completion() } })
+  }
+
   private func markFailed() {
     state.withLock { $0.healthy = false }
   }

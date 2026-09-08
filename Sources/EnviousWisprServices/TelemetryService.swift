@@ -1844,6 +1844,51 @@ public final class TelemetryService {
       ])
   }
 
+  /// #1807: fires ONLY when `RecoveryCoordinator.destroySpoolAndKey`'s spool, key, or EXISTING
+  /// marker delete throws. Event absence does not establish that #1807 is fixed — a
+  /// `component=spool` failure means the spool-and-sidecar deletion operation threw; the audio may
+  /// already have been removed before a sidecar-only failure. `component=marker` here is
+  /// SPECIFICALLY the delete of an already-established marker (a low-severity cleanup miss, the
+  /// evidence itself already exists) — never a failure to WRITE one; see
+  /// `recoveryMarkerPersistenceFailed` for that (cloud review, PR #2717: the two failure modes
+  /// have very different severity and were previously indistinguishable in telemetry).
+  ///
+  /// Privacy: shape only — component/source labels, a bucketed error domain, and a numeric error
+  /// code. Never a path, description, `userInfo`, or recovery id.
+  public func recoveryDeletionFailed(
+    component: String, source: String, errorDomain: String, errorCode: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "recovery.deletion_failed",
+      properties: [
+        "component": component,
+        "source": source,
+        "error_domain": errorDomain,
+        "error_code": errorCode,
+      ])
+  }
+
+  /// #1807 (cloud review, PR #2717): fires when `RecoveryCoordinator.beginDiscardMarkerPersistence`
+  /// fails to ESTABLISH durable no-replay evidence for a session — the discard marker was never
+  /// written (or an existing one could not be confirmed durable), not that an already-established
+  /// one failed to be cleaned up (that is `recoveryDeletionFailed` with `component=marker`). This is
+  /// the higher-severity case: without this evidence, a crash before the coordinator's own destroy
+  /// path runs can leave the session's spool unmarked and eligible for replay on the next launch.
+  ///
+  /// Privacy: shape only — source label, a bucketed error domain, and a numeric error code. Never a
+  /// path, description, `userInfo`, or recovery id.
+  public func recoveryMarkerPersistenceFailed(
+    source: String, errorDomain: String, errorCode: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "recovery.marker_persistence_failed",
+      properties: [
+        "source": source,
+        "error_domain": errorDomain,
+        "error_code": errorCode,
+      ])
+  }
+
   public func recoveryPressBlocked(asrBackend: String) {
     PostHogSDK.shared.capture(
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])

@@ -47,17 +47,86 @@ final class RecoveryCoordinator {
   private let existingRecoveryIDs: @MainActor () async -> Set<String>
   /// Whether a live dictation is in flight — the recovery-independent contention
   /// guard (a recording can arm in the launch window even with recovery OFF, so
-  /// `armedSessionID` alone wouldn't catch it). Recovery never runs the shared
-  /// engine while this is true; it defers to a future launch.
+  /// `pendingSessions` protection alone wouldn't catch it — recovery is OFF
+  /// means no directive, no protection entry, at all). Recovery never runs the
+  /// shared engine while this is true; it defers to a future launch.
   private let isDictationActive: @MainActor () -> Bool
 
-  /// The recovery session armed for the CURRENT recording, or nil. Set BEFORE
-  /// the directive's key is durably stored (so the launch scan can never delete a
-  /// key it snapshots mid-arm); cleared if that store fails, on durable save, or
-  /// when the recording ends without a durable save. Its remaining job in PR2 is
-  /// to let the launch scan PROTECT a live in-progress recording from a
-  /// concurrent-arm race. MainActor-confined.
-  private var armedSessionID: String?
+  /// #1807 (§C) — per-session protection, replacing the single-slot
+  /// `armedSessionID: String?` this used to be. Keyed by recovery session id.
+  /// ONLY covers LIVE-ARMED sessions from THIS launch (`makeDirective`
+  /// inserts, the four live `handle*` entry points retire) — a scan-discovered
+  /// orphan from a PRIOR process's crash never has an entry here, because no
+  /// writer in this process will ever touch it (§3c: `historyDedup`,
+  /// `replayOutcome`, and `userDiscard` call `destroySpoolAndKey` directly,
+  /// unchanged, exactly as before this chunk).
+  ///
+  /// A session stays protected (excluded from the scan's `recoverable` list
+  /// and the key-only sweep) not just until its final disposition is known,
+  /// but until its writer ALSO confirms it can never write to the spool again
+  /// AND the resulting cleanup operation (a destroy, or a plain retain) has
+  /// actually SETTLED — not merely been dispatched. A genuinely unfinished
+  /// writer stays protected; that is an intentional pending state, not a leak.
+  /// MainActor-confined, exactly like the slot it replaces.
+  ///
+  /// `internal`, not `private`: `Disposition.retain` must be nameable from
+  /// `requestDisposal`'s test-facing call site (see that function's doc).
+  struct PendingSession {
+    enum Disposition {
+      case destroy(DestructionSource)
+      case retain
+    }
+    /// nil until a `handle*` call installs it via `requestDisposal`. Refines
+    /// the plan's `finalDispositionKnown` boolean into an enum carrying the
+    /// actual action, per Codex plan-review round 2: "a Boolean and an
+    /// arbitrary callback are not the complete contract."
+    var disposition: Disposition?
+    /// Set by `acknowledgeWriterQuiescent`. Proof only that the writer (if one
+    /// ever existed) will never touch this spool again — NEVER proof it wrote
+    /// successfully (§2.5-4; the completion closure fires on error paths too).
+    var writerCanNeverWriteAgain = false
+    /// True once this coordinator has claimed the session's one cleanup
+    /// operation — guards a duplicate disposition call or a duplicate writer
+    /// ack from starting a second marker write or deletion.
+    var cleanupClaimed = false
+    /// Reports proven durable discard evidence, including an earlier commit
+    /// reused by a later cleanup attempt.
+    var markerPersistence: Task<Bool, Never>?
+    /// Every caller awaiting this session's cleanup SETTLING, not merely being
+    /// claimed. Production discards the `Task` it gets back; tests await it
+    /// instead of a fixed delay (§11's test contract). Resolved exactly once,
+    /// inside `retireSettledSession`.
+    var settlementContinuations: [CheckedContinuation<Void, Never>] = []
+  }
+  private var pendingSessions: [String: PendingSession] = [:]
+  private var discardOperations: [String: Task<Void, Never>] = [:]
+  // Proven commits remain authoritative across retries until evidence removal begins.
+  private var durableDiscardEvidenceIDs: Set<String> = []
+
+  // Instance-scoped completion seam for disposal integration tests.
+  func awaitDiscardOperationsForTesting() async {
+    let operations = Array(discardOperations.values)
+    for operation in operations { await operation.value }
+  }
+  // Instance-scoped completion seam; production never awaits the sweep.
+  // periphery:ignore - test seam
+  var markerSweepForTesting: Task<Void, Never>?
+
+  private var protectedSessionIDs: Set<String> {
+    Set(pendingSessions.keys).union(discardOperations.keys)
+  }
+
+  private func claimDiscardOperation(
+    id: String, work: @escaping @MainActor () async -> Void
+  ) -> Task<Void, Never> {
+    if let existing = discardOperations[id] { return existing }
+    let task = Task { @MainActor [self] in
+      await work()
+      discardOperations.removeValue(forKey: id)
+    }
+    discardOperations[id] = task
+    return task
+  }
 
   /// True while an orphan is being actively replayed on the shared engine.
   /// DRIVES the recording gate: a record-press while true mints no session (shows
@@ -230,14 +299,17 @@ final class RecoveryCoordinator {
     guard let payload = try? JSONEncoder().encode(directive) else { return nil }
 
     // Protect this id from the launch scan BEFORE the key can land on disk.
-    // Ordering invariant: `armedSessionID` is set (synchronously, on the
-    // MainActor) no later than the key hits disk. The scan reads `armed` AFTER
-    // snapshotting the on-disk spools, so any spool it could have snapshotted was
-    // armed before this assignment and is therefore already protected — closing
-    // the mid-arm gap (Codex code-diff r4 P2). Cleared below if the durable store
-    // fails. (A concurrent double-arm overwrites this; the loser's key is an
-    // orphan a future launch scan recovers or sweeps — harmless.)
-    armedSessionID = recoverySessionID
+    // Ordering invariant: the `pendingSessions` entry is inserted
+    // (synchronously, on the MainActor) no later than the key hits disk. The
+    // scan reads pending membership AFTER snapshotting the on-disk spools, so
+    // any spool it could have snapshotted was armed before this assignment and
+    // is therefore already protected — closing the mid-arm gap (Codex
+    // code-diff r4 P2). Removed below if the durable store fails — no writer
+    // will ever exist for this id, so there is nothing left to protect or
+    // join against; this is NOT routed through `requestDisposal`/
+    // `acknowledgeWriterQuiescent` (#1807 §C), since a directive that never
+    // left the coordinator needs no Audio round-trip.
+    pendingSessions[recoverySessionID] = PendingSession()
 
     // Durably store the key off the MainActor BEFORE returning an enabled
     // payload. Fail-open: a store failure disables recovery for this take.
@@ -246,11 +318,12 @@ final class RecoveryCoordinator {
       (try? keyStore.store(keyData: keyData, for: recoverySessionID)) != nil
     }.value
     guard stored else {
-      // No durable key landed — un-protect so the scan isn't guarding a phantom
-      // and a later non-saved cleanup is a no-op. Guard the id in case a
-      // concurrent arm overwrote the slot (won't happen with sequential
-      // recordings, but keeps the clear precise).
-      if armedSessionID == recoverySessionID { armedSessionID = nil }
+      // No durable key landed — un-protect so the scan isn't guarding a
+      // phantom and a later non-saved cleanup is a no-op. Keyed by this exact
+      // fresh UUID, so a concurrent double-arm (a different id) is unaffected
+      // — unlike the single-slot `armedSessionID` this replaces, no id
+      // collision is possible here.
+      pendingSessions.removeValue(forKey: recoverySessionID)
       SentryBreadcrumb.captureError(
         RecoveryArmError.keyStoreFailed, category: .recoveryKeyStoreFailed, stage: "recording",
         extra: ["backend": backendType.rawValue])
@@ -262,7 +335,12 @@ final class RecoveryCoordinator {
 
   /// #1755 chunk 4 — fixed, low-cardinality labels for WHY a destruction ran.
   /// Closed enum: no caller-supplied strings, no configurability.
-  private enum DestructionSource: String {
+  ///
+  /// #1807: widened from `private` to `internal` — `PendingSession
+  /// .Disposition.destroy(DestructionSource)` is itself internal, and an
+  /// associated value cannot be more restrictive than the case that carries
+  /// it. Still constructible only within `EnviousWisprAppKit`.
+  enum DestructionSource: String {
     case durableSave = "durable_save"
     case liveEnding = "live_ending"
     case preStartAbort = "pre_start_abort"
@@ -271,6 +349,12 @@ final class RecoveryCoordinator {
     case userDiscard = "user_discard"
     /// #1740: a live `.complete` dictation whose History write failed.
     case historySaveFailed = "history_save_failed"
+    /// #1807 §D1: the scan found a spool that ALREADY carries a committed
+    /// discard marker (`.final`/`.interruptedTemp`) — a prior pass or launch
+    /// already decided to discard it, but the destructive delete never
+    /// completed (crash, or the delete itself failed). No replay is ever
+    /// attempted for this case; this is a cleanup retry, not a fresh decision.
+    case markedForDiscard = "marked_for_discard"
   }
 
   /// #1755 chunk 4 test seams (internal; nil in production — the real spool
@@ -285,6 +369,11 @@ final class RecoveryCoordinator {
   var destructionSpoolDeleteForTesting: ((String) throws -> Void)?
   // periphery:ignore - test seam
   var destructionKeyDeleteForTesting: (@Sendable (String) throws -> Void)?
+  /// #1807 §D2 test seam: force the discard-marker write to fail without a
+  /// real filesystem fault, so the decision table's "no durable evidence at
+  /// all" fallback cell is directly reachable from a test.
+  // periphery:ignore - test seam
+  var destructionMarkerWriteForTesting: (@Sendable (String) throws -> Void)?
   // periphery:ignore - test seam
   var deletionFailureBreadcrumbForTesting:
     (@MainActor @Sendable (_ stage: String, _ message: String, _ data: [String: String]) -> Void)?
@@ -299,7 +388,7 @@ final class RecoveryCoordinator {
   /// #1755 chunk 4: one failure-only breadcrumb per failed component per
   /// destruction call. Never includes the recovery ID, path, or raw error —
   /// deletion stays best-effort and swallowed; this is diagnosis only.
-  private func emitDeletionFailed(component: String, source: DestructionSource) {
+  private func emitDeletionFailed(component: String, source: DestructionSource, error: any Error) {
     // #1762 r5: reports the ACTION and its result, nothing further. Five review
     // rounds went to disposition clauses here — "stays on disk", "already
     // deleted", "a future launch will retry" — and each was wrong in some real
@@ -316,6 +405,68 @@ final class RecoveryCoordinator {
     } else {
       SentryBreadcrumb.add(stage: "recovery", message: "deletion_failed", data: data)
     }
+    TelemetryService.shared.recoveryDeletionFailed(
+      component: component, source: source.rawValue,
+      errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
+  }
+
+  /// #1807 (cloud review, PR #2717): SEPARATE from `emitDeletionFailed` on purpose. Failing to
+  /// ESTABLISH the discard marker (this) and failing to DELETE an already-established one
+  /// (`emitDeletionFailed(component: "marker", ...)`) are different severities — this one means the
+  /// crash-safety evidence never existed at all — and `recoveryDeletionFailed`'s own contract is
+  /// scoped to delete failures only. Reusing it here would make production telemetry unable to tell
+  /// the two apart.
+  private func emitMarkerPersistenceFailed(source: DestructionSource, error: any Error) {
+    RecoveryLog.line("marker WRITE FAILED (\(source.rawValue))")
+    let data = ["component": "marker", "source": source.rawValue]
+    if let sink = deletionFailureBreadcrumbForTesting {
+      sink("recovery", "marker_persistence_failed", data)
+    } else {
+      SentryBreadcrumb.add(stage: "recovery", message: "marker_persistence_failed", data: data)
+    }
+    TelemetryService.shared.recoveryMarkerPersistenceFailed(
+      source: source.rawValue,
+      errorDomain: Self.errorDomainBucket(for: error), errorCode: Self.errorCode(for: error))
+  }
+
+  /// `RecoverySpoolStoreError`'s four cases all carry a real POSIX `errno` as their
+  /// associated `Int32` (cloud review, PR #2717). Bridging the enum to `NSError`
+  /// does not surface that value as `.domain`/`.code` — it yields Swift's own
+  /// synthesized domain/case-index instead, so every marker-write or
+  /// directory-sync failure was reported as `error_domain=other` with a
+  /// meaningless code, unable to distinguish disk-full from permission-denied
+  /// from a generic I/O fault. Unwrap explicitly, same as `RecoveryKeyStoreError`
+  /// below.
+  private static func spoolStoreErrno(for error: any Error) -> Int32? {
+    guard let spoolError = error as? RecoverySpoolStoreError else { return nil }
+    switch spoolError {
+    case .attemptMarkerWriteFailed(let code), .readinessRetryMarkerWriteFailed(let code),
+      .escapeMarkerWriteFailed(let code), .discardMarkerWriteFailed(let code):
+      return code
+    }
+  }
+
+  // `internal`, not `private`: direct unit-testing of the domain/code bucketing
+  // needs to reach these without a live telemetry sink — same reasoning
+  // `PendingSession`/`requestDisposal` already use for their own directly-tested
+  // static logic.
+  static func errorDomainBucket(for error: any Error) -> String {
+    if spoolStoreErrno(for: error) != nil { return "posix" }
+    switch error {
+    case let nsError as NSError where nsError.domain == NSCocoaErrorDomain: return "cocoa"
+    case let nsError as NSError where nsError.domain == NSPOSIXErrorDomain: return "posix"
+    default: return "other"
+    }
+  }
+
+  /// `RecoveryKeyStoreError.deleteFailed(OSStatus)` bridges to `NSError` without surfacing its
+  /// associated OSStatus as `.code`. Unwrap explicitly; every other error keeps its bridged NSError code.
+  static func errorCode(for error: any Error) -> Int {
+    if let keyError = error as? RecoveryKeyStoreError, case .deleteFailed(let status) = keyError {
+      return Int(status)
+    }
+    if let errno = spoolStoreErrno(for: error) { return Int(errno) }
+    return (error as NSError).code
   }
 
   /// #1740 (founder Gate 2): did a SPENT attempt's cleanup actually happen?
@@ -327,7 +478,11 @@ final class RecoveryCoordinator {
     component: String, source: DestructionSource, succeeded: Bool
   ) {
     switch source {
-    case .replayOutcome, .historySaveFailed:
+    case .replayOutcome, .historySaveFailed, .markedForDiscard:
+      // #1807 §D1: `.markedForDiscard` is a retry of a previously-failed
+      // cleanup (a spent decision, same spirit as the two existing spent-
+      // attempt sources) — whether the retry actually succeeded is exactly
+      // the signal this event exists to answer.
       if let sink = cleanupTelemetryForTesting {
         sink(source.rawValue, component, succeeded)
       } else {
@@ -348,56 +503,303 @@ final class RecoveryCoordinator {
   /// double-delete or a concurrently-removed spool is a harmless no-op. Returns the
   /// detached key-delete work so tests can await completion; callers may discard it.
   @discardableResult
-  private func destroySpoolAndKey(id: String, source: DestructionSource) -> Task<Void, Never> {
-    #if DEBUG
-      // #1755 chunk 6: crash-boundary hold — immediately before the spool
-      // attempt (seam or real store). Unarmed: no-op.
-      crashBoundaryController.boundaryReached(.beforeSpoolDelete)
-    #endif
-    do {
-      if let override = destructionSpoolDeleteForTesting {
-        try override(id)
-      } else {
-        try makeSpoolStore().delete(recoverySessionID: id)
-      }
-      emitCleanupOutcome(component: "spool", source: source, succeeded: true)
-    } catch {
-      emitDeletionFailed(component: "spool", source: source)
-      emitCleanupOutcome(component: "spool", source: source, succeeded: false)
+  private func destroySpoolAndKey(
+    id: String, source: DestructionSource,
+    markerPersistence: Task<Bool, Never>? = nil
+  ) -> Task<Void, Never> {
+    if let existing = discardOperations[id] { return existing }
+    // #1807 round-2 correction (Codex chunk-3 review round 2, finding 1):
+    // `discardOperations[id]` protects only WHILE this operation is running —
+    // it clears once the work settles, success or failure. `nextLaunchOnlyRecoveryIDs`
+    // is a SEPARATE concern this does not replace: if BOTH the marker write
+    // and the delete fail, an id with no marker and a surviving spool must
+    // still not be reclassified as a fresh REPLAY candidate this launch (the
+    // exact resurrection bug this suppression exists to prevent). CLEANUP
+    // eligibility (can `.markedForDiscard` retry) and REPLAY eligibility
+    // (can this id enter `recoverable`) are different questions — the scan's
+    // marker check now runs BEFORE this suppression is consulted (see
+    // `runOneScanPass`), so a genuinely marked survivor still retries
+    // cleanup regardless of this insert.
+    nextLaunchOnlyRecoveryIDs.insert(id)
+    let marker =
+      markerPersistence
+      ?? beginDiscardMarkerPersistence(recoverySessionID: id, source: source)
+    return claimDiscardOperation(id: id) { [self] in
+      let markerCommitted = await marker.value
+      await performSpoolAndKeyDestruction(
+        id: id, source: source, markerCommitted: markerCommitted
+      ).value
     }
-    // Key deletion ALWAYS runs, detached, even after a spool failure.
+  }
+
+  /// #1807 (§D2) — the decision table's own home. `markerCommitted` is
+  /// "durable discard evidence: yes/no"; audio removal is tracked
+  /// SEPARATELY from sidecar cleanup (never inferred from a combined
+  /// result — `RecoverySpoolStore.delete()`'s old conflated shape is why
+  /// this method no longer calls it). Sidecars remain intact until audio
+  /// removal is durable. Then sidecar and key attempts fail independently.
+  ///
+  /// | durable discard evidence | audio removal confirmed | key action |
+  /// |---|---|---|
+  /// | yes | yes | delete |
+  /// | yes | no  | **retain key, retain discard evidence** |
+  /// | no  | yes | delete |
+  /// | no  | no  | best-effort erasure (today's existing fallback) |
+  ///
+  /// Discard evidence is removed LAST, only after CONFIRMED synced audio
+  /// removal — never before, and never when audio removal failed (the
+  /// interrupted-write / final marker is exactly what must survive that
+  /// case, so a future launch never resurrects it as a fresh orphan).
+  private func performSpoolAndKeyDestruction(
+    id: String, source: DestructionSource, markerCommitted: Bool
+  ) -> Task<Void, Never> {
+    let store = makeSpoolStore()
+    let audioOverride = destructionSpoolDeleteForTesting
     let keyStore = self.keyStore
     let keyOverride = destructionKeyDeleteForTesting
-    // Capture self STRONGLY: the failure breadcrumb must survive coordinator
-    // deallocation racing the detached delete (a weak capture silently
-    // dropped it). The task is short-lived; the temporary strong retention
-    // ends when the task completes.
     #if DEBUG
       let crashBoundaryController = self.crashBoundaryController
     #endif
-    return Task.detached(priority: .utility) {
+    return Task { @MainActor [self] in
       #if DEBUG
-        // #1755 chunk 6: crash-boundary hold — immediately before the key
-        // attempt. While destruction_api_return is armed this call GATES
-        // (parks without publishing) so the caller-side hook can prove the
-        // live-ending API returned first.
-        crashBoundaryController.boundaryReached(.beforeKeyDelete)
+        crashBoundaryController.boundaryReached(.beforeSpoolDelete)
       #endif
-      do {
-        if let keyOverride {
-          try keyOverride(id)
-        } else {
-          try keyStore.delete(for: id)
-        }
-        await MainActor.run {
-          self.emitCleanupOutcome(component: "key", source: source, succeeded: true)
-        }
-      } catch {
-        await MainActor.run {
-          self.emitDeletionFailed(component: "key", source: source)
-          self.emitCleanupOutcome(component: "key", source: source, succeeded: false)
+      let audioResult: Result<Void, any Error>
+      if let audioOverride {
+        // Existing actor-confined test seam; production disk work is detached.
+        audioResult = Result { try audioOverride(id) }
+      } else {
+        audioResult = await Task.detached(priority: .utility) {
+          Result { try store.removeSpoolAudioDurably(recoverySessionID: id) }
+        }.value
+      }
+      let audioRemovalConfirmed: Bool
+      switch audioResult {
+      case .success:
+        audioRemovalConfirmed = true
+      case .failure(let error):
+        audioRemovalConfirmed = false
+        emitDeletionFailed(component: "spool", source: source, error: error)
+      }
+
+      var sidecarCleanupSucceeded = true
+      if audioRemovalConfirmed {
+        let result = await Task.detached(priority: .utility) {
+          Result { try store.cleanupSpoolSidecars(recoverySessionID: id) }
+        }.value
+        if case .failure(let error) = result {
+          sidecarCleanupSucceeded = false
+          emitDeletionFailed(component: "spool", source: source, error: error)
         }
       }
+      emitCleanupOutcome(
+        component: "spool", source: source,
+        succeeded: audioRemovalConfirmed && sidecarCleanupSucceeded)
+
+      if markerCommitted && !audioRemovalConfirmed {
+        RecoveryLog.line("retaining key: durable discard evidence, unconfirmed audio removal")
+        return
+      }
+
+      let keyResult: Result<Void, any Error> = await Task.detached(priority: .utility) {
+        #if DEBUG
+          crashBoundaryController.boundaryReached(.beforeKeyDelete)
+        #endif
+        return Result {
+          if let keyOverride {
+            try keyOverride(id)
+          } else {
+            try keyStore.delete(for: id)
+          }
+        }
+      }.value
+      switch keyResult {
+      case .success:
+        emitCleanupOutcome(component: "key", source: source, succeeded: true)
+      case .failure(let error):
+        emitDeletionFailed(component: "key", source: source, error: error)
+        emitCleanupOutcome(component: "key", source: source, succeeded: false)
+      }
+
+      // Evidence is last; failed key/sidecar cleanup cannot prevent this attempt.
+      if audioRemovalConfirmed {
+        durableDiscardEvidenceIDs.remove(id)
+        let result: Result<Void, any Error> = await Task.detached(priority: .utility) {
+          var firstFailure: (any Error)?
+          do { try store.deleteDiscardMarker(for: id) } catch { firstFailure = error }
+          do { try store.syncSpoolDirectory() } catch { firstFailure = firstFailure ?? error }
+          if let firstFailure { return .failure(firstFailure) }
+          return .success(())
+        }.value
+        if case .failure(let error) = result {
+          emitDeletionFailed(component: "marker", source: source, error: error)
+        }
+      }
+    }
+  }
+
+  // MARK: - #1807 (§C) — session-keyed protection + writer-completion join
+
+  /// A `handle*` call installs this LIVE-ARMED session's final disposition (a
+  /// specific `DestructionSource`, or `.retain` for "keep it"). Joins with
+  /// `acknowledgeWriterQuiescent` — cleanup runs only once BOTH facts are
+  /// known, whichever arrives second. Idempotent: a duplicate call for a
+  /// session whose disposition is already installed joins the existing
+  /// operation rather than starting another one. Returns a `Task` that
+  /// completes once this session's cleanup has SETTLED — claimed, and for a
+  /// destroy, its detached key-deletion work has finished — never merely
+  /// dispatched. Production callers discard it; tests await it instead of a
+  /// fixed delay (§11's test contract).
+  ///
+  /// `internal`, not `private`: the RETAIN branch of `PendingSession
+  /// .Disposition` is currently unreachable through any real
+  /// `RecordingRecoveryEnding` (every cell of `shouldDeleteOnLiveEnding`
+  /// returns true today) — exposed for direct testing of that branch, the
+  /// same reasoning `shouldDeleteOnLiveEnding`/`shouldDeleteAfterReplay`
+  /// already use for their own static, directly-tested predicates.
+  @discardableResult
+  func requestDisposal(
+    recoverySessionID id: String, disposition: PendingSession.Disposition
+  ) -> Task<Void, Never> {
+    // #1807 round-2 correction (Codex chunk-2 review, finding 2): a missing
+    // entry means either this id was never admitted, or it was already
+    // retired — NEVER manufacture a fresh one here. Doing so could strand a
+    // waiter (nothing will ever complete the phantom entry's other half) or
+    // let an already-cleaned-up session be re-processed.
+    guard var entry = pendingSessions[id] else { return Task {} }
+    if entry.disposition == nil, !entry.cleanupClaimed {
+      entry.disposition = disposition
+      if case .destroy(let source) = disposition {
+        // #1807 (§D1): marker persistence begins as soon as final disposition
+        // arrives — NOT gated on the writer-quiescence join below, which can
+        // still be pending. Off-MainActor, per §D2's ordering item 2
+        // (inherited by §D1). A `.retain` disposition writes no marker — a
+        // marker means "never replay," which is the opposite of retaining.
+        entry.markerPersistence = beginDiscardMarkerPersistence(
+          recoverySessionID: id, source: source)
+      }
+    }
+    return awaitSettlement(recoverySessionID: id, entry: entry)
+  }
+
+  /// Begins immediately at disposition, and settles before destructive cleanup.
+  ///
+  /// Returns whether durable discard evidence is established. A retained
+  /// session keeps its proven commit across later cleanup attempts.
+  private func beginDiscardMarkerPersistence(
+    recoverySessionID id: String, source: DestructionSource
+  ) -> Task<Bool, Never> {
+    if durableDiscardEvidenceIDs.contains(id) { return Task { true } }
+    let store = makeSpoolStore()
+    let override = destructionMarkerWriteForTesting
+    return Task.detached(priority: .utility) { [self] in
+      do {
+        if let override {
+          try override(id)
+        } else {
+          let existingEvidence = try store.synchronizeExistingDiscardEvidence(for: id)
+          if !existingEvidence { try store.writeDiscardMarker(for: id) }
+        }
+        await MainActor.run { _ = self.durableDiscardEvidenceIDs.insert(id) }
+        return true
+      } catch {
+        await MainActor.run {
+          self.emitMarkerPersistenceFailed(source: source, error: error)
+        }
+        return false
+      }
+    }
+  }
+
+  /// The writer confirms it can never write to `id`'s spool again — fires for
+  /// a real writer's finalize AND for every explicit "no writer, ever"
+  /// acknowledgment (decode failure, disabled directive, low-disk refusal,
+  /// and a pre-start abort's own direct ack). Idempotent — a late/duplicate
+  /// ack for an already-claimed session joins silently. `internal`, not
+  /// `private`: `WisprBootstrapper` (same module, different file) wires
+  /// Audio's completion closure directly to this.
+  func acknowledgeWriterQuiescent(recoverySessionID id: String) {
+    // #1807 round-2 correction: same reasoning as `requestDisposal` above —
+    // a missing entry means never-admitted or already-retired, either way
+    // nothing to acknowledge.
+    guard var entry = pendingSessions[id] else { return }
+    guard !entry.cleanupClaimed else { return }
+    entry.writerCanNeverWriteAgain = true
+    pendingSessions[id] = entry
+    tryClaimAndRunCleanup(recoverySessionID: id)
+  }
+
+  /// Writes `entry` back, attempts the join, and returns a `Task` resolved on
+  /// settlement — now, if the join completes synchronously as part of this
+  /// very call; later, when the missing half arrives via the other entry
+  /// point above.
+  private func awaitSettlement(
+    recoverySessionID id: String, entry: PendingSession
+  ) -> Task<Void, Never> {
+    pendingSessions[id] = entry
+    if let settling = tryClaimAndRunCleanup(recoverySessionID: id) {
+      return settling
+    }
+    // #1807 round-2 correction (Codex chunk-2 review, finding 4): STRONG
+    // self capture, matching `destroySpoolAndKey`'s own established pattern
+    // ("the failure breadcrumb must survive coordinator deallocation racing
+    // the detached delete"). A `[weak self]` here can silently strand a
+    // waiter forever if the coordinator is released while this task is
+    // in flight — the continuation lives INSIDE `pendingSessions`, so a
+    // dropped `self` before the continuation registers means no path this
+    // task's own reference chain can rely on. The task is short-lived; the
+    // temporary strong retention ends when it completes.
+    return Task { @MainActor [self] in
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        guard var waiting = self.pendingSessions[id] else {
+          // Already retired — a same-launch race resolved it between the
+          // write above and this continuation being registered.
+          continuation.resume()
+          return
+        }
+        waiting.settlementContinuations.append(continuation)
+        self.pendingSessions[id] = waiting
+      }
+    }
+  }
+
+  /// The ONE place a session's cleanup operation is claimed and run, whichever
+  /// of `requestDisposal`/`acknowledgeWriterQuiescent` completes the join.
+  /// Returns the settling `Task` when it claimed and started cleanup just now;
+  /// nil when the join is still incomplete (leaves the entry protected) or was
+  /// already claimed by an earlier call.
+  @discardableResult
+  private func tryClaimAndRunCleanup(recoverySessionID id: String) -> Task<Void, Never>? {
+    guard var entry = pendingSessions[id],
+      let disposition = entry.disposition,
+      entry.writerCanNeverWriteAgain,
+      !entry.cleanupClaimed
+    else { return nil }
+    entry.cleanupClaimed = true
+    pendingSessions[id] = entry
+    // #1807 round-2 correction (finding 4): STRONG self capture in both
+    // branches below — see `awaitSettlement`'s identical note.
+    switch disposition {
+    case .retain:
+      return Task { @MainActor [self] in
+        self.retireSettledSession(recoverySessionID: id)
+      }
+    case .destroy(let source):
+      let inner = destroySpoolAndKey(
+        id: id, source: source, markerPersistence: entry.markerPersistence)
+      return Task { @MainActor [self] in
+        _ = await inner.value
+        self.retireSettledSession(recoverySessionID: id)
+      }
+    }
+  }
+
+  /// Remove a session's entry once its cleanup has genuinely settled, and
+  /// resume every caller awaiting settlement.
+  private func retireSettledSession(recoverySessionID id: String) {
+    guard let entry = pendingSessions.removeValue(forKey: id) else { return }
+    for continuation in entry.settlementContinuations {
+      continuation.resume()
     }
   }
 
@@ -486,12 +888,13 @@ final class RecoveryCoordinator {
   }
 
   /// A recording's transcript was durably saved — delete that session's spool +
-  /// key. Best-effort, off the user's path, idempotent. Returns the detached
-  /// work so tests can await it; callers discard it.
+  /// key. Best-effort, off the user's path, idempotent. Returns a `Task` that
+  /// completes once cleanup has SETTLED (#1807 §C: waits for the writer's own
+  /// confirmation it can never write again, not merely for disposition to be
+  /// known) so tests can await it; production callers discard it.
   @discardableResult
   func handleDurableSave(recoverySessionID id: String) -> Task<Void, Never> {
-    if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id, source: .durableSave)
+    requestDisposal(recoverySessionID: id, disposition: .destroy(.durableSave))
   }
 
   /// A `.complete` dictation whose History save FAILED (#1740). The live path
@@ -505,16 +908,24 @@ final class RecoveryCoordinator {
   /// `fireStateChangeIfNeeded()` call, and that same-launch wake must not
   /// rediscover a spool whose deletion failed.
   ///
-  /// NOTE: unlike launch replay, this spool carries NO attempt marker — no
-  /// replay ever ran for it. If deletion fails, a later launch gives it its
-  /// FIRST crash-recovery attempt, which is consistent with the one-attempt
-  /// rule. No-op when `id` is nil (armed only when recovery was on).
+  /// #1807 (founder decision, superseding the note this replaces): unlike
+  /// launch replay, this spool carries no ATTEMPT marker — no replay ever
+  /// ran for it. The original note here said that meant a later launch
+  /// would give a delete-failure survivor its FIRST crash-recovery attempt,
+  /// "consistent with the one-attempt rule." Codex's design review (Q3)
+  /// found this made `.historySaveFailed` the one destruction source that
+  /// could not honestly promise "never replay a concluded take" without an
+  /// explicit decision — the founder chose uniformity: this source now
+  /// writes the SAME durable no-replay marker (§D1) every other source
+  /// does, before its delete is even attempted, so a survivor is a
+  /// `.markedForDiscard` cleanup retry on the next scan, never a fresh
+  /// first-ever attempt. No special case remains. No-op when `id` is nil
+  /// (armed only when recovery was on).
   @discardableResult
   func handleHistorySaveFailed(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
     nextLaunchOnlyRecoveryIDs.insert(id)
-    return destroySpoolAndKey(id: id, source: .historySaveFailed)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.historySaveFailed))
   }
 
   /// A recording ended at a terminal state WITHOUT a durable transcript save
@@ -536,7 +947,6 @@ final class RecoveryCoordinator {
     recoverySessionID id: String?, ending: RecordingRecoveryEnding
   ) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
     guard Self.shouldDeleteOnLiveEnding(ending) else {
       // #1762: the RETAIN branch. A live ending that keeps its spool is the one
       // that produces an orphan for a later launch to find, so it must not be
@@ -547,7 +957,11 @@ final class RecoveryCoordinator {
         RecoveryLog.line("live ending (\(ending)) — keeping the spool for a future launch")
       }
       nextLaunchOnlyRecoveryIDs.insert(id)
-      return nil
+      // #1807 (§C): retain still joins the writer-quiescence contract — the
+      // entry stays protected until the writer confirms it will never touch
+      // this spool again, exactly like the delete branch below. Only then is
+      // protection actually safe to drop.
+      return requestDisposal(recoverySessionID: id, disposition: .retain)
     }
     // #1762: the DELETE branch. Logged on REQUEST, before the destructor runs —
     // `emitDeletionFailed` only fires on failure, so a successful live-ending
@@ -563,7 +977,7 @@ final class RecoveryCoordinator {
     // failed one leaves the survivor as a next-launch item, consistent with
     // the best-effort crash-atomicity contract (§3.5).
     nextLaunchOnlyRecoveryIDs.insert(id)
-    return destroySpoolAndKey(id: id, source: .liveEnding)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.liveEnding))
   }
 
   /// A record-press aborted BEFORE a kernel session was minted (a PTT release or
@@ -575,8 +989,13 @@ final class RecoveryCoordinator {
   @discardableResult
   func handlePreStartAbort(recoverySessionID id: String?) -> Task<Void, Never>? {
     guard let id else { return nil }
-    if armedSessionID == id { armedSessionID = nil }
-    return destroySpoolAndKey(id: id, source: .preStartAbort)
+    // #1807 (§C): a pre-start abort means no kernel session was ever minted,
+    // so Audio never saw this id and no writer could ever exist for it —
+    // acknowledge that directly rather than waiting on a round-trip that will
+    // never arrive. Order versus `requestDisposal` below does not matter: the
+    // join completes once both halves are installed, whichever runs first.
+    acknowledgeWriterQuiescent(recoverySessionID: id)
+    return requestDisposal(recoverySessionID: id, disposition: .destroy(.preStartAbort))
   }
 
   /// On launch, scan for orphan spools and recover them (#1063 PR2 — replaces
@@ -649,6 +1068,36 @@ final class RecoveryCoordinator {
     RecoveryLog.line("scan finished")
   }
 
+  /// The production orphan-key sweep, returned so tests can await this operation
+  /// independently of the marker sweep that may legitimately retire its evidence.
+  @discardableResult
+  func startKeyOnlySweep() -> Task<Void, Never> {
+    let keyStore = self.keyStore
+    let makeSpoolStore = self.makeSpoolStore
+    return Task.detached(priority: .utility) { [weak self] in
+      let keyIDs = keyStore.listAccountIDs()
+      // #1807 (§C): a vanished coordinator must ABORT the sweep — it is not
+      // evidence the protection set is empty. `self?.protectedSessionIDs`
+      // reads nil only when `self` is nil, never when the set is genuinely
+      // empty (an empty dictionary's `.keys` is a real, non-nil, empty value).
+      guard let liveArmedKeys = await MainActor.run(body: { self?.protectedSessionIDs })
+      else { return }
+      let liveArmed = Set(liveArmedKeys)
+      // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
+      // an IO/permission error as "no spools" would delete keys for real `.ewrec`
+      // files. Abort the sweep instead — same discipline as the scan-start list.
+      guard let currentSpoolList = try? makeSpoolStore().listSpoolSessionIDs() else { return }
+      let currentSpools = Set(currentSpoolList)
+      for id in keyIDs where !liveArmed.contains(id) && !currentSpools.contains(id) {
+        // A failed audio-directory sync leaves a marker and a retained key.
+        // The marker-only sweep must establish durable absence before this
+        // orphan-key path can erase that key. Unreadability also defers.
+        guard makeSpoolStore().hasDiscardMarker(for: id) == .absent else { continue }
+        try? keyStore.delete(for: id)
+      }
+    }
+  }
+
   /// One full discovery + per-item-replay pass. Returns `true` exactly when
   /// the pass stopped because a live record-press was refused mid-scan (§3.1)
   /// — the signal `drainPendingRescan()` uses to stop draining outright rather
@@ -673,7 +1122,6 @@ final class RecoveryCoordinator {
     // and finished must not read like a pass that stalled — that ambiguity is
     // the whole reason this issue exists.
     RecoveryLog.line("\(spoolIDs.count) spool(s) on disk")
-    let armed = armedSessionID
 
     // Sweep KEY-ONLY orphans first: a key whose spool was never written — a
     // recording that armed then crashed before the helper wrote the first frame.
@@ -684,30 +1132,35 @@ final class RecoveryCoordinator {
     // its key to decrypt). Runs even when there are zero spools.
     //
     // Race-safe ordering (Codex code-diff r2 + r4 P2): inside the detached task,
-    // snapshot the keys FIRST, then read the live armed id AND re-list the spools
-    // FRESH (not the scan-start `spoolIDs` snapshot). Three protections, each read
-    // as late as possible so it sees the most recent state:
+    // snapshot the keys FIRST, then read the live-armed set AND re-list the
+    // spools FRESH (not the scan-start `spoolIDs` snapshot). Three protections,
+    // each read as late as possible so it sees the most recent state:
     //   - a key armed AFTER the key snapshot can't be in `keyIDs` (stored later);
-    //   - a currently-arming take is caught by the freshly-read `liveArmed`;
+    //   - a currently-arming take is caught by the freshly-read protection set;
     //   - a take that armed AND ENDED at a FAILURE terminal after the scan snapshot
     //     RETAINS its spool — re-listing spools fresh sees that spool, so its key is
     //     NOT swept (the stale scan-start snapshot would have missed it and deleted
     //     the key, making that recording undecryptable — r4 P2).
     // Only a key with NO spool now (and not live-armed) is a true key-only orphan.
-    let keyStore = self.keyStore
-    let makeSpoolStore = self.makeSpoolStore
-    Task.detached(priority: .utility) { [weak self] in
-      let keyIDs = keyStore.listAccountIDs()
-      let liveArmed = await MainActor.run { self?.armedSessionID }
-      // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
-      // an IO/permission error as "no spools" would delete keys for real `.ewrec`
-      // files. Abort the sweep instead — same discipline as the scan-start list.
-      guard let currentSpoolList = try? makeSpoolStore().listSpoolSessionIDs() else { return }
-      let currentSpools = Set(currentSpoolList)
-      for id in keyIDs where id != liveArmed && !currentSpools.contains(id) {
-        try? keyStore.delete(for: id)
+    startKeyOnlySweep()
+
+    // Every sweep candidate claims the same per-session operation as disposal.
+    let markerSweep = Task.detached(priority: .utility) { [weak self] in
+      guard let markerIDs = try? store.listDiscardMarkerSessionIDs(),
+        let listedSpools = try? store.listSpoolSessionIDs()
+      else { return }
+      for id in Set(markerIDs).subtracting(listedSpools) {
+        let cleanup: Task<Void, Never>? = await MainActor.run {
+          guard let self, !self.protectedSessionIDs.contains(id) else { return nil }
+          // Audio absence still needs a durable confirmation. The common
+          // operation also cleans the sidecars/key preserved by an earlier
+          // failed sync, before removing the discard evidence last.
+          return self.destroySpoolAndKey(id: id, source: .markedForDiscard)
+        }
+        if let cleanup { await cleanup.value }
       }
     }
+    markerSweepForTesting = markerSweep
 
     guard !spoolIDs.isEmpty else { return false }
 
@@ -716,8 +1169,49 @@ final class RecoveryCoordinator {
     // excluded; the contention guard below is the backstop.
     let alreadySaved = await existingRecoveryIDs()
 
+    // #1807 (§C): read the live-armed protection set FRESH, after the dedup
+    // await above, not the value that would have been captured before it — a
+    // take that armed DURING that suspension must be excluded too, matching
+    // the recheck-after-every-suspension requirement (§C, independent of §D).
+    let armedIDs = protectedSessionIDs
     var recoverable: [String] = []
-    for id in spoolIDs where id != armed {
+    // #1807 round-2 correction (Codex chunk-3 review round 2, finding 1):
+    // `nextLaunchOnlyRecoveryIDs` is no longer part of THIS loop condition —
+    // an id held for a future launch must still have its MARKER checked
+    // (below), so a `.markedForDiscard` retry is never blocked by the same
+    // suppression that protects REPLAY eligibility. Only after the marker
+    // check clears as `.absent` does the suppression apply, right before
+    // `recoverable`/History-dedup classification.
+    for id in spoolIDs where !armedIDs.contains(id) {
+      // #1807 (§D1): the discard marker is checked BEFORE History-dedup
+      // classification, in this SAME sequence — not a separate pass. A
+      // committed discard decision vetoes replay ahead of every other check,
+      // and (round 2) ahead of the same-launch suppression below too —
+      // CLEANUP eligibility and REPLAY eligibility are different questions.
+      switch store.hasDiscardMarker(for: id) {
+      case .final, .interruptedTemp:
+        // Never replay; a prior pass or launch already decided to discard
+        // this spool but the destructive delete never completed. Retry
+        // cleanup without ever appending to `recoverable`.
+        RecoveryLog.line("already marked for discard — retrying cleanup, no replay")
+        destroySpoolAndKey(id: id, source: .markedForDiscard)
+        continue
+      case .unreadable:
+        // Cannot tell — defer this spool THIS PASS rather than guess either
+        // way (never collapse into `.absent`, the exact `fileExists` mistake
+        // §A already fixed once in this file).
+        RecoveryLog.line("discard marker unreadable — deferring this spool this pass")
+        continue
+      case .absent:
+        break  // ordinary eligibility checks apply below
+      }
+      // #1807 round-2 correction (finding 1): an UNMARKED id already held for
+      // a future launch (a live-ending/history-save-failure whose cleanup
+      // failed, with no marker ever committed) must not be reclassified as a
+      // fresh replay candidate this launch — the resurrection bug this
+      // suppression exists to prevent. A marked id already retried above and
+      // never reaches this line.
+      guard !nextLaunchOnlyRecoveryIDs.contains(id) else { continue }
       if alreadySaved.contains(id) {
         // Saved in a prior run's save→delete crash window: delete WITHOUT
         // re-transcribing (the dedup MUST precede any append — History forbids a
@@ -767,6 +1261,27 @@ final class RecoveryCoordinator {
       // atomic handshake below, not inside it — the handshake itself still
       // has no `await` between its own check and claim.
       await Task.yield()
+      // #1807 round-2 correction (Codex chunk-2 review, finding 3): recheck
+      // pending membership immediately after this suspension, before replay
+      // admission — a take that armed DURING the yield above must not be
+      // replayed. Matches the recheck-after-every-suspension requirement
+      // (§C) and the identical recheck already applied to the dedup loop
+      // above, after its own `await`.
+      guard !protectedSessionIDs.contains(id) else { continue }
+      // #1807 round-2 correction (chunk-3 review round 2, finding 1): the
+      // marker check runs BEFORE the same-launch suppression check, exactly
+      // like the dedup loop above — a marked survivor still retries cleanup
+      // even if it's also in `nextLaunchOnlyRecoveryIDs`.
+      switch store.hasDiscardMarker(for: id) {
+      case .final, .interruptedTemp:
+        destroySpoolAndKey(id: id, source: .markedForDiscard)
+        continue
+      case .unreadable:
+        continue
+      case .absent:
+        break
+      }
+      guard !nextLaunchOnlyRecoveryIDs.contains(id) else { continue }
       // Atomic per-item handshake (§3.1/§3.2) — ONE non-suspending MainActor
       // turn: checked and claimed here with no `await` between any step, so
       // there is no window between "checked" and "acted." Preserves the
@@ -853,7 +1368,13 @@ final class RecoveryCoordinator {
       default: disposition = willDelete ? "requesting deletion" : "keeping"
       }
       RecoveryLog.line("replay \(Self.logLabel(outcome)) — \(disposition)")
-      if willDelete {
+      // #1807 (§C): recheck the live-armed protection set fresh, after the
+      // `await replayer.replay(...)` suspension above — an orphan's id
+      // reusing a freshly-armed live session's id is not a real occurrence
+      // (fresh UUIDs per arm), but a direct destroy here must still defer to
+      // that session's own join rather than racing it, on the same recheck
+      // discipline the scan's dedup loop above follows.
+      if willDelete, !protectedSessionIDs.contains(id) {
         destroySpoolAndKey(id: id, source: .replayOutcome)
       }
       // Post the standalone success notice for a recording that landed in History.
