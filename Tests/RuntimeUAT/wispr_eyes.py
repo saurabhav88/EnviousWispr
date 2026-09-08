@@ -11,6 +11,11 @@ from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_ac
     get_process_memory_mb, get_clipboard_text, validate_app_ready, element_frame,
     _iter_children_with_menubars)
 from ptt_binding import PTTBindingError, require_push_to_talk, resolve
+# #2426: the single-instance guard lives in its own module so CI can run its
+# control without importing PyObjC. Re-exported here because every caller and
+# every `wispr_eyes.running_enviouswispr_instances(...)` reference predates it.
+from instance_guard import (running_enviouswispr_instances,  # noqa: F401
+                            _require_single_instance, run_guard_cases)
 
 _pid = None
 _app = None
@@ -1697,78 +1702,6 @@ def press_record_key():
     _si.modifier_up(binding.keycode)
 
 
-def running_enviouswispr_instances():
-    """Every running EnviousWispr app bundle, as {pid: executable path}.
-
-    Reads `comm`, NOT `command`. `command` is the executable PLUS its arguments
-    with no delimiter between them, so recovering the executable means guessing
-    where the arguments begin - and every guess is wrong for some legal path. An
-    earlier version split on the first `" -"`, which silently truncates
-    `/Users/x/EW - issue/build/EnviousWispr Local.app/...` to `/Users/x/EW` and
-    drops that instance from the count. `comm` is the executable alone, so there
-    is nothing to parse. (Verified here: on macOS it is the full path, unlike
-    Linux where `comm` is the basename.)
-
-    Still excludes our own pid. A caller's argv routinely carries both
-    `EnviousWispr` (a worktree path) and `.app/Contents/MacOS/` (a script running
-    under `Python.app`), and excluding `python3` does not help - the interpreter's
-    binary is named `Python`. The basename test already rejects `.../Python`, so
-    the pid check is the second of two mechanisms rather than the only one; the
-    self-test carries a row that binds it, because a mutant proved the obvious row
-    did not.
-
-    Deliberately NOT scoped to `EnviousWispr Local.app`. A Release-configuration
-    test host is named `EnviousWispr.app`, carries the PRODUCTION bundle id, and
-    answers the same global hotkey; a `Local.app` pattern cannot see it, which is
-    exactly the instance you most want counted.
-    """
-    # `-ww` asks for unlimited width. macOS `ps(1)` documents that output can be
-    # truncated to the terminal width and that a second `-w` lifts the bound. It
-    # did NOT reproduce here - piped output stayed intact at 88,841 characters
-    # even with COLUMNS=60 - so this is insurance, not a fix for an observed
-    # truncation. It earns its place because the failure would be SILENT and in
-    # the dangerous direction: a truncated suffix drops a real instance, and the
-    # verdict becomes unattributable with nothing to indicate it.
-    out = subprocess.run(["ps", "-eww", "-o", "pid=,comm="],
-                         capture_output=True, text=True).stdout
-    me = str(os.getpid())
-    found = {}
-    for line in out.splitlines():
-        if not line.strip():
-            continue
-        pid, exe = line.strip().split(None, 1)
-        if pid == me:
-            continue
-        # An EXACT suffix, so the app's own XPC service and `llama-server` - both
-        # inside the same bundle and both in this listing - are excluded.
-        if exe.endswith(".app/Contents/MacOS/EnviousWispr"):
-            found[pid] = exe
-    return found
-
-
-def _require_single_instance(what):
-    """REFUSE rather than choose when more than one EnviousWispr is running.
-
-    Every instance answers the same global hotkey and writes the same shared
-    `app.log`, so a marker count drawn from that log is unattributable the moment
-    there are two. Measured 2026-08-25: a second instance inside the window
-    returned 2 of every marker with DISTINCT session ids - two real recordings
-    from one gesture - which reads as the app double-counting a synthetic press.
-    A confident wrong subject, pointing at production code.
-
-    Returns the instance map so the caller can re-check it afterwards. A wrong
-    refusal costs a rerun; a wrong verdict costs somebody a debugging session in
-    correct code.
-    """
-    found = running_enviouswispr_instances()
-    if len(found) != 1:
-        rows = "\n".join(f"    {p}  {c}" for p, c in sorted(found.items()))
-        print(f"BLOCKED: {what} needs exactly ONE running EnviousWispr; "
-              f"found {len(found)}.\n{rows}")
-        return None
-    return found
-
-
 # One per launch of a debug build. Chosen over `[Recovery] #1 scan pass 1 started
 # (launch)` by measurement rather than taste: 437 occurrences against 112 in the
 # same log, because the recovery line is conditional and this one is not. It also
@@ -2848,100 +2781,21 @@ def record_with_fault(scenario_name, **kwargs):
 
 
 def _self_test():
-    """Control for the single-instance guard - a HARNESS CONTRACT test.
+    """Control for the harness contract - it protects the INSTRUMENT and says
+    nothing about whether hands-free works (testing-philosophy.md
+    RULE: every-test-declares-which-of-four-things-it-protects).
 
-    It protects the INSTRUMENT and says nothing about whether hands-free works
-    (testing-philosophy.md RULE: every-test-declares-which-of-four-things-it-protects).
-
-    NOTHING RUNS THIS AUTOMATICALLY, stated rather than implied because a suite no
-    gate invokes reports nothing. The sibling `--self-test` modules that CI does
-    run (`ptt_binding.py`, `faultInjection.py`) are wired in on the stated grounds
-    that "neither module imports Quartz". This one does, transitively through
-    `ui_helpers`, so wiring it to the required check would rest on an untested
-    assumption about the hosted runner's PyObjC - and a CI addition that fails
-    reddens the required check for everybody. Run it by hand:
+    Two halves. The single-instance guard's rows live in `instance_guard.py` and
+    are called in here, so running this by hand still covers them and CI covers
+    them too (#2426); the log-side rows below are this module's own and stay
+    here, because they read `app.log` through code that needs the rest of the
+    harness. Run either entry point:
 
         python3 Tests/RuntimeUAT/wispr_eyes.py --self-test
-
-    Every row drives the real function with an injected `ps` table, and the set is
-    two-way: three rows must REFUSE and two must PASS, so a guard that stopped
-    classifying anything fails here rather than looking clean.
+        python3 Tests/RuntimeUAT/instance_guard.py --self-test
     """
-    import types, pathlib, shutil
-    real_run = subprocess.run
-    me = str(os.getpid())
-
-    def fake(rows):
-        def _run(cmd, *a, **k):
-            if list(cmd[:1]) == ["ps"]:
-                return types.SimpleNamespace(stdout="\n".join(rows), returncode=0)
-            return real_run(cmd, *a, **k)
-        return _run
-
-    ONE = ["  111 /Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"]
-    cases = [
-        ("one dev instance", ONE, 1, True),
-        ("two dev instances", ONE + [
-            "  222 /Users/x/wt/.derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app"
-            "/Contents/MacOS/EnviousWispr"], 2, False),
-        # The Release test host carries the PRODUCTION bundle id and answers the same
-        # global hotkey, and a pattern scoped to `EnviousWispr Local.app` cannot see
-        # it - which is the instance you most want counted.
-        ("dev + Release test host", ONE + [
-            "  333 /Users/x/wt/.derivedData/Release/Build/Products/Release/EnviousWispr.app"
-            "/Contents/MacOS/EnviousWispr"], 2, False),
-        # The probe's own argv carries `EnviousWispr` (a worktree path) AND
-        # `.app/Contents/MacOS/` (it runs under Python.app). A command-line
-        # substring test finds itself; excluding `python3` does not help, because
-        # the interpreter's binary is named `Python`.
-        ("one instance + this probe's own argv", ONE + [
-            f"  {me} /opt/homebrew/Frameworks/Python.framework/Versions/3.13/Resources"
-            f"/Python.app/Contents/MacOS/Python -u /tmp/EnviousWispr/probe.py"], 1, True),
-        # The row above does NOT bind the pid exclusion, and a mutant proved it: a
-        # Python probe's executable is `.../Python`, which the basename test
-        # already rejects, so removing `if pid == me` left the self-test green.
-        # This row is the one that binds it - our own pid wearing an executable
-        # the basename test WOULD accept. Contrived as a process, exact as a
-        # requirement: the two mechanisms answer different questions ("is this an
-        # EnviousWispr app" and "is this me"), and only this row can tell whether
-        # the second one is still there.
-        ("our own pid wearing a matching executable", ONE + [
-            f"  {me} /Users/x/EW/build/EnviousWispr Local.app"
-            f"/Contents/MacOS/EnviousWispr"], 1, True),
-        ("no instance at all", ["  999 /usr/bin/vim"], 0, False),
-        # A worktree or parent directory may legally contain " - ". An earlier
-        # version recovered the executable by splitting `command` on the first
-        # `" -"`, which truncates this to `/Users/x/EW` and drops the instance -
-        # a real second app going uncounted, which is the one failure this guard
-        # exists to prevent. Reading `comm` removes the parse entirely; this row
-        # is what stops anyone reintroducing one.
-        ("a path containing a space-hyphen is still counted", ONE + [
-            "  444 /Users/x/EW - issue/build/EnviousWispr Local.app"
-            "/Contents/MacOS/EnviousWispr"], 2, False),
-        # Same bundle, sibling executables. `comm` lists them, and an EXACT
-        # suffix is what keeps them out of the count; a substring test would
-        # treble every instance.
-        ("the app's own XPC service and llama-server are not instances", ONE + [
-            "  555 /Users/x/EW/build/EnviousWispr Local.app/Contents/XPCServices"
-            "/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService",
-            "  556 /Users/x/EW/build/EnviousWispr Local.app/Contents/Resources"
-            "/llama-server"], 1, True),
-    ]
-
-    failures = []
-    for name, rows, want_n, want_pass in cases:
-        subprocess.run = fake(rows)
-        try:
-            n = len(running_enviouswispr_instances())
-            got_pass = _require_single_instance("self-test") is not None
-        finally:
-            subprocess.run = real_run
-        if n != want_n or got_pass != want_pass:
-            failures.append(f"{name}: count={n} (want {want_n}), "
-                            f"guard={'PASS' if got_pass else 'REFUSED'} "
-                            f"(want {'PASS' if want_pass else 'REFUSED'})")
-        else:
-            print(f"  ok      {name}")
+    import pathlib, shutil
+    failures, guard_rows = run_guard_cases()
 
     # The banner counter's PURE half, driven with synthetic text. This is where
     # the two review findings on the log side live: a banner written before
@@ -3157,7 +3011,7 @@ def _self_test():
         else:
             print(f"  ok      {name}")
 
-    total = (len(cases) + len(banner_cases) + banner_rows_extra + file_rows
+    total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
              + len(window_cases))
     if failures:
         for f in failures:

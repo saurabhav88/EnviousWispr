@@ -602,7 +602,7 @@ jobs:
           scripts/ci/check-download-link-utms.sh --self-test
           scripts/ci/check-download-link-utms.sh
 
-      - name: RuntimeUAT PTT binding policy + Swift/Python key parity
+      - name: RuntimeUAT PTT binding policy + Swift/Python key parity + instance guard
         run: |
           set -euo pipefail
           # #1997. The UAT harness resolves which key to hold for push-to-talk.
@@ -613,9 +613,24 @@ jobs:
           # MODIFIER_KEYS drift apart in EITHER direction: an app-only key makes
           # the harness refuse (safe), but a Python-only key makes it post a
           # modifier event at a Carbon-registered hotkey and produce exactly that
-          # false product FAIL. Neither module imports Quartz, so both run here.
+          # false product FAIL.
+          #
+          # #2426 adds the third. The membership rule for this step is that a
+          # module here imports nothing heavy: no Quartz, no PyObjC, so it can be
+          # imported on the hosted runner without an untested assumption about
+          # what that runner has. `ptt_binding` and `faultInjection` already met
+          # it. `wispr_eyes` does not — it reaches ApplicationServices through
+          # `ui_helpers` — so its single-instance guard was MOVED to
+          # `instance_guard.py`, which imports only `os`, `subprocess` and `sys`.
+          # That is what makes the third line safe to add: the rule was satisfied
+          # rather than waived. The guard refuses a UAT verdict when a second
+          # EnviousWispr is running, because every instance answers the same
+          # global hotkey and writes the same `app.log`, so a marker count drawn
+          # from that log is unattributable — measured 2026-08-25 as two real
+          # recordings from one gesture, reading as the app double-counting.
           python3 Tests/RuntimeUAT/ptt_binding.py --self-test
           python3 Tests/RuntimeUAT/faultInjection.py --self-test
+          python3 Tests/RuntimeUAT/instance_guard.py --self-test
 
       - name: Judge receipt + billing contracts (#2007/#2008)
         run: |
