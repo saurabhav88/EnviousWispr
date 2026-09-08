@@ -1354,8 +1354,13 @@ internal final class PasteCascadeExecutor {
   /// (`CFAbsoluteTimeGetCurrent`), not any self-reported elapsed a callee
   /// hands back, because a callee's own accounting is exactly what #2633's
   /// activation loop got wrong (its `elapsed` counted intended sleeps only).
+  ///
+  /// `Task.detached`, not a plain `Task { }`, for the same reason as
+  /// `logPasteTimingStart` below — a plain `Task { }` here would inherit
+  /// this method's `@MainActor` isolation and only queue behind whatever
+  /// synchronous work runs next, rather than starting immediately.
   private func logPasteTiming(step: String, elapsedMs: Double, outcome: String, bundleId: String) {
-    Task {
+    Task.detached {
       await AppLogger.shared.log(
         "step=\(step) elapsed_ms=\(String(format: "%.1f", elapsedMs)) "
           + "outcome=\(outcome) bundle_id=\(bundleId)",
@@ -1370,8 +1375,19 @@ internal final class PasteCascadeExecutor {
   /// that was never entered. This pairs with it: call immediately before the
   /// risky call, so a hang shows a `start` line with no matching completion,
   /// naming exactly which step is stuck.
+  ///
+  /// Cloud review (PR #2716, round 2): a plain `Task { }` created here
+  /// inherits this method's `@MainActor` isolation, so it only QUEUES on the
+  /// main actor rather than running immediately. The very next line is
+  /// exactly the synchronous, blocking call this breadcrumb exists to
+  /// precede, which occupies the main actor and starves that queued task —
+  /// so the "start" line would not actually reach the log until AFTER the
+  /// blocking call returns, defeating the whole point on the one path that
+  /// matters (a genuine hang). `Task.detached` inherits no actor, so it
+  /// begins running on its own thread immediately and can reach `AppLogger`
+  /// (a different actor) independent of whatever the main actor is doing.
   private func logPasteTimingStart(step: String, bundleId: String) {
-    Task {
+    Task.detached {
       await AppLogger.shared.log(
         "step=\(step) start bundle_id=\(bundleId)",
         level: .info, category: "PasteTiming")
