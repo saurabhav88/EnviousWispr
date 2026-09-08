@@ -49,6 +49,14 @@ public final class ASRManager: ASRManagerInterface {
   /// #959 readiness-integrity token (see `ASRManagerProxy.loadGeneration`).
   private var loadGeneration: UInt64 = 0
 
+  /// #1908 Codex review round 5: same shape as `loadGeneration`, for
+  /// `startStreaming()`. Lives here (not only inside `ParakeetBackend`) so
+  /// `cancelInFlightStreamingStart()` can invalidate an in-flight attempt
+  /// SYNCHRONOUSLY, callable from `withOrderedDeadline`'s non-async
+  /// `onTimeout` — the actor-isolated `ParakeetBackend`-level guard alone
+  /// cannot give that ordering guarantee, only cross-Task-race protection.
+  private var streamingStartGeneration: UInt64 = 0
+
   /// #959 single-flight identity (see `ASRManagerProxy.loadTaskSeq`).
   private var loadTaskSeq: UInt64 = 0
   private var activeLoadTaskID: UInt64 = 0
@@ -409,7 +417,19 @@ public final class ASRManager: ASRManagerInterface {
       await activeBackend.cancelStreaming()
       isStreaming = false
     }
+    // #1908 Codex review round 5: captured BEFORE the vendor call, checked
+    // AFTER it returns. A caller that gave up waiting (deadline expiry) bumps
+    // `streamingStartGeneration` via `cancelInFlightStreamingStart()`; if that
+    // happened while this call was still in flight, the vendor call can still
+    // complete successfully here — `ParakeetBackend`'s own generation guard
+    // does not stop THIS, since nothing superseded ITS attempt. Refuse to
+    // resurrect `isStreaming` for an attempt nobody is listening for anymore.
+    let gen = streamingStartGeneration
     try await activeBackend.startStreaming(options: options)
+    guard gen == streamingStartGeneration else {
+      await activeBackend.cancelStreaming()
+      throw CancellationError()
+    }
     isStreaming = true
   }
 
@@ -450,18 +470,30 @@ public final class ASRManager: ASRManagerInterface {
     isStreaming = false
   }
 
-  /// #1908 Codex review: invalidate an in-flight `startStreaming()` a caller
-  /// gave up waiting on (e.g. `ParakeetEngineAdapter.beginSession()`'s
+  /// #1908 Codex review (round 4/5): invalidate an in-flight `startStreaming()`
+  /// a caller gave up waiting on (e.g. `ParakeetEngineAdapter.beginSession()`'s
   /// deadline). Deliberately NOT `cancelStreaming()` — that guards on
   /// `isStreaming`, which is still `false` here (the abandoned attempt never
-  /// reached its own `isStreaming = true` line). Forwards unconditionally to
-  /// `activeBackend.cancelStreaming()`, whose concrete `ParakeetBackend`
-  /// conformer bumps its own streaming generation so the abandoned attempt's
-  /// late completion cannot publish `streamingManager` behind a newer
-  /// session's back — the same class `cancelInFlightLoad()` closes on the
-  /// load side.
-  public func cancelInFlightStreamingStart() async {
-    await activeBackend?.cancelStreaming()
+  /// reached its own `isStreaming = true` line).
+  ///
+  /// SYNCHRONOUS on purpose: called from `withOrderedDeadline`'s non-async
+  /// `onTimeout`, which GUARANTEES this bump completes before the timed-out
+  /// caller resumes — the ordering bare `withDeadline` cannot provide (round
+  /// 5 finding: the vendor call can still finish and set `isStreaming = true`
+  /// in the gap between a bare deadline firing and an `async` cleanup call
+  /// actually reaching this method). The generation check lives in
+  /// `startStreaming()` itself, right after its own vendor call returns.
+  ///
+  /// The backend-level cleanup (`activeBackend.cancelStreaming()`) is fired
+  /// WITHOUT awaiting it — it does not need the same hard ordering.
+  /// `ParakeetBackend`'s own `streamingGeneration` guard (round 4) is
+  /// independently, actor-serialization-correct against a late completion
+  /// racing a NEWER session's `startStreaming()`, regardless of when this
+  /// fire-and-forget cleanup actually lands.
+  public func cancelInFlightStreamingStart() {
+    streamingStartGeneration &+= 1
+    let backend = activeBackend
+    Task { await backend?.cancelStreaming() }
   }
 
   /// Unload the active backend, freeing model RAM.

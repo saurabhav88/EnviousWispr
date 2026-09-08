@@ -982,15 +982,23 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
       text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
-    // #1908: `cancelInFlightStreamingStart()`'s forward — optional-chained
-    // (`activeBackend?`) rather than guard-unwrapped like the two siblings
-    // above, so a distinct source string, but the SAME operation and the same
-    // structural safety: its only caller, `ParakeetEngineAdapter.beginSession()`'s
+    // #1908 round 5: `startStreaming()`'s own generation-mismatch cleanup —
+    // a caller abandoned this attempt (deadline) while the vendor call was
+    // still in flight and it completed anyway; undo the backend's publish.
+    // Reached only from within `startStreaming()` itself, same caller set
+    // and same structural safety as the two siblings above.
+    CallSite(
+      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
+      text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
+    // #1908 round 5: `cancelInFlightStreamingStart()`'s fire-and-forget
+    // backend cleanup, fired synchronously from `withOrderedDeadline`'s
+    // `onTimeout`. Its only caller, `ParakeetEngineAdapter.beginSession()`'s
     // deadline-timeout branch, runs exclusively within an active dictation
     // session, which the same recovery-mutual-exclusion argument above covers.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
-      text: "await activeBackend?.cancelStreaming()", classification: .transitivelyCoveredByCaller),
+      text: "Task { await backend?.cancelStreaming() }",
+      classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "finalizeStreaming",
       text: "let result = try await activeBackend.finalizeStreaming()",

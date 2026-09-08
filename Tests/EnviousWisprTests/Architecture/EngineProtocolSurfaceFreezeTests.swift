@@ -504,11 +504,13 @@ import Testing
         // #1908: HEAVY wedge-recovery requirement — see `ASRManager
         // .attemptWedgeRecoveryUnload()` / `ASRManagerProxy`'s no-op default.
         MemberSignature(condition: nil, signature: "func attemptWedgeRecoveryUnload() async"),
-        // #1908 (chunk A+B review round 4): invalidate an in-flight
+        // #1908 (chunk A+B review rounds 4-5): invalidate an in-flight
         // `startStreaming()` attempt a caller gave up waiting on — see
         // `ASRManager.cancelInFlightStreamingStart()` / `ASRManagerProxy`'s
         // no-op default (its own signal-watchdog already fully recovers).
-        MemberSignature(condition: nil, signature: "func cancelInFlightStreamingStart() async"),
+        // SYNCHRONOUS (round 5): must be callable from `withOrderedDeadline`'s
+        // non-async `onTimeout` for its ordering guarantee.
+        MemberSignature(condition: nil, signature: "func cancelInFlightStreamingStart()"),
         // #1908: #1707 Phase 2 batch-decode fault oracle, ported from
         // `ASRServiceHandler`'s `#if DEBUG` block onto the shared interface
         // so `BatchDecodeFaultController` no longer needs a concrete
@@ -530,7 +532,7 @@ import Testing
           signature: "public func attemptWedgeRecoveryUnload() async"),
         MemberSignature(
           condition: nil,
-          signature: "public func cancelInFlightStreamingStart() async"),
+          signature: "public func cancelInFlightStreamingStart()"),
         MemberSignature(
           condition: "DEBUG",
           signature: "public func armBatchDecodeHold(trialID: String) async"),

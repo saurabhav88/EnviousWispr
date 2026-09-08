@@ -562,16 +562,29 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // bounded this via `withASRXPCOperationSignal`'s cross-process watchdog;
       // that mechanism has no in-process analog (nothing else needs a
       // side-channel file to know whether an in-process await is progressing).
-      // A flat deadline is the direct in-process replacement: on expiry this
-      // falls into the SAME "streaming setup failed, use batch" handling as
-      // every other streaming-start failure below, so a genuine vendor wedge
+      // A deadline is the direct in-process replacement: on expiry this falls
+      // into the SAME "streaming setup failed, use batch" handling as every
+      // other streaming-start failure below, so a genuine vendor wedge
       // degrades to batch decode instead of parking `beginSession()` (and the
       // kernel awaiting it) forever.
-      let outcome = await withDeadline(seconds: asrInterruptionRecoveryDeadlineSec) {
-        [weak self, options] () -> StreamingStartOutcome in
-        guard let self else { return .cancelled }
-        return await self.attemptStreamingStart(options: options)
-      }
+      //
+      // `withOrderedDeadline`, not bare `withDeadline` (round 5 finding): the
+      // invalidation must complete BEFORE this function can observe the
+      // timeout, or the abandoned vendor call can still finish and resurrect
+      // `isStreaming` in the gap between the deadline firing and an `async`
+      // cleanup call actually reaching `ASRManager`. `onTimeout` runs
+      // synchronously to completion first — matches `recoverFromASRInterruption()`'s
+      // own use of this primitive for the exact same reason on the load side.
+      let outcome = await withOrderedDeadline(
+        seconds: asrInterruptionRecoveryDeadlineSec,
+        operation: { [weak self, options] () -> StreamingStartOutcome in
+          guard let self else { return .cancelled }
+          return await self.attemptStreamingStart(options: options)
+        },
+        onTimeout: { [weak self] in
+          self?.asrManager.cancelInFlightStreamingStart()
+        }
+      )
       switch outcome {
       case .succeeded:
         streamingActive = true
@@ -625,15 +638,15 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           durationMs: nil)
       case nil:
         // #1908: the vendor call never returned within the deadline — a genuine
-        // wedge, not an ordinary failure. `withDeadline`'s cancel is best-effort
-        // (cannot preempt a call that never checks cancellation), so the
-        // abandoned vendor Task may keep running in the background; this session
-        // gives up on it and falls back to batch, same as `.failed` above.
-        // Codex review P1: invalidate it FIRST, before falling back — otherwise
-        // its late completion can still publish streaming state (`isStreaming`,
-        // `ParakeetBackend.streamingManager`) behind this session's back and
-        // corrupt whatever the NEXT session sets up.
-        await asrManager.cancelInFlightStreamingStart()
+        // wedge, not an ordinary failure. `onTimeout` (above) already ran
+        // `cancelInFlightStreamingStart()` to completion before this branch
+        // could ever be reached, so the abandoned attempt is already
+        // invalidated by the time this session falls back to batch, same as
+        // `.failed` above. `withOrderedDeadline`'s own best-effort task-cancel
+        // still cannot preempt a vendor call that ignores `Task.isCancelled` —
+        // the generation checks in `ASRManager.startStreaming()` and
+        // `ParakeetBackend.startStreaming()` are what actually stop a late
+        // completion from resurrecting state, not the cancel itself.
         streamingActive = false
         SentryBreadcrumb.add(
           stage: "asr", message: "Streaming start wedged, will use batch", level: .warning)
