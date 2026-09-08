@@ -432,8 +432,20 @@ public final class ASRManager: ASRManagerInterface {
     // — `ParakeetBackend`'s own generation guard does not stop THIS, since
     // nothing superseded ITS attempt. Refuse to resurrect `isStreaming` for
     // an attempt nobody is listening for anymore.
+    //
+    // #1908 round 7: deliberately does NOT also call
+    // `activeBackend.cancelStreaming()` here (round 5's version did).
+    // `cancelStreaming()` cancels whichever stream is CURRENT — it has no
+    // way to know this manager is the one THIS now-superseded attempt just
+    // published, versus a NEWER session's own `startStreaming()` that may
+    // have already run and published its own stream in the meantime. A
+    // blind cancel here could tear down a legitimate newer stream instead
+    // of the abandoned one. Left unreclaimed here, this attempt's published
+    // manager is cleaned up the next time ANYTHING calls `startStreaming()`
+    // (its own pre-start "cancel any existing session" step) or
+    // `unloadModel()` — both already unconditional-by-design because at
+    // those points replacing/discarding whatever is current IS correct.
     guard gen == streamingStartGeneration else {
-      await activeBackend.cancelStreaming()
       throw CancellationError()
     }
     isStreaming = true
@@ -490,13 +502,6 @@ public final class ASRManager: ASRManagerInterface {
   /// actually reaching this method). The generation check lives in
   /// `startStreaming()` itself, right after its own vendor call returns.
   ///
-  /// The backend-level cleanup (`activeBackend.cancelStreaming()`) is fired
-  /// WITHOUT awaiting it — it does not need the same hard ordering.
-  /// `ParakeetBackend`'s own `streamingGeneration` guard (round 4) is
-  /// independently, actor-serialization-correct against a late completion
-  /// racing a NEWER session's `startStreaming()`, regardless of when this
-  /// fire-and-forget cleanup actually lands.
-  ///
   /// #1908 Codex review round 6: also clears `isStreaming` synchronously,
   /// unconditionally. `withOrderedDeadline` races two Tasks on a `claim()`
   /// lock that decides who RESUMES the caller — it does not gate an
@@ -507,11 +512,21 @@ public final class ASRManager: ASRManagerInterface {
   /// completion are that close. Forcing `isStreaming` false here makes the
   /// caller's observed outcome (a timeout) consistent with manager state
   /// regardless of which side technically finished its own check first.
+  ///
+  /// #1908 round 7: deliberately does NOT also reach into the backend
+  /// (round 5/6's version fired `activeBackend.cancelStreaming()` here).
+  /// This method runs SYNCHRONOUSLY, at the exact moment the caller gives
+  /// up — a session that starts fresh immediately after can already be
+  /// mid-`startStreaming()` before an async cross-actor cleanup call from
+  /// here would even land, and `cancelStreaming()` cancels whichever stream
+  /// is CURRENT with no way to tell "the one this abandoned attempt
+  /// published" from "the one a brand new session just published". Bumping
+  /// `streamingStartGeneration` and clearing `isStreaming` is all this needs
+  /// to do at THIS layer; see `startStreaming()`'s own guard-mismatch branch
+  /// for why it stopped reaching into the backend too.
   public func cancelInFlightStreamingStart() {
     streamingStartGeneration &+= 1
     isStreaming = false
-    let backend = activeBackend
-    Task { await backend?.cancelStreaming() }
   }
 
   /// Unload the active backend, freeing model RAM.

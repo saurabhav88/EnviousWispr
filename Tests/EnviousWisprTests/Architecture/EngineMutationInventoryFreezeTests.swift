@@ -982,23 +982,19 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
       text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
-    // #1908 round 5: `startStreaming()`'s own generation-mismatch cleanup —
-    // a caller abandoned this attempt (deadline) while the vendor call was
-    // still in flight and it completed anyway; undo the backend's publish.
-    // Reached only from within `startStreaming()` itself, same caller set
-    // and same structural safety as the two siblings above.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
-      text: "await activeBackend.cancelStreaming()", classification: .transitivelyCoveredByCaller),
-    // #1908 round 5: `cancelInFlightStreamingStart()`'s fire-and-forget
-    // backend cleanup, fired synchronously from `withOrderedDeadline`'s
-    // `onTimeout`. Its only caller, `ParakeetEngineAdapter.beginSession()`'s
-    // deadline-timeout branch, runs exclusively within an active dictation
-    // session, which the same recovery-mutual-exclusion argument above covers.
-    CallSite(
-      file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "cancelStreaming",
-      text: "Task { await backend?.cancelStreaming() }",
-      classification: .transitivelyCoveredByCaller),
+    // #1908 round 5 added, round 7 removed: `startStreaming()`'s own
+    // generation-mismatch branch and `cancelInFlightStreamingStart()` both
+    // used to reach into the backend here too. Round 7 found that reaching
+    // into `activeBackend.cancelStreaming()` from an ABANDONED attempt's
+    // cleanup can cancel a NEWER session's already-published stream instead
+    // — `cancelStreaming()` cancels whichever stream is CURRENT, with no way
+    // to tell "the one this abandoned attempt made" from "the one a session
+    // that started right after made". Both cleanups now touch only this
+    // manager's own local state; the abandoned backend-level publish (if any)
+    // is reclaimed the next time anything calls `startStreaming()` (its own
+    // unconditional pre-start clear) or `unloadModel()` — both already
+    // correct to be unconditional, since at those points replacing/
+    // discarding whatever is current IS the intent.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "finalizeStreaming",
       text: "let result = try await activeBackend.finalizeStreaming()",
