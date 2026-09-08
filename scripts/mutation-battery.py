@@ -110,6 +110,7 @@ import html
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -932,9 +933,26 @@ def self_test_source(module):
     return f"Tests/{SELF_TEST_TARGET}/{module}.py"
 
 
-def self_test_command(suite):
+def self_test_command(suite, root=None):
+    """The command an operator runs for a `RuntimeUAT/<module>` row.
+
+    ANCHORED TO A CHECKOUT when one is given. The path is relative, so a command printed
+    while validating checkout B resolves against the caller's cwd and can silently run a
+    STALE self-test in checkout A, or fail as missing (#2687 finding 5). The validator
+    knows which tree it read; the caller of this function is the only one who does.
+    """
     module = self_test_module(suite)
-    return f"python3 {self_test_source(module)} {SELF_TEST_FLAG}" if module else None
+    if not module:
+        return None
+    command = f"python3 {self_test_source(module)} {SELF_TEST_FLAG}"
+    # QUOTED. A checkout path with a space is ordinary here — this repo's own dev bundle is
+    # `EnviousWispr Local.app` — and an unquoted `cd` splits it, so the command an operator
+    # copies fails or, worse, runs somewhere else entirely (#2687 review r1 P2).
+    # A SUBSHELL, so pasting this into an interactive shell does not leave the operator
+    # standing in a checkout they did not choose. The whole point of anchoring is that they
+    # started in checkout A and are validating B; a bare `cd` would then silently retarget
+    # everything they type next (#2713 cloud review r4).
+    return f"(cd {shlex.quote(str(root))} && {command})" if root else command
 
 
 FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
@@ -1648,7 +1666,10 @@ def main(argv=None):
             suite = f" [{row.get('suite')}]" if row.get("suite") else ""
             fire = f"; must fire: {row['must_fire']}" if row["must_fire"] else ""
             silent = f"; must not fire: {row['must_not_fire']}" if row["must_not_fire"] else ""
-            command = self_test_command(row.get("suite"))
+            # ANCHORED: this is the line an operator copies, and a relative path
+            # resolves against THEIR cwd rather than the tree the row was run in
+            # (#2687 finding 5).
+            command = self_test_command(row.get("suite"), worktree)
             invocation = f"; run: {command}" if command else ""
             print(
                 f"  - row {row['_recipe_index']}: {row['label']}{suite}: "
