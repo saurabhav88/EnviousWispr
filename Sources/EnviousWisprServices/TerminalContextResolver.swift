@@ -148,7 +148,8 @@ package final class TerminalResolutionBudget: Sendable {
   }
 
   /// Run one bounded step: apply the remaining budget as the accessibility
-  /// messaging timeout, run the call, then charge what it actually took.
+  /// messaging timeout on the object `body` actually messages, run the call,
+  /// then charge what it actually took.
   ///
   /// This is what makes the cap CUMULATIVE rather than per-call (founder,
   /// 2026-07-28: "it has to be a 100 ms cap for all the questions"). An earlier
@@ -165,12 +166,29 @@ package final class TerminalResolutionBudget: Sendable {
   /// 1.79 ms in iTerm2, with the only spikes (19-35 ms) on a cold first call.
   /// The cap is roughly fifty times the typical cost and three times the worst
   /// observed — it exists to bound a wedge, and never bites healthy work.
+  ///
+  /// #2705: `element` used to be discarded — this bounded a throwaway
+  /// `AXUIElementCreateApplication` handle nobody read, so the messaging
+  /// timeout it "set" protected nothing. Now `element` is the exact object
+  /// `body` messages, `nil` when `body` already bounds its own receiver
+  /// (`freshFocusedElement`'s own `messagingTimeout` parameter). `nil` never
+  /// touches the CAPTURED Tier 1 focused element's timeout — every real caller
+  /// passes either `nil` or a freshly-requeried element, never the original
+  /// capture, so this step cannot leak a bound onto Tier 1's write/verify
+  /// sequence (docs/feature-requests/issue-2705-2026-09-07-paste-delivery-refactor.md).
+  /// - Parameter element: the object `body` will message, or `nil` when `body`
+  ///   bounds itself. A non-`nil` element whose timeout fails to set returns
+  ///   `onTimeoutFailure` without running `body` at all.
   /// - Parameter label: names this step in the timing trace. Required rather
   ///   than defaulted, so a new bounded step cannot silently appear in the log
   ///   as an anonymous cost.
-  package func step<T>(applying element: AXUIElement, label: String, _ body: () -> T) -> T {
-    let application = AXUIElementCreateApplication(processIdentifier(of: element))
-    AXUIElementSetMessagingTimeout(application, Float(max(0.005, remaining)))
+  package func step<T>(
+    applying element: AXUIElement?, label: String, onTimeoutFailure: T, _ body: () -> T
+  ) -> T {
+    if let element {
+      guard AXUIElementSetMessagingTimeout(element, Float(max(0.005, remaining))) == .success
+      else { return onTimeoutFailure }
+    }
     let started = now()
     defer {
       // ONE call. `charge` both charges and records, so the separate
@@ -210,12 +228,6 @@ package final class TerminalResolutionBudget: Sendable {
     }
     let total = samples.reduce(0.0) { $0 + $1.seconds }
     return parts.joined(separator: " ") + " total=\(String(format: "%.1f", total * 1000))ms"
-  }
-
-  private func processIdentifier(of element: AXUIElement) -> pid_t {
-    var pid: pid_t = 0
-    AXUIElementGetPid(element, &pid)
-    return pid
   }
 }
 
