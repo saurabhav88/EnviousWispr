@@ -542,6 +542,27 @@ public struct RecoverySpoolStore: Sendable {
       ".\(recoverySessionID).\(RecoveryConstants.discardMarkerFileExtension).tmp")
   }
 
+  /// Establish durability for evidence left by a prior process without
+  /// allocating or replacing its marker. Presence alone is not a sync receipt.
+  public func synchronizeExistingDiscardEvidence(for recoverySessionID: String) throws -> Bool {
+    for url in [discardMarkerURL(for: recoverySessionID),
+                discardMarkerTempURL(for: recoverySessionID)] {
+      let fd = Foundation.open(url.path, O_RDONLY)
+      guard fd >= 0 else {
+        let code = errno
+        if code == ENOENT { continue }
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+      }
+      defer { Foundation.close(fd) }
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno)
+      }
+      try Self.syncDirectory(containing: url)
+      return true
+    }
+    return false
+  }
+
   /// Commit the no-replay decision before attempting destructive cleanup.
   /// Success means the marker bytes AND the final directory entry are durable
   /// — this is the readiness-retry marker's full durable-write shape

@@ -89,8 +89,8 @@ final class RecoveryCoordinator {
     /// operation — guards a duplicate disposition call or a duplicate writer
     /// ack from starting a second marker write or deletion.
     var cleanupClaimed = false
-    /// #1807 (§D2): `Bool` (not `Void`) — carries whether the write actually
-    /// succeeded, the first axis of `destroySpoolAndKey`'s decision table.
+    /// Reports proven durable discard evidence, including an earlier commit
+    /// reused by a later cleanup attempt.
     var markerPersistence: Task<Bool, Never>?
     /// Every caller awaiting this session's cleanup SETTLING, not merely being
     /// claimed. Production discards the `Task` it gets back; tests await it
@@ -100,6 +100,14 @@ final class RecoveryCoordinator {
   }
   private var pendingSessions: [String: PendingSession] = [:]
   private var discardOperations: [String: Task<Void, Never>] = [:]
+  // Proven commits remain authoritative across retries until evidence removal begins.
+  private var durableDiscardEvidenceIDs: Set<String> = []
+
+  // Instance-scoped completion seam for disposal integration tests.
+  func awaitDiscardOperationsForTesting() async {
+    let operations = Array(discardOperations.values)
+    for operation in operations { await operation.value }
+  }
   // Instance-scoped completion seam; production never awaits the sweep.
   // periphery:ignore - test seam
   var markerSweepForTesting: Task<Void, Never>?
@@ -573,6 +581,7 @@ final class RecoveryCoordinator {
 
       // Evidence is last; failed key/sidecar cleanup cannot prevent this attempt.
       if audioRemovalConfirmed {
+        durableDiscardEvidenceIDs.remove(id)
         let result: Result<Void, any Error> = await Task.detached(priority: .utility) {
           var firstFailure: (any Error)?
           do { try store.deleteDiscardMarker(for: id) } catch { firstFailure = error }
@@ -633,12 +642,12 @@ final class RecoveryCoordinator {
 
   /// Begins immediately at disposition, and settles before destructive cleanup.
   ///
-  /// #1807 (§D2): returns whether the write actually SUCCEEDED — "durable
-  /// discard evidence: yes/no" is the first axis of the decision table
-  /// `destroySpoolAndKey` applies once this settles.
+  /// Returns whether durable discard evidence is established. A retained
+  /// session keeps its proven commit across later cleanup attempts.
   private func beginDiscardMarkerPersistence(
     recoverySessionID id: String, source: DestructionSource
   ) -> Task<Bool, Never> {
+    if durableDiscardEvidenceIDs.contains(id) { return Task { true } }
     let store = makeSpoolStore()
     let override = destructionMarkerWriteForTesting
     return Task.detached(priority: .utility) { [self] in
@@ -646,8 +655,10 @@ final class RecoveryCoordinator {
         if let override {
           try override(id)
         } else {
-          try store.writeDiscardMarker(for: id)
+          let existingEvidence = try store.synchronizeExistingDiscardEvidence(for: id)
+          if !existingEvidence { try store.writeDiscardMarker(for: id) }
         }
+        await MainActor.run { _ = self.durableDiscardEvidenceIDs.insert(id) }
         return true
       } catch {
         await MainActor.run {
@@ -1099,20 +1110,10 @@ final class RecoveryCoordinator {
       for id in Set(markerIDs).subtracting(listedSpools) {
         let cleanup: Task<Void, Never>? = await MainActor.run {
           guard let self, !self.protectedSessionIDs.contains(id) else { return nil }
-          return self.claimDiscardOperation(id: id) {
-            await Task.detached(priority: .utility) {
-              do {
-                let spoolIDs = try store.listSpoolSessionIDs()
-                guard !spoolIDs.contains(id) else { return }
-                // Persist audio absence BEFORE removing either form of evidence.
-                try store.syncSpoolDirectory()
-                try store.deleteDiscardMarker(for: id)
-                try store.syncSpoolDirectory()
-              } catch {
-                // Failure before evidence removal leaves the marker for another pass.
-              }
-            }.value
-          }
+          // Audio absence still needs a durable confirmation. The common
+          // operation also cleans the sidecars/key preserved by an earlier
+          // failed sync, before removing the discard evidence last.
+          return self.destroySpoolAndKey(id: id, source: .markedForDiscard)
         }
         if let cleanup { await cleanup.value }
       }

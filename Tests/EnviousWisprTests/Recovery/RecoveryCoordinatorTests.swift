@@ -921,6 +921,55 @@ struct RecoveryCoordinatorTests {
     await disposal.value
   }
 
+  @Test("a cleanup retry preserves a previously committed discard decision")
+  func retryKeepsPreviouslyCommittedEvidence() async throws {
+    struct UnlinkFailure: Error {}
+    struct MarkerRewriteFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    h.coordinator.destructionSpoolDeleteForTesting = { _ in throw UnlinkFailure() }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+
+    h.coordinator.destructionMarkerWriteForTesting = { _ in throw MarkerRewriteFailure() }
+    await h.coordinator.scanAndRecover()
+    await h.coordinator.awaitDiscardOperationsForTesting()
+    #expect(h.replayer.replayedIDs.isEmpty)
+    #expect((try? h.keyStore.retrieve(for: id)) != nil,
+      "a failed refresh cannot erase the proof from the prior successful commit")
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+  }
+
+  @Test("marker-only retry completes cleanup of sidecars retained after failed audio sync")
+  func markerOnlyRetryFinishesRetainedSidecars() async throws {
+    struct SyncFailure: Error {}
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    try h.spoolStore.writeAttemptMarker(for: id)
+    h.coordinator.destructionSpoolDeleteForTesting = { sessionID in
+      try FileManager.default.removeItem(at: h.spoolStore.spoolURL(for: sessionID))
+      throw SyncFailure()
+    }
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.handleHistorySaveFailed(recoverySessionID: id)?.value
+    #expect(try h.spoolStore.listSpoolSessionIDs().isEmpty)
+    #expect(h.spoolStore.hasAttemptMarker(for: id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+
+    h.coordinator.destructionSpoolDeleteForTesting = nil
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+    #expect(!h.spoolStore.hasAttemptMarker(for: id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .absent)
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+    #expect(h.replayer.replayedIDs.isEmpty)
+  }
+
   // MARK: - Launch scan + recover
 
   @Test("scan replays every recoverable orphan, gate ends cleared")
