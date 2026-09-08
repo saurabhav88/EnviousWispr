@@ -317,6 +317,12 @@ public enum RecoveryConstants {
   /// the end. Rewriting a sealed header mid-session to record a later fact would
   /// put the audio at risk to store metadata.
   public static let escapeMarkerFileExtension = "escape"
+  /// File extension for a per-spool DISCARD marker (#1807 §D1). Presence-only,
+  /// written durably (temp + fsync + atomic rename + directory sync) BEFORE any
+  /// destructive delete once a session's final disposition is "destroy" — a
+  /// committed, permanent "never replay this session" decision, independent of
+  /// whether the audio unlink itself later succeeds. Named `<recoverySessionID>.discard`.
+  public static let discardMarkerFileExtension = "discard"
   /// On-disk format version recorded in the header.
   public static let formatVersion = 1
 

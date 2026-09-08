@@ -89,6 +89,7 @@ final class RecoveryCoordinator {
     /// operation — guards a duplicate disposition call or a duplicate writer
     /// ack from starting a second marker write or deletion.
     var cleanupClaimed = false
+    var markerPersistence: Task<Void, Never>?
     /// Every caller awaiting this session's cleanup SETTLING, not merely being
     /// claimed. Production discards the `Task` it gets back; tests await it
     /// instead of a fixed delay (§11's test contract). Resolved exactly once,
@@ -96,6 +97,26 @@ final class RecoveryCoordinator {
     var settlementContinuations: [CheckedContinuation<Void, Never>] = []
   }
   private var pendingSessions: [String: PendingSession] = [:]
+  private var discardOperations: [String: Task<Void, Never>] = [:]
+  // Instance-scoped completion seam; production never awaits the sweep.
+  // periphery:ignore - test seam
+  var markerSweepForTesting: Task<Void, Never>?
+
+  private var protectedSessionIDs: Set<String> {
+    Set(pendingSessions.keys).union(discardOperations.keys)
+  }
+
+  private func claimDiscardOperation(
+    id: String, work: @escaping @MainActor () async -> Void
+  ) -> Task<Void, Never> {
+    if let existing = discardOperations[id] { return existing }
+    let task = Task { @MainActor [self] in
+      await work()
+      discardOperations.removeValue(forKey: id)
+    }
+    discardOperations[id] = task
+    return task
+  }
 
   /// True while an orphan is being actively replayed on the shared engine.
   /// DRIVES the recording gate: a record-press while true mints no session (shows
@@ -318,6 +339,12 @@ final class RecoveryCoordinator {
     case userDiscard = "user_discard"
     /// #1740: a live `.complete` dictation whose History write failed.
     case historySaveFailed = "history_save_failed"
+    /// #1807 §D1: the scan found a spool that ALREADY carries a committed
+    /// discard marker (`.final`/`.interruptedTemp`) — a prior pass or launch
+    /// already decided to discard it, but the destructive delete never
+    /// completed (crash, or the delete itself failed). No replay is ever
+    /// attempted for this case; this is a cleanup retry, not a fresh decision.
+    case markedForDiscard = "marked_for_discard"
   }
 
   /// #1755 chunk 4 test seams (internal; nil in production — the real spool
@@ -394,7 +421,11 @@ final class RecoveryCoordinator {
     component: String, source: DestructionSource, succeeded: Bool
   ) {
     switch source {
-    case .replayOutcome, .historySaveFailed:
+    case .replayOutcome, .historySaveFailed, .markedForDiscard:
+      // #1807 §D1: `.markedForDiscard` is a retry of a previously-failed
+      // cleanup (a spent decision, same spirit as the two existing spent-
+      // attempt sources) — whether the retry actually succeeded is exactly
+      // the signal this event exists to answer.
       if let sink = cleanupTelemetryForTesting {
         sink(source.rawValue, component, succeeded)
       } else {
@@ -415,7 +446,36 @@ final class RecoveryCoordinator {
   /// double-delete or a concurrently-removed spool is a harmless no-op. Returns the
   /// detached key-delete work so tests can await completion; callers may discard it.
   @discardableResult
-  private func destroySpoolAndKey(id: String, source: DestructionSource) -> Task<Void, Never> {
+  private func destroySpoolAndKey(
+    id: String, source: DestructionSource,
+    markerPersistence: Task<Void, Never>? = nil
+  ) -> Task<Void, Never> {
+    if let existing = discardOperations[id] { return existing }
+    // #1807 round-2 correction (Codex chunk-3 review round 2, finding 1):
+    // `discardOperations[id]` protects only WHILE this operation is running —
+    // it clears once the work settles, success or failure. `nextLaunchOnlyRecoveryIDs`
+    // is a SEPARATE concern this does not replace: if BOTH the marker write
+    // and the delete fail, an id with no marker and a surviving spool must
+    // still not be reclassified as a fresh REPLAY candidate this launch (the
+    // exact resurrection bug this suppression exists to prevent). CLEANUP
+    // eligibility (can `.markedForDiscard` retry) and REPLAY eligibility
+    // (can this id enter `recoverable`) are different questions — the scan's
+    // marker check now runs BEFORE this suppression is consulted (see
+    // `runOneScanPass`), so a genuinely marked survivor still retries
+    // cleanup regardless of this insert.
+    nextLaunchOnlyRecoveryIDs.insert(id)
+    let marker =
+      markerPersistence
+      ?? beginDiscardMarkerPersistence(recoverySessionID: id, source: source)
+    return claimDiscardOperation(id: id) { [self] in
+      await marker.value
+      await performSpoolAndKeyDestruction(id: id, source: source).value
+    }
+  }
+
+  private func performSpoolAndKeyDestruction(
+    id: String, source: DestructionSource
+  ) -> Task<Void, Never> {
     #if DEBUG
       // #1755 chunk 6: crash-boundary hold — immediately before the spool
       // attempt (seam or real store). Unarmed: no-op.
@@ -499,8 +559,33 @@ final class RecoveryCoordinator {
     guard var entry = pendingSessions[id] else { return Task {} }
     if entry.disposition == nil, !entry.cleanupClaimed {
       entry.disposition = disposition
+      if case .destroy(let source) = disposition {
+        // #1807 (§D1): marker persistence begins as soon as final disposition
+        // arrives — NOT gated on the writer-quiescence join below, which can
+        // still be pending. Off-MainActor, per §D2's ordering item 2
+        // (inherited by §D1). A `.retain` disposition writes no marker — a
+        // marker means "never replay," which is the opposite of retaining.
+        entry.markerPersistence = beginDiscardMarkerPersistence(
+          recoverySessionID: id, source: source)
+      }
     }
     return awaitSettlement(recoverySessionID: id, entry: entry)
+  }
+
+  /// Begins immediately at disposition, and settles before destructive cleanup.
+  private func beginDiscardMarkerPersistence(
+    recoverySessionID id: String, source: DestructionSource
+  ) -> Task<Void, Never> {
+    let store = makeSpoolStore()
+    return Task.detached(priority: .utility) { [self] in
+      do {
+        try store.writeDiscardMarker(for: id)
+      } catch {
+        await MainActor.run {
+          self.emitDeletionFailed(component: "marker", source: source, error: error)
+        }
+      }
+    }
   }
 
   /// The writer confirms it can never write to `id`'s spool again — fires for
@@ -577,7 +662,8 @@ final class RecoveryCoordinator {
         self.retireSettledSession(recoverySessionID: id)
       }
     case .destroy(let source):
-      let inner = destroySpoolAndKey(id: id, source: source)
+      let inner = destroySpoolAndKey(
+        id: id, source: source, markerPersistence: entry.markerPersistence)
       return Task { @MainActor [self] in
         _ = await inner.value
         self.retireSettledSession(recoverySessionID: id)
@@ -899,10 +985,10 @@ final class RecoveryCoordinator {
     Task.detached(priority: .utility) { [weak self] in
       let keyIDs = keyStore.listAccountIDs()
       // #1807 (§C): a vanished coordinator must ABORT the sweep — it is not
-      // evidence the protection set is empty. `self?.pendingSessions.keys`
+      // evidence the protection set is empty. `self?.protectedSessionIDs`
       // reads nil only when `self` is nil, never when the set is genuinely
       // empty (an empty dictionary's `.keys` is a real, non-nil, empty value).
-      guard let liveArmedKeys = await MainActor.run(body: { self?.pendingSessions.keys })
+      guard let liveArmedKeys = await MainActor.run(body: { self?.protectedSessionIDs })
       else { return }
       let liveArmed = Set(liveArmedKeys)
       // Fail CLOSED if the fresh re-list errors (Codex code-diff r5 P2): treating
@@ -915,6 +1001,34 @@ final class RecoveryCoordinator {
       }
     }
 
+    // Every sweep candidate claims the same per-session operation as disposal.
+    let markerSweep = Task.detached(priority: .utility) { [weak self] in
+      guard let markerIDs = try? store.listDiscardMarkerSessionIDs(),
+        let listedSpools = try? store.listSpoolSessionIDs()
+      else { return }
+      for id in Set(markerIDs).subtracting(listedSpools) {
+        let cleanup: Task<Void, Never>? = await MainActor.run {
+          guard let self, !self.protectedSessionIDs.contains(id) else { return nil }
+          return self.claimDiscardOperation(id: id) {
+            await Task.detached(priority: .utility) {
+              do {
+                let spoolIDs = try store.listSpoolSessionIDs()
+                guard !spoolIDs.contains(id) else { return }
+                // Persist audio absence BEFORE removing either form of evidence.
+                try store.syncSpoolDirectory()
+                try store.deleteDiscardMarker(for: id)
+                try store.syncSpoolDirectory()
+              } catch {
+                // Failure before evidence removal leaves the marker for another pass.
+              }
+            }.value
+          }
+        }
+        if let cleanup { await cleanup.value }
+      }
+    }
+    markerSweepForTesting = markerSweep
+
     guard !spoolIDs.isEmpty else { return false }
 
     // Snapshot the History dedup set. A recording that arms during the dedup
@@ -926,14 +1040,45 @@ final class RecoveryCoordinator {
     // await above, not the value that would have been captured before it — a
     // take that armed DURING that suspension must be excluded too, matching
     // the recheck-after-every-suspension requirement (§C, independent of §D).
-    let armedIDs = Set(pendingSessions.keys)
+    let armedIDs = protectedSessionIDs
     var recoverable: [String] = []
-    // #1807 round-2 correction (Codex chunk-2 review, finding 3): also skip
-    // ids already held for a future launch — a spool this launch already
-    // failed to delete once (a live-ending or history-save-failure retry
-    // candidate) should not be retried through a SECOND, independent
-    // destroySpoolAndKey call from the dedup path this same pass.
-    for id in spoolIDs where !armedIDs.contains(id) && !nextLaunchOnlyRecoveryIDs.contains(id) {
+    // #1807 round-2 correction (Codex chunk-3 review round 2, finding 1):
+    // `nextLaunchOnlyRecoveryIDs` is no longer part of THIS loop condition —
+    // an id held for a future launch must still have its MARKER checked
+    // (below), so a `.markedForDiscard` retry is never blocked by the same
+    // suppression that protects REPLAY eligibility. Only after the marker
+    // check clears as `.absent` does the suppression apply, right before
+    // `recoverable`/History-dedup classification.
+    for id in spoolIDs where !armedIDs.contains(id) {
+      // #1807 (§D1): the discard marker is checked BEFORE History-dedup
+      // classification, in this SAME sequence — not a separate pass. A
+      // committed discard decision vetoes replay ahead of every other check,
+      // and (round 2) ahead of the same-launch suppression below too —
+      // CLEANUP eligibility and REPLAY eligibility are different questions.
+      switch store.hasDiscardMarker(for: id) {
+      case .final, .interruptedTemp:
+        // Never replay; a prior pass or launch already decided to discard
+        // this spool but the destructive delete never completed. Retry
+        // cleanup without ever appending to `recoverable`.
+        RecoveryLog.line("already marked for discard — retrying cleanup, no replay")
+        destroySpoolAndKey(id: id, source: .markedForDiscard)
+        continue
+      case .unreadable:
+        // Cannot tell — defer this spool THIS PASS rather than guess either
+        // way (never collapse into `.absent`, the exact `fileExists` mistake
+        // §A already fixed once in this file).
+        RecoveryLog.line("discard marker unreadable — deferring this spool this pass")
+        continue
+      case .absent:
+        break  // ordinary eligibility checks apply below
+      }
+      // #1807 round-2 correction (finding 1): an UNMARKED id already held for
+      // a future launch (a live-ending/history-save-failure whose cleanup
+      // failed, with no marker ever committed) must not be reclassified as a
+      // fresh replay candidate this launch — the resurrection bug this
+      // suppression exists to prevent. A marked id already retried above and
+      // never reaches this line.
+      guard !nextLaunchOnlyRecoveryIDs.contains(id) else { continue }
       if alreadySaved.contains(id) {
         // Saved in a prior run's save→delete crash window: delete WITHOUT
         // re-transcribing (the dedup MUST precede any append — History forbids a
@@ -984,15 +1129,26 @@ final class RecoveryCoordinator {
       // has no `await` between its own check and claim.
       await Task.yield()
       // #1807 round-2 correction (Codex chunk-2 review, finding 3): recheck
-      // pending membership and same-launch suppression immediately after
-      // this suspension, before replay admission — a take that armed, or a
-      // spool that got held for a future launch, DURING the yield above must
-      // not be replayed. Matches the recheck-after-every-suspension
-      // requirement (§C) and the identical recheck already applied to the
-      // dedup loop above, after its own `await`.
-      guard !pendingSessions.keys.contains(id), !nextLaunchOnlyRecoveryIDs.contains(id) else {
+      // pending membership immediately after this suspension, before replay
+      // admission — a take that armed DURING the yield above must not be
+      // replayed. Matches the recheck-after-every-suspension requirement
+      // (§C) and the identical recheck already applied to the dedup loop
+      // above, after its own `await`.
+      guard !protectedSessionIDs.contains(id) else { continue }
+      // #1807 round-2 correction (chunk-3 review round 2, finding 1): the
+      // marker check runs BEFORE the same-launch suppression check, exactly
+      // like the dedup loop above — a marked survivor still retries cleanup
+      // even if it's also in `nextLaunchOnlyRecoveryIDs`.
+      switch store.hasDiscardMarker(for: id) {
+      case .final, .interruptedTemp:
+        destroySpoolAndKey(id: id, source: .markedForDiscard)
         continue
+      case .unreadable:
+        continue
+      case .absent:
+        break
       }
+      guard !nextLaunchOnlyRecoveryIDs.contains(id) else { continue }
       // Atomic per-item handshake (§3.1/§3.2) — ONE non-suspending MainActor
       // turn: checked and claimed here with no `await` between any step, so
       // there is no window between "checked" and "acted." Preserves the
@@ -1085,7 +1241,7 @@ final class RecoveryCoordinator {
       // (fresh UUIDs per arm), but a direct destroy here must still defer to
       // that session's own join rather than racing it, on the same recheck
       // discipline the scan's dedup loop above follows.
-      if willDelete, !pendingSessions.keys.contains(id) {
+      if willDelete, !protectedSessionIDs.contains(id) {
         destroySpoolAndKey(id: id, source: .replayOutcome)
       }
       // Post the standalone success notice for a recording that landed in History.

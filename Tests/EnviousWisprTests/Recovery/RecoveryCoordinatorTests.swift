@@ -448,6 +448,17 @@ struct RecoveryCoordinatorTests {
     }
   }
 
+  /// #1807 round-2 (Codex chunk-3 review, finding 1): `destroySpoolAndKey`'s
+  /// spool delete is no longer synchronous with its caller — it now waits for
+  /// marker persistence to settle FIRST (crash-safety: the marker must be
+  /// durable before a destructive delete that might fail partway). Same poll
+  /// idiom as `awaitKeyDeleted`.
+  private static func awaitSpoolGone(_ store: RecoverySpoolStore, id: String) async {
+    for _ in 0..<200 where FileManager.default.fileExists(atPath: store.spoolURL(for: id).path) {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll interval; loop cond is the signal
+    }
+  }
+
   @Test("the coordinator deletes the spool + key after a .recovered replay")
   func recoveredReplayDeletes() async throws {
     let h = Self.makeHarness()
@@ -659,6 +670,165 @@ struct RecoveryCoordinatorTests {
     #expect(h.replayer.replayedIDs == [id], "once retired, ordinary scan eligibility applies")
   }
 
+  // MARK: - #1807 (§D1) — durable discard marker: write, read, restart cleanup
+
+  private static func awaitMarker(
+    _ store: RecoverySpoolStore, id: String, expected: DiscardMarkerState
+  ) async {
+    for _ in 0..<200 where store.hasDiscardMarker(for: id) != expected {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll interval; loop cond is the signal
+    }
+  }
+
+  @Test("a real disposal writes the discard marker, independently of the writer-quiescence join")
+  func disposalWritesDiscardMarker() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    // Disposition arrives, but the writer has NOT acked yet — marker
+    // persistence must still begin (§D2's ordering item 2, inherited by §D1:
+    // "marker persistence begins as soon as final disposition arrives").
+    let task = h.coordinator.requestDisposal(
+      recoverySessionID: id, disposition: .destroy(.durableSave))
+    await Self.awaitMarker(h.spoolStore, id: id, expected: .final)
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .final)
+
+    // Join still completes normally afterward.
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await task.value
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+  }
+
+  @Test("a .retain disposition never writes a discard marker")
+  func retainDispositionWritesNoMarker() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    try Self.writeSpool(h.spoolStore, id)
+
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await h.coordinator.requestDisposal(recoverySessionID: id, disposition: .retain).value
+
+    #expect(
+      h.spoolStore.hasDiscardMarker(for: id) == .absent,
+      "a marker means \"never replay\" — the opposite of retaining for a future launch")
+  }
+
+  @Test("scan excludes a .final-marked spool from replay and retries cleanup, not a fresh decision")
+  func scanRetriesAMarkedForDiscardSurvivor() async throws {
+    let h = Self.makeHarness()
+    let id = "marked-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    try h.spoolStore.writeDiscardMarker(for: id)
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(h.replayer.replayedIDs.isEmpty, "a committed discard decision vetoes replay")
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+    #expect(
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "the retry actually deletes — this is cleanup, not a stall")
+  }
+
+  @Test("scan excludes an .interruptedTemp-marked spool from replay too")
+  func scanRetriesAnInterruptedMarkerSurvivor() async throws {
+    let h = Self.makeHarness()
+    let id = "interrupted-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let tmp = h.spoolStore.directoryURL.appendingPathComponent(
+      ".\(id).\(RecoveryConstants.discardMarkerFileExtension).tmp")
+    try Data([0x31]).write(to: tmp)
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(
+      h.replayer.replayedIDs.isEmpty,
+      "an interrupted marker write is evidence of a committed decision, not absence of one")
+    await Self.awaitKeyDeleted(h.keyStore, id: id)
+  }
+
+  @Test("an unreadable discard marker defers a listed spool without deleting it")
+  func unreadableDiscardMarkerDefersRealCandidate() async throws {
+    let h = Self.makeHarness()
+    let id = "unreadable-marker"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    let marker = h.spoolStore.directoryURL.appendingPathComponent("\(id).discard")
+    try FileManager.default.createSymbolicLink(
+      atPath: marker.path, withDestinationPath: marker.lastPathComponent)
+    #expect(try h.spoolStore.listSpoolSessionIDs().contains(id))
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .unreadable)
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+    #expect(h.replayer.replayedIDs.isEmpty)
+    #expect(try h.spoolStore.listSpoolSessionIDs().contains(id))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
+  @Test("a genuine unmarked crash-orphan still reaches recovery (positive control)")
+  func unmarkedOrphanStillReplays() async throws {
+    let h = Self.makeHarness()
+    let id = "unmarked-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    h.replayer.outcomeByDefault = .recovered
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(
+      h.replayer.replayedIDs == [id],
+      "the marker veto must not accidentally block ordinary recovery")
+  }
+
+  @Test("marker-only-survivor sweep retires an orphaned marker with no matching spool")
+  func markerOnlySurvivorSweepRetires() async throws {
+    let h = Self.makeHarness()
+    let id = "orphan-marker-\(UUID().uuidString)"
+    try h.spoolStore.writeDiscardMarker(for: id)
+    // No `.ewrec` file for this id at all — a marker-only survivor.
+
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+
+    #expect(h.spoolStore.hasDiscardMarker(for: id) == .absent)
+  }
+
+  @Test(
+    "marker-only-survivor sweep SKIPS a session still pending in this launch (lifetime gate)")
+  func markerOnlySurvivorSweepRespectsLifetimeGate() async throws {
+    let h = Self.makeHarness()
+    let armed = try #require(
+      await h.coordinator.makeDirective(
+        settings: Self.freshSettings(crashRecoveryEnabled: true),
+        backendType: .parakeet, supportsLanguageDetection: false))
+    let id = armed.recoverySessionID
+    // Disposition arrives (marker-write begins) but the writer never acks —
+    // this session stays in `pendingSessions` indefinitely, exactly the
+    // "pending writer, marker maybe written, no .ewrec yet" case the lifetime
+    // gate exists to distinguish from a genuine survivor.
+    let disposal = h.coordinator.requestDisposal(
+      recoverySessionID: id, disposition: .destroy(.durableSave))
+    await Self.awaitMarker(h.spoolStore, id: id, expected: .final)
+
+    await h.coordinator.scanAndRecover()
+    await (try #require(h.coordinator.markerSweepForTesting)).value
+
+    #expect(
+      h.spoolStore.hasDiscardMarker(for: id) == .final,
+      "still pending in this launch — the sweep must not touch it")
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await disposal.value
+  }
+
   // MARK: - Launch scan + recover
 
   @Test("scan replays every recoverable orphan, gate ends cleared")
@@ -690,6 +860,9 @@ struct RecoveryCoordinatorTests {
     try Self.writeSpool(h.spoolStore, fresh)
     await h.coordinator.scanAndRecover()
     #expect(h.replayer.replayedIDs == [fresh], "saved id deduped, not replayed")
+    // #1807 round-2: the delete now waits for marker persistence first (not
+    // synchronous with `scanAndRecover()` returning) — poll for it.
+    await Self.awaitSpoolGone(h.spoolStore, id: saved)
     #expect(
       !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: saved).path),
       "deduped orphan deleted")
@@ -1094,6 +1267,9 @@ struct RecoveryCoordinatorTests {
     #expect(h.replayer.abortedSeen == [true], "isAborted read true after Discard bumped generation")
     #expect(!h.coordinator.isRecovering, "gate cleared")
     #expect(h.resetEngineCount.value == 1, "Discard hard-reset the shared engine")
+    // #1807 round-2: the delete now waits for marker persistence first (not
+    // synchronous with `scanAndRecover()` returning) — poll for it.
+    await Self.awaitSpoolGone(h.spoolStore, id: id)
     #expect(
       !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
       "Discard deleted the orphan the user was waiting on")

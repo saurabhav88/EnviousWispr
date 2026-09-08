@@ -530,4 +530,96 @@ struct RecoverySpoolStoreTests {
       as? NSNumber
     #expect(mode?.int16Value == 0o600, "owner-only, matching the attempt marker and the spool")
   }
+
+  // MARK: - Discard marker (#1807 §D1)
+
+  @Test("discard marker: absent before any write")
+  func discardMarkerAbsentInitially() throws {
+    let store = makeStore()
+    #expect(store.hasDiscardMarker(for: "never-written") == .absent)
+  }
+
+  @Test("discard marker: write makes it .final, and 0600, and never listed as a spool")
+  func discardMarkerWriteReadsAsFinal() throws {
+    let store = makeStore()
+    try store.writeDiscardMarker(for: "committed")
+
+    #expect(store.hasDiscardMarker(for: "committed") == .final)
+    #expect(try store.listSpoolSessionIDs().isEmpty, "scan lists only .ewrec spools")
+
+    let url = store.directoryURL.appendingPathComponent(
+      "committed.\(RecoveryConstants.discardMarkerFileExtension)")
+    let mode =
+      try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
+    #expect(mode?.int16Value == 0o600, "owner-only, matching the rest of the marker family")
+  }
+
+  /// The exact `fileExists`-boolean mistake §A already fixed once in this
+  /// file, checked again for the new marker: an interrupted write is
+  /// EVIDENCE of a committed decision, not absence of one.
+  @Test("discard marker: an interrupted write reads as .interruptedTemp, never .absent")
+  func interruptedDiscardMarkerWriteIsNotAbsence() throws {
+    let store = makeStore()
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".interrupted.\(RecoveryConstants.discardMarkerFileExtension).tmp")
+    try Data([0x31]).write(to: tmp)
+
+    #expect(
+      store.hasDiscardMarker(for: "interrupted") == .interruptedTemp,
+      ".absent would let a committed discard decision replay")
+  }
+
+  /// The two-way control: an unreadable final path must defer, never collapse
+  /// into `.absent` (which would replay) NOR into `.final` (which would
+  /// silently discard a spool nobody actually decided to discard).
+  @Test("discard marker: a directory the read cannot access reads as .unreadable, not .absent")
+  func unreadableDiscardMarkerDefersRatherThanAssumingAbsence() throws {
+    let store = makeStore()
+    // A path pointing INTO a component that is not a directory makes any
+    // `open()` on it fail with something other than ENOENT (ENOTDIR) — a
+    // deterministic, real "cannot tell" case, not a permission-mocking seam.
+    let blocker = store.directoryURL.appendingPathComponent("blocker")
+    try Data([0]).write(to: blocker)
+    let blockedStore = RecoverySpoolStore(directory: blocker)
+
+    #expect(blockedStore.hasDiscardMarker(for: "anything") == .unreadable)
+  }
+
+  @Test("discard marker: delete is idempotent and clears an interrupted write too")
+  func discardMarkerDeleteIsIdempotentAndClearsTemp() throws {
+    let store = makeStore()
+    try store.writeDiscardMarker(for: "a")
+    try store.deleteDiscardMarker(for: "a")
+    #expect(store.hasDiscardMarker(for: "a") == .absent)
+    // Idempotent — deleting an already-absent marker does not throw.
+    try store.deleteDiscardMarker(for: "a")
+
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".stale.\(RecoveryConstants.discardMarkerFileExtension).tmp")
+    try Data([0x31]).write(to: tmp)
+    try store.deleteDiscardMarker(for: "stale")
+    #expect(!FileManager.default.fileExists(atPath: tmp.path))
+    #expect(store.hasDiscardMarker(for: "stale") == .absent)
+  }
+
+  @Test("discard marker: listDiscardMarkerSessionIDs finds both final and interrupted-temp markers")
+  func listDiscardMarkerSessionIDsFindsBoth() throws {
+    let store = makeStore()
+    try store.writeDiscardMarker(for: "final-one")
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".temp-one.\(RecoveryConstants.discardMarkerFileExtension).tmp")
+    try Data([0x31]).write(to: tmp)
+    // A real spool must never be mistaken for a discard marker by the list.
+    try Data([1, 2, 3]).write(to: store.spoolURL(for: "unrelated-spool"))
+
+    let ids = try store.listDiscardMarkerSessionIDs()
+
+    #expect(Set(ids) == ["final-one", "temp-one"])
+  }
+
+  @Test("discard marker: an empty directory lists no markers")
+  func listDiscardMarkerSessionIDsEmptyWhenNone() throws {
+    let store = makeStore()
+    #expect(try store.listDiscardMarkerSessionIDs().isEmpty)
+  }
 }

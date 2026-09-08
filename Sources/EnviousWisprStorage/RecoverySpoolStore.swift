@@ -1,3 +1,4 @@
+import Darwin
 import EnviousWisprCore
 import Foundation
 
@@ -508,6 +509,176 @@ public struct RecoverySpoolStore: Sendable {
     }
   }
 
+  // MARK: - Discard marker (#1807 §D1)
+
+  /// Sidecar path for a spool's discard marker (`<id>.discard`).
+  private func discardMarkerURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      "\(recoverySessionID).\(RecoveryConstants.discardMarkerFileExtension)")
+  }
+
+  private func discardMarkerTempURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      ".\(recoverySessionID).\(RecoveryConstants.discardMarkerFileExtension).tmp")
+  }
+
+  /// Commit the no-replay decision before attempting destructive cleanup.
+  /// Success means the marker bytes AND the final directory entry are durable
+  /// — this is the readiness-retry marker's full durable-write shape
+  /// (temp → `F_FULLFSYNC` → atomic rename → `syncDirectory`), directory sync
+  /// included, because the marker's whole purpose (surviving a crash) depends
+  /// on the rename itself being durable, not merely the bytes.
+  ///
+  /// Retain this marker until the session cannot create another spool, the
+  /// audio has been removed, and that removal is durably synchronized. Only
+  /// then may cleanup remove the marker.
+  ///
+  /// A failed marker write is not permission to retain replayable discarded
+  /// audio — the caller falls back to today's unconditional key-erasure path.
+  public func writeDiscardMarker(for recoverySessionID: String) throws {
+    let url = discardMarkerURL(for: recoverySessionID)
+    let tmpURL = discardMarkerTempURL(for: recoverySessionID)
+    let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+    guard fd >= 0 else { throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno) }
+    let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+    // #1807 round-2 correction (Codex chunk-3 review, finding 3): NEVER remove
+    // `tmpURL` on any failure below — an interrupted write is evidence a
+    // committed decision was underway, and `.interruptedTemp` reads must find
+    // it. Every `errno` read is captured IMMEDIATELY at its own failure site,
+    // not after an intervening Foundation call, which can silently clobber it.
+    do {
+      // Presence is the signal; a single byte gives fsync something to flush.
+      try handle.write(contentsOf: Data([0x31]))
+      guard fcntl(fd, F_FULLFSYNC) != -1 else {
+        let code = errno
+        try? handle.close()
+        throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+      }
+      try handle.close()
+    } catch let error as RecoverySpoolStoreError {
+      throw error
+    } catch {
+      // #1807 round-2 correction (Codex chunk-3 review round 2, finding 2):
+      // `try? handle.close()` below is ITSELF a syscall that can overwrite
+      // `errno` before it's read — the exact staleness bug this whole
+      // correction pass exists to close. Read the code from the THROWN
+      // error instead (Foundation's write failure already carries the real
+      // POSIX code, captured at throw time), never from a fresh `errno` read
+      // after `close()`.
+      let nsError = error as NSError
+      let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+      let posix = nsError.domain == NSPOSIXErrorDomain ? nsError : underlying
+      let code: Int32
+      if let posix, posix.domain == NSPOSIXErrorDomain {
+        code = Int32(exactly: posix.code) ?? EIO
+      } else {
+        code = EIO
+      }
+      try? handle.close()
+      throw RecoverySpoolStoreError.discardMarkerWriteFailed(code)
+    }
+    // Atomic rename via raw POSIX `rename(2)`, not `FileManager.replaceItemAt`/
+    // `moveItem` (unlike the sibling markers) — POSIX guarantees `rename(2)`
+    // atomically replaces an existing destination, which matters more here:
+    // never removing the temp on failure means the caller must be able to
+    // trust THIS call's all-or-nothing semantics exactly, not a higher-level
+    // API's.
+    guard Darwin.rename(tmpURL.path, url.path) == 0 else {
+      throw RecoverySpoolStoreError.discardMarkerWriteFailed(errno)
+    }
+    // The file's own bytes are already fsynced; the rename lives in the
+    // containing DIRECTORY, a separate durability question — see the
+    // readiness-retry marker's identical `syncDirectory` call for why this
+    // matters more here than for the attempt/Escape markers, which skip it.
+    try Self.syncDirectory(containing: url)
+  }
+
+  /// Read a spool's discard-marker state. FOUR-valued — `.unreadable` must
+  /// never collapse into `.absent` (the exact `fileExists`-boolean mistake §A
+  /// already fixed once in this file): a probe attempts to actually OPEN each
+  /// path and distinguishes `ENOENT` (genuinely absent) from any other errno
+  /// (permission denied, I/O error — cannot tell, so defer rather than assume
+  /// safety either way).
+  public func hasDiscardMarker(for recoverySessionID: String) -> DiscardMarkerState {
+    switch Self.probeMarkerFile(discardMarkerURL(for: recoverySessionID)) {
+    case .present: return .final
+    case .unreadable: return .unreadable
+    case .absent:
+      switch Self.probeMarkerFile(discardMarkerTempURL(for: recoverySessionID)) {
+      case .present: return .interruptedTemp
+      case .absent: return .absent
+      case .unreadable: return .unreadable
+      }
+    }
+  }
+
+  private enum MarkerFileProbe { case present, absent, unreadable }
+
+  private static func probeMarkerFile(_ url: URL) -> MarkerFileProbe {
+    let fd = Foundation.open(url.path, O_RDONLY)
+    if fd >= 0 {
+      Foundation.close(fd)
+      return .present
+    }
+    return errno == ENOENT ? .absent : .unreadable
+  }
+
+  /// Delete a spool's discard marker (both the final marker and any
+  /// interrupted-write temp — the temp goes FIRST, matching
+  /// `deleteReadinessRetryMarker`/`deleteEscapeMarker`). Idempotent — a
+  /// missing marker is success. Callers must only call this once durable
+  /// audio removal is confirmed; this method itself enforces no ordering.
+  public func deleteDiscardMarker(for recoverySessionID: String) throws {
+    // #1807 round-2 correction (Codex chunk-3 review, finding 3 follow-up):
+    // attempt BOTH removals independently, matching `delete(recoverySessionID:)`'s
+    // own established idiom in this file — a `for`-loop chained through `try`
+    // would let a temp-removal failure prevent even ATTEMPTING the final
+    // marker's removal, orphaning it permanently.
+    var firstFailure: (any Error)?
+    do {
+      try FileManager.default.removeItem(at: discardMarkerTempURL(for: recoverySessionID))
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      // Absence is success.
+    } catch {
+      firstFailure = error
+    }
+    do {
+      try FileManager.default.removeItem(at: discardMarkerURL(for: recoverySessionID))
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      // Absence is success.
+    } catch {
+      if firstFailure == nil { firstFailure = error }
+    }
+    if let firstFailure { throw firstFailure }
+  }
+
+  /// Every session id currently carrying a discard marker (final OR
+  /// interrupted-temp) — the population the marker-only-survivor sweep (#1807
+  /// §D1) scans, alongside the ordinary `.ewrec` listing `listSpoolSessionIDs`
+  /// already provides. Fails closed exactly like `listSpoolSessionIDs`: a
+  /// directory-listing error must not be read as "no markers," since that
+  /// would let the sweep retire evidence it never actually inspected.
+  public func listDiscardMarkerSessionIDs() throws -> [String] {
+    let entries = try FileManager.default.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: nil)
+    let markerExtension = RecoveryConstants.discardMarkerFileExtension
+    return
+      entries
+      .compactMap { url -> String? in
+        // Matches both `<id>.discard` and the interrupted-write `.<id>.discard.tmp`
+        // — a marker-only survivor's evidence can be either, and the sweep must
+        // see both to retire them (§D1: "interrupted-temp also never replays").
+        if url.pathExtension == markerExtension {
+          return url.deletingPathExtension().lastPathComponent
+        }
+        let name = url.lastPathComponent
+        guard name.hasPrefix("."), name.hasSuffix(".\(markerExtension).tmp") else { return nil }
+        let withoutLeadingDot = name.dropFirst()
+        return String(withoutLeadingDot.dropLast(".\(markerExtension).tmp".count))
+      }
+      .sorted()
+  }
+
   /// Create the directory at 0700, drop the Spotlight marker, and exclude it
   /// from backups. Re-enforced on every init. Soft-fails on any filesystem
   /// operation — better to lose a privacy guarantee than crash a limb.
@@ -582,6 +753,10 @@ public enum RecoverySpoolStoreError: Error, Equatable {
   /// dictation the user cancelled, which is worse than the discard they asked
   /// for and were expecting (#2087).
   case escapeMarkerWriteFailed(Int32)
+  /// The discard marker could not be written durably (carries `errno`, #1807
+  /// §D1). NOT permission to retain replayable discarded audio — the caller
+  /// falls back to today's unconditional key-erasure path.
+  case discardMarkerWriteFailed(Int32)
 }
 
 /// The three outcomes of reading a spool's Escape Recovery marker (#2087).
@@ -594,4 +769,20 @@ public enum EscapeMarkerRead: Equatable, Sendable {
   case absent
   case valid(EscapeRecoveryMarker)
   case malformed
+}
+
+/// The four outcomes of reading a spool's discard marker (#1807 §D1).
+/// `.unreadable` must never collapse into `.absent` — see `hasDiscardMarker`'s
+/// doc for why a probe, not a boolean `fileExists`, distinguishes them.
+public enum DiscardMarkerState: Equatable, Sendable {
+  /// Never replay; safe to request cleanup.
+  case final
+  /// Also never replay — mirrors `readEscapeMarker`'s `.malformed`-from-temp
+  /// precedent: an interrupted write is evidence of a committed decision, not
+  /// absence of one.
+  case interruptedTemp
+  /// Ordinary recovery eligibility checks apply.
+  case absent
+  /// DEFER this spool this pass — never treat as absent.
+  case unreadable
 }
