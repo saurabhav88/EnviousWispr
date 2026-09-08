@@ -1191,7 +1191,7 @@ public enum PasteService {
     // Cloud review found it; the discipline already existed one function away.
     guard
       let fresh = budget.step(
-        applying: element, label: "focused",
+        applying: nil, label: "focused", onTimeoutFailure: nil,
         {
           freshFocusedElement(matching: element, messagingTimeout: max(0.005, budget.remaining))
         })
@@ -1208,7 +1208,9 @@ public enum PasteService {
       // that blew the budget and latched terminal insertion off (#1941).
       scanProcesses: { TerminalProcessScanner.liveTerminalSnapshot() },
       readScreenTail: {
-        budget.step(applying: fresh, label: "screen") { terminalScreenTail(of: fresh) }
+        budget.step(applying: fresh, label: "screen", onTimeoutFailure: nil) {
+          terminalScreenTail(of: fresh)
+        }
       })
 
     // The typed refusal is REPORTED, not discarded. §8 of the plan lists eight
@@ -1352,14 +1354,23 @@ public enum PasteService {
     budget: TerminalResolutionBudget? = nil
   ) -> CaretContext? {
     // One helper, so no read can be added later that forgets to be counted.
-    func bounded<T>(_ label: String, _ body: () -> T) -> T {
+    // #2705: `receiver` is the object `body` actually messages — `fresh` for
+    // everything after the initial lookup, `nil` for that lookup itself
+    // (which self-bounds via `freshFocusedElement`'s own `messagingTimeout`).
+    // NEVER the captured `element` — that stays the Tier 1 write target and
+    // must not pick up a timeout from a caret-context read that runs before
+    // it (see `TerminalResolutionBudget.step`'s doc comment).
+    func bounded<T>(
+      _ label: String, applying receiver: AXUIElement?, onTimeoutFailure: T, _ body: () -> T
+    ) -> T {
       guard let budget else { return body() }
-      return budget.step(applying: element, label: label, body)
+      return budget.step(
+        applying: receiver, label: label, onTimeoutFailure: onTimeoutFailure, body)
     }
 
     guard
       let fresh = bounded(
-        "focused",
+        "focused", applying: nil, onTimeoutFailure: nil,
         {
           freshFocusedElement(
             matching: element,
@@ -1371,7 +1382,8 @@ public enum PasteService {
     var roleRef: CFTypeRef?
     guard
       bounded(
-        "role", { AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef) })
+        "role", applying: fresh, onTimeoutFailure: .cannotComplete,
+        { AXUIElementCopyAttributeValue(fresh, kAXRoleAttribute as CFString, &roleRef) })
         == .success,
       let role = roleRef as? String, textRoles.contains(role)
     else { return nil }
@@ -1379,7 +1391,7 @@ public enum PasteService {
     var countRef: CFTypeRef?
     guard
       bounded(
-        "count",
+        "count", applying: fresh, onTimeoutFailure: .cannotComplete,
         {
           AXUIElementCopyAttributeValue(
             fresh, kAXNumberOfCharactersAttribute as CFString, &countRef)
@@ -1387,7 +1399,10 @@ public enum PasteService {
       let characterCount = countRef as? Int
     else { return nil }
 
-    guard let range = bounded("range", { selectedRange(of: fresh) }) else { return nil }
+    guard
+      let range = bounded(
+        "range", applying: fresh, onTimeoutFailure: nil, { selectedRange(of: fresh) })
+    else { return nil }
 
     guard
       let assembled = assembleCaretContext(
@@ -1396,12 +1411,15 @@ public enum PasteService {
         selectionLength: range.length,
         window: window,
         readRange: { location, length in
-          bounded("range_read", { string(of: fresh, at: location, length: length) })
+          bounded(
+            "range_read", applying: fresh, onTimeoutFailure: nil,
+            { string(of: fresh, at: location, length: length) })
         })
     else { return nil }
 
     let isBrowserAddressBar = bounded(
-      "browser_address_bar", { addressBarFamily(of: fresh) != nil })
+      "browser_address_bar", applying: fresh, onTimeoutFailure: false,
+      { addressBarFamily(of: fresh) != nil })
     guard isBrowserAddressBar else { return assembled }
     return CaretContext(
       leftWindow: assembled.leftWindow, rightWindow: assembled.rightWindow,
@@ -2334,9 +2352,18 @@ public enum PasteService {
   /// Force-activate an app by PID using the Accessibility API.
   /// Bypasses macOS 14+ restrictions on background processes stealing focus.
   /// Requires Accessibility permission (AXIsProcessTrusted).
+  ///
+  /// #2633: `axApp` is bounded before the write so an unresponsive target
+  /// cannot block this call indefinitely. This handle is created fresh here
+  /// on every call and is never the captured Tier 1 focused element, so
+  /// bounding it cannot affect Tier 1's write/verify sequence (see
+  /// docs/feature-requests/issue-2705-2026-09-07-paste-delivery-refactor.md).
   public static func forceActivateApp(pid: pid_t) -> Bool {
     guard AXIsProcessTrusted() else { return false }
     let axApp = AXUIElementCreateApplication(pid)
+    guard
+      AXUIElementSetMessagingTimeout(axApp, Float(axMessagingTimeoutSeconds)) == .success
+    else { return false }
     let result = AXUIElementSetAttributeValue(
       axApp,
       "AXFrontmost" as CFString,

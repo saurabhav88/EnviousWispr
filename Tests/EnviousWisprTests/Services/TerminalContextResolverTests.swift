@@ -268,7 +268,9 @@ struct TerminalContextResolverTests {
 
     let shared = TerminalResolutionBudget(total: 1.0, now: { clock.read() })
     var calls = 0
-    for _ in 0..<3 { _ = shared.step(applying: element, label: "probe") { calls += 1 } }
+    for _ in 0..<3 {
+      _ = shared.step(applying: element, label: "probe", onTimeoutFailure: ()) { calls += 1 }
+    }
 
     #expect(calls == 3)
     // THE POINT. Cumulative charges all three: 0.090. A per-call bound retains
@@ -279,7 +281,7 @@ struct TerminalContextResolverTests {
     // between them while neither does alone, so exhaustion is reachable only by
     // accumulating — a per-call bound would sit at 30 ms and stay open.
     let tight = TerminalResolutionBudget(total: 0.040, now: { clock.read() })
-    for _ in 0..<2 { _ = tight.step(applying: element, label: "probe") {} }
+    for _ in 0..<2 { _ = tight.step(applying: element, label: "probe", onTimeoutFailure: ()) {} }
 
     #expect(tight.isExhausted, "two 30 ms calls must exhaust a 40 ms cumulative cap")
     #expect(tight.remaining == 0)
@@ -301,7 +303,7 @@ struct TerminalContextResolverTests {
     let budget = TerminalResolutionBudget(total: 0.100, now: { clock.read() })
     let element = AXUIElementCreateSystemWide()
 
-    for _ in 0..<5 { _ = budget.step(applying: element, label: "probe") {} }
+    for _ in 0..<5 { _ = budget.step(applying: element, label: "probe", onTimeoutFailure: ()) {} }
 
     #expect(!budget.isExhausted, "five healthy calls must not exhaust the cap")
     #expect(
@@ -324,8 +326,8 @@ struct TerminalContextResolverTests {
       budget.timingDescription.isEmpty,
       "no step ran, so the line must carry nothing rather than an empty bracket")
 
-    _ = budget.step(applying: element, label: "focused") {}
-    _ = budget.step(applying: element, label: "screen") {}
+    _ = budget.step(applying: element, label: "focused", onTimeoutFailure: ()) {}
+    _ = budget.step(applying: element, label: "screen", onTimeoutFailure: ()) {}
 
     let description = budget.timingDescription
     #expect(description.contains("focused="), "each step is named, got \(description)")
@@ -347,7 +349,7 @@ struct TerminalContextResolverTests {
     // charged even a rounding error, the total the cap is judged against would
     // drift with the number of phases rather than with real work.
     budget.mark("recheck")
-    _ = budget.step(applying: element, label: "focused") {}
+    _ = budget.step(applying: element, label: "focused", onTimeoutFailure: ()) {}
 
     let withPhases = budget.timingDescription
     #expect(withPhases.contains("|recheck|"), "the phase boundary must be visible")
@@ -369,7 +371,7 @@ struct TerminalContextResolverTests {
     let element = AXUIElementCreateSystemWide()
 
     budget.charge(0.090, label: "scan")
-    _ = budget.step(applying: element, label: "screen") {}
+    _ = budget.step(applying: element, label: "screen", onTimeoutFailure: ()) {}
 
     let description = budget.timingDescription
     #expect(description.contains("scan=90.0ms"), "named and real, got \(description)")
