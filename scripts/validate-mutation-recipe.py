@@ -432,7 +432,7 @@ def self_test_problems(battery, suite, root):
     if not any(parses_flag(node, battery.SELF_TEST_FLAG, aliases)
                for node in reachable_nodes(tree)):
         return [f"self-test target {shown} does not parse {battery.SELF_TEST_FLAG}; "
-                f"`{battery.self_test_command(suite)}` would prove nothing"]
+                f"`{battery.self_test_command(suite, root)}` would prove nothing"]
     return []
 
 
@@ -505,7 +505,7 @@ def validate(recipes, root, label):
             # A `RuntimeUAT/<module>` suite is a Python self-test, not a Swift suite (#2570):
             # the oracle cannot know it, so it is proved against the checkout instead. The
             # runner has already refused it on a mechanical row and with test names attached.
-            command = battery.self_test_command(suite)
+            command = battery.self_test_command(suite, root)
             if command:
                 if suite in names_by_suite:
                     problems.append(

@@ -178,10 +178,14 @@ check("a bare suite name is refused as not target-qualified",
 
 # #2570: `RuntimeUAT/<module>` on a human row is a Python self-test, and the runner defers it
 # with the one command that namespace means — nothing is guessed from the instruction.
+# #2687 finding 5 anchored that command to the checkout it was proved against, so the
+# expectation asserts the ANCHORED shape. The `&&` is the assertion: a bare relative command
+# would not contain it. The directory itself is a temp path and cannot be pinned.
 check("a human row naming a RuntimeUAT self-test is deferred with its fixed command",
       [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
         "suite": "RuntimeUAT/wispr_eyes"}],
-      expect_exit=0, expect_text="run: python3 Tests/RuntimeUAT/wispr_eyes.py --self-test")
+      expect_exit=0,
+      expect_text="&& python3 Tests/RuntimeUAT/wispr_eyes.py --self-test")
 check("a human row naming a RuntimeUAT self-test with a legacy expect_fail is refused",
       [{"mode": "human", "label": "break the guard", "instruction": "drop the pid filter",
         "suite": "RuntimeUAT/wispr_eyes", "expect_fail": "the guard fires"}],
@@ -2519,7 +2523,13 @@ else:
 _battery_for_validator = validator.load_battery()
 
 
-def check_flag_parse(name, body, *, accepted):
+def check_flag_parse(name, body, *, accepted, reason=None):
+    """`reason` asserts WHICH refusal, not merely that one happened.
+
+    #2687 added a second refusal — a module that only tests for the flag's ABSENCE — and a
+    harness that scores any refusal as correct cannot tell it from "never parses the flag".
+    Those two send an author to different places, so a case that cares says which it wants.
+    """
     global ran
     ran += 1
     with tempfile.TemporaryDirectory() as td:
@@ -2528,11 +2538,12 @@ def check_flag_parse(name, body, *, accepted):
         (root / "Tests" / "RuntimeUAT" / "probe.py").write_text(body)
         problems = validator.self_test_problems(
             _battery_for_validator, "RuntimeUAT/probe", root)
-    refused = any("does not parse --self-test" in problem for problem in problems)
     if accepted and problems:
         failures.append(f"{name}: expected acceptance, got {problems!r}")
-    elif not accepted and not refused:
-        failures.append(f"{name}: expected refusal, got {problems!r}")
+    elif not accepted and not problems:
+        failures.append(f"{name}: expected refusal, got none")
+    elif reason and not any(reason in problem for problem in problems):
+        failures.append(f"{name}: expected a refusal naming {reason!r}, got {problems!r}")
     else:
         print(f"  ok  {name}")
 
@@ -2577,6 +2588,37 @@ check_flag_parse("the self-test check accepts a recognised check in the else of 
 check_flag_parse("the self-test check accepts a recognised check under a name it cannot evaluate",
                  'import sys\nDEBUG = False\nif DEBUG:\n    if "--self-test" in sys.argv:\n'
                  '        pass\n', accepted=True)
+
+# #2687 filed five soundness gaps in this proof. NONE of the four that reason about Python
+# semantics is fixed here, and that is the finding rather than an omission: across four
+# review rounds every version of that reasoning refused a module that works. The last one
+# refused `tuple(sys.argv[1:]) == ("--self-test",)`, a module that normalises argv before
+# comparing -- which is what finally showed that even the "a list never equals a tuple"
+# argument was assuming something about the other operand it cannot see. The issue carries
+# the enumeration. What ships is the one gap that reasons about no semantics at all: the
+# command an operator copies.
+
+ran += 1
+_anchored = _battery_for_validator.self_test_command("RuntimeUAT/probe", Path("/tmp/some-tree"))
+if _anchored != "(cd /tmp/some-tree && python3 Tests/RuntimeUAT/probe.py --self-test)":
+    failures.append(f"the advertised self-test command is not anchored to a checkout: {_anchored!r}")
+else:
+    print("  ok  the advertised self-test command is anchored to the checkout it was proved against")
+
+ran += 1
+_spaced = _battery_for_validator.self_test_command(
+    "RuntimeUAT/probe", Path("/tmp/a tree with spaces"))
+if _spaced != "(cd '/tmp/a tree with spaces' && python3 Tests/RuntimeUAT/probe.py --self-test)":
+    failures.append(f"the advertised command does not survive a path with spaces: {_spaced!r}")
+else:
+    print("  ok  the advertised self-test command quotes a checkout path containing spaces")
+
+ran += 1
+_bare = _battery_for_validator.self_test_command("RuntimeUAT/probe")
+if _bare != "python3 Tests/RuntimeUAT/probe.py --self-test":
+    failures.append(f"an unanchored call must stay relative for the refusal messages: {_bare!r}")
+else:
+    print("  ok  an unanchored call still returns the bare relative command")
 
 print()
 if failures:
