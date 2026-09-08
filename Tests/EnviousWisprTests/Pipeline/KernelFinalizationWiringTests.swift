@@ -2283,7 +2283,133 @@ import os
     }
   }
 
+  @Test("#1946 The production casing snapshot reaches the oracle while the main actor is busy")
+  func productionCasingSnapshotDoesNotWaitForTheMainActor() async throws {
+    // The PRODUCTION default snapshot closure, which is why this case builds the
+    // wiring directly instead of using `makeWiring`. That helper's injected
+    // oracle seam is `@MainActor`, so it hops by construction and could never
+    // pose this question. It is driven through the real `deliver` rather than
+    // called on its own, because a default argument has no call site to grep:
+    // testing the closure in isolation would leave "and the wiring uses it"
+    // unproven.
+    //
+    // Shape. `resolveLanguage` runs inside the deadline's operation task, which
+    // is off the main actor. It queues a block that OCCUPIES the main actor,
+    // waits until that block is running, and only then returns. The oracle fetch
+    // is the very next thing the operation does. A fetch that first waits for
+    // the main actor can never reach the oracle here, so the consultation never
+    // happens, so the occupying block ends on its fail-safe instead of on the
+    // signal — which is what the shipped code did before #1946.
+    //
+    // Each precondition is its OWN expectation with its own message, because a
+    // fixture that did not establish its scenario must not be read as an answer
+    // about the code. Two review rounds landed on exactly that, one round apart.
+    //
+    // KNOWN LIMIT, stated rather than machined around. This is a scheduling
+    // test. It asserts that the occupying block held the main actor before the
+    // fetch and that the deadline had not already claimed, and both of those are
+    // checkable. It CANNOT establish that the operation task got CPU between
+    // `beginRepair` and the occupying block's bound, so a starved worker fails
+    // this case against correct code. Healthy cost measured at 35-44 ms, so that
+    // is rare; re-run once before reading a red here as the hop returning. An
+    // earlier revision retried unstaged attempts three times, which added a
+    // state machine without covering this case, and was deleted.
+    //
+    // It occupies the shared main actor, briefly when healthy and for the full
+    // bound when not, so prefer running it alone when investigating a failure.
+    try await withSeamCasingOracleExclusion {
+      let mainOccupied = DispatchSemaphore(value: 0)
+      let consulted = DispatchSemaphore(value: 0)
+      let mainReleased = DispatchSemaphore(value: 0)
+      // WHY each wait stopped, never merely that it stopped. A bare signal fires
+      // on the fail-safe too, so the broken path would report what the fixed one
+      // reports.
+      let sawConsultation = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let occupiedMain = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+
+      // Signals from `dictionaryVerdict` because the #1921 oracle-stall case
+      // above already establishes that this text reaches that closure.
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(
+        SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in
+            consulted.signal()
+            return .ordinary
+          },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false }))
+      #expect(
+        Self.oracleIsAvailable(),
+        "precondition: the installed oracle must come back available, or nothing can consult it")
+
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+
+      let wiring = KernelFinalizationWiring(
+        outcome: outcome,
+        context: context,
+        adapter: Self.transcribedEngine(),
+        steps: makeSteps(),
+        textProcessingRunner: TextProcessingRunner(
+          timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
+        save: { _, _ in },
+        deliverPaste: { _ in Self.deliveredResult },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        // `seamCasingOracle` is deliberately NOT passed. The production default
+        // is the subject of this case.
+        resolveLanguage: { _, _, _, _, _ in
+          DispatchQueue.main.async {
+            mainOccupied.signal()
+            // deadline-fallback: the consultation is the signal; this bound only
+            // stops a defect hanging the suite.
+            let waited = consulted.wait(timeout: .now() + 5)
+            sawConsultation.withLock { $0 = waited }
+            mainReleased.signal()
+          }
+          // deadline-fallback: the block reaching the main actor is the signal.
+          // Its RESULT is kept and asserted below, because a block that arrives
+          // AFTER the fetch would see `consulted` already signalled and report a
+          // pass the code never earned.
+          let occupied = mainOccupied.wait(timeout: .now() + 5)
+          occupiedMain.withLock { $0 = occupied }
+          return DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        },
+        pasteCompletionRegistry: nil,
+        copyToClipboard: { text in
+          Issue.record("unexpected clipboard copy: \(text)")
+        })
+
+      _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+      #expect(
+        await awaitSignal(mainReleased),
+        "precondition: the occupying block must have finished, or this run measured nothing")
+      #expect(
+        occupiedMain.withLock { $0 } == .success,
+        "precondition: the occupying block must hold the main actor BEFORE the fetch")
+      #expect(
+        outcome.languageResolutionSource == "dictation",
+        """
+        precondition: the 100 ms deadline must not have claimed before repair began. \
+        The gate freezes without a resolution only in that case, and no fetch is \
+        attempted, so the run says nothing about where the fetch would have run
+        """)
+      #expect(
+        sawConsultation.withLock { $0 } == .success,
+        """
+        the production snapshot must reach the oracle while the main actor is \
+        occupied; a fetch that first waits for the main actor cannot, and the \
+        occupying block then ends on its fail-safe instead of on the consultation
+        """)
+    }
+  }
 }
+
 
 /// Hand-advanced logical clock for the tick-rate test. Local `@MainActor` copy:
 /// the `ManualClock` in `LoadProgressWatcherTests` is `private` to that suite and
