@@ -482,7 +482,8 @@ import Testing
         ),
         MemberSignature(
           condition: nil,
-          signature: "func startStreaming(options: TranscriptionOptions) async throws"),
+          signature:
+            "func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws"),
         MemberSignature(
           condition: nil, signature: "func feedAudio(_ buffer: AVAudioPCMBuffer) async throws"),
         MemberSignature(
@@ -507,7 +508,8 @@ import Testing
         // no-op default (its own signal-watchdog already fully recovers).
         // SYNCHRONOUS (round 5): must be callable from `withOrderedDeadline`'s
         // non-async `onTimeout` for its ordering guarantee.
-        MemberSignature(condition: nil, signature: "func cancelInFlightStreamingStart()"),
+        MemberSignature(
+          condition: nil, signature: "func cancelInFlightStreamingStart(attemptID: UUID)"),
         // #1908: #1707 Phase 2 batch-decode fault oracle, ported from
         // `ASRServiceHandler`'s `#if DEBUG` block onto the shared interface
         // so `BatchDecodeFaultController` no longer needs a concrete
@@ -529,7 +531,7 @@ import Testing
           signature: "public func attemptWedgeRecoveryUnload() async"),
         MemberSignature(
           condition: nil,
-          signature: "public func cancelInFlightStreamingStart()"),
+          signature: "public func cancelInFlightStreamingStart(attemptID: UUID)"),
         MemberSignature(
           condition: "DEBUG",
           signature: "public func armBatchDecodeHold(trialID: String) async"),

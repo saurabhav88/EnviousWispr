@@ -639,7 +639,9 @@ private final class NoOpASRManager: ASRManagerInterface {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     throw NoOpError.unexpected
   }
-  func startStreaming(options: TranscriptionOptions) async throws { throw NoOpError.unexpected }
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
+    throw NoOpError.unexpected
+  }
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws { throw NoOpError.unexpected }
   func finalizeStreaming() async throws -> ASRResult { throw NoOpError.unexpected }
   func cancelStreaming() async {}

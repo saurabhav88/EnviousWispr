@@ -105,7 +105,12 @@ public actor ParakeetBackend: ASRBackend {
   /// instance published under `generation` — a NEWER attempt's own publish
   /// (which sets `publishedStreamingGeneration` to its own, different,
   /// value) must never be touched by an older attempt's late reclaim.
-  private func reclaimIfPublished(generation: UInt64) async {
+  ///
+  /// Not `private` (round 11): `ASRManager.cancelStreaming()` now calls this
+  /// directly on the exact backend/generation its own `streamingStartBackendAttempt`
+  /// names, rather than a blind `activeBackend.cancelStreaming()` that could
+  /// hit a replacement stream (round 7's lesson, applied to the explicit-cancel path too).
+  func reclaimIfPublished(generation: UInt64) async {
     guard publishedStreamingGeneration == generation, let manager = streamingManager else { return }
     streamingManager = nil
     publishedStreamingGeneration = nil
@@ -482,18 +487,35 @@ public actor ParakeetBackend: ASRBackend {
     // or a newer session's own `startStreaming()` bumps `streamingGeneration`
     // — never publish over whatever either of them set up in the meantime.
     // Cancel what THIS attempt built instead of leaking it.
-    guard streamingGeneration.withLock({ $0 == myGeneration }) else {
+    //
+    // #1908 round 11: the check and the publish happen INSIDE one lock
+    // acquisition (`withLockUnchecked`, not the two-step
+    // "check-then-assign" the earlier rounds used) so
+    // `invalidateStreamingGeneration`'s own lock-protected bump — which
+    // fires from a different, `nonisolated` execution context and can
+    // otherwise interleave in the gap between a passed check and the
+    // property writes that follow it — cannot land between this check and
+    // this publish. `withLockUnchecked` (not `withLock`) because the
+    // closure captures and mutates actor-isolated `self` state, which is
+    // safe here precisely because this whole method is already
+    // actor-isolated and the closure never escapes or crosses an actual
+    // concurrency boundary — it runs synchronously, inline, on this call.
+    let published = streamingGeneration.withLockUnchecked { current -> Bool in
+      guard current == myGeneration else { return false }
+      self.streamingManager = manager
+      // #1908 round 10: recorded so a LATE invalidation of this exact
+      // generation (the deadline's timer winning the outer `claim()` race
+      // just after this closure runs, before the caller ever observes
+      // success) can still find and reclaim this manager — see
+      // `reclaimIfPublished(generation:)`.
+      self.publishedStreamingGeneration = myGeneration
+      self.streamingStartTime = CFAbsoluteTimeGetCurrent()
+      return true
+    }
+    guard published else {
       await manager.cancel()
       throw CancellationError()
     }
-    self.streamingManager = manager
-    // #1908 round 10: recorded so a LATE invalidation of this exact
-    // generation (the deadline's timer winning the outer `claim()` race
-    // just after this line runs, before the caller ever observes success)
-    // can still find and reclaim this manager — see
-    // `reclaimIfPublished(generation:)`.
-    self.publishedStreamingGeneration = myGeneration
-    self.streamingStartTime = CFAbsoluteTimeGetCurrent()
   }
 
   /// #1654: which streaming leg threw. Not cosmetic — it decides whether a bare vendor
@@ -557,6 +579,10 @@ public actor ParakeetBackend: ASRBackend {
       }
     }
 
+    // Snapshot before the suspension below — a reclaim task or a newer
+    // start could otherwise overwrite `streamingStartTime` while this
+    // awaits, corrupting THIS call's own elapsed-time math.
+    let streamStart = streamingStartTime
     let finalizeStart = CFAbsoluteTimeGetCurrent()
     let text: String
     do {
@@ -570,7 +596,7 @@ public actor ParakeetBackend: ASRBackend {
     }
     let finalizeEnd = CFAbsoluteTimeGetCurrent()
 
-    let totalElapsed = finalizeEnd - streamingStartTime
+    let totalElapsed = finalizeEnd - streamStart
     let finalizeElapsed = finalizeEnd - finalizeStart
 
     return ASRResult(

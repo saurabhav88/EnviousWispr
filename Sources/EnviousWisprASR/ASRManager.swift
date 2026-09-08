@@ -48,13 +48,27 @@ public final class ASRManager: ASRManagerInterface {
   /// #959 readiness-integrity token (see `ASRManagerProxy.loadGeneration`).
   private var loadGeneration: UInt64 = 0
 
-  /// #1908 Codex review round 5: same shape as `loadGeneration`, for
-  /// `startStreaming()`. Lives here (not only inside `ParakeetBackend`) so
-  /// `cancelInFlightStreamingStart()` can invalidate an in-flight attempt
-  /// SYNCHRONOUSLY, callable from `withOrderedDeadline`'s non-async
-  /// `onTimeout` — the actor-isolated `ParakeetBackend`-level guard alone
-  /// cannot give that ordering guarantee, only cross-Task-race protection.
-  private var streamingStartGeneration: UInt64 = 0
+  /// #1908 round 11: real overlap IS reachable — a deadline-abandoned
+  /// `startStreaming()` attempt's underlying vendor call is NOT serialized
+  /// against a fresh recording that starts right after (cancel-then-restart),
+  /// and `BenchmarkSuite`'s "Run Pipeline Benchmark" diagnostic calls
+  /// `startStreaming()` directly, bypassing the kernel's session serialization
+  /// entirely. Four rounds of generation-comparison patches each closed one
+  /// interleaving and left the next; the closed-form fix is ADMISSION, not
+  /// comparison: `streamingStartInFlight` stays `true` from the moment a
+  /// start is accepted until the underlying attempt actually unwinds —
+  /// through its deadline firing AND past it, all the way to the vendor call
+  /// itself returning — not just until the deadline expires. A second
+  /// attempt while admission is held is refused outright (throws
+  /// `CancellationError()`, caller falls back to batch) rather than raced
+  /// against the first; there is no "which one is newer" question left to
+  /// get wrong.
+  private var streamingStartInFlight = false
+  /// This attempt's identity, supplied by the caller (`ParakeetEngineAdapter`
+  /// mints a fresh one per `beginSession()`) rather than an internal counter,
+  /// so `cancelInFlightStreamingStart(attemptID:)` can name exactly the
+  /// attempt it means to abandon.
+  private var streamingStartID: UUID?
   /// #1908 round 8: the current in-flight attempt's PARAKEET-BACKEND-level
   /// identity, captured synchronously before entering the vendor call so
   /// `cancelInFlightStreamingStart()` can invalidate that specific backend
@@ -62,13 +76,10 @@ public final class ASRManager: ASRManagerInterface {
   /// there — closing the gap where an abandoned attempt's late vendor
   /// completion still passed `ParakeetBackend`'s OWN generation check
   /// (nothing had told it the manager gave up) and leaked a live streaming
-  /// session. `nil` for a non-Parakeet backend. `startStreaming()` clears it
-  /// when its own vendor call returns — but ONLY if it still holds THIS
-  /// attempt's own generation (round 9, cloud review P2): a timed-out
-  /// attempt's vendor call can still be suspended when a retry starts,
-  /// reserves its own generation, and overwrites this property with its own
-  /// tuple; an unconditional clear would wipe the retry's tracking the
-  /// moment the abandoned call's vendor call finally returns.
+  /// session. `nil` for a non-Parakeet backend. Kept addressable past a
+  /// successful publish too (round 10): the outer `withOrderedDeadline` can
+  /// still resolve in the timeout's favor just after the backend publishes,
+  /// and that late invalidation still needs a target to reclaim.
   private var streamingStartBackendAttempt: (backend: ParakeetBackend, generation: UInt64)?
 
   /// #959 single-flight identity (see `ASRManagerProxy.loadTaskSeq`).
@@ -449,85 +460,81 @@ public final class ASRManager: ASRManagerInterface {
   // MARK: - Streaming ASR
 
   /// Start streaming ASR on the active backend. Falls back silently if unsupported.
-  /// If a streaming session is already active, cancels it first to prevent double-session state.
-  public func startStreaming(options: TranscriptionOptions = .default) async throws {
-    // #1908 Codex review round 6: captured as the FIRST statement, before
-    // ANY suspension — round 5's fix captured this after the two awaits
-    // below, so a caller's timeout bumping `streamingStartGeneration` DURING
-    // either of them (not only during the vendor call itself) let this
-    // attempt silently adopt the POST-abandon generation as its own baseline
-    // and pass the check at the bottom unconditionally.
-    let gen = streamingStartGeneration
-    guard let activeBackend, await activeBackend.supportsStreaming else { return }
-    // Cancel any existing session before starting a new one
-    if isStreaming {
-      await activeBackend.cancelStreaming()
-      isStreaming = false
+  ///
+  /// #1908 round 11: ADMISSION, not comparison. `streamingStartInFlight`
+  /// stays held from acceptance until the underlying attempt actually
+  /// unwinds — through its deadline firing and past it, to the vendor call
+  /// itself returning — not just until the caller stops waiting. A second
+  /// call while admission is held is refused outright (`CancellationError()`,
+  /// caller falls back to batch) instead of racing generation numbers
+  /// against the first: there is no "which one is newer" comparison left to
+  /// get wrong, because a second attempt never runs concurrently with the
+  /// first at all. `attemptID` is the caller's own identity (not an internal
+  /// counter) so `cancelInFlightStreamingStart(attemptID:)` can name exactly
+  /// which attempt it means to abandon, never an unrelated later one.
+  public func startStreaming(
+    options: TranscriptionOptions = .default, attemptID: UUID = UUID()
+  ) async throws {
+    try Task.checkCancellation()
+    guard !streamingStartInFlight, !isStreaming else { throw CancellationError() }
+    streamingStartInFlight = true
+    if let previous = streamingStartID {
+      cancelInFlightStreamingStart(attemptID: previous)
     }
-    if let parakeet = activeBackend as? ParakeetBackend {
-      // #1908 round 8: reserve the BACKEND-level generation synchronously,
-      // before entering the vendor call, and remember which backend it
-      // belongs to. `cancelInFlightStreamingStart()` needs this to
-      // invalidate exactly this attempt (never a newer one) if the caller
-      // gives up while this is still suspended below. See
-      // `streamingStartBackendAttempt`'s own doc for why this cannot simply
-      // be reserved inside `ParakeetBackend.startStreaming()` itself.
-      let backendGen = parakeet.reserveStreamingGeneration()
+    streamingStartID = attemptID
+    isStreaming = false
+    streamingStartBackendAttempt = nil
+    var succeeded = false
+    // Admission releases only here, on every exit path — success, throw, or
+    // an early return below. A caller that gives up (deadline) still holds
+    // admission until THIS defer runs, i.e. until the vendor call itself
+    // unwinds; `cancelInFlightStreamingStart` never releases it early.
+    defer {
+      if !succeeded { cancelInFlightStreamingStart(attemptID: attemptID) }
+      streamingStartInFlight = false
+    }
+
+    guard let activeBackend else { return }
+    let parakeet = activeBackend as? ParakeetBackend
+    // #1908 round 8: reserve the BACKEND-level generation synchronously,
+    // before entering the vendor call — `cancelInFlightStreamingStart()`
+    // needs this to invalidate exactly this attempt if the caller gives up
+    // while this is still suspended below.
+    let backendGen = parakeet?.reserveStreamingGeneration()
+    if let parakeet, let backendGen {
       streamingStartBackendAttempt = (parakeet, backendGen)
-      // #1908 round 9 (cloud review P2): clear ONLY if this is still OUR
-      // tuple. A timed-out attempt's vendor call can still be suspended
-      // below when a retry starts, reserves its OWN generation, and
-      // overwrites `streamingStartBackendAttempt` with its own tuple; an
-      // unconditional clear here, once this (abandoned) call's vendor call
-      // finally returns, would wipe the RETRY's tracking — reopening the
-      // exact leak/race this property exists to close, for the retry
-      // instead of for this attempt.
-      //
-      // Checks BACKEND IDENTITY too (`attempt.backend === parakeet`), not
-      // only the generation number: `performLoad()` can publish a
-      // REPLACEMENT `ParakeetBackend` instance, and each backend's counter
-      // starts at zero — an abandoned attempt on the OLD backend and a
-      // retry on the NEW one can hold the identical generation number.
-      // Without the identity check, matching on the number alone would let
-      // the old backend's defer clear the new backend's tuple even though
-      // they are not the same attempt at all.
-      defer {
-        if let attempt = streamingStartBackendAttempt,
-          attempt.backend === parakeet,
-          attempt.generation == backendGen
-        {
-          streamingStartBackendAttempt = nil
-        }
-      }
+    }
+    // Reserved before this suspension so a concurrent invalidation cannot
+    // land in the gap. Parakeet's own `startStreaming` drains any existing
+    // stream itself; calling `cancelStreaming()` here first (the pre-round-11
+    // shape) would invalidate the reservation just taken.
+    let supported = await activeBackend.supportsStreaming
+    guard streamingStartID == attemptID, self.activeBackend === activeBackend, !Task.isCancelled
+    else { throw CancellationError() }
+    guard supported else { return }
+
+    if let parakeet, let backendGen {
       try await parakeet.startStreaming(options: options, generation: backendGen)
     } else {
       // Non-Parakeet (or an injected test backend): no backend-level
       // generation to coordinate, same as before #1908 round 8.
       try await activeBackend.startStreaming(options: options)
     }
-    // #1908 Codex review round 5: a caller that gave up waiting (deadline
-    // expiry) bumps `streamingStartGeneration` via
-    // `cancelInFlightStreamingStart()`; if that happened while this call was
-    // still in flight, the vendor call can still complete successfully here
-    // — refuse to resurrect `isStreaming` for an attempt nobody is
-    // listening for anymore.
-    //
-    // #1908 round 7: deliberately does NOT also call
-    // `activeBackend.cancelStreaming()` here (round 5's version did).
-    // `cancelStreaming()` cancels whichever stream is CURRENT — it has no
-    // way to know this manager is the one THIS now-superseded attempt just
-    // published, versus a NEWER session's own `startStreaming()` that may
-    // have already run and published its own stream in the meantime. A
-    // blind cancel here could tear down a legitimate newer stream instead
-    // of the abandoned one. Left unreclaimed here, this attempt's published
-    // manager is cleaned up the next time ANYTHING calls `startStreaming()`
-    // (its own pre-start "cancel any existing session" step) or
-    // `unloadModel()` — both already unconditional-by-design because at
-    // those points replacing/discarding whatever is current IS correct.
-    guard gen == streamingStartGeneration else {
+    guard streamingStartID == attemptID, self.activeBackend === activeBackend, !Task.isCancelled
+    else {
+      if let parakeet, let backendGen {
+        parakeet.invalidateStreamingGeneration(backendGen)
+        await parakeet.reclaimIfPublished(generation: backendGen)
+      } else {
+        // Admission is still held (we have not returned yet), so nothing
+        // newer can have started — this can only be cancelling our own
+        // stream, never a replacement's.
+        await activeBackend.cancelStreaming()
+      }
       throw CancellationError()
     }
     isStreaming = true
+    succeeded = true
   }
 
   /// Feed an audio buffer to the streaming ASR session.
@@ -550,12 +557,16 @@ public final class ASRManager: ASRManagerInterface {
     // is true, so the model stayed resident forever after a session that hit
     // this leg, with nothing left to clear it (the session is already closed
     // by the time this returns).
+    let attemptID = streamingStartID
     do {
       let result = try await activeBackend.finalizeStreaming()
-      isStreaming = false
+      // Identity-checked, not unconditional: a reclaim task or a newer
+      // start's own admission could have moved `streamingStartID` on during
+      // this suspension (round 9/10's lesson, applied here too).
+      if streamingStartID == attemptID { isStreaming = false }
       return result
     } catch {
-      isStreaming = false
+      if streamingStartID == attemptID { isStreaming = false }
       throw error
     }
   }
@@ -563,54 +574,41 @@ public final class ASRManager: ASRManagerInterface {
   /// Cancel an active streaming session, discarding partial results.
   public func cancelStreaming() async {
     guard isStreaming, let activeBackend else { return }
-    await activeBackend.cancelStreaming()
+    let attempt = streamingStartBackendAttempt
+    if let attemptID = streamingStartID {
+      cancelInFlightStreamingStart(attemptID: attemptID)
+    }
     isStreaming = false
+    if let attempt {
+      // Reclaim the exact stream this attempt owns — never "whichever
+      // stream is current" (round 7's lesson: that could be a replacement).
+      await attempt.backend.reclaimIfPublished(generation: attempt.generation)
+    } else {
+      await activeBackend.cancelStreaming()
+    }
   }
 
-  /// #1908 Codex review (round 4/5): invalidate an in-flight `startStreaming()`
-  /// a caller gave up waiting on (e.g. `ParakeetEngineAdapter.beginSession()`'s
-  /// deadline). Deliberately NOT `cancelStreaming()` — that guards on
-  /// `isStreaming`, which is still `false` here (the abandoned attempt never
-  /// reached its own `isStreaming = true` line).
+  /// #1908 round 11: synchronously abandon ONLY the attempt named by
+  /// `attemptID` — never release admission here (`streamingStartInFlight`
+  /// stays `true`; only `startStreaming()`'s own `defer` releases it, once
+  /// the vendor call itself unwinds). Vendor work can still be running in
+  /// the background; releasing admission early would let a second attempt
+  /// start and race it, which is the whole class round 8-10 kept rediscovering
+  /// one interleaving at a time. This is a no-op if `attemptID` is not the
+  /// currently tracked attempt — a caller invalidating a STALE id (e.g. a
+  /// deadline that fires after a newer attempt already replaced this one)
+  /// must never touch the newer attempt's state.
   ///
   /// SYNCHRONOUS on purpose: called from `withOrderedDeadline`'s non-async
-  /// `onTimeout`, which GUARANTEES this bump completes before the timed-out
-  /// caller resumes — the ordering bare `withDeadline` cannot provide (round
-  /// 5 finding: the vendor call can still finish and set `isStreaming = true`
-  /// in the gap between a bare deadline firing and an `async` cleanup call
-  /// actually reaching this method). The generation check lives in
-  /// `startStreaming()` itself, right after its own vendor call returns.
+  /// `onTimeout`, which GUARANTEES this runs before the timed-out caller
+  /// resumes — the ordering bare `withDeadline` cannot provide.
   ///
-  /// #1908 Codex review round 6: also clears `isStreaming` synchronously,
-  /// unconditionally. `withOrderedDeadline` races two Tasks on a `claim()`
-  /// lock that decides who RESUMES the caller — it does not gate an
-  /// operation's own side effects. The vendor call can run to completion,
-  /// pass `startStreaming()`'s own generation check (nothing had bumped it
-  /// YET), and set `isStreaming = true`, and STILL lose the outer `claim()`
-  /// race to this timeout by a hair — `onTimeout` and the operation's own
-  /// completion are that close. Forcing `isStreaming` false here makes the
-  /// caller's observed outcome (a timeout) consistent with manager state
-  /// regardless of which side technically finished its own check first.
-  ///
-  /// #1908 round 7: deliberately does NOT call `activeBackend.cancelStreaming()`
-  /// here (round 5/6's version did). `cancelStreaming()` cancels whichever
-  /// stream is CURRENT with no way to tell "the one this abandoned attempt
-  /// published" from "the one a brand new session just published" — a blind
-  /// cancel could tear down a legitimate newer stream.
-  ///
-  /// #1908 round 8: DOES still reach into the backend, but narrowly —
+  /// #1908 round 8: reaches into the backend narrowly —
   /// `invalidateStreamingGeneration(_:)` only bumps if the backend's counter
-  /// still matches the exact generation `streamingStartBackendAttempt`
-  /// captured for THIS attempt; a newer attempt's own generation cannot
-  /// match, so this can never invalidate one. That's the difference from
-  /// round 5/6's blind `cancelStreaming()`, not a reversal of round 7's
-  /// finding. Without this, `ParakeetBackend`'s OWN generation guard never
-  /// learns the manager gave up (nothing else bumps it for that reason), so
-  /// an abandoned attempt's late vendor completion still passes it and
-  /// leaks a live streaming session until the next `startStreaming()` or
-  /// `unloadModel()` call reclaims it.
-  public func cancelInFlightStreamingStart() {
-    streamingStartGeneration &+= 1
+  /// still matches the exact generation reserved for THIS attempt.
+  public func cancelInFlightStreamingStart(attemptID: UUID) {
+    guard streamingStartID == attemptID else { return }
+    streamingStartID = nil
     isStreaming = false
     if let attempt = streamingStartBackendAttempt {
       streamingStartBackendAttempt = nil

@@ -724,7 +724,7 @@ internal final class MockASRManager: ASRManagerInterface {
     }
   }
 
-  func startStreaming(options: TranscriptionOptions) async throws {
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
     throw MockFailure.unexpectedStreaming
   }
 

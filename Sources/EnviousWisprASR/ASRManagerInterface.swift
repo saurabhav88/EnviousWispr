@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import Foundation
 
 /// Thrown by `loadModel()` when the load it was running was superseded mid-flight
 /// by a `cancelInFlightLoad()` (wedge recovery), an `unloadModel()`, or a real
@@ -168,7 +169,10 @@ public protocol ASRManagerInterface: AnyObject {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
   // Streaming transcription
-  func startStreaming(options: TranscriptionOptions) async throws
+  /// Create a fresh `attemptID` before scheduling the call and its deadline —
+  /// `cancelInFlightStreamingStart(attemptID:)` needs it to name exactly
+  /// this attempt (#1908 round 11).
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws
   func finalizeStreaming() async throws -> ASRResult
   func cancelStreaming() async
@@ -192,21 +196,25 @@ public protocol ASRManagerInterface: AnyObject {
   /// extension's no-op default rather than overriding.
   func attemptWedgeRecoveryUnload() async
 
-  /// #1908 Codex review (chunk A+B rounds 4-5): invalidate an in-flight
-  /// `startStreaming()` attempt that a caller has given up waiting on (e.g. a
-  /// deadline expiry), so its late completion cannot resurrect streaming
-  /// state behind the caller's back — the exact class `cancelInFlightLoad()`
-  /// exists for on the load side. Unlike `cancelInFlightLoad()`, this fires
-  /// even when `isStreaming` is still `false` (the attempt never got that
-  /// far), so it cannot be expressed as an ordinary `cancelStreaming()` call,
-  /// which guards on `isStreaming`.
+  /// #1908 Codex review (chunk A+B rounds 4-5, revised round 11): invalidate
+  /// an in-flight `startStreaming()` attempt that a caller has given up
+  /// waiting on (e.g. a deadline expiry), so its late completion cannot
+  /// resurrect streaming state behind the caller's back — the exact class
+  /// `cancelInFlightLoad()` exists for on the load side. Unlike
+  /// `cancelInFlightLoad()`, this fires even when `isStreaming` is still
+  /// `false` (the attempt never got that far), so it cannot be expressed as
+  /// an ordinary `cancelStreaming()` call, which guards on `isStreaming`.
+  ///
+  /// Pass the SAME `attemptID` given to `startStreaming(options:attemptID:)`.
+  /// A no-op if that id is not the currently tracked attempt — this must
+  /// never invalidate a NEWER attempt that has already replaced it.
   ///
   /// SYNCHRONOUS, not `async` — round 5's finding: a caller that awaits an
   /// `async` invalidation before proceeding still leaves a window where the
   /// abandoned vendor call can complete and publish first. A synchronous
   /// method is callable from `withOrderedDeadline`'s non-async `onTimeout`,
   /// which guarantees it runs BEFORE the timed-out caller resumes.
-  func cancelInFlightStreamingStart()
+  func cancelInFlightStreamingStart(attemptID: UUID)
 
   /// Issue #445: per-tick callback for the load-progress polling stream.
   /// Set by the dictation kernel for the duration of one `loadModel()`
@@ -251,12 +259,12 @@ extension ASRManagerInterface {
 
   /// #1908 safe default: a test double has no real background vendor Task
   /// whose late completion could corrupt state, so there is nothing to
-  /// invalidate. `ASRManager` overrides with the real synchronous
-  /// generation-bump; `ASRManagerProxy` relies on this same no-op — its own
+  /// invalidate. `ASRManager` overrides with the real implementation;
+  /// `ASRManagerProxy` relies on this same no-op — its own
   /// `withASRXPCOperationSignal` watchdog already fully recovers a wedged
   /// `startStreaming()` (invalidates the connection), so the caller-abandoned
   /// gap this method exists to close never opens there.
-  public func cancelInFlightStreamingStart() {}
+  public func cancelInFlightStreamingStart(attemptID: UUID) {}
 
   #if DEBUG
     /// #1908 safe defaults for test doubles: a mock backend has no real

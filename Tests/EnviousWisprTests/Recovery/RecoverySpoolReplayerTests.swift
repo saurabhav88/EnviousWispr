@@ -78,7 +78,7 @@ struct RecoverySpoolReplayerTests {
         text: cannedText, language: options.language, duration: 1, processingTime: 1,
         backendType: activeBackendType)
     }
-    func startStreaming(options: TranscriptionOptions) async throws {}
+    func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {}
     func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {}
     func finalizeStreaming() async throws -> ASRResult {
       ASRResult(text: "", language: nil, duration: 0, processingTime: 0, backendType: .parakeet)

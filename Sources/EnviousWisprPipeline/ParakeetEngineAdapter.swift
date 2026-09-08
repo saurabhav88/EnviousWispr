@@ -500,12 +500,29 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
 
   // MARK: ASREngineAdapter — session lifecycle
 
+  /// #1908 round 11: this session's streaming-start attempt identity — kept
+  /// past `beginSession()` returning, because a deadline-abandoned attempt's
+  /// underlying vendor call is NOT serialized against a fresh session that
+  /// starts right after (`beginSession()` returns using batch fallback well
+  /// before the orphaned work unwinds). Every downstream check in this
+  /// method compares against it so a late callback from an abandoned
+  /// attempt can never act on behalf of a newer one.
+  private var streamingStartAttemptID: UUID?
+
   /// Begin a session. Opens a live stream only when the kernel asked for one
   /// (`streaming`) AND the backend supports it; on a streaming-setup failure it
   /// degrades to batch-after-stop — today's `streamingSetupSucceeded` fallback
   /// (old Parakeet pipeline). `streaming == false` (the user
   /// disabled live transcription) means batch decode after stop only.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
+    // #1908 round 11: abandon any prior session's still-outstanding
+    // streaming-start attempt before minting a new identity for this one —
+    // this session's own start must never be mistaken for the old one.
+    if let previous = streamingStartAttemptID {
+      asrManager.cancelInFlightStreamingStart(attemptID: previous)
+    }
+    let attemptID = UUID()
+    streamingStartAttemptID = attemptID
     // #1707: a new session invalidates any recovery attempt still pending
     // from a prior one — its post-await checks compare against this.
     recoveryGeneration &+= 1
@@ -529,7 +546,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // which cancels the idle timer at every session start.
     asrManager.cancelIdleTimer()
 
-    if streaming, await asrManager.activeBackendSupportsStreaming {
+    let supportsStreaming: Bool
+    if streaming {
+      supportsStreaming = await asrManager.activeBackendSupportsStreaming
+    } else {
+      supportsStreaming = false
+    }
+    // #1908 round 11: re-check identity after the await above — a
+    // replacement session (or a cancel) could have run during it.
+    guard streamingStartAttemptID == attemptID, !isCancelled else { return }
+    if supportsStreaming {
       // #1908 Codex review: `startStreaming` reaches the same silent-compile-step
       // vendor call as the cold-load wedge fixed in `warmUp()`
       // (`ParakeetBackend.startStreaming` also calls FluidAudio's
@@ -556,12 +582,15 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         seconds: asrInterruptionRecoveryDeadlineSec,
         operation: { [weak self, options] () -> StreamingStartOutcome in
           guard let self else { return .cancelled }
-          return await self.attemptStreamingStart(options: options)
+          return await self.attemptStreamingStart(options: options, attemptID: attemptID)
         },
         onTimeout: { [weak self] in
-          self?.asrManager.cancelInFlightStreamingStart()
+          self?.asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
         }
       )
+      // #1908 round 11: re-check identity after the deadline resolves — a
+      // replacement session (or a cancel) could have run while this awaited.
+      guard streamingStartAttemptID == attemptID, !isCancelled else { return }
       switch outcome {
       case .succeeded:
         streamingActive = true
@@ -608,6 +637,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // the value but the forward-looking CLAIM; a report emitted at time T must not
         // assert an outcome decided at time T+1. Whether the fallback delivered is the
         // finalize leg's and the terminal's to say.
+        //
+        // #1908 round 11: re-checked here too, not just before the switch —
+        // the `await AppLogger.shared.log(...)` just above is its own
+        // suspension point a replacement session could run during.
+        guard streamingStartAttemptID == attemptID, !isCancelled else { return }
         TelemetryService.shared.limbFailureObserved(
           limb: "asr_streaming", operation: "start",
           result: "failed",
@@ -631,6 +665,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           "Streaming ASR start timed out after \(asrInterruptionRecoveryDeadlineSec)s, will use batch",
           level: .info, category: "Pipeline"
         )
+        guard streamingStartAttemptID == attemptID, !isCancelled else { return }
         TelemetryService.shared.limbFailureObserved(
           limb: "asr_streaming", operation: "start",
           result: "failed",
@@ -657,9 +692,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// synchronous `self.asrManager` property read directly inside that closure
   /// cannot compile; an `await self.method()` call can, the same way
   /// `recoverFromASRInterruption`'s own deadline closure calls `self.warmUp()`.
-  private func attemptStreamingStart(options: TranscriptionOptions) async -> StreamingStartOutcome {
+  private func attemptStreamingStart(
+    options: TranscriptionOptions, attemptID: UUID
+  ) async -> StreamingStartOutcome {
+    // #1908 round 11: re-check before ever entering the manager — this
+    // closure can be scheduled after this attempt was already abandoned.
+    guard streamingStartAttemptID == attemptID, !isCancelled, !Task.isCancelled else {
+      return .cancelled
+    }
     do {
-      try await asrManager.startStreaming(options: options)
+      try await asrManager.startStreaming(options: options, attemptID: attemptID)
       return .succeeded
     } catch is CancellationError {
       return .cancelled
@@ -757,6 +799,15 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `recoverFromWedge()`: cancel streaming, clear per-session state. Touches
   /// neither the model load nor the XPC connection.
   private func discardSession() async {
+    // #1908 round 11: abandon this session's own outstanding streaming-start
+    // attempt too — cancel/recovery discarding the session must not leave a
+    // stale attemptID that a later `beginSession()` would then also have to
+    // abandon (harmless but pointless) or, worse, an attempt that keeps
+    // holding manager-level admission with nothing left tracking it.
+    if let attemptID = streamingStartAttemptID {
+      streamingStartAttemptID = nil
+      asrManager.cancelInFlightStreamingStart(attemptID: attemptID)
+    }
     // #1707: covers `cancel()`, `recoverFromWedge()`, and transitively
     // `cancelSessionlessWarmup()` (which calls `cancel()`) — every heavy
     // lifecycle op that can start replacement work invalidates any pending

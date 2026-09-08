@@ -983,7 +983,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
     return transcribeResult
   }
 
-  func startStreaming(options: TranscriptionOptions) async throws {
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
     startStreamingCount += 1
     if let startStreamingDelay {
       try? await Task.sleep(for: startStreamingDelay)  // settle: deliberately outlasts the caller's own deadline under test
@@ -1035,7 +1035,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
   func cancelIdleTimer() { cancelIdleTimerCount += 1 }
-  func cancelInFlightStreamingStart() { cancelInFlightStreamingStartCount += 1 }
+  func cancelInFlightStreamingStart(attemptID: UUID) { cancelInFlightStreamingStartCount += 1 }
   func cancelInFlightLoad() {
     cancelInFlightLoadCount += 1
     // Mirrors the real ASRManagerProxy.cancelInFlightLoad(), which

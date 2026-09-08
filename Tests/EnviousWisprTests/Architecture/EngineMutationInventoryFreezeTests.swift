@@ -474,7 +474,8 @@ import Testing
     // MARK: BenchmarkSuite — direct call inside its own "benchmarkSuiteStreaming" claim.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: .default)", classification: .gated),
+      text: "try await asrManager.startStreaming(options: .default, attemptID: UUID())",
+      classification: .gated),
 
     // MARK: WisprBootstrapper — the sole `.switchBackend(to:)` call site
     // (frozen separately by `EngineSwitchOwnershipFreezeTests`). Protected by
@@ -722,11 +723,14 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "loadModel",
       text: "try await asrManager.loadModel()", classification: .transitivelyCoveredByCaller),
-    // `beginSession()`'s streaming start — reached only at a session's own
-    // start, inside the minting window `isMintingAnySession` covers.
+    // #1908 round 11: a deadline can outlive `beginSession()`'s own minting
+    // window (a caller-abandoned attempt's vendor call keeps running in the
+    // background). `ASRManager` now holds start admission until the attempt
+    // actually unwinds, not just until its deadline fires, so a later start
+    // is refused outright rather than racing this one.
     CallSite(
       file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "startStreaming",
-      text: "try await asrManager.startStreaming(options: options)",
+      text: "try await asrManager.startStreaming(options: options, attemptID: attemptID)",
       classification: .structurallySafe),
     // `cancel()`'s in-flight-load release — its dominant caller is genuine
     // session termination (structurally safe); its one sessionless caller

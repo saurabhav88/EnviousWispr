@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
+import Foundation
 import Testing
 
 @testable import EnviousWisprASR
@@ -393,7 +394,7 @@ private final class FakeASRManager: ASRManagerInterface {
   {
     fatalError("not used in SetupCoordinatorTests")
   }
-  func startStreaming(options _: TranscriptionOptions) async throws {
+  func startStreaming(options _: TranscriptionOptions, attemptID: UUID) async throws {
     fatalError("not used in SetupCoordinatorTests")
   }
   func feedAudio(_: AVAudioPCMBuffer) async throws {

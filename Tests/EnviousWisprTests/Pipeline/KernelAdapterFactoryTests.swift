@@ -69,7 +69,7 @@ private final class MinimalASRManager: ASRManagerInterface {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     ASRResult(text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
   }
-  func startStreaming(options: TranscriptionOptions) async throws {}
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {}
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {}
   func finalizeStreaming() async throws -> ASRResult {
     ASRResult(text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)

@@ -96,7 +96,7 @@ final class RouterTestASRManager: ASRManagerInterface {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
     throw RouterTestError.unexpected
   }
-  func startStreaming(options: TranscriptionOptions) async throws {
+  func startStreaming(options: TranscriptionOptions, attemptID: UUID) async throws {
     throw RouterTestError.unexpected
   }
   func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
