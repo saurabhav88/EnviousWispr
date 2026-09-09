@@ -278,7 +278,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
     /// kernel's own production default, so every existing scenario in the
     /// 37-scenario inventory is unchanged. A scenario that wants to exercise
     /// the denied-mic preflight passes `{ true }` explicitly.
-    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false }
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
+    /// #1946 chunk 2: the retry-deadline observation seams. Defaulted to no-ops
+    /// so every existing scenario is unchanged; the five retry-schedule cases
+    /// pass recorders and assert what the kernel computed.
+    onRetryDeadlineStarted: @escaping @MainActor (String, String, Int) -> Void = { _, _, _ in },
+    onRetryDeadlineResolved: @escaping @MainActor (
+      String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int,
+      Bool
+    ) -> Void = { _, _, _, _, _, _, _, _ in }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -333,6 +341,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
       prepareEscapeRecovery: prepareEscapeRecovery,
+      asrRetryDeadlineStartedTelemetry: onRetryDeadlineStarted,
+      asrRetryDeadlineResolvedTelemetry: onRetryDeadlineResolved,
       engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: minimumRecordingTicks,
       captureTelemetry: captureTelemetry,

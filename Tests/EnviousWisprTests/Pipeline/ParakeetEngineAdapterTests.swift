@@ -768,7 +768,7 @@ import Testing
 
     // Force retryDecode down its readiness-repair path so it parks on the
     // gated loadModel() — a deterministic stand-in for "the kernel's
-    // withOrderedDeadline decided this retry took too long."
+    // withMainActorOrderedDeadline decided this retry took too long."
     manager.isModelLoaded = false
     manager.gateLoadModel = true
     manager.transcribeResult = makeResult("should be discarded")

@@ -218,12 +218,12 @@ package final class BatchDecodeFaultController {
   private var kernelTimestamps = KernelTimestamps()
 
   /// Called from `RecordingSessionKernel` immediately before
-  /// `withOrderedDeadline`.
+  /// `withMainActorOrderedDeadline`.
   package func recordRetryStarted() {
     kernelTimestamps.retryStartedAtEpochSec = Date().timeIntervalSince1970
   }
 
-  /// Called from `RecordingSessionKernel`'s `withOrderedDeadline` `onTimeout`
+  /// Called from `RecordingSessionKernel`'s `withMainActorOrderedDeadline` `onTimeout`
   /// closure — the kernel genuinely gave up waiting on the retry.
   package func recordRetryTimeoutFired() {
     kernelTimestamps.retryTimeoutFiredAtEpochSec = Date().timeIntervalSince1970

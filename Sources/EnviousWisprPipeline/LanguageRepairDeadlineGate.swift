@@ -5,7 +5,7 @@ import os
 /// resolution and cursor-insertion repair (#1921), and owns the entire
 /// diagnostic record of what that deadline saw (#1946).
 ///
-/// Before #1921 only repair sat inside `withOrderedDeadline`; language
+/// Before #1921 only repair sat inside `withOffActorOrderedDeadline`; language
 /// resolution ran ahead of it, unbounded, on the paste path. Moving resolution
 /// inside the same deadline creates a question the old code never had to answer:
 /// **which stage timed out?** It matters because the existing `onTimeout`
@@ -14,16 +14,16 @@ import os
 /// rest of the process.
 ///
 /// A plain "did the repair stage begin" flag is not enough, and this is the
-/// whole reason a lock exists here. `withOrderedDeadline` cancels
+/// whole reason a lock exists here. `withOffActorOrderedDeadline` cancels
 /// best-effort — its own comment says cancellation "cannot preempt a blocked
-/// thread" (`TaskTimeout.swift:129`) — and `onTimeout()` runs synchronously
+/// thread" (`TaskTimeout.swift:200`) — and `onTimeout()` runs synchronously
 /// before the nil resume. So with a flag, the timeout can observe "still
 /// resolving", decline to disable, and the un-preempted operation can then walk
 /// straight into the oracle anyway.
 ///
 /// Four states rather than three, which grounded review r3 found: `TaskTimeout`
 /// runs `await operation()` and its `claim()` as separate steps
-/// (`TaskTimeout.swift:123-125`), so repair can FINISH and the timeout can still
+/// (`TaskTimeout.swift:193-195`), so repair can FINISH and the timeout can still
 /// win `claim()` in the gap. A three-state gate reads that as still-running,
 /// concludes the oracle is stuck, and disables a component that had just
 /// succeeded. `completed` is that gap.
@@ -42,7 +42,7 @@ import os
 /// by the wiring, on the theory that "where" and "how long" are disjoint facts.
 /// They are not: both answer *"what was true when the timeout claimed?"*, and
 /// two locks cannot answer that atomically. Because the operation is never
-/// preempted (`TaskTimeout.swift:123-132`), a mark written after the phase was
+/// preempted (`TaskTimeout.swift:193-202`), a mark written after the phase was
 /// claimed could contradict evidence the timeout had already returned — a
 /// diagnostic that looks self-consistent and is false, which is worse than the
 /// coarse label it replaces. So every mark lives here, behind this lock, and

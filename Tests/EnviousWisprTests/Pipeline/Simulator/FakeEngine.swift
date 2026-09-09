@@ -100,7 +100,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// scenarios assert byte-identical strings.
   var engineIdentity: ASREngineIdentity = ASREngineIdentity(backendType: .parakeet)
 
-  /// #1707 Phase 2: settable so a test can drive `withOrderedDeadline`'s real
+  /// #1707 Phase 2: settable so a test can drive `withMainActorOrderedDeadline`'s real
   /// deadline race deliberately; the fake-clock-driven scenarios in this
   /// simulator never wait anywhere near this long in real wall time, so the
   /// exact default is inert for them. Codex r8/r9: production made this
@@ -177,12 +177,24 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   /// retry still resolves without hanging. `retryDecodeDelayTicks` mirrors
   /// `asrInterruptionRecoveryDelayTicks`'s place-on-the-fake-clock pattern,
   /// so a scenario can deterministically race a retry against the kernel's
-  /// own `withOrderedDeadline` timeout or a superseding session/cancel.
+  /// own `withMainActorOrderedDeadline` timeout or a superseding session/cancel.
   var retryDecodeResult: ASREngineOutcome = .transcript(
     ASRResult(
       text: "retried transcript", language: nil, duration: 0, processingTime: 0,
       backendType: .parakeet))
   var retryDecodeDelayTicks = 0
+  /// #1946 chunk 2. A REAL blocking wall-clock cost inside `retryDecode`.
+  ///
+  /// Fires on the main actor as `retryDecode` returns, before the value leaves
+  /// the call. A case that blocks here delays the DECODE's return; a case that
+  /// enqueues main-actor work instead delays only the CALLER's resume. Both
+  /// schedules are needed, because reporting those two clocks apart is the
+  /// whole point of the retry measurement.
+  ///
+  /// The wall-clock cost itself lives in the CASE, never here: this directory
+  /// is scanned by `SimulatorWallClockBanTests`, and simulator time comes from
+  /// `FakeClock`.
+  var onRetryDecodeReturning: (@MainActor () -> Void)?
   private(set) var retryDecodeCallCount = 0
   private(set) var lastRetryDecodeInputSamples: [Float]?
   private(set) var bumpRetryGenerationCallCount = 0
@@ -197,6 +209,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     if case .transcript(let result) = retryDecodeResult {
       lastResult = result
     }
+    onRetryDecodeReturning?()
     return retryDecodeResult
   }
 

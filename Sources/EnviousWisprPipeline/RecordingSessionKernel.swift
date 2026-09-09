@@ -4,6 +4,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+import os
 
 // MARK: - RecordingSessionKernel (epic #827)
 //
@@ -320,6 +321,20 @@ final class RecordingSessionKernel {
     @MainActor (
       _ asrBackend: String, _ polishProvider: String, _ recordingDurationMs: Int,
       _ takeID: String
+    ) -> Void
+
+  /// #1946 chunk 2. The Phase-2 retry deadline's own observation seam, routed
+  /// exactly as `escapeRecoveryStartedTelemetry` is. Two closures rather than
+  /// one with optional arguments, because the started and resolved halves carry
+  /// different facts and an absent field must not be spellable on the half that
+  /// requires it.
+  private let asrRetryDeadlineStartedTelemetry:
+    @MainActor (_ takeID: String, _ asrBackend: String, _ budgetMs: Int) -> Void
+  private let asrRetryDeadlineResolvedTelemetry:
+    @MainActor (
+      _ takeID: String, _ asrBackend: String, _ budgetMs: Int,
+      _ resolution: ASRRetryDeadlineResolution, _ disposition: ASRRetryDeadlineDisposition,
+      _ operationReturnMs: Int?, _ callerResumeMs: Int, _ acceptedAfterCutoff: Bool
     ) -> Void
 
   // MARK: Wedge-detection tuning
@@ -937,6 +952,12 @@ final class RecordingSessionKernel {
     escapeRecoveryStartedTelemetry: @escaping @MainActor (String, String, Int, String) -> Void = {
       _, _, _, _ in
     },
+    asrRetryDeadlineStartedTelemetry: @escaping @MainActor (String, String, Int) -> Void = {
+      _, _, _ in
+    },
+    asrRetryDeadlineResolvedTelemetry: @escaping @MainActor (
+      String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int, Bool
+    ) -> Void = { _, _, _, _, _, _, _, _ in },
     engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -984,6 +1005,8 @@ final class RecordingSessionKernel {
     self.deliver = deliver
     self.prepareEscapeRecovery = prepareEscapeRecovery
     self.escapeRecoveryStartedTelemetry = escapeRecoveryStartedTelemetry
+    self.asrRetryDeadlineStartedTelemetry = asrRetryDeadlineStartedTelemetry
+    self.asrRetryDeadlineResolvedTelemetry = asrRetryDeadlineResolvedTelemetry
     self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
@@ -2852,9 +2875,38 @@ final class RecordingSessionKernel {
       // Oracle timestamp — nil no-op unless a Live UAT test wired a real
       // controller (never happens in release).
       batchDecodeFaultController?.recordRetryStarted()
-      let retryOutcome = await withOrderedDeadline(
-        seconds: asrRetryDeadlineSec(forSampleCount: retryInput.count),  // measured, length-aware — see §11.1
-        operation: { [adapter] in await adapter.retryDecode(inputSamples: retryInput) },
+      // #1946 chunk 2. The measurement the founder made a CONDITION of deferring
+      // the other three main-actor deadline call sites. This site is the one
+      // that sees both the budget and the decode's return before the main-actor
+      // caller resumes, so it is where the two clocks can be told apart.
+      //
+      // Entry-based and monotonic on purpose: the quantity is elapsed time from
+      // the wrapper's entry, which is what an absolute cutoff would measure.
+      let retryBudgetSec = asrRetryDeadlineSec(forSampleCount: retryInput.count)
+      let retryTakeID = sid.raw.uuidString
+      let retryBackend = adapter.engineIdentity.backendType.rawValue
+      let retryBudgetMs = Int((retryBudgetSec * 1000).rounded())
+      // Written by the decode itself, not beside it: only the operation closure
+      // knows when `retryDecode` returned, and on a timeout it may never write.
+      let retryOperationReturn = OSAllocatedUnfairLock<Duration?>(initialState: nil)
+      asrRetryDeadlineStartedTelemetry(retryTakeID, retryBackend, retryBudgetMs)
+      // BELOW the started event, not above it. That call captures to PostHog
+      // synchronously, so a clock started before it charges the instrument's own
+      // cost to the decode and can report an on-time retry as late.
+      let retryEntry = ContinuousClock.now
+      let retryOutcome = await withMainActorOrderedDeadline(
+        seconds: retryBudgetSec,  // measured, length-aware — see §11.1
+        // `@MainActor` so the return stamp is taken on the SAME actor the decode
+        // returns on. Without it the stamp waits for a hop back to the pool, and
+        // pool contention is then charged to the decode — an on-time decode
+        // reported as late, which is the one field this measurement is for.
+        // `retryDecode` is already `@MainActor`, so this removes a hop rather
+        // than adding an actor requirement.
+        operation: { @MainActor [adapter] in
+          let decoded = await adapter.retryDecode(inputSamples: retryInput)
+          retryOperationReturn.withLock { $0 = ContinuousClock.now - retryEntry }
+          return decoded
+        },
         // No genuine in-flight-decode cancellation exists on either backend.
         // `onTimeout` is honest about this: it bumps the adapter's own
         // retry-generation token (checked INSIDE the adapter's commit step) so
@@ -2878,12 +2930,48 @@ final class RecordingSessionKernel {
       // stale session's own `finishTerminal` never runs), so stamping it
       // only once currency is confirmed loses nothing for the live case
       // and eliminates the cross-session write for the stale one.
-      guard isCurrent(sid), recordingOutcome == nil else { return }
+      //
+      // #1946 chunk 2. Both clocks, read before any exit takes one of them away.
+      // `callerResume` is entry to THIS point, which is the main-actor caller
+      // continuing; `operationReturn` is entry to the decode returning. A late
+      // caller resume means a blocked main actor, not a late decode, and only a
+      // late decode is evidence about the cutoff.
+      let retryCallerResumeMs = Int((ContinuousClock.now - retryEntry) / .milliseconds(1))
+      let retryOperationReturnDuration = retryOperationReturn.withLock { $0 }
+      let retryOperationReturnMs = retryOperationReturnDuration.map {
+        Int($0 / .milliseconds(1))
+      }
+      // The wrapper returns `nil` only when the timer claimed. Read from the
+      // wrapper's own result rather than from whether the decode had written a
+      // return time, which the decode can still do after losing the race.
+      let retryResolution: ASRRetryDeadlineResolution =
+        retryOutcome == nil ? .timedOut : .operationReturned
+      func emitRetryDeadlineObservation(_ disposition: ASRRetryDeadlineDisposition) {
+        // Estimates EXPOSURE to a stricter cutoff. Never read this as "the timer
+        // would have fired" — the counterfactual scheduler is not observable.
+        // Compared as DURATIONS, never as the reported milliseconds. `Int`
+        // truncates, so a budget of 8150 ms and a return at 8150.7 ms would
+        // compare equal and drop a genuine overrun from the one field the
+        // deferred decision rests on.
+        let acceptedAfterCutoff =
+          disposition == .accepted && retryResolution == .operationReturned
+          && retryOperationReturnDuration.map { $0 > .seconds(retryBudgetSec) } == true
+        asrRetryDeadlineResolvedTelemetry(
+          retryTakeID, retryBackend, retryBudgetMs, retryResolution, disposition,
+          retryOperationReturnMs, retryCallerResumeMs, acceptedAfterCutoff)
+      }
+      guard isCurrent(sid), recordingOutcome == nil else {
+        emitRetryDeadlineObservation(.stale)
+        return
+      }
       // #2087: before `markASRTimingEnd()`, for the same reason the primary
       // decode's check is — the retry's latency belongs to work the user asked
       // to discard, and the `.failed(.asrFailed)` branch just below would
       // otherwise report a deliberate abandonment as a retry failure.
-      guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
+      guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else {
+        emitRetryDeadlineObservation(.abandoned)
+        return
+      }
       markASRTimingEnd()
       // A TIMEOUT (`nil`) is not a confirmed second failure — `.attempted`
       // remains the honest diagnostic that no decode conclusion was accepted
@@ -2893,6 +2981,14 @@ final class RecordingSessionKernel {
       // live rescue visibly fail, so plain `.failed` now deletes at the
       // coordinator like every concluded live ending. `.cancelled` gets the
       // same treatment below.
+      // Emitted here, above the `switch`, so one call covers every remaining
+      // outcome: this is the acceptance point, and `.transcript` is the only
+      // shape that becomes this take's result.
+      if case .transcript = retryOutcome {
+        emitRetryDeadlineObservation(.accepted)
+      } else {
+        emitRetryDeadlineObservation(.rejected)
+      }
       guard let retryOutcome else {
         finishTerminal(.failed(.asrFailed), sid: sid)
         return

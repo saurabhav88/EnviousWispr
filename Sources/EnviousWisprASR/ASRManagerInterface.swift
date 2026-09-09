@@ -212,7 +212,7 @@ public protocol ASRManagerInterface: AnyObject {
   /// SYNCHRONOUS, not `async` — round 5's finding: a caller that awaits an
   /// `async` invalidation before proceeding still leaves a window where the
   /// abandoned vendor call can complete and publish first. A synchronous
-  /// method is callable from `withOrderedDeadline`'s non-async `onTimeout`,
+  /// method is callable from `withMainActorOrderedDeadline`'s non-async `onTimeout`,
   /// which guarantees it runs BEFORE the timed-out caller resumes.
   ///
   /// #1908 round 12: returns the backend's own reclaim `Task` (or `nil` if

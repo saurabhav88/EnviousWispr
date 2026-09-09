@@ -369,7 +369,7 @@ struct SeamCasingOracleTests {
     // and since #1921 a second suite does too. `.serialized` orders this
     // suite only; Swift Testing runs suites concurrently.
     await withSeamCasingOracleExclusion {
-      // `withOrderedDeadline.claim()` discards a late decision but cannot roll
+      // `withOffActorOrderedDeadline.claim()` discards a late decision but cannot roll
       // back side effects inside the abandoned operation. The latch must therefore
       // outlast anything that call does afterwards, or a stalled service could be
       // waited on twice.

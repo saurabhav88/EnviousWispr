@@ -77,7 +77,7 @@ public final class ASRManager: ASRManagerInterface {
   /// completion still passed `ParakeetBackend`'s OWN generation check
   /// (nothing had told it the manager gave up) and leaked a live streaming
   /// session. `nil` for a non-Parakeet backend. Kept addressable past a
-  /// successful publish too (round 10): the outer `withOrderedDeadline` can
+  /// successful publish too (round 10): the outer `withMainActorOrderedDeadline` can
   /// still resolve in the timeout's favor just after the backend publishes,
   /// and that late invalidation still needs a target to reclaim.
   private var streamingStartBackendAttempt: (backend: ParakeetBackend, generation: UInt64)?
@@ -613,7 +613,7 @@ public final class ASRManager: ASRManagerInterface {
   /// deadline that fires after a newer attempt already replaced this one)
   /// must never touch the newer attempt's state.
   ///
-  /// SYNCHRONOUS on purpose: called from `withOrderedDeadline`'s non-async
+  /// SYNCHRONOUS on purpose: called from `withMainActorOrderedDeadline`'s non-async
   /// `onTimeout`, which GUARANTEES this runs before the timed-out caller
   /// resumes — the ordering bare `withDeadline` cannot provide.
   ///

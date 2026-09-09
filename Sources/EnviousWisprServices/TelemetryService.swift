@@ -179,6 +179,26 @@ public enum RecoveryFailureClass: String, Sendable {
   case other
 }
 
+/// #1946 chunk 2. Which side of the retry deadline's single-claim race won.
+public enum ASRRetryDeadlineResolution: String, Sendable {
+  /// The decode returned and claimed the wrapper's continuation.
+  case operationReturned = "operation"
+  /// The timer claimed first and the decode was abandoned.
+  case timedOut = "timeout"
+}
+
+/// #1946 chunk 2. What the kernel then did with that outcome.
+public enum ASRRetryDeadlineDisposition: String, Sendable {
+  /// A transcript came back and was stamped as this take's result.
+  case accepted
+  /// The attempt reached the acceptance point with no transcript to accept.
+  case rejected
+  /// A newer session had already started, so the result was discarded unread.
+  case stale
+  /// The take was abandoned before the retry resolved.
+  case abandoned
+}
+
 /// Thin wrapper — type-safe event names, no business logic.
 /// Limb: observes facts from domain objects, publishes to PostHog.
 @MainActor
@@ -392,6 +412,90 @@ public final class TelemetryService {
           intProps: ["recording_duration_ms": recordingDurationMs]))
     #endif
     PostHogSDK.shared.capture("escape_recovery.started", properties: props)
+  }
+
+  /// #1946 chunk 2. One Phase-2 retry-decode attempt, started.
+  ///
+  /// The founder deferred moving the three remaining main-actor deadline call
+  /// sites until this path is measured, so this pair of events is a CONDITION
+  /// of that decision rather than an optional extra. Emitted at the attempt so
+  /// unresolved starts are `started` minus `resolved`, rather than a number
+  /// inferred from the resolutions that did arrive.
+  ///
+  /// Shape only, never content: no transcript, no audio, no sample values.
+  public func asrRetryDeadlineStarted(takeID: String, asrBackend: String, budgetMs: Int) {
+    let props: [String: Any] = [
+      "phase": "started",
+      "take_id": takeID,
+      "asr_backend": asrBackend,
+      "budget_ms": budgetMs,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "asr.retry_deadline_observed",
+          stringProps: ["phase": "started", "take_id": takeID, "asr_backend": asrBackend],
+          intProps: ["budget_ms": budgetMs]))
+    #endif
+    PostHogSDK.shared.capture("asr.retry_deadline_observed", properties: props)
+  }
+
+  /// The resolved half of `asrRetryDeadlineStarted`.
+  ///
+  /// Takes the ENUMS, not their raw values, for the same reason
+  /// `escapeRecoveryCompleted` does: an invalid label must be unrepresentable.
+  ///
+  /// `operationReturnMs` is elapsed time from the wrapper's ENTRY to the decode
+  /// returning. It is SAMPLED when the caller resumes, so on a timeout it can
+  /// still carry a return that happened after the timer had already won; it is
+  /// absent only when no return was recorded before that sample. Read it with
+  /// `resolution`, never alone. `callerResumeMs` is entry to the main-actor
+  /// caller continuing. The two are reported separately because a late CALLER
+  /// resume means a blocked main actor, not a late decode, and only a late
+  /// DECODE is evidence about the cutoff.
+  ///
+  /// `acceptedAfterCutoff` is the load-bearing field: a decode that returned
+  /// past its own budget AND was accepted as this take's result. It ESTIMATES
+  /// exposure to a stricter cutoff. It is not a claim about what a different
+  /// scheduler would have done, and must not be read or labelled as "the timer
+  /// would have fired".
+  public func asrRetryDeadlineResolved(
+    takeID: String,
+    asrBackend: String,
+    budgetMs: Int,
+    resolution: ASRRetryDeadlineResolution,
+    disposition: ASRRetryDeadlineDisposition,
+    operationReturnMs: Int?,
+    callerResumeMs: Int,
+    acceptedAfterCutoff: Bool
+  ) {
+    var props: [String: Any] = [
+      "phase": "resolved",
+      "take_id": takeID,
+      "asr_backend": asrBackend,
+      "budget_ms": budgetMs,
+      "resolution": resolution.rawValue,
+      "disposition": disposition.rawValue,
+      "caller_resume_ms": callerResumeMs,
+      "accepted_after_cutoff": acceptedAfterCutoff,
+    ]
+    // Absent rather than a sentinel. A negative or zero stand-in would be
+    // indistinguishable from a real fast return once it reaches a chart.
+    if let operationReturnMs { props["operation_return_ms"] = operationReturnMs }
+    #if DEBUG
+      var intProps: [String: Int] = ["budget_ms": budgetMs, "caller_resume_ms": callerResumeMs]
+      if let operationReturnMs { intProps["operation_return_ms"] = operationReturnMs }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "asr.retry_deadline_observed",
+          stringProps: [
+            "phase": "resolved", "take_id": takeID, "asr_backend": asrBackend,
+            "resolution": resolution.rawValue, "disposition": disposition.rawValue,
+          ],
+          intProps: intProps,
+          boolProps: ["accepted_after_cutoff": acceptedAfterCutoff]))
+    #endif
+    PostHogSDK.shared.capture("asr.retry_deadline_observed", properties: props)
   }
 
   /// The attempt reached a terminal outcome.

@@ -45,7 +45,7 @@ public actor ParakeetBackend: ASRBackend {
   /// `nonisolated`, lock-backed rather than a plain actor-isolated `var`:
   /// `cancelInFlightStreamingStart()` invalidates THIS attempt's generation
   /// synchronously from `ASRManager`'s `@MainActor`, inside
-  /// `withOrderedDeadline`'s `onTimeout` — which the primitive's own
+  /// `withMainActorOrderedDeadline`'s `onTimeout` — which the primitive's own
   /// contract (`TaskTimeout.swift`) requires to stay synchronous and
   /// non-suspending, so it cannot `await` into this actor to bump an
   /// isolated var. Without this, an abandoned attempt's late vendor
@@ -74,7 +74,7 @@ public actor ParakeetBackend: ASRBackend {
   /// the counter.
   ///
   /// #1908 round 10 (cloud review P2): the bump alone is NOT enough at the
-  /// deadline edge. `withOrderedDeadline` races the OPERATION's own
+  /// deadline edge. `withMainActorOrderedDeadline` races the OPERATION's own
   /// `claim()` (won by publishing `self.streamingManager = manager` and
   /// returning up through `ASRManager.startStreaming()`) against the
   /// TIMER's `claim()` (won by calling `cancelInFlightStreamingStart()`,

@@ -283,10 +283,12 @@ struct KernelFinalizationWiring {
     // deadline, where the language is not yet known).
     // #1946: `async @Sendable`, not `@MainActor`. The async seam exists so a
     // test can inject a closure that stalls HERE without occupying the main
-    // actor. Blocking a synchronous `@MainActor` seam also blocks
-    // `withOrderedDeadline`'s timer, which is `Task { @MainActor }`
-    // (`TaskTimeout.swift:127-132`), so the timeout could never fire and the
-    // hop-stall case was untestable by construction (grounded r1).
+    // actor. That mattered under the main-actor timer, where blocking a
+    // synchronous `@MainActor` seam also blocked the timer and made the
+    // hop-stall case untestable by construction (grounded r1). This site now
+    // uses `withOffActorOrderedDeadline`, whose timer does not need the main
+    // actor, so the seam's isolation no longer gates the timeout; it stays
+    // `@Sendable` because the deadline operation is.
     // The production default no longer hops to the main actor (#1946). The hop
     // was never needed: `SeamCasingOracleRuntime.snapshot(for:)` is nonisolated
     // and does its whole job under that type's own lock, making no synchronous
@@ -303,7 +305,12 @@ struct KernelFinalizationWiring {
     // preparation drain entering the shared spell checker underneath a decision
     // already in flight; releasing is mandatory and happens in a `defer`.
     // Injected tests pass a no-op, because their oracle takes no lease.
-    releaseOracleLease: @escaping @MainActor () -> Void = {
+    // #1946 chunk 2: `@Sendable`, not `@MainActor`. `releaseDecisionLease()` is
+    // nonisolated and does its whole job under the runtime's own lock
+    // (`SeamCasingOracleRuntime.swift:507-513`), so the hop bought nothing and
+    // deferred the release until the main actor was next free — which is
+    // exactly when a queued preparation for the next language could start.
+    releaseOracleLease: @escaping @Sendable () -> Void = {
       SeamCasingOracleRuntime.releaseDecisionLease()
     },
     // #1921 language-resolver seam. `@Sendable`, not `@MainActor`, because
@@ -685,9 +692,12 @@ struct KernelFinalizationWiring {
         // (0.5s); `NSSpellChecker` has no equivalent knob, so the call is bounded
         // here instead — stricter than the 0.5s we already accept.
         //
-        // `withOrderedDeadline`, not bare `withDeadline`: on timeout the runtime
-        // must be latched BEFORE paste resumes, so a later dictation can never
-        // race an abandoned call against AppKit's one shared spell checker.
+        // `withOffActorOrderedDeadline`, not bare `withDeadline`: on timeout the
+        // runtime must be latched BEFORE paste resumes, so a later dictation can
+        // never race an abandoned call against AppKit's one shared spell
+        // checker. The OFF-ACTOR sibling, because this timeout handler touches
+        // only lock-guarded state and the main-actor timer could not fire at all
+        // while the main actor was blocked (#1946).
         // #628. A take that expanded a snippet takes the LEGACY payload: `repair` with no caret
         // context returns exactly that, so refusing the context here is the whole bypass and
         // needs no new branch inside the repair.
@@ -762,7 +772,7 @@ struct KernelFinalizationWiring {
         let timedOutSnapshot =
           OSAllocatedUnfairLock<LanguageRepairDeadlineGate.Snapshot?>(initialState: nil)
 
-        let deadlineResult = await withOrderedDeadline(
+        let deadlineResult = await withOffActorOrderedDeadline(
           seconds: 0.100,
           operation: {
             let resolution = resolveLanguage(
@@ -816,7 +826,11 @@ struct KernelFinalizationWiring {
             // exists to close. Grounded review r3, MED.
             let holdsOracleLease = oracleSnapshot.isAvailable
             defer {
-              if holdsOracleLease { Task { @MainActor in releaseOracleLease() } }
+              // Called directly, not queued onto the main actor (#1946 chunk 2).
+              // The queued form released the lease only once the main actor was
+              // next free, so a blocked main actor held the next language's
+              // preparation behind a decision that had already finished.
+              if holdsOracleLease { releaseOracleLease() }
             }
             let gatedOracle = oracleSnapshot.authorized(
               by: { label in gate.beginOracleUse(label) },
@@ -835,7 +849,7 @@ struct KernelFinalizationWiring {
           },
           onTimeout: {
             // One atomic freeze; everything the timeout reports comes from it.
-            // Synchronous by contract (`TaskTimeout.swift:97-103`): this is one
+            // Synchronous by contract (`TaskTimeout.swift:159-165`): this is one
             // lock take and adds no suspension point.
             let timeout = gate.timeOut()
             timedOutSnapshot.withLock { $0 = timeout }

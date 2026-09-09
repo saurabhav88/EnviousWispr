@@ -182,7 +182,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   ///    touches none of this session's own bookkeeping (`sessionID`,
   ///    `retainedPCM`, `decodeOptions`, `isTerminal`, `isCancelled`), so
   ///    calling it a second time mid-session is safe.
-  /// 3. Bounds the attempt with `withOrderedDeadline`, NOT bare `withDeadline`
+  /// 3. Bounds the attempt with `withMainActorOrderedDeadline`, NOT bare `withDeadline`
   ///    — on timeout, `onTimeout` actively invalidates this attempt's token
   ///    and calls the SYNCHRONOUS `cancelInFlightLoad()` (never an async
   ///    cleanup hook), guaranteeing that cleanup completes before this
@@ -199,7 +199,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let myGeneration = recoveryGeneration
     let mySession = sessionID
 
-    let succeeded = await withOrderedDeadline(
+    let succeeded = await withMainActorOrderedDeadline(
       seconds: asrInterruptionRecoveryDeadlineSec,
       operation: { [weak self] in
         guard let self else { return false }
@@ -215,7 +215,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // attempt's own outer check below (a real bug caught by
         // `recoverFromASRInterruptionTimesOutAndSupersedes`: it made a
         // genuine timeout report `.cancelled` instead of `.failed`).
-        // `withOrderedDeadline`'s own single-winner `claim()` already
+        // `withMainActorOrderedDeadline`'s own single-winner `claim()` already
         // guarantees the operation's late completion can never resume this
         // continuation after timeout wins; the generation check exists to
         // catch a DIFFERENT caller (`beginSession`/`discardSession`)
@@ -575,14 +575,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // degrades to batch decode instead of parking `beginSession()` (and the
       // kernel awaiting it) forever.
       //
-      // `withOrderedDeadline`, not bare `withDeadline` (round 5 finding): the
+      // `withMainActorOrderedDeadline`, not bare `withDeadline` (round 5 finding): the
       // invalidation must complete BEFORE this function can observe the
       // timeout, or the abandoned vendor call can still finish and resurrect
       // `isStreaming` in the gap between the deadline firing and an `async`
       // cleanup call actually reaching `ASRManager`. `onTimeout` runs
       // synchronously to completion first — matches `recoverFromASRInterruption()`'s
       // own use of this primitive for the exact same reason on the load side.
-      let outcome = await withOrderedDeadline(
+      let outcome = await withMainActorOrderedDeadline(
         seconds: asrInterruptionRecoveryDeadlineSec,
         operation: { [weak self, options] () -> StreamingStartOutcome in
           guard let self else { return .cancelled }
@@ -657,7 +657,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // `cancelInFlightStreamingStart()` to completion before this branch
         // could ever be reached, so the abandoned attempt is already
         // invalidated by the time this session falls back to batch, same as
-        // `.failed` above. `withOrderedDeadline`'s own best-effort task-cancel
+        // `.failed` above. `withMainActorOrderedDeadline`'s own best-effort task-cancel
         // still cannot preempt a vendor call that ignores `Task.isCancelled` —
         // the generation checks in `ASRManager.startStreaming()` and
         // `ParakeetBackend.startStreaming()` are what actually stop a late

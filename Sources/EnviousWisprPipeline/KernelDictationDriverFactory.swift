@@ -641,6 +641,19 @@ public enum KernelDictationDriverFactory {
           asrBackend: backend, polishProvider: provider,
           recordingDurationMs: durationMs, takeID: takeID)
       },
+      // #1946 chunk 2: the retry-deadline observation, routed the same way.
+      asrRetryDeadlineStartedTelemetry: { takeID, backend, budgetMs in
+        TelemetryService.shared.asrRetryDeadlineStarted(
+          takeID: takeID, asrBackend: backend, budgetMs: budgetMs)
+      },
+      asrRetryDeadlineResolvedTelemetry: {
+        takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
+        acceptedAfterCutoff in
+        TelemetryService.shared.asrRetryDeadlineResolved(
+          takeID: takeID, asrBackend: backend, budgetMs: budgetMs, resolution: resolution,
+          disposition: disposition, operationReturnMs: operationReturnMs,
+          callerResumeMs: callerResumeMs, acceptedAfterCutoff: acceptedAfterCutoff)
+      },
       engineMutationScope: engineMutationScope,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock

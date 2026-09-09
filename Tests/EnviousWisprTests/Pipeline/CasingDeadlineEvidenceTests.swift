@@ -133,8 +133,8 @@ struct CasingDeadlineEvidenceTests {
 
   @Test("A completion arriving after the timeout claimed is inert")
   func lateCompletionCannotRewriteReturnedEvidence() {
-    // `withOrderedDeadline` cannot preempt a blocked thread
-    // (`TaskTimeout.swift:123-132`), so the operation keeps running after the
+    // `withOffActorOrderedDeadline` cannot preempt a blocked thread
+    // (`TaskTimeout.swift:193-202`), so the operation keeps running after the
     // timeout returned. If a late completion could still mutate the record, the
     // evidence handed to the caller and the evidence in the gate would disagree
     // — a diagnostic that looks self-consistent and is false.

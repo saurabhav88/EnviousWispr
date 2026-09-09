@@ -246,7 +246,7 @@ public struct AudioBufferHandoff: @unchecked Sendable {
 /// MUST / MUST NOT clauses in PR-1 §B.2.2 define the behavior every conformer
 /// (`FakeEngine`, and the PR-4 / PR-5 real adapters) must implement.
 // #1707 Phase 2: `Sendable` added so `retryDecode(inputSamples:)` can be
-// captured by name (`[adapter]`) inside `withOrderedDeadline`'s `@Sendable`
+// captured by name (`[adapter]`) inside `withMainActorOrderedDeadline`'s `@Sendable`
 // `operation` closure — capturing the EXISTENTIAL `any ASREngineAdapter`
 // directly (unlike a concrete `@MainActor` class, e.g. Phase 1's own
 // `recoverFromASRInterruption()` capturing `[weak self]`) does not get the
@@ -388,7 +388,7 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// Best-effort, honest "stop waiting" signal for a retry that has timed out
   /// — NOT a claim of active cancellation. Neither adapter's decode call is
   /// genuinely interruptible mid-flight. Synchronous, so it can run directly
-  /// inside `withOrderedDeadline`'s `onTimeout` closure. Bumps an
+  /// inside `withMainActorOrderedDeadline`'s `onTimeout` closure. Bumps an
   /// adapter-local generation token; combined with the attempt/commit split,
   /// this is what actually prevents a late-arriving abandoned result from
   /// mutating state belonging to a session that has since moved on.

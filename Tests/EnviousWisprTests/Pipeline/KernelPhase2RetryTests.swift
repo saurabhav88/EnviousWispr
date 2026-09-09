@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -342,7 +343,7 @@ struct KernelPhase2RetryTests {
     let ctx = makeContext(behavior: .crashOnFinalize)
     // A real, tiny wall-clock deadline — the retry never resolves within it
     // (the fake-clock delay is never advanced during this test), so
-    // `withOrderedDeadline`'s `onTimeout` fires for real.
+    // `withMainActorOrderedDeadline`'s `onTimeout` fires for real.
     ctx.engine.retryDecodeTimeoutSeconds = 0.05
     ctx.engine.retryDecodeDelayTicks = 1
     // #1857: the ONLY caller that opts out of the conclusion wait. This
@@ -567,4 +568,295 @@ struct KernelPhase2RetryTests {
     #expect(kernel.pasteCount == 0)
     #expect(ctx.engine.retryDecodeCallCount == 1)
   }
+
+  // MARK: - #1946 chunk 2 — the retry deadline's own observation
+  //
+  // The founder deferred moving the three remaining main-actor deadline call
+  // sites until this path is measured, so these cases guard the measurement
+  // itself. The load-bearing field is `acceptedAfterCutoff`: a decode that
+  // returned past its own budget AND was accepted. An off-actor timer would
+  // reject exactly those, so the count is what makes the deferred half a
+  // decision with a falsification condition rather than another judgement call.
+  //
+  // Each case asserts what the KERNEL computed, through the kernel's own
+  // observation seam. `TelemetryServiceRetryDeadlineTests` separately asserts
+  // the payload that reaches PostHog, through the existing telemetry test hook.
+
+  /// One resolved observation, exactly as the kernel handed it over.
+  @MainActor
+  private final class RetryDeadlineLog {
+    private(set) var starts: [(takeID: String, backend: String, budgetMs: Int)] = []
+    private(set) var resolutions:
+      [(
+        takeID: String, backend: String, budgetMs: Int,
+        resolution: ASRRetryDeadlineResolution, disposition: ASRRetryDeadlineDisposition,
+        operationReturnMs: Int?, callerResumeMs: Int, acceptedAfterCutoff: Bool
+      )] = []
+
+    func recordStart(_ takeID: String, _ backend: String, _ budgetMs: Int) {
+      starts.append((takeID, backend, budgetMs))
+    }
+    func recordResolution(
+      _ takeID: String, _ backend: String, _ budgetMs: Int,
+      _ resolution: ASRRetryDeadlineResolution, _ disposition: ASRRetryDeadlineDisposition,
+      _ operationReturnMs: Int?, _ callerResumeMs: Int, _ acceptedAfterCutoff: Bool
+    ) {
+      resolutions.append(
+        (takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
+          acceptedAfterCutoff))
+    }
+  }
+
+  private func makeObservedContext(
+    behavior: FakeEngineBehavior,
+    log: RetryDeadlineLog,
+    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+  ) -> Context {
+    let clock = FakeClock()
+    let engine = FakeEngine(behavior: behavior, clock: clock)
+    let capture = FakeAudioCapture()
+    let vad = FakeVADSignalSource()
+    let paste = FakePasteTarget()
+    let wrapper = KernelRecordingSession(
+      engine: engine, capture: capture, vad: vad, clock: clock, paste: paste,
+      prepareEscapeRecovery: prepareEscapeRecovery,
+      onRetryDeadlineStarted: { takeID, backend, budgetMs in
+        log.recordStart(takeID, backend, budgetMs)
+      },
+      onRetryDeadlineResolved: {
+        takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
+        accepted in
+        log.recordResolution(
+          takeID, backend, budgetMs, resolution, disposition, operationReturnMs, callerResumeMs,
+          accepted)
+      })
+    return Context(
+      wrapper: wrapper, engine: engine, capture: capture, vad: vad, paste: paste, clock: clock)
+  }
+
+  @Test("#1946 An on-time accepted retry is observed as on time")
+  func retryDeadlineObservationOnTimeSuccess() async {
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(behavior: .crashOnFinalize, log: log)
+    ctx.engine.retryDecodeTimeoutSeconds = 20.0
+    await runToTerminal(ctx)
+
+    #expect(log.starts.count == 1, "every attempt must be counted, or unresolved starts are guesswork")
+    let resolved = log.resolutions
+    #expect(resolved.count == 1)
+    guard let observation = resolved.first else { return }
+    #expect(observation.takeID == log.starts.first?.takeID, "the two halves must join")
+    #expect(observation.budgetMs == 20_000)
+    #expect(observation.resolution == .operationReturned)
+    #expect(observation.disposition == .accepted)
+    let returnMs = observation.operationReturnMs ?? -1
+    #expect(returnMs >= 0, "a decode that returned must carry a return time")
+    #expect(
+      returnMs <= observation.budgetMs,
+      "the fixture is an on-time decode; it returned in \(returnMs)ms against \(observation.budgetMs)ms")
+    #expect(
+      observation.acceptedAfterCutoff == false,
+      "an on-time accepted decode is not exposure to a stricter cutoff")
+  }
+
+  @Test("#1946 A retry accepted AFTER its own budget is counted as such")
+  func retryDeadlineObservationLateAcceptedSuccess() async {
+    // The schedule the whole measurement exists for. The decode blocks the main
+    // actor past the budget, so the main-actor timer cannot run while it does.
+    //
+    // **THIS SCHEDULE CANNOT BE STAGED DETERMINISTICALLY, and pretending
+    // otherwise is what made this case fail on CI while passing here.** Winning
+    // while late means beating a timer that is ALREADY DUE: when the block
+    // releases the main actor, the timer's continuation is queued there, while
+    // the operation must still finish the decode, stamp, leave the main actor
+    // and claim. Either can get there first, and which one does is a property of
+    // the machine. Measured 2026-09-08: the decode won on an M5 Max and the
+    // timer won on the hosted runner, same code, same budget.
+    //
+    // So the timeout outcome is reported as a SKIP with its numbers, never as a
+    // product failure — `validation-discipline.md`
+    // RULE: verify-the-feature-not-the-crash: a red row for a scenario the
+    // harness cannot stage is worse than a skip, because it accuses correct
+    // code. The flag's own arithmetic is covered deterministically by
+    // `TelemetryServiceRetryDeadlineTests` and by
+    // `retryDeadlineObservationSeparatesTheTwoClocks`; what only THIS case can
+    // show is the kernel computing it on a real late acceptance.
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(behavior: .crashOnFinalize, log: log)
+    ctx.engine.retryDecodeTimeoutSeconds = 0.05
+    // Blocking, not a cooperative wait: the decode must genuinely occupy the
+    // main actor. A cooperative wait would let the timer run and stage a timeout
+    // every time. `usleep` because the blocking alternative is unavailable from
+    // an async context.
+    ctx.engine.onRetryDecodeReturning = { usleep(250_000) }
+    await runToTerminal(ctx)
+
+    let resolved = log.resolutions
+    #expect(resolved.count == 1)
+    guard let observation = resolved.first else { return }
+    let returnMs = observation.operationReturnMs ?? -1
+
+    guard observation.resolution == .operationReturned else {
+      // Loud, with the numbers, so a run that measured nothing can never be read
+      // as a run that measured a pass.
+      print(
+        "SKIP retryDeadlineObservationLateAcceptedSuccess: the timer won the claim on this "
+          + "machine, so no late ACCEPTANCE occurred. budget=\(observation.budgetMs)ms "
+          + "decodeReturn=\(returnMs)ms callerResume=\(observation.callerResumeMs)ms")
+      // Still assert what this run DOES establish: a timeout is never counted as
+      // exposure, whatever the decode later reported.
+      #expect(observation.disposition == .rejected)
+      #expect(
+        observation.acceptedAfterCutoff == false,
+        "a decode that lost the claim was never accepted, so it creates no exposure")
+      return
+    }
+
+    #expect(observation.disposition == .accepted)
+    #expect(
+      returnMs > observation.budgetMs,
+      "staging: the decode must return past \(observation.budgetMs)ms, saw \(returnMs)ms")
+    #expect(
+      observation.acceptedAfterCutoff,
+      "a decode accepted past its own budget is exactly the exposure being counted")
+  }
+
+  @Test("#1946 A timed-out retry carries no return time and is never counted as late-accepted")
+  func retryDeadlineObservationTimeout() async {
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(behavior: .crashOnFinalize, log: log)
+    ctx.engine.retryDecodeTimeoutSeconds = 0.05
+    ctx.engine.retryDecodeDelayTicks = 1
+    await runToTerminal(ctx, awaitTerminal: false)
+    let kernel = ctx.wrapper.testKernel
+    for _ in 0..<200 where kernel.recordingOutcome == nil {
+      try? await Task.sleep(for: .milliseconds(5))  // settle: poll the real 50ms deadline above
+    }
+
+    let resolved = log.resolutions
+    #expect(resolved.count == 1)
+    guard let observation = resolved.first else { return }
+    #expect(observation.resolution == .timedOut)
+    #expect(observation.disposition == .rejected, "no transcript reached the acceptance point")
+    #expect(
+      observation.operationReturnMs == nil,
+      "the decode had not returned, and an absent time must stay absent rather than become a zero")
+    #expect(observation.acceptedAfterCutoff == false)
+  }
+
+  @Test("#1946 A retry resolving after a new session started is observed as stale")
+  func retryDeadlineObservationStaleSession() async {
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(behavior: .crashOnFinalize, log: log)
+    ctx.engine.retryDecodeDelayTicks = 3
+    ctx.engine.retryDecodeResult = .transcript(
+      ASRResult(
+        text: "stale retry text", language: nil, duration: 0, processingTime: 0,
+        backendType: .parakeet))
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverVoicedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainReadyWork()
+    let kernel = ctx.wrapper.testKernel
+    #expect(log.starts.count == 1, "the attempt is counted at the start, not at the resolution")
+    #expect(log.resolutions.isEmpty, "staging: the retry must still be parked")
+
+    kernel.cancel()
+    await ctx.wrapper.drainUntilConcluded()
+    ctx.engine.behavior = .batchSuccess(text: "session B text")
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverVoicedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainUntilConcluded()
+
+    ctx.clock.advance(by: 3)
+    await ctx.wrapper.drainReadyWork()
+
+    let resolved = log.resolutions
+    #expect(resolved.count == 1, "an abandoned resolution must still be reported, not dropped")
+    guard let observation = resolved.first else { return }
+    #expect(observation.disposition == .stale)
+    #expect(
+      observation.acceptedAfterCutoff == false,
+      "nothing was accepted, so no exposure to a stricter cutoff was created")
+  }
+
+  @Test("#1946 A late CALLER resume is not counted as a late DECODE")
+  func retryDeadlineObservationSeparatesTheTwoClocks() async throws {
+    // The separator. A blocked main actor delays the caller's resume without
+    // delaying the decode, and only the decode is evidence about the cutoff.
+    // Reading the wrong clock here would inflate `accepted_after_cutoff` with
+    // main-actor contention and send the deferred decision the wrong way.
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(behavior: .crashOnFinalize, log: log)
+    // A budget the CALLER's resume exceeds and the DECODE does not. At 20 s
+    // both readings sat under budget, so swapping the production comparison to
+    // the caller's clock changed nothing and the case proved only that a fast
+    // decode is not late.
+    ctx.engine.retryDecodeTimeoutSeconds = 0.100
+    ctx.engine.onRetryDecodeReturning = {
+      DispatchQueue.main.async {
+        Thread.sleep(forTimeInterval: 0.3)  // occupies the main actor for the caller's resume only
+      }
+    }
+    await runToTerminal(ctx)
+
+    let resolved = log.resolutions
+    #expect(resolved.count == 1)
+    let observation = try #require(resolved.first)
+    #expect(observation.resolution == .operationReturned)
+    #expect(observation.disposition == .accepted)
+    // The distinguishing schedule, REQUIRED rather than expected: without both
+    // halves the final assertion holds for a reason that is not the subject.
+    let returnMs = try #require(observation.operationReturnMs)
+    try #require(returnMs <= observation.budgetMs)
+    try #require(observation.callerResumeMs > observation.budgetMs)
+    #expect(
+      observation.acceptedAfterCutoff == false,
+      """
+      a late caller resume is a blocked main actor, not a late decode; counting it \
+      would attribute main-actor contention to the retry budget
+      """)
+  }
+
+
+  @Test("#1946 A retry resolving after the take was abandoned is observed as abandoned")
+  func retryDeadlineObservationAbandonedTake() async {
+    let log = RetryDeadlineLog()
+    let ctx = makeObservedContext(
+      behavior: .crashOnFinalize, log: log, prepareEscapeRecovery: { _, _, _ in true })
+    ctx.wrapper.sessionConfigForTesting = .testDefault(escapeRecoveryEnabled: true)
+    ctx.wrapper.cancelOriginForTesting = .user(.shortcut)
+    // Park the retry so the take can be abandoned while it is still in flight.
+    ctx.engine.retryDecodeDelayTicks = 3
+    await ctx.wrapper.apply(.start)
+    await ctx.wrapper.drainReadyWork()
+    deliverVoicedCapture(ctx)
+    await ctx.wrapper.drainReadyWork()
+    // Cancel once: Escape Recovery KEEPS the take and runs the ordinary
+    // pipeline, so the decode fails and the one retry is spent and parked.
+    await ctx.wrapper.apply(.cancel)
+    await ctx.wrapper.drainReadyWork()
+    #expect(log.starts.count == 1, "staging: the retry must have been attempted")
+    #expect(log.resolutions.isEmpty, "staging: the retry must still be parked")
+
+    // Cancel again: the user abandons the recovery while its retry is parked.
+    await ctx.wrapper.apply(.cancel)
+    await ctx.wrapper.drainReadyWork()
+    ctx.clock.advance(by: 3)
+    await ctx.wrapper.drainReadyWork()
+
+    let resolved = log.resolutions
+    #expect(resolved.count == 1, "an abandoned resolution must still be reported, not dropped")
+    guard let observation = resolved.first else { return }
+    #expect(observation.disposition == .abandoned)
+    #expect(
+      observation.acceptedAfterCutoff == false,
+      "nothing was accepted, so no exposure to a stricter cutoff was created")
+  }
+
 }

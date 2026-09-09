@@ -1804,7 +1804,7 @@ import os
     seamCasingOracle: @escaping @MainActor (String?) -> SeamCasingOracle = { _ in
       Self.testOracle
     },
-    releaseOracleLease: @escaping @MainActor () -> Void = {},
+    releaseOracleLease: @escaping @Sendable () -> Void = {},
     // #1921 language-resolver seam. Defaults to the real resolver so every
     // pre-existing case keeps today's behaviour; the two deadline tests inject a
     // blocking one to drive the REAL 100 ms deadline into its timeout paths.
@@ -1971,8 +1971,8 @@ import os
 
   @Test("#1921 The deadline gate's four phases, including the completed distinction")
   func deadlineGateFourPhaseMatrix() {
-    // Obligation 10's third race order lives inside `withOrderedDeadline`, in the
-    // gap between `await operation()` returning and `claim()` (`TaskTimeout.swift:123-125`).
+    // Obligation 10's third race order lives inside `withOffActorOrderedDeadline`, in the
+    // gap between `await operation()` returning and `claim()` (`TaskTimeout.swift:193-195`).
     // No injected seam reaches it, and timing against the 100 ms boundary would be
     // a clock race. So that ordering is proven HERE, on the state machine itself,
     // and the production call site is verified structurally in the receipt.
@@ -2065,7 +2065,7 @@ import os
     // oracle once the timeout has claimed the phase.
     //
     // Integration review round 2 found this. Cancellation "cannot preempt a
-    // blocked thread" (`TaskTimeout.swift:129`), so a repair authorised before
+    // blocked thread" (`TaskTimeout.swift:200`), so a repair authorised before
     // the deadline keeps running after it. Without this refusal it walks into
     // the real word oracle after the timeout gave up, making exactly the
     // unbounded blocking call the deadline exists to bound.
@@ -2408,6 +2408,476 @@ import os
         """)
     }
   }
+
+  // MARK: - #1946 chunk 2 — the casing deadline off the main actor
+
+  @Test("#1946 The casing timeout is handled while the main actor stays blocked")
+  func casingTimeoutIsHandledWhileTheMainActorStaysBlocked() async throws {
+    // The defect this chunk removes, stated as a schedule. A real oracle
+    // consultation is in flight and the main actor is occupied for far longer
+    // than the 100 ms budget. Under the shipped main-actor timer no timeout
+    // handling could happen at all until the main actor was free again, so the
+    // baseline failure is the ABSENCE of handling while the main actor is held,
+    // never an assumed phase after cleanup.
+    //
+    // The observation happens entirely OFF the main actor, because the main
+    // actor is exactly what is unavailable. It also releases both holds itself,
+    // so a red cannot leave a blocked main actor behind for the rest of the run.
+    //
+    // KNOWN LIMIT, stated rather than machined around. This cannot establish
+    // that the timer task got CPU inside its own bound, so a badly starved
+    // machine fails it against correct code. Re-run once before reading a red
+    // here as the fix regressing. It occupies the shared main actor, so prefer
+    // running it alone when investigating a failure.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      let oracleEntered = DispatchSemaphore(value: 0)
+      let releaseOracle = DispatchSemaphore(value: 0)
+      let oracleExited = DispatchSemaphore(value: 0)
+      let mainOccupied = DispatchSemaphore(value: 0)
+      let releaseMain = DispatchSemaphore(value: 0)
+      let mainReleased = DispatchSemaphore(value: 0)
+      // WHY each wait ended, never merely that it ended. A bare signal fires on
+      // the fail-safe too, so the broken path would report what the fixed one
+      // reports.
+      let occupiedMain = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let mainReleaseOutcome = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let latchSeen = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      let decisionElapsedMs = OSAllocatedUnfairLock<Int?>(initialState: nil)
+
+      SeamCasingOracleRuntime.installForTesting(
+        SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in
+            oracleEntered.signal()
+            // deadline-fallback: `releaseOracle` is the signal; this bound only stops a defect hanging the suite
+            _ = releaseOracle.wait(timeout: .now() + 20)
+            oracleExited.signal()
+            return .ordinary
+          },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false }))
+      #expect(
+        Self.oracleIsAvailable(),
+        "precondition: the installed oracle must come back available, or nothing can consult it")
+
+      let started = ContinuousClock.now
+      DispatchQueue.global().async {
+        // Wait for the REAL consultation first, so the watcher cannot report a
+        // latch that some earlier state produced.
+        // deadline-fallback: the consultation is the signal; this bound only stops a defect hanging the suite
+        guard oracleEntered.wait(timeout: .now() + 10) == .success else {
+          releaseMain.signal()
+          releaseOracle.signal()
+          return
+        }
+        var seen = false
+        // bounded poll: the latch is the signal; this bound only stops a defect hanging the suite
+        for _ in 0..<600 {
+          if casingLatchReason() == .oracleTimedOut {
+            seen = true
+            break
+          }
+          usleep(5_000)
+        }
+        // Copied to a `let` first: `withLock` takes an escaping closure, and a
+        // captured `var` is not Sendable.
+        let observed = seen
+        latchSeen.withLock { $0 = observed }
+        decisionElapsedMs.withLock { $0 = Int((ContinuousClock.now - started) / .milliseconds(1)) }
+        // Cleanup ALWAYS, and here rather than in the test body, because the
+        // test body cannot run while the main actor is held.
+        releaseMain.signal()
+        releaseOracle.signal()
+      }
+
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+      let captured = CapturedRequest()
+
+      let wiring = KernelFinalizationWiring(
+        outcome: outcome,
+        context: context,
+        adapter: Self.transcribedEngine(),
+        steps: makeSteps(),
+        textProcessingRunner: TextProcessingRunner(
+          timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
+        save: { _, _ in },
+        deliverPaste: { request in
+          captured.request = request
+          return Self.deliveredResult
+        },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        // `seamCasingOracle` and `releaseOracleLease` are deliberately NOT
+        // passed. The production defaults are the subject of this case.
+        resolveLanguage: { _, _, _, _, _ in
+          DispatchQueue.main.async {
+            mainOccupied.signal()
+            // deadline-fallback: `releaseMain` is the signal; this bound only stops a defect hanging the suite
+            let waited = releaseMain.wait(timeout: .now() + 20)
+            mainReleaseOutcome.withLock { $0 = waited }
+            mainReleased.signal()
+          }
+          // deadline-fallback: the block reaching the main actor is the signal.
+          // Its RESULT is kept, because a block arriving after the consultation
+          // would report a hold this run never had.
+          let occupied = mainOccupied.wait(timeout: .now() + 5)
+          occupiedMain.withLock { $0 = occupied }
+          return DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        },
+        pasteCompletionRegistry: nil,
+        copyToClipboard: { text in
+          Issue.record("unexpected clipboard copy: \(text)")
+        })
+
+      let callerStarted = ContinuousClock.now
+      _ = await wiring.deliver("Review this before the meeting", .ordinary)
+      let callerElapsedMs = Int((ContinuousClock.now - callerStarted) / .milliseconds(1))
+
+      #expect(
+        await awaitSignal(mainReleased),
+        "precondition: the occupying block must have finished, or this run measured nothing")
+      #expect(
+        occupiedMain.withLock { $0 } == .success,
+        "precondition: the occupying block must hold the main actor BEFORE the consultation")
+      #expect(
+        outcome.languageResolutionSource == "dictation",
+        """
+        precondition: the deadline must not have claimed before repair began, or \
+        no consultation was attempted and the run says nothing about the timer
+        """)
+      #expect(
+        mainReleaseOutcome.withLock { $0 } == .success,
+        """
+        precondition: the main actor must have been held continuously until the \
+        watcher released it, not freed by its own fail-safe
+        """)
+
+      // The product assertion. Wrapper waiting and the caller's ability to
+      // continue are reported separately on purpose: the decision is bounded
+      // here, the CALLER's return is not, and this chunk never claimed it would
+      // be.
+      #expect(
+        latchSeen.withLock { $0 } == true,
+        """
+        the casing timeout must be handled while the main actor is unavailable. \
+        Decision observed after \(decisionElapsedMs.withLock { $0 } ?? -1)ms; the \
+        main-actor caller could not continue for \(callerElapsedMs)ms
+        """)
+
+      #expect(await awaitSignal(oracleExited), "the blocked consultation must have exited")
+      let request = try #require(captured.request, "the paste route must have been reached")
+      #expect(
+        request.repairedText == nil,
+        "a timed-out repair must offer no candidate, only today's payload")
+    }
+  }
+
+  @Test("#1946 The casing lease is released without waiting for the main actor")
+  func productionLeaseReleaseAllowsQueuedLanguagePreparationWhileMainActorIsBlocked() async throws {
+    // The lease-release seam, folded into this chunk because it is the same
+    // class as the timer: a release queued onto the main actor happens only when
+    // the main actor is next free, and that is exactly when the NEXT language's
+    // preparation can start. The user-visible cost is a second language staying
+    // unprepared behind a decision that already finished.
+    //
+    // `SeamCasingRuntimeSerializationTests` already proves a lease blocks
+    // preparation at the OWNER level. This case is about the WIRING's release,
+    // which that one does not touch.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      let mainOccupied = DispatchSemaphore(value: 0)
+      let releaseMain = DispatchSemaphore(value: 0)
+      let mainReleased = DispatchSemaphore(value: 0)
+      let preparationEntered = DispatchSemaphore(value: 0)
+      let occupiedMain = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let mainReleaseOutcome = OSAllocatedUnfairLock<DispatchTimeoutResult?>(initialState: nil)
+      let preparationSeenWhileMainHeld = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      let leasesDuringPreparation = OSAllocatedUnfairLock<Int?>(initialState: nil)
+      let leasesWhileGermanRefused = OSAllocatedUnfairLock<Int?>(initialState: nil)
+      let germanRefusal = OSAllocatedUnfairLock<CursorInsertionRepair.CaseSkipReason?>(
+        initialState: nil)
+      let queuedGerman = OSAllocatedUnfairLock(initialState: false)
+
+      SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
+        // REPORTS the production transition, never performs one: the drain has
+        // genuinely started this builder, which is the fact under test.
+        leasesDuringPreparation.withLock { $0 = SeamCasingOracleRuntime.outstandingLeasesForTesting() }
+        preparationEntered.signal()
+        return SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in .ordinary },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false })
+      }
+      defer { SeamCasingOracleRuntime.setPreparationOverrideForTesting(nil) }
+
+      SeamCasingOracleRuntime.installForTesting(
+        SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in
+            // Once. Repair consults per word, and this stages a one-time
+            // scenario rather than a per-word one.
+            let first = queuedGerman.withLock { done -> Bool in
+              if done { return false }
+              done = true
+              return true
+            }
+            guard first else { return .ordinary }
+            // The English decision holds its lease right now, so a language that
+            // has never been prepared must ENQUEUE and be refused.
+            let german = SeamCasingOracleRuntime.snapshot(for: "de")
+            germanRefusal.withLock { $0 = german.unavailableReason }
+            leasesWhileGermanRefused.withLock {
+              $0 = SeamCasingOracleRuntime.outstandingLeasesForTesting()
+            }
+            DispatchQueue.main.async {
+              mainOccupied.signal()
+              // deadline-fallback: `releaseMain` is the signal; this bound only stops a defect hanging the suite
+              let waited = releaseMain.wait(timeout: .now() + 20)
+              mainReleaseOutcome.withLock { $0 = waited }
+              mainReleased.signal()
+            }
+            // deadline-fallback: the block reaching the main actor is the signal
+            let occupied = mainOccupied.wait(timeout: .now() + 5)
+            occupiedMain.withLock { $0 = occupied }
+            return .ordinary
+          },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false }))
+      #expect(Self.oracleIsAvailable(), "precondition: English must be ready to lease")
+
+      DispatchQueue.global().async {
+        // deadline-fallback: the queued preparation is the signal; this bound only stops a defect hanging the suite
+        let entered = preparationEntered.wait(timeout: .now() + 5)
+        preparationSeenWhileMainHeld.withLock { $0 = entered == .success }
+        releaseMain.signal()
+      }
+
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+
+      let wiring = KernelFinalizationWiring(
+        outcome: outcome,
+        context: context,
+        adapter: Self.transcribedEngine(),
+        steps: makeSteps(),
+        textProcessingRunner: TextProcessingRunner(
+          timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
+        save: { _, _ in },
+        deliverPaste: { _ in Self.deliveredResult },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        // Production `seamCasingOracle` AND production `releaseOracleLease`.
+        // The release is the subject; injecting either would test the fixture.
+        resolveLanguage: { _, _, _, _, _ in
+          DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        },
+        pasteCompletionRegistry: nil,
+        copyToClipboard: { text in
+          Issue.record("unexpected clipboard copy: \(text)")
+        })
+
+      _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+      #expect(
+        await awaitSignal(mainReleased),
+        "precondition: the occupying block must have finished")
+      #expect(
+        occupiedMain.withLock { $0 } == .success,
+        "precondition: the occupying block must hold the main actor before the decision exits")
+      #expect(
+        germanRefusal.withLock { $0 } == .oracleWarming,
+        "precondition: German must have enqueued behind the English lease")
+      #expect(
+        leasesWhileGermanRefused.withLock { $0 } == 1,
+        "a REFUSED snapshot must take no lease, so the count stays at the one English holds")
+
+      // The product assertion.
+      #expect(
+        preparationSeenWhileMainHeld.withLock { $0 } == true,
+        """
+        the queued language's preparation must be able to start while the main \
+        actor is still blocked. A release queued onto the main actor cannot, and \
+        the watcher then ends on its fail-safe instead of on the preparation
+        """)
+      #expect(
+        mainReleaseOutcome.withLock { $0 } == .success,
+        "the main actor must have been held until the watcher released it")
+      #expect(
+        leasesDuringPreparation.withLock { $0 } == 0,
+        "no decision may still hold a lease while preparation is inside the shared checker")
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 0,
+        "and the decision's own lease must be back")
+    }
+  }
+
+  @Test("#1946 A timed-out casing decision keeps its latch, its evidence and its neighbours' leases")
+  func timedOutCasingDecisionPreservesLatchEvidenceAndLeases() async throws {
+    // The preservation obligation. Casing's timeout execution and its
+    // lease-release scheduling both change in this chunk, so what the timeout
+    // protects has to be re-established rather than assumed. This one need not
+    // fail on baseline; it is validated against mutations that remove the
+    // protection (recipe on the test-hardening issue).
+    //
+    // Simulated: the external dictionary taking too long. Real: lease
+    // acquisition, timeout handling, latching, snapshot reads, frozen-evidence
+    // protection and cleanup. Nothing is reset or replaced after the timeout —
+    // that would manufacture the outcome.
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+
+      let oracleEntered = DispatchSemaphore(value: 0)
+      let releaseOracle = DispatchSemaphore(value: 0)
+      let cleanupDone = DispatchSemaphore(value: 0)
+      // Joined before this case leaves the exclusion. The reader polls for a
+      // further stretch after cleanup signals, and the NEXT case resets the
+      // runtime — an unjoined reader would then be taking snapshots against
+      // somebody else's state and reporting them here.
+      let readersDone = DispatchSemaphore(value: 0)
+      let readerRefused = OSAllocatedUnfairLock<CursorInsertionRepair.CaseSkipReason?>(
+        initialState: nil)
+      let readersSawOnlyRefusals = OSAllocatedUnfairLock(initialState: true)
+      let leasesAfterCleanup = OSAllocatedUnfairLock<Int?>(initialState: nil)
+
+      SeamCasingOracleRuntime.installForTesting(
+        SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in
+            oracleEntered.signal()
+            // deadline-fallback: `releaseOracle` is the signal; this bound only stops a defect hanging the suite
+            _ = releaseOracle.wait(timeout: .now() + 20)
+            return .ordinary
+          },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false }))
+
+      // The WITNESS lease, taken through the real decision API before the timed
+      // attempt. Asserting zero leases after the abandoned decision unwinds
+      // would MISS an extra release, because releasing at zero silently refuses.
+      let witness = SeamCasingOracleRuntime.snapshot(for: "en")
+      #expect(witness.isAvailable, "precondition: English must be ready to lease")
+      #expect(SeamCasingOracleRuntime.outstandingLeasesForTesting() == 1)
+
+      DispatchQueue.global().async {
+        defer { readersDone.signal() }
+        // deadline-fallback: the consultation is the signal; this bound only stops a defect hanging the suite
+        guard oracleEntered.wait(timeout: .now() + 10) == .success else {
+          releaseOracle.signal()
+          return
+        }
+        // Real readers on the real API, racing the abandoned operation. Require
+        // an observed refusal BEFORE the dictionary is released, so the refusal
+        // cannot be an artefact of the operation having already finished.
+        var refusal: CursorInsertionRepair.CaseSkipReason?
+        // bounded poll: the latch is the signal; this bound only stops a defect hanging the suite
+        for _ in 0..<600 {
+          if let reason = casingLatchReason() {
+            refusal = reason
+            break
+          }
+          usleep(5_000)
+        }
+        let observedRefusal = refusal
+        readerRefused.withLock { $0 = observedRefusal }
+        releaseOracle.signal()
+        // Now race the late completion and its cleanup. Every reader here must
+        // still be refused: the latch outlives anything the abandoned call does.
+        for _ in 0..<200 {
+          if casingLatchReason() != .oracleTimedOut {
+            readersSawOnlyRefusals.withLock { $0 = false }
+            break
+          }
+          usleep(1_000)
+        }
+      }
+
+      let outcome = KernelFinalizationOutcome()
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+      let captured = CapturedRequest()
+
+      let wiring = KernelFinalizationWiring(
+        outcome: outcome,
+        context: context,
+        adapter: Self.transcribedEngine(),
+        steps: makeSteps(),
+        textProcessingRunner: TextProcessingRunner(
+          timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
+        save: { _, _ in },
+        deliverPaste: { request in
+          captured.request = request
+          return Self.deliveredResult
+        },
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        // The PRODUCTION release, plus a report that it finished. The signal
+        // has to come from after the lease `defer`; the dictionary stub's own
+        // return is too early, because authorisation completion, repair
+        // completion and the `defer` all follow it.
+        releaseOracleLease: {
+          SeamCasingOracleRuntime.releaseDecisionLease()
+          cleanupDone.signal()
+        },
+        resolveLanguage: { _, _, _, _, _ in
+          DictationLanguageResolver.Resolution(
+            language: "en", source: .dictation, confidenceBucket: .ge90)
+        },
+        pasteCompletionRegistry: nil,
+        copyToClipboard: { text in
+          Issue.record("unexpected clipboard copy: \(text)")
+        })
+
+      _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+      #expect(
+        await awaitSignal(cleanupDone),
+        "precondition: the abandoned operation must have unwound through its lease defer")
+      #expect(
+        await awaitSignal(readersDone),
+        "precondition: the readers must finish before anything resets the runtime under them")
+      leasesAfterCleanup.withLock { $0 = SeamCasingOracleRuntime.outstandingLeasesForTesting() }
+
+      #expect(
+        readerRefused.withLock { $0 } == .oracleTimedOut,
+        "a reader after the timeout must be refused through the latch, not served")
+      #expect(
+        readersSawOnlyRefusals.withLock { $0 },
+        "and the late completion must not un-latch the runtime for a later reader")
+      #expect(
+        leasesAfterCleanup.withLock { $0 } == 1,
+        """
+        the abandoned decision must release ONLY its own lease. The witness must \
+        survive; releasing at zero silently refuses, so a bare zero here would \
+        hide an extra release
+        """)
+      SeamCasingOracleRuntime.releaseDecisionLease()
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 0,
+        "and the witness must be the thing that takes it back to zero")
+
+      let request = try #require(captured.request, "the paste route must have been reached")
+      #expect(
+        request.repairedText == nil,
+        "the frozen evidence must still say the repair produced no candidate")
+      #expect(
+        outcome.languageResolutionSource == "dictation",
+        "and the resolution the language stage produced must survive the freeze")
+    }
+  }
+
 }
 
 
@@ -2418,6 +2888,23 @@ import os
 private final class ManualClock {
   private(set) var now: TimeInterval = 0
   func advance(by seconds: TimeInterval) { now += seconds }
+}
+
+/// #1946 chunk 2. Reads the casing runtime's latch through the REAL decision
+/// API, from whatever thread calls it, without ever stranding a lease.
+///
+/// Free-standing and nonisolated because the observation has to happen OFF the
+/// main actor — the property under test is that the timeout is handled while
+/// the main actor is unavailable, so a `@MainActor` probe could not run at the
+/// moment that matters. `snapshot(for:)` is the production read and takes a
+/// decision lease when it answers ready; a probe that kept one would stop every
+/// later language preparing.
+private func casingLatchReason(
+  _ base: String = "en"
+) -> CursorInsertionRepair.CaseSkipReason? {
+  let oracle = SeamCasingOracleRuntime.snapshot(for: base)
+  if oracle.isAvailable { SeamCasingOracleRuntime.releaseDecisionLease() }
+  return oracle.unavailableReason
 }
 
 private enum WiringTestError: Error { case storage }
