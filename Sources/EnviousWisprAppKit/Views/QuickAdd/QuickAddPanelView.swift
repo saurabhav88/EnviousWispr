@@ -140,6 +140,7 @@ enum QuickAddPanelCopy {
     case .lowConfidence: "No close match for \"\(word)\" · pick one or keep typing"
     case .alreadySaved: "Already knows \"\(word)\" · nothing to add"
     case .searching: "Add \"\(word)\" to"
+    case .noMatches: "No match for \"\(word)\""
     }
   }
 
@@ -155,6 +156,13 @@ enum QuickAddPanelCopy {
     /// The user is filtering. Same verb as `confident`; the header must not change under them
     /// mid-keystroke, which is the one thing a header that also carries state can get wrong.
     case searching
+    /// The list is EMPTY: a query nobody matches, or a library with nothing in it yet (#2477).
+    ///
+    /// **No verb, because there is no row to complete one.** Every other state's sentence is
+    /// finished by the rows beneath it — `Add "x" to` reads as a fragment over nothing, and
+    /// `pick one` names an action with nothing to pick. This state names what was read and stops;
+    /// `Create a new word` sits directly below and is the only offer the panel can honour here.
+    case noMatches
   }
 
   /// The right-hand meta on a row. A count, not a sentence.
@@ -355,16 +363,19 @@ struct QuickAddPanelView: View {
         .padding(.top, 14)
     }
     failureBanner
-    if !model.ranking.candidates.isEmpty {
+    // Two conditions, because they answer different questions: the header's is the WORD and the
+    // rows' is the LIST. They were one, which is #2477 — see `showsGroupHeader`.
+    if showsGroupHeader {
       Text(QuickAddPanelCopy.groupHeader(headerState, heard: model.heard))
         .font(.stSectionHeader)
         .tracking(0.5)
-        .foregroundStyle(headerState == .lowConfidence ? .stTextTertiary : .stAccent)
+        .foregroundStyle(
+          headerState == .lowConfidence || headerState == .noMatches ? .stTextTertiary : .stAccent)
         .padding(.horizontal, 16)
         .padding(.top, 14)
         .padding(.bottom, 6)
-      candidateRows
     }
+    if !model.ranking.candidates.isEmpty { candidateRows }
   }
 
   /// One field, and the sentence saying what it is for.
@@ -471,9 +482,26 @@ struct QuickAddPanelView: View {
     }
   }
 
+  /// Whether the group header is on screen at all. Derived, and separate from `headerState` so the
+  /// two questions — is it shown, what does it say — are each answerable without rendering.
+  ///
+  /// **The condition is the WORD, not the list (#2477).** It was the list, so an empty list took the
+  /// header with it and the heard word appeared nowhere: a search field, a create row and a legend,
+  /// and no witness that the right text had been picked up. That matters since #2465, where a
+  /// selection can be acquired by borrowing the clipboard and has no other on-screen confirmation.
+  /// An empty `heard` is the refusal path, which renders its own sentence and must not be handed a
+  /// header naming nothing.
+  var showsGroupHeader: Bool { !model.heard.isEmpty }
+
   /// Which sentence the group header is saying. Derived, never stored: a second copy of this on the
   /// model is a second thing to keep in step with the ranking.
   var headerState: QuickAddPanelCopy.GroupHeaderState {
+    // **Emptiness is decided FIRST, ahead of `searching` (#2477).** The way in that reaches a real
+    // user is typing until nothing matches, and that path sets `isSearching`, so an emptiness check
+    // placed after it would never run on the case it exists for. The mid-keystroke stability
+    // `searching` protects is about the header not rewriting itself between two states that both
+    // have rows; going quiet when the rows are gone is the header reporting, not flickering.
+    if model.ranking.candidates.isEmpty { return .noMatches }
     if model.ranking.preselected?.alreadyHasHeardSpelling == true { return .alreadySaved }
     if model.isSearching { return .searching }
     return model.ranking.preselectedID == nil ? .lowConfidence : .confident

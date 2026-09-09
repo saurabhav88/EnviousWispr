@@ -266,18 +266,26 @@ struct QuickAddPanelModelTests {
   }
   // MARK: - Which sentence the group header says (#2381, the command-bar layout)
 
+  private func panel(
+    heard: String = "codecs",
+    refusal: SelectionReader.Refusal? = nil,
+    heardRanking: QuickAddRanker.Ranking,
+    query: String = ""
+  ) -> QuickAddPanelView {
+    let (model, _) = makeModel(
+      heard: heard, refusal: refusal, heardRanking: heardRanking, searchRanking: heardRanking)
+    if !query.isEmpty { model.updateQuery(query) }
+    return QuickAddPanelView(
+      model: model, onAccept: { _ in }, onCreateNew: {}, onCreate: { _ in }, onCancel: {})
+  }
+
   private func headerState(
     heard: String = "codecs",
     refusal: SelectionReader.Refusal? = nil,
     heardRanking: QuickAddRanker.Ranking,
     query: String = ""
   ) -> QuickAddPanelCopy.GroupHeaderState {
-    let (model, _) = makeModel(
-      heard: heard, refusal: refusal, heardRanking: heardRanking, searchRanking: heardRanking)
-    if !query.isEmpty { model.updateQuery(query) }
-    let view = QuickAddPanelView(
-      model: model, onAccept: { _ in }, onCreateNew: {}, onCreate: { _ in }, onCancel: {})
-    return view.headerState
+    panel(heard: heard, refusal: refusal, heardRanking: heardRanking, query: query).headerState
   }
 
   @Test("A preselected row means the header states the verb")
@@ -309,6 +317,42 @@ struct QuickAddPanelModelTests {
     let r = QuickAddRanker.Ranking(candidates: [owned], preselectedID: owned.id)
 
     #expect(headerState(heardRanking: r) == .alreadySaved)
+  }
+
+  @Test("The word stays on screen when the list is empty")
+  func theHeaderSurvivesAnEmptyList() {
+    // #2477, the defect itself: the header was rendered only when rows existed, so an empty list
+    // left the panel showing a search field, a create row and a legend, and the word that was read
+    // appeared nowhere. Since #2465 a selection can be acquired by borrowing the clipboard, and this
+    // header is the only on-screen confirmation that the right text was picked up.
+    #expect(panel(heardRanking: .empty).showsGroupHeader)
+    #expect(panel(heardRanking: .empty, query: "zzz").showsGroupHeader)
+  }
+
+  @Test("A refusal gets no header, because there is no word to name")
+  func aRefusalRendersNoHeader() {
+    // The negative twin. Without it `showsGroupHeader` could be `true` unconditionally and every
+    // assertion above would still pass — and the refusal path would render `No match for ""`
+    // above the sentence that already explains what went wrong.
+    #expect(!panel(heard: "", heardRanking: .empty).showsGroupHeader)
+  }
+
+  @Test("An empty list says there is no match, rather than a verb with nothing to complete it")
+  func headerIsNoMatchesWhenTheListIsEmpty() {
+    // #2477: the header used to be rendered only when rows existed, so the panel showed a search
+    // field, a create row and a legend with the heard word nowhere on screen. Reachable on a new
+    // user's first Quick Add, whose library is empty.
+    #expect(headerState(heardRanking: .empty) == .noMatches)
+  }
+
+  @Test("No matches outranks searching, because typing to zero rows is how a user gets here")
+  func noMatchesOutranksSearching() {
+    // The ordering pair for #2477. Typing until nothing matches sets `isSearching`, so an emptiness
+    // check placed after it would never run on the way in that reaches a real user — and the
+    // header would say `Add "codecs" to` over no rows at all. Its negative twin already exists:
+    // `headerStaysConfidentWhileSearching` types against a list that HAS rows and still expects
+    // `.searching`, so an emptiness check that fired unconditionally fails there.
+    #expect(headerState(heardRanking: .empty, query: "zzz") == .noMatches)
   }
 
   @Test("Already-saved outranks searching, because typing does not make the row addable")
