@@ -53,8 +53,10 @@ labels: test-hardening
 <!--
   expect_fail is the single-guard form and tolerates other tests also failing.
   Use must_fire/must_not_fire when the EXACT set matters. Never both in one row.
-  Name a parameterized case by its declared argument labels — f(id:writer:) —
-  never f(_:), which is the spelling of an UNLABELLED parameter.
+  Name a parameterized case by its declared external argument labels, exactly as
+  written — f(id:writer:). An unlabelled parameter's label IS `_`, so a test
+  declaring one is f(_:) and that spelling is correct; copy what the function
+  declares rather than choosing a form.
   A row that cannot be an anchor/replacement pair carries "mode": "human". It then
   needs a non-empty "label" and "instruction" plus a target-qualified "suite", and
   "file"/"anchor"/"replacement" are not read at all — the runner reports it

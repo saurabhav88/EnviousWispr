@@ -186,6 +186,52 @@ def has_runtime_gate(attribute_code):
     return re.search(r"\.(?:enabled|disabled)\s*\(", attribute_code) is not None
 
 
+class SuiteGateMap:
+    """Which declaration paths carry a runtime gate, and how far each gate reaches.
+
+    A `.enabled(if:)`/`.disabled` on a declaration skips every test beneath it, including
+    tests written in ANOTHER file inside a qualified extension of that type, which is why
+    gates are keyed by target-qualified path rather than by brace range (#2669 review,
+    round 3).
+
+    A FILE-PRIVATE declaration is the exception, and #2688 is what the missing exception
+    cost: two files each declaring `private struct S` both key to `Target/S`, so a gated
+    one suppressed an ungated one hosting a live `@Test` in the other file and a VALID
+    recipe was reported UNRUNNABLE. That direction is the expensive one — it sends a filer
+    to fix a recipe that was already right. `private` cannot be extended from another file,
+    so such a gate is recorded against its own file and read back only for tests written in
+    that same file.
+
+    One owner, because the write side and the read side must agree on the scope: recording
+    a gate per file and reading it back globally would silently drop it.
+    """
+
+    @staticmethod
+    def file_scoped(modifiers):
+        """Does this declaration's modifier text make it FILE-scoped?
+
+        `private(set)` is an access level on a property's setter and never on a type, so
+        the lookahead keeps it out — it would otherwise scope a whole declaration to its
+        file for a reason that has nothing to do with the declaration.
+        """
+        return re.search(r"\b(?:private|fileprivate)\b(?!\s*\()", modifiers) is not None
+
+    def __init__(self):
+        self._shared = {}
+        self._by_file = {}
+
+    def record(self, file_key, qualified, gated):
+        """Remember a declaration's gate. `file_key` is None for a declaration other files
+        can extend, and the file's path for a file-private one."""
+        scope = self._shared if file_key is None else self._by_file.setdefault(file_key, {})
+        scope[qualified] = scope.get(qualified, False) or gated
+
+    def gated(self, file_key, qualified):
+        """Is a test written in `file_key` gated by a declaration at `qualified`?"""
+        return (self._shared.get(qualified, False)
+                or self._by_file.get(file_key, {}).get(qualified, False))
+
+
 def test_oracle(root):
     test_root = root / "Tests"
     sources = []
@@ -205,8 +251,9 @@ def test_oracle(root):
     # is extracted. Gates are keyed by target-qualified path (`Target/Outer/Inner`) so a
     # `.disabled` on a declaration in one file reaches a qualified extension of that type
     # in another file; a map rebuilt per file could not see across (#2669 review, round 4).
+    # `SuiteGateMap` owns the one exception, a file-private declaration (#2688).
     parsed = []
-    gate_by_path = {}
+    gates = SuiteGateMap()
     for path, part in sources:
         target = path.relative_to(test_root).parts[0]
         code = mask_inactive_debug_branches(mask_noncode(part))
@@ -232,10 +279,17 @@ def test_oracle(root):
                 suite_attribute = code[suite_start:declaration.start()] if suite_start >= 0 else ""
                 if "{" in suite_attribute or "}" in suite_attribute:
                     suite_attribute = ""
+                # Modifiers on the declaration's own line. `private`/`fileprivate` make it
+                # FILE-scoped, which is what decides how far its gate may reach (#2688).
+                # `private(set)` is an access level on a property, never on a type, so the
+                # lookahead keeps it out.
+                line_start = code.rfind("\n", 0, declaration.start()) + 1
+                modifiers = code[line_start:declaration.start()]
                 ranges.append((
                     opening, closing,
                     re.sub(r"[\s`]", "", declaration.group(1)).replace(".", "/"),
-                    has_runtime_gate(suite_attribute)
+                    has_runtime_gate(suite_attribute),
+                    SuiteGateMap.file_scoped(modifiers),
                 ))
 
         # Gates by QUALIFIED PATH, not only by brace range. A test hosted in a top-level
@@ -244,18 +298,18 @@ def test_oracle(root):
         # Testing skips that test through the parent trait (#2669 review, round 3). Every
         # declaration records the gate on its own path, and a test is gated when any
         # prefix of its path is, whichever braces — and whichever file — it was written in.
-        for opening, closing, name, gated in ranges:
+        for opening, closing, name, gated, file_private in ranges:
             outer = sorted(
-                ((end - start, outer_name) for start, end, outer_name, _ in ranges
+                ((end - start, outer_name) for start, end, outer_name, _, _ in ranges
                  if start < opening < end),
                 key=lambda entry: -entry[0],
             )
             qualified = "/".join([target] + [outer_name for _, outer_name in outer] + [name])
-            gate_by_path[qualified] = gate_by_path.get(qualified, False) or gated
-        parsed.append((target, part, code, ranges))
+            gates.record(str(path) if file_private else None, qualified, gated)
+        parsed.append((path, target, part, code, ranges))
 
     # Pass two: the tests, each judged against the whole target's gates.
-    for target, part, code, ranges in parsed:
+    for path, target, part, code, ranges in parsed:
         for attribute in re.finditer(r"@Test\b", code):
             function_match = re.search(r"\bfunc\s+(\w+)\s*\(", code[attribute.end():])
             if not function_match:
@@ -282,7 +336,7 @@ def test_oracle(root):
             # bare inner name, a filter that executes zero tests (#2525). A top-level suite
             # is a chain of one, so its name is unchanged.
             containing = sorted(
-                ((end - start, name, gated) for start, end, name, gated in ranges
+                ((end - start, name, gated) for start, end, name, gated, _ in ranges
                  if start < attribute.start() < end),
                 key=lambda entry: -entry[0],
             )
@@ -298,7 +352,7 @@ def test_oracle(root):
             # chain entry whose name already holds a `/`, and the gate it must inherit sits
             # on the shorter path (`Target/Outer`) that only a component walk reaches.
             components = enclosing.split("/")
-            if any(gate_by_path.get("/".join([target] + components[:depth]), False)
+            if any(gates.gated(str(path), "/".join([target] + components[:depth]))
                    for depth in range(1, len(components) + 1)):
                 continue
             body = part[attribute.end():function_start]
