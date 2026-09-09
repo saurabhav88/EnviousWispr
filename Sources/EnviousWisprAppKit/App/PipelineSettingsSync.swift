@@ -425,10 +425,19 @@ final class PipelineSettingsSync {
   /// switch back to the frozen engine is not needlessly deferred.
   func pinnedLocalProvider() -> LLMProvider? {
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
-      switch cfg?.llmProvider {
+      // #2651: the optional is unwrapped BEFORE the switch, so `.none` means
+      // `LLMProvider.none` and nothing else. Matching on `cfg?.llmProvider`
+      // directly makes `.none` read as `Optional.none`, which leaves the
+      // provider's own `.none` case uncovered and does not compile.
+      guard let provider = cfg?.llmProvider else { continue }
+      switch provider {
       case .egOne: return .egOne
       case .s1Mini: return .s1Mini
-      default: continue
+      // Enumerated rather than `default:`. This answers "is a bundled local
+      // server load-bearing for a take that is still running", so a NEW
+      // bundled engine on a `default:` arm would report NOT pinned, and a
+      // provider switch would tear its server down under a live recording.
+      case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: continue
       }
     }
     return nil

@@ -697,7 +697,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       switch provider {
       case .egOne: (egOneRuntime, makeEGOnePolisher)
       case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
-      default: nil
+      // #2651: enumerated rather than `default:`. nil means "not served by a
+      // bundled server", which sends the provider down `makePolisher` and its
+      // keychain lookup. A NEW bundled-server engine reaching a `default:`
+      // would take the cloud path, ask a keychain for a key that does not
+      // exist, and fail as `providerUnavailable` rather than starting.
+      case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: nil
       }
     if let handles = localServerHandles {
       guard let runtime = handles.runtime else {
@@ -748,7 +753,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       case .openAI: KeychainManager.openAIKeyID
       case .gemini: KeychainManager.geminiKeyID
       case .claude: KeychainManager.claudeKeyID
-      default: nil
+      // #2651: enumerated rather than `default:`. These providers hold no API
+      // key, so nil is the true answer. A NEW key-carrying provider reaching a
+      // `default:` would silently send no key.
+      case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: nil
       }
 
     // Resolved from the ENTRY snapshot, never from `self` — this function's

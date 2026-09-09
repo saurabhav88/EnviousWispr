@@ -49,7 +49,12 @@ final class LLMModelDiscoveryCoordinator {
       case .openAI: keychainId = KeychainManager.openAIKeyID
       case .gemini: keychainId = KeychainManager.geminiKeyID
       case .claude: keychainId = KeychainManager.claudeKeyID
-      default: keychainId = ""
+      // #2651: enumerated rather than `default:`. These providers hold no API
+      // key, so there is no id to look up and the guard below reports the
+      // missing key that is correctly absent. A NEW key-carrying provider
+      // reaching a `default:` here would have got `""` and reported "No API
+      // key found" forever, with no compiler complaint.
+      case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: keychainId = ""
       }
       guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
