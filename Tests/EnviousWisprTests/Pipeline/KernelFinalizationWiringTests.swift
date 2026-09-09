@@ -2878,6 +2878,70 @@ import os
     }
   }
 
+  /// #1946 chunk 2 — the CONDITION on the lease release, which nothing bound.
+  ///
+  /// The operation's `defer` reads `if holdsOracleLease { releaseOracleLease() }`.
+  /// `timedOutCasingDecisionPreservesLatchEvidenceAndLeases` drives a scenario whose
+  /// snapshot comes back READY, so `holdsOracleLease` is true there and removing the
+  /// condition changes nothing it can observe — measured 2026-09-09 on #2723's battery,
+  /// where that mutant survived with not one test changing status. The row was not weak;
+  /// the mutant was a no-op on the only path any case reached.
+  ///
+  /// **The condition is load-bearing exactly when the snapshot REFUSES.** Leases carry no
+  /// identity, so `releaseDecisionLease()` decrements whichever decision currently holds
+  /// the count. A decision that took no lease and released one anyway takes somebody
+  /// else's, and the drain may then start preparing while that other decision is still
+  /// inside the shared spell checker — the race the lease exists to close.
+  ///
+  /// The WITNESS is what makes an extra release visible: `releaseDecisionLease()` silently
+  /// refuses at zero, so a count that starts at zero cannot show one.
+  ///
+  /// No timing, no semaphores, no main-actor occupancy. The refusal is injected through
+  /// the wiring's own seam while the runtime keeps a real lease, so the two halves are
+  /// independent by construction.
+  @Test("#1946 a casing decision that took no lease releases none")
+  func casingDecisionWithoutALeaseReleasesNothing() async throws {
+    try await withSeamCasingOracleExclusion {
+      SeamCasingOracleRuntime.resetForTesting()
+      SeamCasingOracleRuntime.installForTesting(
+        SeamCasingOracle(
+          unavailableReason: nil,
+          dictionaryVerdict: { _ in .ordinary },
+          isLearnedWord: { _ in false },
+          isRecognizedName: { _, _ in false },
+          isNoun: { _ in false }))
+
+      let witness = SeamCasingOracleRuntime.snapshot(for: "en")
+      #expect(witness.isAvailable, "precondition: English must be ready to lease")
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 1,
+        "precondition: the witness must hold a lease, or an extra release is invisible")
+
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+      context.targetElement = Self.stubCaretElement()
+      let wiring = makeWiring(
+        context: context,
+        readCaretContext: { _, _, _ in Self.midSentenceCaret },
+        // The refusal is the whole scenario: no lease is taken, so nothing is owed.
+        seamCasingOracle: { _ in .unavailable(.oracleWarming) },
+        // The PRODUCTION release, not a no-op — a no-op seam could not tell the two
+        // code shapes apart, which is how this went unbound in the first place.
+        releaseOracleLease: { SeamCasingOracleRuntime.releaseDecisionLease() })
+
+      _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+      #expect(
+        SeamCasingOracleRuntime.outstandingLeasesForTesting() == 1,
+        """
+        a decision that never took a lease must release none; releasing unconditionally \
+        decrements the witness, which is another decision's count
+        """)
+
+      SeamCasingOracleRuntime.releaseDecisionLease()
+    }
+  }
+
 }
 
 
