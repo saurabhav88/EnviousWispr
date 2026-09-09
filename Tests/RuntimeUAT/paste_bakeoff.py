@@ -1035,6 +1035,26 @@ def selftest() -> int:
     verdict, _ = classify(pre, marker, [textarea, mirror])
     check("a non-editable mirror is not a duplicate", verdict, "once")
 
+    # 2b. The row above passes for the WRONG REASON on its own, so it does not bind the
+    #     role filter. Measured 2026-09-09 by deletion, running #2653's battery: with
+    #     `EDITABLE_ROLES` removed from the candidate filter the whole selftest still
+    #     reported 0 failures, because the textarea in row 2 is FOCUSED and the
+    #     focused-first choice picks it whatever roles are in the list.
+    #
+    #     This is the case where the filter is the only thing standing between the bench
+    #     and a verdict about nothing: ONLY a read-only mirror carries the pre-image, so
+    #     no editable field does. Shipped answers `invalid`, which is the honest
+    #     unscoreable state; without the filter it answers `once` on an `AXStaticText`,
+    #     scoring a trial in which nothing reached an editable field as a clean delivery.
+    #     A fabricated `once` is the direction that cannot be caught downstream — it looks
+    #     exactly like a good trial.
+    verdict, detail = classify(pre, marker, [mirror])
+    check("only a read-only mirror carries it — unscoreable, not scored", verdict, "invalid")
+    # `.get`, not `[...]`: on the failing side `detail` is a SCORED row and carries no
+    # `why` at all, so a subscript raises and the selftest dies mid-run instead of
+    # reporting. A control that crashes names no case and reads as a broken harness.
+    check("and says which state it is in", detail.get("why"), "pre_image_in_no_editable_field")
+
     # 3. A real duplicate must still read as one.
     doubled = F(role="AXTextArea", depth=8, chars=65, focused=True,
                 value=f"The quick brown fox jumps. The quick brown fox jumps. {pre}")
