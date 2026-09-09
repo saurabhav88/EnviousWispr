@@ -1,0 +1,114 @@
+---
+import { Image } from 'astro:assets';
+import frame from '../../assets/home/review-frame.webp';
+import proof from '../../data/home/proof.json';
+const evidence = [
+  {
+    index: 1,
+    name: 'u/rbredow',
+    kind: 'r/macapps',
+    mark: 'r/',
+    quote: '“Working very well and consistently for me. Pretty quick too. Nice work.”',
+  },
+  {
+    index: 2,
+    name: 'u/No-Object1384',
+    kind: 'r/macapps',
+    mark: 'r/',
+    quote:
+      '“I’m really genuinely impressed so far in using it (I wrote most of this comment with it), and the fact that this is free is surprising.”',
+  },
+  {
+    index: 3,
+    name: 'ifun.de',
+    kind: 'German press',
+    mark: 'if',
+    title: 'Local dictation with AI cleanup.',
+    note: 'A walkthrough of the free Mac app and its local workflow.',
+  },
+  {
+    index: 4,
+    name: 'Apfeltalk',
+    kind: 'German press',
+    mark: 'a',
+    title: 'A closer look at EnviousWispr.',
+    note: 'Features, polishing options and the local dictation experience.',
+  },
+];
+---
+
+<section class="proof section-surface" id="community" aria-labelledby="proof-title">
+  <div class="wrap">
+    <div class="section-heading">
+      <p class="eyebrow">Real results</p><h2 id="proof-title">
+        Real people. <span class="accent-ink">Real results.</span>
+      </h2><p>
+        Independent reviews, public conversations and press coverage. Read or watch the originals
+        and make up your own mind.
+      </p>
+    </div><p class="proof-hint"><span aria-hidden="true">⇄</span>Swipe for more</p><div
+      class="proof-grid swipe-row"
+      tabindex="0"
+      role="region"
+      aria-label="Independent reviews"
+    >
+      <article class="proof-card proof-feature">
+        <div class="source-line">
+          <span class="source-mark youtube" aria-hidden="true">▶</span><div>
+            Mostly Mac<small>Independent video review</small>
+          </div>
+        </div><h3>Joint #1 in a seven-app comparison.</h3><a
+          class="review-poster"
+          href={proof[0].url}
+          target="_blank"
+          rel="noopener"
+          aria-label="Watch Mostly Mac’s EnviousWispr review from 6 minutes 25 seconds"
+          ><Image
+            src={frame}
+            alt="Frame from Mostly Mac demonstrating EnviousWispr"
+            widths={[480, 800]}
+            sizes="(max-width:600px) 90vw, 40vw"
+            width={800}
+            format="webp"
+            loading="lazy"
+          /><span aria-hidden="true">▶</span><small>Watch the EnviousWispr segment · 6:25</small
+          ></a
+        ><p>
+          Seven Mac dictation apps tested with the same passages. See the app in use and how the
+          reviewer reached the result.
+        </p><div class="review-score">
+          <span><strong>8.5/10</strong> overall</span><span><strong>10/10</strong> for value</span>
+        </div><a class="text-link" href={proof[0].url} target="_blank" rel="noopener"
+          >Open the review on YouTube ↗</a
+        >
+      </article>{
+        evidence.map((item) => (
+          <article class="proof-card">
+            <div class="source-line">
+              <>
+                <span class:list={['source-mark', { reddit: item.quote }]} aria-hidden="true">
+                  {item.mark}
+                </span>
+                <div>
+                  {item.name}
+                  <small>{item.kind}</small>
+                </div>
+              </>
+            </div>
+            {item.quote ? (
+              <blockquote>{item.quote}</blockquote>
+            ) : (
+              <Fragment>
+                <h3>{item.title}</h3>
+                <p>{item.note}</p>
+              </Fragment>
+            )}
+            <a class="text-link" href={proof[item.index].url} target="_blank" rel="noopener">
+              {item.quote ? 'Read the conversation' : 'Read the original article'} ↗
+            </a>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>

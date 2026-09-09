@@ -1,0 +1,150 @@
+[
+  {
+    "key": "parakeet",
+    "name": "Parakeet",
+    "tag": "Recommended starting point",
+    "model": "Parakeet v3",
+    "strength": "Fast on-device dictation for everyday writing. Downloaded during setup, ready for your first dictation.",
+    "mode": "Automatic mode",
+    "elapsed": "",
+    "wait": 700,
+    "facts": [
+      ["Best for", "Everyday speed"],
+      ["Languages", "25 European"],
+      ["Processing", "100% on your Mac"],
+      ["Setup", "Downloaded during setup"]
+    ],
+    "langs": [
+      {
+        "name": "English",
+        "english": "English",
+        "said": "send the notes before our meeting thanks",
+        "text": "Send the notes before our meeting, thanks."
+      },
+      {
+        "name": "Deutsch",
+        "english": "German",
+        "code": "de",
+        "said": "schick mir die Notizen vor dem Meeting danke",
+        "text": "Schick mir die Notizen vor dem Meeting, danke."
+      },
+      {
+        "name": "Español",
+        "english": "Spanish",
+        "code": "es",
+        "said": "mándame las notas antes de la reunión gracias",
+        "text": "Mándame las notas antes de la reunión, gracias."
+      },
+      {
+        "name": "Français",
+        "english": "French",
+        "code": "fr",
+        "said": "envoie-moi les notes avant la réunion merci",
+        "text": "Envoie-moi les notes avant la réunion, merci."
+      },
+      {
+        "name": "Italiano",
+        "english": "Italian",
+        "code": "it",
+        "said": "mandami gli appunti prima della riunione grazie",
+        "text": "Mandami gli appunti prima della riunione, grazie."
+      },
+      {
+        "name": "Polski",
+        "english": "Polish",
+        "code": "pl",
+        "said": "wyślij mi notatki przed spotkaniem dzięki",
+        "text": "Wyślij mi notatki przed spotkaniem, dzięki."
+      },
+      {
+        "name": "Nederlands",
+        "english": "Dutch",
+        "code": "nl",
+        "said": "stuur me de notities voor de meeting bedankt",
+        "text": "Stuur me de notities voor de meeting, bedankt."
+      },
+      {
+        "name": "Українська",
+        "english": "Ukrainian",
+        "code": "uk",
+        "said": "надішли нотатки перед зустріччю дякую",
+        "text": "Надішли нотатки перед зустріччю, дякую."
+      }
+    ]
+  },
+  {
+    "key": "whisperkit",
+    "name": "WhisperKit",
+    "tag": "99+ languages",
+    "model": "Whisper Large v3 Turbo",
+    "strength": "Whisper optimized for Apple Silicon, with broader language coverage including Hindi, Japanese and Arabic.",
+    "mode": "Automatic mode",
+    "elapsed": "",
+    "wait": 1600,
+    "facts": [
+      ["Best for", "Broader language coverage"],
+      ["Languages", "99+"],
+      ["Processing", "100% on your Mac"],
+      ["Download", "About 1.64 GB on demand"]
+    ],
+    "langs": [
+      {
+        "name": "日本語",
+        "english": "Japanese",
+        "code": "ja",
+        "said": "会議の前にメモを送ってください ありがとう",
+        "text": "会議の前にメモを送ってください。ありがとう。"
+      },
+      {
+        "name": "中文",
+        "english": "Chinese",
+        "code": "zh",
+        "said": "会议前把笔记发给我 谢谢",
+        "text": "会议前把笔记发给我，谢谢。"
+      },
+      {
+        "name": "हिन्दी",
+        "english": "Hindi",
+        "code": "hi",
+        "said": "मीटिंग से पहले नोट्स भेज दो धन्यवाद",
+        "text": "मीटिंग से पहले नोट्स भेज दो, धन्यवाद।"
+      },
+      {
+        "name": "العربية",
+        "english": "Arabic",
+        "code": "ar",
+        "dir": "rtl",
+        "said": "أرسل لي الملاحظات قبل الاجتماع شكرا",
+        "text": "أرسل لي الملاحظات قبل الاجتماع، شكرًا."
+      },
+      {
+        "name": "한국어",
+        "english": "Korean",
+        "code": "ko",
+        "said": "회의 전에 메모 보내 주세요 감사합니다",
+        "text": "회의 전에 메모 보내 주세요. 감사합니다."
+      },
+      {
+        "name": "ไทย",
+        "english": "Thai",
+        "code": "th",
+        "said": "ส่งโน้ตให้ก่อนประชุมนะ ขอบคุณ",
+        "text": "ส่งโน้ตให้ก่อนประชุมนะ ขอบคุณ"
+      },
+      {
+        "name": "Tiếng Việt",
+        "english": "Vietnamese",
+        "code": "vi",
+        "said": "gửi ghi chú trước buổi họp nhé cảm ơn",
+        "text": "Gửi ghi chú trước buổi họp nhé, cảm ơn."
+      },
+      {
+        "name": "Türkçe",
+        "english": "Turkish",
+        "code": "tr",
+        "said": "toplantıdan önce notları gönder teşekkürler",
+        "text": "Toplantıdan önce notları gönder, teşekkürler."
+      }
+    ]
+  }
+]

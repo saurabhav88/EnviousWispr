@@ -1,0 +1,103 @@
+---
+import cards from '../../data/home/comparisons.json';
+import directory from '../../data/home/comparison-directory.json';
+import Logo from './Logo.astro';
+---
+
+<section class="compare wrap chapter" id="compare" aria-labelledby="compare-title">
+  <div class="section-heading">
+    <p class="eyebrow">Comparisons</p><h2 id="compare-title">
+      See how we <span class="accent-ink">stack up.</span>
+    </h2><p>
+      Built-in dictation or a paid alternative? Explore the differences in cleanup, privacy,
+      features and cost.
+    </p>
+  </div><p class="comparison-hint"><span aria-hidden="true">⇄</span>Swipe to compare</p><div
+    class="comparison-grid swipe-row"
+    tabindex="0"
+    role="region"
+    aria-label="Dictation comparison cards"
+  >
+    {
+      cards.map((item) => (
+        <article class:list={['decision-card', { own: item.own }]}>
+          <>
+            <div class="decision-title">
+              <>
+                <span class="decision-mark" aria-hidden="true">
+                  {item.own ? (
+                    <Logo />
+                  ) : (
+                    <img
+                      src={'/home/marks/' + item.mark}
+                      width="34"
+                      height="34"
+                      loading="lazy"
+                      alt=""
+                    />
+                  )}
+                </span>
+                <h3>{item.name}</h3>
+              </>
+            </div>
+            <div class="decision-price">
+              <>
+                <strong>{item.price}</strong>
+                <p>{item.priceNote}</p>
+              </>
+            </div>
+            <dl>
+              {[
+                ['Audio', 'audio'],
+                ['Text cleanup', 'polish'],
+                ['Getting started', 'start'],
+              ].map(([label, key]) => (
+                <div>
+                  <dt>{label}</dt>
+                  <dd>
+                    <strong>{item[key]}</strong>
+                    <span>{item[key + 'Note']}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <a class="text-link decision-cta" href={item.url || '/compare/' + item.slug + '/'}>
+              {item.cta || 'Full comparison ↗'}
+            </a>
+            <div class="decision-sources">
+              Sources:{' '}
+              {item.sources.map(([label, url], i) => (
+                <Fragment>
+                  {i > 0 ? ' · ' : ''}
+                  <a
+                    href={url.replace('https://enviouswispr.com', '')}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    {label}
+                  </a>
+                </Fragment>
+              ))}
+            </div>
+          </>
+        </article>
+      ))
+    }
+  </div><div class="comparison-more">
+    <h3>More tools to compare</h3><nav
+      class="comparison-directory"
+      aria-label="More dictation comparisons"
+    >
+      {
+        directory.map(([name, slug]) => (
+          <a href={'/compare/' + slug + '/'}>
+            <>
+              <span>{name}</span>
+              <span aria-hidden="true">↗</span>
+            </>
+          </a>
+        ))
+      }
+    </nav>
+  </div><a href="/compare/" class="text-link">Explore all comparisons ↗</a>
+</section>

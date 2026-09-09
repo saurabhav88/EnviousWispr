@@ -1,0 +1,131 @@
+---
+import polish from '../../data/home/polish.json';
+import Icon from './Icon.astro';
+import { renderTokens } from '../../utils/home/text.js';
+const first = polish.chips[0];
+const icons = [
+  'person',
+  'wave',
+  'undo',
+  'calendar',
+  'undo',
+  'text',
+  'mail',
+  'list',
+  'document',
+  'text',
+  'smile',
+  'list',
+];
+---
+
+<section class="polish chapter" id="polish" aria-labelledby="polish-title">
+  <div id="features" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="polish-panel">
+      <div class="polish-head">
+        <div class="polish-head-copy">
+          <p class="eyebrow">The cleanup engine</p>
+          <h2 id="polish-title">
+            Built to handle nuances, stumbles, <span class="accent-ink"
+              >and everyday formatting.</span
+            >
+          </h2>
+        </div>
+        <div class="polish-head-aside">
+          <p class="polish-lead">
+            Real speech is full of pauses, false starts, corrections, and spoken lists. See how
+            local cleanup and AI polish turn your words into clear, structured text.
+          </p>
+          <a class="text-link" href="/compare/apple-dictation/"
+            >Why basic dictation falls short ↗</a
+          >
+        </div>
+      </div>
+      <div class="polish-explorer">
+        <div class="polish-dots" id="polish-dots" role="group" aria-label="Pick a kind of cleanup">
+          {
+            polish.chips.map((chip, i) => (
+              <button
+                type="button"
+                class:list={['polish-dot', { 'is-current': i === 0 }]}
+                data-index={i}
+                aria-label={chip.name}
+                aria-current={i === 0 ? 'true' : 'false'}
+                disabled
+              >
+                <>
+                  <Icon name={icons[i]} />
+                  <span>{chip.name}</span>
+                </>
+              </button>
+            ))
+          }
+        </div><div class="polish-card">
+          <div class="polish-card-head">
+            <div class="polish-card-title-row">
+              <span id="polish-active-icon" aria-hidden="true"><Icon name={icons[0]} /></span><h3
+                class="polish-card-title"
+                id="polish-name"
+              >
+                {first.name}
+              </h3><span class="polish-where" id="polish-where">On your Mac</span>
+            </div>
+            <p class="polish-card-note" id="polish-note">{first.note}</p>
+          </div>
+          <div class="polish-compare">
+            <div class="polish-side">
+              <span class="polish-side-label">You say</span>
+              <p class="polish-raw is-live" id="polish-raw" set:html={renderTokens(first.raw)} />
+            </div>
+            <div class="polish-arrow" aria-hidden="true"><span>→</span></div>
+            <div class="polish-side polish-side-out">
+              <span class="polish-side-label">Your finished text</span>
+              <p class="polish-out" id="polish-out" set:html={renderTokens(first.out)} />
+            </div>
+          </div>
+          <div class="polish-nav">
+            <p class="polish-count" id="polish-count">1 of {polish.chips.length}</p>
+            <div class="polish-arrows">
+              <button
+                type="button"
+                class="icon-button"
+                id="polish-prev"
+                disabled
+                aria-label="Previous kind of cleanup">←</button
+              >
+              <button
+                type="button"
+                class="icon-button"
+                id="polish-next"
+                disabled
+                aria-label="Next kind of cleanup">→</button
+              >
+            </div>
+            <p class="polish-hint"><span aria-hidden="true">⇄</span>Swipe, or use the arrows</p>
+          </div>
+        </div>
+      </div><div class="polish-guards" id="polish-guards" data-open="true">
+        <button
+          class="polish-guards-toggle"
+          aria-expanded="true"
+          aria-controls="polish-guard-notes"
+          hidden
+          ><span>What each one means</span><i class="polish-guard-mark" aria-hidden="true"
+          ></i></button
+        ><div class="polish-guard-row" id="polish-guard-notes">
+          {
+            polish.guards.map((guard) => (
+              <div class="polish-guard">
+                <>
+                  <p class="polish-guard-name">{guard.name}</p>
+                  <p class="polish-guard-note">{guard.note}</p>
+                </>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

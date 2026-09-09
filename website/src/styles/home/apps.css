@@ -1,0 +1,100 @@
+.compatible-strip {
+  background: var(--bg);
+  min-width: 0;
+  padding: 8px 0 24px;
+}
+.compatible-strip > p {
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 16px 12px;
+  text-align: center;
+}
+.compatible-viewport {
+  mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-block: 5px;
+  scrollbar-width: none;
+  width: 100%;
+}
+.compatible-viewport::-webkit-scrollbar {
+  display: none;
+}
+.compatible-viewport:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.compatible-list,
+.compatible-track {
+  display: flex;
+  width: max-content;
+}
+.compatible-list {
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 0 0;
+}
+.compatible-app {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  color: var(--ink);
+  display: flex;
+  flex: none;
+  font-size: 14px;
+  font-weight: 500;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 16px;
+  white-space: nowrap;
+}
+.compatible-app svg {
+  color: var(--app-color);
+  fill: currentColor;
+  flex: none;
+  height: 18px;
+  width: 18px;
+}
+html[data-theme='dark']
+  .compatible-app:is([data-app='Notion'], [data-app='Craft'], [data-app='TextEdit'])
+  svg {
+  color: var(--ink);
+}
+@media (max-width: 999px), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .compatible-duplicate {
+    display: none;
+  }
+  .compatible-list {
+    padding-inline: 16px;
+  }
+  .compatible-viewport {
+    scrollbar-color: var(--line) transparent;
+    scrollbar-width: thin;
+  }
+}
+@media (max-width: 600px) {
+  .compatible-strip {
+    padding: 8px 0 18px;
+  }
+  .compatible-strip > p {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .compatible-list {
+    gap: 9px;
+  }
+  .compatible-app {
+    font-size: 13px;
+    padding: 9px 13px;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme])
+    .compatible-app:is([data-app='Notion'], [data-app='Craft'], [data-app='TextEdit'])
+    svg {
+    color: var(--ink);
+  }
+}

@@ -1,0 +1,67 @@
+---
+import hood from '../../data/home/hood.json';
+import Icon from './Icon.astro';
+---
+
+<section class="providers wrap chapter" id="providers" aria-labelledby="providers-title">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">Provider choice</p><h2 id="providers-title">
+        Choose where your<br /><span class="accent-ink">AI polish runs.</span>
+      </h2>
+    </div><p>
+      Keep text on your Mac with a local model, or use your provider account for cloud polish.
+      Requests go directly to your provider, with no EnviousWispr token markup or subscription.
+    </p>
+  </div>
+  <p class="mobile-swipe-hint">Swipe to see both setups <span aria-hidden="true">↔</span></p><div
+    class="hood-lanes swipe-row"
+    id="hood-lanes"
+    tabindex="0"
+    role="region"
+    aria-label="Local and cloud polishing providers"
+  >
+    {
+      hood.lanes.map((lane) => (
+        <article class:list={['hood-lane', 'is-' + lane.tone]}>
+          <>
+            <div class="provider-heading">
+              <>
+                <Icon name={lane.tone === 'local' ? 'laptop' : 'cloud'} />
+                <div>
+                  <>
+                    <h3 class="hood-lane-title">{lane.title}</h3>
+                    <p class="hood-lane-note">{lane.note}</p>
+                  </>
+                </div>
+              </>
+            </div>
+            <dl class="hood-lane-list">
+              {lane.items.map(([name, detail]) => (
+                <div class="provider-row">
+                  <dt>
+                    <Icon
+                      name={
+                        name === 'Local Ollama'
+                          ? 'laptop'
+                          : name === 'Hosted Ollama'
+                            ? 'cloud'
+                            : name === 'S1-mini'
+                              ? 'box'
+                              : name === 'EG-1'
+                                ? 'chip'
+                                : 'sparkles'
+                      }
+                    />
+                    {name}
+                  </dt>
+                  <dd>{detail}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        </article>
+      ))
+    }
+  </div>
+</section>

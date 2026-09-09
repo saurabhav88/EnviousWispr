@@ -1,0 +1,250 @@
+.founder {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 60px;
+  grid-template-columns: 210px minmax(0, 700px);
+  justify-content: center;
+}
+.founder-art {
+  align-self: center;
+}
+.founder-art img,
+.founder-art video {
+  height: 270px;
+  object-fit: contain;
+  width: 210px;
+}
+.founder h2 {
+  font-size: 43px;
+  margin-bottom: 25px;
+}
+.founder p:not(.eyebrow) {
+  font-size: 17px;
+  margin-top: 17px;
+}
+.founder .signature {
+  color: var(--ink);
+  font:
+    italic 30px Georgia,
+    serif;
+  margin-top: 25px;
+}
+.signature span {
+  color: var(--body);
+  display: block;
+  font:
+    13px Jakarta,
+    sans-serif;
+  margin-top: 5px;
+}
+.closing {
+  background: radial-gradient(ellipse at 50% 65%, var(--soft), transparent 64%);
+  padding-block: 60px 84px;
+  text-align: center;
+}
+.closing h2 {
+  font-size: clamp(44px, 4.6vw, 68px);
+  line-height: 1.06;
+}
+.closing .wrap > p:not(.eyebrow) {
+  font-size: 18px;
+  margin-top: 24px;
+}
+.closing .button {
+  margin-top: 29px;
+  padding: 17px 31px;
+}
+.closing .wrap > .compatibility {
+  font-size: 14px;
+  margin-top: 16px;
+}
+.brew-install {
+  font-size: 14px;
+  margin: 28px auto 0;
+  max-width: 660px;
+}
+.brew-install > span {
+  color: var(--body);
+  display: block;
+  margin-bottom: 10px;
+}
+.brew-install > div {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  gap: 16px;
+  padding: 7px 12px 7px 17px;
+}
+.brew-install code {
+  flex: 1;
+  font:
+    13px/1.55 ui-monospace,
+    SFMono-Regular,
+    monospace;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.brew-install small {
+  color: var(--accent);
+  display: block;
+  font-size: 13px;
+  margin-top: 7px;
+  min-height: 20px;
+}
+@media (max-width: 999px) {
+  .founder {
+    gap: 35px;
+    grid-template-columns: 150px 1fr;
+  }
+  .founder-art img,
+  .founder-art video {
+    height: 210px;
+    width: 150px;
+  }
+  .founder h2 {
+    font-size: 37px;
+  }
+  .founder p:not(.eyebrow) {
+    font-size: 16px;
+  }
+}
+@media (max-width: 600px) {
+  .founder {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .founder-art {
+    align-self: center;
+  }
+  .founder-art img,
+  .founder-art video {
+    height: 170px;
+    width: 140px;
+  }
+  .founder h2 {
+    font-size: 34px;
+  }
+  .founder p:not(.eyebrow) {
+    font-size: 16px;
+  }
+  .closing {
+    padding-block: 42px 55px;
+  }
+  .closing h2 {
+    font-size: 46px;
+  }
+  .closing .wrap > p:not(.eyebrow) {
+    font-size: 16px;
+    margin-top: 20px;
+  }
+  .closing .button {
+    font-size: 16px;
+    padding-inline: 17px;
+    width: 100%;
+  }
+  .closing .wrap > .compatibility {
+    font-size: 12px;
+  }
+  .brew-install {
+    margin-top: 25px;
+  }
+  .brew-install > div {
+    gap: 10px;
+    padding: 8px 10px;
+  }
+  .brew-install code {
+    font-size: 11px;
+  }
+  .closing .eyebrow {
+    margin-bottom: 15px;
+  }
+}
+.founder p:not(.eyebrow) {
+  font-size: 19px;
+  line-height: 1.7;
+}
+.founder .signature {
+  font-size: 30px;
+}
+.closing {
+  padding-block: 88px 100px;
+}
+main > .closing h2 {
+  font-size: clamp(54px, 5.2vw, 84px);
+  line-height: 1.08;
+}
+.closing .wrap > p:not(.eyebrow) {
+  font-size: 21px;
+}
+.closing .button {
+  font-size: 20px;
+  min-height: 66px;
+  padding: 18px 33px;
+}
+.brew-install,
+.closing .wrap > .compatibility {
+  font-size: 16px;
+}
+.brew-install {
+  max-width: 680px;
+}
+.brew-install code {
+  font-size: 14px;
+}
+@media (max-width: 999px) {
+  .founder p:not(.eyebrow) {
+    font-size: 18px;
+  }
+}
+@media (max-width: 600px) {
+  .founder p:not(.eyebrow) {
+    font-size: 17px;
+  }
+  .closing {
+    padding-block: 60px 65px;
+  }
+  main > .closing h2 {
+    font-size: 48px;
+  }
+  .closing .wrap > p:not(.eyebrow) {
+    font-size: 18px;
+  }
+  .closing .button {
+    font-size: 17px;
+    min-height: 60px;
+    padding: 15px;
+  }
+  .closing .wrap > .compatibility {
+    font-size: 13px;
+  }
+  .brew-install {
+    font-size: 14px;
+  }
+  .brew-install code {
+    font-size: 12px;
+  }
+}
+main > #download h2 {
+  font-size: clamp(52px, 5vw, 84px);
+  line-height: 1.07;
+}
+#download .button {
+  font-size: 21px;
+  min-height: 68px;
+}
+@media (max-width: 600px) {
+  main > #download h2 {
+    font-size: 49px;
+  }
+  #download .button {
+    font-size: 17px;
+    min-height: 60px;
+  }
+}
+#download .eyebrow {
+  justify-content: center;
+}

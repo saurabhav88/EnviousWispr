@@ -1,0 +1,311 @@
+.comparison-mark {
+  background: var(--soft);
+  border-radius: 14px;
+  color: var(--accent);
+  display: grid;
+  flex: none;
+  font:
+    600 20px Jakarta,
+    sans-serif;
+  height: 52px;
+  place-items: center;
+  width: 52px;
+}
+.comparison-mark img {
+  border-radius: 9px;
+  height: 42px;
+  object-fit: contain;
+  width: 42px;
+}
+.comparison-mark img[src$='.ico'] {
+  background: #fff;
+  padding: 5px;
+}
+.comparison-mark.ew-mark {
+  background: none;
+}
+.comparison-mark.ew-mark svg {
+  height: 52px;
+  width: 52px;
+}
+.comparison-hint {
+  align-items: center;
+  color: var(--body);
+  display: none;
+  font-size: 13px;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.comparison-hint span {
+  color: var(--accent);
+  font-size: 16px;
+}
+main > #compare .section-heading {
+  display: block;
+  margin-bottom: 30px;
+}
+#compare .section-heading p {
+  margin-top: 17px;
+  max-width: 790px;
+}
+.comparison-grid {
+  display: grid;
+  gap: 15px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.decision-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 22px 20px;
+}
+.decision-card.own {
+  background: linear-gradient(150deg, var(--soft), var(--card));
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 0.5px var(--accent);
+}
+.decision-title {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-height: 50px;
+}
+.decision-title h3 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+.decision-mark {
+  display: grid;
+  flex: none;
+  height: 42px;
+  place-items: center;
+  width: 42px;
+}
+.decision-mark img,
+.decision-mark svg {
+  border-radius: 10px;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+.decision-mark img[src$='.ico'] {
+  background: #fff;
+  padding: 5px;
+}
+.decision-price {
+  min-height: 116px;
+  padding-top: 22px;
+}
+.decision-price strong {
+  color: var(--ink);
+  font-size: 31px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.decision-card.own .decision-price strong {
+  color: var(--accent);
+  font-size: 40px;
+}
+.decision-price p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 10px;
+}
+.decision-card dl {
+  flex: 1;
+  margin: 0;
+}
+.decision-card dl > div {
+  border-top: 1px solid var(--line);
+  min-height: 112px;
+  padding: 14px 0;
+}
+.decision-card dt {
+  color: var(--body);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.decision-card dd {
+  margin: 0;
+}
+.decision-card dd strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.decision-card dd span {
+  color: var(--body);
+  display: block;
+  font-size: 14px;
+  line-height: 1.55;
+  margin-top: 5px;
+}
+.decision-cta {
+  font-size: 15px;
+  margin-top: 8px;
+}
+.decision-sources {
+  color: var(--body);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 6px;
+  min-height: 35px;
+}
+.decision-sources a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.comparison-scope {
+  font-size: 12px;
+  margin-top: 16px;
+}
+.comparison-more {
+  border-top: 1px solid var(--line);
+  margin-top: 35px;
+  padding-top: 24px;
+}
+.comparison-more h3 {
+  font-size: 21px;
+  margin-bottom: 17px;
+}
+.comparison-directory {
+  display: grid;
+  gap: 9px 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.comparison-directory a {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--body);
+  display: flex;
+  font-size: 15px;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+.comparison-directory a:hover {
+  color: var(--accent);
+}
+#compare > .text-link {
+  margin-top: 23px;
+}
+@media (max-width: 1190px) {
+  .decision-title {
+    display: block;
+  }
+  .decision-title h3 {
+    font-size: 21px;
+    margin-top: 12px;
+  }
+  .decision-card {
+    padding: 19px 17px;
+  }
+  .decision-price {
+    min-height: 145px;
+  }
+  .decision-card dl > div {
+    min-height: 160px;
+  }
+}
+@media (max-width: 999px) {
+  .comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .decision-title {
+    display: flex;
+  }
+  .decision-title h3 {
+    margin-top: 0;
+  }
+  .decision-price {
+    min-height: 130px;
+  }
+  .decision-card dl > div {
+    min-height: 123px;
+  }
+  .comparison-directory {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .comparison-grid {
+    display: grid;
+    gap: 12px;
+    grid-auto-columns: 84%;
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 14px;
+    scroll-snap-type: x mandatory;
+    scrollbar-color: var(--line) transparent;
+    scrollbar-width: thin;
+  }
+  .decision-card {
+    scroll-snap-align: start;
+  }
+  .decision-card dl > div,
+  .decision-price {
+    min-height: 0;
+  }
+  .comparison-hint {
+    display: flex;
+  }
+  .decision-card {
+    padding: 22px;
+  }
+  .decision-title {
+    display: flex;
+  }
+  .decision-title h3 {
+    font-size: 24px;
+  }
+  .decision-price {
+    min-height: 0;
+    padding: 21px 0;
+  }
+  .decision-card dl > div {
+    display: grid;
+    gap: 15px;
+    grid-template-columns: 90px minmax(0, 1fr);
+    min-height: 0;
+    padding: 15px 0;
+  }
+  .decision-card dt {
+    padding-top: 3px;
+  }
+  .decision-card dd strong {
+    font-size: 16px;
+  }
+  .decision-sources {
+    min-height: 0;
+  }
+  .decision-cta {
+    margin-top: 0;
+  }
+  .comparison-directory {
+    gap: 8px 17px;
+    grid-template-columns: 1fr 1fr;
+  }
+  .comparison-directory a {
+    font-size: 14px;
+  }
+  .decision-sources a {
+    display: inline-block;
+    padding-block: 8px;
+  }
+  .decision-cta {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+  }
+}
+#compare .section-heading > .eyebrow {
+  grid-column: 1/-1;
+  margin-bottom: 0;
+}

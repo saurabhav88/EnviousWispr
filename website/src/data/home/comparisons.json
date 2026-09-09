@@ -1,0 +1,69 @@
+[
+  {
+    "name": "EnviousWispr",
+    "own": true,
+    "price": "Free",
+    "priceNote": "Dictation and local AI polish.",
+    "audio": "On your Mac",
+    "audioNote": "Your audio stays on-device.",
+    "polish": "Local AI included",
+    "polishNote": "Optional cloud providers with your own key.",
+    "start": "No account",
+    "startNote": "Download and choose your setup.",
+    "url": "#download",
+    "cta": "Try EnviousWispr",
+    "sources": [["Under the hood", "https://enviouswispr.com/how-it-works/"]]
+  },
+  {
+    "name": "Apple Dictation",
+    "slug": "apple-dictation",
+    "mark": "apple-dictation.ico",
+    "price": "Included",
+    "priceNote": "Built into macOS.",
+    "audio": "On-device or server",
+    "audioNote": "Depends on language and settings.",
+    "polish": "Separate Writing Tools",
+    "polishNote": "Requires a supported Apple Intelligence setup.",
+    "start": "Enable in settings",
+    "startNote": "System Settings → Keyboard.",
+    "sources": [
+      ["Dictation", "https://support.apple.com/en-gb/guide/mac-help/-mh40584/mac"],
+      ["Writing Tools", "https://support.apple.com/en-ie/guide/mac-help/mchldcd6c260/mac"]
+    ]
+  },
+  {
+    "name": "Wispr Flow",
+    "slug": "wisprflow",
+    "mark": "wisprflow.png",
+    "price": "Free + Pro",
+    "priceNote": "Free: 2,000 words/week on desktop. Pro: $15/month.",
+    "audio": "Cloud transcription",
+    "audioNote": "Internet connection required.",
+    "polish": "Automatic cleanup",
+    "polishNote": "Part of its cloud-connected dictation workflow.",
+    "start": "Sign in",
+    "startNote": "Account-based setup.",
+    "sources": [
+      ["Pricing", "https://wisprflow.ai/pricing"],
+      ["Privacy", "https://wisprflow.ai/privacy"],
+      ["Setup", "https://docs.wisprflow.ai/articles/2772472373-what-is-flow"]
+    ]
+  },
+  {
+    "name": "Superwhisper",
+    "slug": "superwhisper",
+    "mark": "superwhisper.png",
+    "price": "Free + Pro",
+    "priceNote": "Free unlimited Whisper models. Pro adds AI models.",
+    "audio": "Local or cloud",
+    "audioNote": "Choose a voice model.",
+    "polish": "Local AI in Pro",
+    "polishNote": "Local or cloud language models.",
+    "start": "Offline without an account",
+    "startNote": "Paid/cloud setup can differ.",
+    "sources": [
+      ["Plans", "https://superwhisper.com/"],
+      ["Offline mode", "https://superwhisper.com/offline-transcription"]
+    ]
+  }
+]
