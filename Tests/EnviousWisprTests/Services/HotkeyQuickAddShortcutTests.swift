@@ -425,6 +425,33 @@ struct HotkeyQuickAddShortcutTests {
         isCancelArmed: false))
   }
 
+  /// The MIRROR of the case above, and the reason the comparison narrows BOTH sides rather than
+  /// one. A user can save the dropped modifier on either binding, so the pair where CANCEL carries
+  /// Caps Lock is as reachable as the pair where Quick Add does — and `quickAddMayHoldItsChord`
+  /// always passes Quick Add first, so only this case exercises the second argument's narrowing.
+  ///
+  /// #2743 found the gap: narrowing one side only is a NO-OP against the case above, because Quick
+  /// Add is the side that carries the extra bit there. The mutant survived, the test was not weak,
+  /// and the missing half is this.
+  @Test("A chord Quick Add holds is cancel's even when CANCEL is the side carrying the dropped modifier")
+  func carbonEquivalentChordsContendWhenCancelCarriesTheLatch() {
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
+    let cancel = ShortcutBinding.keyboard(
+      keyCode: 13, modifiers: [.control, .shift, .capsLock])
+
+    #expect(
+      !HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: true),
+      "Carbon registers one chord for both whichever side carries Caps Lock")
+    // The paired accepted case, so a rule that refused whenever cancel was armed cannot pass.
+    #expect(
+      HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: false))
+    #expect(ShortcutMatcher.carbonEquivalent(quickAdd, cancel))
+  }
+
   /// The other direction, and the reason the comparison is an INTERSECTION rather than a mask
   /// applied to one side: a modifier Carbon DOES keep still makes two different chords.
   @Test("A modifier Carbon keeps still separates two chords")
