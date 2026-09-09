@@ -15,10 +15,46 @@ public final class FillerRemovalStep: TextProcessingStep {
 
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "FillerRemoval")
 
+  /// **Two alternatives, and the split is the fix for #2728.**
+  ///
+  /// Eight of these ten tokens are onomatopoeic and collide with nothing, so they are
+  /// removed wherever they appear. `mm` and `ah` are also UNITS — millimetre, and the
+  /// `mm Hg` of a blood-pressure reading; amp-hour — so those two, and only those two,
+  /// refuse to be removed when they follow a digit.
+  ///
+  /// What shipped before deleted them: "the gap is 5 mm" pasted as "the gap is 5", on
+  /// the default path for every English speaker, because `fillerRemovalEnabled` is true
+  /// out of the box. The failure is a DELETION, so the sentence still reads fluently and
+  /// nothing looks broken — the shape `grounding-discipline.md`
+  /// RULE: public-claims-need-binding-evidence names, where a promise that is not
+  /// observable drifts for as long as nobody looks.
+  ///
+  /// **The guard is deliberately NOT applied to the other eight.** A broad version was
+  /// proposed and measured first, and it also stopped removing a genuine hesitation after
+  /// a number — "give me 3 um copies" kept its "um". That is a real behaviour change on
+  /// the same default path, in the direction of doing LESS of what the feature is for, so
+  /// the narrow split is what ships. Both tables are on #2728.
+  ///
+  /// Three fixed-width lookbehinds rather than one variable-width one, because ICU
+  /// (`NSRegularExpression`) supports only fixed width: bare digit, digit-space,
+  /// digit-hyphen. The closed-up spelling `50mm` was never affected — `\b` refuses
+  /// between `0` and `m` — but dictation produces the SPACED form, which is why this was
+  /// reachable at all.
+  ///
+  /// **`match.range(at: 1)` must keep holding the token.** `removingFillers` looks the
+  /// protected-token table up with it, so the outer parenthesis is the only capturing
+  /// group and both alternatives sit inside it as non-capturing.
+  ///
+  /// `.caseInsensitive` is unchanged, so `Ah`, `AH`, `MM` and `Mm` all take the guard
+  /// too — `Ah` matters most, since that is the spelling a dictated "amp hours" produces.
   public static let fillerPattern: NSRegularExpression? = {
     do {
       return try NSRegularExpression(
-        pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[-.,!?…:;—]*(?=\s|$)"#,
+        // ONE line, deliberately. A multi-line raw string would need `\#` for its
+        // continuations, and a bare `\` there is a literal backslash IN THE PATTERN —
+        // a break that compiles and silently changes what matches.
+        pattern:
+          #"(?:^|\s*)((?:\b(?:um|umm|uh|uhh|hmm|mhm|mmm|er)\b)|(?:(?<![0-9])(?<![0-9] )(?<![0-9]-)\b(?:mm|ah)\b))[-.,!?…:;—]*(?=\s|$)"#,
         options: .caseInsensitive
       )
     } catch {
