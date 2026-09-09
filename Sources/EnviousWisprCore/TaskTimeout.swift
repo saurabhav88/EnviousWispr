@@ -47,6 +47,71 @@ public func withThrowingTimeout<T: Sendable>(
   }
 }
 
+// MARK: - Toolchain workaround (#2718)
+
+// `@_optimize(none)` on the three deadline helpers below is a TOOLCHAIN
+// WORKAROUND, not a design choice, and it comes off the day the toolchain stops
+// needing it.
+//
+// Swift 6.3.3 (Xcode 26.6, build 17F113) miscompiles these three at `-O`. The
+// damage is NOT local to them: the optimised body leaves the Swift TASK
+// ALLOCATOR unbalanced, and the abort — `freed pointer was not the last
+// allocation`, raised by `swift_task_dealloc` — lands in whatever unrelated code
+// next frees a task frame. Nine crash reports from one run resolved to five
+// different sites: six named the test helper `AsyncGate.wait()` across four
+// different tests, and only three named a function in this file. That spread is
+// why the Release lane's `Failing tests:` line moved between runs and cannot be
+// used to judge a fix. The discriminator is the abort string disappearing from a
+// job log that also reports a SUCCEEDED run — see the falsification note below
+// for why the abort count alone is not enough.
+//
+// Measured 2026-09-09 against
+// `EnviousWisprASRTests/WhisperKitBackendLoadOrchestrationTests` in the Release
+// lane (`ENABLE_TESTABILITY=YES`), each run's build settings verified with
+// `-showBuildSettings` BEFORE it ran:
+//
+//     -O everywhere ............................. 3 aborts, TEST FAILED
+//     -Onone on all of EnviousWisprASR .......... 3 aborts, TEST FAILED
+//     @inline(never) on these three ............. 3 aborts, TEST FAILED
+//     @_optimize(none) on these three ........... 0 aborts, 9 tests passed
+//     -Onone on all of EnviousWisprCore ......... 0 aborts, 9 tests passed
+//
+// `@inline(never)` failing while `@_optimize(none)` succeeds is the load-bearing
+// half: the defect is in the callee's OWN optimised body, not in a copy the
+// optimiser inlined into a caller. Attributing it to `async let` is the wrong
+// answer and was measured wrong — rewriting the crashing test's bindings as
+// `Task {}` left all three aborts, and `Sources/` contains no `async let` at all.
+//
+// All THREE are annotated, not just the one the crashing path reaches. They are
+// the same code shape — a `Task` created inside a `withCheckedContinuation` body
+// — so they are one class, and annotating the reached instance while leaving two
+// identical siblings is how this returns under a different test's name.
+//
+// Cost is nil where it matters. Only the coordination inside each helper is
+// emitted unoptimised; the `operation` closure is compiled at its own call site
+// and is untouched. Every caller bounds a whole-step operation — a model load, a
+// polish call, a paste observation, a session finalisation — and none sits in a
+// per-sample loop, so the unoptimised part runs once per step, never per sample.
+// Their budgets span 0.050s (`EnviousOutputFilter`) to 20s (the warm-up), so do
+// not reach for a "measured in seconds" shorthand here — the tightest is 50 ms,
+// against an unoptimised region that is a lock claim, two `Task` creations and a
+// continuation resume.
+//
+// FALSIFICATION, so this does not outlive its reason. Delete the three attributes
+// and run:
+//
+//     scripts/xcode-test.sh --release \
+//       --filter EnviousWisprASRTests/WhisperKitBackendLoadOrchestrationTests
+//
+// Zero abort lines is NOT the pass condition on its own. A build that fails
+// before the first test prints zero of them too, and reading that as a fix is how
+// the protection comes off without ever having been exercised. The pass condition
+// is all four together: the Release lane reports `TEST SUCCEEDED`; all NINE tests
+// in that suite ran and passed; `-showBuildSettings` confirms EnviousWisprCore is
+// at `-O`; and the log carries zero `freed pointer was not the last allocation`
+// lines. Only then do these attributes come off, in the same change. Upstream
+// reports of the same abort class: swiftlang/swift#81771 and #75501.
+
 /// Run `operation` with a TRUE wall-clock deadline: returns its result if it
 /// finishes within `seconds`, otherwise `nil` once the deadline passes —
 /// WITHOUT awaiting the operation after timing out. Unlike `withThrowingTimeout`
@@ -56,6 +121,7 @@ public func withThrowingTimeout<T: Sendable>(
 /// abandoned operation finishes in the background and its result is discarded.
 /// Use for fail-open LIMB budgets where bounding the caller matters more than
 /// the operation's completion. (#832/#913 PR8 — Codex P1.)
+@_optimize(none)
 public func withDeadline<T: Sendable>(
   seconds: Double,
   operation: @escaping @Sendable () async -> T
@@ -114,6 +180,8 @@ public func withDeadline<T: Sendable>(
 /// contract to admit an async closure. (#1707 — Codex grounded review r3/r4.)
 ///
 /// On success (operation wins the race), `onTimeout` is never called.
+/// `@_optimize(none)`: see the #2718 workaround note above `withDeadline`.
+@_optimize(none)
 public func withMainActorOrderedDeadline<T: Sendable>(
   seconds: Double,
   operation: @escaping @Sendable () async -> T,
@@ -173,6 +241,8 @@ public func withMainActorOrderedDeadline<T: Sendable>(
 /// executor. (#1946.)
 ///
 /// On success (operation wins the race), `onTimeout` is never called.
+/// `@_optimize(none)`: see the #2718 workaround note above `withDeadline`.
+@_optimize(none)
 public func withOffActorOrderedDeadline<T: Sendable>(
   seconds: Double,
   operation: @escaping @Sendable () async -> T,
