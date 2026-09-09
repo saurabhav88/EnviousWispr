@@ -113,6 +113,19 @@ struct LLMWarmupGateTests {
     // must not depend on scheduling precision.
     let justOutside = now.addingTimeInterval(LLMNetworkSession.warmWindowSeconds + 1)
     #expect(session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: justOutside))
+
+    // KNOWN LIMIT, measured and accepted rather than closed (#2710, battery run
+    // 2026-09-08). The comparison's STRICTNESS is unbound: loosening
+    // `now.timeIntervalSince(last) < warmWindowSeconds` to `<=` changes no
+    // outcome for any input this suite supplies, and that mutant survived with
+    // not one test changing status. It was filed as a PREDICTION before the run,
+    // so the survival is the expected result rather than a discovery.
+    //
+    // A probe at exactly the boundary is deliberately NOT added. One second of
+    // difference in a five-minute window has no user consequence, so a case
+    // written only to kill an inert mutant is assertion-weakening pointed the
+    // other way: it would make the suite look tighter while binding nothing a
+    // person can feel. The two probes stay a full second either side.
   }
 
   /// Warmth is keyed on the PAIR. Switching model inside the window is a
