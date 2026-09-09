@@ -427,8 +427,15 @@ package final class WisprBootstrapper {
     case .s1Mini:
       s1MiniRuntime.startIfActiveProvider()
       egOneRuntime.sweepStaleServersAtLaunch()
-    default:
+    // No bundled server is the active provider, so neither starts and BOTH
+    // sweep. #2651: the `default:` this replaces swept EG-1 only, so an S1-mini
+    // server left running from a previous launch survived every subsequent
+    // launch under a cloud provider, Ollama, Apple Intelligence or Off. Nothing
+    // spawns on this arm, so the race the comment above guards against cannot
+    // occur here.
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       egOneRuntime.sweepStaleServersAtLaunch()
+      s1MiniRuntime.sweepStaleServersAtLaunch()
     }
 
     // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared

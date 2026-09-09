@@ -400,7 +400,11 @@ struct AIPolishSettingsView: View {
     case .openAI: cloudKeyPresent = !openAIKey.isEmpty
     case .gemini: cloudKeyPresent = !geminiKey.isEmpty
     case .claude: cloudKeyPresent = !claudeKey.isEmpty
-    default: cloudKeyPresent = false
+    // #2651: enumerated rather than `default:`. These providers carry no API
+    // key, so "no key present" is the true answer and
+    // `ProviderStatusMapping.status` ignores it for them. A NEW cloud provider
+    // reaching a `default:` would have read as permanently key-less.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: cloudKeyPresent = false
     }
     return ProviderStatusMapping.status(
       for: settings.llmProvider,
@@ -428,7 +432,11 @@ struct AIPolishSettingsView: View {
     case .openAI: return openAIKeySaved == false
     case .gemini: return geminiKeySaved == false
     case .claude: return claudeKeySaved == false
-    default: return false
+    // #2651: enumerated rather than `default:`. No key is stored for these, so
+    // the missing-key notice must stay suppressed. A NEW cloud provider on a
+    // `default:` arm would never show that notice, which is the direction that
+    // hides a real problem from the user.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
     }
   }
 
@@ -905,7 +913,14 @@ struct AIPolishSettingsView: View {
         // arm, which flipped the key-validation state for a model that has
         // no key.
         break
-      default:
+      // #2651: enumerated rather than `default:`. This arm is the key-provider
+      // path, and the `.egOne, .s1Mini` comment above records what it costs to
+      // reach it by accident: the discovery coordinator gets an empty model
+      // list and overwrites `llmModel`. That is the defect #1271 fixed for
+      // EG-1 and #2649 fixed again for S1-mini, both after a fixed-model
+      // engine fell into a `default:`. Twice is the argument for the compiler
+      // asking instead.
+      case .openAI, .gemini, .claude:
         llmDiscovery.loadCachedModels(for: newProvider)
         Task {
           await llmDiscovery.validateKeyAndDiscoverModels(
@@ -993,8 +1008,12 @@ struct AIPolishSettingsView: View {
         privacySentence:
           "Claude polish sends your transcribed text, plus the active app name and any custom words you've added, but never audio. Anthropic's own retention policy for your API account governs how long the request is kept."
       )
-    default:
-      // Unreachable: apiKeyRow only renders when isCloudProvider is true.
+    // #2651: enumerated rather than `default:`. The empty descriptor is only
+    // safe because `apiKeyRow` renders for cloud providers alone, and that
+    // claim stops being true the moment a cloud provider is added without its
+    // own arm — the row would render with a blank label and no privacy
+    // sentence. Naming the non-cloud set makes the compiler ask.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return APIKeyDescriptor(
         label: "", placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
     }
@@ -1005,7 +1024,11 @@ struct AIPolishSettingsView: View {
     case .openAI: return $openAIKey
     case .gemini: return $geminiKey
     case .claude: return $claudeKey
-    default: return .constant("")
+    // #2651: enumerated rather than `default:`. A constant binding silently
+    // discards every keystroke, which is the right answer only where no key
+    // field is shown. A NEW cloud provider on a `default:` arm would render a
+    // field the user could type into and nothing would be saved.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .constant("")
     }
   }
 
@@ -1014,7 +1037,11 @@ struct AIPolishSettingsView: View {
     case .openAI: openAIKeySaved = saved
     case .gemini: geminiKeySaved = saved
     case .claude: claudeKeySaved = saved
-    default: break
+    // #2651: enumerated rather than `default:`. There is no saved-key flag to
+    // set for these. A NEW cloud provider on a `default:` arm would save its
+    // key and never record that it had, so the missing-key notice would stay
+    // on screen after a successful save.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
     }
   }
 

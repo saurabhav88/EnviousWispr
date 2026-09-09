@@ -51,7 +51,12 @@ final class BackendMetadata {
     // `s1-mini`, and the licence requires the exact spelling wherever the
     // model is identified. One owner for that string.
     case .s1Mini: LLMProvider.s1Mini.displayName
-    default: llmLabel
+    // #2651: enumerated rather than `default:`. `llmLabel` renders
+    // `settings.effectiveLLMModel`, which is the right answer only where the
+    // user CHOOSES the model. A fixed-model engine reaching this arm would
+    // show its internal id, which is the defect #1271 fixed for EG-1 and #2649
+    // fixed again for S1-mini. The compiler now asks the question instead.
+    case .openAI, .gemini, .claude, .ollama: llmLabel
     }
   }
 

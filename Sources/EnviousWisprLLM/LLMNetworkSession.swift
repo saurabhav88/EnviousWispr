@@ -305,13 +305,19 @@ public final class LLMNetworkSession: Sendable {
   /// `LLMModelDiscovery.claudePaginationDecision`) after this exact
   /// selection was a two-way ternary that routed any non-OpenAI provider to
   /// Gemini's key id (Grounded Review R2/R3, issue #158). `nil` for any
-  /// non-cloud or future provider — the caller's early guard.
+  /// non-cloud provider — the caller's early guard.
+  ///
+  /// #2651: the no-key set is ENUMERATED, and the sentence this replaces said
+  /// nil was right for "any non-cloud or FUTURE provider". The second half was
+  /// the silent part: a future CLOUD provider needs an arm here, and on a
+  /// `default:` it would have got nil, skipped warm-up, and nothing would have
+  /// said so.
   static func warmupKeychainId(for provider: LLMProvider) -> String? {
     switch provider {
     case .openAI: return KeychainManager.openAIKeyID
     case .gemini: return KeychainManager.geminiKeyID
     case .claude: return KeychainManager.claudeKeyID
-    default: return nil
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
     }
   }
 
@@ -451,7 +457,12 @@ public final class LLMNetworkSession: Sendable {
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
       return request
 
-    default:
+    // #2651: enumerated rather than `default:`. Building an HTTP request is as
+    // provider-specific as code gets, so nil is only right where there is no
+    // warm-up request to send. A NEW cloud provider on a `default:` arm would
+    // silently lose its warm-up, which costs latency on the first polish and
+    // shows up as nothing at all.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return nil
     }
   }
