@@ -1056,7 +1056,20 @@ public final class HotkeyService {
     guard isEnabled, !isSuspended else { return false }
     // Cancel outranks Quick Add on a shared chord, for as long as cancel is armed — the same
     // severity order `ShortcutRole` declares and the bare-modifier matcher already applies.
-    return !(quickAdd == cancel && isCancelArmed)
+    //
+    // **CARBON-equivalent, not `==` (#2432).** `RegisterEventHotKey` never sees Caps Lock,
+    // Function or Numeric Pad, so two bindings differing only there are ONE chord to the
+    // system while raw equality calls them different. This function decides whether Quick Add
+    // KEEPS its registration, so the wrong answer left both roles claiming one chord: Quick
+    // Add registers at start and holds it, cancel arrives second during a recording and is
+    // refused, and the user's cancel key opens the Quick Add panel while the recording runs.
+    // That is the same failure `cancelWinsASharedChord` already covers, reachable through a
+    // modifier Carbon discards.
+    //
+    // `ShortcutMatcher` owns the comparison. It was written there and asked again here with
+    // `==`, and the note above `quickAddOwnsItsBinding` records that as a defect on this path
+    // rather than that one.
+    return !(ShortcutMatcher.carbonEquivalent(quickAdd, cancel) && isCancelArmed)
   }
 
   /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
