@@ -1,3 +1,5 @@
+const PLAYER_LOAD_TIMEOUT_MS = 10000;
+
 export function init(root, motion, scope) {
   const poster = root.querySelector('.review-poster');
   const card = root.querySelector('.proof-feature');
@@ -20,7 +22,7 @@ export function init(root, motion, scope) {
       api = new Promise((resolve, reject) => {
         const previous = window.onYouTubeIframeAPIReady;
         const script = document.createElement('script');
-        const timeout = setTimeout(() => reject(Error('Review player unavailable')), 10000);
+        const timeout = setTimeout(() => reject(Error('Review player unavailable')), PLAYER_LOAD_TIMEOUT_MS);
         function ready() {
           clearTimeout(timeout);
           resolve(window.YT);
@@ -63,9 +65,14 @@ export function init(root, motion, scope) {
         const focused = document.activeElement === poster;
         poster.replaceWith(iframe);
         if (focused) iframe.focus();
+        const readyTimeout = setTimeout(() => {
+          if (!scope.signal.aborted) scope.fallback(Error('Review player did not become ready'));
+        }, PLAYER_LOAD_TIMEOUT_MS);
+        scope.defer(() => clearTimeout(readyTimeout));
         player = new YT.Player(iframe, {
           events: {
             onReady({ target }) {
+              clearTimeout(readyTimeout);
               if (scope.signal.aborted) {
                 target.destroy();
                 return;
