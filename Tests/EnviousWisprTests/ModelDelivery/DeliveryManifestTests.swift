@@ -427,7 +427,12 @@ enum ManifestFixture {
   // `scripts/regen-delivery-manifest-digest.py`, which reproduces a manifest's
   // existing digest before writing a new one; that control is what makes the
   // value below trustworthy rather than merely fresh.
-  static let goldenDigest = "65db6162cd87891d15b4e6becbb4ecea2e5b3c41ef32dc98de103f5803c2d24c"
+  // Updated 2026-09-09 (#2693): `backup` repointed off the moving `resolve/main/`.
+  // Source-only; file hashes, sizes and identity unchanged. The new digest invalidates
+  // existing admission markers, so a clean writable install revalidates and re-admits
+  // without downloading — re-admission still runs cleanup and rewrites the marker
+  // (`CacheAdmission.promoteAndAdmit` 3 and 4), so a dirty or unwritable one can fetch.
+  static let goldenDigest = "bc1aae28fe94f2bff66b47f85a395188c88e01e4f59b23d9aaba92d6739217fb"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
