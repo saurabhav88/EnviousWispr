@@ -111,6 +111,52 @@ struct EscapeRecoveryPillTests {
     #expect(pasted == [live.transcriptID], "the live offer did not forward its own payload")
   }
 
+  /// The OTHER half of the same guard, and nothing reached it until now.
+  ///
+  /// `supersededPillCannotTouchTheNewerPayload` above replays a stale receipt, so the
+  /// root's presentation-id gate refuses the action BEFORE the binding runs and the
+  /// `held.id == transcriptID` comparison inside it never executes. Measured 2026-09-09
+  /// re-running #2352's row M4 against current `main`: deleting that comparison changed
+  /// no test's status. Two mechanisms cover one outcome, so a single-line mutation of
+  /// either is invisible while the other still refuses — `redundant-protections-make-
+  /// single-line-mutants-survive-and-that-is-not-vacuity`.
+  ///
+  /// They are not the same guard, though. The root gate answers "is this pill still the
+  /// one on screen". The comparison answers "does this action belong to the payload this
+  /// pill is holding", and a LIVE receipt carrying a foreign transcript id passes the
+  /// first and must be refused by the second.
+  ///
+  /// Production cannot build that action today — the pill sends the id it was presented
+  /// with — so this is a hypothetical, and it is written because of the DIRECTION it
+  /// fails in: without the comparison, the held payload is pasted for an action that did
+  /// not ask for it, which is wrong text delivered with nothing on screen to say so.
+  /// That is the one shape `testing-philosophy.md` RULE: dont-test-what-cannot-happen
+  /// keeps.
+  @Test("a live pill refuses an action carrying somebody else's transcript id")
+  func livePillRefusesAForeignTranscriptID() throws {
+    let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
+    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    var pasted: [UUID] = []
+
+    let receipt = d.present(
+      .escapeRecovery(payload: live, onPaste: { pasted.append($0.transcriptID) }))
+
+    // The receipt is the LIVE one, so the presentation-id gate admits this action. Only
+    // the payload comparison can refuse it.
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: UUID()), for: try #require(receipt))
+
+    #expect(
+      pasted.isEmpty,
+      "an action for a different transcript reached the held payload, so it would paste")
+
+    // And the offer is still there to be taken by its OWN action — a guard that refused
+    // by tearing the custody down would pass the assertion above and lose the recording.
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: live.transcriptID), for: try #require(receipt))
+    #expect(pasted == [live.transcriptID], "the refusal must not have consumed the offer")
+  }
+
   // **`payloadIsTakenOnce` was DELETED here and in `OverlayDirectorTests`**
   // (#2292 C4a), on a supervisor ruling, and the reason is worth keeping.
   //
