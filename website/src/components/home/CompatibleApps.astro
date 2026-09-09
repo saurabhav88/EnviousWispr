@@ -1,0 +1,30 @@
+---
+import apps from '../../data/home/compatibleApps.json';
+---
+
+<aside class="compatible-strip" id="apps" aria-labelledby="compatible-title">
+  <p id="compatible-title">Works in the apps you already use.</p>
+  <div
+    class="compatible-viewport"
+    tabindex="0"
+    role="region"
+    aria-label="App list. Scroll to see more apps."
+  >
+    <div class="compatible-track">
+      <ul class="compatible-list">
+        {
+          apps.map((app) => (
+            <li class="compatible-app" data-app={app.name} style={'--app-color:' + app.color}>
+              <>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d={app.icon} />
+                </svg>
+                <span>{app.name}</span>
+              </>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</aside>

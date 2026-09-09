@@ -1,0 +1,699 @@
+.screen-hero {
+  background: var(--bg);
+  isolation: isolate;
+  margin-top: -98px;
+  overflow: hidden;
+  position: relative;
+}
+.screen-hero-art {
+  background-position: 50%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  inset: 0;
+  position: absolute;
+  z-index: -2;
+}
+.screen-hero-shade {
+  background:
+    linear-gradient(
+      90deg,
+      var(--bg),
+      color-mix(in srgb, var(--bg) 70%, transparent) 27%,
+      transparent 48%
+    ),
+    linear-gradient(0deg, var(--bg), transparent 15%);
+  inset: 0;
+  position: absolute;
+  z-index: -1;
+}
+.screen-hero-content.wrap {
+  min-height: clamp(780px, 100svh, 980px);
+  position: relative;
+  width: min(1500px, calc(100% - 128px));
+}
+.screen-hero-copy {
+  padding: 205px 0 115px;
+  position: relative;
+  width: 54%;
+}
+.screen-hero-copy h1 {
+  font-size: clamp(62px, 5.3vw, 96px);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+}
+.screen-hero-category {
+  color: var(--ink);
+  font-size: clamp(20px, 1.55vw, 26px);
+  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 25px;
+}
+.screen-hero-description {
+  font-size: clamp(19px, 1.45vw, 24px);
+  line-height: 1.65;
+  margin-top: 15px;
+  max-width: 500px;
+}
+.screen-hero-download {
+  font-size: 20px;
+  gap: 24px;
+  margin-top: 27px;
+  min-height: 63px;
+  padding: 16px 28px;
+}
+.screen-hero-values {
+  display: flex;
+  flex-direction: column;
+  font-size: 17px;
+  gap: 3px;
+  margin-top: 24px;
+}
+.screen-hero-values strong {
+  color: var(--ink);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.screen-hero-compatibility {
+  font-size: 14px;
+  margin-top: 13px;
+}
+.hero-product-demo {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-radius: 20px;
+  max-width: 600px;
+  padding-bottom: 9px;
+  position: absolute;
+  right: 0;
+  scroll-margin-top: 112px;
+  top: 210px;
+  width: 40%;
+}
+.hero-screen-frame {
+  backdrop-filter: blur(14px);
+  background: #f7f2fcdd;
+  border: 1px solid #d9c7eb88;
+  border-radius: 20px;
+  box-shadow: 0 18px 65px #2c15481c;
+  padding: 0 10px 10px;
+}
+html[data-theme='dark'] .hero-screen-frame {
+  background: #b99dce19;
+  border-color: #bb9edd66;
+  box-shadow: 0 22px 65px #06030b33;
+}
+.hero-screen-chrome {
+  align-items: center;
+  color: var(--body);
+  display: flex;
+  font:
+    11px -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  gap: 13px;
+  height: 33px;
+  padding: 0 5px;
+}
+.hero-screen-chrome > span:first-child {
+  display: flex;
+  gap: 6px;
+}
+.hero-screen-chrome i {
+  background: #ff605b;
+  border-radius: 50%;
+  height: 10px;
+  width: 10px;
+}
+.hero-screen-chrome i:nth-child(2) {
+  background: #ffbd44;
+}
+.hero-screen-chrome i:nth-child(3) {
+  background: #00ca4e;
+}
+.hero-screen-canvas {
+  border-radius: 11px;
+  height: 414px;
+  isolation: isolate;
+  overflow: hidden;
+  position: relative;
+}
+.hero-screen-canvas .host-app {
+  border: 0;
+  border-radius: 11px;
+  height: 100%;
+}
+.hero-screen-canvas .gmail-top {
+  gap: 7px;
+  height: 42px;
+  padding-inline: 10px;
+}
+.hero-screen-canvas .gmail-top b {
+  font-size: 17px;
+}
+.hero-screen-canvas .gmail-search {
+  font-size: 9px;
+  margin-left: 3px;
+  padding: 8px;
+}
+.hero-screen-canvas .gmail-inbox aside {
+  font-size: 9px;
+  width: 104px;
+}
+.hero-screen-canvas .gmail-mail-list > div {
+  font-size: 9px;
+  padding: 13px 8px;
+}
+.hero-screen-canvas .gmail-compose {
+  bottom: 0;
+  height: auto;
+  right: 7px;
+  top: 62px;
+  width: 82%;
+}
+.hero-screen-canvas .gmail-compose-title {
+  font-size: 11px;
+  height: 30px;
+}
+.hero-screen-canvas .gmail-subject,
+.hero-screen-canvas .gmail-to {
+  font-size: 11px;
+  min-height: 28px;
+}
+.hero-screen-canvas .gmail-body {
+  padding: 17px 16px;
+  position: relative;
+}
+.hero-screen-canvas .gmail-format {
+  display: none;
+}
+.hero-screen-canvas .gmail-actions {
+  height: 42px;
+}
+.hero-screen-canvas .gmail-send {
+  font-size: 11px;
+}
+.hero-draft {
+  color: #242529;
+  font:
+    16px/1.6 -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  white-space: pre-line;
+}
+.hero-draft p {
+  color: inherit;
+}
+.hero-draft p + p {
+  margin-top: 17px;
+}
+.hero-empty-caret {
+  animation: hero-caret 1s steps(1) 4;
+  background: #29252e;
+  display: block;
+  height: 18px;
+  width: 1px;
+}
+@keyframes hero-caret {
+  50% {
+    opacity: 0;
+  }
+}
+.hero-demo-controls {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 7px 12px 0;
+}
+.hero-demo-controls ol {
+  color: var(--body);
+  display: flex;
+  font-size: 13px;
+  gap: 25px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hero-demo-controls li {
+  position: relative;
+}
+.hero-demo-controls li + li:before {
+  color: var(--body);
+  content: '→';
+  left: -19px;
+  opacity: 0.5;
+  position: absolute;
+}
+.hero-demo-controls .is-current {
+  color: var(--accent);
+  font-weight: 600;
+}
+.hero-demo-controls button {
+  font-size: 13px;
+  min-height: 44px;
+  padding-inline: 6px;
+}
+.hero-demo-note {
+  color: var(--body);
+  font-size: 11px;
+  margin-top: 2px;
+  padding-inline: 12px;
+}
+.hero-demo-announcement {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+@keyframes hero-spectrum-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@media (min-width: 1000px) {
+  .hero-product-demo {
+    transform: scale(0.67);
+    transform-origin: top right;
+  }
+}
+@media (min-width: 1000px) and (max-height: 780px) {
+  .screen-hero-copy {
+    padding-bottom: 85px;
+    padding-top: 175px;
+  }
+  .hero-product-demo {
+    top: 178px;
+  }
+  .screen-hero-description {
+    font-size: 18px;
+  }
+  .screen-hero-category {
+    margin-top: 21px;
+  }
+  .screen-hero-download {
+    margin-top: 23px;
+  }
+  .hero-screen-canvas {
+    height: 380px;
+  }
+  .screen-hero-values {
+    margin-top: 21px;
+  }
+}
+@media (min-width: 1000px) and (max-width: 1190px) {
+  .screen-hero-content.wrap {
+    width: calc(100% - 72px);
+  }
+  .screen-hero-copy h1 {
+    font-size: 59px;
+  }
+  .screen-hero-copy {
+    width: 58%;
+  }
+  .screen-hero-description {
+    font-size: 18px;
+    max-width: 410px;
+  }
+  .screen-hero-category {
+    font-size: 19px;
+  }
+  .hero-product-demo {
+    top: 240px;
+    width: 39%;
+  }
+  .hero-screen-canvas .gmail-inbox aside {
+    width: 72px;
+  }
+  .hero-screen-canvas .gmail-compose {
+    width: 88%;
+  }
+  .hero-screen-canvas .gmail-top > span:last-child {
+    display: none;
+  }
+}
+@media (max-width: 999px) {
+  .screen-hero {
+    margin-top: -84px;
+  }
+  .screen-hero-content.wrap {
+    min-height: 0;
+    padding-bottom: 45px;
+    width: calc(100% - 48px);
+  }
+  .screen-hero-copy {
+    max-width: 650px;
+    padding: 140px 0 0;
+    width: 100%;
+  }
+  .screen-hero-copy h1 {
+    font-size: clamp(44px, 7.6vw, 72px);
+  }
+  .screen-hero-category {
+    font-size: 22px;
+  }
+  .screen-hero-description {
+    font-size: 20px;
+    max-width: 560px;
+  }
+  .screen-hero-art {
+    background-position: 53% -115px;
+    background-size: auto 520px;
+    bottom: auto;
+    height: 350px;
+    mask-image: linear-gradient(transparent, #000 12%, #000 82%, transparent);
+    top: var(--intro-copy-height, 630px);
+  }
+  .screen-hero-shade {
+    display: none;
+  }
+  .hero-product-demo {
+    margin: 320px auto 0;
+    max-width: 680px;
+    position: relative;
+    right: auto;
+    top: auto;
+    width: 100%;
+  }
+  .hero-screen-canvas {
+    height: 430px;
+  }
+}
+@media (max-width: 600px) {
+  .screen-hero-content.wrap {
+    padding-bottom: 30px;
+    width: calc(100% - 32px);
+  }
+  .screen-hero-copy {
+    padding-top: 120px;
+  }
+  .screen-hero-copy h1 {
+    font-size: clamp(33px, 10.65vw, 59px);
+  }
+  .screen-hero-category {
+    font-size: 19px;
+    margin-top: 22px;
+  }
+  .screen-hero-description {
+    font-size: 17px;
+    margin-top: 13px;
+  }
+  .screen-hero-download {
+    font-size: 17px;
+    margin-top: 22px;
+    min-height: 58px;
+    padding-inline: 18px;
+    width: 100%;
+  }
+  .screen-hero-values {
+    font-size: 15px;
+    margin-top: 20px;
+  }
+  .screen-hero-values strong {
+    font-size: 21px;
+  }
+  .screen-hero-compatibility {
+    font-size: 13px;
+    margin-top: 10px;
+  }
+  .screen-hero-art {
+    background-position: 53% -85px;
+    background-size: auto 440px;
+    height: 300px;
+  }
+  .hero-product-demo {
+    margin-top: 280px;
+  }
+  .hero-screen-frame {
+    border-radius: 17px;
+    padding: 0 7px 7px;
+  }
+  .hero-screen-chrome {
+    font-size: 10px;
+    height: 29px;
+  }
+  .hero-screen-canvas {
+    height: 350px;
+  }
+  .hero-screen-canvas .gmail-top {
+    height: 38px;
+  }
+  .hero-screen-canvas .gmail-inbox aside {
+    font-size: 8px;
+    width: 60px;
+  }
+  .hero-screen-canvas .gmail-compose {
+    right: 5px;
+    top: 53px;
+    width: 94%;
+  }
+  .hero-screen-canvas .gmail-body {
+    padding: 14px;
+  }
+  .hero-screen-canvas .gmail-subject,
+  .hero-screen-canvas .gmail-to {
+    font-size: 11px;
+    min-height: 26px;
+  }
+  .hero-draft {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .hero-demo-note {
+    font-size: 12px;
+  }
+}
+@media (max-width: 360px) {
+  .screen-hero-copy h1 {
+    font-size: 33px;
+  }
+  .screen-hero-category {
+    font-size: 18px;
+  }
+  .screen-hero-download {
+    font-size: 15.5px;
+    gap: 12px;
+    padding-inline: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-empty-caret {
+    animation: none;
+  }
+}
+.hero-demo-controls {
+  gap: 8px;
+}
+.hero-demo-controls ol {
+  margin-right: auto;
+}
+.hero-demo-controls button {
+  white-space: nowrap;
+}
+.hero-screen-canvas .hero-draft {
+  font-size: 15px;
+  line-height: 1.45;
+}
+.hero-screen-canvas .hero-draft p + p {
+  margin-top: 10px;
+}
+.hero-screen-canvas .host-slack .host-sidebar {
+  flex-basis: 100px;
+}
+.hero-screen-canvas .host-slack .host-rail {
+  width: 29px;
+}
+.hero-screen-canvas .host-slack .host-composer {
+  max-height: 290px;
+  overflow: auto;
+}
+.hero-screen-canvas .host-slack .host-history {
+  align-items: flex-start;
+}
+.hero-terminal-title {
+  border-bottom: 1px solid #444;
+  color: #a4a19a;
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+.hero-terminal-welcome {
+  border: 1px solid #bc8067;
+  border-radius: 5px;
+  margin: 22px 0 25px;
+  padding: 15px;
+}
+.hero-terminal-welcome strong {
+  color: #da977b;
+  font-size: 20px;
+}
+.hero-terminal-welcome p {
+  color: #a4a19a;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.hero-terminal-prompt {
+  border-block: 1px solid #666;
+  display: flex;
+  gap: 9px;
+  max-height: 245px;
+  overflow: auto;
+  padding: 12px 0;
+}
+.hero-custom-slot {
+  flex: 1;
+  min-width: 0;
+}
+.hero-terminal-hint {
+  color: #888;
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
+}
+.hero-wa-title {
+  align-items: center;
+  background: #f7f9fa;
+  color: #172d31;
+  display: flex;
+  gap: 10px;
+  height: 63px;
+  padding: 13px;
+}
+.hero-wa-title > span:last-child {
+  margin-left: auto;
+}
+.hero-wa-title small {
+  color: #667781;
+  display: block;
+  font-size: 10px;
+}
+.hero-wa-avatar {
+  background: #d1e6df;
+  border-radius: 50%;
+  color: #23765f;
+  display: grid;
+  height: 32px;
+  place-items: center;
+  width: 32px;
+}
+.hero-wa-history {
+  flex: 1;
+  min-height: 30px;
+  padding: 18px;
+}
+.hero-wa-history small {
+  color: #667781;
+  display: block;
+  font-size: 10px;
+  text-align: center;
+}
+.hero-wa-history p {
+  background: #fff;
+  border-radius: 0 9px 9px;
+  font-size: 12px;
+  margin-top: 15px;
+  padding: 10px;
+  width: fit-content;
+}
+.hero-wa-compose {
+  align-items: flex-end;
+  background: #fff;
+  border-radius: 20px;
+  color: #667781;
+  display: flex;
+  gap: 10px;
+  margin: 12px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+}
+.hero-wa-compose .hero-custom-slot {
+  min-height: 22px;
+}
+.hero-wa-compose > span:last-child {
+  color: #008069;
+}
+.hero-wa-compose .hero-draft {
+  color: #172d31;
+}
+@media (max-width: 600px) {
+  .hero-screen-canvas .gmail-body {
+    padding-block: 8px;
+  }
+  .hero-screen-canvas .hero-draft {
+    font-size: 13px;
+  }
+  .hero-terminal-welcome {
+    margin: 12px 0;
+    padding: 10px;
+  }
+  .hero-terminal-prompt {
+    max-height: 210px;
+  }
+  .hero-screen-canvas .host-slack .host-composer {
+    max-height: 240px;
+  }
+  .hero-demo-controls {
+    padding-inline: 7px;
+  }
+  .hero-demo-controls ol {
+    font-size: 12px;
+    gap: 19px;
+  }
+  .hero-demo-controls li + li:before {
+    left: -15px;
+  }
+  .hero-demo-controls button {
+    font-size: 12px;
+  }
+}
+.screen-hero-art {
+  background-image: var(--hero-light-1);
+}
+html[data-theme='dark'] .screen-hero-art {
+  background-image: var(--hero-dark-1);
+}
+@media (min-resolution: 1.5dppx), (min-width: 1600px) {
+  .screen-hero-art {
+    background-image: var(--hero-light-2);
+  }
+  html[data-theme='dark'] .screen-hero-art {
+    background-image: var(--hero-dark-2);
+  }
+}
+@media (max-width: 600px) {
+  .screen-hero-art {
+    background-image: var(--hero-light-0);
+  }
+  html[data-theme='dark'] .screen-hero-art {
+    background-image: var(--hero-dark-0);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .screen-hero-art {
+    background-image: var(--hero-dark-1);
+  }
+  html:not([data-theme]) .hero-screen-frame {
+    background: #b99dce19;
+    border-color: #bb9edd66;
+    box-shadow: 0 22px 65px #06030b33;
+  }
+  html:not([data-theme]) .screen-hero-art {
+    background-image: var(--hero-dark-1);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  @media (min-resolution: 1.5dppx), (min-width: 1600px) {
+    html:not([data-theme]) .screen-hero-art {
+      background-image: var(--hero-dark-2);
+    }
+  }
+  @media (max-width: 600px) {
+    html:not([data-theme]) .screen-hero-art {
+      background-image: var(--hero-dark-0);
+    }
+  }
+}

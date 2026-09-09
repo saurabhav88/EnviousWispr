@@ -1,0 +1,17 @@
+---
+import { renderHost } from '../../utils/home/app-shell.js';
+import { renderDraft } from '../../utils/home/text.js';
+const { app, context = {}, text, hero = false, lang = 'en' } = Astro.props;
+const draft =
+  '<div class="host-draft-slot"><div class="' +
+  (hero ? 'hero-draft' : 'illustrated-result') +
+  '" lang="' +
+  lang +
+  '">' +
+  renderDraft(text) +
+  '</div></div>';
+---
+
+<Fragment
+  set:html={renderHost(app, context).replace('<div class="host-draft-slot"></div>', draft)}
+/>

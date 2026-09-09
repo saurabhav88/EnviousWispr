@@ -1,0 +1,371 @@
+{
+  "chips": [
+    {
+      "name": "Custom words",
+      "note": "Names, jargon and product names you added get fixed on your Mac, before any model reads the text.",
+      "raw": [
+        {
+          "t": "envious whisper",
+          "mark": true
+        },
+        {
+          "t": " pastes into your editor"
+        }
+      ],
+      "out": [
+        {
+          "t": "EnviousWispr",
+          "mark": true
+        },
+        {
+          "t": " pastes into your editor."
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "Filler words",
+      "note": "Remove spoken hesitations with local cleanup, even when AI polish is off.",
+      "raw": [
+        {
+          "t": "um, ",
+          "cut": true
+        },
+        {
+          "t": "I think we ship the beta on Friday"
+        }
+      ],
+      "out": [
+        {
+          "t": "I think we ship the beta on Friday"
+        },
+        {
+          "t": ".",
+          "mark": true
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "Self-corrections",
+      "note": "Say the correction out loud. AI polish can keep the version you meant.",
+      "raw": [
+        {
+          "t": "send the invite to "
+        },
+        {
+          "t": "john, actually ",
+          "cut": true
+        },
+        {
+          "t": "jane",
+          "mark": true
+        }
+      ],
+      "out": [
+        {
+          "t": "Send the invite to "
+        },
+        {
+          "t": "Jane",
+          "mark": true
+        },
+        {
+          "t": "."
+        }
+      ],
+      "where": "ai"
+    },
+    {
+      "name": "Numbers, dates & times",
+      "note": "English number formatting turns spoken values into the dates and times you would type.",
+      "raw": [
+        {
+          "t": "moving standup to "
+        },
+        {
+          "t": "six fifty p m",
+          "mark": true
+        },
+        {
+          "t": " on "
+        },
+        {
+          "t": "july eleventh twenty twenty six",
+          "mark": true
+        }
+      ],
+      "out": [
+        {
+          "t": "Moving standup to "
+        },
+        {
+          "t": "6:50 PM",
+          "mark": true
+        },
+        {
+          "t": " on "
+        },
+        {
+          "t": "July 11, 2026",
+          "mark": true
+        },
+        {
+          "t": "."
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "False starts",
+      "note": "AI polish can clean up repeated words and abandoned starts while keeping your thought.",
+      "raw": [
+        {
+          "t": "I was, I was thinking, I mean ",
+          "cut": true
+        },
+        {
+          "t": "maybe we skip the review this week"
+        }
+      ],
+      "out": [
+        {
+          "t": "Maybe we skip the review this week."
+        }
+      ],
+      "where": "ai"
+    },
+    {
+      "name": "Punctuation & capitals",
+      "note": "AI polish tidies sentence boundaries, punctuation and capitalization.",
+      "raw": [
+        {
+          "t": "can you review the doc before standup thanks"
+        }
+      ],
+      "out": [
+        {
+          "t": "C",
+          "mark": true
+        },
+        {
+          "t": "an you review the doc before standup"
+        },
+        {
+          "t": "?",
+          "mark": true
+        },
+        {
+          "t": " "
+        },
+        {
+          "t": "T",
+          "mark": true
+        },
+        {
+          "t": "hanks"
+        },
+        {
+          "t": "!",
+          "mark": true
+        }
+      ],
+      "where": "ai"
+    },
+    {
+      "name": "Emails, URLs & phones",
+      "note": "English number formatting can turn spoken contact details into written addresses and numbers.",
+      "raw": [
+        {
+          "t": "ping me at "
+        },
+        {
+          "t": "sam at example dot com",
+          "mark": true
+        }
+      ],
+      "out": [
+        {
+          "t": "Ping me at "
+        },
+        {
+          "t": "sam@example.com",
+          "mark": true
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "Spoken lists",
+      "note": "With a model that supports list formatting, a spoken list becomes easier to scan.",
+      "raw": [
+        {
+          "t": "first",
+          "mark": true
+        },
+        {
+          "t": " the installer, "
+        },
+        {
+          "t": "then",
+          "mark": true
+        },
+        {
+          "t": " the migration, "
+        },
+        {
+          "t": "finally",
+          "mark": true
+        },
+        {
+          "t": " the docs"
+        }
+      ],
+      "out": [
+        {
+          "t": "•",
+          "mark": true
+        },
+        {
+          "t": " Installer\n"
+        },
+        {
+          "t": "•",
+          "mark": true
+        },
+        {
+          "t": " Migration\n"
+        },
+        {
+          "t": "•",
+          "mark": true
+        },
+        {
+          "t": " Docs"
+        }
+      ],
+      "where": "ai"
+    },
+    {
+      "name": "Snippets",
+      "note": "Say your keyword and a phrase you saved drops in. It is the first thing that touches the text, before your custom words or anything else.",
+      "raw": [
+        {
+          "t": "email me at "
+        },
+        {
+          "t": "backslash my email",
+          "mark": true
+        },
+        {
+          "t": " any time"
+        }
+      ],
+      "out": [
+        {
+          "t": "Email me at "
+        },
+        {
+          "t": "john.doe@example.com",
+          "mark": true
+        },
+        {
+          "t": " any time."
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "Homophones",
+      "note": "Words that sound alike get the spelling your field actually uses.",
+      "raw": [
+        {
+          "t": "the "
+        },
+        {
+          "t": "sequel",
+          "mark": true
+        },
+        {
+          "t": " query is timing out"
+        }
+      ],
+      "out": [
+        {
+          "t": "The "
+        },
+        {
+          "t": "SQL",
+          "mark": true
+        },
+        {
+          "t": " query is timing out."
+        }
+      ],
+      "where": "ai"
+    },
+    {
+      "name": "Spoken emoji",
+      "note": "Say the name of an emoji and you get the emoji. One setting keeps it literal.",
+      "raw": [
+        {
+          "t": "installer is signed "
+        },
+        {
+          "t": "fire emoji",
+          "mark": true
+        }
+      ],
+      "out": [
+        {
+          "t": "Installer is signed "
+        },
+        {
+          "t": "🔥",
+          "mark": true
+        }
+      ],
+      "where": "mac"
+    },
+    {
+      "name": "Paragraphs & structure",
+      "note": "AI polish can separate related thoughts into readable paragraphs, without adding new ideas.",
+      "raw": [
+        {
+          "t": "ok so the launch is on track we finished the installer docs are next also I want to redo the pricing page"
+        }
+      ],
+      "out": [
+        {
+          "t": "The launch is on track. The installer is done and the docs are next.\n\n"
+        },
+        {
+          "t": "Also",
+          "mark": true
+        },
+        {
+          "t": ", I want to redo the pricing page."
+        }
+      ],
+      "where": "ai"
+    }
+  ],
+  "guards": [
+    {
+      "name": "Keeps your language",
+      "note": "Speak Spanish, get Spanish. Polish is set up only to tidy your words, not to translate them."
+    },
+    {
+      "name": "Ignores commands",
+      "note": "Dictation is treated as text to write. The polish prompt tells the model not to follow instructions inside it."
+    },
+    {
+      "name": "Catches runaway text",
+      "note": "Output checks can reject empty, repetitive or unusually long results and keep the cleaned transcript instead."
+    },
+    {
+      "name": "A fallback if polish fails",
+      "note": "If AI polish fails or times out, EnviousWispr falls back to the last successful text."
+    }
+  ]
+}

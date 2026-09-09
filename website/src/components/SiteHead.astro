@@ -1,0 +1,53 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  activePage?: string;
+  ogImage?: string;
+  ogImageAlt?: string;
+  ogType?: 'website' | 'article';
+  canonicalPath?: string;
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description,
+  activePage = 'home',
+  ogImage = '/og-image.png',
+  ogImageAlt = 'EnviousWispr: Private AI dictation for macOS',
+  ogType = 'website',
+  canonicalPath,
+  noindex = false,
+} = Astro.props;
+
+const siteUrl = 'https://enviouswispr.com';
+const canonical = canonicalPath ? `${siteUrl}${canonicalPath}` : Astro.url.href;
+const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`;
+---
+
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<meta name="robots" content={noindex ? 'noindex, nofollow' : 'index, follow'} />
+<meta name="author" content="Envious Labs" />
+<link rel="canonical" href={canonical} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:type" content={ogType} />
+<meta property="og:url" content={canonical} />
+<meta property="og:site_name" content="EnviousWispr" />
+<meta property="og:image" content={ogImageUrl} />
+<meta property="og:image:alt" content={ogImageAlt} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@EnviousLabs" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImageUrl} />
+<link rel="dns-prefetch" href="https://us.i.posthog.com" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<meta name="theme-color" content="#f8f5ff" />
+<link rel="alternate" type="application/rss+xml" title="EnviousWispr Blog" href="/rss.xml" />

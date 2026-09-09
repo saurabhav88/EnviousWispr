@@ -1,0 +1,26 @@
+---
+import { downloadUrl } from '../../data/home/site.js';
+---
+
+<section class="closing chapter" id="download">
+  <div class="wrap">
+    <p class="eyebrow">Free. Private. Open source.</p><h2>
+      Try it with<br /><span class="accent-ink">your own voice.</span>
+    </h2><p>Free dictation and AI polish, on your Mac.<br />No account. No subscription.</p><a
+      class="button"
+      href={downloadUrl}
+      data-download-source="bottom-cta">Download free for Mac <span aria-hidden="true">↓</span></a
+    ><p class="compatibility">macOS 14+ · Apple Silicon (M1 or later)</p><div
+      class="brew-install"
+      id="install"
+    >
+      <span>Prefer Homebrew?</span><div>
+        <code>brew install --cask saurabhav88/tap/enviouswispr</code><button
+          class="text-button"
+          id="brew-copy"
+          hidden>Copy</button
+        >
+      </div><small role="status" id="brew-status"></small>
+    </div>
+  </div>
+</section>

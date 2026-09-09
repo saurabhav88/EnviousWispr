@@ -1,0 +1,112 @@
+[
+  {
+    "name": "Developers",
+    "emoji": "💻",
+    "art": "developer",
+    "app": "Coding agent",
+    "title": "Explain the change to your coding agent.",
+    "raw": "um update the post gre sql connection settings and add a retry when the connection times out keep the existing kubernettes deployment unchanged",
+    "final": "Update the PostgreSQL connection settings and add a retry when the connection times out.\n\nKeep the existing Kubernetes deployment unchanged.",
+    "note": "Saved words keep PostgreSQL and Kubernetes in the form you use.",
+    "tone": "code",
+    "image": "developer.webp"
+  },
+  {
+    "name": "Medical students",
+    "emoji": "🩺",
+    "art": "medical",
+    "app": "Clinical notes · Practice case",
+    "title": "Turn a case discussion into organized study notes.",
+    "raw": "for tomorrow's case discussion first review the patient history actually start with the presenting complaint next compare the medication list with the history then write down three questions what changed since the last visit which details still need clarification and what should we discuss with the tutor finish with a short summary for our study group",
+    "final": "Tomorrow’s case discussion\n\nPreparation\n• Start with the presenting complaint.\n• Compare the medication list with the history.\n\nQuestions\n1. What changed since the last visit?\n2. Which details still need clarification?\n3. What should we discuss with the tutor?\n\nFinish with a short summary for our study group.",
+    "note": "Work through the preparation and questions out loud. Keep the structure in your notes.",
+    "lang": "en",
+    "tone": "clinical",
+    "sampleLabel": "Fictional study notes",
+    "image": "medical.png"
+  },
+  {
+    "name": "Writers",
+    "emoji": "✍️",
+    "art": "writer",
+    "app": "Story notes · Android preview",
+    "title": "Keep the story going while you take a walk.",
+    "raw": "um she reached the platform at dawn actually just before dawn the last train had already gone and for the first time she was glad",
+    "final": "She reached the platform just before dawn. The last train had already gone, and for the first time, she was glad.",
+    "note": "Phone workflow concept for the upcoming Android app.",
+    "upcoming": true,
+    "tone": "phone",
+    "image": "writer.webp"
+  },
+  {
+    "name": "Work & business",
+    "emoji": "📊",
+    "art": "business",
+    "app": "Mail · Client follow-up",
+    "title": "Write the follow-up while the details are fresh.",
+    "raw": "hi jordan um thanks for walking through the proposal I will send the updated budget before our meeting on thursday actually friday at six thirty pm best noah",
+    "final": "Hi Jordan,\n\nThanks for walking through the proposal. I’ll send the updated budget before our meeting on Friday at 6:30 PM.\n\nBest,\nNoah",
+    "note": "A correction and a spoken time become a clear client email.",
+    "tone": "mail",
+    "image": "business.webp"
+  },
+  {
+    "name": "Students",
+    "emoji": "🎓",
+    "art": "student",
+    "app": "Essay draft",
+    "title": "Talk through the paragraph you’re working on.",
+    "raw": "um public transport shapes the way people use a city it influences where they work how much time they spend travelling and which neighborhoods they can reach",
+    "final": "Public transport shapes the way people use a city. It influences where they work, how much time they spend travelling, and which neighborhoods they can reach.",
+    "note": "Keep the idea moving while the punctuation and cleanup are handled.",
+    "tone": "essay",
+    "image": "student.webp"
+  },
+  {
+    "name": "Remote workers",
+    "emoji": "🏠",
+    "art": "remote",
+    "app": "Team chat",
+    "title": "Give your team a useful update without switching focus.",
+    "raw": "the design is ready for review um I am waiting on the updated copy so let us move the handoff to thursday thanks for the quick turnaround thumbs up emoji",
+    "final": "The design is ready for review. I’m waiting on the updated copy, so let’s move the handoff to Thursday. Thanks for the quick turnaround 👍",
+    "note": "A natural spoken update becomes a message in the conversation you already have open.",
+    "tone": "chat",
+    "image": "remote.webp"
+  },
+  {
+    "name": "Podcasters",
+    "emoji": "🎙️",
+    "art": "podcaster",
+    "app": "Episode notes",
+    "title": "Capture the points you want in your show notes.",
+    "raw": "um for the show notes how the project started what changed after the first launch and the advice we want listeners to take away",
+    "final": "For the show notes:\n\n• How the project started\n• What changed after the first launch\n• The advice we want listeners to take away",
+    "note": "Turn your own spoken summary into useful episode notes.",
+    "tone": "notes",
+    "image": "podcaster.webp"
+  },
+  {
+    "name": "Parents",
+    "emoji": "👶",
+    "art": "parent",
+    "app": "Family message",
+    "title": "Get a message written when your hands are occupied.",
+    "raw": "um I will pick up the groceries after school please add apples milk and bread to the list see you at home heart emoji",
+    "final": "I’ll pick up the groceries after school. Please add apples, milk and bread to the list. See you at home ❤️",
+    "note": "Everyday messages and spoken emoji, without needing both hands on the keyboard.",
+    "tone": "messages",
+    "image": "parent.webp"
+  },
+  {
+    "name": "Accessibility",
+    "emoji": "♿",
+    "art": "accessibility",
+    "app": "Everyday writing",
+    "title": "Use your voice for more of your everyday writing.",
+    "raw": "um please send the appointment details by email I would like to check the time and address before I make travel arrangements",
+    "final": "Please send the appointment details by email. I’d like to check the time and address before I make travel arrangements.",
+    "note": "Hands-free recording offers another way to write when typing is uncomfortable.",
+    "image": "accessibility.webp"
+  }
+]

@@ -1,0 +1,33 @@
+---
+import { Image } from 'astro:assets';
+import poster from '../../assets/home/founder.png';
+import { getImage } from 'astro:assets';
+const image = await getImage({ src: poster, width: 420, format: 'webp' });
+---
+
+<section class="founder wrap chapter" id="story">
+  <div class="founder-art">
+    <video
+      id="namaste"
+      muted
+      loop
+      playsinline
+      preload="none"
+      poster={image.src}
+      width="210"
+      height="270"
+      aria-label="Chibi Saurabh bowing in namaste"
+      ><source data-src="/home/founder.webm" type="video/webm" /></video
+    >
+  </div><div>
+    <p class="eyebrow">A personal thank-you</p><h2>More than a<br />personal project.</h2><p>
+      This started with my own typing bottleneck and a small project I wanted to use myself. It has
+      now grown to thousands of downloads, and that means more to me than I expected.
+    </p><p>
+      Thank you to everyone who has tried EnviousWispr, reported a problem, suggested an improvement
+      or shared it with a friend. Your feedback and continued support keep shaping the app.
+    </p><p>
+      I use it every day. I hope it gives you more room to think, create and get on with your day.
+    </p><p class="signature">Saurabh <span>Founder, Envious Labs</span></p>
+  </div>
+</section>

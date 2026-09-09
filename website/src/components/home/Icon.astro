@@ -1,0 +1,15 @@
+---
+import paths from '../../data/home/icons.json';
+const { name, class: className = '' } = Astro.props;
+---
+
+<span class:list={['section-icon', className]} aria-hidden="true"
+  ><svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.7"
+    stroke-linecap="round"
+    stroke-linejoin="round"><path d={paths[name]}></path></svg
+  ></span
+>

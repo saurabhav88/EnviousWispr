@@ -1,0 +1,91 @@
+---
+import SiteHead from '../components/SiteHead.astro';
+import SiteServices from '../components/SiteServices.astro';
+import Logo from '../components/home/Logo.astro';
+import { navigation, downloadUrl } from '../data/home/site.js';
+import '../styles/home/index.css';
+import { installTheme } from '../scripts/home/theme.js';
+import type {ComponentProps} from 'astro/types';
+type Props = ComponentProps<typeof SiteHead>;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <SiteHead {...Astro.props} />
+    <script is:inline set:html={'(' + installTheme.toString() + ')();'} />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main-content">Skip to content</a>
+    <header class="site-nav wrap">
+      <a class="brand" href="/" aria-label="EnviousWispr home"><Logo /><span>EnviousWispr</span></a>
+      <nav aria-label="Main navigation">
+        {navigation.map(([label, href]) => <a href={href}>{label}</a>)}
+      </nav>
+      <div class="nav-actions">
+        <a
+          class="github"
+          href="https://github.com/saurabhav88/EnviousWispr"
+          target="_blank"
+          rel="noopener">GitHub <span data-stars></span></a
+        >
+        <button
+          class="theme-toggle icon-button"
+          aria-label="Switch theme"
+          data-enhancement-control
+          hidden>☾</button
+        >
+        <button
+          class="icon-button"
+          data-motion-control
+          aria-label="Pause page animations"
+          aria-pressed="false"
+          data-enhancement-control
+          hidden>Ⅱ</button
+        >
+        <a class="button nav-download" href={downloadUrl} data-download-source="nav"
+          >Download free <span aria-hidden="true">↓</span></a
+        >
+        <button
+          class="menu-toggle icon-button"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+          data-enhancement-control
+          hidden>☰</button
+        >
+      </div>
+    </header>
+    <div class="mobile-menu wrap" id="mobile-menu">
+      <nav aria-label="Mobile navigation">
+        {navigation.map(([label, href]) => <a href={href}>{label}</a>)}<a
+          href="https://github.com/saurabhav88/EnviousWispr">GitHub <span data-stars></span></a
+        >
+      </nav>
+      <a class="button" href={downloadUrl} data-download-source="nav">Download free for Mac</a>
+      <button class="text-button" data-motion-control data-enhancement-control hidden
+        >Pause motion</button
+      >
+    </div>
+    <main id="main-content" tabindex="-1"><slot /></main>
+    <footer class="site-footer wrap">
+      <span>© {new Date().getFullYear()} Envious Labs · App licensed under GPLv3.</span>
+      <nav aria-label="Footer">
+        {navigation.map(([label, href]) => <a href={href}>{label}</a>)}
+        <a href="/privacy-policy/">Privacy</a><a href="/terms-of-service/">Terms</a>
+      </nav>
+      <button
+        class="text-button"
+        id="motion-toggle"
+        data-motion-control
+        data-enhancement-control
+        hidden>Pause motion</button
+      >
+    </footer>
+    <SiteServices />
+    <script>
+      import '../scripts/home/index.js';
+    </script>
+  </body>
+</html>

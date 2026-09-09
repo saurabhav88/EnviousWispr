@@ -1,0 +1,65 @@
+{
+  "steps": [
+    {
+      "name": "Smart audio trimming",
+      "where": "mac",
+      "note": "Prepares the recording, trimming silence when appropriate."
+    },
+    {
+      "name": "Local speech-to-text transcription",
+      "where": "mac",
+      "note": "Your chosen speech engine turns the recording into text on your Mac."
+    },
+    {
+      "name": "Custom vocabulary & formatting",
+      "where": "mac",
+      "note": "Snippets, custom words, fillers, emoji and number formatting, using your settings."
+    },
+    {
+      "name": "Local & cloud AI polishing",
+      "where": "choice",
+      "note": "Your chosen AI model tidies the cleaned text, locally or through your chosen provider."
+    },
+    {
+      "name": "Direct text insertion & paste",
+      "where": "mac",
+      "note": "Finished text goes into your app, with clipboard fallback when needed."
+    }
+  ],
+  "lanes": [
+    {
+      "title": "On-device models",
+      "note": "Local processing. Your audio and text stay on your Mac.",
+      "tone": "local",
+      "items": [
+        [
+          "Apple Intelligence",
+          "On your Mac. Requires macOS 26+ with Apple Intelligence enabled and available."
+        ],
+        ["EG-1", "Our dictation model for punctuation and natural cleanup. About 2.9 GB."],
+        ["S1-mini", "Compact English-language polish by Superwhisper. About 484 MB."],
+        ["Local Ollama", "Offline cleanup with a compatible model installed through Ollama."]
+      ]
+    },
+    {
+      "title": "Cloud models (BYOK)",
+      "note": "Your provider account or API key. No EnviousWispr markup or subscription. Provider charges may apply.",
+      "tone": "cloud",
+      "items": [
+        [
+          "OpenAI",
+          "Choose an available OpenAI model with your API key. Text goes directly to OpenAI."
+        ],
+        ["Anthropic Claude", "Polish with a Claude model under your own Anthropic API key."],
+        [
+          "Google Gemini",
+          "Connect your Gemini API key for cleanup and formatting. Text goes directly to Google."
+        ],
+        [
+          "Hosted Ollama",
+          "Use your Ollama account to choose a hosted model. Text is processed on Ollama’s servers."
+        ]
+      ]
+    }
+  ]
+}

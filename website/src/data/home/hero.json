@@ -1,0 +1,33 @@
+[
+  {
+    "app": "gmail",
+    "name": "Gmail",
+    "context": {
+      "to": "Maya",
+      "subject": "Friday’s planning meeting"
+    },
+    "raw": "Hi Maya um for Friday please bring the design notes the launch checklist and the revised budget of six thousand two hundred thirty nine dollars thanks Amira",
+    "text": "Hi Maya,\n\nFor Friday, please bring:\n• The design notes\n• The launch checklist\n• The revised budget of $6,239\n\nThanks,\nAmira"
+  },
+  {
+    "app": "claude",
+    "name": "Claude Code",
+    "raw": "In the React app um update the pricing page actually the homepage add a dark mode toggle keep the choice after a reload and run the tests before finishing",
+    "text": "In the React app, update the homepage:\n• Add a dark mode toggle.\n• Keep the choice after a reload.\n• Run the tests before finishing."
+  },
+  {
+    "app": "slack",
+    "name": "Slack",
+    "context": {
+      "room": "team-updates"
+    },
+    "raw": "Quick team update the new homepage is ready for review uh please add your feedback by Thursday actually Friday at three PM the launch is still on track thumbs up emoji",
+    "text": "Quick team update: the new homepage is ready for review.\n\nPlease add your feedback by Friday at 3 PM.\n\nThe launch is still on track. 👍"
+  },
+  {
+    "app": "whatsapp",
+    "name": "WhatsApp",
+    "raw": "Hey Priya um I will be there at six actually six thirty can you grab some oat milk on the way please thanks heart emoji",
+    "text": "Hey Priya, I’ll be there at 6:30. Can you grab some oat milk on the way, please? Thanks! ❤️"
+  }
+]

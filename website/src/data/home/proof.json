@@ -1,0 +1,57 @@
+[
+  {
+    "key": "youtube",
+    "name": "Mostly Mac",
+    "category": "YouTube review",
+    "date": "September 2026",
+    "headline": "Joint #1 in a seven-app comparison.",
+    "description": "Mostly Mac used the same passages to compare seven Mac dictation apps. EnviousWispr tied with FluidVoice at 8.5/10 overall and received 10/10 for value.",
+    "url": "https://www.youtube.com/watch?v=tkV_A_6HFRQ&t=385s",
+    "link": "Watch the EnviousWispr segment",
+    "body": "video"
+  },
+  {
+    "key": "reddit-speed",
+    "name": "r/macapps",
+    "category": "Community conversation",
+    "date": "Public user feedback",
+    "headline": "A user came back with an update.",
+    "description": "Read the original impressions, the follow-up, and the discussion around the app.",
+    "url": "https://www.reddit.com/r/macapps/comments/1uobt7v/comment/ozdjtl8/",
+    "link": "Read the full conversation",
+    "body": "<div class=\"conversation-entry\"><strong>u/rbredow</strong><blockquote>“Initial impressions are quite good. It's fast and seems to be accurate.”</blockquote></div><div class=\"conversation-entry followup\"><span>A later update</span><strong>u/rbredow</strong><blockquote>“Working very well and consistently for me. Pretty quick too. Nice work.”</blockquote></div>"
+  },
+  {
+    "key": "reddit-cleanup",
+    "name": "r/macapps",
+    "category": "Community conversation",
+    "date": "Public user feedback",
+    "headline": "Feedback from someone who dictates almost everything.",
+    "description": "The full comment includes praise, feature requests and suggestions. That conversation is part of how EnviousWispr improves.",
+    "url": "https://www.reddit.com/r/macapps/comments/1uobt7v/comment/owsufyv/",
+    "link": "Read the full conversation",
+    "body": "<div class=\"conversation-entry\"><strong>u/No-Object1384</strong><blockquote>“I'm really genuinely impressed so far in using it (I wrote most of this comment with it), and the fact that this is free is surprising.”</blockquote></div>"
+  },
+  {
+    "key": "ifun",
+    "name": "ifun.de",
+    "category": "German press",
+    "date": "7 July 2026",
+    "headline": "Local dictation and AI cleanup, covered in Germany.",
+    "description": "ifun.de describes the free local workflow, speech recognition, AI cleanup and the ability to insert finished text into the active app.",
+    "url": "https://www.ifun.de/enviouswispr-kostenlose-mac-app-bringt-lokale-diktate-mit-ki-korrektur-283196/",
+    "link": "Read the original article",
+    "body": "<div class=\"press-page\"><span>ifun.de</span><small>Apple News seit 2001</small><h3 lang=\"de\">EnviousWispr: Kostenlose Mac-App bringt lokale Diktate mit KI-Korrektur</h3><p>German-language coverage of EnviousWispr’s local dictation and text cleanup.</p><span class=\"press-language\">Deutsch ↗</span></div>"
+  },
+  {
+    "key": "apfeltalk",
+    "name": "Apfeltalk",
+    "category": "German press",
+    "date": "July 2026",
+    "headline": "A closer look at the app and its polishing options.",
+    "description": "Apfeltalk walks through the local transcription and polishing workflow, the app’s features, and the requirements for using it on a Mac.",
+    "url": "https://www.apfeltalk.de/magazin/ki/enviouswispr-kostenlose-wispr-flow-alternative-fuer-lokale-diktate-auf-dem-mac/",
+    "link": "Read the original article",
+    "body": "<div class=\"press-page\"><span>Apfeltalk</span><small>Mac · KI</small><h3 lang=\"de\">EnviousWispr: Kostenlose Wispr-Flow-Alternative für lokale Diktate auf dem Mac</h3><p>A German-language walkthrough of the app, with screenshots and discussion of its features.</p><span class=\"press-language\">Deutsch ↗</span></div>"
+  }
+]

@@ -1,0 +1,52 @@
+---
+import hood from '../../data/home/hood.json';
+import Icon from './Icon.astro';
+---
+
+<section class="hood wrap chapter" id="hood" aria-labelledby="hood-title">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">How it works</p><h2 id="hood-title">
+        How EnviousWispr turns speech into <br /><span class="accent-ink"
+          >polished text in your Mac apps.</span
+        >
+      </h2>
+    </div><p>
+      A look behind the scenes at our native macOS speech-to-text pipeline. Five stages prepare your
+      audio, clean up verbal clutter, and deliver polished writing at your cursor, with on-device
+      transcription and your choice of local or cloud AI polish.
+    </p>
+  </div>
+  <p class="mobile-swipe-hint">
+    Swipe through the five steps <span aria-hidden="true">↔</span>
+  </p><ol
+    class="hood-steps swipe-row"
+    id="hood-steps"
+    tabindex="0"
+    aria-label="Five workflow steps"
+  >
+    {
+      hood.steps.map((step, i) => (
+        <li class:list={['hood-step', 'is-' + step.where]}>
+          <>
+            <span class="hood-step-n">{i + 1}</span>
+            <Icon name={['wave', 'document', 'sparkles', 'wand', 'clipboard'][i]} />
+            <h3 class="hood-step-name">{step.name}</h3>
+            <span class="hood-step-where">
+              {step.where === 'mac' ? 'On your Mac' : 'Your choice'}
+            </span>
+            <p class="hood-step-note">{step.note}</p>
+          </>
+        </li>
+      ))
+    }
+  </ol>
+  <div class="hood-privacy">
+    <span class="workflow-lock" aria-hidden="true"><Icon name="lock" /></span><div>
+      <strong>Your dictation audio never leaves your Mac.</strong><p>
+        Choose local polish to keep the text there too. With a cloud provider, text goes directly to
+        that provider under your own key. Envious Labs does not receive your dictation.
+      </p>
+    </div><span class="workflow-promise">Your Mac.<br />Your choice.</span>
+  </div>
+</section>

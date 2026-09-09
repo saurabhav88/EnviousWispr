@@ -1,0 +1,80 @@
+---
+import { getImage } from 'astro:assets';
+import cases from '../../data/home/cases.json';
+import AppDemo from './AppDemo.astro';
+const images = import.meta.glob('../../assets/home/*.{webp,png}', {
+  eager: true,
+  import: 'default',
+});
+const assets = await Promise.all(
+  cases.map(async (item) => {
+    const src = images['../../assets/home/' + item.image];
+    const widths = [480, 800, 1200];
+    const outputs = await Promise.all(
+      widths.map((width) => getImage({ src, width, format: 'webp', quality: 82 })),
+    );
+    return {
+      src: outputs[1].src,
+      srcset: outputs.map((v, i) => v.src + ' ' + widths[i] + 'w').join(', '),
+      width: src.width,
+      height: src.height,
+    };
+  }),
+);
+const first = cases[0];
+---
+
+<section class="people section-surface" id="people" aria-labelledby="people-title">
+  <div class="wrap">
+    <div class="section-heading">
+      <p class="eyebrow">For your day</p><h2 id="people-title">
+        See yourself <span class="accent-ink">using EnviousWispr.</span>
+      </h2><p>From code to email to study notes. Speak directly into the apps you already use.</p>
+    </div><div class="audience-choices" role="group" aria-label="Choose your writing workflow">
+      {
+        cases.map((item, i) => (
+          <button data-audience={i} type="button" aria-pressed={String(i === 0)} disabled>
+            <span aria-hidden="true">{item.emoji}</span>
+            {item.name}
+          </button>
+        ))
+      }
+    </div>
+    <div class="case-stage" data-case="0" data-case-assets={JSON.stringify(assets)}>
+      <div class="case-copy">
+        <h3>{first.title}</h3><p>{first.note}</p><span class="case-status"
+          >{first.sampleLabel || ''}</span
+        >
+      </div><figure class="case-person">
+        <img
+          class="case-scene"
+          src={assets[0].src}
+          srcset={assets[0].srcset}
+          sizes="(max-width:600px) 100vw, 50vw"
+          width={assets[0].width}
+          height={assets[0].height}
+          loading="lazy"
+          decoding="async"
+          alt="Illustrated developer speaking toward a computer"
+        />
+      </figure><div class="case-screen" data-phase="finished">
+        <AppDemo app="vscode" text={first.final} />
+      </div>
+    </div>
+    <div class="case-controls">
+      <div>
+        <button class="text-button" id="case-tour" disabled>Pause tour</button><button
+          class="icon-button"
+          id="case-prev"
+          disabled
+          aria-label="Previous use case">‹</button
+        ><span id="case-count">1 / {cases.length}</span><button
+          class="icon-button"
+          id="case-next"
+          disabled
+          aria-label="Next use case">›</button
+        >
+      </div>
+    </div><a href="/blog/" class="text-link">Explore more ways to use dictation ↗</a>
+  </div>
+</section>

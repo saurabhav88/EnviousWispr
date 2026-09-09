@@ -1,0 +1,80 @@
+---
+import { getImage } from 'astro:assets';
+import light from '../../assets/home/hero-light.png';
+import dark from '../../assets/home/hero-dark.png';
+import examples from '../../data/home/hero.json';
+import { downloadUrl } from '../../data/home/site.js';
+import AppDemo from './AppDemo.astro';
+const widths = [720, 1440, 2160];
+const sources = await Promise.all(
+  [light, dark].map((src) =>
+    Promise.all(widths.map((width) => getImage({ src, width, format: 'webp', quality: 85 }))),
+  ),
+);
+const sets = sources.map((group) =>
+  group.map((image, i) => image.src + ' ' + widths[i] + 'w').join(', '),
+);
+---
+
+<section class="screen-hero" id="opening" data-phase="finished" aria-labelledby="hero-title">
+  <div
+    class="screen-hero-art"
+    aria-hidden="true"
+    style={sources
+      .map((group, i) =>
+        group
+          .map(
+            (image, k) =>
+              '--hero-' + (i === 0 ? 'light' : 'dark') + '-' + k + ':url(' + image.src + ')',
+          )
+          .join(';'),
+      )
+      .join(';')}
+  >
+  </div><div class="screen-hero-shade" aria-hidden="true"></div>
+  <div class="screen-hero-content wrap">
+    <div class="screen-hero-copy">
+      <h1 id="hero-title">Talk naturally.<br />Capture perfectly.</h1><p
+        class="screen-hero-category"
+      >
+        Free, private AI dictation for macOS.
+      </p><p class="screen-hero-description">
+        Turn spoken thoughts into polished text in the apps you use. Your voice stays on your Mac,
+        with offline AI polish.
+      </p><a class="button screen-hero-download" href={downloadUrl} data-download-source="hero"
+        >Download free for Mac <span aria-hidden="true">↓</span></a
+      ><p class="screen-hero-values">
+        <strong>Free and open source.</strong><span>No account. No subscription.</span>
+      </p><p class="screen-hero-compatibility">macOS 14+ · Apple Silicon (M1 or later)</p>
+    </div>
+    <div class="hero-product-demo" id="how" aria-label="EnviousWispr app demonstration">
+      <div class="hero-screen-frame">
+        <div class="hero-screen-chrome" aria-hidden="true">
+          <span><i></i><i></i><i></i></span><span>EnviousWispr in Gmail</span>
+        </div><div class="hero-screen-canvas" id="opening-app" data-phase="finished">
+          <AppDemo
+            app={examples[0].app}
+            context={examples[0].context}
+            text={examples[0].text}
+            hero
+          />
+        </div>
+      </div>
+      <div class="hero-demo-controls">
+        <ol aria-label="Demonstration stages">
+          <li data-hero-step="listening">Speak</li><li data-hero-step="processing">Polish</li><li
+            data-hero-step="finished"
+          >
+            Paste
+          </li>
+        </ol><button class="text-button" id="hero-replay" disabled>↻ Replay</button><button
+          class="text-button"
+          id="hero-next"
+          aria-label="Show next app example"
+          disabled>Next →</button
+        >
+      </div>
+      <span class="hero-demo-announcement" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,134 @@
+---
+import engines from '../../data/home/engines.json';
+import Icon from './Icon.astro';
+---
+
+<section class="engines chapter" id="engines" aria-labelledby="engines-title">
+  <div class="wrap">
+    <div class="engines-panel">
+      <div class="engines-head">
+        <div class="engines-head-copy">
+          <p class="eyebrow">Local speech engines</p>
+          <h2 id="engines-title">
+            Two native speech engines.<br /><span class="accent-ink"
+              >Fast by default. More languages when you need them.</span
+            >
+          </h2>
+        </div>
+        <p class="engines-lead">
+          Both engines run locally on Apple Silicon, so your audio stays on your Mac. Choose fast
+          everyday dictation with Parakeet or wider language coverage with WhisperKit.
+        </p>
+      </div>
+
+      <p class="mobile-swipe-hint">
+        Swipe to compare engines <span aria-hidden="true">↔</span>
+      </p><div
+        class="engine-grid swipe-row"
+        id="engine-grid"
+        tabindex="0"
+        role="region"
+        aria-label="Compare speech engines"
+      >
+        {
+          engines.map((engine) => (
+            <article class:list={['engine-card', 'is-' + engine.key]} data-phase="2">
+              <div class="engine-card-head">
+                <>
+                  <div class="engine-card-id">
+                    <>
+                      <span class="engine-tag">{engine.tag}</span>
+                      <h3 class="engine-name">{engine.name}</h3>
+                      <p class="engine-strength">{engine.strength}</p>
+                    </>
+                  </div>
+                  <span class="engine-model">{engine.model}</span>
+                </>
+              </div>
+              <div class="engine-demo">
+                <div class="engine-demo-head">
+                  <>
+                    <span class="engine-lang">
+                      <>
+                        <b lang={engine.langs[0].code || 'en'}>{engine.langs[0].name}</b>
+                        <i>{engine.langs[0].english}</i>
+                      </>
+                    </span>
+                    <span class="engine-mode">{engine.mode}</span>
+                  </>
+                </div>
+                <div class="engine-said">
+                  <>
+                    <span class="engine-bars" aria-hidden="true">
+                      {[0, 1, 2, 3, 4].map((b) => (
+                        <i style={'--delay:' + b * 0.09 + 's;--beat:' + (0.7 + b * 0.13) + 's'} />
+                      ))}
+                    </span>
+                    <span
+                      class="engine-said-text"
+                      lang={engine.langs[0].code || 'en'}
+                      dir={engine.langs[0].dir || 'ltr'}
+                    >
+                      {engine.langs[0].said}
+                    </span>
+                  </>
+                </div>
+                <>
+                  <div class="engine-progress" aria-hidden="true">
+                    <i />
+                  </div>
+                  <p
+                    class="engine-result"
+                    lang={engine.langs[0].code || 'en'}
+                    dir={engine.langs[0].dir || 'ltr'}
+                  >
+                    {engine.langs[0].text}
+                  </p>
+                  <div class="engine-demo-foot">
+                    <>
+                      <span class="engine-status">Pasted ✓</span>
+                      <span class="engine-elapsed">{engine.elapsed}</span>
+                    </>
+                  </div>
+                </>
+              </div>
+              <dl class="engine-facts">
+                {engine.facts.map(([key, value]) => (
+                  <div>
+                    <dt>
+                      <Icon
+                        name={
+                          key === 'Languages'
+                            ? 'cloud'
+                            : key === 'Processing'
+                              ? 'chip'
+                              : key === 'Best for'
+                                ? 'wave'
+                                : 'document'
+                        }
+                      />
+                      {key}
+                    </dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          ))
+        }
+      </div>
+      <div class="engines-foot">
+        <div>
+          <strong>Not sure which to pick? Start with Parakeet.</strong><p>
+            It’s the default for everyday dictation. Switch engines anytime in Settings →
+            Transcription.
+          </p>
+        </div>
+
+        <a class="text-link" href="/help/choosing-a-speech-engine-parakeet-vs-whisperkit/"
+          >Which engine fits your setup? ↗</a
+        >
+      </div>
+    </div>
+  </div>
+</section>
