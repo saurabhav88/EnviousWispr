@@ -2188,8 +2188,14 @@ check_validator("the filing validator decodes escaped Swift display names",
                      expect_fail='hardware class is real, never "unknown"',
                      suite="EnviousWisprTests/LaunchAvailabilitySnapshotTests"),
                 expected_rc=0, expected_text="1/1 rows runnable")
+# Re-aimed 2026-09-09. It named `proxyErrorRecyclesConnection()`, which went away with the
+# ASR XPC boundary in #1908 — nothing in `Tests/` carries that name any more, so this case
+# had been asserting `1/1 rows runnable` about a test that does not exist and had been red
+# for anyone who ran the file. Nothing runs it: no workflow invokes
+# `scripts/mutation-battery-test.py`, which is why a stale oracle here is silent. The claim
+# is preserved by naming the LATER of the two surviving cases in the same file.
 check_validator("the filing validator keeps later tests in their enclosing suite",
-                dict(_validator_base, expect_fail="proxyErrorRecyclesConnection()",
+                dict(_validator_base, expect_fail="progressMappingCoversAllVendorPhases()",
                      suite="EnviousWisprASRTests/ParakeetDeliveryModeTests"),
                 expected_rc=0, expected_text="1/1 rows runnable")
 check_validator("the filing validator does not invent a parameter suffix",
@@ -2514,6 +2520,136 @@ if result.returncode != 2 or "carries 2 explicit recipe blocks" not in _issue_ou
         f"exit {result.returncode}: {_issue_output[:250]!r}")
 else:
     print("  ok  the filing validator shares the runner's single-recipe issue contract")
+
+# #2703 candidate 2: `--fix` prints corrected rows for the two mechanical drift classes and
+# refuses everything else. Two-way in both directions that matter — a clean recipe must
+# produce NO repairs (a repairer that fires on a healthy tree is invalid by construction,
+# `code-validation.md` RULE: check-must-not-fire-on-a-clean-tree), and the corrected rows
+# must RUN, which is the only thing that makes the repair worth printing.
+
+
+def check_fix(name, row=None, *, document=None, expect_text, expect_no_block=False,
+              expect_runnable=None):
+    """`expect_runnable` re-validates `--fix`'s own output as a recipe.
+
+    Asserting the printed block PARSES would pass against a repair that produces a
+    well-formed row the runner still refuses, which is the whole failure this flag exists
+    to remove. The round trip is the assertion.
+    """
+    global ran
+    ran += 1
+    with tempfile.TemporaryDirectory() as td:
+        recipe = Path(td) / "recipe.json"
+        payload = json.dumps(document if document is not None else {"rows": [row]})
+        recipe.write_text(payload)
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), "--recipes", str(recipe), "--fix",
+             "--checkout", str(BATTERY.parent.parent)],
+            capture_output=True, text=True,
+        )
+        # `--fix` PRINTS. A repairer that edited the recipe under the author would be
+        # editing a frozen row in place, which is the thing it exists not to do.
+        untouched = recipe.read_text() == payload
+    output = result.stdout + result.stderr
+    problems = []
+    if not untouched:
+        problems.append("the recipe file was modified")
+    expected = (expect_text,) if isinstance(expect_text, str) else tuple(expect_text)
+    problems += [f"missing {text!r}" for text in expected if text not in output]
+    block = output.partition("```json")[2].partition("```")[0]
+    if expect_no_block and block.strip():
+        problems.append("printed a corrected block when nothing was repairable")
+    if expect_runnable is not None:
+        if not block.strip():
+            problems.append("printed no corrected block to re-validate")
+        else:
+            with tempfile.TemporaryDirectory() as td2:
+                fixed = Path(td2) / "fixed.json"
+                fixed.write_text(block)
+                again = subprocess.run(
+                    [sys.executable, str(VALIDATOR), "--recipes", str(fixed),
+                     "--checkout", str(BATTERY.parent.parent)],
+                    capture_output=True, text=True,
+                )
+            if expect_runnable not in again.stdout + again.stderr:
+                problems.append(
+                    f"corrected rows did not re-validate: {(again.stdout + again.stderr)[-200:]!r}")
+    if problems:
+        failures.append(f"{name}: {'; '.join(problems)} in {output[-400:]!r}")
+    else:
+        print(f"  ok  {name}")
+
+
+# The shipped line sits at FOUR spaces, so this fixture is written at SIX: the file no
+# longer contains the text at all, and exactly one offset (-2) brings it back. Six rather
+# than the obvious two, because `load_recipes` counts a plain SUBSTRING — at two the
+# shifted text is still found inside the real line's own indentation and the row stays
+# runnable, which would make this case pass against a `--fix` that does nothing.
+_drifted = dict(
+    _validator_base,
+    anchor="      " + _validator_base["anchor"].lstrip(" "),
+    replacement="      " + _validator_base["replacement"].lstrip(" "),
+    expect_fail=_guard_name)
+check_fix("--fix re-cuts an anchor that only moved in indentation, and the row then runs",
+          _drifted,
+          expect_text=["anchor re-cut at -2 spaces", "Nothing was written"],
+          expect_runnable="1/1 rows runnable")
+
+check_fix("--fix completes an expectation naming a prefix of exactly one test",
+          dict(_validator_base, expect_fail="egOneNotInstalled"),
+          expect_text="repairable — must_fire: 'egOneNotInstalled' -> 'egOneNotInstalled()'",
+          expect_runnable="1/1 rows runnable")
+
+check_fix("--fix refuses an anchor no offset recovers, and prints no block",
+          dict(_validator_base, anchor="this text is in no file in this repository at all",
+               expect_fail=_guard_name),
+          expect_text=["NOT mechanically repairable", "no offset matches"],
+          expect_no_block=True)
+
+check_fix("--fix on a healthy row repairs nothing",
+          dict(_validator_base, expect_fail=_guard_name),
+          expect_text="Nothing was written",
+          expect_no_block=True)
+
+# #2703 review, P2 x3. Each of these reproduced a corrected block that was WRONG rather
+# than absent, which is the direction that costs somebody a run.
+_drifted_no_suite = {k: v for k, v in _drifted.items() if k != "suite"}
+check_fix("--fix carries the suite_default onto a corrected row",
+          document={"suite_default": _validator_base["suite"],
+                    "rows": [_drifted_no_suite]},
+          expect_text="anchor re-cut at -2 spaces",
+          expect_runnable="1/1 rows runnable")
+
+check_fix("--fix refuses a row whose OTHER defect survives the mechanical repair",
+          dict(_drifted, expect_fail="noSuchTestExistsAnywhere()"),
+          expect_text=["the mechanical part repairs", "still does not validate",
+                       "DOES NOT EXIST"],
+          expect_no_block=True)
+
+# #2703 review r3, and the fixture is the reason this needs its own case rather than a
+# comment. `"  }\n"` occurs 55 times in that file AND has exactly ONE offset (+10) at which
+# it matches exactly once. So an indentation repair reached from a MANY-match anchor would
+# report it as recoverable and re-cut the row onto one arbitrary closing brace — a
+# corrected row that validates cleanly and mutates a line nothing says it meant.
+check_fix("--fix refuses an ambiguous anchor rather than shifting it into a unique one",
+          dict(_validator_base, anchor="  }\n", replacement="  } // shifted\n",
+               expect_fail=_guard_name),
+          expect_text="matches 55 times, so it is AMBIGUOUS rather than moved",
+          expect_no_block=True)
+
+check_fix("--fix combines both repair classes on one row",
+          document={"suite_default": _validator_base["suite"],
+                    "rows": [dict(_drifted_no_suite, expect_fail="egOneNotInstalled")]},
+          expect_text="anchor re-cut at -2 spaces; must_fire: 'egOneNotInstalled' -> "
+                      "'egOneNotInstalled()'",
+          expect_runnable="1/1 rows runnable")
+
+check_fix("a malformed row is refused without stopping the rows behind it",
+          document={"rows": [dict(_validator_base, anchor=42, expect_fail=_guard_name),
+                             _drifted]},
+          expect_text=["row 1: NOT mechanically repairable — the row's anchor is not a string",
+                       "row 2: repairable — anchor re-cut at -2 spaces"],
+          expect_runnable="1/1 rows runnable")
 
 # #2672 review: `self_test_problems` accepted ANY `"--self-test"` constant that was not a bare
 # docstring statement, so a module constant, a help message or an unreachable branch made a

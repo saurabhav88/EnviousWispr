@@ -1361,6 +1361,39 @@ def line_start_occurrences(src, text):
     return total
 
 
+def indentation_offsets(src, anchor):
+    """Every non-zero indentation shift at which `anchor` matches EXACTLY ONCE in `src`.
+
+    The offset computation `indentation_hint` reports and `--fix` re-cuts a row at, in
+    one place. Two readers of one question is how they start disagreeing, and the
+    disagreement would be invisible: the sentence would name an offset the repair did
+    not use, or the repair would use one the sentence never named.
+    """
+    first = next((line for line in anchor.split("\n") if line.strip()), None)
+    if first is None:
+        return []
+    anchor_indent = len(first) - len(first.lstrip(" "))
+
+    candidates = {
+        (len(line) - len(line.lstrip(" "))) - anchor_indent
+        for line in src.split("\n")
+        if line.strip()
+    }
+    return [
+        delta
+        for delta in sorted(candidates)
+        if delta != 0
+        and (shifted := reindented(anchor, delta)) is not None
+        # BOTH counts, because an offset is only useful as advice if a row re-cut at
+        # it would RUN. A shifted text unique at a line start but repeated mid-line —
+        # duplicate bytes inside a comment or a string — passes the first count and is
+        # then refused as non-unique by the check above. Naming it points the reader at
+        # a number that cannot work, which is worse than naming none. Ref: #2529 r4.
+        and line_start_occurrences(src, shifted) == 1
+        and src.count(shifted) == 1
+    ]
+
+
 def indentation_hint(src, anchor):
     """A sentence naming the offsets at which this anchor matches exactly once, or ''.
 
@@ -1385,29 +1418,7 @@ def indentation_hint(src, anchor):
     shifted anchor, occurring exactly once, BEGINNING A LINE — is what decides.
     Ref: #2529 review r1 and r2.
     """
-    first = next((line for line in anchor.split("\n") if line.strip()), None)
-    if first is None:
-        return ""
-    anchor_indent = len(first) - len(first.lstrip(" "))
-
-    candidates = {
-        (len(line) - len(line.lstrip(" "))) - anchor_indent
-        for line in src.split("\n")
-        if line.strip()
-    }
-    offsets = [
-        delta
-        for delta in sorted(candidates)
-        if delta != 0
-        and (shifted := reindented(anchor, delta)) is not None
-        # BOTH counts, because an offset is only useful as advice if a row re-cut at
-        # it would RUN. A shifted text unique at a line start but repeated mid-line —
-        # duplicate bytes inside a comment or a string — passes the first count and is
-        # then refused as non-unique by the check above. Naming it points the reader at
-        # a number that cannot work, which is worse than naming none. Ref: #2529 r4.
-        and line_start_occurrences(src, shifted) == 1
-        and src.count(shifted) == 1
-    ]
+    offsets = indentation_offsets(src, anchor)
     if not offsets:
         return ""
     named = ", ".join(f"{delta:+d}" for delta in sorted(offsets))
