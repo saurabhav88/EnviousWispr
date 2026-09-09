@@ -324,6 +324,147 @@ def test_oracle(root):
     return names_by_suite
 
 
+def prefix_successor(name, known_names):
+    """The one full test name `name` is a prefix of, or None when that is not decidable.
+
+    Same population and the same rule `missing_test_problem` reports on, read here as a
+    VALUE rather than as a sentence. Refuses on two candidates: a repair that picks one
+    of several is a guess, which is the thing freezing a recipe exists to prevent.
+    """
+    if not name or name in known_names:
+        return None
+    near = [
+        candidate for candidate in known_names
+        if candidate and candidate != name and candidate.startswith(name)
+    ]
+    return near[0] if len(near) == 1 else None
+
+
+def repaired_row(row, index, default_suite, root, battery, names_by_suite):
+    """A corrected copy of an UNRUNNABLE row, or (None, why-not).
+
+    Two classes, and no others. Both are decidable from the checkout with no model of
+    what the recipe MEANT, which is the line this stops at:
+
+    - **The anchor only moved in indentation.** Exactly one offset makes it match
+      exactly once, and the replacement shifts with it. A formatter reflow or an
+      extract-to-another-file retires a row while the behaviour it binds is untouched,
+      and this is that case and only that case (#2529).
+    - **An expectation names a PREFIX of exactly one real test.** The full name is read
+      off the same oracle the refusal used.
+
+    **Never applied, never written back.** It returns a row for a human to file on a NEW
+    issue, because a frozen row is not edited in place — re-pointing one at what LOOKS
+    like its successor is a guess about what the recipe meant, and that judgement is the
+    author's rather than a script's (#2703 candidate 2).
+    """
+    if not isinstance(row, dict):
+        return None, "the row is not an object"
+
+    fixed = dict(row)
+    notes = []
+
+    anchor = row.get("anchor")
+    path = row.get("file")
+    # TYPE first, because a malformed row is exactly what the ordinary validator refuses
+    # cleanly and what this path must not turn into a crash. `source.count(42)` raises
+    # `TypeError` and takes every LATER row down with it, so one bad row would stop the
+    # whole recipe being reported (#2703 review, P2).
+    for field, value in (("anchor", anchor), ("file", path), ("replacement",
+                                                              row.get("replacement"))):
+        if value is not None and not isinstance(value, str):
+            return None, f"the row's {field} is not a string"
+    if anchor and path:
+        target = (root / path).resolve()
+        try:
+            inside = target.is_relative_to(root.resolve())
+        except (AttributeError, ValueError):
+            inside = str(target).startswith(str(root.resolve()))
+        if not inside:
+            return None, f"the row's file resolves outside the checkout: {path}"
+        if not target.is_file():
+            return None, f"the row's file no longer exists: {path}"
+        source = target.read_text(errors="replace")
+        # ZERO, not "anything but one", and the difference is the whole safety property.
+        #
+        # The runner refuses an anchor that matches once (fine), never (moved or gone) and
+        # MANY (ambiguous). Only the middle one is an indentation question. Re-cutting an
+        # AMBIGUOUS anchor does not repair it — it silently picks one of its matches: a
+        # `return false` at four spaces and again at eight matches twice, and shifting it
+        # to eight makes it "unique" at a statement nothing says the row meant. The
+        # corrected row would then validate and mutate the wrong line, which is the exact
+        # guess this whole flag exists to refuse (#2703 review r3).
+        #
+        # A count of one is left alone for a different reason: the runner would apply it,
+        # so it is not broken, and re-cutting it would rewrite a row that had nothing wrong.
+        occurrences = source.count(anchor)
+        if occurrences > 1:
+            return None, (
+                f"the anchor matches {occurrences} times, so it is AMBIGUOUS rather than "
+                "moved — which of them the row meant is the author's call, not a shift")
+        if occurrences == 0:
+            offsets = battery.indentation_offsets(source, anchor)
+            if len(offsets) != 1:
+                return None, (
+                    "the anchor is not recoverable by indentation alone — "
+                    + (f"{len(offsets)} offsets match" if offsets else "no offset matches")
+                    + "; what the row MEANT has to be decided before it is re-pointed")
+            delta = offsets[0]
+            shifted = battery.reindented(anchor, delta)
+            replacement = row.get("replacement")
+            # The replacement moves with the anchor or the pair stops describing one edit.
+            # `reindented` returns None when a dedent would eat a non-space character, and
+            # an empty replacement (a deletion) has nothing to shift.
+            if replacement:
+                shifted_replacement = battery.reindented(replacement, delta)
+                if shifted_replacement is None:
+                    return None, (
+                        f"the anchor re-cuts at {delta:+d} spaces but the replacement "
+                        "cannot be shifted with it without changing its text")
+                fixed["replacement"] = shifted_replacement
+            fixed["anchor"] = shifted
+            notes.append(f"anchor re-cut at {delta:+d} spaces")
+
+    # RE-READ the row before touching expectations, ALWAYS.
+    #
+    # `load_recipes` refuses at its FIRST defect and returns nothing, so every field it
+    # would have resolved — the suite, `_must_fire`, `_must_not_fire`, the mode — is
+    # absent for exactly the rows that have something to repair. Two review rounds each
+    # found a different member of that one class: the corrected row lost its
+    # `suite_default`, then a row with drift AND a resolvable prefix had the prefix
+    # skipped. Reading the caller's post-refusal `normalized` at all is the defect, so it
+    # is not read here — this recomputes from the row as it stands, whether or not the
+    # anchor was touched, and there is no member left to find (#2703 review r1 and r2).
+    _, normalized, suite, _ = row_problems(
+        fixed, index, default_suite, root, battery, names_by_suite)
+    suite_names = names_by_suite.get(suite, {})
+
+    for field, key in (("_must_fire", "must_fire"), ("_must_not_fire", "must_not_fire")):
+        names = normalized.get(field) or []
+        if not names:
+            continue
+        rewritten = []
+        changed = False
+        for name in names:
+            successor = prefix_successor(name, suite_names)
+            rewritten.append(successor or name)
+            if successor:
+                changed = True
+                notes.append(f"{key}: {name!r} -> {successor!r}")
+        if changed:
+            # `expect_fail` is the single-guard spelling of a one-element `must_fire`, so
+            # a row that arrived in that form goes back out in it rather than silently
+            # changing which contract it declares.
+            if key == "must_fire" and "expect_fail" in fixed:
+                fixed["expect_fail"] = rewritten[0]
+            else:
+                fixed[key] = rewritten
+
+    if not notes:
+        return None, "no mechanical class applies"
+    return fixed, "; ".join(notes)
+
+
 def missing_test_problem(name, known_names):
     if name in known_names:
         if len(known_names[name]) > 1:
@@ -436,12 +577,86 @@ def self_test_problems(battery, suite, root):
     return []
 
 
-def validate(recipes, root, label):
+def row_problems(row, index, default_suite, root, battery, names_by_suite):
+    """Every problem with ONE row, plus what the runner made of it.
+
+    Extracted so `--fix` can ask the SAME question of a corrected row that this asks of
+    the filed one. A repair judged only by the defect it targeted prints a row that
+    parses and that the runner still refuses — a drifted anchor whose expectation ALSO
+    names a missing test comes back "repairable" and fails on the very next run
+    (#2703 review, P2).
+    """
+    problems = []
+    normalized = {}
+    # One row per call, so the runner's first refusal cannot hide the rows behind
+    # it. The cost is that the runner numbers every row as `row 1`; printed after
+    # this loop's own `row N:` label that read as an anchor index (#2525). Only the
+    # leading prefix is renumbered — a `row 1` inside a quoted path is left alone.
+    single_row = {"suite_default": default_suite, "rows": [row]}
+    try:
+        normalized = battery.load_recipes(
+            None, root, raw=json.dumps(single_row))[0]
+    except battery.Refusal as error:
+        problems.append(re.sub(
+            r"^((?:human )?row )1\b", rf"\g<1>{index}", str(error)))
+
+    suite = normalized.get("suite")
+    suite_names = names_by_suite.get(suite, {})
+    for name in normalized.get("_must_fire", []) + normalized.get("_must_not_fire", []):
+        problem = missing_test_problem(name, suite_names)
+        if problem:
+            problems.append(problem)
+
+    fire_ids = set().union(*(
+        suite_names.get(name, set()) for name in normalized.get("_must_fire", [])
+    ))
+    silent_ids = set().union(*(
+        suite_names.get(name, set()) for name in normalized.get("_must_not_fire", [])
+    ))
+    alias_overlap = sorted(fire_ids & silent_ids)
+    if alias_overlap:
+        problems.append(
+            "must_fire and must_not_fire resolve to the same test(s): "
+            + ", ".join(alias_overlap))
+    for field in ("_must_fire", "_must_not_fire"):
+        aliases_by_test = {}
+        for name in normalized.get(field, []):
+            for test_id in suite_names.get(name, set()):
+                aliases_by_test.setdefault(test_id, []).append(name)
+        duplicates = {
+            test_id: aliases for test_id, aliases in aliases_by_test.items()
+            if len(aliases) > 1
+        }
+        if duplicates:
+            problems.append(
+                f"{field.removeprefix('_')} names the same test through multiple aliases: "
+                + "; ".join(
+                    f"{test_id}: {', '.join(aliases)}"
+                    for test_id, aliases in sorted(duplicates.items())
+                ))
+
+    # A `RuntimeUAT/<module>` suite is a Python self-test, not a Swift suite (#2570):
+    # the oracle cannot know it, so it is proved against the checkout instead. The
+    # runner has already refused it on a mechanical row and with test names attached.
+    command = battery.self_test_command(suite, root)
+    if command:
+        if suite in names_by_suite:
+            problems.append(
+                f"suite {suite} is both a Swift suite and a self-test target — ambiguous")
+        problems.extend(self_test_problems(battery, suite, root))
+    elif suite and suite not in names_by_suite:
+        problems.append(f"suite {suite} NOT FOUND in Tests/")
+    return problems, normalized, suite, command
+
+
+def validate(recipes, root, label, fix=False):
     names_by_suite = test_oracle(root)
     battery = load_battery()
     root = root.resolve()
     bad = 0
     total = 0
+    repairs = []
+    refusals = []
 
     for document in recipes:
         if not isinstance(document, dict) or not isinstance(document.get("rows"), list):
@@ -453,72 +668,45 @@ def validate(recipes, root, label):
         default_suite = document.get("suite_default")
         for index, row in enumerate(document["rows"], 1):
             total += 1
-            problems = []
-            normalized = {}
-            # One row per call, so the runner's first refusal cannot hide the rows behind
-            # it. The cost is that the runner numbers every row as `row 1`; printed after
-            # this loop's own `row N:` label that read as an anchor index (#2525). Only the
-            # leading prefix is renumbered — a `row 1` inside a quoted path is left alone.
-            single_row = {"suite_default": default_suite, "rows": [row]}
-            try:
-                normalized = battery.load_recipes(
-                    None, root, raw=json.dumps(single_row))[0]
-            except battery.Refusal as error:
-                problems.append(re.sub(
-                    r"^((?:human )?row )1\b", rf"\g<1>{index}", str(error)))
-
-            suite = normalized.get("suite")
+            problems, normalized, suite, command = row_problems(
+                row, index, default_suite, root, battery, names_by_suite)
             suite_names = names_by_suite.get(suite, {})
-            for name in normalized.get("_must_fire", []) + normalized.get("_must_not_fire", []):
-                problem = missing_test_problem(name, suite_names)
-                if problem:
-                    problems.append(problem)
-
-            fire_ids = set().union(*(
-                suite_names.get(name, set()) for name in normalized.get("_must_fire", [])
-            ))
-            silent_ids = set().union(*(
-                suite_names.get(name, set()) for name in normalized.get("_must_not_fire", [])
-            ))
-            alias_overlap = sorted(fire_ids & silent_ids)
-            if alias_overlap:
-                problems.append(
-                    "must_fire and must_not_fire resolve to the same test(s): "
-                    + ", ".join(alias_overlap))
-            for field in ("_must_fire", "_must_not_fire"):
-                aliases_by_test = {}
-                for name in normalized.get(field, []):
-                    for test_id in suite_names.get(name, set()):
-                        aliases_by_test.setdefault(test_id, []).append(name)
-                duplicates = {
-                    test_id: aliases for test_id, aliases in aliases_by_test.items()
-                    if len(aliases) > 1
-                }
-                if duplicates:
-                    problems.append(
-                        f"{field.removeprefix('_')} names the same test through multiple aliases: "
-                        + "; ".join(
-                            f"{test_id}: {', '.join(aliases)}"
-                            for test_id, aliases in sorted(duplicates.items())
-                        ))
-
-            # A `RuntimeUAT/<module>` suite is a Python self-test, not a Swift suite (#2570):
-            # the oracle cannot know it, so it is proved against the checkout instead. The
-            # runner has already refused it on a mechanical row and with test names attached.
-            command = battery.self_test_command(suite, root)
-            if command:
-                if suite in names_by_suite:
-                    problems.append(
-                        f"suite {suite} is both a Swift suite and a self-test target — ambiguous")
-                problems.extend(self_test_problems(battery, suite, root))
-            elif suite and suite not in names_by_suite:
-                problems.append(f"suite {suite} NOT FOUND in Tests/")
 
             if problems:
                 bad += 1
                 print(f"row {index}: UNRUNNABLE — {'; '.join(problems)}")
                 row_label = row.get("label", "(no label)") if isinstance(row, dict) else "(no label)"
                 print(f"        {str(row_label)[:90]}")
+                if fix:
+                    corrected, why = repaired_row(
+                        row, index, default_suite, root, battery, names_by_suite)
+                    if corrected is None:
+                        refusals.append((index, why))
+                    else:
+                        corrected["label"] = (
+                            f"re-cut from row {index} of {label}: "
+                            f"{str(row.get('label', '')).strip()}")
+                        # A corrected row carries its filter EXPLICITLY, because the new
+                        # issue it gets filed on has no `suite_default`. Prefer what the
+                        # runner resolved; fall back to the row's own field and then to
+                        # the document's default, both of which survive a refusal that
+                        # leaves `normalized` empty (#2703 review, P2).
+                        resolved_suite = (
+                            suite or row.get("suite") or default_suite)
+                        if resolved_suite:
+                            corrected["suite"] = resolved_suite
+                        # THE WHOLE CHECK, not the defect the repair aimed at. A row with
+                        # indentation drift AND a second problem would otherwise be
+                        # printed as repairable and refused on the very next run.
+                        remaining, _, _, _ = row_problems(
+                            corrected, index, default_suite, root, battery, names_by_suite)
+                        if remaining:
+                            refusals.append((
+                                index,
+                                "the mechanical part repairs (" + why + ") but the row "
+                                "still does not validate: " + "; ".join(remaining)))
+                        else:
+                            repairs.append((index, why, corrected))
             else:
                 status = "DEFERRED" if normalized.get("_mode") == "human" else "runnable"
                 run = f" — run: {command}" if command else ""
@@ -526,6 +714,22 @@ def validate(recipes, root, label):
 
     print(f"\n{label}: {total - bad}/{total} rows runnable"
           + (f", {bad} UNRUNNABLE" if bad else ""))
+
+    if fix:
+        print("\n--fix: mechanical repairs only. Nothing was written.")
+        for index, why in refusals:
+            print(f"  row {index}: NOT mechanically repairable — {why}")
+        for index, why, _ in repairs:
+            print(f"  row {index}: repairable — {why}")
+        if repairs:
+            print(
+                "\nFile these on a NEW issue; a frozen row is never edited in place.\n"
+                "```json")
+            print(json.dumps({"rows": [row for _, _, row in repairs]}, indent=2))
+            print("```")
+        elif bad:
+            print("\n  Nothing here is repairable without deciding what the row MEANT.")
+
     return 1 if bad else 0
 
 
@@ -535,6 +739,12 @@ def main(argv=None):
     source.add_argument("--issue", type=int)
     source.add_argument("--recipes", type=pathlib.Path)
     parser.add_argument("--checkout", type=pathlib.Path, default=pathlib.Path.cwd())
+    parser.add_argument(
+        "--fix", action="store_true",
+        help="also print corrected rows for the UNRUNNABLE ones whose repair is "
+             "mechanical — an anchor that only moved in indentation, or an expectation "
+             "naming a prefix of exactly one real test. Prints; never writes, and never "
+             "edits the issue: a frozen row is filed corrected on a NEW issue.")
     args = parser.parse_args(argv)
 
     try:
@@ -554,7 +764,7 @@ def main(argv=None):
         if not recipes:
             print(f"{label}: NO PARSEABLE RECIPE — nothing to validate")
             return 2
-        return validate(recipes, args.checkout, label)
+        return validate(recipes, args.checkout, label, fix=args.fix)
     except (OSError, json.JSONDecodeError, RuntimeError) as error:
         print(f"REFUSED — {error}", file=sys.stderr)
         return 2
