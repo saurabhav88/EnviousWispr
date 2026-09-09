@@ -168,7 +168,7 @@ package struct SeamCasingOracle: Sendable {
     ///
     /// Why a real blocking sleep rather than a fake: the defect under test is a
     /// consultation that does not return inside the deadline, and
-    /// `withOrderedDeadline` explicitly "cannot preempt a blocked thread". A
+    /// `withOffActorOrderedDeadline` explicitly "cannot preempt a blocked thread". A
     /// cooperative `await` would be preemptible and would therefore exercise a
     /// different path than the one that latches in the field.
     ///

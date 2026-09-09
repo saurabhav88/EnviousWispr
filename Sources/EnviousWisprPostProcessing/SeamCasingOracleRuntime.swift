@@ -12,14 +12,16 @@ import os
 /// The spelling dictionary is served by a separate process. An unbounded call
 /// to it sits on the paste path, so a hang there means a dictation never
 /// pastes — a heart-path failure. The caller bounds each decision with
-/// `withOrderedDeadline`; this type owns what happens around that.
+/// `withOffActorOrderedDeadline`; this type owns what happens around that.
 ///
 /// ## Why ONE lock is enough
 ///
-/// `withOrderedDeadline` runs `onTimeout` to completion *before* resuming the
-/// caller, and `onTimeout` is `@MainActor`. So a lock held across a stalled
-/// system call would block the main actor and hang paste anyway, defeating the
-/// deadline. This avoids that by eliminating concurrency rather than managing
+/// `withOffActorOrderedDeadline` runs `onTimeout` to completion *before* resuming
+/// the caller. So a lock held across a stalled system call would block whatever
+/// runs the handler and stall paste anyway, defeating the deadline. Until #1946
+/// this sentence added "and `onTimeout` is `@MainActor`", which is why the block
+/// was described in main-actor terms; the handler is nonisolated now and the
+/// hazard is unchanged. This avoids that by eliminating concurrency rather than managing
 /// it, which also removes any dependence on `NSSpellChecker`'s undocumented
 /// thread safety:
 ///
@@ -515,7 +517,7 @@ package enum SeamCasingOracleRuntime {
 
   /// Latch permanently after a live decision exceeded its deadline.
   ///
-  /// Synchronous and non-suspending by contract: `withOrderedDeadline` requires
+  /// Synchronous and non-suspending by contract: `withOffActorOrderedDeadline` requires
   /// `onTimeout` to complete before the caller resumes, so anything that could
   /// wait here would recreate the hang the deadline exists to prevent.
   package static func disableAfterTimeout() {
@@ -531,7 +533,7 @@ package enum SeamCasingOracleRuntime {
 
   /// Mark unavailable ONLY while still ready.
   ///
-  /// `withOrderedDeadline.claim()` discards a late decision but cannot roll back
+  /// `withOffActorOrderedDeadline.claim()` discards a late decision but cannot roll back
   /// side effects inside the operation. Without this guard, a stalled call that
   /// later found the identifier missing would write `.dictionaryUnavailable`
   /// over an already-installed `.oracleTimedOut` — it could not re-block paste,

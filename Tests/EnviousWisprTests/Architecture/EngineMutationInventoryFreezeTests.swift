@@ -773,7 +773,9 @@ import Testing
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "retryDecode",
-      text: "operation: { [adapter] in await adapter.retryDecode(inputSamples: retryInput) },",
+      // #1946 chunk 2 re-spelled the operation closure so it can stamp the
+      // decode's own return time. Same call, same session-scoped safety.
+      text: "let decoded = await adapter.retryDecode(inputSamples: retryInput)",
       classification: .structurallySafe),
     // Row 22 — "confirmed already safe, no code change" per this file's own
     // doc comment at the site.

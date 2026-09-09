@@ -506,7 +506,7 @@ import Testing
         // `startStreaming()` attempt a caller gave up waiting on — see
         // `ASRManager.cancelInFlightStreamingStart()` / `ASRManagerProxy`'s
         // no-op default (its own signal-watchdog already fully recovers).
-        // SYNCHRONOUS (round 5): must be callable from `withOrderedDeadline`'s
+        // SYNCHRONOUS (round 5): must be callable from `withMainActorOrderedDeadline`'s
         // non-async `onTimeout` for its ordering guarantee.
         MemberSignature(
           condition: nil,
