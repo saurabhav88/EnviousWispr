@@ -2482,6 +2482,88 @@ else:
     print("  ok  the filing-time oracle applies a declaration's gate to an extension in "
           "another file")
 ran += 1
+
+# #2688: the cross-file propagation above must NOT reach a file-private declaration. Two
+# files may each declare `private struct S`, and they are different types — Swift cannot
+# extend one from the other file. Keying both as `Target/S` and ORing them made a gated
+# one suppress an ungated one hosting a live @Test, so a VALID recipe was reported
+# UNRUNNABLE and the filer was sent to repair a recipe that was already right.
+#
+# Two-way, and the pair is the point: the same shape WITHOUT `private` must still gate
+# across files, or the fix would have bought this by disabling #2669's propagation.
+_private_gated = """
+import Testing
+
+@Suite(.disabled("file-private gate")) private struct PrivateNameCollision {
+  @Test("a gated test in the gated file") func gatedSibling() {}
+}
+"""
+_private_ungated = """
+import Testing
+
+private struct PrivateNameCollision {
+  @Test("a live test under a same-named private type") func liveUnderPrivateName() {}
+}
+"""
+_shared_gated = """
+import Testing
+
+@Suite(.disabled("shared gate")) struct SharedNameCollision {
+  @Test("a gated test in the gated file") func gatedSharedSibling() {}
+}
+"""
+_shared_ungated = """
+import Testing
+
+extension SharedNameCollision {
+  @Test("a test the shared gate must still reach") func reachedAcrossFiles() {}
+}
+"""
+with tempfile.TemporaryDirectory() as _ptd:
+    _proot = Path(_ptd)
+    shutil.copytree(BATTERY.parent.parent / "Tests", _proot / "Tests")
+    _pdir = _proot / "Tests" / "EnviousWisprTests"
+    (_pdir / "PrivateGateDeclaration.swift").write_text(_private_gated)
+    (_pdir / "PrivateGateLiveTest.swift").write_text(_private_ungated)
+    (_pdir / "SharedGateDeclaration.swift").write_text(_shared_gated)
+    (_pdir / "SharedGateExtension.swift").write_text(_shared_ungated)
+    _pnames = validator.test_oracle(_proot)
+_plive = _pnames.get("EnviousWisprTests/PrivateNameCollision", {})
+_pcanonical = "PrivateNameCollision/liveUnderPrivateName()"
+if _plive.get("liveUnderPrivateName()") != {_pcanonical}:
+    failures.append(
+        "a file-private gate does not reach a same-named private type in another file — "
+        f"the live test was lost: got {_plive!r}")
+else:
+    print("  ok  a file-private gate does not reach a same-named private type in another "
+          "file")
+ran += 1
+if "gatedSibling()" in _plive or any("gatedSibling()" in names for names in _pnames.values()):
+    failures.append(
+        "a file-private gate still gates the tests written beside it — it did not")
+else:
+    print("  ok  a file-private gate still gates the tests written beside it")
+ran += 1
+_pshared = sorted(key for key in _pnames if "SharedNameCollision" in key)
+if _pshared or any("reachedAcrossFiles()" in names for names in _pnames.values()):
+    failures.append(
+        "scoping file-private gates left a NON-private gate reaching another file — "
+        f"it no longer does: found {_pshared!r}")
+else:
+    print("  ok  a non-private gate still reaches another file")
+ran += 1
+for _modifiers, _scoped in (
+    ("private ", True), ("fileprivate ", True), ("private final ", True),
+    ("@MainActor private ", True), ("", False), ("public ", False),
+    ("package ", False), ("private(set) ", False),
+):
+    if validator.SuiteGateMap.file_scoped(_modifiers) != _scoped:
+        failures.append(
+            f"file_scoped reads {_modifiers!r} as file-scoped={not _scoped}, wanted {_scoped}")
+        break
+else:
+    print("  ok  file_scoped reads the access modifiers that make a declaration file-scoped")
+ran += 1
 result = subprocess.run(
     [sys.executable, str(VALIDATOR), "--issue", "0",
      "--checkout", str(BATTERY.parent.parent)],
