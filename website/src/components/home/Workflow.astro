@@ -17,14 +17,7 @@ import Icon from './Icon.astro';
       transcription and your choice of local or cloud AI polish.
     </p>
   </div>
-  <p class="mobile-swipe-hint">
-    Swipe through the five steps <span aria-hidden="true">↔</span>
-  </p><ol
-    class="hood-steps swipe-row"
-    id="hood-steps"
-    tabindex="0"
-    aria-label="Five workflow steps"
-  >
+  <ol class="hood-steps" id="hood-steps" aria-label="Five workflow steps">
     {
       hood.steps.map((step, i) => (
         <li class:list={['hood-step', 'is-' + step.where]}>

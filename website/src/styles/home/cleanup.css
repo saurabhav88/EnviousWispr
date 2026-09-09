@@ -861,7 +861,8 @@ main
     #story,
     #download
   )
-  .eyebrow {
+  .eyebrow,
+#apps .eyebrow {
   align-items: center;
   color: var(--body);
   display: flex;
@@ -886,7 +887,8 @@ main
     #story,
     #download
   )
-  .eyebrow:after {
+  .eyebrow:after,
+#apps .eyebrow:after {
   background: var(--line);
   content: '';
   display: block;
