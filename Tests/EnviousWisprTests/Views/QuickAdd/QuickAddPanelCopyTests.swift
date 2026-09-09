@@ -150,14 +150,26 @@ struct QuickAddPanelCopyTests {
     #expect(already.lowercased().contains("nothing to add"))
   }
 
+  @Test("The empty-list header names the word and offers no verb it cannot honour")
+  func noMatchesHeaderOffersNothing() {
+    // #2477: with no rows, `Add "x" to` is a fragment over nothing and `pick one` names an action
+    // with nothing to pick. `Create a new word` sits directly below and is the only offer the panel
+    // can honour, so the header says what was read and stops.
+    let none = QuickAddPanelCopy.groupHeader(.noMatches, heard: "keybinds")
+    #expect(none.contains("keybinds"), "the only on-screen witness that the right text was read")
+    #expect(!none.contains("Add"), "there is no row to add to")
+    #expect(!none.lowercased().contains("pick"), "there is nothing to pick")
+  }
+
   @Test("Searching keeps the confident sentence, so the header cannot change mid-keystroke")
   func searchingKeepsTheVerb() {
-    // Four states, three distinct sentences, and the collision is deliberate: a header that also
-    // carries state must not rewrite itself under someone who is typing.
+    // Five states, four distinct sentences, and the one collision is deliberate: a header that also
+    // carries state must not rewrite itself under someone who is typing. `noMatches` is the fifth
+    // sentence and shares with nothing (#2477).
     let all = QuickAddPanelCopy.GroupHeaderState.allCases.map {
       QuickAddPanelCopy.groupHeader($0, heard: "codecs")
     }
-    #expect(Set(all).count == 3)
+    #expect(Set(all).count == 4)
     #expect(all.allSatisfy { !$0.isEmpty })
     #expect(
       QuickAddPanelCopy.groupHeader(.searching, heard: "codecs")
