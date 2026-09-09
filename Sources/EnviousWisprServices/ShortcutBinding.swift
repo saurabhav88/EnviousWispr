@@ -230,16 +230,33 @@ package enum ShortcutMatcher {
     // are runtime state a menu label does not have, so calling it means inventing values to get an
     // answer. And it compares bindings with raw `==`, which is the very defect three review rounds
     // found in this label — so delegating to it would reintroduce the bug in the name of reuse.
-    // That raw comparison looks like a real defect in the REGISTRATION path too (Quick Add would
-    // not be unregistered for a cancel chord differing only in a dropped modifier); it is reported
-    // separately rather than fixed from here, because it is the heart path.
-    guard case .keyboard(let qk, let qm) = quickAdd else { return true }
-    let mine = qm.intersection(carbonEffectiveModifiers)
-    for other in [record, cancel] {
-      guard case .keyboard(let ok, let om) = other else { continue }
-      if qk == ok, mine == om.intersection(carbonEffectiveModifiers) { return false }
-    }
+    // That raw comparison WAS a real defect in the REGISTRATION path too — Quick Add was not
+    // unregistered for a cancel chord differing only in a dropped modifier. Fixed in #2432:
+    // `quickAddMayHoldItsChord` now asks `carbonEquivalent` below, so both paths compare the
+    // way Carbon compares and there is one spelling of the question rather than two.
+    for other in [record, cancel] where carbonEquivalent(quickAdd, other) { return false }
     return true
+  }
+
+  /// Do these two bindings reach Carbon as ONE chord?
+  ///
+  /// Same key code, and the same modifiers AFTER dropping everything
+  /// `RegisterEventHotKey` never sees. Two bindings differing only in Caps Lock, Function or
+  /// Numeric Pad are one chord to the system, so `==` on the raw values answers a question
+  /// nobody asked — and answers it wrongly in the direction that lets two roles both claim
+  /// the same registration.
+  ///
+  /// **One owner, because there were two.** This comparison was written inline here and
+  /// asked again with raw `==` in `HotkeyService.quickAddMayHoldItsChord`, where the second
+  /// spelling was a live defect on the dispatch path (#2432). Two spellings of one question
+  /// is how the record and cancel paths drifted apart in the first place.
+  package static func carbonEquivalent(_ one: ShortcutBinding, _ other: ShortcutBinding) -> Bool {
+    guard case .keyboard(let oneKey, let oneModifiers) = one,
+      case .keyboard(let otherKey, let otherModifiers) = other
+    else { return false }
+    return oneKey == otherKey
+      && oneModifiers.intersection(carbonEffectiveModifiers)
+        == otherModifiers.intersection(carbonEffectiveModifiers)
   }
 
   package static func role(

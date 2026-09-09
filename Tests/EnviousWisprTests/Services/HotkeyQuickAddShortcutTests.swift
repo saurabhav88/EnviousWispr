@@ -396,6 +396,62 @@ struct HotkeyQuickAddShortcutTests {
       ))
   }
 
+  /// #2432. `RegisterEventHotKey` never sees Caps Lock, Function or Numeric Pad, so two
+  /// bindings differing only there are ONE chord to the system. This function decides whether
+  /// Quick Add KEEPS its registration, and it asked with raw `==`, which called them different.
+  ///
+  /// The consequence is the one `cancelWinsASharedChord` above describes, reached through a
+  /// modifier Carbon discards: Quick Add registers at start and holds the chord, cancel arrives
+  /// second during a recording and is refused, and the user's cancel key opens the Quick Add
+  /// panel while the recording keeps running.
+  ///
+  /// Caps Lock is the reachable spelling — it is a LATCH, so a user who left it on while
+  /// recording one of the two shortcuts stores it in that binding and not the other.
+  @Test("A chord cancel holds is cancel's even when the two differ only in a modifier Carbon drops")
+  func carbonEquivalentChordsContend() {
+    let quickAdd = ShortcutBinding.keyboard(
+      keyCode: 13, modifiers: [.control, .shift, .capsLock])
+    let cancel = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
+
+    #expect(
+      !HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: true),
+      "Carbon registers one chord for both, so Quick Add must give it up while cancel is armed")
+    // The paired accepted case, so a rule that refused whenever cancel was armed cannot pass.
+    #expect(
+      HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: false))
+  }
+
+  /// The other direction, and the reason the comparison is an INTERSECTION rather than a mask
+  /// applied to one side: a modifier Carbon DOES keep still makes two different chords.
+  @Test("A modifier Carbon keeps still separates two chords")
+  func carbonKeptModifiersStillSeparate() {
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
+    let cancel = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control])
+
+    #expect(
+      HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: true))
+  }
+
+  /// The comparison has ONE owner now, and this is what says so: the same pair the dispatch
+  /// path refuses is the pair `ShortcutMatcher` calls equivalent. Two spellings of this
+  /// question is how the record and cancel paths drifted apart in the first place.
+  @Test("the dispatch path and the matcher agree on what one Carbon chord means")
+  func oneOwnerForCarbonEquality() {
+    let withLatch = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift, .capsLock])
+    let without = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
+    let differentKey = ShortcutBinding.keyboard(keyCode: 14, modifiers: [.control, .shift])
+
+    #expect(ShortcutMatcher.carbonEquivalent(withLatch, without))
+    #expect(ShortcutMatcher.carbonEquivalent(withLatch, differentKey) == false)
+    #expect(withLatch != without, "raw equality still disagrees, which is the whole point")
+  }
+
   @Test("A stopped or suspended service holds no Quick Add chord, collision or not")
   func stoppedOrSuspendedHoldsNothing() {
     let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
