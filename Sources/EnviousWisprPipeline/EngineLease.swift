@@ -83,6 +83,7 @@ package final class EngineLease {
     if let held { return .refused(by: held.holder) }
     let token = Token(holder: holder)
     held = token
+    admissionEpoch += 1
     return .granted(token)
   }
 
@@ -104,4 +105,18 @@ package final class EngineLease {
   /// check that reports failure because something else is legitimately using
   /// the engine is worse than no health check.
   package var isBusy: Bool { held != nil }
+
+  /// How many claims this lease has GRANTED, ever.
+  ///
+  /// **An interval question needs an interval instrument.** "Is the engine busy"
+  /// answers about an instant, and the health probe needs to know whether
+  /// anything used the engine WHILE its request was in flight — a workload that
+  /// claims and releases inside that window leaves both a before and an after
+  /// sample reading false, while the probe queued behind it the whole time and
+  /// came back slow. Two rounds of review each moved a sample; the third
+  /// replaced the instrument.
+  ///
+  /// Monotonic, so a reader compares two readings and never interprets the
+  /// value. Wrapping is not a concern at one increment per workload.
+  package private(set) var admissionEpoch = 0
 }

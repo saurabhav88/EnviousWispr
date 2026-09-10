@@ -162,4 +162,67 @@ struct EngineLeaseTests {
     #expect(claimed?.holder == holder)
     #expect(lease.currentHolder == holder)
   }
+
+  // MARK: - Counting visits, not sampling states
+
+  /// **The instrument a health probe needs, and the reason it is a COUNTER.**
+  ///
+  /// "Is the engine busy" answers about an instant. A probe needs to know
+  /// whether anything used the engine while its request was in flight, and a
+  /// workload that claims and releases inside that window — a one-part re-polish
+  /// does exactly that — leaves a before sample and an after sample both reading
+  /// false while the probe queued behind it the whole time. Two rounds of review
+  /// each moved a sample; this replaced the instrument.
+  ///
+  /// **The falsification condition, published with the claim:** a further finding
+  /// of the shape "the probe published a verdict measured under contention" means
+  /// the epoch is the wrong instrument, not that it needs a third sample.
+  @Test("a claim taken and released between two readings still moves the counter")
+  func theEpochCountsAVisitTooBriefToSample() {
+    let lease = EngineLease()
+
+    let before = lease.admissionEpoch
+    #expect(!lease.isBusy, "the fixture did not start idle")
+
+    // The whole visit, between the two samples a probe would take.
+    guard case .granted(let token) = lease.admit(.fileImport) else {
+      Issue.record("the lease refused an idle claim")
+      return
+    }
+    lease.release(token)
+
+    #expect(!lease.isBusy, "both samples a probe takes read idle, which is the point")
+    #expect(
+      lease.admissionEpoch != before,
+      "a workload came and went between the samples and the counter did not notice")
+  }
+
+  /// The other direction, so a counter that only ever increased would fail too:
+  /// nothing happening must leave it alone.
+  @Test("a quiet interval does not move the counter")
+  func theEpochIsStillWhenNothingHappens() {
+    let lease = EngineLease()
+    let before = lease.admissionEpoch
+    #expect(lease.admissionEpoch == before)
+  }
+
+  /// A REFUSED claim is not a visit: the workload never reached the engine.
+  @Test("a refused claim does not move the counter")
+  func aRefusalIsNotAVisit() {
+    let lease = EngineLease()
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("the lease refused an idle claim")
+      return
+    }
+    let afterFirst = lease.admissionEpoch
+
+    guard case .refused = lease.admit(.fileImport) else {
+      Issue.record("the lease admitted two workloads")
+      return
+    }
+
+    #expect(
+      lease.admissionEpoch == afterFirst,
+      "a refusal counted as a visit, so a probe would discard a clean verdict")
+  }
 }

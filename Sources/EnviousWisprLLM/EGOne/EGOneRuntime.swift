@@ -149,6 +149,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// health check. The engine still starts; only the verdict is skipped, and the
   /// next activation takes one.
   public var isSharedEngineBusy: (@MainActor () -> Bool)?
+
+  /// How many workloads the shared lease has admitted, ever. Read before and
+  /// after a health probe: any change means something occupied the one inference
+  /// slot while the probe was in flight, whatever the instantaneous busy flag
+  /// said at either end. See `EngineLease.admissionEpoch`.
+  public var sharedEngineAdmissionEpoch: (@MainActor () -> Int)?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -559,24 +565,25 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       guard let family = manifest.promptFamily else { return }
       // The engine is up either way; the QUESTION is what is skipped.
       guard self.isSharedEngineBusy?() != true else { return }
+      // **The instrument measures the INTERVAL, not two instants.** Sampling
+      // "is it busy" before and after both read false for a workload that
+      // claimed and released inside the probe — a one-part re-polish does
+      // exactly that — while the probe queued behind it and came back slow. Two
+      // rounds of review each moved a sample; this reads a counter that cannot
+      // miss a visit however brief. Found by cloud review.
+      let epochBefore = self.sharedEngineAdmissionEpoch?()
       let result = await self.server.probeHealth(
         self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
-      // **Asked AGAIN, after the request.** The check above is a check-then-act:
-      // a workload can claim the lease while `probeHealth` is suspended, and the
-      // probe then queues behind a passage for seconds and comes back
-      // `probe_slow` or `probe_failed` for a healthy engine. Found by cloud
-      // review.
-      //
-      // The verdict is DISCARDED rather than the slot being reserved,
-      // deliberately. Taking the claim would be the atomic answer to a question
-      // nobody is asking: exclusivity is not wanted here, because a probe
-      // holding it would refuse a user's record press for the length of a health
-      // check. What this exists to prevent is publishing a verdict measured
-      // under contention, and dropping it does exactly that. The next
-      // activation takes a fresh one.
+      // **The verdict is DISCARDED rather than the slot reserved**, deliberately.
+      // Taking the claim would be the atomic answer to a question nobody is
+      // asking: exclusivity is not wanted here, because a probe holding it would
+      // refuse a user's record press for the length of a health check. What this
+      // exists to prevent is publishing a verdict measured under contention, and
+      // dropping it does that. The next activation takes a fresh one.
       guard self.isSharedEngineBusy?() != true else { return }
+      guard self.sharedEngineAdmissionEpoch?() == epochBefore else { return }
       if case .ready = self.serverState { self.health = result }
     }
   }

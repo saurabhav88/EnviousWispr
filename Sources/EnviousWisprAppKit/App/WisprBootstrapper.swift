@@ -1354,6 +1354,12 @@ package final class WisprBootstrapper {
     // wired here rather than deferred again. Codex confirming round.
     egOneRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
     s1MiniRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
+    egOneRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
+      engineLease?.admissionEpoch ?? 0
+    }
+    s1MiniRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
+      engineLease?.admissionEpoch ?? 0
+    }
 
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
