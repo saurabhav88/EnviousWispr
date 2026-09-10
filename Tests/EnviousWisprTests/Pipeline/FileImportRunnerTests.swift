@@ -90,4 +90,38 @@ struct FileImportRunnerTests {
     #expect(outcome.displayText == "The polished sentence.")
     #expect(!outcome.isUnpolished)
   }
+
+  /// **A step that was never asked to run did not fail.**
+  ///
+  /// With the user's polisher set to None, every part comes back with no
+  /// polished text — the same shape as a part whose polisher was asked and could
+  /// not answer. One field carried both meanings, so a document the user
+  /// deliberately chose not to have polished was marked, passage by passage,
+  /// "This passage could not be cleaned up": the app accusing itself of failing
+  /// at something nobody asked for. Found by Codex.
+  ///
+  /// The deterministic cleanup DID run and DID succeed, which is why the text is
+  /// still worth showing without a warning over it.
+  @Test("a part nobody asked to polish is not reported as a failure")
+  func skippedPolishIsNotAFailure() {
+    let skipped = FileImportRunner.PartOutcome(
+      text: "the deterministic floor", polishedText: nil, polishError: nil,
+      polishAttempted: false)
+
+    #expect(skipped.displayText == "the deterministic floor")
+    #expect(!skipped.isUnpolished, "a skipped polish was reported as a failed one")
+    #expect(!skipped.wasPolishAttempted)
+  }
+
+  /// The other direction, so a rule that called everything "skipped" would fail
+  /// too: an asked-for polish that did not answer IS a failure and stays marked.
+  @Test("a polish that was asked for and did not answer is still a failure")
+  func attemptedPolishThatFailedIsStillMarked() {
+    let failed = FileImportRunner.PartOutcome(
+      text: "the deterministic floor", polishedText: nil, polishError: "provider unavailable",
+      polishAttempted: true)
+
+    #expect(failed.isUnpolished, "a real polish failure stopped being marked")
+    #expect(failed.wasPolishAttempted)
+  }
 }

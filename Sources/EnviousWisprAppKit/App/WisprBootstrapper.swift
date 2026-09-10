@@ -1512,9 +1512,34 @@ package final class WisprBootstrapper {
     // owner) — a start that has committed but not yet frozen its config would
     // otherwise read as "no session" and let Remove delete under it. nil
     // either way refuses, fail safe.
-    setup.whisperKitSetup.isDictationInFlight = { [weak settingsSync, weak engineCoordinator] in
+    // #2648: the lease term is the THIRD clause and the general one.
+    //
+    // **Enumerated rather than patched, because this is the third seam an import
+    // needed.** Every place the composition root answers "may I mutate, unload
+    // or delete the shared engine or a polish runtime right now" is:
+    //
+    // | seam | who answers | import covered by |
+    // |---|---|---|
+    // | `EngineCoordinator` gate 5 / 6 / 6b | recording, recovery, import | `isFileImportRunning` → `isEngineHeld` |
+    // | `egOneRuntime.isPinnedInFlight` (+ S1-mini) | `pinnedLocalProvider()` | `importPinnedLocalProvider` |
+    // | `isBlockedByOtherPinnedSession` (+ S1-mini) | `pinnedLocalProvider()` | same |
+    // | `isSharedEngineBusy` (+ S1-mini) | `EngineLease.isBusy` | the lease itself |
+    // | `isOllamaModelPinnedInFlight` | the two session configs | `importPinnedOllamaModel` |
+    // | the ASR idle-unload timer | `cancelIdleTimer` / `noteTranscriptionComplete` | bracketed around the hold |
+    // | THIS one, WhisperKit Remove | dictation config + minting flag | the lease term below |
+    //
+    // Sweeping that list found exactly one gap, this seam: an All Languages
+    // import held the engine while Remove deleted the model out from under it,
+    // because the closure asked only about DICTATION. `isBusy` is the universal
+    // answer — every workload that can occupy the one inference slot takes the
+    // claim — and it stays true after Stop until the cancelled work has
+    // physically exited, which is the window the refusal most needs to cover.
+    // Found by Codex; the sweep is mine.
+    setup.whisperKitSetup.isDictationInFlight = {
+      [weak settingsSync, weak engineCoordinator, weak engineLease] in
       (settingsSync?.isWhisperKitDictationInFlight() ?? true)
         || (engineCoordinator?.isMintingWhisperKitSession ?? true)
+        || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()
 

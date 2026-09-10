@@ -33,20 +33,37 @@ public final class FileImportRunner {
     public let text: String
     public let polishedText: String?
     public let polishError: String?
+    /// Whether a polisher was asked for this part. Defaults to true so every
+    /// existing construction keeps meaning what it meant.
+    private let polishAttempted: Bool
 
-    public init(text: String, polishedText: String?, polishError: String?) {
+    public init(
+      text: String, polishedText: String?, polishError: String?, polishAttempted: Bool = true
+    ) {
       self.text = text
       self.polishedText = polishedText
       self.polishError = polishError
+      self.polishAttempted = polishAttempted
     }
 
     /// What the document shows for this part: polished when there is one, the
     /// deterministic floor otherwise.
     public var displayText: String { polishedText ?? text }
 
-    /// Whether this part is showing raw text because its polish did not land.
-    /// The UI marks these rather than hiding them.
-    public var isUnpolished: Bool { polishedText == nil }
+    /// Whether this part is showing raw text because its polish FAILED.
+    ///
+    /// **Failure and bypass are different things and must not share a field.**
+    /// `polishedText == nil` is true both when a polisher tried and could not,
+    /// and when the user chose no polisher at all — and the notice this drives
+    /// says "could not be cleaned up", which over a deliberately-unpolished
+    /// document accuses the app of failing at something nobody asked it to do.
+    /// A bypass is not a failure: downstream must treat it as "the step never
+    /// happened", never as "the step went wrong". Found by Codex.
+    public var isUnpolished: Bool { polishedText == nil && wasPolishAttempted }
+
+    /// Whether a polisher was asked at all. False when the frozen configuration
+    /// names no polisher, which is a setting, not an outcome.
+    public var wasPolishAttempted: Bool { polishAttempted }
   }
 
   private let keychainManager: KeychainManager
@@ -136,7 +153,13 @@ public final class FileImportRunner {
     let context = result.context
     let polished = (context.polishedText?.isEmpty ?? true) ? nil : context.polishedText
     return PartOutcome(
-      text: context.text, polishedText: polished, polishError: result.polishError)
+      text: context.text, polishedText: polished, polishError: result.polishError,
+      // **Read from the frozen configuration, not from the outcome.** Whether a
+      // polisher was ASKED is a property of the run's settings; whether it
+      // ANSWERED is a property of this part. Deriving the first from the second
+      // is what let a deliberately-unpolished document accuse the app of
+      // failing.
+      polishAttempted: LLMProvider(rawValue: settings.llmProvider).map { $0 != .none } ?? false)
   }
 
   /// Builds this part's own step instances and applies the frozen settings.

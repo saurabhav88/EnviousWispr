@@ -709,6 +709,8 @@ struct TranscribeFileView: View {
             .lineSpacing(6)
             .foregroundStyle(Color.stTextBody)
             .textSelection(.enabled)
+          // Only a FAILED polish is marked. A document the user chose not to
+          // have polished is not a document with fourteen problems in it.
           if part.isUnpolished {
             Text("This passage could not be cleaned up. These are the raw words.")
               .font(.stHelper)
