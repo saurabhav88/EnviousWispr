@@ -15,9 +15,13 @@ import UniformTypeIdentifiers
 /// this page was the latter, taken from the plan's prose instead of the
 /// prototype, and the founder rejected it on sight.
 ///
-/// **The text is the interface.** On Working the transcript itself fills the
-/// page; on Done the document does. The splitting is never named: progress says
-/// "62%", never "part 3 of 14".
+/// **The text is the interface.** On Working the cleaned paragraphs fill the page as they
+/// land, above the QUEUE of raw pieces still waiting, and on Done the document does.
+///
+/// This used to say the splitting is never named. That rule shipped, and the founder
+/// rejected it against the prototype: "the clean up was supposed to show # of chunks and it
+/// processing each chunk, not pasting the finished polished work in real-time." The label
+/// now reads "Cleaning part 9 of 14 with EG-1" (#2772 finding 14).
 ///
 /// **The footer changes with the step**, because what is true changes: before a
 /// run it is where the audio stays, during a run it is that leaving is safe,
@@ -1072,7 +1076,10 @@ struct TranscribeFileView: View {
           .frame(minWidth: 38, alignment: .leading)
         HStack(spacing: 8) {
           Image(systemName: "list.bullet").foregroundStyle(Color.stTextSecondary)
-          Text(coordinator.phase)
+          // The part, the total and the engine, from the coordinator, which reads the
+          // FROZEN configuration. Before a split has happened there is no part to name and
+          // this falls back to the phase ("Reading the file", "Dividing it up to clean").
+          Text(coordinator.cleaningLabel.isEmpty ? coordinator.phase : coordinator.cleaningLabel)
         }
         Spacer(minLength: 12)
         Text("\(coordinator.wordCount) words").foregroundStyle(Color.stTextSecondary)
@@ -1081,7 +1088,56 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
-    liveTranscript
+    // Finished parts, then what is still waiting. NO raw-document fallback here: it renders
+    // the WHOLE recording, so before the first part landed the highlighted current row
+    // started below the entire transcript and the user read their meeting twice. My own fix
+    // narrowed the condition; Codex's deletes the fallback from this step instead, which
+    // also covers a "Show original words" selection surviving into a re-polish.
+    if !coordinator.parts.isEmpty {
+      liveTranscript
+    }
+    if case .polishing = coordinator.state {
+      cleaningQueue
+    }
+  }
+
+  /// The pieces still waiting, one row each, in order.
+  ///
+  /// **The one being worked is outlined and bright; the ones behind it are dim.** The
+  /// prototype draws it this way because a progress bar alone cannot show a person how much
+  /// of THEIR recording is left, and the rows are the raw words so they can see which part
+  /// of the meeting is in flight. Founder finding 14.
+  ///
+  /// Which row is current is derived, never stored: the queue is fixed for a run and
+  /// `parts.count` only grows, so their difference is the answer and the two cannot
+  /// disagree.
+  @ViewBuilder
+  private var cleaningQueue: some View {
+    let working = coordinator.parts.count
+    let waiting = Array(coordinator.pendingPieces.enumerated()).filter { $0.offset >= working }
+    if !waiting.isEmpty {
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(waiting, id: \.offset) { row in
+          let isWorking = row.offset == working
+          Text(row.element)
+            .lineSpacing(5)
+            .foregroundStyle(isWorking ? Color.stTextBody : Color.stTextTertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+              RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+                .fill(isWorking ? Color.stAccentLight.opacity(0.35) : Color.stSectionBg))
+            .overlay(
+              RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+                .strokeBorder(isWorking ? Color.stAccent : Color.stDivider))
+            .accessibilityLabel(
+              isWorking
+                ? "Cleaning this part now. \(row.element)"
+                : "Waiting to be cleaned. \(row.element)")
+        }
+      }
+    }
   }
 
   /// The words themselves while the run goes: cleaned parts as they land, and
@@ -1089,7 +1145,11 @@ struct TranscribeFileView: View {
   /// never just a spinner.
   private var liveTranscript: some View {
     VStack(alignment: .leading, spacing: 14) {
-      ForEach(coordinator.isShowingOriginal ? [] : coordinator.parts) { part in
+      // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
+      // and honouring it there hid the finished parts during a re-polish.
+      ForEach(
+        coordinator.step == .done && coordinator.isShowingOriginal ? [] : coordinator.parts
+      ) { part in
         VStack(alignment: .leading, spacing: 4) {
           Text(part.text)
             .lineSpacing(6)
@@ -1104,7 +1164,10 @@ struct TranscribeFileView: View {
           }
         }
       }
-      if coordinator.isShowingOriginal || coordinator.parts.isEmpty,
+      // DONE only. This is the "Show original words" view and the empty-document floor, and
+      // both belong to the finished screen; on Working the queue shows the raw words.
+      if coordinator.step == .done,
+        coordinator.isShowingOriginal || coordinator.parts.isEmpty,
         !coordinator.rawTranscript.isEmpty
       {
         Text(coordinator.rawTranscript)
@@ -1141,42 +1204,25 @@ struct TranscribeFileView: View {
     if let notice = coordinator.historySaveNotice {
       InsetNotice(text: notice, systemImage: "exclamationmark.triangle", tint: .orange)
     }
+    // ONE row, which is finding 12. Founder, on the shipped two-row version: "You see how
+    // cleaned up by EG-1 is on the wrong line and looks unpolished?" The prototype puts the
+    // title on the left and a right-aligned run of chips after it, the polisher among them.
+    //
+    // **`ViewThatFits`, not a `Spacer` inside `WrappingHStack`.** That layout measures each
+    // child against the full width and places them in sequence; it never distributes leftover
+    // space, so a `Spacer` there does not right-align anything and can take a whole line to
+    // itself. A real `HStack` when the row fits, a stacked layout when it does not. Found by
+    // Codex.
     BrandedSection {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 10) {
-          Text(coordinator.file?.name ?? "Transcript").font(.stRowTitle)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          doneTitle.fixedSize(horizontal: true, vertical: false)
           Spacer(minLength: 12)
-          chip("\(coordinator.wordCount) words")
-          if let file = coordinator.file {
-            chip(FileImportCoordinator.durationText(file.seconds))
-          }
-          savedToHistoryChip
+          doneMetadata.fixedSize(horizontal: true, vertical: false)
         }
-        HStack(spacing: 8) {
-          // **The provider this document was RUN with**, from the frozen
-          // configuration, and named by `LLMProvider.displayName` so the six
-          // names have one owner. Reading the live selection credited whatever
-          // was picked after the run — pick Claude on Change, return to Done,
-          // and unchanged EG-1 output was labelled Claude's. It says
-          // "cleanup engine" rather than "polished by" because a passage whose
-          // polish failed carries its own note and this line must not overrule
-          // it. Found by Codex.
-          chip(
-            "Cleanup engine: \((coordinator.runConfiguration?.polishProvider ?? .none).displayName)"
-          )
-          Button("Change") { coordinator.choosePolisherAgain() }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.stAccent)
-          Spacer(minLength: 12)
-          // The page promises the untouched words are kept. This is where the
-          // user reads them, and Copy and Save follow whichever is on screen.
-          if !coordinator.parts.isEmpty {
-            Button(coordinator.isShowingOriginal ? "Show cleaned words" : "Show original words") {
-              coordinator.isShowingOriginal.toggle()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.stAccent)
-          }
+        VStack(alignment: .leading, spacing: 10) {
+          doneTitle
+          doneMetadata.frame(maxWidth: .infinity, alignment: .trailing)
         }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -1198,6 +1244,10 @@ struct TranscribeFileView: View {
         wizardSecondary(
           "Save as...", isEnabled: coordinator.hasDocument,
           systemImage: "square.and.arrow.down", action: { saveDocument() })
+        // #2772 finding 10a: the prototype has FOUR buttons and this one was missing
+        // entirely. Anchored to its own frame so the macOS picker points at the button the
+        // user pressed rather than at the window corner.
+        shareButton
         Spacer(minLength: 12)
         wizardSecondary("New transcription", systemImage: "arrow.up") {
           coordinator.startOver()
@@ -1246,6 +1296,139 @@ struct TranscribeFileView: View {
       }
     }
   }
+
+  private var doneTitle: some View {
+    VStack(alignment: .leading, spacing: 1) {
+      Text(documentTitle).font(.system(size: 16, weight: .semibold))
+        .lineLimit(1).truncationMode(.middle)
+      if let subtitle = documentSubtitle {
+        Text(subtitle).font(.stHelper).foregroundStyle(Color.stTextTertiary)
+      }
+    }
+  }
+
+  /// The chips, which wrap among themselves when the row is narrow.
+  private var doneMetadata: some View {
+    WrappingHStack(spacing: 10) {
+      chip("\(coordinator.wordCount) words")
+      if let file = coordinator.file {
+        chip(FileImportCoordinator.durationText(file.seconds))
+      }
+      savedToHistoryChip
+      polishedByChip
+      // The page promises the untouched words are kept. This is where the user reads them,
+      // and Copy, Save and Share all follow whichever is on screen.
+      if !coordinator.parts.isEmpty {
+        Button(coordinator.isShowingOriginal ? "Show cleaned words" : "Show original words") {
+          coordinator.isShowingOriginal.toggle()
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.stAccent)
+      }
+    }
+  }
+
+  /// The polisher, as a CHIP in the same right-hand run rather than on a second line.
+  ///
+  /// **The provider this document was RUN with**, from the frozen configuration, and named by
+  /// `LLMProvider.displayName` so the six names have one owner. Reading the live selection
+  /// credited whatever was picked after the run: pick Claude on Change, return to Done, and
+  /// unchanged EG-1 output was labelled Claude's. Found by Codex.
+  ///
+  /// **"Polished by", not "Cleanup engine".** The old wording was chosen so it could not
+  /// overrule a passage whose polish failed; that passage carries its own note directly
+  /// beneath it, which is closer to the words and says the specific thing. The founder asked
+  /// for the prototype's phrasing.
+  private var polishedByChip: some View {
+    HStack(spacing: 6) {
+      Text(polishCredit)
+      Button("Change") { coordinator.choosePolisherAgain() }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.stAccent)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(RoundedRectangle(cornerRadius: 8).fill(Color.stDivider.opacity(0.35)))
+  }
+
+  /// What the chip SAYS, which is what happened rather than what was configured.
+  ///
+  /// **"Polished by EG-1" is a claim about completed work.** The configured provider is not
+  /// evidence of any: a refused History write stops the run before a single part is cleaned,
+  /// a Stop can land after one of fourteen, and explicit no-polish would still have credited
+  /// an engine. None of those carry a passage-level failure note to qualify the claim,
+  /// because no passage failed — none ran. Found by Codex.
+  ///
+  /// Change stays offered in every case: a document that was not polished is exactly the one
+  /// a user wants to re-run.
+  private var polishCredit: String {
+    guard let provider = coordinator.runConfiguration?.polishProvider, provider != LLMProvider.none
+    else { return "No AI polish" }
+    guard coordinator.parts.contains(where: \.wasPolished) else { return "No AI polish applied" }
+    let complete: Bool
+    if case .finished = coordinator.state {
+      complete = coordinator.parts.allSatisfy(\.wasPolished)
+    } else {
+      complete = false
+    }
+    return complete
+      ? "Polished by \(provider.displayName)" : "Partly polished by \(provider.displayName)"
+  }
+
+  /// A readable name for the finished document, and the date under it.
+  ///
+  /// #2772 finding 12: the founder asked for "Marketing sync . 4 September 2026" rather than
+  /// "import-demo.m4a". A file name is what the FILESYSTEM calls the recording; this screen
+  /// is about the meeting. Derived rather than asked for, because asking would be a form on
+  /// the screen that exists to hand the words over.
+  private var documentTitle: String {
+    guard let name = coordinator.file?.name else { return "Transcript" }
+    return Self.readableTitle(fromFileName: name)
+  }
+
+  /// The date this DOCUMENT was made, taken from the History row the run created. `Date()`
+  /// described today, so a transcript left open overnight relabelled itself. Found by Codex.
+  private var documentSubtitle: String? {
+    guard let date = coordinator.documentCreatedAt else { return nil }
+    return Self.documentDateFormatter.string(from: date)
+  }
+
+  /// "1-emma-chamberlain-like-literally.mp4" becomes "Emma chamberlain like literally".
+  ///
+  /// Drops the extension, separator punctuation INCLUDING em and en dashes, and a leading
+  /// ordering number. It does not title-case every word, which turns a name into Title Case
+  /// Nonsense, and it falls back to the raw name when the result would be empty: an unnamed
+  /// document is worse than an ugly one.
+  ///
+  /// **Only a SHORT leading number, and only before a non-number.** The first version dropped
+  /// every consecutive leading numeric token, so "2026-09-10-board-meeting" lost its date and
+  /// "1984-book-club" lost the book. Three digits or fewer, followed by a word, is an ordering
+  /// prefix; anything else is part of the name. Found by Codex.
+  ///
+  /// This remains a FILENAME HEURISTIC. It cannot infer what a meeting was called, and it is
+  /// not trying to.
+  static func readableTitle(fromFileName name: String) -> String {
+    var stem = name
+    if let dot = stem.lastIndex(of: "."), dot != stem.startIndex {
+      stem = String(stem[..<dot])
+    }
+    var words = stem.split { $0.isWhitespace || "-_.\u{2014}\u{2013}".contains($0) }
+      .map(String.init)
+    if words.count > 1, words[0].count <= 3, words[0].allSatisfy(\.isNumber),
+      !words[1].allSatisfy(\.isNumber)
+    {
+      words.removeFirst()
+    }
+    let joined = words.joined(separator: " ")
+    guard !joined.isEmpty else { return name }
+    return joined.prefix(1).uppercased() + joined.dropFirst()
+  }
+
+  static let documentDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "d MMMM yyyy"
+    return formatter
+  }()
 
   private func chip(_ text: String) -> some View {
     Text(text)
@@ -1419,6 +1602,31 @@ struct TranscribeFileView: View {
     panel.allowedContentTypes = [.audio, .movie, .mpeg4Movie, .mp3, .wav, .aiff]
     guard panel.runModal() == .OK, let url = panel.url else { return }
     coordinator.choose(url: url)
+  }
+
+  /// Hands the document to whatever the user has: Messages, Mail, AirDrop, Notes.
+  ///
+  /// **`ShareLink` with a custom label**, which is the platform control and takes this row's
+  /// own button as its label. I first wrapped `NSSharingServicePicker` in a 1x1 anchor view
+  /// on the stated reason that `ShareLink` renders its own treatment and could not match the
+  /// other three buttons. That was false: Apple provides a label initialiser, and chunk 4
+  /// already made `SettingsActionButton` usable without an action. Found by Codex; the anchor
+  /// machinery is deleted rather than kept beside a correction.
+  ///
+  /// Shares the TEXT, and the text it shares is whatever is on screen: with "Show original
+  /// words" on, the original travels, which is the rule Copy and Save follow. Sharing the
+  /// FILE would hand over the recording rather than the transcript, and the recording is the
+  /// thing this feature exists to keep on the Mac.
+  private var shareButton: some View {
+    ShareLink(item: coordinator.exportText) {
+      SettingsActionButton(
+        title: "Share...", isEnabled: coordinator.hasDocument, emphasis: .quiet,
+        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.up")
+    }
+    .buttonStyle(.plain)
+    // Same rule as Copy and Save: nothing to hand over means no offer, rather than a sheet
+    // that shares an empty string.
+    .disabled(!coordinator.hasDocument || coordinator.exportText.isEmpty)
   }
 
   private func copyDocument() {

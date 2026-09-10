@@ -51,8 +51,8 @@ struct TranscribeFileButtonTreatmentTests {
   }
 
   /// The two helpers each construct one, and the wizard's own body constructs none.
-  @Test("the wizard contains two direct SettingsActionButton constructions")
-  func theWizardHasTwoDirectConstructions() {
+  @Test("the wizard contains three direct SettingsActionButton constructions")
+  func theWizardHasThreeDirectConstructions() {
     guard let source = Self.viewSource else { return }
 
     // Lines that CONSTRUCT one. A type annotation (`SettingsActionButton.Size`) is not a
@@ -66,11 +66,15 @@ struct TranscribeFileButtonTreatmentTests {
       }
       .map { index, line in "line \(index + 1): \(line.trimmingCharacters(in: .whitespaces))" }
 
+    // THREE since #2772 chunk 7: one inside each of the two helpers, plus the Share button's
+    // label. `ShareLink` supplies its own control, so its label is the treatment WITHOUT an
+    // action — which is exactly what `SettingsActionButton` grew the ability to be in chunk
+    // 4, and why the platform control could replace a hand-rolled picker.
     #expect(
-      constructions.count == 2,
+      constructions.count == 3,
       """
-      exactly two constructions are expected, one inside each of wizardSecondary and \
-      wizardPrimary. Found \(constructions.count):
+      exactly three constructions are expected: wizardSecondary, wizardPrimary, and the \
+      ShareLink label. Found \(constructions.count):
       \(constructions.joined(separator: "\n"))
       """)
   }

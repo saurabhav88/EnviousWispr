@@ -125,9 +125,15 @@ final class FileImportCoordinator {
     case reading(fileName: String)
     case ready(fileName: String, seconds: Double)
     case transcribing(fileName: String)
-    /// `done` parts of `total` have finished. The user never sees these numbers
-    /// as "chunks" — the founder's call is that the chunking is never
-    /// user-facing — but the progress they drive is.
+    /// `done` parts of `total` have finished.
+    ///
+    /// **These numbers ARE user-facing now (#2772 finding 14).** The comment here used to
+    /// say the opposite — "the user never sees these numbers as chunks" — and the Working
+    /// step was built to that rule. The approved prototype contradicts it: its label reads
+    /// "Cleaning part 9 of 14 with EG-1". Founder, on the shipped version: "the clean up was
+    /// supposed to show # of chunks and it processing each chunk, not pasting the finished
+    /// polished work in real-time." Under his standing instruction the prototype is the
+    /// target, so the rule is retired and its reason is recorded in the PR that retired it.
     case polishing(done: Int, total: Int)
     case finished
     case rejected(FileImportRejection)
@@ -157,6 +163,13 @@ final class FileImportCoordinator {
     /// rather than hidden: thirteen good parts and one raw part is a good
     /// outcome, and hiding the raw one is the failure.
     var isUnpolished: Bool
+    /// Whether a polisher actually produced these words (#2772 finding 12).
+    ///
+    /// **Not the inverse of `isUnpolished`.** That one asks whether this passage is SHOWING
+    /// raw text and drives the note beneath it; this asks whether any polish ran at all, and
+    /// drives the credit on the header. A document with no parts has neither, and the credit
+    /// must not name an engine for work that never happened.
+    var wasPolished: Bool = false
   }
 
   private(set) var state: State = .idle
@@ -196,6 +209,25 @@ final class FileImportCoordinator {
   private(set) var phase: String = ""
 
   /// How many words the transcript holds, shown live beside the progress bar.
+  /// The raw pieces this run will clean, in order, published so the Working step can show
+  /// the QUEUE rather than only the finished text (#2772 finding 14).
+  ///
+  /// Empty until the split happens, and cleared by `startOver`/`choose` with everything else
+  /// belonging to a document. The view pairs it with `parts.count` to know which row is
+  /// being worked: the queue is fixed for a run and the finished count only grows.
+  private(set) var pendingPieces: [String] = []
+
+  /// "Cleaning part 9 of 14 with EG-1", or "" when nothing is being cleaned.
+  ///
+  /// The engine is the one FROZEN with the run, never the live selection: a user who
+  /// changes their polisher while a run is going would otherwise watch the label credit an
+  /// engine that is not doing the work. Same rule the Done screen already follows.
+  var cleaningLabel: String {
+    guard case .polishing(let done, let total) = state, total > 0 else { return "" }
+    let engine = (runConfiguration?.polishProvider ?? .none).displayName
+    return "Cleaning part \(min(done + 1, total)) of \(total) with \(engine)"
+  }
+
   var wordCount: Int { TranscriptSplitter.wordCount(in: rawTranscript) }
 
   /// 0...1 for the progress bar.
@@ -533,6 +565,7 @@ final class FileImportCoordinator {
     savedHistoryRow = nil
     rawIsSavedToHistory = false
     historySaveFailure = nil
+    pendingPieces = []
     state = .reading(fileName: name)
     // **Cancelled, not merely ignored.** The generation check discards a stale
     // result AFTER the work is done, which is the right answer to "whose file is
@@ -780,6 +813,7 @@ final class FileImportCoordinator {
     savedHistoryRow = nil
     rawIsSavedToHistory = false
     historySaveFailure = nil
+    pendingPieces = []
     state = .idle
     step = .upload
   }
@@ -939,10 +973,19 @@ final class FileImportCoordinator {
     generation += 1
     let generationAtStart = generation
     parts = []
+    // #2772 finding 14: the OLD queue must not be shown as the current one while this run
+    // is still preparing. Cleared here and republished by `polishAll` from the new split.
+    pendingPieces = []
     // The saved words are about to be replaced by different ones.
     forgetSaveOutcome()
     step = .working
-    phase = "Cleaning it up"
+    // **An ACTIVE state, not the previous terminal one.** A re-polish left `state` at
+    // `.finished` while it awaited `prepareLocalPolish`, so `isRunning` was false during a
+    // wait that can take seconds: the sidebar dot stayed dark on a job that was running and
+    // Stop could not act on it. The first run has always used `.transcribing` for exactly
+    // this window. Found by Codex.
+    state = .transcribing(fileName: file?.name ?? "Recording")
+    phase = "Preparing cleanup"
 
     isEngineHeld = true
     runTask = Task { [weak self] in
@@ -1027,6 +1070,9 @@ final class FileImportCoordinator {
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
   private func polishAll(_ pieces: [String], generationAtStart: Int) async {
+    // #2772 finding 14: the queue the Working step renders. Published here, at the one place
+    // the split exists, so the rows on screen are the pieces that will actually be cleaned.
+    pendingPieces = pieces
     // #2772 finding 11: DURABLE BEFORE THE SLOW HALF, at the one entry both callers pass
     // through. Guarding inside `run` covered only the first transcription; a re-polish
     // reaches the cleanup directly, so a document whose original write was refused could
@@ -1050,7 +1096,9 @@ final class FileImportCoordinator {
         // a run the user has already ended.
         guard generationAtStart == generation else { return }
         parts.append(
-          Part(id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished))
+          Part(
+            id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
+            wasPolished: outcome.polishedText != nil))
       } catch is CancellationError {
         return
       } catch {
@@ -1141,6 +1189,11 @@ final class FileImportCoordinator {
       historySaveFailure = String(describing: error)
     }
   }
+
+  /// When this document was made, from the History row the run created. The Done header
+  /// dates the RECORDING with it; reading `Date()` there described today, so a transcript
+  /// left open overnight relabelled itself. Found by Codex (#2772).
+  var documentCreatedAt: Date? { originalHistoryRow?.createdAt }
 
   /// Whether WHAT IS ON SCREEN reached History.
   ///
