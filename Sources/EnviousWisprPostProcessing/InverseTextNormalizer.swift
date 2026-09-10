@@ -13,6 +13,10 @@ import Foundation
 /// The Python reference is the ORACLE; `Tests/.../InverseTextNormalizer/parity.jsonl`
 /// pins byte-for-byte behavioral equivalence (see `InverseTextNormalizerParityTests`).
 ///
+/// Frozen Python-reference fixtures (`parity.jsonl`, `parity_holdout.jsonl`) pin behaviour on their
+/// RECORDED INPUTS. Later product extensions carry separate explicit expectations; passing the
+/// fixtures does not establish equivalence on inputs outside them (#2764).
+///
 /// Pure value transform, no state, `Sendable`. Context-aware where cheap; ambiguous
 /// minimal pairs ("meet at one twenty" = 1:20 vs "paid one twenty" = $1.20) are left
 /// for the AI-polish layer by design — every rule/grammar engine scores ~39% on those,
@@ -172,14 +176,43 @@ public struct InverseTextNormalizer: Sendable {
   static let lowerRiskURLTLDAlt = #"com|org|io|co|dev|me|net"#
   static let commonWordURLTLDAlt = #"ai|app|xyz"#
   static let urlTLDAlt = lowerRiskURLTLDAlt + "|" + commonWordURLTLDAlt
-  // Deliberately NOT derived from urlTLDAlt (#2257, local Codex review round 2):
-  // emails(_:)'s "name at domain dot tld" pattern has no path requirement to disambiguate
-  // it the way urls(_:) does, so ANY newly-added TLD widens "at <domain> dot <tld>" — a
-  // common way to describe a URL out loud, not an email — into a false email conversion.
-  // Measured: adding just ai/app/xyz turned "learn more at startup dot ai" into
-  // "learn more@startup.ai" and "find it at docs dot xyz" into "find it@docs.xyz". Kept
-  // identical to the pre-#2257 list; the new TLDs are URL-only.
-  static let emailTLDAlt = #"com|org|io|co|dev|me|net|edu|gov"#
+
+  /// Selected ccTLD additions for the existing English spoken-email grammar.
+  ///
+  /// The previous allowlist ALREADY included the ccTLDs `co`, `io` and `me`, so this is not "no
+  /// country codes" being fixed — it is a reviewed extension of a list that omitted the European
+  /// codes our users' addresses actually end in (`de`, `nl`, `fr`, `es`, `pt`, `pl`, …).
+  ///
+  /// This is a REVIEWED ALLOWLIST, not an exhaustive ccTLD list and not a guarantee its entries
+  /// have no English dictionary meaning: `de`, `es` and `si` all retain lexical ambiguity. It
+  /// excludes selected HIGH-RISK words, because `emails()` matches `<name> at <dom> dot <tld>`
+  /// with `dom` as any single token, so a word-like code has no protection left — admitting `it`
+  /// turns "he pointed at the dot it made" into "he pointed@the.it made". Excluded on those
+  /// grounds: `am as at be by do id in is it my no so to us`.
+  ///
+  /// Examples excluded by this policy include Italy (.it), Austria (.at), Belgium (.be),
+  /// Norway (.no), American Samoa (.as), Belarus (.by), Tonga (.to) and Indonesia (.id).
+  ///
+  /// **Only `emailTLDAlt` consumes this table.** URL handling and the production language gate are
+  /// unchanged, so non-English-resolved dictation still skips this formatter entirely
+  /// (`InverseTextNormalizationStep.skipReason`) — this change reaches an ENGLISH-resolved take
+  /// containing a foreign address, and does not by itself deliver support for those languages.
+  ///
+  /// Residual risk, unchanged in kind and now extended to these suffixes: the grammar cannot tell
+  /// an address from prose about a website, so "learn more at example dot de" also converts.
+  static let countryCodeTLDs = [
+    "de", "nl", "fr", "es", "pt", "pl", "se", "dk", "fi", "hu", "cz", "sk", "ru", "ua",
+    "ch", "gr", "ie", "uk", "eu", "si", "hr", "lt", "lv", "ee", "bg", "ro",
+  ]
+
+  // Email and URL allowlists remain independent. `ai`/`app`/`xyz` stay URL-only; the ccTLDs above
+  // are added only to the email grammar.
+  // #2257 kept ai/app/xyz out of the email grammar because website prose such as
+  // "learn more at startup dot ai" would otherwise become "learn more@startup.ai".
+  // The ccTLD extension accepts that existing ambiguity for its selected suffixes,
+  // as documented above; it does not change either URL pass.
+  static let emailTLDAlt = alt(["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"]
+    + countryCodeTLDs)
   // A domain label: may start with a letter OR digit (cloud Codex review, PR #2265 —
   // "3m.com", "1password.com" are real domains excluded by a letter-only start), may
   // contain digits/hyphens, never ENDS on a hyphen (a trailing "-" is not a valid
