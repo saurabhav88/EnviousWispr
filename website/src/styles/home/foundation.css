@@ -905,30 +905,6 @@ main > section:not(#opening) h2 {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
-[data-swipeable] {
-  touch-action: pan-y pinch-zoom;
-}
-[data-swipeable].is-swiping {
-  -webkit-user-select: none;
-  user-select: none;
-}
-@media (max-width: 600px) {
-  [data-swipeable] {
-    cursor: grab;
-    transform: translateX(var(--swipe-offset, 0px));
-    transition: transform 0.16s ease;
-  }
-  [data-swipeable].is-swiping {
-    cursor: grabbing;
-    transition: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-swipeable] {
-    transform: none;
-    transition: none;
-  }
-}
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) {
     color-scheme: dark;
@@ -972,7 +948,11 @@ main > section:not(#opening) h2 {
   outline-offset: 3px;
 }
 @media (max-width: 600px) {
-  .home-carousel { grid-auto-columns: 90%; }
+  .home-carousel {
+    grid-auto-columns: 90%;
+  }
 }
 #polish:not([data-enhancement='ready']) .polish-count,
-#people:not([data-enhancement='ready']) #case-count { visibility: hidden; }
+#people:not([data-enhancement='ready']) #case-count {
+  visibility: hidden;
+}

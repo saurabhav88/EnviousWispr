@@ -21,7 +21,7 @@ const assets = await Promise.all(
     };
   }),
 );
-const first = cases[0];
+const apps = ['vscode', 'clinical', 'keep', 'gmail', 'docs', 'slack', 'discord', 'notes', 'teams'];
 ---
 
 <section class="people section-surface" id="people" aria-labelledby="people-title">
@@ -40,31 +40,32 @@ const first = cases[0];
         ))
       }
     </div>
-    <div class="case-frame">
-      <div class="case-stage" data-case="0" data-case-assets={JSON.stringify(assets)}>
-        <div class="case-copy">
-          <h3>{first.title}</h3><p>{first.note}</p><span class="case-status"
-            >{first.sampleLabel || ''}</span
-          >
-        </div><figure class="case-person">
-          <img
-            class="case-scene"
-            src={assets[0].src}
-            srcset={assets[0].srcset}
-            sizes="(max-width:600px) 100vw, 50vw"
-            width={assets[0].width}
-            height={assets[0].height}
-            loading="lazy"
-            decoding="async"
-            draggable="false"
-            alt="Illustrated developer speaking toward a computer"
-          />
-        </figure><div class="case-screen" data-phase="finished">
-          <AppDemo app="vscode" text={first.final} />
-        </div>
-      </div>
-      <p class="case-swipe-hint" aria-hidden="true">Swipe to explore more ways to use it ↔</p>
+    <div class="home-carousel case-carousel" tabindex="0" role="region" aria-label="Ways to use EnviousWispr">
+      {cases.map((item, i) => (
+        <article class="case-frame" aria-labelledby={`case-title-${i}`}>
+          <div class="case-stage" data-case={i}>
+            <div class="case-copy">
+              <h3 id={`case-title-${i}`}>{item.title}</h3>
+              <p>{item.note}</p>
+              <span class="case-status">{item.upcoming ? 'Android coming soon' : item.sampleLabel || ''}</span>
+            </div>
+            <figure class="case-person">
+              <img class="case-scene" src={assets[i].src} srcset={assets[i].srcset}
+                sizes="(max-width:600px) 90vw, 50vw" width={assets[i].width} height={assets[i].height}
+                loading="lazy" decoding="async" draggable="false"
+                alt={'Illustrated ' + item.name.toLowerCase() + ' speaking toward a ' + (item.upcoming ? 'phone' : 'computer')} />
+            </figure>
+            <div class:list={['case-screen', { 'is-phone': item.upcoming === true }]} data-phase="finished">
+              <AppDemo app={apps[i]} text={item.final} lang={item.lang || 'en'} focusable
+                context={{ to: i === 3 ? 'Jordan' : undefined,
+                  title: i === 4 ? 'City life · Essay draft' : i === 7 ? 'Family message' : 'Story notes',
+                  room: i === 6 ? 'episode-planning' : undefined }} />
+            </div>
+          </div>
+        </article>
+      ))}
     </div>
+    <p class="case-swipe-hint" aria-hidden="true">Swipe to explore more ways to use it ↔</p>
     <div class="case-controls">
       <div>
         <button class="text-button" id="case-tour" disabled>Pause tour</button><button

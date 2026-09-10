@@ -38,7 +38,9 @@ export function init(root, motion, scope) {
       sync(index);
       if (manual) {
         const card = carousel.slides[index];
-        announce.textContent = card.querySelector('h3').textContent + '. ' +
+        announce.textContent =
+          card.querySelector('h3').textContent +
+          '. ' +
           card.querySelector('.polish-out').textContent;
       }
       clock?.wake();
@@ -54,7 +56,8 @@ export function init(root, motion, scope) {
     });
     const active = buttons[index];
     if (choices.scrollWidth > choices.clientWidth) {
-      const left = active.offsetLeft, right = left + active.offsetWidth;
+      const left = active.offsetLeft,
+        right = left + active.offsetWidth;
       if (left < choices.scrollLeft) choices.scrollLeft = left;
       else if (right > choices.scrollLeft + choices.clientWidth)
         choices.scrollLeft = right - choices.clientWidth;
@@ -62,37 +65,54 @@ export function init(root, motion, scope) {
   }
   buttons.forEach((button, i) => {
     button.disabled = false;
-    button.addEventListener('click', () => carousel.goTo(i, { user: true }), { signal: scope.signal });
+    button.addEventListener('click', () => carousel.goTo(i, { user: true }), {
+      signal: scope.signal,
+    });
   });
-  choices.addEventListener('keydown', (event) => {
-    const by = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!by) return;
-    event.preventDefault();
-    const target = Math.max(0, Math.min(buttons.length - 1, buttons.indexOf(event.target) + by));
-    carousel.goTo(target, { user: true });
-    buttons[target].focus();
-  }, { signal: scope.signal });
-  prev.addEventListener('click', () => carousel.step(-1, { user: true }), { signal: scope.signal });
-  next.addEventListener('click', () => carousel.step(1, { user: true }), { signal: scope.signal });
-  clock = scope.timeline(root, (delta) => {
-    if (carousel.moving || carousel.interacting) return true;
-    if (reveal > 0) {
-      reveal -= delta;
-      if (reveal <= 0) raws[carousel.index].classList.add('is-live');
-    }
-    if (pinned) return reveal > 0;
-    elapsed += delta;
-    if (elapsed >= 4200) {
-      elapsed = 0;
-      if (carousel.index === buttons.length - 1) direction = -1;
-      else if (carousel.index === 0) direction = 1;
-      prepared = carousel.index + direction;
-      raws[prepared].classList.remove('is-live');
-      carousel.goTo(prepared);
-    }
-    return true;
-  }, () => {
-    if (motion.reduced.matches || motion.paused) finishExamples();
+  choices.addEventListener(
+    'keydown',
+    (event) => {
+      const by = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!by) return;
+      event.preventDefault();
+      const target = Math.max(
+        0,
+        Math.min(buttons.length - 1, buttons.indexOf(event.target) + by),
+      );
+      carousel.goTo(target, { user: true });
+      buttons[target].focus();
+    },
+    { signal: scope.signal },
+  );
+  prev.addEventListener('click', () => carousel.step(-1, { user: true }), {
+    signal: scope.signal,
   });
+  next.addEventListener('click', () => carousel.step(1, { user: true }), {
+    signal: scope.signal,
+  });
+  clock = scope.timeline(
+    root,
+    (delta) => {
+      if (carousel.moving || carousel.interacting) return true;
+      if (reveal > 0) {
+        reveal -= delta;
+        if (reveal <= 0) raws[carousel.index].classList.add('is-live');
+      }
+      if (pinned) return reveal > 0;
+      elapsed += delta;
+      if (elapsed >= 4200) {
+        elapsed = 0;
+        if (carousel.index === buttons.length - 1) direction = -1;
+        else if (carousel.index === 0) direction = 1;
+        prepared = carousel.index + direction;
+        raws[prepared].classList.remove('is-live');
+        carousel.goTo(prepared);
+      }
+      return true;
+    },
+    () => {
+      if (motion.reduced.matches || motion.paused) finishExamples();
+    },
+  );
   sync(carousel.index);
 }
