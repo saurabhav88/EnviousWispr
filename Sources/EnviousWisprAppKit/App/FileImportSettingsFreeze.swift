@@ -16,14 +16,13 @@ import EnviousWisprServices
 /// be a second thing to keep in step every time a limb gains a setting.
 @MainActor
 enum FileImportSettingsFreeze {
-  /// `backend` and `polish` come from the WIZARD, not from settings: the user
-  /// chose them for this file on their own screens, and a run that ignored them
-  /// would make those screens decorative.
-  static func snapshot(
-    settings: SettingsManager, backend: ASRBackendType, polish: LLMProvider
-  ) -> RecordingSettingsSnapshot {
+  /// Reads settings and nothing else. The wizard's Transcription and Polish
+  /// steps WRITE these settings when the user picks, so by the time Start is
+  /// pressed the user's choice IS the setting — there is no second copy to
+  /// prefer, and no way for the two to disagree.
+  static func snapshot(settings: SettingsManager) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
-      backendType: backend,
+      backendType: settings.selectedBackend,
       backendSupportsLanguageDetection: false,
       languageMode: settings.languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
@@ -31,7 +30,7 @@ enum FileImportSettingsFreeze {
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
       spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
       customWordsVersion: nil,
-      llmProvider: polish.rawValue,
+      llmProvider: settings.llmProvider.rawValue,
       llmModel: settings.llmModel,
       s1Control: settings.s1Control)
   }
@@ -43,12 +42,17 @@ enum FileImportSettingsFreeze {
   /// Derived from the same snapshot the runner froze, so the page's privacy
   /// line and the engine reconciliation cannot disagree with what the parts are
   /// actually polished by.
-  static func configuration(for snapshot: RecordingSettingsSnapshot)
-    -> FileImportCoordinator.RunConfiguration
-  {
+  /// - Parameter ollamaModelIsRemote: whether THIS run's Ollama model is one the
+  ///   daemon proxies to its own servers. Passed in rather than looked up here
+  ///   so the value is taken once, at Start, and cannot change under a document
+  ///   that has already been polished.
+  static func configuration(
+    for snapshot: RecordingSettingsSnapshot, ollamaModelIsRemote: Bool
+  ) -> FileImportCoordinator.RunConfiguration {
     let provider = LLMProvider(rawValue: snapshot.llmProvider) ?? .none
     return FileImportCoordinator.RunConfiguration(
-      polishIsCloud: TranscribeFileView.isCloud(provider),
+      polishIsCloud: TranscribeFileView.isCloud(
+        provider, ollamaModelIsRemote: ollamaModelIsRemote),
       // Only the BUNDLED servers are pinnable: Ollama is the user's own process
       // and the cloud providers have nothing on this Mac to tear down.
       localPolishProvider: (provider == .egOne || provider == .s1Mini) ? provider : nil)

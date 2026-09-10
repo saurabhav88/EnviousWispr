@@ -13,8 +13,11 @@ import EnviousWisprCore
 /// where the gate cannot reach it, and mapping a model whose bytes may still be
 /// moving is exactly what that gate prevents.
 ///
-/// Its two callers are the ones that never went through the normal dictation
-/// doors: crash recovery and the Diagnostics benchmark. Streaming deliberately
+/// Its callers are the ones that never went through the normal dictation doors:
+/// crash recovery, the Diagnostics benchmark, and since #2648 file import, whose
+/// Transcription step lets the user pick All Languages for one recording — a
+/// direct `ASRManager.transcribe` there throws `ASRManagerNotOwnedError`, since
+/// WhisperKit does not live in the manager. Streaming deliberately
 /// stays on the manager — WhisperKit does not stream through it, and the manager
 /// answers `activeBackendSupportsStreaming` false for a backend it does not own.
 @MainActor

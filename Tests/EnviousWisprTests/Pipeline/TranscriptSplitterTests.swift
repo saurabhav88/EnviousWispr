@@ -66,6 +66,22 @@ struct TranscriptSplitterTests {
     text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
   }
 
+  /// The round-trip oracle that works for EVERY script.
+  ///
+  /// A word list cannot express the property for Japanese, Chinese or Thai:
+  /// those have no spaces, so the whole transcript is one "word" and cutting it
+  /// — which is exactly what the byte ceiling requires — makes two. The
+  /// characters themselves are the thing that must survive in order, with the
+  /// whitespace dropped because the splitter may cut at a space.
+  private static func kept(_ text: String) -> [Character] {
+    text.filter { !$0.isWhitespace }
+  }
+
+  /// Repeated Japanese, the shape that produced a single 10,500-character part.
+  private static func japanese(sentences: Int) -> String {
+    String(repeating: "これは製品レビューの会議の記録です。", count: sentences)
+  }
+
   // MARK: - The two properties, over many shapes at once
 
   /// Every part is 1...500 words, and the parts together are the input's words in order.
@@ -91,6 +107,67 @@ struct TranscriptSplitterTests {
     #expect(
       parts.flatMap(Self.words) == Self.words(transcript),
       "the parts are not the transcript's words in order (seed \(seed))")
+    #expect(parts.flatMap(Self.kept) == Self.kept(transcript))
+  }
+
+  // MARK: - Languages that do not put spaces between words
+
+  /// **The word ceiling cannot see this input at all.** 600 repeated Japanese
+  /// sentences hold two whitespace-separated "words" — effectively none — so a
+  /// splitter bounded only by words returns the whole recording as ONE part.
+  /// Measured before the byte ceiling: 10,500 characters, about 31,000 UTF-8
+  /// bytes, which the local polisher's context preflight refuses outright, so
+  /// the user's entire recording came back unpolished.
+  @Test("a Japanese recording is cut into parts the polisher will accept")
+  func japaneseIsBoundedByBytes() {
+    let transcript = Self.japanese(sentences: 600)
+    let parts = TranscriptSplitter.split(transcript)
+
+    #expect(parts.count > 1, "the whole Japanese transcript came back as one part")
+    for (index, part) in parts.enumerated() {
+      #expect(
+        part.utf8.count <= TranscriptSplitter.maximumBytesPerPart,
+        "part \(index) is \(part.utf8.count) bytes, over the ceiling")
+    }
+    #expect(
+      parts.flatMap(Self.kept) == Self.kept(transcript),
+      "the Japanese transcript did not survive the split")
+  }
+
+  /// Thai, which has no sentence-ending punctuation either, so the tokenizer
+  /// has less to work with and the character path does more of the work.
+  @Test("a Thai run with no punctuation is still bounded")
+  func thaiIsBounded() {
+    let transcript = String(repeating: "สวัสดีครับนี่คือการบันทึกการประชุม", count: 400)
+    let parts = TranscriptSplitter.split(transcript)
+
+    #expect(parts.allSatisfy { $0.utf8.count <= TranscriptSplitter.maximumBytesPerPart })
+    #expect(parts.flatMap(Self.kept) == Self.kept(transcript))
+  }
+
+  /// A character is never cut in half, which would produce mojibake in the
+  /// user's document rather than merely a badly placed break.
+  @Test("no part ever splits a multi-byte character")
+  func multiByteCharactersSurvive() {
+    let transcript = String(repeating: "🇯🇵日本語のテキストです。", count: 500)
+    let parts = TranscriptSplitter.split(transcript)
+
+    #expect(parts.joined().unicodeScalars.count == transcript.unicodeScalars.count)
+    #expect(parts.flatMap(Self.kept) == Self.kept(transcript))
+  }
+
+  /// The English ceiling still binds: adding a byte ceiling must not make the
+  /// word ceiling stop mattering.
+  @Test("English is still bounded by words, not only by bytes")
+  func englishStillUsesTheWordCeiling() {
+    let transcript = (0..<900).map { _ in "a" }.joined(separator: " ")
+    let parts = TranscriptSplitter.split(transcript)
+
+    // 900 single-letter words is 1,799 bytes — under the byte ceiling — so only
+    // the word ceiling can produce more than one part here.
+    #expect(transcript.utf8.count < TranscriptSplitter.maximumBytesPerPart)
+    #expect(parts.count == 2)
+    #expect(parts.allSatisfy { TranscriptSplitter.wordCount(in: $0) <= 500 })
   }
 
   // MARK: - The cases the plan named
@@ -154,7 +231,7 @@ struct TranscriptSplitterTests {
     let parts = TranscriptSplitter.split(transcript)
 
     #expect(!parts.isEmpty)
-    #expect(parts.flatMap(Self.words) == Self.words(transcript))
+    #expect(parts.flatMap(Self.kept) == Self.kept(transcript))
     #expect(parts.allSatisfy { TranscriptSplitter.wordCount(in: $0) <= 500 })
   }
 

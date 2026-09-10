@@ -337,7 +337,13 @@ struct FileImportCoordinatorTests {
     coordinator.rePolish()
     await settleUntil { coordinator.state == .finished }
     #expect(coordinator.runConfiguration?.polishIsCloud == false)
-    #expect(coordinator.pinnedLocalPolishProvider == nil, "a finished run pins nothing")
+
+    // **The pin follows the ENGINE, not the screen.** The document is on screen
+    // before the run task has unwound, and in that window the polish server is
+    // still this run's. Releasing the pin when the screen finished would let a
+    // provider switch tear the server down under work still inside it.
+    await settleUntil { coordinator.isEngineHeld == false }
+    #expect(coordinator.pinnedLocalPolishProvider == nil, "a released run pins nothing")
   }
 
   // MARK: - Changing the polisher

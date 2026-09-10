@@ -50,7 +50,6 @@ struct TranscribeFileView: View {
     .background(Color.stPageBg)
     .tint(.stAccent)
     .font(.stBody)
-    .onAppear { seedChoicesFromSettings() }
   }
 
   // MARK: - The step bar
@@ -351,9 +350,12 @@ struct TranscribeFileView: View {
     backend: ASRBackendType, title: String, icon: String, recommended: Bool, blurb: String,
     specs: [(String, String)]
   ) -> some View {
-    let selected = coordinator.chosenBackend == backend
+    // **Writes the app's own setting.** `EngineCoordinator` watches it and does
+    // the switch, including loading the model, so picking here is a real pick
+    // rather than a highlighted card.
+    let selected = settings.selectedBackend == backend
     return Button {
-      coordinator.chosenBackend = backend
+      settings.selectedBackend = backend
     } label: {
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 8) {
@@ -460,9 +462,12 @@ struct TranscribeFileView: View {
   ]
 
   private func polishCard(_ choice: PolishChoice) -> some View {
-    let selected = coordinator.chosenPolish == choice.provider
+    // Same door the AI Polish page uses. `SettingsManager` canonicalizes the
+    // model id for the new provider and `PipelineSettingsSync` starts or stops
+    // the runtime; writing a private copy did neither.
+    let selected = settings.llmProvider == choice.provider
     return Button {
-      coordinator.chosenPolish = choice.provider
+      settings.llmProvider = choice.provider
     } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -508,7 +513,7 @@ struct TranscribeFileView: View {
   }
 
   private var selectedPolish: PolishChoice? {
-    Self.polishChoices.first { $0.provider == coordinator.chosenPolish }
+    Self.polishChoices.first { $0.provider == settings.llmProvider }
   }
 
   // MARK: - 4. Review
@@ -545,8 +550,14 @@ struct TranscribeFileView: View {
             is finished, \(coordinator.estimateText).
             """,
           systemImage: "mic.slash", tint: .orange)
+        // The words change when a transcript already exists, because the action
+        // does: nothing is transcribed a second time, only cleaned again.
         actionRow(
-          note: "Nothing has run yet.", forwardTitle: "Start transcription",
+          note: coordinator.rawTranscript.isEmpty
+            ? "Nothing has run yet."
+            : "Already transcribed. Only the cleanup runs again.",
+          forwardTitle: coordinator.rawTranscript.isEmpty
+            ? "Start transcription" : "Clean it again",
           forward: { coordinator.advance() })
       }
       processingPath.frame(width: 300)
@@ -561,14 +572,14 @@ struct TranscribeFileView: View {
       Text("YOUR PROCESSING PATH")
         .font(.stSectionHeader).tracking(0.6).foregroundStyle(Color.stAccent)
       pathCard(
-        icon: coordinator.chosenBackend == .parakeet ? "bolt.fill" : "globe",
-        title: coordinator.chosenBackend == .parakeet ? "Fast" : "All Languages",
-        recommended: coordinator.chosenBackend == .parakeet,
+        icon: settings.selectedBackend == .parakeet ? "bolt.fill" : "globe",
+        title: settings.selectedBackend == .parakeet ? "Fast" : "All Languages",
+        recommended: settings.selectedBackend == .parakeet,
         blurb: "Writes down what was said.",
         rows: [
           (
             "Runs on",
-            coordinator.chosenBackend == .parakeet
+            settings.selectedBackend == .parakeet
               ? "This Mac · Neural Engine" : "This Mac · Apple GPU"
           )
         ])
@@ -578,7 +589,7 @@ struct TranscribeFileView: View {
       pathCard(
         icon: selectedPolish?.icon ?? "sparkles",
         title: selectedPolish?.title ?? "No polish",
-        recommended: coordinator.chosenPolish == .egOne,
+        recommended: settings.llmProvider == .egOne,
         blurb: "Cleans it into readable text.",
         rows: [("Runs on", selectedPolish?.availability ?? "")])
     }
@@ -694,7 +705,7 @@ struct TranscribeFileView: View {
         }
         HStack(spacing: 8) {
           chip("Polished by \(selectedPolish?.title ?? "nothing")")
-          Button("Change") { coordinator.rePolish() }
+          Button("Change") { coordinator.choosePolisherAgain() }
             .buttonStyle(.plain)
             .foregroundStyle(Color.stAccent)
         }
@@ -777,15 +788,27 @@ struct TranscribeFileView: View {
 
   private var isCloudPolish: Bool {
     if let frozen = coordinator.runConfiguration { return frozen.polishIsCloud }
-    return Self.isCloud(coordinator.chosenPolish)
+    return Self.isCloud(
+      settings.llmProvider, ollamaModelIsRemote: coordinator.polishIsRemoteOllamaNow())
   }
 
   /// Enumerated, never `default:`. A new provider must be classified here
   /// deliberately, because getting it wrong publishes a false privacy claim.
-  static func isCloud(_ provider: LLMProvider) -> Bool {
+  /// Whether the chosen polisher sends the transcript off this Mac.
+  ///
+  /// **Ollama is the case the provider name cannot answer.** The daemon proxies
+  /// some models to its own servers, which it reports as a non-empty
+  /// `remote_host` and `OllamaModelFacts.isRemote` decodes; a user polishing
+  /// with one of those is sending their transcript to Ollama's infrastructure
+  /// while a provider-only classification tells them it stayed here. The
+  /// remoteness is resolved by the same lookup `PipelineSettingsSync` uses and
+  /// FROZEN with the run, so a document already polished is never re-described.
+  /// Found by Codex.
+  static func isCloud(_ provider: LLMProvider, ollamaModelIsRemote: Bool) -> Bool {
     switch provider {
     case .openAI, .gemini, .claude: return true
-    case .egOne, .s1Mini, .appleIntelligence, .ollama, .none: return false
+    case .ollama: return ollamaModelIsRemote
+    case .egOne, .s1Mini, .appleIntelligence, .none: return false
     }
   }
 
@@ -803,15 +826,6 @@ struct TranscribeFileView: View {
   }
 
   // MARK: - Actions
-
-  /// The import's engines start from what the user already uses, so the common
-  /// path is two Continues. Changing them here does NOT write back to settings:
-  /// a choice made for one file is not a change to how dictation works.
-  private func seedChoicesFromSettings() {
-    guard coordinator.state == .idle else { return }
-    coordinator.chosenBackend = settings.selectedBackend
-    coordinator.chosenPolish = settings.llmProvider
-  }
 
   private func chooseFile() {
     let panel = NSOpenPanel()

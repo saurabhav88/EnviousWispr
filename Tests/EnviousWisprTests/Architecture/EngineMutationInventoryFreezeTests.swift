@@ -421,9 +421,13 @@ import Testing
     // `EngineLease` is held by `.fileImport` for the whole run, and recovery's
     // per-item handshake now takes that same claim, so a replay cannot begin
     // underneath one. Full-duration exclusion, which is what (d) means.
+    // Routed through `ActiveEngineOperation` since Codex found the direct
+    // `asrManager` call reached Parakeet and only Parakeet: with All Languages
+    // picked on the Transcription step it threw `ASRManagerNotOwnedError`. The
+    // claim covers this exactly as it covered the direct call.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
-      text: "return try await asrManager.transcribe(audioSamples: samples, options: options).text",
+      text: "return try await activeEngine.transcribe(samples, options).text",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",

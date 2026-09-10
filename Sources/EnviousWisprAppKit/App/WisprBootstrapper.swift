@@ -598,6 +598,11 @@ package final class WisprBootstrapper {
     whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in
       await whisperKitKernelDriver?.unloadEngineForRemoval()
     }
+    // ONE lookup, three readers: the polish-runtime eviction rule below, the
+    // import page's privacy line, and the configuration an import freezes at
+    // Start. Two of those are promises to the user about where their words went,
+    // so they must not be able to disagree with the third.
+    let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -606,7 +611,7 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup),
+      ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider }
     )
     settingsSync.applyInitialSettings(settings)
@@ -897,8 +902,10 @@ package final class WisprBootstrapper {
     }
 
     let navigationCoordinator = NavigationCoordinator()
-    // #1386 PR-2: the one door to whichever engine is active, for the two callers
-    // that never used the normal dictation doors (crash recovery, Diagnostics).
+    // #1386 PR-2: the one door to whichever engine is active, for the callers
+    // that never used the normal dictation doors — crash recovery, Diagnostics,
+    // and since #2648 file import, which needs the engine the user picked on the
+    // Transcription step rather than the one the manager happens to own.
     let activeEngine = ActiveEngineOperation.live(
       asrManager: asrManager, whisperKitBackend: whisperKitBackend)
 
@@ -1042,7 +1049,10 @@ package final class WisprBootstrapper {
           (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
-        isFileImportRunning: { fileImportCoordinatorForGates?.isRunning ?? false },
+        // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
+        // press while the cancelled work is still inside the engine, and a
+        // switch admitted in that window unloads the backend underneath it.
+        isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
         },
@@ -1337,27 +1347,54 @@ package final class WisprBootstrapper {
       // auto-detection OFF and Parakeet uses it for its language/script filter,
       // so a locked non-English recording could be recognised in the wrong
       // script before post-processing ever saw it.
-      transcribe: { [asrManager, settings] samples in
+      // **Through `ActiveEngineOperation`, which is the ONE door for "whichever
+      // speech engine is active".** Calling `asrManager.transcribe` directly
+      // reached Parakeet and only Parakeet: with All Languages selected it threw
+      // `ASRManagerNotOwnedError`, because WhisperKit does not live in the
+      // manager. `load()` first, because the user may have picked an engine on
+      // the Transcription step seconds ago and nothing has warmed it — its
+      // postcondition is readiness, not merely that the call returned.
+      transcribe: { [activeEngine, settings] samples in
         var options = TranscriptionOptions.default
         if case .locked(let code) = settings.languageMode { options.language = code }
-        return try await asrManager.transcribe(audioSamples: samples, options: options).text
+        if await activeEngine.isLoaded() == false { try await activeEngine.load() }
+        return try await activeEngine.transcribe(samples, options).text
       },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
       engineAdmission: .live(lease: engineLease, as: .fileImport),
+      // The SAME lookup the polish-runtime reconciliation uses, so the page's
+      // privacy line and the eviction rule cannot disagree about one model. An
+      // unknown model answers `nil`, read here as NOT remote, which matches the
+      // provider-only classification this replaced and never over-claims a
+      // cloud upload the user did not make.
+      polishIsRemoteOllamaNow: { [settings, ollamaRemoteness] in
+        settings.llmProvider == .ollama && ollamaRemoteness(settings.llmModel) == true
+      },
+      // The same three retries a finished dictation fires
+      // (`DictationLifecycleCoordinator` on its terminal), because an import
+      // blocks the same three things: an engine switch deferred by gate 6b, an
+      // Ollama eviction deferred by the pinned model, and an EG-1 deactivation
+      // deferred by the pinned runtime. Without this a settings change made
+      // during a long import stayed pending until something unrelated happened
+      // to poke the same paths.
+      onEngineReleased: { [weak engineCoordinator, settings] in
+        engineCoordinator?.poke(.driverStateChanged)
+        settingsSync.retryDeferredOllamaEviction(settings: settings)
+        settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+      },
       // The user's words, read LIVE at Start rather than held from launch: the
       // propagator is the one place that knows the current vocabulary, and an
       // import started after the user adds a word should use it.
-      // The wizard's own choices win over the dictation settings: the user
-      // picked an engine and a polisher for THIS file, on their own screens, and
-      // freezing the app's settings instead would quietly ignore both.
+      // The wizard's steps WRITE settings when the user picks, so freezing
+      // settings here freezes exactly what the user chose on those screens.
       beginRun: { [settings, customWordsPropagator] in
-        let snapshot = FileImportSettingsFreeze.snapshot(
-          settings: settings,
-          backend: fileImportCoordinatorForGates?.chosenBackend ?? settings.selectedBackend,
-          polish: fileImportCoordinatorForGates?.chosenPolish ?? settings.llmProvider)
+        let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
-        return FileImportSettingsFreeze.configuration(for: snapshot)
+        return FileImportSettingsFreeze.configuration(
+          for: snapshot,
+          ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
+            && ollamaRemoteness(snapshot.llmModel) == true)
       },
       processPart: { [fileImportRunner] part in try await fileImportRunner.process(part: part) })
     fileImportCoordinatorForGates = fileImportCoordinator

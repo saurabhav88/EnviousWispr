@@ -26,9 +26,11 @@ final class FileImportCoordinator {
   /// The six steps of the approved design, in order.
   ///
   /// **A wizard rather than one card**, because the user chooses BOTH engines
-  /// per import before anything runs, and the design gives each choice its own
-  /// screen with the specs needed to make it. The step bar is always visible and
-  /// a completed step can be gone back to while nothing has run.
+  /// before anything runs, and the design gives each choice its own screen with
+  /// the specs needed to make it. The step bar is always visible and a completed
+  /// step can be gone back to while nothing has run. The choices are the app's
+  /// own settings, written through the same doors the Speech Engine and AI
+  /// Polish pages use — see the note below `estimateText`.
   enum Step: Int, CaseIterable, Equatable {
     case upload = 1
     case transcription
@@ -51,11 +53,20 @@ final class FileImportCoordinator {
 
   private(set) var step: Step = .upload
 
-  /// The engines THIS import will use. Seeded from the user's current settings
-  /// so the common case is one Continue away, and changed here without writing
-  /// back: a choice made for one file is not a change to how dictation works.
-  var chosenBackend: ASRBackendType = .parakeet
-  var chosenPolish: LLMProvider = .none
+  // The engines this import uses are NOT held here. The Transcription and
+  // Polish steps read and write `SettingsManager` directly, the same way the
+  // Speech Engine and AI Polish pages do, because those settings already have
+  // owners that make a choice REAL: `EngineCoordinator` switches the speech
+  // engine and loads its model, `PipelineSettingsSync` starts and stops the
+  // polish runtimes, and `SettingsManager` canonicalizes `llmModel` when the
+  // provider changes. Gate 2 approved reusing them ("ASR engines |
+  // EngineCoordinator, settings.selectedBackend | Reuse").
+  //
+  // A per-import copy was tried and did none of that: picking All Languages
+  // left Parakeet transcribing, and picking a polisher the app was not already
+  // using sent the previous provider's model id to the new provider and never
+  // started its server. Three defects, one cause, and the cause was holding a
+  // second copy of a setting whose effects live elsewhere. Found by Codex.
 
   /// The file the user picked, described. Everything the Upload and Review steps
   /// show about it comes from here rather than from a second read.
@@ -174,13 +185,17 @@ final class FileImportCoordinator {
   /// settings sync so a provider switch defers tearing down the server this run
   /// is using, exactly as it already defers for a live dictation.
   var pinnedLocalPolishProvider: LLMProvider? {
-    isRunning ? runConfiguration?.localPolishProvider : nil
+    isEngineHeld ? runConfiguration?.localPolishProvider : nil
   }
 
   /// The document as one piece of text, for copy and save.
   var documentText: String { parts.map(\.text).joined(separator: "\n\n") }
 
-  /// Whether a run is in flight, for the sidebar dot.
+  /// Whether a run is in flight AS THE SCREEN SEES IT. Drives the sidebar dot,
+  /// the Stop button and whether the wizard's steps are navigable.
+  ///
+  /// **Not a resource question.** Stop flips this the instant it is pressed,
+  /// deliberately, while the cancelled work is still inside the engine.
   var isRunning: Bool {
     switch state {
     case .transcribing, .polishing: return true
@@ -188,11 +203,32 @@ final class FileImportCoordinator {
     }
   }
 
+  /// Whether the run task still PHYSICALLY holds the shared engine.
+  ///
+  /// **Separate from `isRunning` because Stop separates them**, and every guard
+  /// that protects a resource must read this one. `isRunning` goes false at the
+  /// press; the claim is held until the cancelled transcription or polish call
+  /// actually returns, because a Core ML decode cannot be stopped cooperatively.
+  /// In that window a settings change reading `isRunning` would unload the ASR
+  /// backend, or tear down the polish server, out from under work still using
+  /// it. Found by Codex.
+  private(set) var isEngineHeld = false
+
   // MARK: - Collaborators
 
   private let decode: @Sendable (URL) async throws -> AudioFileDecoder.Decoded
   private let transcribe: @MainActor ([Float]) async throws -> String
   private let engineAdmission: EngineAdmissionAccess
+
+  /// Called once, on the main actor, after a run has physically released the
+  /// shared engine. The composition root points it at the existing retry paths.
+  let onEngineReleased: @MainActor () -> Void
+
+  /// Whether the polish model selected RIGHT NOW is an Ollama model the daemon
+  /// proxies to its own servers. Read live before a run for the page's privacy
+  /// line, and frozen into `RunConfiguration` at Start so a finished document is
+  /// never re-described by a later catalog refresh.
+  let polishIsRemoteOllamaNow: @MainActor () -> Bool
 
   /// What one run is pinned to, captured at Start.
   ///
@@ -234,9 +270,13 @@ final class FileImportCoordinator {
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
     transcribe: @escaping @MainActor ([Float]) async throws -> String,
     engineAdmission: EngineAdmissionAccess,
+    polishIsRemoteOllamaNow: @escaping @MainActor () -> Bool = { false },
+    onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome
   ) {
+    self.polishIsRemoteOllamaNow = polishIsRemoteOllamaNow
+    self.onEngineReleased = onEngineReleased
     self.decode = decode
     self.transcribe = transcribe
     self.engineAdmission = engineAdmission
@@ -276,9 +316,23 @@ final class FileImportCoordinator {
         decodedSamples = decoded.samples
       } catch {
         guard generationAtStart == generation else { return }
-        state = .rejected(Self.rejection(for: error))
+        showRejection(Self.rejection(for: error))
       }
     }
+  }
+
+  /// Where a refusal is READ, which is not always where it was produced.
+  ///
+  /// A rejection raised during a run leaves the user on Working, where nothing
+  /// renders it: a progress bar that will never move again, beside a Stop button
+  /// that does nothing because `isRunning` is already false. A rejection raised
+  /// at Start leaves them on Review with an inert button. Both go back to Upload,
+  /// which is the one step that renders a refusal AND offers the way out of it —
+  /// choosing another file. Found by Codex.
+  private func showRejection(_ reason: FileImportRejection) {
+    state = .rejected(reason)
+    phase = ""
+    step = .upload
   }
 
   /// Moves forward through the wizard. Refused once a run is in flight: the
@@ -291,7 +345,10 @@ final class FileImportCoordinator {
       if case .ready = state { step = .transcription }
     case .transcription: step = .polish
     case .polish: step = .review
-    case .review: start()
+    // With a transcript already in hand, Start means POLISH AGAIN: the audio
+    // has been read and transcribed, and re-doing either would be slower and
+    // would produce the same words.
+    case .review: rawTranscript.isEmpty ? start() : rePolish()
     case .working, .done: break
     }
   }
@@ -305,6 +362,18 @@ final class FileImportCoordinator {
     case .polish: step = .transcription
     case .review: step = .polish
     }
+  }
+
+  /// Takes the user back to the Polish step with the finished document intact.
+  ///
+  /// **Change is a request to choose, not a request to re-run.** It used to
+  /// clear every finished passage and immediately re-run the SAME polisher,
+  /// which threw the document away to reproduce it. The raw transcript is kept,
+  /// so picking a different polisher and pressing Start again costs no re-read
+  /// and no second transcription. Found by Codex.
+  func choosePolisherAgain() {
+    guard !isRunning, !rawTranscript.isEmpty else { return }
+    step = .polish
   }
 
   /// Jumps to a completed step from the step bar. Same rule: only before a run.
@@ -340,7 +409,7 @@ final class FileImportCoordinator {
     case .granted(let granted):
       token = granted
     case .refused(let holder):
-      state = .rejected(.engineBusy(holder))
+      showRejection(.engineBusy(holder))
       return
     }
 
@@ -352,11 +421,15 @@ final class FileImportCoordinator {
     phase = "Writing down what was said"
     state = .transcribing(fileName: name)
 
+    isEngineHeld = true
     runTask = Task { [weak self] in
       // **The claim goes back only here**, after the physical work has exited.
       // Releasing where Stop is DECIDED would let a dictation in while a
       // cancelled part was still inside the one-slot polish server.
-      defer { self?.engineAdmission.release(token) }
+      defer {
+        self?.engineAdmission.release(token)
+        self?.finishEngineHold()
+      }
       await self?.run(generationAtStart: generationAtStart)
     }
   }
@@ -388,7 +461,7 @@ final class FileImportCoordinator {
     case .granted(let granted):
       token = granted
     case .refused(let holder):
-      state = .rejected(.engineBusy(holder))
+      showRejection(.engineBusy(holder))
       return
     }
 
@@ -400,8 +473,12 @@ final class FileImportCoordinator {
     step = .working
     phase = "Cleaning it up"
 
+    isEngineHeld = true
     runTask = Task { [weak self] in
-      defer { self?.engineAdmission.release(token) }
+      defer {
+        self?.engineAdmission.release(token)
+        self?.finishEngineHold()
+      }
       guard let self else { return }
       await polishAll(
         TranscriptSplitter.split(rawTranscript), generationAtStart: generationAtStart)
@@ -413,29 +490,53 @@ final class FileImportCoordinator {
   private func run(generationAtStart: Int) async {
     do {
       let transcript = try await transcribe(decodedSamples)
-      // **Released as soon as the engine is done with it, on every exit.** At 16
-      // kHz mono float this is ~230 MB per hour of audio, and re-polish needs
-      // only `rawTranscript` — holding it for the rest of the app's life would
-      // cost the user hundreds of megabytes for a document they have already
-      // read. Found by cloud review.
-      decodedSamples = []
+      // **The generation guard comes FIRST, before any shared write.** A slow
+      // transcription that returns after the user stopped and chose another file
+      // belongs to a run nobody is watching; clearing `decodedSamples` on the way
+      // out erased the NEW file's audio while its Ready screen stayed up, and the
+      // next Start then transcribed an empty buffer. Found by Codex.
       guard generationAtStart == generation else { return }
+      releaseDecodedAudio()
       guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        state = .rejected(.noSpeechFound)
+        showRejection(.noSpeechFound)
         return
       }
       rawTranscript = transcript
       phase = "Dividing it up to clean"
       await polishAll(TranscriptSplitter.split(transcript), generationAtStart: generationAtStart)
     } catch is CancellationError {
-      decodedSamples = []
+      guard generationAtStart == generation else { return }
+      releaseDecodedAudio()
       // Stop already set the visible state; there is nothing to say.
     } catch {
-      decodedSamples = []
       guard generationAtStart == generation else { return }
-      state = .rejected(Self.rejection(for: error))
+      releaseDecodedAudio()
+      showRejection(Self.rejection(for: error))
     }
   }
+
+  /// Ends the physical hold and wakes whatever deferred itself because of it.
+  ///
+  /// **A deferral needs a wake-up or it is just a stall.** `EngineCoordinator`
+  /// defers a speech-engine switch while an import runs, `PipelineSettingsSync`
+  /// defers tearing down a polish runtime this run pinned, and crash recovery
+  /// defers a replay. All three were written to be retried when the blocker
+  /// clears, and nothing was telling them it had. A settings change made during
+  /// a long import then sat pending until some unrelated event happened to poke
+  /// the same paths. Found by Codex.
+  private func finishEngineHold() {
+    isEngineHeld = false
+    onEngineReleased()
+  }
+
+  /// Drops the decoded audio once the engine is done with it.
+  ///
+  /// At 16 kHz mono float this is ~230 MB per hour of recording, and a re-polish
+  /// needs only `rawTranscript`, so holding it for the life of the app would cost
+  /// the user hundreds of megabytes for a document they have already read. Found
+  /// by cloud review. Only ever called after the generation guard, so it can
+  /// never drop audio belonging to a NEWER selection.
+  private func releaseDecodedAudio() { decodedSamples = [] }
 
   /// Runs every part, one at a time, publishing each as it lands.
   ///

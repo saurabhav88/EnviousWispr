@@ -19,16 +19,51 @@ import NaturalLanguage
 /// unpunctuated ASR output produces — is cut at word boundaries, because at that
 /// point there is no better cut available.
 ///
+/// **Two ceilings, because one of them cannot bound every language.** Words for
+/// scripts that use spaces, UTF-8 bytes for the ones that do not. See
+/// `maximumBytesPerPart`.
+///
 /// **A part is a verbatim slice of the input.** The splitter never rewrites,
 /// normalises or re-spaces anything: whatever the engine produced is what the
-/// cleanup chain sees. `TranscriptSplitterTests` asserts the round trip word for
-/// word, in order, with nothing duplicated and nothing dropped.
+/// cleanup chain sees. `TranscriptSplitterTests` asserts the round trip: the
+/// non-whitespace characters of the parts, in order, are the non-whitespace
+/// characters of the input, with nothing duplicated and nothing dropped.
 public enum TranscriptSplitter {
 
   /// The ceiling every non-empty part obeys. Raising it narrows the promise
   /// above, and the measurement that set it is named there rather than here so
   /// there is one place to re-read before changing it.
   public static let maximumWordsPerPart = 500
+
+  /// The ceiling that binds for a language WITHOUT spaces, in UTF-8 bytes.
+  ///
+  /// **A word ceiling cannot bound Japanese, Chinese or Thai**, because those
+  /// scripts do not put spaces between words: an entire recording counts as one
+  /// or two "words" and sails past `maximumWordsPerPart` untouched. Measured on
+  /// 600 repeated Japanese sentences, the whitespace-only splitter produced a
+  /// single 10,500-character part — about 31,000 UTF-8 bytes, far past the
+  /// context preflight in `LLMPolishStep`, which counts BYTES — so the whole
+  /// recording came back unpolished. Found by Codex.
+  ///
+  /// **DERIVED from the preflight, not chosen.** `localPolishTranscriptCeiling`
+  /// is the same formula the preflight applies, at EG-1's shipped 16,384-token
+  /// window (`eg1-manifest.json`): `(window - promptOverhead) / 2`. It is the
+  /// ASCII worst case, so it is conservative for every other script, which is
+  /// the safe direction. Reading the authority rather than restating a number
+  /// means a window change moves this with it.
+  ///
+  /// It does NOT bind for English at the word ceiling: 500 words is about 3,900
+  /// bytes and this is 7,424, so ordinary prose is still cut where the measured
+  /// word ceiling says. Only an unsegmented script reaches it.
+  ///
+  /// Known limit, stated rather than hidden: S1-mini ships an 8,192-token
+  /// window, where the same formula gives 3,328 bytes. A 500-word English part
+  /// is already over that and its preflight already refuses one today, before
+  /// this splitter existed. Bounding to the smaller window would cut every
+  /// English part in half for the polisher most users do not run, so the ceiling
+  /// follows EG-1 and the S1-mini gap stays a separate question.
+  public static let maximumBytesPerPart = LLMPolishStep.localPolishTranscriptCeiling(
+    contextTokens: 16_384)
 
   /// Splits `transcript` into parts of 1...`maximumWordsPerPart` words.
   ///
@@ -54,23 +89,33 @@ public enum TranscriptSplitter {
       pendingWords = 0
     }
 
+    var pendingBytes = 0
+
     for range in sentences {
       let sentence = transcript[range]
       let words = wordCount(in: sentence)
       guard words > 0 else { continue }
+      let bytes = sentence.utf8.count
 
-      if words > maximumWordsPerPart {
-        // A single sentence over the ceiling. Everything already packed goes
+      if words > maximumWordsPerPart || bytes > maximumBytesPerPart {
+        // A single sentence over a ceiling. Everything already packed goes
         // first, so the run-on's own cuts do not swallow the sentences before
-        // it, and the run-on is then cut at word boundaries.
+        // it, and the run-on is then cut as small as it has to be.
         flushPending()
-        parts.append(contentsOf: splitAtWordBoundaries(sentence))
+        pendingBytes = 0
+        parts.append(contentsOf: splitOverlongSentence(sentence))
         continue
       }
 
-      if pendingWords + words > maximumWordsPerPart { flushPending() }
+      if pendingWords + words > maximumWordsPerPart
+        || pendingBytes + bytes > maximumBytesPerPart
+      {
+        flushPending()
+        pendingBytes = 0
+      }
       pending.append(sentence)
       pendingWords += words
+      pendingBytes += bytes
     }
     flushPending()
     return parts
@@ -98,11 +143,16 @@ public enum TranscriptSplitter {
     return ranges.isEmpty ? [text.startIndex..<text.endIndex] : ranges
   }
 
-  /// Cuts one over-long sentence into ceiling-sized pieces at word boundaries.
+  /// Cuts one over-long sentence into pieces that obey BOTH ceilings.
+  ///
+  /// Word boundaries first, because a cut between words is the least damaging
+  /// one available. Where a single space-free run is still over the byte ceiling
+  /// — which is every sentence in a language that does not use spaces — the run
+  /// itself is cut at character boundaries, never mid-character.
   ///
   /// Slices the ORIGINAL text between the first and last word of each piece, so
   /// the pieces stay verbatim rather than becoming a space-joined rebuild.
-  private static func splitAtWordBoundaries(_ sentence: Substring) -> [String] {
+  private static func splitOverlongSentence(_ sentence: Substring) -> [String] {
     var pieces: [String] = []
     var wordRanges: [Range<Substring.Index>] = []
 
@@ -121,12 +171,51 @@ public enum TranscriptSplitter {
 
     var cursor = 0
     while cursor < wordRanges.count {
-      let end = min(cursor + maximumWordsPerPart, wordRanges.count)
+      // Take as many whole words as both ceilings allow, never fewer than one.
+      var end = cursor
+      var bytes = 0
+      while end < wordRanges.count, end - cursor < maximumWordsPerPart {
+        let next = sentence[wordRanges[end]].utf8.count + (end > cursor ? 1 : 0)
+        if end > cursor, bytes + next > maximumBytesPerPart { break }
+        bytes += next
+        end += 1
+      }
       let lower = wordRanges[cursor].lowerBound
       let upper = wordRanges[end - 1].upperBound
-      pieces.append(String(sentence[lower..<upper]))
+      let piece = sentence[lower..<upper]
+      // One word can still be over on its own, which is the unsegmented-script
+      // case: cut it by characters.
+      if piece.utf8.count > maximumBytesPerPart {
+        pieces.append(contentsOf: splitAtCharacterBoundaries(piece))
+      } else {
+        pieces.append(String(piece))
+      }
       cursor = end
     }
+    return pieces
+  }
+
+  /// The last resort, for a space-free run longer than the byte ceiling.
+  ///
+  /// Cuts between CHARACTERS, so a multi-byte character is never split in half
+  /// and no part is ever mojibake. A part may come in slightly under the ceiling
+  /// because the character that would have crossed it is carried to the next
+  /// one, which is the safe direction.
+  private static func splitAtCharacterBoundaries(_ run: Substring) -> [String] {
+    var pieces: [String] = []
+    var current = ""
+    var bytes = 0
+    for character in run {
+      let size = String(character).utf8.count
+      if bytes + size > maximumBytesPerPart, !current.isEmpty {
+        pieces.append(current)
+        current = ""
+        bytes = 0
+      }
+      current.append(character)
+      bytes += size
+    }
+    if !current.isEmpty { pieces.append(current) }
     return pieces
   }
 
