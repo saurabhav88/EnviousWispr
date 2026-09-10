@@ -422,7 +422,16 @@ final class FileImportCoordinator {
     step = .upload
     forgetSaveOutcome()
     state = .reading(fileName: name)
-    Task { [weak self] in
+    // **Cancelled, not merely ignored.** The generation check discards a stale
+    // result AFTER the work is done, which is the right answer to "whose file is
+    // this" and no answer at all to "should this still be running". A three-hour
+    // recording decodes to about 690 MB of samples; picking a second file while
+    // the first is reading left both decodes running and both arrays growing,
+    // for a result one of them was always going to throw away. `AudioFileDecoder`
+    // already checks cancellation inside its read loop, so this stops it in the
+    // middle rather than at the end. Found by Codex.
+    decodeTask?.cancel()
+    decodeTask = Task { [weak self] in
       guard let self else { return }
       do {
         let decoded = try await decode(url)
@@ -433,6 +442,8 @@ final class FileImportCoordinator {
           channelCount: decoded.channelCount)
         state = .ready(fileName: name, seconds: decoded.seconds)
         decodedSamples = decoded.samples
+      } catch is CancellationError {
+        // Superseded by another file. The newer decode owns the screen.
       } catch {
         guard generationAtStart == generation else { return }
         showRejection(Self.rejection(for: error))
@@ -628,6 +639,8 @@ final class FileImportCoordinator {
   /// Clears everything and returns to an empty Upload step.
   func startOver() {
     guard !isRunning else { return }
+    decodeTask?.cancel()
+    decodeTask = nil
     generation += 1
     file = nil
     parts = []
@@ -642,6 +655,9 @@ final class FileImportCoordinator {
   /// The decoded audio, held between `choose` and `start` so pressing Start does
   /// not read the file a second time.
   private var decodedSamples: [Float] = []
+
+  /// The in-flight read, so replacing or clearing the file can stop it.
+  private var decodeTask: Task<Void, Never>?
 
   /// Runs the import. Claims the shared engine first: a refusal here is a
   /// refusal to start, not a queue.

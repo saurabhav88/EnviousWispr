@@ -155,6 +155,46 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.canRetry, "the message says try again and nothing offers it")
   }
 
+  /// **An abandoned read is STOPPED, not ignored.**
+  ///
+  /// The generation check answers "whose file is this" after the work is done,
+  /// which is a different question from "should this still be running". A
+  /// three-hour recording decodes to about 690 MB of samples, so picking a
+  /// second file while the first was reading left both running and both arrays
+  /// growing, to throw one away. Found by Codex.
+  ///
+  /// Asserted on the DECODER observing its own cancellation, not on the visible
+  /// state: the screen looks identical either way, which is exactly why this
+  /// went unnoticed.
+  @Test("choosing another file stops the read already in progress")
+  func replacingAFileCancelsItsRead() async {
+    let started = PartGate()
+    let cancelled = CallCounter()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      decode: { _ in
+        // Park inside the decode, and record whether the wait ended because the
+        // task was cancelled — which is what `AudioFileDecoder`'s own
+        // `Task.checkCancellation()` would see.
+        await started.wait()
+        if Task.isCancelled { await cancelled.record() }
+        try Task.checkCancellation()
+        return Self.decoded(seconds: 1.0)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    await settleUntil { await started.entered >= 1 }
+
+    // The user picks a different file while the first is still reading.
+    coordinator.choose(url: URL(fileURLWithPath: "/tmp/second.m4a"))
+    await started.releaseAll()
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(
+      await cancelled.value >= 1,
+      "the abandoned read carried on to the end, holding its samples the whole way")
+  }
+
   /// Try again does what it says: no second read, no second decode.
   @Test("retrying after a busy engine reuses the audio already in memory")
   func retryDoesNotReadTheFileAgain() async {
