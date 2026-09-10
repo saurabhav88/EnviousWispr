@@ -99,7 +99,7 @@ struct TranscribeFileView: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!coordinator.canJump(to: step))
+        .disabled(!coordinator.canGo(to: step))
       }
     }
     .padding(.horizontal, 8)
@@ -139,7 +139,7 @@ struct TranscribeFileView: View {
       HStack(spacing: 10) {
         Text(note).foregroundStyle(Color.stTextSecondary)
         Spacer(minLength: 12)
-        if showBack {
+        if showBack, coordinator.canGoBack {
           SettingsActionButton(title: "Back", isEnabled: true, action: { coordinator.goBack() })
         }
         SettingsActionButton(
@@ -449,7 +449,10 @@ struct TranscribeFileView: View {
       detail: "Apple's on-device model. Needs macOS 26 or later."),
     PolishChoice(
       provider: .ollama, icon: "cube", availability: "Needs the app",
-      detail: "Any model you run locally in Ollama. Nothing leaves this Mac."),
+      // Deliberately says nothing about where the text goes. Ollama proxies
+      // some models to its own servers, so the answer depends on the MODEL, and
+      // this card cannot see one. `ollamaPrivacyLine` says it right below.
+      detail: "Any model you run in Ollama."),
     PolishChoice(
       provider: .openAI, icon: "circle.hexagongrid", availability: "Needs a key",
       detail: "Your own OpenAI key. Only the text is sent, never the audio."),
@@ -460,6 +463,13 @@ struct TranscribeFileView: View {
       provider: .claude, icon: "star.circle", availability: "Needs a key",
       detail: "Your own Anthropic key. Only the text is sent, never the audio."),
   ]
+
+  /// Where an Ollama polish actually sends the text, for the model selected now.
+  private var ollamaPrivacyLine: String {
+    coordinator.polishIsRemoteOllamaNow()
+      ? "The model you picked runs on Ollama's servers, so the text is sent there."
+      : "That model runs on this Mac, so nothing leaves it."
+  }
 
   private func polishCard(_ choice: PolishChoice) -> some View {
     // Same door the AI Polish page uses. `SettingsManager` canonicalizes the
@@ -503,6 +513,16 @@ struct TranscribeFileView: View {
             Text(choice.detail)
               .foregroundStyle(Color.stTextSecondary)
               .fixedSize(horizontal: false, vertical: true)
+            // **The sentence sits where the user approves the choice**, not only
+            // in the footer. This card promised "Nothing leaves this Mac" for
+            // every Ollama model, immediately above the button that sends the
+            // transcript to one Ollama proxies to its own servers. Found by
+            // Codex.
+            if choice.provider == .ollama {
+              Text(ollamaPrivacyLine)
+                .foregroundStyle(Color.stTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           }
           Spacer(minLength: 0)
         }
@@ -693,6 +713,13 @@ struct TranscribeFileView: View {
   @ViewBuilder
   private var doneStep: some View {
     stepHeading(coordinator.state == .stopped ? "Stopped" : "Your transcript is ready")
+    // A refusal raised while a document exists lands HERE rather than on Upload,
+    // because Upload's only offer is choosing another file, which clears it. The
+    // sentence sits above the words it did not touch.
+    if case .rejected(let reason) = coordinator.state {
+      InsetNotice(
+        text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
+    }
     BrandedSection {
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 10) {

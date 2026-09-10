@@ -173,6 +173,15 @@ final class FileImportCoordinator {
 
   func noteSaveSucceeded(fileName: String) { saveMessage = "Saved to \(fileName)." }
 
+  /// Forgets the last save outcome. Called wherever the document is replaced or
+  /// regenerated, because a stale "Saved to Meeting.txt" over words that have
+  /// never been saved is the exact belief that makes a user press New
+  /// transcription and lose them. Found by Codex.
+  private func forgetSaveOutcome() {
+    saveMessage = nil
+    saveFailureDetail = nil
+  }
+
   func noteSaveFailed(_ error: any Error) {
     saveMessage = "That file couldn't be saved. Your words are still here. Try another place."
     saveFailureDetail = String(describing: error)
@@ -362,6 +371,7 @@ final class FileImportCoordinator {
     let generationAtStart = generation
     file = nil
     step = .upload
+    forgetSaveOutcome()
     state = .reading(fileName: name)
     Task { [weak self] in
       guard let self else { return }
@@ -392,7 +402,14 @@ final class FileImportCoordinator {
   private func showRejection(_ reason: FileImportRejection) {
     state = .rejected(reason)
     phase = ""
-    step = .upload
+    // **Where a refusal is READ, and it depends on what the user would lose.**
+    // With no document, Upload is the step that renders a refusal AND offers the
+    // way out of it: another file. With one, Upload offers only the thing that
+    // DESTROYS it — refusing "Clean it again" because a dictation is running
+    // sent the user to a screen from which their finished transcript could not
+    // be copied, saved or retried. Done renders the same refusal beside the
+    // words. Found by Codex.
+    step = hasDocument ? .done : .upload
   }
 
   /// Moves forward through the wizard. Refused once a run is in flight: the
@@ -413,15 +430,21 @@ final class FileImportCoordinator {
     }
   }
 
-  /// Goes back one step. Only ever available while nothing has run.
+  /// Whether there is a document to go back TO. The single fact three of the
+  /// rules below turn on.
+  var hasDocument: Bool { !rawTranscript.isEmpty }
+
+  /// Whether Back is offered right now, so the button is absent rather than
+  /// present and inert.
+  var canGoBack: Bool {
+    guard let previous = Step(rawValue: step.rawValue - 1) else { return false }
+    return canGo(to: previous)
+  }
+
+  /// Goes back one step, if that step is one the user may be on.
   func goBack() {
-    guard !isRunning else { return }
-    switch step {
-    case .upload, .working, .done: break
-    case .transcription: step = .upload
-    case .polish: step = .transcription
-    case .review: step = .polish
-    }
+    guard let previous = Step(rawValue: step.rawValue - 1), canGo(to: previous) else { return }
+    step = previous
   }
 
   /// Takes the user back to the Polish step with the finished document intact.
@@ -436,34 +459,40 @@ final class FileImportCoordinator {
     step = .polish
   }
 
-  /// Whether the step bar may take the user to `target` RIGHT NOW.
+  /// **The ONE answer to "may the user be on this step right now".**
   ///
-  /// **One function, read by both the bar and the jump**, so a step cannot be
-  /// clickable and refuse, or be refused and look clickable. "Earlier than the
-  /// current step" was the whole rule and it let a finished run navigate to
-  /// Working — an inactive progress bar with a Stop button that does nothing and
-  /// no way back to the document — and to Upload, where Continue is refused
-  /// because the state is finished rather than ready. Found by Codex.
-  func canJump(to target: Step) -> Bool {
+  /// Read by the step bar's `disabled`, by `jump(to:)`, by `goBack()` and by
+  /// where a refusal lands. Three separate movers each had their own rule and
+  /// each let the user reach a screen the finished document could not be
+  /// reached from: the bar offered Working after a run, Back walked from Polish
+  /// to Upload where Continue is refused because the state is finished, and a
+  /// refusal sent the user to Upload whose only offer is choosing another file,
+  /// which clears the document. Three findings, three rounds, one cause — so
+  /// this is the rule, and nothing moves `step` without asking it.
+  ///
+  /// **The test that decides every case: can the user get back to their words?**
+  func canGo(to target: Step) -> Bool {
     guard !isRunning, target != step else { return false }
     switch target {
-    // Never: it shows a run in progress, and after one there is none.
+    // Never by navigation: it shows a run in progress, and after one there is
+    // none. `start()` and `rePolish()` are the only ways in.
     case .working: return false
-    // Only ever forward INTO, by finishing a run.
-    case .done: return false
-    // Choosing another file is `startOver()`'s job, reached from Done's own
-    // button, because it also has to clear the document.
-    case .upload: return rawTranscript.isEmpty && step.rawValue > Step.upload.rawValue
-    // The two choice steps stay reachable after a run: picking a different
-    // polisher and cleaning the same words again is a supported thing to do.
+    // **The way back to the document, and the reason the others can be strict.**
+    case .done: return hasDocument
+    // Choosing another file is `startOver()`'s job, because it also has to clear
+    // the document. Offering Upload with a document present is what stranded it.
+    case .upload: return !hasDocument
+    // With a document the choice steps go both ways: picking a different
+    // polisher and returning to the words is a supported thing to do. Without
+    // one, the wizard runs forwards and the bar only goes back.
     case .transcription, .polish, .review:
-      return file != nil && target.rawValue < step.rawValue
+      return file != nil && (hasDocument || target.rawValue < step.rawValue)
     }
   }
 
-  /// Takes the user to `target` if `canJump(to:)` allows it.
+  /// Takes the user to `target` if `canGo(to:)` allows it.
   func jump(to target: Step) {
-    guard canJump(to: target) else { return }
+    guard canGo(to: target) else { return }
     step = target
   }
 
@@ -476,6 +505,7 @@ final class FileImportCoordinator {
     rawTranscript = ""
     decodedSamples = []
     runConfiguration = nil
+    forgetSaveOutcome()
     state = .idle
     step = .upload
   }
@@ -573,6 +603,8 @@ final class FileImportCoordinator {
     generation += 1
     let generationAtStart = generation
     parts = []
+    // The saved words are about to be replaced by different ones.
+    forgetSaveOutcome()
     step = .working
     phase = "Cleaning it up"
 

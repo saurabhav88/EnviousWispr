@@ -213,26 +213,79 @@ struct FileImportCoordinatorTests {
 
   // MARK: - Where the step bar may take you
 
-  /// **The bar and the jump read ONE function**, so a step cannot look clickable
-  /// and refuse. Before this, a finished run offered Working — an inactive
-  /// progress bar with a dead Stop button and no route back to the document —
-  /// and Upload, where Continue was refused because the state was finished.
-  @Test("a finished run cannot navigate into Working or back to an empty Upload")
-  func finishedRunNavigatesOnlyWhereSomethingWorks() async {
+  /// **Every mover reads ONE function**, so a step cannot look clickable and
+  /// refuse, and no route can strand the document. Three rounds each found a
+  /// different mover with its own rule: the BAR offered Working after a run,
+  /// BACK walked from Polish to Upload where Continue is refused because the
+  /// state is finished, and a REFUSAL sent the user to Upload, whose only offer
+  /// is choosing another file — which clears the words they were trying to keep.
+  ///
+  /// **The property, stated once: from anywhere the user can reach, the finished
+  /// document is still reachable.** The rows below check it by walking, not by
+  /// restating the rule.
+  @Test("a finished document stays reachable from every step the user can reach")
+  func theDocumentIsNeverStranded() async {
     let coordinator = await finishedCoordinator(lease: EngineLease())
     #expect(coordinator.step == .done)
+    let document = coordinator.documentText
+    #expect(!document.isEmpty)
 
-    #expect(coordinator.canJump(to: .working) == false)
-    #expect(coordinator.canJump(to: .upload) == false)
-    #expect(coordinator.canJump(to: .done) == false)
-    // Picking another polisher for the same words is a supported thing to do.
-    #expect(coordinator.canJump(to: .polish))
-    #expect(coordinator.canJump(to: .transcription))
+    // Dead ends are refused outright.
+    #expect(coordinator.canGo(to: .working) == false)
+    #expect(
+      coordinator.canGo(to: .upload) == false,
+      "Upload with a document offers only the thing that destroys it")
 
-    coordinator.jump(to: .working)
-    #expect(coordinator.step == .done, "the bar took the user to a dead screen")
-    coordinator.jump(to: .polish)
+    // Walk every step the bar DOES offer, and from each one walk back.
+    for target in [FileImportCoordinator.Step.transcription, .polish, .review] {
+      #expect(coordinator.canGo(to: target), "\(target.title) is unreachable after a run")
+      coordinator.jump(to: target)
+      #expect(coordinator.step == target)
+      #expect(
+        coordinator.canGo(to: .done),
+        "from \(target.title) there is no way back to the document")
+      coordinator.jump(to: .done)
+      #expect(coordinator.step == .done)
+      #expect(coordinator.documentText == document, "the walk changed the document")
+    }
+  }
+
+  /// The walk Codex found: Change, then Back, then Back again.
+  @Test("walking Back from Change never leaves the document behind")
+  func backFromChangeStaysReachable() async {
+    let coordinator = await finishedCoordinator(lease: EngineLease())
+    coordinator.choosePolisherAgain()
     #expect(coordinator.step == .polish)
+
+    coordinator.goBack()
+    #expect(coordinator.step == .transcription)
+    coordinator.goBack()
+    #expect(
+      coordinator.step == .transcription,
+      "Back walked onto Upload, where Continue is refused and the document is gone")
+    #expect(coordinator.canGoBack == false, "Back is offered with nowhere to go")
+    #expect(coordinator.canGo(to: .done))
+  }
+
+  /// A refusal must not cost the user the document either. Cleaning again while
+  /// a dictation holds the engine is refused, and the refusal has to be readable
+  /// somewhere the words still are.
+  @Test("a refusal with a document in hand lands where the document is")
+  func aRefusalKeepsTheDocumentReachable() async {
+    let lease = EngineLease()
+    let coordinator = await finishedCoordinator(lease: lease)
+    let document = coordinator.documentText
+
+    // Something else takes the engine, then the user asks to clean again.
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("the fixture could not take the engine")
+      return
+    }
+    coordinator.rePolish()
+
+    #expect(coordinator.state == .rejected(.engineBusy(.dictation)))
+    #expect(coordinator.step == .done, "the refusal stranded the finished document")
+    #expect(coordinator.documentText == document, "the refusal ate the document")
   }
 
   /// The other direction, so a rule that refused everything would fail too.
@@ -247,9 +300,33 @@ struct FileImportCoordinatorTests {
     coordinator.advance()
     #expect(coordinator.step == .polish)
 
-    #expect(coordinator.canJump(to: .upload))
-    #expect(coordinator.canJump(to: .transcription))
-    #expect(coordinator.canJump(to: .review) == false, "the bar skipped a step forward")
+    #expect(coordinator.canGo(to: .upload))
+    #expect(coordinator.canGo(to: .transcription))
+    #expect(coordinator.canGo(to: .review) == false, "the bar skipped a step forward")
+    #expect(coordinator.canGo(to: .done) == false, "Done was offered with no document")
+  }
+
+  /// A save confirmation belongs to ONE set of words. Left standing over a new
+  /// document it is the exact belief that makes a user press New transcription
+  /// and lose them.
+  @Test("the save confirmation does not survive the document it was about")
+  func saveMessageDoesNotOutliveItsDocument() async {
+    let coordinator = await finishedCoordinator(lease: EngineLease())
+    coordinator.noteSaveSucceeded(fileName: "Meeting.txt")
+    #expect(coordinator.saveMessage != nil)
+
+    coordinator.startOver()
+    #expect(
+      coordinator.saveMessage == nil,
+      "a new import claimed the previous document's save")
+
+    let second = await finishedCoordinator(lease: EngineLease())
+    second.noteSaveSucceeded(fileName: "Meeting.txt")
+    second.rePolish()
+    await settleUntil { second.state == .finished }
+    #expect(
+      second.saveMessage == nil,
+      "re-cleaned words claimed the save of the words they replaced")
   }
 
   /// Change hands the user the choice instead of re-running what they already
