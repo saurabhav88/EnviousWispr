@@ -405,7 +405,7 @@ public struct InverseTextNormalizer: Sendable {
     let trailAndPat = #"^\s+and\s+(?:"# + Self.numwordAlt + #"|\d)"#  // number-word OR digit endpoint
     t = reSub(betweenPat, t) { m in
       let end = m.result.range.location + m.result.range.length
-      if firstMatch(trailAndPat, m.ns.substring(from: end)) != nil { return nil }
+      if firstMatch(trailAndPat, Self.tailWindow(m.ns, end)) != nil { return nil }
       guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
       return " between \(r) "
     }
@@ -439,7 +439,7 @@ public struct InverseTextNormalizer: Sendable {
       // all-ones AND no unit noun after (so "one by one inch" stays a real dimension). "two by
       // two", "three by three", or any >=10 are dimensions and convert.
       let end = m.result.range.location + m.result.range.length
-      let nxtAfter = Self.clean(Self.splitWords(m.ns.substring(from: end)).first ?? "")
+      let nxtAfter = Self.clean(Self.splitWords(Self.tailWindow(m.ns, end)).first ?? "")
       if Set(legs) == [1], !Self.unitNouns.contains(nxtAfter) { return nil }
       return " " + legs.map { comma($0) }.joined(separator: " by ") + " "
     }
@@ -467,7 +467,7 @@ public struct InverseTextNormalizer: Sendable {
       let tailAnd = String(repeating: " and", count: trailAnd)
       let start = m.result.range.location
       let end = start + m.result.range.length
-      let after = m.ns.substring(from: end)
+      let after = Self.tailWindow(m.ns, end)
       let toksAfter = Self.splitWords(after)
       let nxt = toksAfter.first ?? ""
       let nxtCap = nxt.first?.isUppercase ?? false
@@ -502,7 +502,7 @@ public struct InverseTextNormalizer: Sendable {
         if shout {
           capsConvert = true
         } else {
-          let prevW = Self.splitWords(m.ns.substring(to: start)).last ?? ""
+          let prevW = Self.lastTokenBefore(m.ns, start).token
           if capsw(prevW) || capsw(nxt) { return nil }  // part of an all-caps Title -> leave
           capsConvert = true  // isolated caps number = emphasis -> convert
         }
@@ -511,10 +511,9 @@ public struct InverseTextNormalizer: Sendable {
         if noninitialCap { return nil }  // "One Million Moms"
         if firstCap && single && nxtCap { return nil }  // brand "Hundred Acre Wood","Forty Niners"
         if firstCap {
-          var before = m.ns.substring(to: start)
-          while let last = before.last, last.isWhitespace { before.removeLast() }
+          let before = Self.lastTokenBefore(m.ns, start)
           let sentinel: Set<Character> = [".", "!", "?", "\n", "\"", "'", "(", "["]
-          let sentenceInitial = before.isEmpty || sentinel.contains(before.last!)
+          let sentenceInitial = before.headIsBlank || sentinel.contains(before.token.last!)
           if !sentenceInitial { return nil }  // capitalized mid-sentence, ambiguous -> spelled
         }
       }
@@ -1169,6 +1168,64 @@ public struct InverseTextNormalizer: Sendable {
     return horizontalWhitespaceSet.contains(scalar)
   }
 
+  // MARK: - Bounded neighbour reads (Sentry `inverse_normalization_timeout`)
+  //
+  // A callback that asks "what follows this match" by taking `ns.substring(from: end)` copies
+  // — and `splitWords` then tokenizes — EVERY remaining character of the transcript. The
+  // cardinal pass fires once per number-word run, so that is O(text) work per match and
+  // O(text x matches) per call: quadratic in a long numeric dictation, which is how a pure-CPU
+  // regex chain that is milliseconds on a sentence reaches the step's 0.5s `withDeadline` and
+  // reports `inverse_normalization_timeout`. The two helpers below answer the same questions by
+  // SCANNING utf-16 units to a token boundary and materializing only that, so the cost is the
+  // length of the neighbouring tokens rather than the length of the rest of the take.
+  //
+  // Both use `isWhitespace` — the Unicode White_Space property spelled out in `whitespaceSet` —
+  // which is the same boundary `splitWords` (`Character.isWhitespace`) splits on. That equality
+  // is what makes these drop-in: the caller keeps running the identical `splitWords` /
+  // `firstMatch` / `.first` / `.last` logic, just over a window instead of the whole tail.
+  // Surrogates are not whitespace under either rule, so a cut can never land inside a pair.
+
+  /// The text from `end` through the end of its SECOND whitespace-delimited token — the window
+  /// every "what follows this match" reader in this file stays inside.
+  ///
+  /// TWO tokens, because that is the deepest any caller looks: the cardinal pass reads
+  /// `toksAfter[1]` for a unit with a modifier ("two square miles") and for an age period
+  /// ("two years old"). Leading whitespace is preserved so an anchored `^\s+...` probe and a
+  /// `.first == "-"` glue test read exactly what they read on the full tail.
+  ///
+  /// Truncating at a token boundary cannot change an answer: a reader that wants token 1 or 2
+  /// gets it whole, `count >= 2` is decided identically, and a `\b` closing an anchored probe
+  /// inside token 1 sees the same following character (the boundary that ended the token) as it
+  /// would in the full text. There is no character cap — a cap could cut a token in half and
+  /// change what `clean` compares against, and a token is short in real dictation.
+  static func tailWindow(_ ns: NSString, _ end: Int) -> String {
+    let n = ns.length
+    guard end < n else { return "" }
+    var i = end
+    for _ in 0..<2 {
+      while i < n, isWhitespace(ns.character(at: i)) { i += 1 }
+      guard i < n else { break }
+      while i < n, !isWhitespace(ns.character(at: i)) { i += 1 }
+    }
+    return ns.substring(with: NSRange(location: end, length: i - end))
+  }
+
+  /// The last whitespace-delimited token before `start`, plus whether NOTHING but whitespace
+  /// precedes it — the two things a "what came before this match" reader in this file asks.
+  ///
+  /// `token` is `splitWords(everythingBefore).last ?? ""`, and `headIsBlank` is what
+  /// `everythingBefore` trimmed of trailing whitespace answers to `isEmpty`. When `headIsBlank`
+  /// is false the token is non-empty and its LAST character is the last character of that
+  /// trimmed head, which is the sentence-boundary sentinel the cardinal pass tests.
+  static func lastTokenBefore(_ ns: NSString, _ start: Int) -> (token: String, headIsBlank: Bool) {
+    var p = start
+    while p > 0, isWhitespace(ns.character(at: p - 1)) { p -= 1 }
+    guard p > 0 else { return ("", true) }
+    var q = p
+    while q > 0, !isWhitespace(ns.character(at: q - 1)) { q -= 1 }
+    return (ns.substring(with: NSRange(location: q, length: p - q)), false)
+  }
+
   static func gluedRunIsOnlyPunctuation(_ ns: NSString, _ from: Int, _ to: Int) -> Bool {
     guard from < to else { return true }
     let glued = ns.substring(with: NSRange(location: from, length: to - from))
@@ -1627,7 +1684,7 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(scalePat, t) { m in
       let sword = (m.g("s") ?? "").lowercased()
       // fraction guard: "a thousandth of a second" is 1/1000, not the 1,000th -> leave spelled.
-      let afterScale = m.ns.substring(from: m.result.range.location + m.result.range.length)
+      let afterScale = Self.tailWindow(m.ns, m.result.range.location + m.result.range.length)
       if firstMatch(#"^\s+of\b"#, afterScale) != nil { return nil }
       let n: Int
       if let lead = m.g("lead") {

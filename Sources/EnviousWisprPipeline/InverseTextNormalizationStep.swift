@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
+import os
 
 /// Deterministic inverse text normalization (spoken-form → written-form) as a post-ASR
 /// limb: "two zero three nine five four…" → "203-954-8879", "twenty twenty six" → "2026",
@@ -102,12 +103,23 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
     let normalizer = self.normalizer
     let spokenPunctuation = self.spokenPunctuationEnabled
+    // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, and the budget is spent from
+    // THIS clock: an operation task still queued for a cooperative thread burns exactly the same
+    // 0.5s a genuinely slow `normalize` does, and `latency_ms` alone reads ~500 either way. #1946
+    // measured that dependence for the ordered siblings; the same one applies here. Stamp the
+    // instant the closure actually BEGINS so a timeout breadcrumb says which of the two it was —
+    // engine work, or a take that never got a thread — instead of leaving the next occurrence as
+    // undiagnosable as the last. `OSAllocatedUnfairLock` because the closure is `@Sendable`; the
+    // read below happens after `withDeadline` returns, back on this actor.
+    let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
     let maybeConverted = await withDeadline(seconds: 0.5) {
-      normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
+      engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
+      return normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
+      let queueWaitMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
       // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
       // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
@@ -115,7 +127,15 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         TimeoutError(seconds: 0.5),
         category: .inverseNormalizationTimeout,
         stage: "inverse_text_normalization",
-        extra: ["latency_ms": elapsedMs, "len_before": lenBefore])
+        extra: [
+          "latency_ms": elapsedMs,
+          "len_before": lenBefore,
+          // nil = the closure never ran: the deadline was spent QUEUED, not normalizing, and
+          // nothing about the engine is implicated. Otherwise the wait before it started, so
+          // `latency_ms - queue_wait_ms` is what the engine itself actually consumed.
+          "engine_started": queueWaitMs != nil,
+          "queue_wait_ms": queueWaitMs ?? -1,
+        ])
       lastRun = RunOutcome(
         ran: true, changed: false, skipReason: nil,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore)

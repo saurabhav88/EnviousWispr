@@ -1,0 +1,212 @@
+import Foundation
+import Testing
+
+@testable import EnviousWisprPostProcessing
+
+/// Inert padding: no number word, ordinal, unit noun, age period, month, or connector this
+/// file reacts to, and no `.!?` (so `applyPunct`'s sentence-capitalization pass cannot touch its
+/// first letter and change the text under the comparisons below). Appending it must extend a take
+/// without adding a single match of its own.
+private let inertTail = String(
+  repeating: " plus the discussion kept going quite a while longer afterwards", count: 300)
+
+/// Sentence-initial inert lead: ends on `. `, so a match placed after it is still
+/// sentence-initial however many times the unit repeats. Already capitalized, so `applyPunct`
+/// leaves every copy alone.
+private let sentenceLead = "This is prior context. "
+
+/// Mid-sentence inert lead: ends on an ordinary word, so a match placed after it is NOT
+/// sentence-initial. Also already capitalized, for the same reason.
+private let midSentenceLead = "Then he said that "
+
+/// The neighbour reads the ITN passes make around a match are BOUNDED, and bounding them
+/// changed nothing about what those passes decide.
+///
+/// Why this exists: the cardinal pass fires once per number-word run and used to answer
+/// "what follows this match" with `ns.substring(from: end)` — a copy, then a `splitWords`
+/// tokenization, of every remaining character of the take. That is O(text) per match and so
+/// O(text x matches) per call, quadratic in a long numeric dictation, which is how a chain
+/// that costs milliseconds on a sentence reaches `InverseTextNormalizationStep`'s 0.5s
+/// `withDeadline` and reports `inverse_normalization_timeout` (Sentry, v2.4.8, macOS 26.6.2).
+/// `tailWindow` / `lastTokenBefore` answer the same questions from the neighbouring TOKENS.
+///
+/// The parity fixture cannot cover this on its own: `parity.jsonl` rows are single sentences,
+/// so their tails are already short and a window that is too small would still pass every one
+/// of them. What needs proving here is the pair of claims parity does not reach:
+///
+/// 1. The window really is bounded — its size tracks the neighbouring tokens, NOT the rest of
+///    the take. That is the whole complexity claim, asserted structurally rather than with a
+///    wall clock (which would be flaky in CI and says nothing on a fast machine anyway).
+/// 2. Every guard that reads a neighbour decides the same way with a long take around it as it
+///    does alone — the case the old whole-tail read paid for and a too-small window breaks.
+///
+/// Claim 2 is asserted as an INVARIANT (`long` extends `short`) rather than against baked
+/// output, so these tests pin the property under test and cannot drift into a second, weaker
+/// copy of the parity fixture. The handful of exact outputs at the end are the oracle's own
+/// rows, re-run with a long tail attached.
+struct InverseTextNormalizerNeighbourWindowTests {
+
+  private static let itn = InverseTextNormalizer()
+
+  // MARK: - 1. The window is bounded
+
+  /// The invariant the timeout fix rests on: text beyond the second token cannot make the
+  /// window any bigger, so the per-match cost stops tracking the length of the take.
+  @Test("tailWindow size is set by the next two tokens, not by the length of the take")
+  func tailWindowIsBounded() {
+    let head = "we counted twenty"
+    let short = "\(head) miles out"
+    let long = "\(head) miles out\(inertTail)"
+    let end = (head as NSString).length
+
+    #expect(InverseTextNormalizer.tailWindow(short as NSString, end) == " miles out")
+    #expect(InverseTextNormalizer.tailWindow(long as NSString, end) == " miles out")
+    // The tail the old read copied, and `splitWords` then tokenized, on every match.
+    #expect((long as NSString).length > 15_000)
+  }
+
+  /// Same claim on the other side: text further back than the previous token is never read.
+  @Test("lastTokenBefore size is set by the previous token, not by the length of the take")
+  func lastTokenBeforeIsBounded() {
+    let lead = String(repeating: sentenceLead, count: 500) + "roughly"
+    let ns = "\(lead) twenty miles" as NSString
+    let before = InverseTextNormalizer.lastTokenBefore(ns, (lead as NSString).length)
+
+    #expect(before.token == "roughly")
+    #expect(before.headIsBlank == false)
+    #expect(ns.length > 10_000)
+  }
+
+  /// `lastTokenBefore` collapses the two questions the old whole-head read answered: `token`
+  /// is `splitWords(head).last ?? ""`, and `headIsBlank` is whether the head trimmed of
+  /// trailing whitespace is empty — so when it is not, `token.last` is that trimmed head's
+  /// last character, which is the sentence-boundary sentinel the cardinal pass tests.
+  @Test(
+    "lastTokenBefore reproduces the whole-head read",
+    arguments: [
+      ("", true, ""),
+      ("   ", true, ""),
+      ("\n\n", true, ""),
+      ("He said.", false, "said."),
+      ("He said. ", false, "said."),
+      ("He said.\n", false, "said."),
+      ("(", false, "("),
+      ("a NASA", false, "NASA"),
+    ] as [(head: String, blank: Bool, token: String)])
+  func lastTokenBeforeMatchesWholeHead(head: String, blank: Bool, token: String) {
+    let ns = "\(head)twenty" as NSString
+    let got = InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length)
+    #expect(got.headIsBlank == blank)
+    #expect(got.token == token)
+  }
+
+  /// The leading gap is kept, because the anchored probes that read the window
+  /// (`^\s+and\s+...`, `^\s+of\b`) and the `.first == "-"` glue test all start at `end`. A
+  /// tail with fewer than two tokens degrades to exactly what the whole-tail read gave.
+  @Test(
+    "tailWindow preserves the leading gap and handles a short tail",
+    arguments: [
+      ("", ""),
+      (" ", " "),
+      ("-year-old", "-year-old"),
+      (" of a second", " of a"),
+      (" and one hundred", " and one"),
+      (" miles", " miles"),
+    ] as [(tail: String, window: String)])
+  func tailWindowShapes(tail: String, window: String) {
+    let head = "twenty"
+    let ns = "\(head)\(tail)" as NSString
+    #expect(InverseTextNormalizer.tailWindow(ns, (head as NSString).length) == window)
+  }
+
+  // MARK: - 2. Every neighbour-reading guard decides the same way
+
+  /// One row per guard that reads across the match boundary. Each is normalized alone and
+  /// again with `inertTail` appended; since the padding adds no match of its own, a correct
+  /// window makes the long output the short one with the padding carried through verbatim.
+  ///
+  /// A window too small to reach the deciding neighbour flips exactly one of these and breaks
+  /// the prefix — which is the failure the old whole-tail read bought at O(text) per match.
+  @Test(
+    "a neighbour-reading guard decides the same buried in a long take as it does alone",
+    arguments: [
+      // AP unit-noun anchor: forces digits below the spell-out threshold (reads token 1).
+      "I walked two miles",
+      // unit with a modifier (reads token 2).
+      "it covers two square miles",
+      // age period (reads token 2).
+      "she is five years old",
+      // hyphenated age compound (anchored probe inside token 1).
+      "a five-year-old boy",
+      // unit inside a hyphenated compound (splits token 1 on "-").
+      "a five-foot-tall person",
+      // no anchor at all: AP spells it out, and the padding must not change that.
+      "I walked two blocks",
+      // capitalized mid-sentence is ambiguous and stays spelled (reads the previous token).
+      "the Forty Niners won",
+      // all-caps title guard, which reads the previous token (this take is not shout: the
+      // padding is lowercase either way, so the shout branch is not what is being compared).
+      "TWELVE ANGRY MEN screened tonight",
+      // "by" idiom guard (reads token 1 after the match) ...
+      "go one by one",
+      // ... and the same shape with a unit noun after it, which IS a dimension.
+      "a one by one inch tile",
+      // "between A and B" declines when a trailing "and <number>" means a truncated endpoint.
+      "between one hundred and five and one hundred and ten",
+      // scale-ordinal fraction guard (anchored "of" probe) ...
+      "a thousandth of a second",
+      // ... and without the "of", the ordinal.
+      "the thousandth visitor",
+    ])
+  func guardDecidesTheSameWithALongTail(input: String) {
+    let alone = Self.itn.normalize(input, spokenPunctuation: false)
+    let buried = Self.itn.normalize(input + inertTail, spokenPunctuation: false)
+    #expect(buried == alone + inertTail)
+  }
+
+  /// The head side of the same claim. Repeating an inert lead moves the match further from the
+  /// start of the take without changing the token immediately before it, so every guard that
+  /// reads backwards must reach the same verdict and leave the same suffix.
+  @Test(
+    "a neighbour-reading guard decides the same after a long lead as after a short one",
+    arguments: [
+      "Twenty people came",  // sentence-initial capital vs capitalized mid-sentence
+      "TWELVE ANGRY MEN screened tonight",  // all-caps title guard reads the previous token
+      "I said TWELVE times",  // isolated all-caps number, same guard, other verdict
+      "two miles per hour",
+    ], [sentenceLead, midSentenceLead])
+  func guardDecidesTheSameAfterALongLead(input: String, lead: String) {
+    let short = Self.itn.normalize(lead + input, spokenPunctuation: false)
+    let long = Self.itn.normalize(
+      String(repeating: lead, count: 300) + input, spokenPunctuation: false)
+    #expect(long.hasSuffix(short))
+  }
+
+  // MARK: - 3. The oracle's own rows, re-run with a long tail
+
+  /// A prefix invariant proves the window did not change the decision; these pin what that
+  /// decision IS, so a window failure cannot hide behind two identically-wrong outputs. Every
+  /// pair here is a row of `parity.jsonl` (the Python oracle's baked output).
+  @Test(
+    "oracle rows still convert correctly with a long tail attached",
+    arguments: [
+      ("two miles per hour", "2 miles per hour"),
+      ("she is five years old", "she is 5 years old"),
+      ("two square miles", "2 square miles"),
+      ("a five-year-old boy", "a 5-year-old boy"),
+      ("a five-foot-tall person", "a 5-foot-tall person"),
+      ("the Forty Niners won", "the Forty Niners won"),
+      ("go one by one", "go one by one"),
+      ("a thousandth of a second", "a thousandth of a second"),
+      (
+        "between one hundred and five and one hundred and ten",
+        "between one hundred and five and one hundred and ten"
+      ),
+    ] as [(input: String, expected: String)])
+  func oracleRowsWithALongTail(input: String, expected: String) {
+    #expect(Self.itn.normalize(input, spokenPunctuation: true) == expected)
+    #expect(
+      Self.itn.normalize(input + inertTail, spokenPunctuation: true)
+        == expected + inertTail)
+  }
+}
