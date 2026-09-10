@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
+import os
 
 /// Deterministic inverse text normalization (spoken-form → written-form) as a post-ASR
 /// limb: "two zero three nine five four…" → "203-954-8879", "twenty twenty six" → "2026",
@@ -24,6 +25,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
 
   /// Always-on safety floor (#145, founder Gate-1 2026-06-02: ON for all, no toggle).
   var isEnabled: Bool { true }
+
+  /// The step's own wall-clock budget: the `withDeadline` in `process(...)`, the seconds the
+  /// `TimeoutError` reports, and the line the timeout breadcrumb's `engine_started` is decided
+  /// against. Named once so those three cannot drift apart (#2758).
+  static let deadlineSeconds: Double = 0.5
 
   /// Runner-level runaway BACKSTOP only. The real cap is the step's own 0.5s
   /// `withDeadline` in `process(...)` — a TRUE wall-clock bound that abandons a
@@ -102,20 +108,52 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
     let normalizer = self.normalizer
     let spokenPunctuation = self.spokenPunctuationEnabled
+    // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, so a take still queued for a
+    // cooperative thread can burn the budget without the engine ever running, and `latency_ms`
+    // alone reads ~500 either way (#1946 measured that dependence for the ordered siblings).
+    // Record when the closure ENTERS, relative to this call's start, so a timeout breadcrumb
+    // carries at least that much instead of leaving the next occurrence as undiagnosable as the
+    // last. What it CANNOT carry: `withDeadline` starts its relative sleep when its own timer
+    // task is scheduled, not when this line runs, so the timer's decision instant is not
+    // observable from here and the fields below are read against the NOMINAL budget instead.
+    // `OSAllocatedUnfairLock` because the closure is `@Sendable`; the read happens after
+    // `withDeadline` returns, back on this actor.
+    let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
-    let maybeConverted = await withDeadline(seconds: 0.5) {
-      normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
+    let maybeConverted = await withDeadline(seconds: Self.deadlineSeconds) {
+      engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
+      return normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
+      // Read AFTER `withDeadline` returned, so a closure the timer already beat can still enter
+      // and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from being
+      // scheduled. Compare the stamp against the NOMINAL BUDGET, not against `elapsedMs`:
+      // `elapsedMs` is the caller's own resume time and on a loaded machine runs well past the
+      // budget, so comparing against an 800 ms `elapsedMs` would accept a 600 ms entry even
+      // though that entry missed the nominal 500 ms budget.
+      let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
+      let queueWaitMs = engineStartMs.flatMap { $0 <= Self.deadlineSeconds * 1000 ? $0 : nil }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
       // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
       // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
       SentryBreadcrumb.captureError(
-        TimeoutError(seconds: 0.5),
+        TimeoutError(seconds: Self.deadlineSeconds),
         category: .inverseNormalizationTimeout,
         stage: "inverse_text_normalization",
-        extra: ["latency_ms": elapsedMs, "len_before": lenBefore])
+        extra: [
+          "latency_ms": elapsedMs,
+          "len_before": lenBefore,
+          // `engine_started` = an entry stamp was observed WITHIN THE NOMINAL BUDGET. `false`
+          // therefore covers both "never entered" and "entered late", and `queue_wait_ms` carries
+          // the entry delay only for a qualifying start, -1 otherwise. Read as evidence, not as a
+          // verdict: neither field establishes the state at the timer's own decision instant, nor
+          // rules a slow `normalize` in or out, and `latency_ms` includes the caller's resumption
+          // delay — so `latency_ms - queue_wait_ms` is NOT engine execution time. Timing the
+          // engine itself needs a stamp at that decision, inside `withDeadline`.
+          "engine_started": queueWaitMs != nil,
+          "queue_wait_ms": queueWaitMs ?? -1,
+        ])
       lastRun = RunOutcome(
         ran: true, changed: false, skipReason: nil,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore)
