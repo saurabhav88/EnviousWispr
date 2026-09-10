@@ -28,6 +28,40 @@ import Foundation
 /// length" is published.
 public enum AudioFileDecoder {
 
+  /// A decoded file, plus the facts the Upload step shows about it.
+  ///
+  /// The metadata is read from the SAME asset the samples came from, in the same
+  /// pass, so the line under the file name cannot describe a different file from
+  /// the one about to be transcribed.
+  public struct Decoded: Sendable {
+    public let samples: [Float]
+    /// Length of the source recording, for "1 hr 12 min".
+    public let seconds: Double
+    /// Size on disk, for "68.4 MB".
+    public let byteCount: Int64
+    /// The source codec as macOS reports it, for "AAC".
+    public let codec: String
+    /// The source sample rate, for "44.1 kHz".
+    public let sampleRate: Double
+    /// The source channel count, for "mono" / "stereo".
+    public let channelCount: Int
+
+    /// `public` so a test can build one. The decoder is the only production
+    /// producer; a fixture that had to run a real file through it could not
+    /// exercise the Upload screen's own states.
+    public init(
+      samples: [Float], seconds: Double, byteCount: Int64, codec: String, sampleRate: Double,
+      channelCount: Int
+    ) {
+      self.samples = samples
+      self.seconds = seconds
+      self.byteCount = byteCount
+      self.codec = codec
+      self.sampleRate = sampleRate
+      self.channelCount = channelCount
+    }
+  }
+
   /// Why a file was refused, in the terms a sentence can be written from. Every
   /// case is something the user can act on or at least understand; none of them
   /// is a fallback.
@@ -66,7 +100,7 @@ public enum AudioFileDecoder {
   /// this decoder and to any other. We transcribe what the file contains. A cut
   /// that destroys the header is refused, because the file will not open at all;
   /// a cut that only removes audio is not, because there is nothing to detect.
-  public static func decode(url: URL) async throws -> [Float] {
+  public static func decode(url: URL) async throws -> Decoded {
     let asset = AVURLAsset(url: url)
 
     let tracks: [AVAssetTrack]
@@ -127,7 +161,46 @@ public enum AudioFileDecoder {
     }
 
     guard !samples.isEmpty else { throw Rejection.noAudio }
-    return samples
+
+    // Every field below describes the file for the screen; none of it is used
+    // to transcribe. So each one degrades to a true-but-vague value rather than
+    // failing the import: a track that reports no format description still gets
+    // transcribed, it just describes itself as "audio".
+    //
+    // `formatDescriptions` is typed `[Any]`, so the cast is unavoidable, and it
+    // is `as!` on purpose: the conditional form does not compile here, because
+    // Swift rejects `as?` to a CoreFoundation type as a downcast that ALWAYS
+    // SUCCEEDS ("conditional downcast to CoreFoundation type
+    // 'CMAudioFormatDescription' will always succeed"). The compiler is
+    // asserting the cast cannot fail; a defensive `as?` would be dead code the
+    // build refuses.
+    let format = tracks.first?.formatDescriptions.first as! CMAudioFormatDescription?
+    let basic = format.flatMap(CMAudioFormatDescriptionGetStreamBasicDescription)
+    let byteCount = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64
+    return Decoded(
+      samples: samples,
+      seconds: Double(samples.count) / AudioConstants.sampleRate,
+      byteCount: byteCount ?? 0,
+      codec: format.map(Self.codecName(for:)) ?? "audio",
+      sampleRate: basic?.pointee.mSampleRate ?? AudioConstants.sampleRate,
+      channelCount: Int(basic?.pointee.mChannelsPerFrame ?? 1))
+  }
+
+  /// The source codec's four-character type, rendered the way a person names it.
+  ///
+  /// A short table rather than a general decoder: these are the formats the
+  /// Upload step advertises, and an unknown one falls back to a word that is
+  /// true of every file that reaches here rather than to a code nobody reads.
+  private static func codecName(for description: CMAudioFormatDescription) -> String {
+    switch CMFormatDescriptionGetMediaSubType(description) {
+    case kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE, kAudioFormatMPEG4AAC_HE_V2: return "AAC"
+    case kAudioFormatMPEGLayer3: return "MP3"
+    case kAudioFormatLinearPCM: return "PCM"
+    case kAudioFormatAppleLossless: return "ALAC"
+    case kAudioFormatFLAC: return "FLAC"
+    case kAudioFormatOpus: return "Opus"
+    default: return "audio"
+    }
   }
 
   /// Copies one sample buffer's audio into `samples`.

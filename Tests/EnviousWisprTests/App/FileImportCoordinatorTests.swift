@@ -43,20 +43,32 @@ struct FileImportCoordinatorTests {
     func bump() { value += 1 }
   }
 
+  /// A decoded file of a given length, with plausible metadata. The Upload step
+  /// shows every one of these fields, so a fixture that returned only samples
+  /// could not exercise the screen the user actually sees.
+  nonisolated private static func decoded(seconds: Double) -> AudioFileDecoder.Decoded {
+    AudioFileDecoder.Decoded(
+      samples: Array(repeating: 0.1, count: Int(seconds * 16_000)),
+      seconds: seconds, byteCount: Int64(seconds * 32_000), codec: "AAC",
+      sampleRate: 44_100, channelCount: 1)
+  }
+
   private static func outcome(_ text: String) -> FileImportRunner.PartOutcome {
     FileImportRunner.PartOutcome(text: text, polishedText: text, polishError: nil)
   }
 
   private func makeCoordinator(
     lease: EngineLease,
-    decode: @escaping @Sendable (URL) async throws -> [Float] = { _ in
-      Array(repeating: 0.1, count: 16_000)
+    decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded = { _ in
+      Self.decoded(seconds: 1.0)
     },
     transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in "One. Two. Three." },
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
       Self.outcome($0)
     },
-    beginRun: @escaping @MainActor () -> Void = {}
+    beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
+      FileImportCoordinator.RunConfiguration(polishIsCloud: false, localPolishProvider: nil)
+    }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: decode,
@@ -119,9 +131,9 @@ struct FileImportCoordinatorTests {
       decode: { url in
         if url.lastPathComponent == "first.m4a" {
           await slowFirst.wait()
-          return Array(repeating: 0.1, count: 160_000)
+          return Self.decoded(seconds: 10.0)
         }
-        return Array(repeating: 0.1, count: 16_000)
+        return Self.decoded(seconds: 1.0)
       })
 
     coordinator.choose(url: URL(fileURLWithPath: "/tmp/first.m4a"))
@@ -257,6 +269,13 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.state == .stopped)
     #expect(
       coordinator.parts.count == 1, "stopping threw away work the user had already waited for")
+    // **Keeping the work is only half of it: the user has to be able to REACH
+    // it.** Asserting the state alone passes against a screen still showing a
+    // progress bar that will never move, beside a Stop button already pressed,
+    // with Copy and Save on a step nothing navigates to.
+    #expect(
+      coordinator.step == .done,
+      "stopping left the user on the progress screen with no way to the words it kept")
   }
 
   /// A part that lands after Stop must not write into a run the user has ended.
@@ -285,6 +304,42 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.state == .stopped, "a stopped run moved on to another state")
   }
 
+  /// **The finished document's disclosure must describe the run that produced it.**
+  ///
+  /// Cloud review found the page reading LIVE settings: start with a cloud polisher, switch to a local
+  /// one, and the page claimed "Nothing is uploaded" over text that had just gone to the cloud. The
+  /// coordinator now holds the frozen configuration and keeps it until a new run starts.
+  @Test("the run's configuration is frozen at Start and survives the run")
+  func runConfigurationIsFrozen() async {
+    let lease = EngineLease()
+    var cloud = true
+    let coordinator = makeCoordinator(
+      lease: lease,
+      beginRun: {
+        FileImportCoordinator.RunConfiguration(
+          polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne)
+      })
+    coordinator.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = coordinator.state { return true } else { return false } }
+
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.runConfiguration?.polishIsCloud == true)
+
+    // The user now picks a local polisher. The FINISHED document was still
+    // produced by the cloud one, so the disclosure must not change.
+    cloud = false
+    #expect(
+      coordinator.runConfiguration?.polishIsCloud == true,
+      "the finished document's disclosure changed under it")
+
+    // A NEW run adopts the new choice, and pins its local server while running.
+    coordinator.rePolish()
+    await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.runConfiguration?.polishIsCloud == false)
+    #expect(coordinator.pinnedLocalPolishProvider == nil, "a finished run pins nothing")
+  }
+
   // MARK: - Changing the polisher
 
   /// **The file is never read a second time.** That is the whole reason the raw transcript is kept, and
@@ -297,7 +352,7 @@ struct FileImportCoordinatorTests {
       lease: lease,
       decode: { _ in
         await decodes.bump()
-        return Array(repeating: 0.1, count: 16_000)
+        return Self.decoded(seconds: 1.0)
       })
 
     coordinator.choose(url: Self.anyURL)

@@ -178,12 +178,20 @@ import Testing
     arguments: SharedEngineHolder.allCases)
   func sharedEngineBusyCopy(_ holder: SharedEngineHolder) {
     let expected: [SharedEngineHolder: String] = [
-      .fileImport: "A file is being transcribed. Try again when it finishes.",
-      .crashRecovery: "Finishing an earlier recording. Try again in a moment.",
+      .fileImport: "A file is being transcribed. Try again soon.",
+      .crashRecovery: "Finishing an earlier take. Try again soon.",
       .dictation: "Already recording.",
     ]
     let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
     #expect(sentence == expected[holder])
+    // **The pill truncates rather than wrapping**, and Live UAT on 2026-09-09
+    // caught the first draft on screen as "A file is being transcribed. Try
+    // ag..." — losing exactly the half that tells the user what to do. 46 is
+    // the longest shipped sentence in this same 280x44 pill
+    // ("Microphone disconnected. Text may be cut short.").
+    #expect(
+      sentence.count <= 46,
+      "\(sentence.count) characters will be cut off in the pill: \(sentence)")
     // The user has never heard of an inference slot, a lease or a claim; the
     // words name the job to wait for instead.
     for jargon in ["slot", "lease", "claim", "engine", "resource"] {

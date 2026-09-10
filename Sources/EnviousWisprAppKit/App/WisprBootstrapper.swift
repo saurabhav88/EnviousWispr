@@ -248,6 +248,11 @@ package final class WisprBootstrapper {
     // function. Matches the existing `engineCoordinatorForRecoveryGate`
     // forward-declared-then-assigned-after-construction pattern below.
     weak var recoveryCoordinatorForEngineMutationScope: RecoveryCoordinator?
+    // #2648, cloud review — the same forward-declared-then-assigned pattern, for
+    // the same reason: the engine-switch gate and the local-polisher pin are
+    // both constructed long before the import coordinator exists, and both have
+    // to be able to see a running import.
+    weak var fileImportCoordinatorForGates: FileImportCoordinator?
     // #1741 — the ONE shared mutation-side capability (§3 construction-
     // topology correction: one value, not one per consumer), threaded through
     // each consumer's required initializer argument as this plan migrates it
@@ -601,7 +606,8 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
+      ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup),
+      importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider }
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -1036,6 +1042,7 @@ package final class WisprBootstrapper {
           (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
+        isFileImportRunning: { fileImportCoordinatorForGates?.isRunning ?? false },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
         },
@@ -1317,11 +1324,23 @@ package final class WisprBootstrapper {
     let fileImportRunner = FileImportRunner(
       keychainManager: keychainManager,
       egOneRuntime: egOneRuntime,
-      s1MiniRuntime: s1MiniRuntime)
+      s1MiniRuntime: s1MiniRuntime,
+      // #2648, cloud review: the SAME output-safety classifier live dictation
+      // and crash recovery get. Without it an imported part polished by Apple
+      // Intelligence silently loses the classifier-aware output filter, even
+      // when the classifier prewarmed successfully.
+      outputClassifierHolder: outputClassifierHolder)
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
-      transcribe: { [asrManager] samples in
-        try await asrManager.transcribe(audioSamples: samples, options: .default).text
+      // **The user's locked language reaches ASR, not just the cleanup.** Cloud
+      // review found `.default` here: WhisperKit uses `options.language` to turn
+      // auto-detection OFF and Parakeet uses it for its language/script filter,
+      // so a locked non-English recording could be recognised in the wrong
+      // script before post-processing ever saw it.
+      transcribe: { [asrManager, settings] samples in
+        var options = TranscriptionOptions.default
+        if case .locked(let code) = settings.languageMode { options.language = code }
+        return try await asrManager.transcribe(audioSamples: samples, options: options).text
       },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
@@ -1329,12 +1348,19 @@ package final class WisprBootstrapper {
       // The user's words, read LIVE at Start rather than held from launch: the
       // propagator is the one place that knows the current vocabulary, and an
       // import started after the user adds a word should use it.
+      // The wizard's own choices win over the dictation settings: the user
+      // picked an engine and a polisher for THIS file, on their own screens, and
+      // freezing the app's settings instead would quietly ignore both.
       beginRun: { [settings, customWordsPropagator] in
-        fileImportRunner.freeze(
-          settings: FileImportSettingsFreeze.snapshot(settings: settings),
-          vocabulary: customWordsPropagator.corrector)
+        let snapshot = FileImportSettingsFreeze.snapshot(
+          settings: settings,
+          backend: fileImportCoordinatorForGates?.chosenBackend ?? settings.selectedBackend,
+          polish: fileImportCoordinatorForGates?.chosenPolish ?? settings.llmProvider)
+        fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        return FileImportSettingsFreeze.configuration(for: snapshot)
       },
       processPart: { [fileImportRunner] part in try await fileImportRunner.process(part: part) })
+    fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState

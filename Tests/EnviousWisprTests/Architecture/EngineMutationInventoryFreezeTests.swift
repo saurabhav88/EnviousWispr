@@ -423,7 +423,7 @@ import Testing
     // underneath one. Full-duration exclusion, which is what (d) means.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
-      text: "try await asrManager.transcribe(audioSamples: samples, options: .default).text",
+      text: "return try await asrManager.transcribe(audioSamples: samples, options: options).text",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",

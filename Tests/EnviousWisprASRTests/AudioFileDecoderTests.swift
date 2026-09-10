@@ -115,7 +115,7 @@ struct AudioFileDecoderTests {
     let url = dir.appendingPathComponent("tone.\(ext)")
     try Self.writeTone(at: url, seconds: 1.0, sampleRate: rate, channels: channels)
 
-    let samples = try await AudioFileDecoder.decode(url: url)
+    let samples = try await AudioFileDecoder.decode(url: url).samples
 
     // One second at 16 kHz. The tolerance is for the resampler's edge frames, not for a wrong rate:
     // a file decoded at its SOURCE rate would land at 44,100 or 48,000 and miss this by miles.
@@ -140,7 +140,7 @@ struct AudioFileDecoderTests {
         AVNumberOfChannelsKey: 1,
       ])
 
-    let samples = try await AudioFileDecoder.decode(url: url)
+    let samples = try await AudioFileDecoder.decode(url: url).samples
 
     #expect(abs(samples.count - 16_000) < 2_000)
     #expect(samples.contains { $0 != 0 })
@@ -220,7 +220,7 @@ struct AudioFileDecoderTests {
     let whole = try Data(contentsOf: url)
     try whole.prefix(whole.count / 3).write(to: url)
 
-    let samples = try await AudioFileDecoder.decode(url: url)
+    let samples = try await AudioFileDecoder.decode(url: url).samples
 
     // Roughly a third of three seconds. The assertion is a RANGE, not an equality: the point is that
     // the decoder returns the audio that survived rather than inventing, padding or hanging.

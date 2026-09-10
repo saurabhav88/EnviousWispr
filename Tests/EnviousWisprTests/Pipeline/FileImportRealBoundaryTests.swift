@@ -85,7 +85,7 @@ struct FileImportRealBoundaryTests {
     defer { try? FileManager.default.removeItem(at: audioURL.deletingLastPathComponent()) }
 
     // 1. The real decoder, on a real file it has never seen.
-    let samples = try await AudioFileDecoder.decode(url: audioURL)
+    let samples = try await AudioFileDecoder.decode(url: audioURL).samples
     let seconds = Double(samples.count) / AudioConstants.sampleRate
     #expect(seconds > 60, "the fixture is meant to be minutes long; got \(seconds)s")
 

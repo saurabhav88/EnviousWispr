@@ -64,6 +64,18 @@ final class EngineCoordinator {
     let isEngineActive: @MainActor (ASRBackendType) -> Bool
     /// Whether crash recovery is replaying on the shared engine.
     let isRecovering: @MainActor () -> Bool
+
+    /// #2648 — whether a file import is using the shared engine right now.
+    ///
+    /// A THIRD workload joined the set gate 5 and gate 6 were written for, and
+    /// neither could see it: with both dictation drivers idle and recovery
+    /// false, a switch proceeded and `asrManager.switchBackend` unloaded the
+    /// backend the import's own `transcribe` call was executing on. A 40-minute
+    /// file would fail after decoding. Found by cloud review.
+    ///
+    /// Defaults to "not running" so every existing construction keeps today's
+    /// behaviour rather than silently gaining a new deferral.
+    var isFileImportRunning: @MainActor () -> Bool = { false }
     /// Whether the given engine's model is on disk (gates a load attempt).
     let isInstalled: @MainActor (ASRBackendType) -> Bool
     /// A telemetry label for the given engine's pipeline state.
@@ -344,6 +356,16 @@ final class EngineCoordinator {
     // 6. Crash recovery is replaying on the shared engine — defer to completion.
     if deps.isRecovering() {
       markBlocked(.recovery)
+      return
+    }
+
+    // 6b. #2648 — a file import is using the shared engine. Same reason as gate
+    // 5 and gate 6: switching now unloads the engine underneath work that is
+    // already running. The import releases its claim on every exit, and the
+    // release re-pokes this coordinator, so a switch deferred here applies as
+    // soon as the run ends rather than waiting for another trigger.
+    if deps.isFileImportRunning() {
+      markBlocked(.pipelineActive)
       return
     }
 

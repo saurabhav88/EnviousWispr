@@ -21,6 +21,92 @@ import Observation
 @Observable
 final class FileImportCoordinator {
 
+  // MARK: - Where the user is in the flow
+
+  /// The six steps of the approved design, in order.
+  ///
+  /// **A wizard rather than one card**, because the user chooses BOTH engines
+  /// per import before anything runs, and the design gives each choice its own
+  /// screen with the specs needed to make it. The step bar is always visible and
+  /// a completed step can be gone back to while nothing has run.
+  enum Step: Int, CaseIterable, Equatable {
+    case upload = 1
+    case transcription
+    case polish
+    case review
+    case working
+    case done
+
+    var title: String {
+      switch self {
+      case .upload: return "Upload"
+      case .transcription: return "Transcription"
+      case .polish: return "Polish"
+      case .review: return "Review"
+      case .working: return "Working"
+      case .done: return "Done"
+      }
+    }
+  }
+
+  private(set) var step: Step = .upload
+
+  /// The engines THIS import will use. Seeded from the user's current settings
+  /// so the common case is one Continue away, and changed here without writing
+  /// back: a choice made for one file is not a change to how dictation works.
+  var chosenBackend: ASRBackendType = .parakeet
+  var chosenPolish: LLMProvider = .none
+
+  /// The file the user picked, described. Everything the Upload and Review steps
+  /// show about it comes from here rather than from a second read.
+  private(set) var file: ChosenFile?
+
+  struct ChosenFile: Equatable, Sendable {
+    let name: String
+    let seconds: Double
+    let byteCount: Int64
+    let codec: String
+    let sampleRate: Double
+    let channelCount: Int
+
+    /// "1 hr 12 min · 68.4 MB · AAC · 44.1 kHz · mono"
+    var detailLine: String {
+      [
+        FileImportCoordinator.durationText(seconds),
+        ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file),
+        codec,
+        String(format: "%.1f kHz", sampleRate / 1000),
+        channelCount == 1 ? "mono" : (channelCount == 2 ? "stereo" : "\(channelCount) channels"),
+      ].joined(separator: " · ")
+    }
+  }
+
+  /// "1 hr 12 min", "3 min", "48 sec".
+  ///
+  /// `nonisolated` because `ChosenFile.detailLine` is a plain value computation
+  /// that has no business hopping to the main actor to format a number.
+  nonisolated static func durationText(_ seconds: Double) -> String {
+    let total = Int(seconds.rounded())
+    if total < 60 { return "\(total) sec" }
+    let minutes = total / 60
+    if minutes < 60 { return "\(minutes) min" }
+    return "\(minutes / 60) hr \(minutes % 60) min"
+  }
+
+  /// How long the run is expected to take, for "Ready in about 3 minutes".
+  ///
+  /// Measured shape rather than a guess: the fast engine transcribes about an
+  /// hour of audio in seven seconds, and the polish is what actually costs time
+  /// — roughly twelve seconds per 500-word part.
+  var estimateText: String {
+    guard let file else { return "" }
+    // Rounded UP: 1,100 words is three parts, not two, and an estimate that
+    // truncates gets shorter exactly as the file gets longer.
+    let parts = max(1, Int(((file.seconds / 60.0 * 150.0) / 500.0).rounded(.up)))
+    let minutes = max(1, Int((Double(parts) * 12.0 / 60.0).rounded()))
+    return minutes == 1 ? "about a minute" : "about \(minutes) minutes"
+  }
+
   // MARK: - What the screen is showing
 
   enum State: Equatable {
@@ -61,8 +147,35 @@ final class FileImportCoordinator {
   private(set) var state: State = .idle
   private(set) var parts: [Part] = []
 
+  /// What the Working step's phase label says. The words describe the JOB, never
+  /// the mechanism: the user is never told about parts or chunks.
+  private(set) var phase: String = ""
+
+  /// How many words the transcript holds, shown live beside the progress bar.
+  var wordCount: Int { TranscriptSplitter.wordCount(in: rawTranscript) }
+
+  /// 0...1 for the progress bar.
+  var progress: Double {
+    if case .polishing(let done, let total) = state, total > 0 {
+      return Double(done) / Double(total)
+    }
+    if case .finished = state { return 1 }
+    return 0
+  }
+
   /// The whole raw transcript, kept so a re-polish never re-reads the file.
   private(set) var rawTranscript: String = ""
+
+  /// The configuration the CURRENT document was produced under, held until a new
+  /// run starts. `nil` before the first run.
+  private(set) var runConfiguration: RunConfiguration?
+
+  /// The bundled local polisher a RUNNING import has pinned, or nil. Read by the
+  /// settings sync so a provider switch defers tearing down the server this run
+  /// is using, exactly as it already defers for a live dictation.
+  var pinnedLocalPolishProvider: LLMProvider? {
+    isRunning ? runConfiguration?.localPolishProvider : nil
+  }
 
   /// The document as one piece of text, for copy and save.
   var documentText: String { parts.map(\.text).joined(separator: "\n\n") }
@@ -77,15 +190,30 @@ final class FileImportCoordinator {
 
   // MARK: - Collaborators
 
-  private let decode: @Sendable (URL) async throws -> [Float]
+  private let decode: @Sendable (URL) async throws -> AudioFileDecoder.Decoded
   private let transcribe: @MainActor ([Float]) async throws -> String
   private let engineAdmission: EngineAdmissionAccess
 
-  /// Freezes the configuration this run uses. Called once per run, before the
-  /// first part — the founder's "one import, one configuration" call, so a
-  /// settings change halfway through cannot produce a document polished two
-  /// different ways.
-  private let beginRun: @MainActor () -> Void
+  /// What one run is pinned to, captured at Start.
+  ///
+  /// **Everything that must not drift mid-run reads THIS, never live settings.**
+  /// Cloud review found two places that read the live value instead: the page's
+  /// privacy line, which would retrospectively claim "nothing is uploaded" over
+  /// a cloud-polished document, and the local-engine reconciliation, which would
+  /// tear down the very server this run is using.
+  struct RunConfiguration: Equatable, Sendable {
+    /// Whether the polisher this run froze sends text off the machine.
+    let polishIsCloud: Bool
+    /// The BUNDLED local polisher this run froze, if any, so the settings sync
+    /// can defer tearing its server down until the run releases its claim.
+    let localPolishProvider: LLMProvider?
+  }
+
+  /// Freezes the configuration this run uses and returns it. Called once per
+  /// run, before the first part — the founder's "one import, one configuration"
+  /// call, so a settings change halfway through cannot produce a document
+  /// polished two different ways.
+  private let beginRun: @MainActor () -> RunConfiguration
 
   /// Runs one part. A closure rather than the concrete `FileImportRunner` for
   /// one reason and it is not style: the property this type exists to hold —
@@ -103,10 +231,10 @@ final class FileImportCoordinator {
   private var runTask: Task<Void, Never>?
 
   init(
-    decode: @escaping @Sendable (URL) async throws -> [Float],
+    decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
     transcribe: @escaping @MainActor ([Float]) async throws -> String,
     engineAdmission: EngineAdmissionAccess,
-    beginRun: @escaping @MainActor () -> Void,
+    beginRun: @escaping @MainActor () -> RunConfiguration,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome
   ) {
     self.decode = decode
@@ -132,20 +260,70 @@ final class FileImportCoordinator {
     // which can be the file the user already replaced.
     generation += 1
     let generationAtStart = generation
+    file = nil
+    step = .upload
     state = .reading(fileName: name)
     Task { [weak self] in
       guard let self else { return }
       do {
-        let samples = try await decode(url)
+        let decoded = try await decode(url)
         guard generationAtStart == generation else { return }
-        state = .ready(
-          fileName: name, seconds: Double(samples.count) / AudioConstants.sampleRate)
-        decodedSamples = samples
+        file = ChosenFile(
+          name: name, seconds: decoded.seconds, byteCount: decoded.byteCount,
+          codec: decoded.codec, sampleRate: decoded.sampleRate,
+          channelCount: decoded.channelCount)
+        state = .ready(fileName: name, seconds: decoded.seconds)
+        decodedSamples = decoded.samples
       } catch {
         guard generationAtStart == generation else { return }
         state = .rejected(Self.rejection(for: error))
       }
     }
+  }
+
+  /// Moves forward through the wizard. Refused once a run is in flight: the
+  /// choices are frozen for the run, so a step that could still change them
+  /// would be lying about what is about to happen.
+  func advance() {
+    guard !isRunning else { return }
+    switch step {
+    case .upload:
+      if case .ready = state { step = .transcription }
+    case .transcription: step = .polish
+    case .polish: step = .review
+    case .review: start()
+    case .working, .done: break
+    }
+  }
+
+  /// Goes back one step. Only ever available while nothing has run.
+  func goBack() {
+    guard !isRunning else { return }
+    switch step {
+    case .upload, .working, .done: break
+    case .transcription: step = .upload
+    case .polish: step = .transcription
+    case .review: step = .polish
+    }
+  }
+
+  /// Jumps to a completed step from the step bar. Same rule: only before a run.
+  func jump(to target: Step) {
+    guard !isRunning, target.rawValue < step.rawValue else { return }
+    step = target
+  }
+
+  /// Clears everything and returns to an empty Upload step.
+  func startOver() {
+    guard !isRunning else { return }
+    generation += 1
+    file = nil
+    parts = []
+    rawTranscript = ""
+    decodedSamples = []
+    runConfiguration = nil
+    state = .idle
+    step = .upload
   }
 
   /// The decoded audio, held between `choose` and `start` so pressing Start does
@@ -166,10 +344,12 @@ final class FileImportCoordinator {
       return
     }
 
-    beginRun()
+    runConfiguration = beginRun()
 
     generation += 1
     let generationAtStart = generation
+    step = .working
+    phase = "Writing down what was said"
     state = .transcribing(fileName: name)
 
     runTask = Task { [weak self] in
@@ -187,6 +367,13 @@ final class FileImportCoordinator {
     guard isRunning else { return }
     generation += 1
     state = .stopped
+    // **The step moves with the state.** Stopping is an ENDING, so the user
+    // lands on Done holding whatever finished, with Copy, Save and New
+    // transcription in reach. Leaving `step` on `.working` stranded them on a
+    // progress bar that would never move again, beside a Stop button that had
+    // already been pressed.
+    step = .done
+    phase = ""
     runTask?.cancel()
   }
 
@@ -205,11 +392,13 @@ final class FileImportCoordinator {
       return
     }
 
-    beginRun()
+    runConfiguration = beginRun()
 
     generation += 1
     let generationAtStart = generation
     parts = []
+    step = .working
+    phase = "Cleaning it up"
 
     runTask = Task { [weak self] in
       defer { self?.engineAdmission.release(token) }
@@ -224,16 +413,25 @@ final class FileImportCoordinator {
   private func run(generationAtStart: Int) async {
     do {
       let transcript = try await transcribe(decodedSamples)
+      // **Released as soon as the engine is done with it, on every exit.** At 16
+      // kHz mono float this is ~230 MB per hour of audio, and re-polish needs
+      // only `rawTranscript` — holding it for the rest of the app's life would
+      // cost the user hundreds of megabytes for a document they have already
+      // read. Found by cloud review.
+      decodedSamples = []
       guard generationAtStart == generation else { return }
       guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         state = .rejected(.noSpeechFound)
         return
       }
       rawTranscript = transcript
+      phase = "Dividing it up to clean"
       await polishAll(TranscriptSplitter.split(transcript), generationAtStart: generationAtStart)
     } catch is CancellationError {
+      decodedSamples = []
       // Stop already set the visible state; there is nothing to say.
     } catch {
+      decodedSamples = []
       guard generationAtStart == generation else { return }
       state = .rejected(Self.rejection(for: error))
     }
@@ -247,8 +445,10 @@ final class FileImportCoordinator {
   private func polishAll(_ pieces: [String], generationAtStart: Int) async {
     guard !pieces.isEmpty else {
       state = .finished
+      step = .done
       return
     }
+    phase = "Cleaning it up"
     state = .polishing(done: 0, total: pieces.count)
 
     for (index, piece) in pieces.enumerated() {
@@ -272,7 +472,9 @@ final class FileImportCoordinator {
       state = .polishing(done: index + 1, total: pieces.count)
     }
     guard generationAtStart == generation else { return }
+    phase = ""
     state = .finished
+    step = .done
   }
 
   private static func rejection(for error: any Error) -> FileImportRejection {
