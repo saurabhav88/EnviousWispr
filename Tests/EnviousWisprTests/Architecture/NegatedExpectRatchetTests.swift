@@ -220,7 +220,20 @@ struct NegatedExpectRatchetTests {
 
   // MARK: - The gate
 
-  @Test("no hidden negation is added, and no frozen line outlives its assertion")
+  /// **A regeneration run is not a verification run, and must not pretend to be one.** Swift
+  /// Testing schedules a suite's tests concurrently, so with the write variable set this row
+  /// races the row that rewrites the baseline: it can finish its sweep against the OLD file and
+  /// report stale entries for assertions the regeneration was in the middle of removing. That
+  /// reads as a real failure of a regeneration that in fact succeeded. Found by cloud review on
+  /// PR #2771.
+  ///
+  /// So the gate stands down when the baseline is being rewritten. **A skipped receipt is not a
+  /// passed receipt**: a run with that variable set has verified NOTHING, and the run that
+  /// matters is the ordinary one afterwards.
+  @Test(
+    "no hidden negation is added, and no frozen line outlives its assertion",
+    .enabled(
+      if: ProcessInfo.processInfo.environment["EW_WRITE_NEGATED_EXPECT_BASELINE"] != "1"))
   func theSetOnlyShrinks() throws {
     let found = try Self.sweep()
 
