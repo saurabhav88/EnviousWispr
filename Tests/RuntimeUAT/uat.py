@@ -115,7 +115,8 @@ def classify_transcription(recs, expected_token):
         return 1, lv.final_text(rec), take, f"take ended {rec.get('result')!r} (reason={rec.get('reason')!r}); no delivery"
     observed = lv.final_text(rec)
     if observed is None:
-        return 2, None, take, "the take completed but no transcript row is in app.log; evidence was lost"
+        return 2, None, take, ("the take completed but the delivered text is not recoverable from app.log "
+                               "(a lost transcript row, a snippet expansion, or an empty-output recovery); inconclusive")
     token_ok = bool(expected_token and expected_token.lower() in observed.lower())
     return (0 if token_ok else 1), observed, take, None
 
@@ -569,10 +570,12 @@ def _self_test():
     check("two records -> instrument(2), not 'the newest'", ec == 2)
     ec, _o, _t, _n = classify_transcription([], "fox")
     check("no record -> instrument(2)", ec == 2)
-    # Empty polish falls back to the delivered text, so a completed take still passes.
+    # An empty final output is emptyOutputRecoveryFloor territory: the delivered
+    # text is computed off-log, so a completed take is INCONCLUSIVE, never judged
+    # against a pre-floor step (local Codex review, PR #2780).
     ec, obs, _t, _n = classify_transcription(
         [rec(steps={"Filler Removal": "the quick brown fox", "LLM Polish": ""})], "fox")
-    check("empty polish falls back to delivered text -> pass(0)", ec == 0 and obs == "the quick brown fox")
+    check("empty final output -> instrument(2), not a pass on a pre-floor step", ec == 2 and obs is None)
 
     # --- classify_silent ---
     check("no_speech -> quiet", classify_silent([rec(result="no_speech", raw="")]) == ("quiet", 0))

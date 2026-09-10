@@ -1928,13 +1928,16 @@ def _merge_entries(entries):
     for fileid, name, _index, _body in entries:
         latest_name[fileid] = name
 
-    seen, merged = set(), []
+    # Keep the LATEST body for each (fileid, index). A later sweep can hold the
+    # COMPLETE multi-line block for an entry the earlier sweep read mid-write
+    # (truncated); skipping the duplicate would retain the truncated first copy
+    # and lose the rest of the block (cloud+local Codex review, PR #2780). A dict
+    # preserves first-seen key order while overwriting the body, and a later read
+    # of the same entry is always at least as complete as an earlier one.
+    by_key = {}
     for fileid, _name, index, body in entries:
-        key = (fileid, index)
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append((fileid, index, body))
+        by_key[(fileid, index)] = (fileid, index, body)
+    merged = list(by_key.values())
 
     def shelf_key(fileid):
         name = latest_name.get(fileid)
@@ -3170,6 +3173,22 @@ def _self_test():
         failures.append(f"rotation between sweeps: got {merged!r}, want {want!r}")
     else:
         print("  ok      rotation between sweeps keeps each take's lines together and in order")
+    entry_rows += 1
+
+    # MID-WRITE TRUNCATION ACROSS SWEEPS (cloud+local Codex review PR #2780).
+    # Sweep 1 reads a multi-line block while it is still being written (only the
+    # first line present); sweep 2 has the COMPLETE block under the SAME
+    # (fileid, index). The merge must keep the complete later copy, not the
+    # truncated first one, or a polish block loses its tail in the verdict.
+    C = ("dev", 300)
+    trunc1 = [(C, "app.log", 0, [S + "OUT: Line one"])]
+    trunc2 = [(C, "app.log", 0, [S + "OUT: Line one", "Line two", "Line three"])]
+    merged_t = _merge_entries(trunc1 + trunc2)
+    want_t = [S + "OUT: Line one", "Line two", "Line three"]
+    if merged_t != want_t:
+        failures.append(f"mid-write truncation: got {merged_t!r}, want {want_t!r}")
+    else:
+        print("  ok      mid-write truncation keeps the complete later block")
     entry_rows += 1
 
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows

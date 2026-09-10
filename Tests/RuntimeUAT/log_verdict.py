@@ -151,24 +151,29 @@ def final_text(record):
     OUT row is still IN the log, so taking the literal last step would report ''
     and fail a take the user saw succeed (Codex diff review r3). Walk the steps
     backward to the last non-empty one, then fall back to raw ASR."""
+    # The DELIVERED text is not always in the log. Exactly two transforms change
+    # it AFTER the logged CORRECTION_DEBUG chain, and neither result is logged
+    # (KernelFinalizationWiring, verified PR #2780):
+    #   1. SnippetFinalizer — a snippet expansion, marked by the EWSNIP sentinel
+    #      anywhere in the chain (even when a later polish step dropped it);
+    #   2. emptyOutputRecoveryFloor — when the FINAL output is empty, the app
+    #      delivers a deterministic floor or the raw ASR, computed off-log.
+    # ITN and emoji-restore run INSIDE the logged chain, so they are not in this
+    # set. When either post-log transform applied, the delivered text is
+    # UNRECONSTRUCTABLE from the log, so return None -> classify reports the take
+    # inconclusive (exit 2) rather than judging it against text the log never
+    # held (code-tooling.md RULE: uat-verdicts-from-app-log). Otherwise the final
+    # (last) step is the delivered text; with no steps it is the raw ASR.
     steps = record.get("steps") or {}
-    # A snippet take carries the EWSNIP sentinel somewhere in its chain.
-    # `SnippetFinalizer` runs AFTER the logged chain: it substitutes the real
-    # expansion, and where polish DROPPED the sentinel it rejects that polish and
-    # delivers the deterministic expansion instead. Either way the DELIVERED text
-    # is not in the log, so ANY step carrying the sentinel makes the take
-    # inconclusive — including when a LATER polish step no longer shows it. Scan
-    # the WHOLE chain, not just the final step (cloud + local Codex review, PR
-    # #2780), and return None so classify reports inconclusive (exit 2) rather
-    # than judging against text the log never held (code-tooling.md RULE:
-    # uat-verdicts-from-app-log). RAW ASR is the pre-processing transcript and
-    # never carries the sentinel, so it is not scanned.
     if any(_SNIPPET_PLACEHOLDER in (v or "") for v in steps.values()):
         return None
-    for text in reversed(list(steps.values())):
-        if text and text.strip():
-            return text
-    return record.get("raw_asr")
+    step_texts = list(steps.values())
+    if not step_texts:
+        return record.get("raw_asr")
+    last = step_texts[-1]
+    if last and last.strip():
+        return last
+    return None
 
 
 def format_record(n, rec, width=400):
@@ -242,17 +247,22 @@ def _self_test():
     polish = r["steps"].get("LLM Polish", "")
     check("multi-line OUT block kept whole (4 lines incl. blank)", polish == "Hi Sam,\n\nThis is a test.\nThanks")
     check("final_text is the last step", final_text(r) == polish)
-    # Empty polish OUT must fall back to the last delivered text, not report ''
-    # (Codex diff review r3: the empty-output recovery floor still delivered).
+    # An EMPTY final output is emptyOutputRecoveryFloor territory: the app
+    # delivers a deterministic floor or the raw ASR, computed AFTER the logged
+    # chain and never logged. The log cannot say which, so final_text reports
+    # inconclusive (None) rather than guessing an intermediate step the app did
+    # not deliver (local Codex review, PR #2780; supersedes the earlier
+    # walk-back, which returned a pre-floor step the app skips).
     empty_polish = [d(1, "CORRECTION_DEBUG [RAW ASR] twenty dollars"),
                     d(2, "CORRECTION_DEBUG [Filler Removal] twenty dollars"),
                     d(3, "CORRECTION_DEBUG [LLM Polish] OUT: "), t(4, terminal)]
     rep = collect_dictations(empty_polish)[0]
-    check("empty last step falls back to the previous non-empty step",
-          final_text(rep) == "twenty dollars")
+    check("empty final output -> inconclusive (None), not a pre-floor step",
+          final_text(rep) is None)
     only_empty = collect_dictations([d(1, "CORRECTION_DEBUG [RAW ASR] hello"),
                                      d(2, "CORRECTION_DEBUG [LLM Polish] OUT: "), t(3, terminal)])[0]
-    check("all steps empty falls back to raw ASR", final_text(only_empty) == "hello")
+    check("empty final output with a raw ASR present -> still inconclusive (floor is off-log)",
+          final_text(only_empty) is None)
     check("pipeline total captured", r.get("pipeline_total") == "1.234s")
     check("vad captured", (r.get("vad") or {}).get("pct") == "60.0")
     check("terminal fields", (r["result"], r["reason"], r["backend"]) == ("delivered", "nil", "parakeet"))
