@@ -612,7 +612,8 @@ package final class WisprBootstrapper {
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       ollamaRemotenessLookup: ollamaRemoteness,
-      importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider }
+      importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
+      importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -1359,13 +1360,15 @@ package final class WisprBootstrapper {
       // speech engine is active".** Calling `asrManager.transcribe` directly
       // reached Parakeet and only Parakeet: with All Languages selected it threw
       // `ASRManagerNotOwnedError`, because WhisperKit does not live in the
-      // manager. `load()` first, because the user may have picked an engine on
-      // the Transcription step seconds ago and nothing has warmed it — its
-      // postcondition is readiness, not merely that the call returned.
+      // manager.
+      //
+      // No load here: `ensureEngineReady` above owns warming, and it runs before
+      // the claim precisely so the switch it may trigger is not deferred by the
+      // claim. A second loader here would be a second answer to the same
+      // question, which is the shape that produced this feature's first defect.
       transcribe: { [activeEngine, settings] samples in
         var options = TranscriptionOptions.default
         if case .locked(let code) = settings.languageMode { options.language = code }
-        if await activeEngine.isLoaded() == false { try await activeEngine.load() }
         return try await activeEngine.transcribe(samples, options).text
       },
       // The third workload, claiming the same one-slot engine as a dictation and
@@ -1381,12 +1384,23 @@ package final class WisprBootstrapper {
       },
       // The SAME authority a record press uses, so "is the engine the user
       // picked ready" has one answer in the app rather than two.
-      ensureEngineReady: { [weak engineCoordinator] in
+      //
+      // **`.notReady` is not a refusal on its own, and this is the import's own
+      // cold-press path.** `ensureSelectedReadyForPress` deliberately leaves a
+      // SELECTED-AND-ACTIVE BUT COLD engine to dictation's cold-press path,
+      // which warms it on the next press. Import has no next press, so it read
+      // that answer as "no" and refused a file whose engine only needed loading
+      // — reachable through the ordinary memory-saving unload setting. Found by
+      // Codex. `load()`'s postcondition is readiness, not merely that the call
+      // returned, so a warm that fails still refuses.
+      ensureEngineReady: { [weak engineCoordinator, activeEngine] in
         guard let engineCoordinator else { return .notReady }
         switch await engineCoordinator.ensureSelectedReadyForPress() {
         case .ready: return .ready
         case .notInstalled: return .notInstalled
-        case .notReady: return .notReady
+        case .notReady:
+          guard (try? await activeEngine.load()) != nil else { return .notReady }
+          return await activeEngine.isLoaded() ? .ready : .notReady
         }
       },
       // The same three retries a finished dictation fires

@@ -68,7 +68,8 @@ struct FileImportCoordinatorTests {
     },
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
       FileImportCoordinator.RunConfiguration(
-        polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne)
+        polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+        ollamaModel: nil)
     },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
@@ -287,6 +288,176 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.state == .rejected(.engineBusy(.dictation)))
     #expect(coordinator.step == .done, "the refusal stranded the finished document")
     #expect(coordinator.documentText == document, "the refusal ate the document")
+  }
+
+  // MARK: - The (step, state) matrix, enumerated
+
+  /// **Every finding in rounds 2, 3 and 5 was ONE cell of this matrix**, found
+  /// by a reviewer imagining a path: Working while rejected rendered no message,
+  /// Done with no parts exported nothing, Upload while finished refused
+  /// Continue, Done after an early Stop offered Copy over an empty clipboard.
+  /// Four cells, three rounds, and each fix left the next cell invisible.
+  ///
+  /// So this row stops describing the set and ENUMERATES it. It drives the
+  /// coordinator down every path the machine has and records the (step, state)
+  /// pairs it actually reaches, then asserts two things of each:
+  ///
+  /// 1. **The pair is one somebody decided on.** A new one fails until it is
+  ///    listed, which is the freeze.
+  /// 2. **The user is not stuck**, and if a document exists it is reachable.
+  ///
+  /// The pairs come from RUNNING the machine, not from reading it. A list
+  /// written by reading can only contain the paths the author thought of, which
+  /// is exactly how the four cells above were missed.
+  @Test("every reachable screen-and-state pair is one we chose, and none is a dead end")
+  func theStepStateMatrixIsEnumerated() async {
+    var seen: Set<String> = []
+
+    func record(_ coordinator: FileImportCoordinator) {
+      seen.insert("\(coordinator.step)/\(Self.label(for: coordinator.state))")
+      // **Property 2, checked at every pair rather than at the end.** "Not
+      // stuck" means: a run is in flight, or some step is reachable, or the
+      // one-button reset is available. And a document, once it exists, is never
+      // more than one move from the user.
+      let canMove =
+        coordinator.isRunning
+        || FileImportCoordinator.Step.allCases.contains { coordinator.canGo(to: $0) }
+        || coordinator.step == .upload
+      #expect(
+        canMove,
+        "\(coordinator.step)/\(Self.label(for: coordinator.state)) has no way out")
+      if coordinator.hasDocument, !coordinator.isRunning {
+        #expect(
+          coordinator.step == .done || coordinator.canGo(to: .done),
+          "\(coordinator.step)/\(Self.label(for: coordinator.state)) strands the document")
+      }
+    }
+
+    // Path A: the ordinary run, recorded at every step.
+    let a = makeCoordinator(lease: EngineLease())
+    record(a)
+    a.choose(url: Self.anyURL)
+    record(a)
+    _ = await settleUntil { if case .ready = a.state { return true } else { return false } }
+    record(a)
+    a.advance(); record(a)
+    a.advance(); record(a)
+    a.advance(); record(a)
+    a.advance()
+    await settleUntil { a.state == .finished }
+    await settleUntil { a.isEngineHeld == false }
+    record(a)
+    // Back through the choice steps with a document in hand.
+    for target in [FileImportCoordinator.Step.review, .polish, .transcription] {
+      a.jump(to: target)
+      record(a)
+    }
+    a.jump(to: .done); record(a)
+    a.startOver(); record(a)
+
+    // Path B: a file that cannot be read.
+    let b = makeCoordinator(
+      lease: EngineLease(), decode: { _ in throw AudioFileDecoder.Rejection.noAudio })
+    b.choose(url: Self.anyURL)
+    await settleUntil { b.state == .rejected(.noAudio) }
+    record(b)
+
+    // Path C: the engine the user picked is not there.
+    let c = makeCoordinator(lease: EngineLease(), ensureEngineReady: { .notInstalled })
+    c.choose(url: Self.anyURL)
+    _ = await settleUntil { if case .ready = c.state { return true } else { return false } }
+    c.advance(); c.advance(); c.advance(); c.advance()
+    await settleUntil { c.state == .rejected(.engineNotInstalled) }
+    record(c)
+
+    // Path D: stopped BEFORE any words arrived, and stopped after some.
+    for stopEarly in [true, false] {
+      let gate = PartGate()
+      let d = makeCoordinator(
+        lease: EngineLease(),
+        transcribe: { _ in
+          if stopEarly { await gate.wait() }
+          return "One. Two. Three."
+        },
+        processPart: { text in
+          if !stopEarly { await gate.wait() }
+          return Self.outcome(text)
+        })
+      d.choose(url: Self.anyURL)
+      _ = await settleUntil { if case .ready = d.state { return true } else { return false } }
+      d.start()
+      // **Settle on the SPECIFIC state, not on `isRunning`.** Both working
+      // states answer that true, so waiting on it recorded whichever came first
+      // and the polishing cell was never visited — the freeze caught its own
+      // walk being incomplete, which is the point of freezing the set rather
+      // than describing it.
+      if stopEarly {
+        await settleUntil {
+          if case .transcribing = d.state { return true } else { return false }
+        }
+      } else {
+        await settleUntil {
+          if case .polishing = d.state { return true } else { return false }
+        }
+      }
+      record(d)
+      d.stop()
+      await gate.releaseAll()
+      await settleUntil { d.isEngineHeld == false }
+      record(d)
+    }
+
+    // Path E: a refusal WITH a document in hand.
+    let lease = EngineLease()
+    let e = await finishedCoordinator(lease: lease)
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("the fixture could not take the engine")
+      return
+    }
+    e.rePolish()
+    record(e)
+
+    // **The freeze.** A pair not listed here is either a new screen nobody has
+    // designed the words for, or a state that was not supposed to reach it.
+    let expected: Set<String> = [
+      "upload/idle",
+      "upload/reading",
+      "upload/ready",
+      "upload/rejected",
+      "transcription/ready",
+      "transcription/finished",
+      "polish/ready",
+      "polish/finished",
+      "review/ready",
+      "review/finished",
+      "working/transcribing",
+      "working/polishing",
+      "done/finished",
+      "done/stopped",
+      "done/rejected",
+    ]
+    #expect(
+      seen == expected,
+      """
+      the reachable pairs changed.
+        new, and nobody has said what the screen shows: \(seen.subtracting(expected).sorted())
+        listed but no longer reachable: \(expected.subtracting(seen).sorted())
+      """)
+  }
+
+  /// A stable name per state CASE, ignoring its payload — the payload varies per
+  /// run and the matrix is about which screen meets which kind of state.
+  private static func label(for state: FileImportCoordinator.State) -> String {
+    switch state {
+    case .idle: return "idle"
+    case .reading: return "reading"
+    case .ready: return "ready"
+    case .transcribing: return "transcribing"
+    case .polishing: return "polishing"
+    case .finished: return "finished"
+    case .rejected: return "rejected"
+    case .stopped: return "stopped"
+    }
   }
 
   /// **A behavioural walk cannot establish that every WRITER asks the rule.**
@@ -639,7 +810,7 @@ struct FileImportCoordinatorTests {
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
-          polishProvider: cloud ? .openAI : .egOne)
+          polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil)
       })
     coordinator.choose(url: Self.anyURL)
     await settleUntil { if case .ready = coordinator.state { return true } else { return false } }

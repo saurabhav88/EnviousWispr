@@ -228,7 +228,22 @@ final class FileImportCoordinator {
     isEngineHeld ? heldLocalPolishProvider : nil
   }
 
+  /// The Ollama model a RUNNING import has frozen, or nil.
+  ///
+  /// **A different pin from the one above, because it protects a different
+  /// thing.** `pinnedLocalPolishProvider` stops a bundled server being torn
+  /// down; this stops `reconcileOllamaEviction` unloading the WEIGHTS of the
+  /// model this run's remaining passages are about to use. That rule's pin check
+  /// reads the two dictation drivers' session configs, and an import has no
+  /// session config, so its model was unprotected: changing provider mid-import
+  /// evicted it, and every later passage paid a reload it could exceed its
+  /// polish deadline waiting for, returning raw text. Found by Codex.
+  var pinnedOllamaModel: String? {
+    isEngineHeld ? heldOllamaModel : nil
+  }
+
   private var heldLocalPolishProvider: LLMProvider?
+  private var heldOllamaModel: String?
 
   /// The document as one piece of text, for copy and save.
   /// The document as one piece of text, for Copy and Save.
@@ -324,6 +339,11 @@ final class FileImportCoordinator {
     /// NOW: finishing with EG-1, pressing Change, picking Claude and returning
     /// to Done labelled unchanged EG-1 output as Claude's. Found by Codex.
     let polishProvider: LLMProvider
+    /// The LOCAL Ollama model this run froze, if any, so the eviction rule can
+    /// leave its weights alone while the run is using them. Nil for every other
+    /// provider and for a model Ollama proxies to its own servers, which has no
+    /// weights on this Mac to protect.
+    let ollamaModel: String?
   }
 
   /// Freezes the configuration this run uses and returns it. Called once per
@@ -594,6 +614,7 @@ final class FileImportCoordinator {
       runConfiguration = beginRun()
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
       heldLocalPolishProvider = runConfiguration?.localPolishProvider
+      heldOllamaModel = runConfiguration?.ollamaModel
       phase = "Writing down what was said"
 
       await run(generationAtStart: generationAtStart)
@@ -634,6 +655,7 @@ final class FileImportCoordinator {
     runConfiguration = beginRun()
     // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
     heldLocalPolishProvider = runConfiguration?.localPolishProvider
+    heldOllamaModel = runConfiguration?.ollamaModel
 
     generation += 1
     let generationAtStart = generation
@@ -697,6 +719,7 @@ final class FileImportCoordinator {
   private func finishEngineHold() {
     isEngineHeld = false
     heldLocalPolishProvider = nil
+    heldOllamaModel = nil
     onEngineReleased()
   }
 

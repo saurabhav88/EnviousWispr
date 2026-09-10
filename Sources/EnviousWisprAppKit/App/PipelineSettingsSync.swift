@@ -68,6 +68,9 @@ final class PipelineSettingsSync {
   /// #2648 — see the initializer parameter of the same name.
   private let importPinnedLocalProvider: @MainActor () -> LLMProvider?
 
+  /// #2648 — the Ollama model a RUNNING file import froze, or nil.
+  private let importPinnedOllamaModel: @MainActor () -> String?
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
@@ -85,9 +88,19 @@ final class PipelineSettingsSync {
     /// deactivated the very server the import was polishing through and the
     /// remaining parts came back raw. Found by cloud review. Defaults to nil so
     /// every existing construction is unchanged.
-    importPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil }
+    importPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
+    /// #2648 — the Ollama model a RUNNING file import froze, or nil.
+    ///
+    /// `isOllamaModelPinnedInFlight` reads the two DICTATION drivers' session
+    /// configs, and an import has no session config, so its frozen model was
+    /// unprotected: a provider or model change elsewhere in Settings evicted the
+    /// weights the remaining passages were about to use, and each one then paid
+    /// a reload it could exceed its polish deadline waiting for. Found by Codex.
+    /// Defaults to nil so every existing construction is unchanged.
+    importPinnedOllamaModel: @escaping @MainActor () -> String? = { nil }
   ) {
     self.importPinnedLocalProvider = importPinnedLocalProvider
+    self.importPinnedOllamaModel = importPinnedOllamaModel
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.audioCapture = audioCapture
@@ -579,6 +592,9 @@ final class PipelineSettingsSync {
   /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
   /// a model the in-flight polish still needs.
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
+    // #2648: a file import is the THIRD workload that can have this model
+    // frozen, and it is the one with no `DictationSessionConfig` to read.
+    if importPinnedOllamaModel() == model { return true }
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && cfg.llmModel == model {

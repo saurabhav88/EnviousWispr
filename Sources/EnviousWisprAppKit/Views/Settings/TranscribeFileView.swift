@@ -753,11 +753,17 @@ struct TranscribeFileView: View {
     liveTranscript
     BrandedSection {
       HStack(spacing: 10) {
+        // **Offered only when there is something to hand over.** Stopping before
+        // the first words arrive lands on this step with an empty document, and
+        // Copy would then CLEAR the user's clipboard while Save wrote an empty
+        // file — both of which destroy something the user had, to give them
+        // nothing. Found enumerating (step, state) rather than by review.
         SettingsActionButton(
-          title: "Copy everything", isEnabled: true, emphasis: .filled,
+          title: "Copy everything", isEnabled: coordinator.hasDocument, emphasis: .filled,
           systemImage: "doc.on.doc", action: { copyDocument() })
         SettingsActionButton(
-          title: "Save as...", isEnabled: true, systemImage: "square.and.arrow.down",
+          title: "Save as...", isEnabled: coordinator.hasDocument,
+          systemImage: "square.and.arrow.down",
           action: { saveDocument() })
         Spacer(minLength: 12)
         SettingsActionButton(

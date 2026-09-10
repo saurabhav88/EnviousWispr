@@ -1,5 +1,10 @@
 import EnviousWisprASR
 import EnviousWisprCore
+// `OllamaConnector.effectiveOllamaModel` is the canonical "which model will this
+// provider actually ask for" resolution, and the eviction rule this pin feeds
+// keys on exactly that value. Resolving it any other way here would compare two
+// spellings of one model.
+import EnviousWisprLLM
 import EnviousWisprPipeline
 import EnviousWisprServices
 
@@ -56,6 +61,13 @@ enum FileImportSettingsFreeze {
       // Only the BUNDLED servers are pinnable: Ollama is the user's own process
       // and the cloud providers have nothing on this Mac to tear down.
       localPolishProvider: (provider == .egOne || provider == .s1Mini) ? provider : nil,
-      polishProvider: provider)
+      polishProvider: provider,
+      // Only a LOCAL Ollama model has weights on this Mac for the eviction rule
+      // to unload, so a remote one is deliberately nil: pinning it would defer
+      // an eviction that was never going to happen and leave the tracker asking
+      // the same question on every later settings change.
+      ollamaModel: (provider == .ollama && !ollamaModelIsRemote)
+        ? OllamaConnector.effectiveOllamaModel(provider: provider, model: snapshot.llmModel)
+        : nil)
   }
 }
