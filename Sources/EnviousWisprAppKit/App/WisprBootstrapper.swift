@@ -910,7 +910,13 @@ package final class WisprBootstrapper {
     let activeEngine = ActiveEngineOperation.live(
       asrManager: asrManager, whisperKitBackend: whisperKitBackend)
 
-    let diagnosticsCoordinator = DiagnosticsCoordinator(engineMutationScope: engineMutationScope)
+    // The benchmark is a FOURTH workload on the one inference slot, so it takes
+    // the same claim a dictation, a replay and an import take. Built here rather
+    // than inside `DiagnosticsCoordinator`, whose import ceiling refuses to know
+    // about the pipeline — correctly, since its job is owning the surface.
+    let diagnosticsCoordinator = DiagnosticsCoordinator(
+      benchmark: BenchmarkSuite(
+        engineMutationScope: engineMutationScope, engineLease: engineLease))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -1408,6 +1414,14 @@ package final class WisprBootstrapper {
         // `ParakeetBackend.unload()` would clear the model the decoder was
         // running on. `onEngineReleased` re-arms it. Found by Codex.
         asrManager.cancelIdleTimer()
+        // **Both engines, because each arms its own timer.** Parakeet's lives on
+        // the manager above; WhisperKit's is a Task on its adapter that only
+        // this call stops. Cancelling one and not the other left an All
+        // Languages import following a WhisperKit dictation exposed to exactly
+        // the unload the first cancel exists to prevent. Cheap and idempotent,
+        // so both are cancelled rather than the one that looks active.
+        kernelDriver.cancelPendingEngineUnload()
+        whisperKitKernelDriver.cancelPendingEngineUnload()
         switch await engineCoordinator.ensureSelectedReadyForPress() {
         case .ready: return .ready
         case .notInstalled: return .notInstalled

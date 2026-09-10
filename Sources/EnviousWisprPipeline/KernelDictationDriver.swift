@@ -538,6 +538,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// joined_in_flight / success / failed) so that dashboard keeps continuity
   /// after this became the launch warm-up entry (replacing `loadModelSilently`).
   @discardableResult
+  /// Disarms this driver's engine's pending model-unload timer. See
+  /// `RecordingSessionKernel.cancelPendingEngineUnload()`.
+  public func cancelPendingEngineUnload() { kernel.cancelPendingEngineUnload() }
+
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {

@@ -2,6 +2,7 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprPipeline
 import Foundation
 
 /// Measures ASR transcription performance across different audio durations.
@@ -46,7 +47,23 @@ final class BenchmarkSuite {
   /// closure triplet.
   let engineMutationScope: EngineMutationScope
 
-  init(engineMutationScope: EngineMutationScope) {
+  /// #2648 — the shared workload lease, so a benchmark cannot run on top of a
+  /// file import.
+  ///
+  /// **`EngineMutationScope` is not this question.** It serialises MUTATIONS —
+  /// loads, unloads, removals — and admits several at once by design; a
+  /// benchmark holding it still calls `ActiveEngineOperation.transcribe` on the
+  /// one inference slot a running import is using, so both decode at once and
+  /// both get slower while the import's progress stops meaning anything. Found
+  /// by cloud review. Two authorities, two questions, and the benchmark was
+  /// asking the wrong one.
+  ///
+  /// Defaults to a free lease so every existing construction and every test is
+  /// unchanged.
+  private let engineLease: EngineLease
+
+  init(engineMutationScope: EngineMutationScope, engineLease: EngineLease = EngineLease()) {
+    self.engineLease = engineLease
     self.engineMutationScope = engineMutationScope
   }
 
@@ -65,9 +82,28 @@ final class BenchmarkSuite {
     }
   }
 
+  /// Takes the shared workload claim, or reports why not and returns nil.
+  private func claimTheEngine(site: String) -> EngineLease.Token? {
+    switch engineLease.admit(.dictation) {
+    case .granted(let token):
+      return token
+    case .refused(let holder):
+      lastFailure =
+        holder == .fileImport
+        ? "A file is being transcribed. Try again when it finishes."
+        : "The engine is busy. Try again in a moment."
+      return nil
+    }
+  }
+
   /// Run ASR benchmarks with the given ASR manager.
   func run(using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation) async {
     guard !isRunning else { return }
+    // Refused rather than queued: a benchmark that waited would report a number
+    // measured against a machine busy doing something else, which is worse than
+    // no number.
+    guard let admission = claimTheEngine(site: "benchmark") else { return }
+    defer { engineLease.release(admission) }
     isRunning = true
     results = []
     lastFailure = nil

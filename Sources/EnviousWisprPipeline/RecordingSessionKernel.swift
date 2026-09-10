@@ -257,6 +257,18 @@ final class RecordingSessionKernel {
   // MARK: Injected dependencies
 
   private let adapter: any ASREngineAdapter
+
+  /// Disarms this engine's pending model-unload timer.
+  ///
+  /// **Each engine arms its OWN timer and they are cancelled by different
+  /// calls.** Parakeet's lives on `ASRManager` (`cancelIdleTimer`); WhisperKit's
+  /// is a `Task` on its adapter and only `cancelPendingUnload()` stops it. File
+  /// import cancelled the first and not the second, so an All Languages import
+  /// following a WhisperKit dictation could still have its model unloaded
+  /// mid-transcription. Found by cloud review — the twin of the finding one
+  /// round earlier, which is the question I did not ask: which OTHER engine has
+  /// one of these.
+  public func cancelPendingEngineUnload() { adapter.cancelPendingUnload() }
   private let audioCapture: any AudioCaptureInterface
   private let vad: any VADSignalSource
 
@@ -1703,7 +1715,7 @@ final class RecordingSessionKernel {
     // unload-timer continuity across aborted sessions MUST re-arm in its
     // own beginSession/cancel/finalize implementation; the kernel does
     // not guarantee re-arming.
-    adapter.cancelPendingUnload()
+    cancelPendingEngineUnload()
     do {
       try await adapter.beginSession(
         sid, options: makeTranscriptionOptions(config), streaming: shouldStream)
