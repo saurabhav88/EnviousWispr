@@ -232,6 +232,19 @@ final class PipelineSettingsSync {
     // the import's own job at run start, not this reconciler's — see the note on
     // `reconcileEGOneActivation`.
     case .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel:
+      // #2772 chunk 3: the import's model picker writes `fileImportLLMModel`, exactly as
+      // dictation's writes `llmModel`. For Ollama the ARMED field is the ollama one, so
+      // without this mirror an Ollama pick made on the Transcribe a File screen changed a
+      // field nothing reads and the import kept running the previous model. Same policy
+      // object as dictation's arm above, over the import's own two fields, so the two
+      // surfaces cannot come to disagree about when a pick is mirrored.
+      if key == .fileImportLLMModel,
+        Self.shouldMirrorLLMModelToOllama(
+          provider: settings.effectiveFileImportLLMProvider,
+          llmModel: settings.fileImportLLMModel)
+      {
+        settings.fileImportOllamaModel = settings.fileImportLLMModel
+      }
       reconcileOllamaEviction(settings: settings)
       reconcileEGOneActivation(settings: settings)
     case .hotkeyEnabled:

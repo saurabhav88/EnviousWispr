@@ -17,9 +17,12 @@ import SwiftUI
 /// not a rail. Job B is identical wherever it appears, and #2772 finding 9 is that the
 /// import wizard had no way to reach it.
 ///
-/// **Chunk 1 moves code and changes NO behaviour.** Everything here still reads
-/// `settings.llmProvider` exactly as it did in one view. Re-keying it onto a per-surface
-/// selection is chunk 2's job; doing it here would hide a behaviour change inside a port.
+/// **Chunk 1 moved code and changed NO behaviour**, so the port could be reviewed as a
+/// port. **Chunk 3 re-keyed it onto `ProviderSetupSurface`**, which is what the port
+/// existed to make possible: `ProviderSetupSection` and `ProviderSetupLifecycle` each take
+/// a surface and resolve provider, cloud model and Ollama model through it, so an instance
+/// hosted on Transcribe a File edits and arms the IMPORT's choice. Both default to
+/// `.dictation`, so the AI Polish host reads the same as before.
 ///
 /// **Four pieces, because the layout has two holes and they are not adjacent.** The
 /// detail column sits beside the rail; the Ollama catalog is full width BELOW it. One
@@ -41,6 +44,23 @@ import SwiftUI
 /// callers, `saveKey` and `clearKey`.
 private let providerSetupKeychainUILog = Logger(
   subsystem: "com.enviouswispr.app", category: "AIPolishSettings")
+
+// MARK: - Which screen is hosting
+
+/// #2772 chunk 3 — which surface's polisher choice the editor is editing.
+///
+/// Chunk 1 moved this code and deliberately left every read pointing at dictation's
+/// setting, so the port could be a no-op. This is the seam that port existed to create:
+/// the SAME editor, rendered on the Transcribe a File wizard, editing the import's choice.
+///
+/// A tiny enum rather than a `Binding<LLMProvider>` because the editor needs THREE coupled
+/// values — provider, cloud model, Ollama model — and each surface resolves them together.
+/// Three bindings would let a caller pass a provider from one surface beside a model from
+/// the other, which is exactly the defect chunk 2's review found in the seeding path.
+enum ProviderSetupSurface {
+  case dictation
+  case fileImport
+}
 
 // MARK: - Shared state
 
@@ -82,7 +102,7 @@ final class ProviderSetupModel {
   ///
   /// The id itself IS the state; there is deliberately no companion Boolean. A Boolean plus an id
   /// can disagree, and the disagreement would be "which model did the user actually confirm".
-  /// `confirmPendingOllamaDownload` takes and clears this before any side effect, so the pull uses
+  /// `ProviderSetupDownloads.confirmPending` takes and clears this before any side effect, so the pull uses
   /// the exact id that was requested even if the list re-renders underneath the dialog.
   var pendingOllamaDownload: String?
 
@@ -156,6 +176,64 @@ enum ProviderSetupDownloads {
   }
 }
 
+// MARK: - Reading the saved keys
+
+/// The ONE place the three provider keys are read out of the Keychain into the editor's
+/// state.
+///
+/// #2772 chunk 3 lifted this out of `ProviderSetupLifecycle.onAppear`, unchanged, so a
+/// RETRY can run exactly the same read. Plan §7 requires one: a Keychain that could not be
+/// asked leaves each `…KeySaved` at `nil`, the import's Continue gate blocks on
+/// `couldNotCheckKey`, and before this the only way to ask again was to leave the screen
+/// and come back.
+///
+/// `errSecItemNotFound` is `KeyStoreError`'s deliberate shared vocabulary for genuine
+/// absence across BOTH the Keychain and legacy-file paths (`FileLegacyKeyStore.retrieve`'s
+/// own comment: "callers can tell 'never saved a key' apart from 'saved a key we then
+/// failed to read'") — confirmed by reading both call sites, not assumed (Codex r6 finding:
+/// r5's blanket catch left this case `nil` too, hiding the warning for exactly the
+/// fresh-install, never-entered-a-key user this feature exists for). Every OTHER thrown
+/// error stays `nil` (unknown). A thrown read leaves the draft text at its existing
+/// fail-to-empty convention (unchanged from before #1455).
+@MainActor
+enum ProviderSetupKeys {
+  static func load(into model: ProviderSetupModel, using keychainManager: KeychainManager) {
+    do {
+      let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
+      model.openAIKey = stored
+      model.openAIKeySaved = !stored.isEmpty
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      model.openAIKey = ""
+      model.openAIKeySaved = false
+    } catch {
+      model.openAIKey = ""
+      model.openAIKeySaved = nil
+    }
+    do {
+      let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
+      model.geminiKey = stored
+      model.geminiKeySaved = !stored.isEmpty
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      model.geminiKey = ""
+      model.geminiKeySaved = false
+    } catch {
+      model.geminiKey = ""
+      model.geminiKeySaved = nil
+    }
+    do {
+      let stored = try keychainManager.retrieve(key: KeychainManager.claudeKeyID)
+      model.claudeKey = stored
+      model.claudeKeySaved = !stored.isEmpty
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      model.claudeKey = ""
+      model.claudeKeySaved = false
+    } catch {
+      model.claudeKey = ""
+      model.claudeKeySaved = nil
+    }
+  }
+}
+
 // MARK: - The editor
 
 struct ProviderSetupSection: View {
@@ -169,6 +247,10 @@ struct ProviderSetupSection: View {
   let model: ProviderSetupModel
   let part: Part
 
+  /// Which screen's choice this instance edits. Defaults to dictation so every existing
+  /// call site keeps its behaviour without restating it.
+  var surface: ProviderSetupSurface = .dictation
+
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
@@ -180,6 +262,95 @@ struct ProviderSetupSection: View {
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
   private var keychainManager: KeychainManager { keychainManagerEnv! }
+
+  // MARK: - The surface's three coupled values (#2772 chunk 3)
+
+  /// The provider THIS surface has chosen. Every read in this file goes through here, so a
+  /// site cannot accidentally read dictation's while rendering the import's editor.
+  private var provider: LLMProvider {
+    switch surface {
+    case .dictation: return settings.llmProvider
+    case .fileImport: return settings.effectiveFileImportLLMProvider
+    }
+  }
+
+  /// The CLOUD model field for this surface. Ollama reads `surfaceOllamaModel`; which one a
+  /// provider actually asks for is `SettingsManager.model(for:cloudModel:ollamaModel:)`.
+  private var surfaceCloudModel: String {
+    switch surface {
+    case .dictation: return settings.llmModel
+    case .fileImport:
+      return settings.fileImportLLMProvider == nil
+        ? settings.llmModel : settings.fileImportLLMModel
+    }
+  }
+
+  private var surfaceOllamaModel: String {
+    switch surface {
+    case .dictation: return settings.ollamaModel
+    case .fileImport:
+      return settings.fileImportLLMProvider == nil
+        ? settings.ollamaModel : settings.fileImportOllamaModel
+    }
+  }
+
+  /// Writing the provider. An import write becomes an OVERRIDE, seeded first, per chunk 2:
+  /// a pick that equals dictation's engine is still a pick.
+  private func setProvider(_ newValue: LLMProvider) {
+    switch surface {
+    case .dictation: settings.llmProvider = newValue
+    case .fileImport:
+      settings.seedFileImportPolishModelsIfNeeded()
+      settings.fileImportLLMProvider = newValue
+    }
+  }
+
+  /// Writing the cloud model. On the import surface this also creates the override, because
+  /// editing the MODEL is choosing just as much as editing the provider is.
+  private func setCloudModel(_ newValue: String) {
+    switch surface {
+    case .dictation: settings.llmModel = newValue
+    case .fileImport:
+      settings.seedFileImportPolishModelsIfNeeded()
+      if settings.fileImportLLMProvider == nil {
+        settings.fileImportLLMProvider = settings.llmProvider
+      }
+      settings.fileImportLLMModel = newValue
+    }
+  }
+
+  /// The model this surface's provider will actually ASK for, through the one policy both
+  /// surfaces share rather than a second copy of the provider-to-field mapping.
+  private var surfaceEffectiveModel: String {
+    SettingsManager.model(
+      for: provider, cloudModel: surfaceCloudModel, ollamaModel: surfaceOllamaModel)
+  }
+
+  private var surfaceModelBinding: Binding<String> {
+    Binding(get: { surfaceCloudModel }, set: { setCloudModel($0) })
+  }
+
+  // MARK: - Discovery state, only when it is about THIS surface (#2772 chunk 3)
+
+  /// `LLMModelDiscoveryCoordinator` holds one provider's catalog and one key verdict, and
+  /// records which provider they belong to. Both surfaces share the coordinator, so a
+  /// verdict earned on the other screen's provider is not evidence about this one; it reads
+  /// as "not checked" here rather than as a confident wrong answer.
+  private var stateIsAboutThisSurface: Bool {
+    llmDiscovery.stateProvider == provider
+  }
+
+  private var surfaceValidation: LLMModelDiscoveryCoordinator.KeyValidationState {
+    stateIsAboutThisSurface ? llmDiscovery.keyValidationState : .idle
+  }
+
+  private var surfaceDiscoveredModels: [LLMModelInfo] {
+    stateIsAboutThisSurface ? llmDiscovery.discoveredModels : []
+  }
+
+  private var surfaceIsDiscovering: Bool {
+    stateIsAboutThisSurface && llmDiscovery.isDiscoveringModels
+  }
 
   var body: some View {
     switch part {
@@ -195,8 +366,8 @@ struct ProviderSetupSection: View {
   }
 
   private var isCloudProvider: Bool {
-    settings.llmProvider == .openAI || settings.llmProvider == .gemini
-      || settings.llmProvider == .claude
+    provider == .openAI || provider == .gemini
+      || provider == .claude
   }
 
   private var showModelSection: Bool {
@@ -205,8 +376,8 @@ struct ProviderSetupSection: View {
     // a picker offers a choice that does not exist. Left in, it rendered
     // Ollama's discovery dropdown on the S1-mini pane showing the lower-case
     // Ollama model id, which also reads as the wrong name for the model.
-    settings.llmProvider != .none && settings.llmProvider != .appleIntelligence
-      && settings.llmProvider != .egOne && settings.llmProvider != .s1Mini
+    provider != .none && provider != .appleIntelligence
+      && provider != .egOne && provider != .s1Mini
   }
 
 
@@ -217,7 +388,7 @@ struct ProviderSetupSection: View {
   /// once, in the detail header.
   private var currentProviderStatus: ProviderStatus {
     let cloudKeyPresent: Bool
-    switch settings.llmProvider {
+    switch provider {
     case .openAI: cloudKeyPresent = !model.openAIKey.isEmpty
     case .gemini: cloudKeyPresent = !model.geminiKey.isEmpty
     case .claude: cloudKeyPresent = !model.claudeKey.isEmpty
@@ -228,13 +399,13 @@ struct ProviderSetupSection: View {
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: cloudKeyPresent = false
     }
     return ProviderStatusMapping.status(
-      for: settings.llmProvider,
+      for: provider,
       egOneInstall: egOne.installState,
       egOneHealth: egOne.health,
       s1MiniInstall: localPolishRuntimes.s1Mini.installState,
       s1MiniHealth: localPolishRuntimes.s1Mini.health,
       appleStatus: aiAvailability.latestReport?.overallStatus,
-      cloudValidation: llmDiscovery.keyValidationState,
+      cloudValidation: surfaceValidation,
       cloudKeyPresent: cloudKeyPresent,
       ollamaSetup: setup.ollamaSetup.setupState)
   }
@@ -248,8 +419,23 @@ struct ProviderSetupSection: View {
   /// Explicit `== false` (not `!x`): `nil` (unknown) and `true` (confirmed
   /// present) must both suppress the notice, only a confirmed-empty read
   /// shows it.
+  /// The THIRD state: a read that failed, so we do not know whether a key is stored.
+  ///
+  /// #2772 chunk 3. `savedKeyIsEmptyForCurrentProvider` below deliberately treats `nil` as
+  /// "say nothing", which is right for the missing-key nudge and leaves this case with no
+  /// surface at all. It needs one, because the import's Continue gate blocks on it and a
+  /// user staring at a disabled button deserves both the reason and a way to ask again.
+  private var savedKeyIsUnknownForCurrentProvider: Bool {
+    switch provider {
+    case .openAI: return model.openAIKeySaved == nil
+    case .gemini: return model.geminiKeySaved == nil
+    case .claude: return model.claudeKeySaved == nil
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
+  }
+
   private var savedKeyIsEmptyForCurrentProvider: Bool {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI: return model.openAIKeySaved == false
     case .gemini: return model.geminiKeySaved == false
     case .claude: return model.claudeKeySaved == false
@@ -276,7 +462,7 @@ struct ProviderSetupSection: View {
   private var providerDetailPane: some View {
     @Bindable var settings = settings
     VStack(alignment: .leading, spacing: 14) {
-      if let entry = PolishRailCatalog.entry(for: settings.llmProvider) {
+      if let entry = PolishRailCatalog.entry(for: provider) {
         ProviderDetailHeader(entry: entry, status: currentProviderStatus)
       }
 
@@ -288,7 +474,7 @@ struct ProviderSetupSection: View {
       // of every request, not model variants, so they live in a card of their
       // own rather than in the model picker (which this engine does not show).
       if S1ControlCardVisibility.shows(
-        provider: settings.llmProvider, effectiveModel: settings.effectiveLLMModel)
+        provider: provider, effectiveModel: surfaceEffectiveModel)
       {
         detailCard(label: S1ControlCopy.cardLabel) {
           s1ControlRows
@@ -375,14 +561,30 @@ struct ProviderSetupSection: View {
           tint: .stWarning
         )
       }
+      // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"
+      // here would be a false accusation against a user whose key is fine, so this states
+      // the real situation and offers the same read again. Both surfaces get it, because
+      // the Keychain is shared and so is the failure.
+      if savedKeyIsUnknownForCurrentProvider {
+        InsetNotice(
+          text: "We could not check your saved key on this Mac.",
+          systemImage: "questionmark.circle",
+          tint: .stWarning
+        )
+        Button("Check again") {
+          ProviderSetupKeys.load(into: model, using: keychainManager)
+        }
+        .buttonStyle(.link)
+        .font(.stHelper)
+      }
       apiKeyRow
-      if settings.llmProvider == .openAI {
+      if provider == .openAI {
         Link(
           "Get your free API key at platform.openai.com",
           destination: URL(string: "https://platform.openai.com/api-keys")!
         )
         .font(.stHelper)
-      } else if settings.llmProvider == .gemini {
+      } else if provider == .gemini {
         Link(
           "Get your free API key at aistudio.google.com",
           destination: URL(string: "https://aistudio.google.com/apikey")!
@@ -390,10 +592,10 @@ struct ProviderSetupSection: View {
         .font(.stHelper)
       }
     }
-    if settings.llmProvider == .ollama {
+    if provider == .ollama {
       ollamaSetupContent
     }
-    if settings.llmProvider == .appleIntelligence {
+    if provider == .appleIntelligence {
       appleIntelligenceStatus
     }
     // Both bundled engines render the SAME card (#2649). Written as two
@@ -401,19 +603,19 @@ struct ProviderSetupSection: View {
     // runtime to descriptor is what must not slip: handing EG-1's runtime an
     // S1-mini descriptor would offer a 484 MB download for a 2.9 GB model, and
     // nothing downstream would notice.
-    if settings.llmProvider == .egOne {
+    if provider == .egOne {
       LocalEngineStatusCard(runtime: egOne, engine: .egOne) {
         egOne.removeModel()
         // Removing the selected engine must move the user somewhere that
         // works, or polish silently stops. Apple Intelligence is what a fresh
         // install selects, so it is where a removal lands.
-        settings.llmProvider = .appleIntelligence
+        setProvider(.appleIntelligence)
       }
     }
-    if settings.llmProvider == .s1Mini {
+    if provider == .s1Mini {
       LocalEngineStatusCard(runtime: localPolishRuntimes.s1Mini, engine: .s1Mini) {
         localPolishRuntimes.s1Mini.removeModel()
-        settings.llmProvider = .appleIntelligence
+        setProvider(.appleIntelligence)
       }
     }
   }
@@ -459,18 +661,18 @@ struct ProviderSetupSection: View {
   private var modelSelectorRow: some View {
     @Bindable var settings = settings
     HStack {
-      Picker("Model", selection: $settings.llmModel) {
-        if llmDiscovery.discoveredModels.isEmpty
-          && !llmDiscovery.isDiscoveringModels
+      Picker("Model", selection: surfaceModelBinding) {
+        if surfaceDiscoveredModels.isEmpty
+          && !surfaceIsDiscovering
         {
           Text(
-            settings.llmModel.isEmpty
-              ? (settings.llmProvider == .ollama
+            surfaceCloudModel.isEmpty
+              ? (provider == .ollama
                 ? "No models found"
                 : "Save API key to discover models")
-              : settings.llmModel
+              : surfaceCloudModel
           )
-          .tag(settings.llmModel)
+          .tag(surfaceCloudModel)
         }
 
         // #1914: models exist and none is armed. Without a row carrying the
@@ -482,7 +684,7 @@ struct ProviderSetupSection: View {
         // Mutually exclusive with the branch above, which already emits an
         // empty-tagged row when discovery came back empty. Two rows sharing one
         // tag would make the Picker's selection ambiguous.
-        if !llmDiscovery.discoveredModels.isEmpty && settings.llmModel.isEmpty {
+        if !surfaceDiscoveredModels.isEmpty && surfaceCloudModel.isEmpty {
           Text("No model selected").tag("")
         }
 
@@ -494,16 +696,16 @@ struct ProviderSetupSection: View {
       // states can never be reached. Hiding it is honest; leaving a dead
       // "Prepare Model" affordance on screen is the kind of control that teaches
       // users the app is unreliable.
-      if settings.llmProvider == .ollama && !selectedOllamaModelIsRemote {
+      if provider == .ollama && !selectedOllamaModelIsRemote {
         ollamaWarmupIndicator
-      } else if llmDiscovery.isDiscoveringModels {
+      } else if surfaceIsDiscovering {
         ProgressView()
           .controlSize(.small)
       } else {
         Button {
           Task {
             await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: settings.llmProvider, settings: settings)
+              provider: provider, settings: settings, surface: surface)
           }
         } label: {
           Image(systemName: "arrow.clockwise")
@@ -532,7 +734,7 @@ struct ProviderSetupSection: View {
   }
 
   private var activeKeyDescriptor: APIKeyDescriptor {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI:
       return APIKeyDescriptor(
         label: "OpenAI API Key", placeholder: "sk-proj-…",
@@ -577,7 +779,7 @@ struct ProviderSetupSection: View {
   }
 
   private var activeKeyBinding: Binding<String> {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI:
       return Binding(get: { model.openAIKey }, set: { model.openAIKey = $0 })
     case .gemini:
@@ -593,7 +795,7 @@ struct ProviderSetupSection: View {
   }
 
   private func setKeySaved(_ saved: Bool) {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI: model.openAIKeySaved = saved
     case .gemini: model.geminiKeySaved = saved
     case .claude: model.claudeKeySaved = saved
@@ -625,13 +827,13 @@ struct ProviderSetupSection: View {
         SettingsActionButton(
           title: "Save", isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
         ) {
-          let provider = settings.llmProvider
+          let provider = provider
           let key = activeKeyBinding.wrappedValue
           guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
           setKeySaved(!key.isEmpty)
           Task {
             await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: provider, settings: settings, source: .save)
+              provider: provider, settings: settings, surface: surface, source: .save)
           }
         }
 
@@ -661,7 +863,7 @@ struct ProviderSetupSection: View {
         .font(.stHelper)
         .foregroundStyle(.stError)
     } else {
-      switch llmDiscovery.keyValidationState {
+      switch surfaceValidation {
       case .idle:
         if !model.validationStatus.isEmpty {
           Text(model.validationStatus)
@@ -706,7 +908,7 @@ struct ProviderSetupSection: View {
   @ViewBuilder
   private var modelPickerSections: some View {
     let groups = OllamaModelPickerPresentation.groups(
-      from: llmDiscovery.discoveredModels, provider: settings.llmProvider)
+      from: surfaceDiscoveredModels, provider: provider)
 
     if !groups.recommended.isEmpty {
       Section("Recommended for cleanup") {
@@ -785,7 +987,7 @@ struct ProviderSetupSection: View {
   /// The "Why use ___" card label for every engine (#1286). Cloud reuses the
   /// existing #617 header.
   private var providerExplainerHeader: String {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI, .gemini: return cloudProviderExplainerHeader
     // Claude does NOT join the OpenAI/Gemini shared arm above — it gets its
     // own header, the same pattern Apple Intelligence/Ollama/EG-1 already
@@ -809,7 +1011,7 @@ struct ProviderSetupSection: View {
   /// en dashes in any of these strings.
   @ViewBuilder
   private var providerExplainer: some View {
-    switch settings.llmProvider {
+    switch provider {
     case .openAI, .gemini:
       cloudProviderExplainer
     case .claude:
@@ -954,12 +1156,12 @@ struct ProviderSetupSection: View {
   }
 
   private var cloudProviderExplainerHeader: String {
-    settings.llmProvider == .openAI ? "Why use OpenAI" : "Why use Gemini"
+    provider == .openAI ? "Why use OpenAI" : "Why use Gemini"
   }
 
   @ViewBuilder
   private var cloudProviderExplainer: some View {
-    if settings.llmProvider == .openAI {
+    if provider == .openAI {
       VStack(alignment: .leading, spacing: 10) {
         Text(
           "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to OpenAI under your API account."
@@ -985,7 +1187,7 @@ struct ProviderSetupSection: View {
         )
         .font(.stHelper)
       }
-    } else if settings.llmProvider == .gemini {
+    } else if provider == .gemini {
       VStack(alignment: .leading, spacing: 10) {
         Text(
           "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to Google under your Gemini API account."
@@ -1091,7 +1293,7 @@ struct ProviderSetupSection: View {
           // legible, because the system prominent style drew the probing and the
           // ready states in the same grey.
           SettingsActionButton(
-            title: "Download \(settings.ollamaModel)",
+            title: "Download \(surfaceOllamaModel)",
             isEnabled: !hostedAddIsResolving,
             emphasis: .filled
           ) {
@@ -1099,7 +1301,7 @@ struct ProviderSetupSection: View {
             // recommended model so this normally downloads immediately, but a user who has changed
             // the setting to something that failed every test gets asked first.
             ProviderSetupDownloads.request(
-              settings.ollamaModel, model: model, setup: setup)
+              surfaceOllamaModel, model: model, setup: setup)
           }
 
           ollamaRefreshButton()
@@ -1168,7 +1370,7 @@ struct ProviderSetupSection: View {
             await setup.ollamaSetup.detectState(trigger: "try_again")
             if case .ready = setup.ollamaSetup.setupState {
               await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .ollama, settings: settings)
+                provider: .ollama, settings: settings, surface: surface)
             }
           }
         }
@@ -1609,7 +1811,7 @@ struct ProviderSetupSection: View {
             Task {
               await setup.ollamaSetup.deleteModel(name: entry.name)
               await llmDiscovery.validateKeyAndDiscoverModels(
-                provider: .ollama, settings: settings)
+                provider: .ollama, settings: settings, surface: surface)
             }
           } label: {
             Text("Delete")
@@ -1763,7 +1965,7 @@ struct ProviderSetupSection: View {
         await setup.ollamaSetup.detectState()
         if case .ready = setup.ollamaSetup.setupState {
           await llmDiscovery.validateKeyAndDiscoverModels(
-            provider: .ollama, settings: settings)
+            provider: .ollama, settings: settings, surface: surface)
         }
       }
     } label: {
@@ -1784,14 +1986,14 @@ struct ProviderSetupSection: View {
   /// catalog has not caught up with — the control is then merely unhelpful
   /// rather than wrong, and warm-up itself still refuses to run for it.
   private var selectedOllamaModelIsRemote: Bool {
-    let canonical = OllamaSetupService.canonicalModelName(settings.llmModel)
+    let canonical = OllamaSetupService.canonicalModelName(surfaceCloudModel)
     return setup.ollamaSetup.downloadedModels
       .first { $0.canonicalName == canonical }?.facts.isRemote ?? false
   }
 
   @ViewBuilder
   private var ollamaWarmupIndicator: some View {
-    let currentModel = OllamaSetupService.canonicalModelName(settings.llmModel)
+    let currentModel = OllamaSetupService.canonicalModelName(surfaceCloudModel)
     switch setup.ollamaSetup.warmupState {
     case .warming(let model) where model == currentModel:
       ProgressView()
@@ -1803,7 +2005,7 @@ struct ProviderSetupSection: View {
         .help("Model is ready")
     case .failed(let model) where model == currentModel:
       Button {
-        setup.ollamaSetup.warmUpModel(settings.llmModel)
+        setup.ollamaSetup.warmUpModel(surfaceCloudModel)
       } label: {
         Image(systemName: "exclamationmark.triangle")
           .foregroundStyle(.stWarning)
@@ -1813,8 +2015,8 @@ struct ProviderSetupSection: View {
       .accessibilityLabel("Retry preparing model")
     default:
       Button {
-        guard !settings.llmModel.isEmpty else { return }
-        setup.ollamaSetup.warmUpModel(settings.llmModel)
+        guard !surfaceCloudModel.isEmpty else { return }
+        setup.ollamaSetup.warmUpModel(surfaceCloudModel)
       } label: {
         Image(systemName: "arrow.clockwise")
           .settingsHoverQuiet()
@@ -1837,6 +2039,10 @@ struct ProviderSetupSection: View {
 struct ProviderSetupLifecycle: ViewModifier {
   let model: ProviderSetupModel
 
+  /// Which screen's choice this instance arms. Defaults to dictation so the AI Polish host
+  /// keeps its behaviour without restating it (#2772 chunk 3).
+  var surface: ProviderSetupSurface = .dictation
+
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
@@ -1848,6 +2054,28 @@ struct ProviderSetupLifecycle: ViewModifier {
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
   private var keychainManager: KeychainManager { keychainManagerEnv! }
+
+  /// The provider THIS surface has chosen. Every arming decision below reads it, so the
+  /// import host validates the import's key and starts the import's engine rather than
+  /// dictation's (#2772 chunk 3). Same resolution rule as `ProviderSetupSection.provider`.
+  private var provider: LLMProvider {
+    switch surface {
+    case .dictation: return settings.llmProvider
+    case .fileImport: return settings.effectiveFileImportLLMProvider
+    }
+  }
+
+  /// The CLOUD model field this surface's picker writes. For Ollama it is what
+  /// `PipelineSettingsSync` mirrors into the armed field, which is why the warm-up below
+  /// watches it on both surfaces.
+  private var surfaceCloudModel: String {
+    switch surface {
+    case .dictation: return settings.llmModel
+    case .fileImport:
+      return settings.fileImportLLMProvider == nil
+        ? settings.llmModel : settings.fileImportLLMModel
+    }
+  }
 
   func body(content: Content) -> some View {
     content
@@ -1875,54 +2103,15 @@ struct ProviderSetupLifecycle: ViewModifier {
       Button("Cancel", role: .cancel) {}
     }
     .onAppear {
-      // A thrown read leaves `model.openAIKey`/`model.geminiKey` at their existing
-      // fail-to-empty convention (unchanged from before #1455).
-      // `errSecItemNotFound` is `KeyStoreError`'s deliberate shared vocabulary
-      // for genuine absence across BOTH the Keychain and legacy-file paths
-      // (`FileLegacyKeyStore.retrieve`'s own comment: "callers can tell
-      // 'never saved a key' apart from 'saved a key we then failed to
-      // read'") — confirmed by reading both call sites, not assumed (Codex r6
-      // finding: r5's blanket catch left this case `nil` too, hiding the
-      // warning for exactly the fresh-install, never-entered-a-key user this
-      // feature exists for). Every OTHER thrown error stays `nil` (unknown).
-      do {
-        let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
-        model.openAIKey = stored
-        model.openAIKeySaved = !stored.isEmpty
-      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-        model.openAIKey = ""
-        model.openAIKeySaved = false
-      } catch {
-        model.openAIKey = ""
-      }
-      do {
-        let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
-        model.geminiKey = stored
-        model.geminiKeySaved = !stored.isEmpty
-      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-        model.geminiKey = ""
-        model.geminiKeySaved = false
-      } catch {
-        model.geminiKey = ""
-      }
-      do {
-        let stored = try keychainManager.retrieve(key: KeychainManager.claudeKeyID)
-        model.claudeKey = stored
-        model.claudeKeySaved = !stored.isEmpty
-      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-        model.claudeKey = ""
-        model.claudeKeySaved = false
-      } catch {
-        model.claudeKey = ""
-      }
-      if settings.llmProvider == .ollama {
+      ProviderSetupKeys.load(into: model, using: keychainManager)
+      if provider == .ollama {
         llmDiscovery.loadCachedModels(for: .ollama)
         setup.startOllamaStatusWatch()
         Task {
           await setup.ollamaSetup.detectState(trigger: "settings_open")
           if case .ready = setup.ollamaSetup.setupState {
             await llmDiscovery.validateKeyAndDiscoverModels(
-              provider: .ollama, settings: settings)
+              provider: .ollama, settings: settings, surface: surface)
           }
         }
         // #1956: a SEPARATE task, deliberately not chained behind detection or
@@ -1932,25 +2121,25 @@ struct ProviderSetupLifecycle: ViewModifier {
         // single-flight and 15-minute reuse rules absorb any overlap with the
         // readiness-transition refresh below.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
-      } else if settings.llmProvider == .appleIntelligence {
+      } else if provider == .appleIntelligence {
         Task { await aiAvailability.checkAvailability(trigger: "settings_open") }
-      } else if settings.llmProvider == .egOne {
+      } else if provider == .egOne {
         // #1271: settings-open is one of the two probe moments (the other is
         // provider activation via PipelineSettingsSync). No background polling.
         egOne.activateAndProbe()
-      } else if settings.llmProvider == .s1Mini {
+      } else if provider == .s1Mini {
         // #2649: same two probe moments for the second bundled engine. Found by
         // the class sweep "code that names EG-1 where it means any bundled
         // engine"; without this arm S1-mini fell through to model discovery.
         localPolishRuntimes.s1Mini.activateAndProbe()
-      } else if settings.llmProvider != .none {
-        llmDiscovery.loadCachedModels(for: settings.llmProvider)
+      } else if provider != .none {
+        llmDiscovery.loadCachedModels(for: provider)
       }
     }
     .onDisappear {
       setup.stopOllamaStatusWatch()
     }
-    .onChange(of: settings.llmProvider) { _, newProvider in
+    .onChange(of: provider) { _, newProvider in
       llmDiscovery.reset()
       // Model canonicalization handled by SettingsManager.llmProvider didSet.
       // Discovery will refine the model async if needed.
@@ -1990,12 +2179,25 @@ struct ProviderSetupLifecycle: ViewModifier {
         // Fixed local model — no API key, no model discovery. Routing it
         // into the default key-provider path would hand the discovery
         // coordinator an empty model list and let it overwrite `llmModel`
-        // (#1271 Codex r7). Activation/probe rides PipelineSettingsSync;
+        // (#1271 Codex r7). DICTATION's activation rides PipelineSettingsSync;
         // the status section's own onAppear probe covers settings-open.
         // #2649: S1-mini is the same shape, and was falling into the default
         // arm, which flipped the key-validation state for a model that has
         // no key.
-        break
+        //
+        // #2772 chunk 3: the IMPORT surface asks explicitly, because its activation is a
+        // RUN-START operation (chunk 2's `prepareLocalPolish`) while its Continue gate reads
+        // runtime health BEFORE a run can start. Without this, selecting an installed but
+        // stopped EG-1 for an import read "Needs setup" until the user found the refresh
+        // button. `EGOneRuntime.activateAndProbe` refuses against another pinned session, so
+        // asking here cannot disturb a dictation in flight. Found by Codex.
+        if surface == .fileImport {
+          switch newProvider {
+          case .egOne: egOne.activateAndProbe()
+          case .s1Mini: localPolishRuntimes.s1Mini.activateAndProbe()
+          default: break
+          }
+        }
       // #2651: enumerated rather than `default:`. This arm is the key-provider
       // path, and the `.egOne, .s1Mini` comment above records what it costs to
       // reach it by accident: the discovery coordinator gets an empty model
@@ -2007,15 +2209,15 @@ struct ProviderSetupLifecycle: ViewModifier {
         llmDiscovery.loadCachedModels(for: newProvider)
         Task {
           await llmDiscovery.validateKeyAndDiscoverModels(
-            provider: newProvider, settings: settings)
+            provider: newProvider, settings: settings, surface: surface)
         }
       }
     }
     .onChange(of: setup.ollamaSetup.setupState) { _, newState in
-      if case .ready = newState, settings.llmProvider == .ollama {
+      if case .ready = newState, provider == .ollama {
         Task {
           await llmDiscovery.validateKeyAndDiscoverModels(
-            provider: .ollama, settings: settings)
+            provider: .ollama, settings: settings, surface: surface)
         }
         // #1956: the hosted catalog does not depend on the daemon being ready,
         // but this is the moment a user who just started Ollama reaches the list,
@@ -2023,17 +2225,17 @@ struct ProviderSetupLifecycle: ViewModifier {
         // same reason as the appearance one.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
         // Warm up the selected model when Ollama becomes ready
-        if !settings.llmModel.isEmpty {
-          setup.ollamaSetup.warmUpModel(settings.llmModel)
+        if !surfaceCloudModel.isEmpty {
+          setup.ollamaSetup.warmUpModel(surfaceCloudModel)
         }
-      } else if settings.llmProvider == .ollama {
+      } else if provider == .ollama {
         // Reset warmup when Ollama leaves .ready (server died, etc.)
         setup.ollamaSetup.resetWarmup()
       }
     }
-    .onChange(of: settings.llmModel) { _, newModel in
+    .onChange(of: surfaceCloudModel) { _, newModel in
       // Warm up when user switches Ollama model
-      if settings.llmProvider == .ollama,
+      if provider == .ollama,
         case .ready = setup.ollamaSetup.setupState,
         !newModel.isEmpty
       {

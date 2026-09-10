@@ -26,6 +26,20 @@ struct TranscribeFileView: View {
   @Environment(FileImportCoordinator.self) private var coordinator
   @Environment(SettingsManager.self) private var settings
 
+  // #2772 chunk 3: the same coordinators the AI Polish page reads. The Polish step now
+  // hosts the shared setup editor, and the Continue gate below asks these directly rather
+  // than trusting the editor to report readiness back up.
+  @Environment(SetupCoordinator.self) private var setup
+  @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
+  @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  @Environment(EGOneRuntime.self) private var egOne
+  @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
+
+  /// The shared setup editor's own state (key drafts, saved-key reads, a pending download).
+  /// Owned here so both `Part`s and the lifecycle modifier read one copy, exactly as
+  /// `AIPolishSettingsView` owns its own.
+  @State private var setupModel = ProviderSetupModel()
+
   var body: some View {
     VStack(spacing: 0) {
       stepBar
@@ -59,6 +73,12 @@ struct TranscribeFileView: View {
       guard coordinator.step == .polish || coordinator.step == .review else { return }
       await coordinator.refreshOllamaFacts()
     }
+    // #2772 chunk 3: arms the coordinators for the IMPORT's chosen engine — reads the saved
+    // keys, validates a cloud key, detects Ollama, probes a bundled engine. Keyed to
+    // `.fileImport`, so choosing OpenAI here validates OpenAI even when dictation is on
+    // EG-1. Attached to the whole page rather than the Polish step, because the editor's
+    // state must survive stepping forward to Review and back.
+    .modifier(ProviderSetupLifecycle(model: setupModel, surface: .fileImport))
   }
 
   // MARK: - The step bar
@@ -140,8 +160,12 @@ struct TranscribeFileView: View {
 
   /// The row every choosing step ends with: a plain sentence about the choice on
   /// the left, and the way forward on the right.
+  /// `forwardEnabled` exists for #2772 finding 7a: with a cloud engine selected and no key
+  /// saved, this row used to offer an enabled Continue, and the run then skipped polish in
+  /// silence. Back stays enabled whatever the gate says, so a blocked user is never trapped
+  /// on the step.
   private func actionRow(
-    note: String, showBack: Bool = true, forwardTitle: String,
+    note: String, showBack: Bool = true, forwardTitle: String, forwardEnabled: Bool = true,
     forward: @escaping () -> Void
   ) -> some View {
     BrandedSection {
@@ -152,7 +176,7 @@ struct TranscribeFileView: View {
           SettingsActionButton(title: "Back", isEnabled: true, action: { coordinator.goBack() })
         }
         SettingsActionButton(
-          title: forwardTitle, isEnabled: true, emphasis: .filled, action: forward)
+          title: forwardTitle, isEnabled: forwardEnabled, emphasis: .filled, action: forward)
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
@@ -433,7 +457,22 @@ struct TranscribeFileView: View {
         polishCard(choice)
       }
     }
-    polishDetailCard
+    polishLeadIn
+    // #2772 chunk 3, findings 7b / 7c / 7f / 7h: the SAME setup editor the AI Polish page
+    // renders, keyed to the import's choice. A key typed here is saved to the one Keychain
+    // entry both screens read, and the model list is the one catalog both screens use;
+    // what is separate is only WHICH engine each screen selected. The founder's ruling was
+    // "Keep it on the page", because sending someone to another screen to switch a feature
+    // on and then back again is the experience this replaces.
+    ProviderSetupSection(model: setupModel, part: .detail, surface: .fileImport)
+    // Ollama's catalog is a long list, so it sits full width below the editor rather than
+    // inside it, exactly as it does on the AI Polish page. The editor's own copy says "the
+    // list below", so leaving it out would point at nothing.
+    if settings.effectiveFileImportLLMProvider == .ollama,
+      ProviderSetupVisibility.showsManageModels(setup)
+    {
+      ProviderSetupSection(model: setupModel, part: .manageModels, surface: .fileImport)
+    }
     // #2772: the ONLY way out of an override. Without it, one curious tap on a second
     // engine is permanent, and a user who wants their imports to simply track their
     // dictation engine again has nothing to press. Shown only when there is something to
@@ -446,14 +485,92 @@ struct TranscribeFileView: View {
       .font(.stHelper)
     }
     actionRow(
-      note: "Numbers, dates, your saved words and filler removal run either way.",
-      forwardTitle: "Continue", forward: { coordinator.advance() })
+      note: polishReadiness.footer
+        ?? "Numbers, dates, your saved words and filler removal run either way.",
+      forwardTitle: "Continue", forwardEnabled: polishReadiness.isReady,
+      forward: {
+        guard polishReadiness.isReady else { return }
+        coordinator.advance()
+      })
+  }
+
+  // MARK: - May this import start? (#2772 finding 7a)
+
+  /// The Ollama model an import would run, whichever engine happens to be selected. A
+  /// follower has no field of its own, so its answer is dictation's, exactly as everywhere
+  /// else the follow rule applies.
+  private var importOllamaModel: String {
+    settings.fileImportLLMProvider == nil
+      ? settings.ollamaModel : settings.fileImportOllamaModel
+  }
+
+  /// The gate on Continue, for the engine this import will actually use.
+  private var polishReadiness: FileImportPolishReadiness {
+    readiness(for: settings.effectiveFileImportLLMProvider)
+  }
+
+  /// Readiness for ANY engine, not only the selected one.
+  ///
+  /// **Every card reads its own state, which is what the approved prototype draws:** one
+  /// screenshot shows OpenAI "Cloud based" and Gemini "Needs a key" side by side, neither
+  /// selected. A first version answered only for the selected engine and fell back to a
+  /// fixed word elsewhere, which is the same defect the founder reported one card over.
+  ///
+  /// Answerable for all six because every input is per-engine: the two bundled runtimes,
+  /// the availability report, the Ollama daemon, and each provider's own saved-key fact. The
+  /// one shared input is the discovery verdict, and it is taken only when it is ABOUT this
+  /// engine.
+  ///
+  /// Reads the coordinators directly rather than asking the embedded editor, because the
+  /// editor renders a state and this decides an outcome; a view that reported its own
+  /// readiness would be a second authority on the same question.
+  private func readiness(for provider: LLMProvider) -> FileImportPolishReadiness {
+    let savedKey: FileImportSavedKeyState
+    // The TYPED text, which is not the same fact as the SAVED one: polish reads the
+    // Keychain, so a draft nobody pressed Save on runs as no key.
+    let draft: String
+    switch provider {
+    case .openAI:
+      savedKey = .from(setupModel.openAIKeySaved)
+      draft = setupModel.openAIKey
+    case .gemini:
+      savedKey = .from(setupModel.geminiKeySaved)
+      draft = setupModel.geminiKey
+    case .claude:
+      savedKey = .from(setupModel.claudeKeySaved)
+      draft = setupModel.claudeKey
+    // Enumerated, never `default:`. These carry no API key, so "absent" is the true
+    // answer and the gate ignores it for them. A NEW key-carrying provider on a default
+    // arm would have read as permanently key-less and blocked forever.
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      savedKey = .absent
+      draft = ""
+    }
+    return FileImportPolishGate.readiness(
+      provider: provider,
+      savedKey: savedKey,
+      hasUnsavedKeyDraft: !draft.isEmpty,
+      // Only when the discovery coordinator's verdict is about THIS provider. It is shared
+      // with the AI Polish page, which may have validated a different one.
+      keyValidation: llmDiscovery.stateProvider == provider
+        ? llmDiscovery.keyValidationState : .idle,
+      egOneInstall: egOne.installState,
+      egOneHealth: egOne.health,
+      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
+      s1MiniHealth: localPolishRuntimes.s1Mini.health,
+      appleStatus: aiAvailability.latestReport?.overallStatus,
+      ollamaSetup: setup.ollamaSetup.setupState,
+      // The import's own OLLAMA field, never the effective model.
+      //
+      // `effectiveFileImportLLMModel` answers "what will the SELECTED engine ask for", and
+      // this function now runs for every card. With OpenAI selected it returns a cloud id,
+      // which made the unselected Ollama card read "Ready" while its remembered Ollama
+      // selection was empty. A per-card question needs a per-card field. Found by Codex.
+      ollamaModelIsArmed: !importOllamaModel.isEmpty)
   }
 
   struct PolishChoice {
     let provider: LLMProvider
-    let icon: String
-    let availability: String
     let detail: String
 
     /// Read from the provider, never restated here. `LLMProviderDisplayNameFreezeTests`
@@ -462,35 +579,38 @@ struct TranscribeFileView: View {
     var title: String { provider.displayName }
   }
 
-  /// The six, in the order the design shows them. Each carries the one line that
-  /// decides whether a person can use it at all, because "Needs a key" is the
-  /// answer to the question they are actually asking.
+  /// The six, in the order the design shows them.
+  ///
+  /// **No `icon` and no `availability` any more (#2772 chunk 3).** The mark now comes from
+  /// `ProviderLogoTile`, the one place all six brand mocks are drawn, and the line under
+  /// the name comes from `FileImportPolishSubtitle`, which reads the engine's live state.
+  /// Both were fixed strings in this table, which is how a card could say "Needs a key"
+  /// beside an enabled Continue button, and how it kept saying it after a key was saved.
   static let polishChoices: [PolishChoice] = [
     PolishChoice(
-      provider: .egOne, icon: "star", availability: "On device",
+      provider: .egOne,
       detail:
         """
         Our best model for cleanup and list-making. On an imported recording it removes about \
         four times more filler than Apple Intelligence.
         """),
     PolishChoice(
-      provider: .appleIntelligence, icon: "apple.logo",
-      availability: "On device",
+      provider: .appleIntelligence,
       detail: "Apple's on-device model. Needs macOS 26 or later."),
     PolishChoice(
-      provider: .ollama, icon: "cube", availability: "Needs the app",
+      provider: .ollama,
       // Deliberately says nothing about where the text goes. Ollama proxies
       // some models to its own servers, so the answer depends on the MODEL, and
-      // this card cannot see one. `ollamaPrivacyLine` says it right below.
+      // this line cannot see one. `ollamaPrivacyLine` says it right below.
       detail: "Any model you run in Ollama."),
     PolishChoice(
-      provider: .openAI, icon: "circle.hexagongrid", availability: "Needs a key",
+      provider: .openAI,
       detail: "Your own OpenAI key. Only the text is sent, never the audio."),
     PolishChoice(
-      provider: .gemini, icon: "sparkle", availability: "Needs a key",
+      provider: .gemini,
       detail: "Your own Google key. Only the text is sent, never the audio."),
     PolishChoice(
-      provider: .claude, icon: "star.circle", availability: "Needs a key",
+      provider: .claude,
       detail: "Your own Anthropic key. Only the text is sent, never the audio."),
   ]
 
@@ -527,14 +647,16 @@ struct TranscribeFileView: View {
     } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
-          Image(systemName: choice.icon).foregroundStyle(Color.stAccent)
+          // #2772 finding 6: the real brand mark, from the one tile the AI Polish rail
+          // already draws. The founder's words were "we already have them in the software".
+          ProviderLogoTile(provider: choice.provider, size: 26, isSelected: selected)
           Spacer(minLength: 4)
           Image(systemName: selected ? "checkmark.circle.fill" : "circle")
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
         }
         Text(choice.title).font(.stRowLabel).fixedSize(horizontal: false, vertical: true)
         if choice.provider == .egOne { badge("Recommended") }
-        Text(choice.availability).foregroundStyle(Color.stTextSecondary)
+        Text(cardSubtitle(for: choice.provider)).foregroundStyle(Color.stTextSecondary)
       }
       .padding(12)
       .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
@@ -548,44 +670,59 @@ struct TranscribeFileView: View {
     .buttonStyle(.plain)
   }
 
+  /// The line under a card's name, for that card's OWN engine. Founder finding 7g.
+  private func cardSubtitle(for provider: LLMProvider) -> String {
+    FileImportPolishSubtitle.text(provider: provider, readiness: readiness(for: provider))
+  }
+
+  /// The short description of the selected engine, plus the one sentence about where an
+  /// Ollama model actually runs, above the shared setup editor.
   @ViewBuilder
-  private var polishDetailCard: some View {
+  private var polishLeadIn: some View {
     if let choice = selectedPolish {
-      BrandedSection {
-        HStack(alignment: .top, spacing: 14) {
-          SettingsRowIcon(systemName: choice.icon)
-          VStack(alignment: .leading, spacing: 4) {
-            Text(choice.title).font(.stRowTitle)
-            Text(choice.detail)
-              .foregroundStyle(Color.stTextSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-            // **The sentence sits where the user approves the choice**, not only
-            // in the footer. This card promised "Nothing leaves this Mac" for
-            // every Ollama model, immediately above the button that sends the
-            // transcript to one Ollama proxies to its own servers. Found by
-            // Codex.
-            if choice.provider == .ollama {
-              Text(ollamaPrivacyLine)
-                .foregroundStyle(Color.stTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-          Spacer(minLength: 0)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(choice.detail)
+          .foregroundStyle(Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        // **The sentence sits where the user approves the choice**, not only
+        // in the footer. This card promised "Nothing leaves this Mac" for
+        // every Ollama model, immediately above the button that sends the
+        // transcript to one Ollama proxies to its own servers. Found by
+        // Codex. Chunk 3 moved it out of the old detail card, which the shared
+        // setup editor replaced; the editor's own Ollama explainer describes local and
+        // hosted models in general and cannot name the one that is selected.
+        if choice.provider == .ollama {
+          Text(ollamaPrivacyLine)
+            .foregroundStyle(Color.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, SettingsLayout.rowPaddingH)
-        .padding(.vertical, SettingsLayout.rowPaddingV)
       }
     }
   }
 
-  /// Where a provider runs, for the ones the tile grid does not render. Derived
-  /// from the provider so a new one cannot be silently blank here.
-  static func availability(_ provider: LLMProvider) -> String {
+  /// WHERE a polisher runs. Exhaustive over the provider, so a seventh cannot be silently
+  /// blank on the screen that confirms what is about to happen to a recording.
+  ///
+  /// **This replaced `availability(_:)`, a FIXED SETUP mapping the Review row was using to
+  /// answer a LOCATION question.** It read "Needs a key" on the confirmation screen of a
+  /// user who had saved one, and "Needs the app" for a working Ollama. Setup state now
+  /// comes from `FileImportPolishGate`, which reads the live coordinators; location comes
+  /// from here, and for Ollama only the remoteness lookup can answer it, because the daemon
+  /// proxies some models to its own servers. Found by Codex.
+  ///
+  /// Static and taking remoteness as an argument so the answer is testable without a
+  /// running app: this sentence is a privacy claim.
+  static func polisherLocation(_ provider: LLMProvider, ollamaModelIsRemote: Bool?) -> String {
     switch provider {
-    case .egOne, .s1Mini, .appleIntelligence: return "On device"
-    case .ollama: return "Needs the app"
-    case .openAI, .gemini, .claude: return "Needs a key"
-    case .none: return ""
+    case .egOne, .s1Mini, .appleIntelligence: return "This Mac"
+    case .openAI, .gemini, .claude: return provider.displayName
+    case .ollama:
+      switch ollamaModelIsRemote {
+      case .some(true): return "Ollama's servers"
+      case .some(false): return "This Mac"
+      case nil: return "Location not checked"
+      }
+    case .none: return "No cleanup"
     }
   }
 
@@ -633,17 +770,37 @@ struct TranscribeFileView: View {
           systemImage: "mic.slash", tint: .orange)
         // The words change with what the action IS. After a refusal the file is
         // still read and still in memory, so this is a retry, not a fresh start.
+        //
+        // #2772 finding 7a, SECOND door. Review re-checks the selected polisher for BOTH a
+        // first run and a re-polish, because setup can change after Continue was pressed:
+        // `FileImportCoordinator.canGo` lets any step be reached from the bar once a
+        // document exists, and a user can also sit on this step, clear the key on the AI
+        // Polish page, and come back to a Start button that is still enabled. Explicitly
+        // choosing no cleanup passes the same gate.
+        //
+        // A first version scoped this to the re-polish case, reasoning that the only way to
+        // reach Review without a document is the gated Continue. That is true at the moment
+        // of ARRIVAL and says nothing about the moment of PRESSING. Found by Codex, which
+        // also named `retry()` as reaching `start()` with no second check.
+        //
+        // The guard is in the closure as well as on the button, because a disabled button is
+        // a presentation and this is an admission.
         actionRow(
-          note: coordinator.canRetry
-            ? "Your file is still here. Nothing needs reading again."
-            : (coordinator.rawTranscript.isEmpty
-              ? "Nothing has run yet."
-              : "Already transcribed. Only the cleanup runs again."),
+          note: polishReadiness.footer
+            ?? (coordinator.canRetry
+              ? "Your file is still here. Nothing needs reading again."
+              : (coordinator.rawTranscript.isEmpty
+                ? "Nothing has run yet."
+                : "Already transcribed. Only the cleanup runs again.")),
           forwardTitle: coordinator.canRetry
             ? "Try again"
             : (coordinator.rawTranscript.isEmpty
               ? "Start transcription" : "Clean it again"),
-          forward: { coordinator.canRetry ? coordinator.retry() : coordinator.advance() })
+          forwardEnabled: polishReadiness.isReady,
+          forward: {
+            guard polishReadiness.isReady else { return }
+            if coordinator.canRetry { coordinator.retry() } else { coordinator.advance() }
+          })
       }
       processingPath.frame(width: 300)
     }
@@ -657,7 +814,10 @@ struct TranscribeFileView: View {
       Text("YOUR PROCESSING PATH")
         .font(.stSectionHeader).tracking(0.6).foregroundStyle(Color.stAccent)
       pathCard(
-        icon: settings.selectedBackend == .parakeet ? "bolt.fill" : "globe",
+        mark: {
+          Image(systemName: settings.selectedBackend == .parakeet ? "bolt.fill" : "globe")
+            .foregroundStyle(Color.stAccent)
+        },
         title: settings.selectedBackend == .parakeet ? "Fast" : "All Languages",
         recommended: settings.selectedBackend == .parakeet,
         blurb: "Writes down what was said.",
@@ -678,26 +838,43 @@ struct TranscribeFileView: View {
       // S1-mini and the runner ran it. A hand-written list of what to DISPLAY
       // cannot answer a question about what will RUN. Found by Codex.
       pathCard(
-        icon: selectedPolish?.icon ?? "sparkles",
+        // #2772 finding 6: the real brand mark here too. `ProviderLogoTile` covers every
+        // provider including the ones the six-tile grid does not render, which is the same
+        // reason the title and the "Runs on" row are derived from the provider.
+        mark: {
+          ProviderLogoTile(
+            provider: settings.effectiveFileImportLLMProvider, size: 22, isSelected: false)
+        },
         title: settings.effectiveFileImportLLMProvider.displayName,
         recommended: settings.effectiveFileImportLLMProvider == .egOne,
         blurb: "Cleans it into readable text.",
-        rows: [
-          (
-            "Runs on",
-            selectedPolish?.availability
-              ?? Self.availability(settings.effectiveFileImportLLMProvider)
-          )
-        ])
+        rows: [("Runs on", selectedPolisherLocation)])
     }
   }
 
+  /// `mark` rather than an SF Symbol name, because the two cards no longer draw the same
+  /// KIND of thing: the transcription engine has no brand mark of its own and the polisher
+  /// does (#2772 chunk 3).
+  /// WHERE the chosen polisher runs, for the row that asks exactly that.
+  ///
+  /// This row used `availability(_:)`, a fixed setup mapping, so it read "Needs a key" on
+  /// the confirmation screen of a user who had saved one, and "Needs the app" for a working
+  /// Ollama. Setup state and location are different questions, and the one owner that can
+  /// answer location for Ollama is the remoteness lookup, because the daemon proxies some
+  /// models to its own servers. Found by Codex.
+  private var selectedPolisherLocation: String {
+    Self.polisherLocation(
+      settings.effectiveFileImportLLMProvider,
+      ollamaModelIsRemote: coordinator.polishOllamaLocalityNow())
+  }
+
   private func pathCard(
-    icon: String, title: String, recommended: Bool, blurb: String, rows: [(String, String)]
+    @ViewBuilder mark: () -> some View,
+    title: String, recommended: Bool, blurb: String, rows: [(String, String)]
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        Image(systemName: icon).foregroundStyle(Color.stAccent)
+        mark()
         Text(title).font(.stRowLabel)
         if recommended { badge("Recommended") }
         Spacer(minLength: 0)
@@ -885,7 +1062,10 @@ struct TranscribeFileView: View {
       Image(systemName: "shield").foregroundStyle(.green)
       Text(Self.footerLead(step: coordinator.step))
         .font(.stRowLabel).foregroundStyle(.green)
-      Text(Self.footerDetail(step: coordinator.step, isCloudPolish: isCloudPolish))
+      Text(
+        Self.footerDetail(
+          step: coordinator.step, isCloudPolish: isCloudPolish,
+          providerName: footerProviderName))
         .foregroundStyle(Color.stTextSecondary)
       Spacer(minLength: 0)
     }
@@ -905,24 +1085,46 @@ struct TranscribeFileView: View {
   /// polisher is chosen, which the founder caught in the prototype; and reading
   /// the LIVE provider after a run would retrospectively re-describe a finished
   /// document, which cloud review caught in the first build.
-  static func footerDetail(step: FileImportCoordinator.Step, isCloudPolish: Bool) -> String {
+  /// #2772 finding 7e: the sentence NAMES the provider. "The provider you chose" is true
+  /// and asks the reader to remember which one that was, on the screen whose whole job is
+  /// telling them where their words go. The name is passed in rather than read here so the
+  /// Working and Done steps can name the provider FROZEN with the run, which is a different
+  /// answer from the one selected now.
+  static func footerDetail(
+    step: FileImportCoordinator.Step, isCloudPolish: Bool, providerName: String
+  ) -> String {
     switch step {
     case .working:
       // The cloud branch belongs HERE most of all: this is the step during
       // which the text is actually being sent. A line claiming both stay on the
       // Mac would be false at the exact moment it is on screen.
       return isCloudPolish
-        ? "Your audio never leaves this Mac. The text is going to the provider you chose."
+        ? "Your audio never leaves this Mac. The text is going to \(providerName), under your own key."
         : "Your audio and text both stay on this Mac."
     case .done:
       return isCloudPolish
-        ? "Your audio stayed on this Mac. Only the text went to the provider you chose."
+        ? "Your audio stayed on this Mac. Only the text went to \(providerName), under your own key."
         : "Your untouched words are kept beside this one."
     case .upload, .transcription, .polish, .review:
       return isCloudPolish
-        ? "Your audio never leaves this Mac. Only the text goes to the provider you chose."
+        ? "Your audio never leaves this Mac. Only the text goes to \(providerName), under your own key."
         : "Your audio and text both stay on this Mac."
     }
+  }
+
+  /// Which provider the footer names, on the same split as `isCloudPolish`: the FROZEN one
+  /// once a run exists, the live one before that. Reading the live selection after a run
+  /// would name an engine that never touched those words.
+  private var footerProviderName: String {
+    switch coordinator.step {
+    case .working, .done:
+      if let frozen = coordinator.runConfiguration {
+        return frozen.polishProvider.displayName
+      }
+    case .upload, .transcription, .polish, .review:
+      break
+    }
+    return settings.effectiveFileImportLLMProvider.displayName
   }
 
   /// Whether the text this sentence is ABOUT leaves the Mac.
