@@ -3,31 +3,29 @@ import Testing
 
 @testable import EnviousWisprPostProcessing
 
-/// A spoken address ending in a country-code domain now converts, and the ordinary sentences that
-/// look like one still do not.
+/// Product expectations for selected ccTLDs in the existing spoken-email grammar.
 ///
-/// Why this exists: `emailTLDAlt` and `lowerRiskURLTLDAlt` carried no country code at all, so
-/// `anna at beispiel dot de` stayed spelled out — for a German speaker AND for an English speaker
-/// dictating a German address. Measured on #1677's engine survey, every non-English address in the
-/// corpus ends in a country code, so the missing list blocked the whole category before any
-/// per-language work could matter.
+/// **These tests call the normalizer DIRECTLY, bypassing the production language gate.** A
+/// German-resolved dictation still skips this formatter at `InverseTextNormalizationStep.skipReason`,
+/// so nothing here establishes German product support — it establishes that an ENGLISH-resolved take
+/// containing a foreign address now converts.
 ///
-/// The risky half is the reason the table is a list rather than "every ccTLD". `emails(_:)` matches
+/// The risky half is why the table is a reviewed allowlist rather than every ccTLD. `emails()` matches
 /// `<name> at <dom> dot <tld>` where `dom` is any single token, so a ccTLD that is also an ordinary
 /// English word has no protection left: admitting `it` converts "he pointed at the dot it made".
-/// Those are excluded, and `refusesWordLikeCountryCodes` is what holds that line — it fails if
-/// somebody later "completes" the list from IANA.
+/// `refusesWordLikeCountryCodes` holds that line and fails if somebody later "completes" the list from
+/// IANA. It protects NAMED risky words; it is not a claim that every admitted entry is unambiguous —
+/// `de`, `es` and `si` are dictionary words too.
 ///
-/// **EMAIL ONLY, and the reason is the oracle, not the risk.** `lowerRiskURLTLDAlt` deliberately did
-/// NOT get these codes. `spokenPat`'s path is optional (`*`), so a bare `<host> dot <tld>` converts
-/// with no path at all, and adding `fr` turned the curated parity row `"a at m s n dot fr"` — a
-/// person spelling out MSN — into `"a at m s n.fr"`. `parity.jsonl` is baked from a Python oracle
-/// (`hand_rolled.py`) that is NOT in this repo or on this machine, so that row cannot be re-baked
-/// here and the URL half is blocked until it can be. #2764 carries that.
+/// URL handling is unchanged. Broadening its spoken-host allowlist would partially convert the
+/// spelled-out email in `parity.jsonl`'s `"a at m s n dot fr"`, because `spokenPat`'s path group is
+/// `*` rather than `+`.
 ///
-/// **Honest limit on the email half:** no parity row exercises a country-code email, so parity
-/// passing means "no regression", NOT "matches the oracle". These conversions are a deliberate
-/// divergence the oracle would not make, and this suite is the only thing asserting them.
+/// **What the frozen fixtures do and do not prove here.** `parity.jsonl` DOES contain a country-code
+/// email row (`:1563`), so "no such row exists" would be wrong; what neither it nor the holdout
+/// contains is an input matching the newly accepted single-token ccTLD pattern. Passing them
+/// establishes agreement with their recorded outputs on THOSE cases, not correctness of this
+/// extension. This suite supplies the extension's explicit product expectations.
 @Suite("Country-code domains in spoken addresses (#2764)", .tags(.productOutcome))
 struct InverseTextNormalizerCountryTLDTests {
 
@@ -53,9 +51,9 @@ struct InverseTextNormalizerCountryTLDTests {
     #expect(Self.itn.normalize(input, spokenPunctuation: false).contains(expected))
   }
 
-  /// The generic domains that already worked must keep working — this list grew by 26 entries and
-  /// `alt(...)` re-sorts the whole alternation, so a longest-first regression would show up here
-  /// as `example.co` swallowing `example.com`.
+  /// The generic domains that already worked must keep working. `alt(...)` re-sorts the whole
+  /// alternation when the list grows, so these are regression cover for the existing conversions;
+  /// they do not by themselves prove the ordering rule.
   @Test(
     "the generic domains still convert, and the longer one still wins",
     arguments: [
@@ -80,6 +78,9 @@ struct InverseTextNormalizerCountryTLDTests {
       "arrive at the dot no later than five",
       "aim at the dot at the top",
       "point at the dot be careful",
+      "look at the dot as it moves",
+      "look at the dot by the door",
+      "look at the dot to your left",
     ])
   func refusesWordLikeCountryCodes(input: String) {
     #expect(!Self.itn.normalize(input, spokenPunctuation: false).contains("@"))
@@ -88,13 +89,17 @@ struct InverseTextNormalizerCountryTLDTests {
   /// Structural guard on the table itself, so the reason survives without depending on a reviewer
   /// remembering it. A word-like code added here would pass every conversion test above and only
   /// fail the sentences — this fails at the source instead.
-  @Test("no country code in the table is an ordinary English word")
+  @Test("selected high-risk English words remain excluded")
   func tableExcludesWordLikeCodes() {
-    let wordLike: Set<String> = [
-      "it", "at", "in", "is", "be", "no", "so", "us", "my", "am", "do", "id",
+    // Named risky words, not a claim of universal unambiguity: `de`, `es` and `si` are dictionary
+    // words and ARE admitted. Intersecting a dictionary with the IANA ccTLD list would exclude
+    // Germany itself, so the allowlist stays reviewed rather than derived.
+    let excluded: Set<String> = [
+      "am", "as", "at", "be", "by", "do", "id", "in",
+      "is", "it", "my", "no", "so", "to", "us",
     ]
     let table = Set(InverseTextNormalizer.countryCodeTLDs)
-    #expect(table.intersection(wordLike).isEmpty)
+    #expect(table.intersection(excluded).isEmpty)
     #expect(table.count == InverseTextNormalizer.countryCodeTLDs.count)  // no duplicates
   }
 

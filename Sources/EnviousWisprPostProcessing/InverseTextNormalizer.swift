@@ -13,6 +13,10 @@ import Foundation
 /// The Python reference is the ORACLE; `Tests/.../InverseTextNormalizer/parity.jsonl`
 /// pins byte-for-byte behavioral equivalence (see `InverseTextNormalizerParityTests`).
 ///
+/// Frozen Python-reference fixtures (`parity.jsonl`, `parity_holdout.jsonl`) pin behaviour on their
+/// RECORDED INPUTS. Later product extensions carry separate explicit expectations; passing the
+/// fixtures does not establish equivalence on inputs outside them (#2764).
+///
 /// Pure value transform, no state, `Sendable`. Context-aware where cheap; ambiguous
 /// minimal pairs ("meet at one twenty" = 1:20 vs "paid one twenty" = $1.20) are left
 /// for the AI-polish layer by design — every rule/grammar engine scores ~39% on those,
@@ -173,31 +177,36 @@ public struct InverseTextNormalizer: Sendable {
   static let commonWordURLTLDAlt = #"ai|app|xyz"#
   static let urlTLDAlt = lowerRiskURLTLDAlt + "|" + commonWordURLTLDAlt
 
-  /// Country-code TLDs, and the reason this is a list rather than "every ccTLD".
+  /// Selected ccTLD additions for the existing English spoken-email grammar.
   ///
-  /// The generic list above has no country code in it at all, so a spoken `.de`, `.nl` or `.fr`
-  /// never converted — for a GERMAN speaker or for an English one dictating a German address.
-  /// That is the same defect in both languages and it is fixed here for both.
+  /// The previous allowlist ALREADY included the ccTLDs `co`, `io` and `me`, so this is not "no
+  /// country codes" being fixed — it is a reviewed extension of a list that omitted the European
+  /// codes our users' addresses actually end in (`de`, `nl`, `fr`, `es`, `pt`, `pl`, …).
   ///
-  /// **A ccTLD that is also an ordinary word is EXCLUDED, because the email frame does not
-  /// protect it.** `emails(_:)` matches `<name> at <dom> dot <tld>`, and `dom` is any single
-  /// token, so admitting `it` would turn the ordinary sentence "he pointed at the dot it made"
-  /// into "he pointed@the.it made". Excluded on those grounds: `it`, `at`, `in`, `is`, `be`,
-  /// `no`, `so`, `us`, `my`, `am`, `do`, `id`. (`me` predates this and stays; it is already
-  /// shipped behaviour and its removal is not this change's business.)
+  /// This is a REVIEWED ALLOWLIST, not an exhaustive ccTLD list and not a guarantee its entries
+  /// have no English dictionary meaning: `de`, `es` and `si` all retain lexical ambiguity. It
+  /// excludes selected HIGH-RISK words, because `emails()` matches `<name> at <dom> dot <tld>`
+  /// with `dom` as any single token, so a word-like code has no protection left — admitting `it`
+  /// turns "he pointed at the dot it made" into "he pointed@the.it made". Excluded on those
+  /// grounds: `am as at be by do id in is it my no so to us`.
   ///
-  /// **Italy, Austria, Belgium, Norway and Indonesia are therefore NOT supported here**, which is
-  /// a real coverage hole and is stated rather than hidden: those need the stronger evidence the
-  /// joined-host pass has (a literal "." the recognizer already committed to) and that route does
-  /// not exist for email. Tracked on #2764.
+  /// Italy, Austria, Belgium, Norway, the Bahamas, Belarus, Tonga and Indonesia are therefore NOT
+  /// covered, stated rather than hidden.
   ///
-  /// Scope is our supported and adjacent European markets plus `eu`; this is deliberately not
-  /// the full IANA list, because every added entry widens the false-positive surface and none of
-  /// the rest has a user behind it. Extending it is adding a string here, not new logic.
+  /// **Only `emailTLDAlt` consumes this table.** URL handling and the production language gate are
+  /// unchanged, so non-English-resolved dictation still skips this formatter entirely
+  /// (`InverseTextNormalizationStep.skipReason`) — this change reaches an ENGLISH-resolved take
+  /// containing a foreign address, and does not by itself deliver support for those languages.
+  ///
+  /// Residual risk, unchanged in kind and now extended to these suffixes: the grammar cannot tell
+  /// an address from prose about a website, so "learn more at example dot de" also converts.
   static let countryCodeTLDs = [
     "de", "nl", "fr", "es", "pt", "pl", "se", "dk", "fi", "hu", "cz", "sk", "ru", "ua",
     "ch", "gr", "ie", "uk", "eu", "si", "hr", "lt", "lv", "ee", "bg", "ro",
   ]
+
+  // Email and URL allowlists remain independent. `ai`/`app`/`xyz` stay URL-only; the ccTLDs above
+  // are added only to the email grammar.
   // Deliberately NOT derived from urlTLDAlt (#2257, local Codex review round 2):
   // emails(_:)'s "name at domain dot tld" pattern has no path requirement to disambiguate
   // it the way urls(_:) does, so ANY newly-added TLD widens "at <domain> dot <tld>" — a
