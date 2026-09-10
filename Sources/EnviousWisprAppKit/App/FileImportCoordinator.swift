@@ -140,6 +140,10 @@ final class FileImportCoordinator {
     case noAudio
     case noSpeechFound
     case engineBusy(SharedEngineHolder)
+    /// The engine chosen on the Transcription step is not downloaded.
+    case engineNotInstalled
+    /// It is installed but did not come up. The next Start retries.
+    case engineNotReady
     case failed(String)
   }
 
@@ -157,6 +161,26 @@ final class FileImportCoordinator {
 
   private(set) var state: State = .idle
   private(set) var parts: [Part] = []
+
+  /// A sentence about the last Save, or nil. Shown on Done, beside the buttons.
+  ///
+  /// **A failed save has to be LOUD**, because the next thing the user does is
+  /// press New transcription, which clears the only copy of the document. A
+  /// discarded write error — a full disk, a removed volume, a folder they cannot
+  /// write to — meant they threw the words away believing they were on disk.
+  /// Found by Codex.
+  private(set) var saveMessage: String?
+
+  func noteSaveSucceeded(fileName: String) { saveMessage = "Saved to \(fileName)." }
+
+  func noteSaveFailed(_ error: any Error) {
+    saveMessage = "That file couldn't be saved. Your words are still here. Try another place."
+    saveFailureDetail = String(describing: error)
+  }
+
+  /// The underlying failure, for the log. Never shown: the sentence above is
+  /// what the user reads.
+  private(set) var saveFailureDetail: String?
 
   /// What the Working step's phase label says. The words describe the JOB, never
   /// the mechanism: the user is never told about parts or chunks.
@@ -189,7 +213,17 @@ final class FileImportCoordinator {
   }
 
   /// The document as one piece of text, for copy and save.
-  var documentText: String { parts.map(\.text).joined(separator: "\n\n") }
+  /// The document as one piece of text, for Copy and Save.
+  ///
+  /// **Falls back to the raw transcript, because the screen does.** Stopping
+  /// during the FIRST passage leaves no finished parts and a full transcript,
+  /// and Done renders those raw words — while Copy put nothing on the clipboard
+  /// and Save wrote an empty file over the only copy the user had. Found by
+  /// Codex. Reading the same value the page renders is what makes the two unable
+  /// to disagree.
+  var documentText: String {
+    parts.isEmpty ? rawTranscript : parts.map(\.text).joined(separator: "\n\n")
+  }
 
   /// Whether a run is in flight AS THE SCREEN SEES IT. Drives the sidebar dot,
   /// the Stop button and whether the wizard's steps are navigable.
@@ -219,6 +253,30 @@ final class FileImportCoordinator {
   private let decode: @Sendable (URL) async throws -> AudioFileDecoder.Decoded
   private let transcribe: @MainActor ([Float]) async throws -> String
   private let engineAdmission: EngineAdmissionAccess
+
+  /// Drives the SELECTED speech engine to active-and-warm, and says what
+  /// happened. The composition root points this at
+  /// `EngineCoordinator.ensureSelectedReadyForPress()`, the same authority a
+  /// record press uses.
+  ///
+  /// **A run must not begin until this says ready.** Choosing All Languages
+  /// while its model is not downloaded leaves the coordinator's active engine
+  /// unchanged, so the import happily transcribed with the fast English engine
+  /// while Review promised the other one. A switch still in flight produced the
+  /// same mismatch. Found by Codex.
+  ///
+  /// Runs BEFORE the claim, deliberately: gate 6b defers an engine switch while
+  /// an import holds the engine, so claiming first would make the switch wait
+  /// for a run that is itself waiting for the switch.
+  private let ensureEngineReady: @MainActor () async -> EngineReadiness
+
+  /// Mirrors `EngineCoordinator.PressReadiness` without importing it, so this
+  /// type keeps knowing nothing about who owns engine switching.
+  enum EngineReadiness: Sendable, Equatable {
+    case ready
+    case notInstalled
+    case notReady
+  }
 
   /// Called once, on the main actor, after a run has physically released the
   /// shared engine. The composition root points it at the existing retry paths.
@@ -271,11 +329,13 @@ final class FileImportCoordinator {
     transcribe: @escaping @MainActor ([Float]) async throws -> String,
     engineAdmission: EngineAdmissionAccess,
     polishIsRemoteOllamaNow: @escaping @MainActor () -> Bool = { false },
+    ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome
   ) {
     self.polishIsRemoteOllamaNow = polishIsRemoteOllamaNow
+    self.ensureEngineReady = ensureEngineReady
     self.onEngineReleased = onEngineReleased
     self.decode = decode
     self.transcribe = transcribe
@@ -376,9 +436,34 @@ final class FileImportCoordinator {
     step = .polish
   }
 
-  /// Jumps to a completed step from the step bar. Same rule: only before a run.
+  /// Whether the step bar may take the user to `target` RIGHT NOW.
+  ///
+  /// **One function, read by both the bar and the jump**, so a step cannot be
+  /// clickable and refuse, or be refused and look clickable. "Earlier than the
+  /// current step" was the whole rule and it let a finished run navigate to
+  /// Working — an inactive progress bar with a Stop button that does nothing and
+  /// no way back to the document — and to Upload, where Continue is refused
+  /// because the state is finished rather than ready. Found by Codex.
+  func canJump(to target: Step) -> Bool {
+    guard !isRunning, target != step else { return false }
+    switch target {
+    // Never: it shows a run in progress, and after one there is none.
+    case .working: return false
+    // Only ever forward INTO, by finishing a run.
+    case .done: return false
+    // Choosing another file is `startOver()`'s job, reached from Done's own
+    // button, because it also has to clear the document.
+    case .upload: return rawTranscript.isEmpty && step.rawValue > Step.upload.rawValue
+    // The two choice steps stay reachable after a run: picking a different
+    // polisher and cleaning the same words again is a supported thing to do.
+    case .transcription, .polish, .review:
+      return file != nil && target.rawValue < step.rawValue
+    }
+  }
+
+  /// Takes the user to `target` if `canJump(to:)` allows it.
   func jump(to target: Step) {
-    guard !isRunning, target.rawValue < step.rawValue else { return }
+    guard canJump(to: target) else { return }
     step = target
   }
 
@@ -404,33 +489,51 @@ final class FileImportCoordinator {
   func start() {
     guard case .ready(let name, _) = state else { return }
 
-    let token: EngineLease.Token
-    switch engineAdmission.claim() {
-    case .granted(let granted):
-      token = granted
-    case .refused(let holder):
+    // Refused at the press, not after the warm-up. See `currentHolder`.
+    if let holder = engineAdmission.currentHolder() {
       showRejection(.engineBusy(holder))
       return
     }
 
-    runConfiguration = beginRun()
-
     generation += 1
     let generationAtStart = generation
     step = .working
-    phase = "Writing down what was said"
+    // The engine may need switching or warming, which takes long enough to be
+    // worth naming rather than showing a bar at 0% with no explanation.
+    phase = "Getting the engine ready"
     state = .transcribing(fileName: name)
 
-    isEngineHeld = true
     runTask = Task { [weak self] in
+      guard let self else { return }
+
+      // 1. The engine the user picked, actually active and actually warm.
+      let readiness = await ensureEngineReady()
+      guard generationAtStart == generation else { return }
+      switch readiness {
+      case .notInstalled: showRejection(.engineNotInstalled); return
+      case .notReady: showRejection(.engineNotReady); return
+      case .ready: break
+      }
+
+      // 2. Only now claim, and only now freeze: the snapshot records the engine
+      // that is running, which step 1 has just made true.
+      let token: EngineLease.Token
+      switch engineAdmission.claim() {
+      case .granted(let granted): token = granted
+      case .refused(let holder): showRejection(.engineBusy(holder)); return
+      }
+      isEngineHeld = true
       // **The claim goes back only here**, after the physical work has exited.
       // Releasing where Stop is DECIDED would let a dictation in while a
       // cancelled part was still inside the one-slot polish server.
       defer {
-        self?.engineAdmission.release(token)
-        self?.finishEngineHold()
+        engineAdmission.release(token)
+        finishEngineHold()
       }
-      await self?.run(generationAtStart: generationAtStart)
+      runConfiguration = beginRun()
+      phase = "Writing down what was said"
+
+      await run(generationAtStart: generationAtStart)
     }
   }
 

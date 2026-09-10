@@ -22,11 +22,22 @@ struct EngineAdmissionAccess {
   /// an abandoned attempt cannot evict a live one.
   let release: @MainActor (EngineLease.Token) -> Void
 
+  /// Who holds the resource right now, WITHOUT taking it.
+  ///
+  /// **A peek, for refusing early.** File import has to warm the engine the user
+  /// picked before it can claim, and that takes seconds; asking the user to
+  /// watch "Getting the engine ready" and only then telling them a dictation is
+  /// running is a worse answer than telling them at the press. `claim()` is
+  /// still what decides — this only refuses sooner in the case that is already
+  /// certain.
+  let currentHolder: @MainActor () -> EngineLease.Holder?
+
   /// Binds a participant to the one live lease.
   static func live(lease: EngineLease, as holder: EngineLease.Holder) -> Self {
     Self(
       claim: { lease.admit(holder) },
-      release: { lease.release($0) })
+      release: { lease.release($0) },
+      currentHolder: { lease.currentHolder })
   }
 
   /// Same structural mitigation as `RecoveryEngineClaim.alwaysAllowedForTesting`
@@ -39,5 +50,6 @@ struct EngineAdmissionAccess {
   /// `live(lease:as:)`, which is what the record-trigger audit does.
   internal static let alwaysAllowedForTesting = Self(
     claim: { EngineLease().admit(.dictation) },
-    release: { _ in })
+    release: { _ in },
+    currentHolder: { nil })
 }

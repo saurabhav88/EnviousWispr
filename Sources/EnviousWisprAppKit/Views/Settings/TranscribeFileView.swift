@@ -99,7 +99,7 @@ struct TranscribeFileView: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!done || coordinator.isRunning)
+        .disabled(!coordinator.canJump(to: step))
       }
     }
     .padding(.horizontal, 8)
@@ -730,6 +730,11 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
+    // Sits directly under the buttons that produce it, and stays there, because
+    // New transcription is one click away and it clears the document.
+    if let message = coordinator.saveMessage {
+      Text(message).foregroundStyle(Color.stTextSecondary)
+    }
   }
 
   private func chip(_ text: String) -> some View {
@@ -786,8 +791,22 @@ struct TranscribeFileView: View {
     }
   }
 
+  /// Whether the text this sentence is ABOUT leaves the Mac.
+  ///
+  /// **Which run it describes depends on the step.** On Working and Done it
+  /// describes THIS document, so it must read the configuration frozen at Start
+  /// — a later provider change must not retrospectively re-describe words
+  /// already polished. On every earlier step it describes what is ABOUT to
+  /// happen, so it must read live settings: after a local run, picking a cloud
+  /// polisher on the Polish step left the frozen local configuration on screen
+  /// saying the text stays here. Found by Codex.
   private var isCloudPolish: Bool {
-    if let frozen = coordinator.runConfiguration { return frozen.polishIsCloud }
+    switch coordinator.step {
+    case .working, .done:
+      if let frozen = coordinator.runConfiguration { return frozen.polishIsCloud }
+    case .upload, .transcription, .polish, .review:
+      break
+    }
     return Self.isCloud(
       settings.llmProvider, ollamaModelIsRemote: coordinator.polishIsRemoteOllamaNow())
   }
@@ -820,6 +839,9 @@ struct TranscribeFileView: View {
     case .noSpeechFound: return "No speech was found in that file."
     case .engineBusy(.dictation): return "A dictation is running. Try again when it finishes."
     case .engineBusy(.crashRecovery): return "Finishing an earlier take. Try again in a moment."
+    case .engineNotInstalled:
+      return "That transcription engine isn't downloaded yet. Get it in Transcription settings."
+    case .engineNotReady: return "The transcription engine didn't start. Try again."
     case .engineBusy(.fileImport): return "Another file is being transcribed right now."
     case .failed: return "Something went wrong reading that file. Try a different one."
     }
@@ -847,6 +869,11 @@ struct TranscribeFileView: View {
     panel.nameFieldStringValue =
       (coordinator.file?.name as NSString?)?.deletingPathExtension ?? "Transcript"
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    try? coordinator.documentText.write(to: url, atomically: true, encoding: .utf8)
+    do {
+      try coordinator.documentText.write(to: url, atomically: true, encoding: .utf8)
+      coordinator.noteSaveSucceeded(fileName: url.lastPathComponent)
+    } catch {
+      coordinator.noteSaveFailed(error)
+    }
   }
 }

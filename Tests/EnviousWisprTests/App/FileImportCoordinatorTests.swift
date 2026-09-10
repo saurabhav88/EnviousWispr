@@ -68,14 +68,203 @@ struct FileImportCoordinatorTests {
     },
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
       FileImportCoordinator.RunConfiguration(polishIsCloud: false, localPolishProvider: nil)
+    },
+    ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
+      .ready
     }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: decode,
       transcribe: transcribe,
       engineAdmission: .live(lease: lease, as: .fileImport),
+      ensureEngineReady: ensureEngineReady,
       beginRun: beginRun,
       processPart: processPart)
+  }
+
+  /// Drives a coordinator to a finished document, so a test about what happens
+  /// AFTER a run does not restate the run.
+  private func finishedCoordinator(
+    lease: EngineLease, transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in
+      "One. Two. Three."
+    }
+  ) async -> FileImportCoordinator {
+    let coordinator = makeCoordinator(lease: lease, transcribe: transcribe)
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    await settleUntil { coordinator.isEngineHeld == false }
+    return coordinator
+  }
+
+  // MARK: - The engine the user picked has to be the engine that runs
+
+  /// **The Review step promises an engine by name.** Choosing All Languages
+  /// without its model downloaded leaves the app's active engine unchanged, so
+  /// the import ran the fast English engine while the screen said otherwise —
+  /// silently, with a plausible transcript. Nothing about the output says which
+  /// engine produced it, which is why this is a refusal and not a fallback.
+  @Test(
+    "an import refuses rather than running an engine the user did not pick",
+    arguments: [
+      (FileImportCoordinator.EngineReadiness.notInstalled,
+       FileImportCoordinator.FileImportRejection.engineNotInstalled),
+      (.notReady, .engineNotReady),
+    ])
+  func refusesWhenTheChosenEngineIsNotReady(
+    _ readiness: FileImportCoordinator.EngineReadiness,
+    _ expected: FileImportCoordinator.FileImportRejection
+  ) async {
+    var transcribed = false
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribe: { _ in
+        transcribed = true
+        return "Should never run."
+      },
+      ensureEngineReady: { readiness })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+
+    coordinator.start()
+    await settleUntil { coordinator.state == .rejected(expected) }
+
+    #expect(coordinator.state == .rejected(expected))
+    #expect(transcribed == false, "the import transcribed on an engine it was told was not ready")
+    #expect(
+      coordinator.step == .upload,
+      "the refusal landed on a step that does not render one")
+  }
+
+  /// The claim is taken only AFTER the engine is confirmed, so a refused import
+  /// must not be holding it — otherwise the next dictation is blocked by a run
+  /// that never happened.
+  @Test("a refused import holds nothing")
+  func aRefusedImportHoldsNothing() async {
+    let lease = EngineLease()
+    let coordinator = makeCoordinator(lease: lease, ensureEngineReady: { .notInstalled })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+
+    coordinator.start()
+    await settleUntil { coordinator.state == .rejected(.engineNotInstalled) }
+
+    #expect(coordinator.isEngineHeld == false)
+    #expect(lease.currentHolder == nil, "a refused import left the engine claimed")
+  }
+
+  // MARK: - What the finished screen lets the user do
+
+  /// **Copy and Save must hand over what the page is showing.** Stopping inside
+  /// the first passage leaves no finished parts and a full raw transcript, which
+  /// Done renders — and Copy used to put nothing on the clipboard while Save
+  /// wrote an empty file over the user's only copy.
+  @Test("the exported document is the words on screen, not an empty string")
+  func exportMatchesWhatIsRendered() async {
+    let lease = EngineLease()
+    let gate = PartGate()
+    let coordinator = makeCoordinator(
+      lease: lease,
+      transcribe: { _ in "The whole recording, transcribed." },
+      processPart: { text in
+        await gate.wait()
+        return Self.outcome(text)
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await settleUntil { !coordinator.rawTranscript.isEmpty }
+
+    coordinator.stop()
+    await gate.releaseAll()
+    await settleUntil { coordinator.isEngineHeld == false }
+
+    #expect(coordinator.parts.isEmpty, "the fixture did not reach the state under test")
+    #expect(
+      coordinator.documentText == "The whole recording, transcribed.",
+      "Copy and Save would have handed the user an empty document")
+  }
+
+  /// A save the user believes happened, and did not, costs them the document:
+  /// New transcription is the next button along and it clears everything.
+  @Test("a failed save says so and a successful one names the file")
+  func saveOutcomesAreReported() async {
+    let coordinator = await finishedCoordinator(lease: EngineLease())
+    #expect(coordinator.saveMessage == nil, "a run that has not been saved claims a save")
+
+    coordinator.noteSaveFailed(CocoaError(.fileWriteOutOfSpace))
+    #expect(coordinator.saveMessage?.contains("couldn't be saved") == true)
+    #expect(
+      coordinator.saveMessage?.contains("still here") == true,
+      "the failure does not tell the user their words survived")
+
+    coordinator.noteSaveSucceeded(fileName: "Meeting.txt")
+    #expect(coordinator.saveMessage?.contains("Meeting.txt") == true)
+  }
+
+  // MARK: - Where the step bar may take you
+
+  /// **The bar and the jump read ONE function**, so a step cannot look clickable
+  /// and refuse. Before this, a finished run offered Working — an inactive
+  /// progress bar with a dead Stop button and no route back to the document —
+  /// and Upload, where Continue was refused because the state was finished.
+  @Test("a finished run cannot navigate into Working or back to an empty Upload")
+  func finishedRunNavigatesOnlyWhereSomethingWorks() async {
+    let coordinator = await finishedCoordinator(lease: EngineLease())
+    #expect(coordinator.step == .done)
+
+    #expect(coordinator.canJump(to: .working) == false)
+    #expect(coordinator.canJump(to: .upload) == false)
+    #expect(coordinator.canJump(to: .done) == false)
+    // Picking another polisher for the same words is a supported thing to do.
+    #expect(coordinator.canJump(to: .polish))
+    #expect(coordinator.canJump(to: .transcription))
+
+    coordinator.jump(to: .working)
+    #expect(coordinator.step == .done, "the bar took the user to a dead screen")
+    coordinator.jump(to: .polish)
+    #expect(coordinator.step == .polish)
+  }
+
+  /// The other direction, so a rule that refused everything would fail too.
+  @Test("before any run the bar goes back to Upload and no further forward")
+  func freshRunNavigatesBackwardsOnly() async {
+    let coordinator = makeCoordinator(lease: EngineLease())
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.advance()
+    coordinator.advance()
+    #expect(coordinator.step == .polish)
+
+    #expect(coordinator.canJump(to: .upload))
+    #expect(coordinator.canJump(to: .transcription))
+    #expect(coordinator.canJump(to: .review) == false, "the bar skipped a step forward")
+  }
+
+  /// Change hands the user the choice instead of re-running what they already
+  /// have. The document survives the move, which is the point of keeping it.
+  @Test("Change returns to the Polish step with the document intact")
+  func changeOffersAChoiceAndKeepsTheDocument() async {
+    let coordinator = await finishedCoordinator(lease: EngineLease())
+    let before = coordinator.documentText
+    #expect(!before.isEmpty)
+
+    coordinator.choosePolisherAgain()
+
+    #expect(coordinator.step == .polish)
+    #expect(coordinator.documentText == before, "Change threw the document away")
+    #expect(!coordinator.rawTranscript.isEmpty, "Change lost the words a re-run needs")
   }
 
   /// Yields until the condition holds, or gives up. `Task.yield()` rather than a sleep: everything

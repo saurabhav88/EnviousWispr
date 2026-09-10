@@ -136,6 +136,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// download's auto-start. The deferred reconciliation retries once the
   /// recording ends, so a refused start is delayed, never lost.
   public var isBlockedByOtherPinnedSession: (@MainActor () -> Bool)?
+
+  /// Live "is another workload using the one inference slot right now?" read,
+  /// set by the composition root (#2648).
+  ///
+  /// **Suppresses the PROBE, never the activation.** The server launches with no
+  /// `-np`, so it serves one request at a time. A probe issued while a file
+  /// import is polishing a passage queues behind it for seconds and then reports
+  /// `probe_slow` or `probe_failed` for an engine that is perfectly healthy —
+  /// opening AI Polish mid-import was enough to do it. A health check that fails
+  /// because something else is legitimately using the engine is worse than no
+  /// health check. The engine still starts; only the verdict is skipped, and the
+  /// next activation takes one.
+  public var isSharedEngineBusy: (@MainActor () -> Bool)?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -544,6 +557,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
+      // The engine is up either way; the QUESTION is what is skipped.
+      guard self.isSharedEngineBusy?() != true else { return }
       let result = await self.server.probeHealth(
         self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.

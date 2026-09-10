@@ -1340,6 +1340,14 @@ package final class WisprBootstrapper {
       // Intelligence silently loses the classifier-aware output filter, even
       // when the classifier prewarmed successfully.
       outputClassifierHolder: outputClassifierHolder)
+    // #2648: the health probe asks the lease, not the settings sync, because
+    // the question is "is the ONE inference slot occupied" and every workload
+    // that can occupy it takes this claim. `isBusy` had no production reader
+    // when the lease shipped; file import is what made the gap live, so it is
+    // wired here rather than deferred again. Codex confirming round.
+    egOneRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
+    s1MiniRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
+
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
       // **The user's locked language reaches ASR, not just the cleanup.** Cloud
@@ -1370,6 +1378,16 @@ package final class WisprBootstrapper {
       // cloud upload the user did not make.
       polishIsRemoteOllamaNow: { [settings, ollamaRemoteness] in
         settings.llmProvider == .ollama && ollamaRemoteness(settings.llmModel) == true
+      },
+      // The SAME authority a record press uses, so "is the engine the user
+      // picked ready" has one answer in the app rather than two.
+      ensureEngineReady: { [weak engineCoordinator] in
+        guard let engineCoordinator else { return .notReady }
+        switch await engineCoordinator.ensureSelectedReadyForPress() {
+        case .ready: return .ready
+        case .notInstalled: return .notInstalled
+        case .notReady: return .notReady
+        }
       },
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
