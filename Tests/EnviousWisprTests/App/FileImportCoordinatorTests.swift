@@ -72,6 +72,8 @@ struct FileImportCoordinatorTests {
       Self.decoded(seconds: 1.0)
     },
     transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in "One. Two. Three." },
+    /// The engine's reported language, which most rows do not care about.
+    engineLanguage: String? = nil,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
       Self.outcome($0)
     },
@@ -86,11 +88,13 @@ struct FileImportCoordinatorTests {
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: decode,
-      transcribe: transcribe,
+      // The rows above pass a plain text closure; the language rides alongside
+      // it so a row that does not care about language never mentions one.
+      transcribe: { samples in (text: try await transcribe(samples), language: engineLanguage) },
       engineAdmission: .live(lease: lease, as: .fileImport),
       ensureEngineReady: ensureEngineReady,
       beginRun: beginRun,
-      processPart: processPart)
+      processPart: { part, _ in try await processPart(part) })
   }
 
   /// Drives a coordinator to a finished document, so a test about what happens

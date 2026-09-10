@@ -284,8 +284,30 @@ final class FileImportCoordinator {
   // MARK: - Collaborators
 
   private let decode: @Sendable (URL) async throws -> AudioFileDecoder.Decoded
-  private let transcribe: @MainActor ([Float]) async throws -> String
+  /// Returns the words AND the language the engine reported, because the
+  /// cleanup chain's language ladder prefers the engine's own answer over
+  /// identifying one from the text. Reducing this to a bare `String` discarded
+  /// the better source at the only place it existed.
+  private let transcribe: @MainActor ([Float]) async throws -> (
+    text: String, language: String?
+  )
   private let engineAdmission: EngineAdmissionAccess
+
+  /// Stops both engines' pending model-unload timers, and puts the user's
+  /// setting back. **Called as a PAIR, by one `defer`.**
+  ///
+  /// The first version disarmed them in `ensureEngineReady` and re-armed them in
+  /// `onEngineReleased`, which only runs once a lease token has been acquired.
+  /// Every exit before that — the engine not installed, a warm that did not
+  /// take, a Stop landing during the readiness drive, a refusal because
+  /// something else holds the claim — left both timers disarmed for the rest of
+  /// the session, so the user's model-unload setting silently stopped applying.
+  ///
+  /// **Two rounds of cloud review found two different halves of this same
+  /// bracket left undone**, so it is now one `defer` in one place rather than a
+  /// pair of calls that have to be kept in step by remembering.
+  private let disarmEngineTimers: @MainActor () -> Void
+  private let rearmEngineTimers: @MainActor () -> Void
 
   /// Drives the SELECTED speech engine to active-and-warm, and says what
   /// happened. The composition root points this at
@@ -370,7 +392,8 @@ final class FileImportCoordinator {
   /// that Stop changes the screen at once while the claim waits for the work to
   /// exit — cannot be tested at all unless a test can make a part take as long
   /// as it likes.
-  private let processPart: @MainActor (String) async throws -> FileImportRunner.PartOutcome
+  private let processPart:
+    @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
 
   /// **Generation protects STATE. Terminal completion protects the RESOURCE.**
   /// Neither substitutes for the other, and this coordinator needs both: Stop
@@ -382,18 +405,25 @@ final class FileImportCoordinator {
 
   init(
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
-    transcribe: @escaping @MainActor ([Float]) async throws -> String,
+    transcribe: @escaping @MainActor ([Float]) async throws -> (
+      text: String, language: String?
+    ),
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
+    disarmEngineTimers: @escaping @MainActor () -> Void = {},
+    rearmEngineTimers: @escaping @MainActor () -> Void = {},
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
-    processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome
+    processPart:
+      @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
   ) {
     self.polishOllamaLocalityNow = polishOllamaLocalityNow
     self.refreshOllamaFacts = refreshOllamaFacts
     self.ensureEngineReady = ensureEngineReady
+    self.disarmEngineTimers = disarmEngineTimers
+    self.rearmEngineTimers = rearmEngineTimers
     self.onEngineReleased = onEngineReleased
     self.decode = decode
     self.transcribe = transcribe
@@ -672,6 +702,11 @@ final class FileImportCoordinator {
   /// The in-flight read, so replacing or clearing the file can stop it.
   private var decodeTask: Task<Void, Never>?
 
+  /// What the engine said this recording's language was, kept so a re-polish
+  /// uses the same evidence the first run did rather than falling back to
+  /// guessing from the text.
+  private var engineReportedLanguage: String?
+
   /// Runs the import. Claims the shared engine first: a refusal here is a
   /// refusal to start, not a queue.
   func start() {
@@ -693,6 +728,11 @@ final class FileImportCoordinator {
 
     runTask = Task { [weak self] in
       guard let self else { return }
+
+      // **The whole run, inside one bracket.** Nothing below can exit without
+      // the user's model-unload setting being put back.
+      disarmEngineTimers()
+      defer { rearmEngineTimers() }
 
       // 1. The engine the user picked, actually active and actually warm.
       let readiness = await ensureEngineReady()
@@ -801,7 +841,8 @@ final class FileImportCoordinator {
 
   private func run(generationAtStart: Int) async {
     do {
-      let transcript = try await transcribe(decodedSamples)
+      let (transcript, language) = try await transcribe(decodedSamples)
+      engineReportedLanguage = language
       // **The generation guard comes FIRST, before any shared write.** A slow
       // transcription that returns after the user stopped and chose another file
       // belongs to a run nobody is watching; clearing `decodedSamples` on the way
@@ -869,7 +910,7 @@ final class FileImportCoordinator {
     for (index, piece) in pieces.enumerated() {
       if Task.isCancelled || generationAtStart != generation { return }
       do {
-        let outcome = try await processPart(piece)
+        let outcome = try await processPart(piece, engineReportedLanguage)
         // Re-read AFTER the await: a Stop during this part must not write into
         // a run the user has already ended.
         guard generationAtStart == generation else { return }

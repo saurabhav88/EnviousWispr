@@ -82,28 +82,42 @@ final class BenchmarkSuite {
     }
   }
 
-  /// Takes the shared workload claim, or reports why not and returns nil.
-  private func claimTheEngine(site: String) -> EngineLease.Token? {
+  /// Runs `body` holding the shared workload claim, or reports why not.
+  ///
+  /// **Every benchmark entry point goes through this.** The first version
+  /// claimed inside one of the two and left the other — `runPipelineBenchmark`,
+  /// two methods away — still decoding on top of a running import. A helper
+  /// makes the next entry point's author write one line instead of remembering a
+  /// rule.
+  ///
+  /// Refused rather than queued: a benchmark that waited would report a number
+  /// measured against a machine busy doing something else, which is worse than
+  /// no number.
+  private func withEngineClaim(_ body: () async -> Void) async {
+    let token: EngineLease.Token
     switch engineLease.admit(.dictation) {
-    case .granted(let token):
-      return token
+    case .granted(let granted):
+      token = granted
     case .refused(let holder):
       lastFailure =
         holder == .fileImport
         ? "A file is being transcribed. Try again when it finishes."
         : "The engine is busy. Try again in a moment."
-      return nil
+      return
     }
+    defer { engineLease.release(token) }
+    await body()
   }
 
   /// Run ASR benchmarks with the given ASR manager.
   func run(using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation) async {
     guard !isRunning else { return }
-    // Refused rather than queued: a benchmark that waited would report a number
-    // measured against a machine busy doing something else, which is worse than
-    // no number.
-    guard let admission = claimTheEngine(site: "benchmark") else { return }
-    defer { engineLease.release(admission) }
+    await withEngineClaim { await runBatch(using: asrManager, activeEngine: activeEngine) }
+  }
+
+  private func runBatch(
+    using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation
+  ) async {
     isRunning = true
     results = []
     lastFailure = nil
@@ -142,6 +156,14 @@ final class BenchmarkSuite {
     using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation
   ) async {
     guard !isRunning else { return }
+    await withEngineClaim {
+      await runPipeline(using: asrManager, activeEngine: activeEngine)
+    }
+  }
+
+  private func runPipeline(
+    using asrManager: any ASRManagerInterface, activeEngine: ActiveEngineOperation
+  ) async {
     isRunning = true
     pipelineResult = nil
     // Both entry points clear it. Clearing in `run` alone left a successful

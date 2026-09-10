@@ -110,7 +110,9 @@ public final class FileImportRunner {
   /// pressed Stop, so the honest outcome is that this part did not happen. The
   /// check lives here rather than in the runner, so the heart path's behaviour
   /// is untouched by a feature it does not participate in.
-  public func process(part: String) async throws -> PartOutcome {
+  /// - Parameter engineLanguage: the language the ASR engine reported for this
+  ///   recording, or nil when the engine does not report one.
+  public func process(part: String, engineLanguage: String? = nil) async throws -> PartOutcome {
     guard let settings = frozenSettings else {
       throw FileImportRunnerError.notConfigured
     }
@@ -128,7 +130,14 @@ public final class FileImportRunner {
       evidence: LanguageEvidence(
         lockedLanguage: lockedLanguage,
         engineDetectsLanguage: settings.backendSupportsLanguageDetection,
-        engineReportedLanguage: nil),
+        // **What the ENGINE heard, not nil.** WhisperKit reports the language it
+        // detected and the resolver's ladder prefers that over identifying the
+        // language from the text — which is the weaker source, and the only one
+        // an import had. A Spanish recording under automatic language was
+        // cleaned up as whatever the text identifier guessed from the ASR
+        // output, and ASR output for a language the engine was not told about is
+        // exactly the text least safe to guess from. Found by cloud review.
+        engineReportedLanguage: engineLanguage),
       // No target app: an import is not being pasted anywhere, and a step that
       // adapts to the frontmost app would be adapting to whatever the user
       // happened to have open while the file decoded.
@@ -159,7 +168,33 @@ public final class FileImportRunner {
       // ANSWERED is a property of this part. Deriving the first from the second
       // is what let a deliberately-unpolished document accuse the app of
       // failing.
-      polishAttempted: LLMProvider(rawValue: settings.llmProvider).map { $0 != .none } ?? false)
+      // **A provider being SELECTED is not the same as a polish being
+      // ATTEMPTED.** `LLMPolishStep` deliberately bypasses a passage too short
+      // to be worth sending — at most three words, or under ten non-whitespace
+      // characters in an unsegmented script — and returns no polished text and
+      // no error, which is exactly the shape of a failure. Reading the setting
+      // alone marked those passages "could not be cleaned up" for a bypass the
+      // pipeline chose on purpose. Found by cloud review, one round after the
+      // same distinction was drawn for the provider-is-None case: the setting
+      // answers "was one asked for", and only the OUTCOME answers "was one
+      // made".
+      polishAttempted: Self.polishWasAttempted(settings: settings, result: result))
+  }
+
+  /// Whether a polisher was actually asked about THIS passage.
+  ///
+  /// False when no provider is selected, and false when the step bypassed the
+  /// passage for being too short. Both are settings-or-policy decisions rather
+  /// than outcomes, and neither is a failure the user should be told about.
+  private static func polishWasAttempted(
+    settings: RecordingSettingsSnapshot, result: TextProcessingRunResult
+  ) -> Bool {
+    guard let provider = LLMProvider(rawValue: settings.llmProvider), provider != .none else {
+      return false
+    }
+    // `LLMPolishStep` is the only thing that knows whether it declined, so it
+    // says so rather than being guessed at from the shape of the result.
+    return !result.context.polishWasBypassed
   }
 
   /// Builds this part's own step instances and applies the frozen settings.

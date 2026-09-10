@@ -1375,7 +1375,12 @@ package final class WisprBootstrapper {
       transcribe: { [activeEngine, settings] samples in
         var options = TranscriptionOptions.default
         if case .locked(let code) = settings.languageMode { options.language = code }
-        return try await activeEngine.transcribe(samples, options).text
+        // The engine's own language answer travels with the words. Reducing this
+        // to `.text` threw away the better half: the cleanup chain's ladder
+        // prefers what the engine heard over what a text identifier guesses from
+        // the ASR output.
+        let result = try await activeEngine.transcribe(samples, options)
+        return (text: result.text, language: result.language)
       },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
@@ -1404,24 +1409,25 @@ package final class WisprBootstrapper {
       // — reachable through the ordinary memory-saving unload setting. Found by
       // Codex. `load()`'s postcondition is readiness, not merely that the call
       // returned, so a warm that fails still refuses.
-      ensureEngineReady: { [weak engineCoordinator, activeEngine, asrManager] in
-        guard let engineCoordinator else { return .notReady }
-        // **The pending idle unload is cancelled here, exactly as
-        // `ParakeetEngineAdapter.beginSession()` does it for a recording.** A
-        // dictation minutes earlier arms a timer under the user's model-unload
-        // setting; nothing was disarming it for an import, and its mutation gate
-        // does not consult `EngineLease`, so the timer could fire mid-import and
-        // `ParakeetBackend.unload()` would clear the model the decoder was
-        // running on. `onEngineReleased` re-arms it. Found by Codex.
-        asrManager.cancelIdleTimer()
-        // **Both engines, because each arms its own timer.** Parakeet's lives on
-        // the manager above; WhisperKit's is a Task on its adapter that only
-        // this call stops. Cancelling one and not the other left an All
-        // Languages import following a WhisperKit dictation exposed to exactly
-        // the unload the first cancel exists to prevent. Cheap and idempotent,
-        // so both are cancelled rather than the one that looks active.
+      // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
+      // earlier arms a timer under the user's model-unload setting, and its
+      // mutation gate does not consult `EngineLease`, so it could fire mid-import
+      // and clear the model the decoder is running on. Each engine arms its OWN
+      // timer, so both are named on both sides; `ParakeetEngineAdapter` forwards
+      // to `ASRManager.noteTranscriptionComplete`, which is why going through
+      // the adapters covers both engines rather than one of them twice.
+      // Idempotent, so both are always touched rather than whichever looks
+      // active.
+      disarmEngineTimers: { [kernelDriver, whisperKitKernelDriver] in
         kernelDriver.cancelPendingEngineUnload()
         whisperKitKernelDriver.cancelPendingEngineUnload()
+      },
+      rearmEngineTimers: { [kernelDriver, whisperKitKernelDriver, settings] in
+        kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+        whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+      },
+      ensureEngineReady: { [weak engineCoordinator, activeEngine] in
+        guard let engineCoordinator else { return .notReady }
         switch await engineCoordinator.ensureSelectedReadyForPress() {
         case .ready: return .ready
         case .notInstalled: return .notInstalled
@@ -1442,14 +1448,6 @@ package final class WisprBootstrapper {
           weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
           asrManager
         ] in
-        // The other half of the bracket above, and it must name the SAME two
-        // engines. Going through each adapter rather than through
-        // `asrManager.noteTranscriptionComplete` directly is what makes that
-        // true by construction: Parakeet's adapter forwards to exactly that
-        // call, and WhisperKit's arms its own Task, so one line each covers both
-        // instead of covering Parakeet twice.
-        kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
-        whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredEGOneDeactivation(settings: settings)
@@ -1475,7 +1473,9 @@ package final class WisprBootstrapper {
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
             ? ollamaRemoteness(snapshot.llmModel) : false)
       },
-      processPart: { [fileImportRunner] part in try await fileImportRunner.process(part: part) })
+      processPart: { [fileImportRunner] part, language in
+        try await fileImportRunner.process(part: part, engineLanguage: language)
+      })
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator

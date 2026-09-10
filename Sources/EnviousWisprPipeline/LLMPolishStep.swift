@@ -535,6 +535,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// The too-short skip's return value: text untouched, AI fields nil (#1022).
   private static func bypassedContext(_ context: TextProcessingContext) -> TextProcessingContext {
     var ctx = context
+    // #2648: says so out loud, because a bypass and a silent failure are the
+    // same shape from outside.
+    ctx.polishWasBypassed = true
     ctx.polishedText = nil
     ctx.llmProvider = nil
     ctx.llmModel = nil

@@ -28,7 +28,11 @@ enum FileImportSettingsFreeze {
   static func snapshot(settings: SettingsManager) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: settings.selectedBackend,
-      backendSupportsLanguageDetection: false,
+      // **Asked, not assumed.** Hardcoding false told the resolver to ignore
+      // whatever WhisperKit reported, so an automatic-language import fell back
+      // to identifying the language from the ASR text — the weakest source in
+      // the ladder, on the text least safe to guess from. Found by cloud review.
+      backendSupportsLanguageDetection: settings.selectedBackend == .whisperKit,
       languageMode: settings.languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,

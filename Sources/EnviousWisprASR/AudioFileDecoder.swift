@@ -121,11 +121,25 @@ public enum AudioFileDecoder {
       throw Rejection.unreadable
     }
 
+    // **ONE track, not all of them.** `AVAssetReaderAudioMixOutput` MIXES every
+    // track it is given into the single mono stream. A film or a recorded call
+    // routinely carries several audio programs — an alternate language, a
+    // commentary, a descriptive-audio track — and mixing them hands the engine
+    // two people talking over each other in different languages, which is not
+    // something a transcript can recover from. The first track is what every
+    // player treats as the main program, and it is what the user hears when they
+    // open the file. Found by cloud review.
+    //
+    // A user who wants a different track has no way to say so yet, and that is a
+    // real limitation rather than a hidden one: the alternative on offer was
+    // mixing all of them, which is worse in every case including this one.
+    let chosenTrack = tracks.prefix(1)
+
     // The conversion is the READER's job, not a second pass of ours: these
     // settings make every source format arrive already downmixed to mono and
     // resampled to the rate the engines take.
     let output = AVAssetReaderAudioMixOutput(
-      audioTracks: tracks,
+      audioTracks: Array(chosenTrack),
       audioSettings: [
         AVFormatIDKey: kAudioFormatLinearPCM,
         AVSampleRateKey: AudioConstants.sampleRate,

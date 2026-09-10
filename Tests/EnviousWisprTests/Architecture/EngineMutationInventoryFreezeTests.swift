@@ -427,11 +427,14 @@ import Testing
     // claim covers this exactly as it covered the direct call.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
-      text: "return try await activeEngine.transcribe(samples, options).text",
+      // Reshaped to carry the engine's reported language alongside the words:
+      // reducing the result to `.text` discarded the better half of the language
+      // evidence. Same call, same claim covering it.
+      text: "let result = try await activeEngine.transcribe(samples, options)",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
-      text: "let transcript = try await transcribe(decodedSamples)",
+      text: "let (transcript, language) = try await transcribe(decodedSamples)",
       classification: .structurallySafe),
     // Not a call at all: the initializer storing the injected closure. Matched
     // because the scanner reads NAMES, which is the right trade — a scanner that
