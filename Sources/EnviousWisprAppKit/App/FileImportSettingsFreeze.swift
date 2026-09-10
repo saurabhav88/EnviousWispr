@@ -91,6 +91,10 @@ enum FileImportSettingsFreeze {
       // would leave its tracker asking the same question forever.
       ollamaModel: (provider == .ollama && ollamaModelIsRemote == false)
         ? OllamaConnector.effectiveOllamaModel(provider: provider, model: snapshot.llmModel)
-        : nil)
+        : nil,
+      // #2772: taken from the SAME snapshot as everything above, so the History row's
+      // provenance cannot disagree with what actually polished the words.
+      polishModel: snapshot.llmModel,
+      backendType: snapshot.backendType)
   }
 }

@@ -94,7 +94,7 @@ struct FileImportCoordinatorTests {
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
       FileImportCoordinator.RunConfiguration(
         polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
-        ollamaModel: nil)
+        ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
     },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
@@ -663,6 +663,13 @@ struct FileImportCoordinatorTests {
   /// The seven permitted direct writers are the two resets and the five
   /// run transitions, each named at `jump(to:advancing:)`. A new one fails here
   /// until somebody says which it is.
+  ///
+  /// **RE-FROZEN from eight to seven by #2772 chunk 5, deliberately and downward.**
+  /// `polishAll` wrote the run's terminal in TWO places and chunk 5 needed a third, for a
+  /// refused History write. Three copies of a terminal is three chances for the next one to
+  /// forget the History write, which is the defect that chunk exists to fix, so the three
+  /// were consolidated into `finishRun(savingDocument:)` instead. The number went DOWN
+  /// because a writer was removed, never because one was waved through.
   @Test("every navigation writer goes through the one authority")
   func navigationHasOneWriter() throws {
     let source = try String(
@@ -707,10 +714,10 @@ struct FileImportCoordinatorTests {
     // `step = target` is the authority's own write and is not counted.
     let direct = writers.filter { $0 != "step = target" }
     #expect(
-      direct.count == 8,
+      direct.count == 7,
       """
-      \(direct.count) direct writes to `step`, expected 8 \
-      (choose, startOver, showRejection, start, stop, rePolish, polishAll twice). \
+      \(direct.count) direct writes to `step`, expected 7 \
+      (choose, startOver, showRejection, start, stop, rePolish, finishRun). \
       A new one is either a navigation — which must call `jump(to:advancing:)` \
       — or an exception that needs naming at `jump`. Found: \(direct)
       """)
@@ -1044,7 +1051,7 @@ struct FileImportCoordinatorTests {
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
-          polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil)
+          polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       })
     coordinator.choose(url: Self.anyURL)
     await settleUntil { if case .ready = coordinator.state { return true } else { return false } }

@@ -1131,6 +1131,16 @@ struct TranscribeFileView: View {
       InsetNotice(
         text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
     }
+    // #2772 finding 11, the failure half. The approved plan's table says a failed History
+    // write must STOP before polish and show the raw words with Copy and Retry, and must
+    // never claim "Saved to History". The words are on screen and only on screen, so this
+    // says the actionable thing rather than the diagnostic one.
+    // The coordinator owns the WORDING, because it is the only thing that knows whether the
+    // original words are safe or whether nothing was saved at all. A single sentence for both
+    // would alarm the first user and under-warn the second. Found by Codex.
+    if let notice = coordinator.historySaveNotice {
+      InsetNotice(text: notice, systemImage: "exclamationmark.triangle", tint: .orange)
+    }
     BrandedSection {
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 10) {
@@ -1140,6 +1150,7 @@ struct TranscribeFileView: View {
           if let file = coordinator.file {
             chip(FileImportCoordinator.durationText(file.seconds))
           }
+          savedToHistoryChip
         }
         HStack(spacing: 8) {
           // **The provider this document was RUN with**, from the frozen
@@ -1199,6 +1210,40 @@ struct TranscribeFileView: View {
     // New transcription is one click away and it clears the document.
     if let message = coordinator.saveMessage {
       Text(message).foregroundStyle(Color.stTextSecondary)
+    }
+  }
+
+  /// #2772 finding 11: the badge the approved plan named, and it says only what happened.
+  ///
+  /// **Three states, not two.** Saved is a green outline. NOT saved says so, in the warning
+  /// tone, because a user who is about to close the window needs to know the words are only
+  /// on this screen. And a run with no words at all shows nothing rather than reassuring
+  /// somebody about a document that does not exist.
+  @ViewBuilder
+  private var savedToHistoryChip: some View {
+    if coordinator.hasDocument {
+      if coordinator.isSavedToHistory {
+        HStack(spacing: 4) {
+          Image(systemName: "checkmark.circle")
+          Text("Saved to History")
+        }
+        .font(.stHelper)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .foregroundStyle(Color.stSuccess)
+        .overlay(Capsule().strokeBorder(Color.stSuccess.opacity(0.5)))
+      } else {
+        HStack(spacing: 4) {
+          Image(systemName: "exclamationmark.triangle")
+          Text("This version is not saved")
+        }
+        .font(.stHelper)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .foregroundStyle(Color.stWarning)
+        .overlay(Capsule().strokeBorder(Color.stWarning.opacity(0.5)))
+        .help("These words are only on this screen. Copy or save them before you leave.")
+      }
     }
   }
 

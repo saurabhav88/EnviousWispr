@@ -383,6 +383,14 @@ final class FileImportCoordinator {
     /// evicted by the existing rule on purpose, and pinning it would defer an
     /// eviction on a guess.
     let ollamaModel: String?
+    /// The polish MODEL this run froze, for the History row's provenance. Same reason as
+    /// `polishProvider` one field up: the row records what produced THESE words, and a live
+    /// read would credit whatever is selected when the write happens (#2772).
+    let polishModel: String
+    /// The transcription engine this run froze, for the History row. Imports share the
+    /// dictation engine (#2772 §3.2), so a live read here would be right today and wrong the
+    /// moment the user changes engines between the raw save and the final update.
+    let backendType: ASRBackendType
   }
 
   /// Freezes the configuration this run uses and returns it. Called once per
@@ -414,6 +422,50 @@ final class FileImportCoordinator {
   private let processPart:
     @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
 
+  /// Writes this import to History, or throws.
+  ///
+  /// #2772 finding 11: the approved plan promised imports reach History in three places and
+  /// none of it shipped. Founder: "We had agreed when planning this feature that
+  /// transcriptions would be saved to history once done."
+  ///
+  /// Called TWICE per run and deliberately so. Once with the RAW words the moment
+  /// transcription lands, before a single part is cleaned, and once with the finished
+  /// document. Same id both times, so the second write UPDATES the first rather than
+  /// creating a second row — `TranscriptStore` names its file by id.
+  ///
+  /// A closure rather than the concrete store because this type is tested without a disk,
+  /// and because the FAILING case is the one that matters: a raw save that throws must stop
+  /// the run before polish, per the approved plan, and a test cannot make a real store fail
+  /// on demand.
+  private let saveToHistory: @MainActor (Transcript) throws -> Void
+
+  /// The row this import first wrote, kept whole rather than as an id.
+  ///
+  /// **Rebuilding it per write was wrong in three ways at once**, all found by Codex: a
+  /// fresh `Transcript` takes `Date()` for `createdAt`, so the raw and final writes
+  /// disagreed about when the recording happened; a re-polish after the user changed the
+  /// shared transcription engine credited an engine that never ran; and there was no record
+  /// of what had actually been persisted. Holding the original means every later write is
+  /// that row plus the one thing that changed.
+  private var originalHistoryRow: Transcript?
+
+  /// The last version that reached the store. `isSavedToHistory` compares it to what is ON
+  /// SCREEN, so a Stop after one cleaned part cannot claim the partial document was saved.
+  private var savedHistoryRow: Transcript?
+
+  /// ONE identity across the raw save, the final update and any number of re-polishes.
+  var historyID: UUID? { originalHistoryRow?.id }
+
+  /// Whether the raw words are already in History under `historyID`. A re-polish arriving
+  /// without one saves the raw row first, which is the case a user reaches by re-polishing a
+  /// document whose original save failed.
+  private var rawIsSavedToHistory = false
+
+  /// Set when the raw save fails. The run stops before polish and the Done screen offers the
+  /// raw words with Copy and Retry, per the approved plan's failure table: losing the words
+  /// silently is worse than not cleaning them.
+  private(set) var historySaveFailure: String?
+
   /// **Generation protects STATE. Terminal completion protects the RESOURCE.**
   /// Neither substitutes for the other, and this coordinator needs both: Stop
   /// changes what the user sees at once and bumps this, so a late part cannot
@@ -437,6 +489,7 @@ final class FileImportCoordinator {
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
     prepareLocalPolish: @escaping @MainActor (RunConfiguration) async -> Void = { _ in },
+    saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
     processPart:
       @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
   ) {
@@ -452,6 +505,7 @@ final class FileImportCoordinator {
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
+    self.saveToHistory = saveToHistory
     self.processPart = processPart
   }
 
@@ -474,6 +528,11 @@ final class FileImportCoordinator {
     file = nil
     step = .upload
     forgetSaveOutcome()
+    // Same rule as `startOver`: a different file is a different row (#2772).
+    originalHistoryRow = nil
+    savedHistoryRow = nil
+    rawIsSavedToHistory = false
+    historySaveFailure = nil
     state = .reading(fileName: name)
     // **Cancelled, not merely ignored.** The generation check discards a stale
     // result AFTER the work is done, which is the right answer to "whose file is
@@ -714,6 +773,13 @@ final class FileImportCoordinator {
     decodedSamples = []
     runConfiguration = nil
     forgetSaveOutcome()
+    // A new file is a NEW History row. Carrying the id forward would make the next import
+    // overwrite the last one's words, because the store names its file by id — which is the
+    // same property that makes the raw-then-polished pair an update rather than a duplicate.
+    originalHistoryRow = nil
+    savedHistoryRow = nil
+    rawIsSavedToHistory = false
+    historySaveFailure = nil
     state = .idle
     step = .upload
   }
@@ -900,13 +966,17 @@ final class FileImportCoordinator {
   private func run(generationAtStart: Int) async {
     do {
       let (transcript, language) = try await transcribe(decodedSamples)
-      engineReportedLanguage = language
       // **The generation guard comes FIRST, before any shared write.** A slow
       // transcription that returns after the user stopped and chose another file
       // belongs to a run nobody is watching; clearing `decodedSamples` on the way
       // out erased the NEW file's audio while its Ready screen stayed up, and the
       // next Start then transcribed an empty buffer. Found by Codex.
       guard generationAtStart == generation else { return }
+      // AFTER the guard. It sat one line above it, which predates this chunk and did not
+      // matter while nothing persisted it. History does now, so a superseded run could
+      // stamp its language onto a row belonging to the file the user replaced. Found by
+      // Codex.
+      engineReportedLanguage = language
       releaseDecodedAudio()
       guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         showRejection(.noSpeechFound)
@@ -957,9 +1027,16 @@ final class FileImportCoordinator {
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
   private func polishAll(_ pieces: [String], generationAtStart: Int) async {
+    // #2772 finding 11: DURABLE BEFORE THE SLOW HALF, at the one entry both callers pass
+    // through. Guarding inside `run` covered only the first transcription; a re-polish
+    // reaches the cleanup directly, so a document whose original write was refused could
+    // lose everything to a second interrupted cleanup. Found by Codex.
+    guard rawIsSavedToHistory || saveRawToHistory() else {
+      finishRun(savingDocument: false)
+      return
+    }
     guard !pieces.isEmpty else {
-      state = .finished
-      step = .done
+      finishRun(savingDocument: true)
       return
     }
     phase = "Cleaning it up"
@@ -986,9 +1063,122 @@ final class FileImportCoordinator {
       state = .polishing(done: index + 1, total: pieces.count)
     }
     guard generationAtStart == generation else { return }
+    finishRun(savingDocument: true)
+  }
+
+  /// **The ONE place a run ends.** Three paths reached the terminal before #2772 — an empty
+  /// split, the end of the loop, and now a refused History write — and each wrote `phase`,
+  /// `state` and `step` itself. Three copies of a terminal is three chances for the next one
+  /// to forget the History write, which is precisely the defect this chunk exists to fix.
+  ///
+  /// `savingDocument` is false on exactly one path: the raw write was REFUSED, so there is no
+  /// row to update and retrying here would repeat the write the run just stopped on.
+  ///
+  /// This REDUCES the direct writers to `step` from eight to seven, so
+  /// `FileImportCoordinatorTests.navigationHasOneWriter` is re-frozen deliberately rather
+  /// than bumped, per the plan's requirement that the freeze change only on purpose.
+  private func finishRun(savingDocument: Bool) {
+    if savingDocument { savePolishedToHistory() }
     phase = ""
     state = .finished
     step = .done
+  }
+
+  // MARK: - History (#2772 finding 11)
+
+  /// Writes the RAW words. Returns false when the write failed, and the caller must then NOT
+  /// polish.
+  ///
+  /// **Raw first, and that ordering is the whole feature.** Saving only the finished document
+  /// loses everything if the app dies during a forty-minute cleanup: the transcription has
+  /// already run, the audio has already been released, and there is nothing left to redo it
+  /// from. Saving the raw words costs one file write and makes the expensive half durable
+  /// before the slow half starts.
+  ///
+  /// **A failure STOPS the run**, per the approved plan's failure table. Polishing into a
+  /// document nobody can save is how a user loses words while watching a progress bar.
+  private func saveRawToHistory() -> Bool {
+    guard let file, let configuration = runConfiguration else { return false }
+    // Built ONCE. Every later write is this row plus what changed, so `createdAt` and the
+    // transcription engine describe the recording rather than the moment of the write.
+    if originalHistoryRow == nil {
+      originalHistoryRow = Transcript(
+        text: rawTranscript,
+        language: engineReportedLanguage,
+        duration: file.seconds,
+        backendType: configuration.backendType,
+        importedFileName: file.name)
+    }
+    guard let row = originalHistoryRow else { return false }
+    do {
+      try saveToHistory(row)
+      savedHistoryRow = row
+      rawIsSavedToHistory = true
+      historySaveFailure = nil
+      return true
+    } catch {
+      historySaveFailure = String(describing: error)
+      return false
+    }
+  }
+
+  /// Updates the SAME row with the cleaned document.
+  ///
+  /// Best effort, unlike the raw save: by this point the words are already durable, so a
+  /// failure costs the cleanup and not the transcript. It records the failure rather than
+  /// letting the Done screen claim a write that did not happen.
+  private func savePolishedToHistory() {
+    guard let originalHistoryRow, rawIsSavedToHistory else { return }
+    let polished = originalHistoryRow.withPolished(
+      documentText,
+      llmProvider: runConfiguration?.polishProvider.rawValue,
+      llmModel: runConfiguration?.polishModel)
+    do {
+      try saveToHistory(polished)
+      savedHistoryRow = polished
+      historySaveFailure = nil
+    } catch {
+      historySaveFailure = String(describing: error)
+    }
+  }
+
+  /// Whether WHAT IS ON SCREEN reached History.
+  ///
+  /// Compares the saved row's text to the displayed document rather than asking whether a
+  /// write succeeded. Stopping after one cleaned part left both writes reporting success for
+  /// a document that no longer matched either of them, and the badge said "Saved to History"
+  /// over words that were not. Found by Codex.
+  var isSavedToHistory: Bool {
+    guard let savedHistoryRow else { return false }
+    // With NO cleaned parts the screen is showing the raw words, and the right question is
+    // whether THOSE are saved. Comparing display text alone raised a false alarm on a real
+    // sequence: finish a cleanup, press Clean it again, stop before the first part. `parts`
+    // is empty so the screen falls back to the raw transcript, while the saved row's
+    // display text is the PREVIOUS cleaned version — a mismatch over words that are safely
+    // stored. Found by Codex.
+    if parts.isEmpty { return savedHistoryRow.text == rawTranscript }
+    return savedHistoryRow.displayText == documentText
+  }
+
+  /// What to tell the user when the document on screen is not the one in History, or nil when
+  /// there is nothing to say.
+  ///
+  /// **Two different situations, and telling them apart is the point.** With the original
+  /// safely stored, only this cleanup is at risk and the words themselves are not. With
+  /// nothing stored at all, the words exist only on this screen. A single sentence for both
+  /// would alarm the first user and under-warn the second.
+  var historySaveNotice: String? {
+    guard hasDocument, !isSavedToHistory else { return nil }
+    if rawIsSavedToHistory {
+      return """
+        Your original words are saved to History. This cleaned version is not. Copy or save \
+        it before you leave.
+        """
+    }
+    return """
+      These words are not saved to History. Copy or save them before you leave, or press \
+      Clean it again to retry.
+      """
   }
 
   private static func rejection(for error: any Error) -> FileImportRejection {

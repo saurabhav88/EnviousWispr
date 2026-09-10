@@ -130,10 +130,12 @@ enum FileImportPolishGate {
     }
   }
 
-  // A bundled engine: it must be on disk AND answering. Anything in motion clears itself,
-  // so the user is asked to wait rather than to act.
+  // A bundled engine: it must be ON DISK. Anything in motion clears itself, so the user is
+  // asked to wait rather than to act. `health` is deliberately unused — see the `.installed`
+  // arm — and stays in the signature so the caller keeps supplying it and the next reader
+  // finds the reason here rather than wondering why it is missing.
   private static func localServer(
-    install: EGOneInstallState, health: EGOneHealth
+    install: EGOneInstallState, health _: EGOneHealth
   ) -> FileImportPolishReadiness {
     switch install {
     case .downloading, .verifying:
@@ -141,13 +143,26 @@ enum FileImportPolishGate {
     case .notInstalled, .paused, .updatePaused, .failed:
       return .blocked(.needsSetup)
     case .installed:
-      switch health {
-      case .green: return .ready
-      // Starting is the ordinary state right after a selection: the run start awaits the
-      // probe itself, so this resolves without the user doing anything.
-      case .yellow: return .blocked(.checking)
-      case .red: return .blocked(.needsSetup)
-      }
+      // **INSTALLED is the whole question, and HEALTH deliberately is not.**
+      //
+      // A first version required green health here and it blocked forever in Live UAT on
+      // 2026-09-10. There is ONE local inference slot. Selecting EG-1 for an import starts
+      // its server, and `PipelineSettingsSync` then reconciles the slot back to DICTATION's
+      // engine, because outside a run nothing pins the import's choice — the app log shows
+      // `Local polish server ready` for EG-1 and then for S1-mini twenty-six seconds later.
+      // So health never reached green, Continue stayed grey behind "Checking that engine",
+      // and a user whose dictation polisher differs from their import polisher could never
+      // start an import at all.
+      //
+      // The run is what makes the server this run's: `prepareLocalPolish` starts it and
+      // AWAITS it (chunk 2), and the claim then defers the reconciliation that would take
+      // it away. Requiring the server to be up BEFORE the run inverts that ordering and
+      // asks a question only the run can answer.
+      //
+      // Health still matters and is still shown: the detail card below reports Starting,
+      // Live or Not working, and the run refuses on its own if the server will not come up.
+      // This decides admission, not diagnosis.
+      return .ready
     }
   }
 

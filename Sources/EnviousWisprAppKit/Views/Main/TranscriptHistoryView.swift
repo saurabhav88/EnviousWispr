@@ -155,6 +155,26 @@ struct TranscriptRowView: View {
           EmptyView()
         }
 
+        if let importedFileName = transcript.importedFileName {
+          // #2772 finding 11 — this row came from Transcribe a File, not from the keybind.
+          // Icon plus text, never colour alone, matching every other badge in this row. The
+          // FILE NAME is the label rather than the word "Imported": a person scanning
+          // History for a meeting they transcribed is looking for the recording's name, and
+          // the badge is the only place it appears.
+          HStack(spacing: 2) {
+            Image(systemName: "doc.badge.plus")
+            Text(importedFileName)
+          }
+          .font(.caption2)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(Color.stAccentLight, in: Capsule())
+          .foregroundStyle(Color.stAccent)
+          .accessibilityLabel("Imported from \(importedFileName)")
+        }
+
         if transcript.isRecovered == true {
           // #1063 PR2 — marks a transcript reconstructed from a recovered recording
           // after an abnormal exit. Icon + text (never color-only).

@@ -85,10 +85,24 @@ final class TranscriptCoordinator {
   /// Completed dictations. A held recovery is an OFFER, not a dictation the
   /// user made — counting it would inflate the stat the moment they cancelled
   /// something, which is the opposite of what cancelling meant.
+  ///
+  /// **An IMPORT is not a dictation either (#2772).** This is the sidebar's "how many have
+  /// I made" number AND onboarding's success detector, which reads it as `producedWords =
+  /// transcriptCount > transcriptCountAtTakeStart`: an import finishing during a practice
+  /// take would have marked that take successful for a user who said nothing.
+  ///
+  /// Found by Codex, against my written claim that no such aggregate existed. My sweep
+  /// covered the ACCESSORS (`visibleTranscripts`, `filteredTranscripts`, `loadAll`) and
+  /// missed a filter over the private array itself.
+  ///
+  /// `deletableCount` deliberately still counts imports: it answers "how many rows would
+  /// Delete All take", where an uncounted row is a row destroyed without warning.
   var transcriptCount: Int {
     _ = expiryPulse
     let now = Date()
-    return transcripts.filter { Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil }.count
+    return transcripts.filter {
+      Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
+    }.count
   }
 
   /// How many rows a Delete All would actually take, from the user's point of
@@ -458,7 +472,10 @@ final class TranscriptCoordinator {
       // is not a user-facing bug.
       await sweepExpiredPending()
       do {
-        let diskRows = try await store.loadAll()
+        // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
+        // recognised as newer than what the disk handed back.
+        let revisionAtRead = historyWriteRevision
+        var diskRows = try await store.loadAll()
         // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
         // are not yet on disk (append-during-load race window) in their
         // existing order, then append disk rows. Protects the newest-first
@@ -470,6 +487,16 @@ final class TranscriptCoordinator {
         // wins, and the user sees the row they kept exactly once rather than a
         // permanent row shadowed by a copy still counting down.
         let pendingRows = (try? await store.loadPending()) ?? []
+        // #2772: a row written SINCE this read began is newer than the disk copy that came
+        // back, and the merge below prefers the disk one whenever the id already exists. An
+        // import writes twice under one id, so without this the raw version read at the
+        // start of a load replaces the cleaned version saved a moment later, and History
+        // shows unpolished words until something else refreshes it. Found by Codex.
+        let newerRows = Dictionary(
+          uniqueKeysWithValues: transcripts
+            .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+            .map { ($0.id, $0) })
+        diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
         let rootIDs = Set(diskRows.map(\.id))
         let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
         let knownIDs = rootIDs.union(heldRows.map(\.id))
@@ -510,6 +537,38 @@ final class TranscriptCoordinator {
     // appeared. No-op for an ordinary dictation, which carries no stamp.
     startPulseIfNeeded()
   }
+
+  /// Save a row to disk AND show it, replacing an existing row with the same id.
+  ///
+  /// #2772: a file import writes TWICE under one id — the raw words the moment transcription
+  /// lands, then the cleaned document when the cleanup finishes. `append` would have put two
+  /// rows on screen for one recording, because it inserts unconditionally while the store,
+  /// which names its file by id, was correctly overwriting. The two would then disagree
+  /// until the next launch re-read the disk.
+  ///
+  /// Throws, deliberately. The import STOPS before polishing when the first write fails,
+  /// which it cannot do if this swallows the error.
+  func saveAndShow(_ transcript: Transcript) throws {
+    try store.save(transcript)
+    // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
+    historyWriteRevision += 1
+    writtenAtRevision[transcript.id] = historyWriteRevision
+    if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      transcripts[existing] = transcript
+    } else {
+      transcripts.insert(transcript, at: 0)
+    }
+    startPulseIfNeeded()
+  }
+
+  /// Counts writes, so a disk read that began earlier can be told it is stale.
+  ///
+  /// `load()` prefers the DISK row whenever an id already exists, which is right for a
+  /// launch and wrong for a write that landed while it was reading: an import's raw row read
+  /// at the start of a load would replace the cleaned row saved a moment later, and History
+  /// would show the unpolished version until something else refreshed it. Found by Codex.
+  private var historyWriteRevision = 0
+  private var writtenAtRevision: [UUID: Int] = [:]
 
   func delete(_ transcript: Transcript) {
     do {

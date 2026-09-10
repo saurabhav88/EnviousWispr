@@ -137,15 +137,19 @@ struct FileImportPolishGateTests {
         provider: provider, egOneInstall: .notInstalled, s1MiniInstall: .notInstalled)
       #expect(missing == .blocked(.needsSetup), "\(provider) not installed said \(missing)")
 
-      let starting = Self.readiness(
-        provider: provider, egOneHealth: .yellow(reason: "starting"),
-        s1MiniHealth: .yellow(reason: "starting"))
-      #expect(starting == .blocked(.checking), "\(provider) starting said \(starting)")
-
-      let broken = Self.readiness(
-        provider: provider, egOneHealth: .red(reason: "dead"),
-        s1MiniHealth: .red(reason: "dead"))
-      #expect(broken == .blocked(.needsSetup), "\(provider) not working said \(broken)")
+      // **An INSTALLED bundled engine is admitted whatever its server is doing**, and Live
+      // UAT on 2026-09-10 is why. There is one local inference slot; selecting EG-1 for an
+      // import starts its server and dictation's reconciler takes the slot back, because
+      // outside a run nothing pins the import's choice. Requiring green health blocked
+      // Continue forever for anyone whose two polishers differ. The RUN starts and awaits
+      // the server (chunk 2) and defers that reconciliation while it holds the claim.
+      for health in [EGOneHealth.green, .yellow(reason: "starting"), .red(reason: "dead")] {
+        let verdict = Self.readiness(
+          provider: provider, egOneHealth: health, s1MiniHealth: health)
+        #expect(
+          verdict.isReady,
+          "\(provider) installed but blocked on health \(health): \(verdict)")
+      }
 
       #expect(Self.readiness(provider: provider).isReady)
     }

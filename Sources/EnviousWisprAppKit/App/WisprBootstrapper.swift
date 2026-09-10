@@ -1518,6 +1518,13 @@ package final class WisprBootstrapper {
         guard let localPolish = configuration.localPolishProvider else { return }
         await localPolishRuntimes.runtime(for: localPolish)?.activateAndProbe()?.value
       },
+      // #2772 finding 11: the third writer of History, beside dictation and crash replay.
+      // Through the COORDINATOR rather than the store, so the row appears immediately —
+      // writing to disk alone would leave History showing the old list until the next
+      // launch, which is indistinguishable from not saving at all.
+      saveToHistory: { [transcriptCoordinator] transcript in
+        try transcriptCoordinator.saveAndShow(transcript)
+      },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })
