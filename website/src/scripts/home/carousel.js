@@ -77,6 +77,7 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     ended = false;
     moving = true;
     if (Math.abs(left - viewport.scrollLeft) < 1) {
+      viewport.scrollTo({ left, behavior: 'instant' });
       finish(true);
       return;
     }
@@ -164,5 +165,6 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     step,
     get index() { return index; },
     get moving() { return moving; },
+    get interacting() { return held(); },
   };
 }
