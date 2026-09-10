@@ -115,7 +115,11 @@ enum SettingsProjection {
     // #2772: mirrors the dictation pair one line up, for the same reason — the import's
     // cloud and Ollama model fields feed ONE logical, projected through the effective
     // resolution, so a write to either re-emits and the two coalesce into one delta.
-    case .fileImportLLMProvider: return [.fileImportLLMProvider]
+    // #2772: switching between FOLLOW and an override changes the model projection with no
+    // model write of its own — `follows_dictation` becomes a redacted id or back — so the
+    // model logical must be refreshed alongside. The flush drops it when the projection is
+    // unchanged. Found by the local lens on the cloud review.
+    case .fileImportLLMProvider: return [.fileImportLLMProvider, .fileImportLLMModel]
     case .fileImportLLMModel, .fileImportOllamaModel: return [.fileImportLLMModel]
     case .autoCopyToClipboard: return [.autoCopy]
     case .hotkeyEnabled: return [.hotkeyEnabled]
@@ -179,8 +183,10 @@ enum SettingsProjection {
     switch logical {
     case .recordingMode: return settings.recordingMode.rawValue
     case .llmProvider: return settings.llmProvider.rawValue
-    case .llmModel: return model(settings)
-    // Shape, never content, and the distinction below is the whole point of the field.
+    case .llmModel:
+      return model(provider: settings.llmProvider, id: settings.effectiveLLMModel)
+    // Preserve follow mode as a preference.
+    // Explicit model selections pass through the shared redaction policy.
     case .fileImportLLMProvider:
       // Three states, one optional. Absent is "never chose"; `LLMProvider.none` is
       // "turned polish off for imports only". Flattening them would lose exactly the
@@ -188,8 +194,15 @@ enum SettingsProjection {
       guard let chosen = settings.fileImportLLMProvider else { return "follows_dictation" }
       return chosen.rawValue
     case .fileImportLLMModel:
-      return settings.fileImportLLMProvider == nil
-        ? "follows_dictation" : settings.effectiveFileImportLLMModel
+      // **THROUGH the redaction policy, which this returned the RAW id past.** A user who
+      // runs a locally-named Ollama model for imports had that name leave the machine, while
+      // dictation's identical value was redacted to "custom" — and the comment above this
+      // said "Shape, never content", which is the property the code did not have. Found by
+      // the cloud review of PR #2786.
+      guard settings.fileImportLLMProvider != nil else { return "follows_dictation" }
+      return model(
+        provider: settings.effectiveFileImportLLMProvider,
+        id: settings.effectiveFileImportLLMModel)
     case .autoCopy: return onOff(settings.autoCopyToClipboard)
     case .hotkeyEnabled: return onOff(settings.hotkeyEnabled)
     case .vadAutoStop: return onOff(settings.vadAutoStop)
@@ -263,9 +276,12 @@ enum SettingsProjection {
   ///   suffix normalized away). A stale local id carried over before discovery
   ///   corrects `llmModel` is not on this list → `custom`, never the raw name.
   @MainActor
-  private static func model(_ settings: SettingsManager) -> String {
-    let id = settings.effectiveLLMModel
-    switch settings.llmProvider {
+  /// Takes the provider and id as VALUES rather than reading dictation's settings, so both
+  /// surfaces run one redaction policy. Lifted for #2772 for the same reason the discovery
+  /// repair was: a second copy is how the two would come to disagree, and here the
+  /// disagreement is whether a user's own words leave their Mac.
+  private static func model(provider: LLMProvider, id: String) -> String {
+    switch provider {
     case .appleIntelligence: return "apple-intelligence"
     // #1271: native EG-1 — the model id is OUR fixed literal from the
     // manifest contract (`effectiveLLMModel` returns `eg-1`), never user

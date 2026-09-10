@@ -604,7 +604,9 @@ struct ProviderSetupSection: View {
     // S1-mini descriptor would offer a 484 MB download for a 2.9 GB model, and
     // nothing downstream would notice.
     if provider == .egOne {
-      LocalEngineStatusCard(runtime: egOne, engine: .egOne) {
+      LocalEngineStatusCard(
+        runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation
+      ) {
         egOne.removeModel()
         // Removing the selected engine must move the user somewhere that
         // works, or polish silently stops. Apple Intelligence is what a fresh
@@ -613,7 +615,10 @@ struct ProviderSetupSection: View {
       }
     }
     if provider == .s1Mini {
-      LocalEngineStatusCard(runtime: localPolishRuntimes.s1Mini, engine: .s1Mini) {
+      LocalEngineStatusCard(
+        runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
+        allowsRuntimeActivation: surface == .dictation
+      ) {
         localPolishRuntimes.s1Mini.removeModel()
         setProvider(.appleIntelligence)
       }
@@ -2126,12 +2131,14 @@ struct ProviderSetupLifecycle: ViewModifier {
       } else if provider == .egOne {
         // #1271: settings-open is one of the two probe moments (the other is
         // provider activation via PipelineSettingsSync). No background polling.
-        egOne.activateAndProbe()
+        // #2772: DICTATION only, same reason as the provider-change arm below — an import
+        // page that probes on appearance evicts dictation's runtime just by being opened.
+        if surface == .dictation { egOne.activateAndProbe() }
       } else if provider == .s1Mini {
         // #2649: same two probe moments for the second bundled engine. Found by
         // the class sweep "code that names EG-1 where it means any bundled
         // engine"; without this arm S1-mini fell through to model discovery.
-        localPolishRuntimes.s1Mini.activateAndProbe()
+        if surface == .dictation { localPolishRuntimes.s1Mini.activateAndProbe() }
       } else if provider != .none {
         llmDiscovery.loadCachedModels(for: provider)
       }
@@ -2176,28 +2183,22 @@ struct ProviderSetupLifecycle: ViewModifier {
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
       case .egOne, .s1Mini:
-        // Fixed local model — no API key, no model discovery. Routing it
-        // into the default key-provider path would hand the discovery
-        // coordinator an empty model list and let it overwrite `llmModel`
-        // (#1271 Codex r7). DICTATION's activation rides PipelineSettingsSync;
-        // the status section's own onAppear probe covers settings-open.
-        // #2649: S1-mini is the same shape, and was falling into the default
-        // arm, which flipped the key-validation state for a model that has
-        // no key.
+        // Fixed local model — no API key, no model discovery. Routing it into the default
+        // key-provider path would hand the discovery coordinator an empty model list and let
+        // it overwrite `llmModel` (#1271 Codex r7). #2649: S1-mini is the same shape.
         //
-        // #2772 chunk 3: the IMPORT surface asks explicitly, because its activation is a
-        // RUN-START operation (chunk 2's `prepareLocalPolish`) while its Continue gate reads
-        // runtime health BEFORE a run can start. Without this, selecting an installed but
-        // stopped EG-1 for an import read "Needs setup" until the user found the refresh
-        // button. `EGOneRuntime.activateAndProbe` refuses against another pinned session, so
-        // asking here cannot disturb a dictation in flight. Found by Codex.
-        if surface == .fileImport {
-          switch newProvider {
-          case .egOne: egOne.activateAndProbe()
-          case .s1Mini: localPolishRuntimes.s1Mini.activateAndProbe()
-          default: break
-          }
-        }
+        // **Dictation activation belongs to `PipelineSettingsSync`. Import activation belongs
+        // to the claimed run's `prepareLocalPolish`.**
+        //
+        // #2772 chunk 3 added an import-side probe here, because the Continue gate then
+        // required green health. That premise is GONE: Live UAT found the gate blocking
+        // forever for exactly this reason, so `FileImportPolishGate` now admits an INSTALLED
+        // bundled engine whatever its server is doing. What the probe still did was claim the
+        // one shared inference slot outside any run, evicting dictation's runtime and leaving
+        // it evicted if the user closed the wizard without starting anything. Deleted rather
+        // than paired with a restore: browsing import settings must not commandeer
+        // dictation's server. Found by the cloud review of PR #2786.
+        break
       // #2651: enumerated rather than `default:`. This arm is the key-provider
       // path, and the `.egOne, .s1Mini` comment above records what it costs to
       // reach it by accident: the discovery coordinator gets an empty model

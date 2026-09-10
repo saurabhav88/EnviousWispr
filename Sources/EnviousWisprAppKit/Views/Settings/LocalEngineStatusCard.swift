@@ -70,6 +70,15 @@ struct LocalEngineDescriptor: Equatable {
 struct LocalEngineStatusCard: View {
   let runtime: EGOneRuntime
   let engine: LocalEngineDescriptor
+  /// Whether this card may START the engine's server.
+  ///
+  /// #2772: there is ONE local inference slot. On the Transcribe a File page this card shows
+  /// the IMPORT's engine, and its refresh button would claim that slot outside any run,
+  /// evicting dictation's runtime and leaving it evicted. What it costs to switch off is
+  /// pre-run live diagnosis; installation state, the download and Remove Model are
+  /// unaffected, and the run itself starts and awaits the server through `prepareLocalPolish`.
+  /// Found by the cloud review of PR #2786.
+  var allowsRuntimeActivation: Bool = true
   /// Removing a model is not just a delete: the caller owns the provider
   /// selection and must move the user off the engine being removed. Passed in
   /// rather than done here, because this view has no business writing settings.
@@ -213,18 +222,25 @@ struct LocalEngineStatusCard: View {
             .foregroundStyle(Color.stTextSecondary)
         }
         Spacer()
-        healthLabel
-        Button {
-          runtime.activateAndProbe()
-        } label: {
-          Image(systemName: "arrow.clockwise")
-            .settingsHoverQuiet()
+        if allowsRuntimeActivation {
+          healthLabel
+          Button {
+            runtime.activateAndProbe()
+          } label: {
+            Image(systemName: "arrow.clockwise")
+              .settingsHoverQuiet()
+          }
+          .buttonStyle(.borderless)
+          .help("Test that \(engine.name) is live")
+          .accessibilityLabel("Test that \(engine.name) is live")
+        } else {
+          // Installed and ready to be used BY A RUN. Deliberately not a health reading: this
+          // card is not allowed to start the server, so it cannot know, and a stale green
+          // light is worse than none.
+          Text("Ready for import").foregroundStyle(Color.stTextSecondary)
         }
-        .buttonStyle(.borderless)
-        .help("Test that \(engine.name) is live")
-        .accessibilityLabel("Test that \(engine.name) is live")
       }
-      if let reason = healthDetail {
+      if allowsRuntimeActivation, let reason = healthDetail {
         Text(reason)
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)

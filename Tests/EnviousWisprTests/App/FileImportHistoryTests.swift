@@ -271,6 +271,52 @@ struct FileImportHistoryTests {
     #expect(spy.writes.first?.importedFileName == spy.writes.last?.importedFileName)
   }
 
+  /// **A row must not claim an AI polish that did not happen.** Same defect as the Done
+  /// header's credit, in the persisted copy: six readers treat a non-nil `polishedText` as
+  /// evidence a polisher ran, from the History badge to the polish-success metric. Found by
+  /// the cloud review of PR #2786.
+  @Test("a document with no successful polish carries no AI evidence")
+  func nopolishMeansNoAIEvidence() async {
+    let spy = HistorySpy()
+    let c = FileImportCoordinator(
+      decode: { _ in Self.decoded() },
+      transcribe: { _ in (text: "um one two three", language: "en") },
+      engineAdmission: .live(lease: EngineLease(), as: .fileImport),
+      beginRun: {
+        FileImportCoordinator.RunConfiguration(
+          polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+          ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+      },
+      saveToHistory: { try spy.save($0) },
+      // Every part comes back with NO polished text, which is what a bypassed or entirely
+      // failed polish produces.
+      processPart: { part, _ in
+        FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "unavailable")
+      })
+    await run(c)
+
+    let final = spy.writes.last
+    #expect(final != nil)
+    #expect(final?.polishedText == nil, "the row claims an AI polish that never ran")
+    #expect(final?.llmProvider == nil, "the row credits an engine that did nothing")
+    #expect(final?.llmModel == nil)
+    // The derived document still survives: numbers, dates and saved words are real work.
+    #expect(final?.processedText != nil, "the derived document was thrown away")
+    #expect(final?.text == "um one two three", "the original words changed")
+  }
+
+  /// The other direction, so a rule that stripped evidence from every row would fail here.
+  @Test("a successful polish still carries its provenance")
+  func asuccessfulPolishKeepsItsProvenance() async {
+    let spy = HistorySpy()
+    let c = Self.coordinator(spy: spy)
+    await run(c)
+
+    #expect(spy.writes.last?.polishedText == "One two three.")
+    #expect(spy.writes.last?.llmProvider == "egOne")
+    #expect(spy.writes.last?.llmModel == "eg-1")
+  }
+
   /// A different file is a different recording. Carrying the id forward would make the next
   /// import overwrite the last one's words, because the store keys on id.
   @Test("starting over takes a new identity")

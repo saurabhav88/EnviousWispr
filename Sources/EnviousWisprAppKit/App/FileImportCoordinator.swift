@@ -1177,8 +1177,12 @@ final class FileImportCoordinator {
   /// letting the Done screen claim a write that did not happen.
   private func savePolishedToHistory() {
     guard let originalHistoryRow, rawIsSavedToHistory else { return }
-    let polished = originalHistoryRow.withPolished(
+    // Same question the Done header's credit asks, and the same answer: `wasPolished`, not
+    // the frozen configuration. A row that credits an engine for a clean that never ran is
+    // the on-screen defect, persisted.
+    let polished = originalHistoryRow.withImportResult(
       documentText,
+      wasPolished: parts.contains(where: \.wasPolished),
       llmProvider: runConfiguration?.polishProvider.rawValue,
       llmModel: runConfiguration?.polishModel)
     do {
