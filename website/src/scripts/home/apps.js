@@ -55,7 +55,7 @@ export function init(root, motion, scope) {
   viewport.addEventListener(
     'pointerdown',
     (event) => {
-      if (event.pointerType === 'mouse') {
+      if (event.pointerType !== 'touch') {
         dragging = true;
         settle();
       }
@@ -66,7 +66,7 @@ export function init(root, motion, scope) {
     window.addEventListener(
       eventName,
       (event) => {
-        if (event.pointerType !== 'mouse' || !dragging) return;
+        if (event.pointerType === 'touch' || !dragging) return;
         dragging = false;
         settle();
       },
