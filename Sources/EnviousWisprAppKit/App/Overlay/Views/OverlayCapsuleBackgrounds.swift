@@ -51,24 +51,6 @@ struct OverlayCapsuleBackground: View {
   private static let dimGlowOpacity: Double = 0.3
   private static let brightGlowOpacity: Double = 0.65
 
-  /// Bring the loop into line with `breathes`, in BOTH directions.
-  ///
-  /// The stop branch is not decoration. Nothing reads `glowOpacity` once `breathes` is false,
-  /// so a loop left running would be invisible and would still re-render forever, which is the
-  /// cost #2201 exists to avoid. Parking it also leaves a known value for the next arm.
-  private func syncGlow() {
-    guard breathes else {
-      var stop = Transaction()
-      stop.animation = nil
-      withTransaction(stop) { glowOpacity = Self.dimGlowOpacity }
-      onGlowTarget(Self.dimGlowOpacity)
-      return
-    }
-    withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-      glowOpacity = Self.brightGlowOpacity
-    }
-    onGlowTarget(Self.brightGlowOpacity)
-  }
 
   /// #2201: the preview pill's rainbow hairline holds still instead of breathing
   /// on a permanent two-second loop.
@@ -161,12 +143,15 @@ struct OverlayCapsuleBackground: View {
       // `glowOpacity`, and the point of this chunk is that the preview pill
       // stops moving on its own.
       //
-      // **Keyed to `breathes` rather than to `onAppear` (#2303, cloud review r1).** Reduce
-      // Motion can be switched off while this pill is still mounted, and an `onAppear` guard
-      // runs once: the loop would never arm, `glowOpacity` would sit at its dim starting
-      // value, and the hairline would be DIMMER than in either state it is meant to have.
-      // `initial: true` keeps the appear case, so this stays one mechanism rather than two.
-      .onChange(of: breathes, initial: true) { _, _ in syncGlow() }
+      // `initial: true` keeps the appear case, so arming and re-arming stay one mechanism
+      // rather than two. `OverlayMotion.syncAmbientLoop` owns both directions and records why
+      // the loop is keyed to the SETTING rather than to this view's appearance.
+      .onChange(of: breathes, initial: true) { _, _ in
+        OverlayMotion.syncAmbientLoop(
+          enabled: breathes, opacity: $glowOpacity,
+          dim: Self.dimGlowOpacity, bright: Self.brightGlowOpacity,
+          duration: 2, onTarget: onGlowTarget)
+      }
       .accessibilityHidden(true)
   }
 }
@@ -199,20 +184,6 @@ struct DistressCapsuleBackground: View {
   private static let dimGlowOpacity: Double = 0.3
   private static let brightGlowOpacity: Double = 0.6
 
-  /// Bring the pulse into line with `pulses`, in BOTH directions (#2303, cloud review r1).
-  private func syncGlow() {
-    guard pulses else {
-      var stop = Transaction()
-      stop.animation = nil
-      withTransaction(stop) { glowOpacity = Self.dimGlowOpacity }
-      onGlowTarget(Self.dimGlowOpacity)
-      return
-    }
-    withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-      glowOpacity = Self.brightGlowOpacity
-    }
-    onGlowTarget(Self.brightGlowOpacity)
-  }
 
   var body: some View {
     Capsule()
@@ -241,7 +212,12 @@ struct DistressCapsuleBackground: View {
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
-      .onChange(of: pulses, initial: true) { _, _ in syncGlow() }
+      .onChange(of: pulses, initial: true) { _, _ in
+        OverlayMotion.syncAmbientLoop(
+          enabled: pulses, opacity: $glowOpacity,
+          dim: Self.dimGlowOpacity, bright: Self.brightGlowOpacity,
+          duration: 0.4, onTarget: onGlowTarget)
+      }
       .accessibilityHidden(true)
   }
 }

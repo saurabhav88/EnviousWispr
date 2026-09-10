@@ -15,6 +15,14 @@ import Testing
 /// that `fittingSize` is blind to colour and opacity, so no size assertion can see this change at
 /// all. `AppearanceRenderHarness` established the mechanism used here.
 ///
+/// **WHAT THESE ROWS DO NOT BIND, stated rather than left to be discovered.** No row constructs
+/// `RecordingOverlayView`, so its two container gates — the lock transition and the notice
+/// cross-fade — have only the helper's own row behind them; if a call site stopped passing the
+/// helper, nothing here would go red. And no row proves a hairline VISIBLY breathes, stops, or
+/// resumes: an off-screen `NSHostingView` does not advance a `repeatForever` (measured
+/// 2026-09-09, three renders 0.4 s apart of a breathing capsule are byte-identical), so the
+/// re-arm rows read the target the view reports instead. Both are Live UAT rows.
+///
 /// **Nothing here freezes an absolute reading.** Every row is a RELATION between renders taken in
 /// ONE process, which is what survives another Mac's font metrics and rendering defaults
 /// (`validation-discipline.md` RULE: measure-with-the-real-tool-never-a-simulation). Each
@@ -53,7 +61,7 @@ struct OverlayReduceMotionTests {
   // MARK: - The rainbow hairline on the recording pill
 
   @Test("the recording pill's hairline is painted differently once Reduce Motion is on")
-  func rainbowHairlineHoldsStill() throws {
+  func rainbowHairlinePaintsDifferently() throws {
     let moving = try Self.pixels(OverlayCapsuleBackground(), reduceMotion: false)
     let still = try Self.pixels(OverlayCapsuleBackground(), reduceMotion: true)
     #expect(
@@ -73,7 +81,7 @@ struct OverlayReduceMotionTests {
   // MARK: - The red hairline on the interruption pill
 
   @Test("the interruption pill's red hairline is painted differently once Reduce Motion is on")
-  func distressHairlineHoldsStill() throws {
+  func distressHairlinePaintsDifferently() throws {
     let moving = try Self.pixels(DistressCapsuleBackground(), reduceMotion: false)
     let still = try Self.pixels(DistressCapsuleBackground(), reduceMotion: true)
     #expect(
@@ -100,6 +108,8 @@ struct OverlayReduceMotionTests {
   /// Three samples make "all three equal" the signal, which no single coincidence produces.
   private static let pulseSampleGap: TimeInterval = 0.23
 
+  /// Each sample builds a NEW host with an explicit override, so this reaches neither live
+  /// system-setting delivery nor a mounted `TimelineView` being removed and restored.
   private static func lipSamples(reduceMotion: Bool) throws -> [Data] {
     var out: [Data] = []
     for index in 0..<3 {
@@ -236,7 +246,7 @@ struct OverlayReduceMotionTests {
       "the capsule reported \(targets.count) glow decisions across the toggle, not two")
     #expect(
       targets.last == 0.3,
-      "last glow decision \(String(describing: targets.last)), not the dim endpoint: still looping")
+      "last glow decision \(String(describing: targets.last)), not the dim endpoint")
   }
 
   @Test("turning Reduce Motion off re-arms the interruption pill without remounting it")
@@ -254,18 +264,50 @@ struct OverlayReduceMotionTests {
     #expect(targets.count == 2, "\(targets.count) glow decisions across the toggle, not two")
     #expect(
       targets.last == 0.3,
-      "last glow decision \(String(describing: targets.last)), not the dim endpoint: still looping")
+      "last glow decision \(String(describing: targets.last)), not the dim endpoint")
+  }
+
+  // MARK: - What Reduce Motion must NOT change
+
+  /// The lips are the pill's "I can hear you" signal. `OverlayMotion` records that stilling them
+  /// would leave a Reduce Motion user with a muted microphone nothing to distinguish a working
+  /// take from a silent one, so this is a row about what the change must NOT have done.
+  @Test("the ordinary lips still react to the voice under Reduce Motion")
+  func ordinaryLipsStayAudioReactive() throws {
+    let box = CGSize(width: 24, height: 24)
+    let silent = try Self.pixels(
+      RainbowLipsIcon(size: 24, audioLevel: 0), reduceMotion: true, size: box)
+    let speaking = try Self.pixels(
+      RainbowLipsIcon(size: 24, audioLevel: 1), reduceMotion: true, size: box)
+    #expect(silent != speaking, "the lips painted the same silent and loud, so they went deaf")
+
+    let speakingUnreduced = try Self.pixels(
+      RainbowLipsIcon(size: 24, audioLevel: 1), reduceMotion: false, size: box)
+    #expect(
+      speaking == speakingUnreduced,
+      "Reduce Motion changed how loud lips are drawn, and it is meant to change nothing here")
+  }
+
+  /// #2201 and #2435 already chose two ways for a hairline to hold still, and neither is about
+  /// Reduce Motion. A pill that was still for one of those reasons must paint identically with
+  /// the setting on or off, or this change has quietly taken over their decision.
+  @Test("the hairlines that already held still are unmoved by the setting")
+  func existingStillChoicesAreUnaffected() throws {
+    let previewPill = OverlayCapsuleBackground(cornerStyle: .rounded, animatesGlow: true)
+    let frozenCapsule = OverlayCapsuleBackground(cornerStyle: .capsule, animatesGlow: false)
+    for still in [AnyView(previewPill), AnyView(frozenCapsule)] {
+      let off = try Self.pixels(still, reduceMotion: false)
+      let on = try Self.pixels(still, reduceMotion: true)
+      #expect(off == on, "a hairline that was already still changed when Reduce Motion came on")
+    }
   }
 
   // MARK: - The policy, and the seam that lets these rows exist
 
-  @Test("an ambient loop runs only while Reduce Motion is off")
-  func ambientLoopFollowsTheSetting() {
-    #expect(OverlayMotion.showsAmbientLoop(reduceMotion: false))
-    #expect(OverlayMotion.showsAmbientLoop(reduceMotion: true) == false)
-  }
-
-  @Test("a discrete state change keeps its animation off, and becomes instant on")
+  /// `showsAmbientLoop` needs no row of its own: every pixel and target row above reaches it
+  /// through a real view, in both directions. `stateChange` does, because nothing else here
+  /// constructs `RecordingOverlayView` — see the coverage note in this suite's header.
+  @Test("the state-change helper returns an animation off, and nil on")
   func stateChangeFollowsTheSetting() {
     #expect(OverlayMotion.stateChange(.easeInOut(duration: 0.3), reduceMotion: false) != nil)
     #expect(OverlayMotion.stateChange(.easeInOut(duration: 0.3), reduceMotion: true) == nil)
@@ -280,23 +322,34 @@ struct OverlayReduceMotionTests {
   func theOverrideIsInertInTheShippedApp() throws {
     let sources = RepoRoot.url.appending(path: "Sources")
     let files = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
-    var setters: [String] = []
+    var unexpected: [String] = []
     var scanned = 0
+    var declarations = 0
     while let url = files?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       scanned += 1
       let text = try String(contentsOf: url, encoding: .utf8)
       guard text.contains("overlayReduceMotionOverride") else { continue }
-      // The declaration itself is the one legitimate mention.
-      if url.lastPathComponent == "OverlayMotion.swift" { continue }
       for line in text.split(separator: "\n") where line.contains("overlayReduceMotionOverride") {
         let mention = line.trimmingCharacters(in: .whitespaces)
-        // Reading it is what every pill does. Only a WRITE breaks the property.
+        // Prose about the key cannot set it.
+        if mention.hasPrefix("///") || mention.hasPrefix("//") { continue }
+        // Reading it is what every pill does. Only a WRITE would break the property.
         if mention.hasPrefix("@Environment(") { continue }
-        setters.append("\(url.lastPathComponent): \(mention)")
+        // The declaration itself, and only in its own file. Skipping the WHOLE file — which an
+        // earlier version of this row did — means a writer added beside the declaration passes,
+        // which is exactly where somebody wiring this to a debug menu would put it.
+        if url.lastPathComponent == "OverlayMotion.swift",
+          mention == "var overlayReduceMotionOverride: Bool? {"
+        {
+          declarations += 1
+          continue
+        }
+        unexpected.append("\(url.lastPathComponent): \(mention)")
       }
     }
     #expect(scanned > 0, "the sweep read no Swift files, so its silence means nothing")
-    #expect(setters.isEmpty, "shipped code writes the override: \(setters)")
+    #expect(declarations == 1, "expected exactly one declaration, found \(declarations)")
+    #expect(unexpected.isEmpty, "shipped code mentions the override unexpectedly: \(unexpected)")
   }
 }

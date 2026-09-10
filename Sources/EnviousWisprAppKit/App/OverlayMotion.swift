@@ -57,6 +57,39 @@ enum OverlayMotion {
   static func stateChange(_ animation: Animation?, reduceMotion: Bool) -> Animation? {
     reduceMotion ? nil : animation
   }
+
+  /// Bring one hairline's forever-loop into line with the setting, in BOTH directions.
+  ///
+  /// **Keyed to the SETTING's lifecycle, never to `onAppear`** (#2303, PR #2767 cloud review r1).
+  /// Reduce Motion can be switched off while a pill is still mounted, and an `onAppear` guard
+  /// runs once: the loop would never arm, the opacity would sit at its dim starting value, and
+  /// the hairline would be DIMMER than in either state it is meant to have.
+  ///
+  /// **The park branch is the load-bearing half, and is why this is written once rather than
+  /// twice.** Nothing reads the animated value once the loop is off, so a loop left running
+  /// would be invisible AND would keep re-rendering forever — the cost #2201 exists to avoid.
+  /// Parking on a nil transaction also leaves a known value for the next arm to start from.
+  @MainActor
+  static func syncAmbientLoop(
+    enabled: Bool,
+    opacity: Binding<Double>,
+    dim: Double,
+    bright: Double,
+    duration: Double,
+    onTarget: (Double) -> Void
+  ) {
+    guard enabled else {
+      var stop = Transaction()
+      stop.animation = nil
+      withTransaction(stop) { opacity.wrappedValue = dim }
+      onTarget(dim)
+      return
+    }
+    withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
+      opacity.wrappedValue = bright
+    }
+    onTarget(bright)
+  }
 }
 
 // MARK: - Reading the setting
