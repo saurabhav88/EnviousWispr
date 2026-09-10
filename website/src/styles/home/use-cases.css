@@ -652,6 +652,9 @@ main > #people .section-heading {
     margin-top: -18px;
     padding: 8px;
   }
+  .case-screen > .host-app {
+    overflow-y: auto;
+  }
   #people[data-enhancement='ready'] .case-swipe-hint {
     color: var(--eg-body);
     display: block;
