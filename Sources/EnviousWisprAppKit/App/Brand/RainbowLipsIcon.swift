@@ -73,18 +73,35 @@ struct RainbowLipsIcon: View {
 
   private static let distressRed = Color(red: 1.0, green: 0.165, blue: 0.251)
 
+  /// #2303. The PULSE is decoration; the red bars are the signal and they read the same held
+  /// still. The lips' ordinary movement is not touched here — `OverlayMotion` records why.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  /// Mid-point of the pulse's own 0.4-to-1.0 range, so the still lips are no dimmer on average
+  /// than the pulsing ones they replace.
+  private static let steadyDistressOpacity: Double = 0.7
+
   var body: some View {
     if isDistress {
-      // Distress mode: lips in normal shape, all bars red, pulsing opacity.
-      // TimelineView drives continuous redraw; Canvas does not respond to @State animation.
-      TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-        let phase = timeline.date.timeIntervalSinceReferenceDate
-        let pulseOpacity = 0.4 + 0.6 * (0.5 + 0.5 * sin(phase * .pi / 0.35))
+      if OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) {
+        // Distress mode: lips in normal shape, all bars red, pulsing opacity.
+        // TimelineView drives continuous redraw; Canvas does not respond to @State animation.
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+          let phase = timeline.date.timeIntervalSinceReferenceDate
+          let pulseOpacity = 0.4 + 0.6 * (0.5 + 0.5 * sin(phase * .pi / 0.35))
+          lipsCanvas(level: 0.3, barColorOverride: Self.distressRed)
+            .opacity(pulseOpacity)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+      } else {
         lipsCanvas(level: 0.3, barColorOverride: Self.distressRed)
-          .opacity(pulseOpacity)
+          .opacity(Self.steadyDistressOpacity)
+          .frame(width: size, height: size)
+          .accessibilityHidden(true)
       }
-      .frame(width: size, height: size)
-      .accessibilityHidden(true)
     } else {
       lipsCanvas(level: CGFloat(min(max(audioLevel, 0), 1)), barColorOverride: nil)
         .frame(width: size, height: size)

@@ -348,6 +348,13 @@ struct RecordingOverlayView: View {
   /// | `audioTick` | NONE, deliberately | a counter, not a picture. It exists so the meter appends on every poll INCLUDING silent ones; seeding it to anything but 0 would suppress the meter's first append, and the meter takes its own `initialHistory` instead. |
   @State private var audioLevel: Float = 0
 
+  /// #2303: the pill a person looks at during every dictation now reads the same macOS setting
+  /// the crash-recovery pill and the Settings surfaces already read. `OverlayMotion` owns which
+  /// of this view's three container animations it changes and which it must not.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
   /// every tick INCLUDING the silent ones, and consecutive silent samples are
   /// bit-identical, so `audioLevel` alone cannot drive it.
@@ -574,7 +581,9 @@ struct RecordingOverlayView: View {
           .transition(.opacity)
       }
     }
-    .animation(.easeInOut(duration: 0.3), value: isLocked)
+    .animation(
+      OverlayMotion.stateChange(.easeInOut(duration: 0.3), reduceMotion: reduceMotion),
+      value: isLocked)
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
     //
@@ -595,7 +604,12 @@ struct RecordingOverlayView: View {
     // — that forbids per-child `.animation(value:)`, and this adds none. The
     // container keeps its lock and notice triggers in both layouts.
     .animation(chrome.levelAnimation.resolved, value: audioLevel)
-    .animation(.easeInOut(duration: 0.25), value: noticeText)
+    // #2303: both of this container's discrete triggers become instant under Reduce Motion.
+    // The audio level's easing on the line above deliberately does NOT — `OverlayMotion` states
+    // why removing it would make the pill move more, not less.
+    .animation(
+      OverlayMotion.stateChange(.easeInOut(duration: 0.25), reduceMotion: reduceMotion),
+      value: noticeText)
     // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
     // the preview zeroes it and each section supplies its own, because a header
     // strip over a reading well does not want one rectangle of padding wrapped

@@ -28,6 +28,18 @@ struct OverlayCapsuleBackground: View {
   var animatesGlow: Bool = true
   @State private var glowOpacity: Double = 0.3
 
+  /// #2303: the person's own answer, alongside #2201's and #2435's.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  /// Every condition for the hairline to breathe, in one place. `OverlayMotion` owns the
+  /// Reduce Motion half and states why the still value costs nothing here.
+  private var breathes: Bool {
+    animatesGlow && cornerStyle == .capsule
+      && OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion)
+  }
+
   /// #2201: the preview pill's rainbow hairline holds still instead of breathing
   /// on a permanent two-second loop.
   ///
@@ -110,9 +122,7 @@ struct OverlayCapsuleBackground: View {
         // Breathing is the ONLY case that reads the animated value. Everything
         // else — the reading well, and any capsule asked to hold still — takes
         // the chosen steady one.
-        .opacity(
-          animatesGlow && cornerStyle == .capsule ? glowOpacity : Self.steadyGlowOpacity
-        )
+        .opacity(breathes ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
@@ -121,7 +131,7 @@ struct OverlayCapsuleBackground: View {
         // preview would keep it re-rendering whether or not anything read
         // `glowOpacity`, and the point of this chunk is that the preview pill
         // stops moving on its own.
-        guard animatesGlow, cornerStyle == .capsule else { return }
+        guard breathes else { return }
         withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
           glowOpacity = 0.65
         }
@@ -135,6 +145,20 @@ struct OverlayCapsuleBackground: View {
 /// Capsule background for interruption warnings: red glow instead of rainbow.
 struct DistressCapsuleBackground: View {
   @State private var glowOpacity: Double = 0.3
+
+  /// #2303. The red hairline pulses to draw the eye; the RED is what says something is wrong,
+  /// and it survives holding still.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  /// Mid-point of this pulse's own 0.3-to-0.6 endpoints, for the same reason
+  /// `OverlayCapsuleBackground.steadyGlowOpacity` is the mid-point of its loop: a still line is
+  /// no dimmer on average than the moving one it replaces.
+  private static let steadyGlowOpacity: Double = 0.45
+
+  /// Whether the red hairline pulses at all.
+  private var pulses: Bool { OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) }
 
   var body: some View {
     Capsule()
@@ -156,11 +180,15 @@ struct DistressCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        .opacity(glowOpacity)
+        // The still value is chosen HERE rather than assigned in `onAppear`, so a person with
+        // Reduce Motion on gets it on the FIRST frame — the same shape the rainbow hairline
+        // above already uses.
+        .opacity(pulses ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
       .onAppear {
+        guard pulses else { return }
         withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
           glowOpacity = 0.6
         }
