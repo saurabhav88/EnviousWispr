@@ -55,7 +55,7 @@ struct InverseTextNormalizerCountryTLDTests {
   /// alternation when the list grows, so these are regression cover for the existing conversions;
   /// they do not by themselves prove the ordering rule.
   @Test(
-    "the generic domains still convert, and the longer one still wins",
+    "the existing domains still convert",
     arguments: [
       ("send it to tom at example dot com", "tom@example.com"),
       ("send it to tom at example dot co", "tom@example.co"),
@@ -86,9 +86,7 @@ struct InverseTextNormalizerCountryTLDTests {
     #expect(!Self.itn.normalize(input, spokenPunctuation: false).contains("@"))
   }
 
-  /// Structural guard on the table itself, so the reason survives without depending on a reviewer
-  /// remembering it. A word-like code added here would pass every conversion test above and only
-  /// fail the sentences — this fails at the source instead.
+  /// Guards the named exclusions and duplicate entries, not lexical completeness.
   @Test("selected high-risk English words remain excluded")
   func tableExcludesWordLikeCodes() {
     // Named risky words, not a claim of universal unambiguity: `de`, `es` and `si` are dictionary

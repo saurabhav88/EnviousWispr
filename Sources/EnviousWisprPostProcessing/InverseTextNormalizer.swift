@@ -190,8 +190,8 @@ public struct InverseTextNormalizer: Sendable {
   /// turns "he pointed at the dot it made" into "he pointed@the.it made". Excluded on those
   /// grounds: `am as at be by do id in is it my no so to us`.
   ///
-  /// Italy, Austria, Belgium, Norway, the Bahamas, Belarus, Tonga and Indonesia are therefore NOT
-  /// covered, stated rather than hidden.
+  /// Examples excluded by this policy include Italy (.it), Austria (.at), Belgium (.be),
+  /// Norway (.no), American Samoa (.as), Belarus (.by), Tonga (.to) and Indonesia (.id).
   ///
   /// **Only `emailTLDAlt` consumes this table.** URL handling and the production language gate are
   /// unchanged, so non-English-resolved dictation still skips this formatter entirely
@@ -207,13 +207,10 @@ public struct InverseTextNormalizer: Sendable {
 
   // Email and URL allowlists remain independent. `ai`/`app`/`xyz` stay URL-only; the ccTLDs above
   // are added only to the email grammar.
-  // Deliberately NOT derived from urlTLDAlt (#2257, local Codex review round 2):
-  // emails(_:)'s "name at domain dot tld" pattern has no path requirement to disambiguate
-  // it the way urls(_:) does, so ANY newly-added TLD widens "at <domain> dot <tld>" — a
-  // common way to describe a URL out loud, not an email — into a false email conversion.
-  // Measured: adding just ai/app/xyz turned "learn more at startup dot ai" into
-  // "learn more@startup.ai" and "find it at docs dot xyz" into "find it@docs.xyz". Kept
-  // identical to the pre-#2257 list; the new TLDs are URL-only.
+  // #2257 kept ai/app/xyz out of the email grammar because website prose such as
+  // "learn more at startup dot ai" would otherwise become "learn more@startup.ai".
+  // The ccTLD extension accepts that existing ambiguity for its selected suffixes,
+  // as documented above; it does not change either URL pass.
   static let emailTLDAlt = alt(["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"]
     + countryCodeTLDs)
   // A domain label: may start with a letter OR digit (cloud Codex review, PR #2265 —
