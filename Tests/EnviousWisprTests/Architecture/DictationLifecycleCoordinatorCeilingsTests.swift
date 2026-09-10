@@ -69,17 +69,48 @@ import Testing
       """)
   }
 
+  /// #2648 — the combined cap this home never had.
+  ///
+  /// Its collaborator cap counts `let`s that are not closures, so a capability
+  /// stored as a bare closure lands in no bin at all. That is a real shape for a
+  /// single capability and it is what `releaseEngineClaim` is, but "it does not
+  /// count" is not the same as "it costs nothing". The starter's own suite
+  /// learned this the same way (`RecordingStarterCeilingsTests`, the sum cap
+  /// added after cloud review found both per-bin caps individually bypassable).
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(
+      named: "DictationLifecycleCoordinator", at: Self.sourcePath)
+    let total = RouterCeilingParser.storedDependencyCount(in: body)
+    #expect(
+      total <= 13,
+      """
+      DictationLifecycleCoordinator stored-dependency ceiling exceeded: \(total) > 13. \
+      Twelve collaborators plus #2648's one release capability. Whichever bin a new \
+      dependency lands in, it lands here.
+      """)
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(
       named: "DictationLifecycleCoordinator", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)
+    // #2648: 5 -> 6. `acceptEngineToken(_:)`, which takes ownership of the
+    // running session's claim on the shared ASR-and-polish resource.
+    //
+    // It has to be a method on this home rather than a closure the start path
+    // keeps, because both start methods RETURN while the recording is still
+    // running (`RecordingStarter.swift:437-497`, `:610-626`): the claim must
+    // outlive the call that made it, and this is the type that already owns the
+    // session's terminal transition. The release is a bare closure and did NOT
+    // move the collaborator count, which stays at 12.
     #expect(
-      count <= 5,
+      count <= 6,
       """
       DictationLifecycleCoordinator non-private method ceiling exceeded: \
-      \(count) > 5 non-private `func` declarations. Allowed (PR9 baseline): \
+      \(count) > 6 non-private `func` declarations. Allowed (PR9 baseline): \
       `install()`, `cancelPendingWarning()`, `activeCaptureBackend()`, \
-      `isCurrentSession(_:)`, `activeTelemetryTarget()`.
+      `isCurrentSession(_:)`, `activeTelemetryTarget()`, plus #2648's \
+      `acceptEngineToken(_:)`.
       """)
   }
 

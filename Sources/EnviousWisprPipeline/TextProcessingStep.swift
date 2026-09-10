@@ -76,6 +76,19 @@ public struct TextProcessingContext: Sendable {
   /// of local execution.
   public var polishRanRemote: Bool?
 
+  /// True when `LLMPolishStep` DECLINED to send this text — a bypass, not a
+  /// failure (#2648).
+  ///
+  /// **Written by the step that decides, because nothing downstream can tell the
+  /// two apart.** A bypass and a silent failure both arrive as "no polished text
+  /// and no error", so a reader guessing from that shape marked a passage the
+  /// pipeline deliberately skipped — one at most three words long, say — as one
+  /// the app had failed to clean. The rule that decides eligibility lives in the
+  /// step; re-deriving it anywhere else would be a copy that agrees today.
+  ///
+  /// Defaults to false, so every existing reader is unchanged.
+  public var polishWasBypassed = false
+
   /// The `PromptFamily` the planner selected for this polish (#1948). Stamped by
   /// `LLMPolishStep` from `PolishPlan.family` on the success path only, so it is nil for a
   /// skip, a failure, a bypass, and for Apple Intelligence (whose branch returns earlier).

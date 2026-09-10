@@ -33,6 +33,9 @@ package final class WisprBootstrapper {
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
+  /// #2648 — Transcribe a File's state machine, held here so the run survives
+  /// the page being closed.
+  let fileImportCoordinator: FileImportCoordinator
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
@@ -230,11 +233,26 @@ package final class WisprBootstrapper {
     // needs the gate, and the one shared capability value below, to already
     // exist.
     let engineRecoveryGate = EngineRecoveryGate()
+    // #2648 — the ONE claim on the shared ASR-and-polish resource, built here
+    // beside `engineRecoveryGate` because it is the same kind of thing: an
+    // arbitration authority the composition root owns and hands downward as
+    // narrow closures, so no lower module imports upward to reach it.
+    //
+    // It is NOT the same authority. `engineRecoveryGate` keeps crash recovery
+    // away from engine MUTATION and deliberately admits several mutations at
+    // once; this admits exactly one WORKLOAD — a dictation, a replay, or (from
+    // #2648's later chunks) a file import — onto EG-1's single inference slot.
+    let engineLease = EngineLease()
     // #1741 Chunk 3 — forward reference for the shared scope's wake closure;
     // `recoveryCoordinator` isn't constructed until much later in this
     // function. Matches the existing `engineCoordinatorForRecoveryGate`
     // forward-declared-then-assigned-after-construction pattern below.
     weak var recoveryCoordinatorForEngineMutationScope: RecoveryCoordinator?
+    // #2648, cloud review — the same forward-declared-then-assigned pattern, for
+    // the same reason: the engine-switch gate and the local-polisher pin are
+    // both constructed long before the import coordinator exists, and both have
+    // to be able to see a running import.
+    weak var fileImportCoordinatorForGates: FileImportCoordinator?
     // #1741 — the ONE shared mutation-side capability (§3 construction-
     // topology correction: one value, not one per consumer), threaded through
     // each consumer's required initializer argument as this plan migrates it
@@ -580,6 +598,11 @@ package final class WisprBootstrapper {
     whisperKitRetirement?.unloadForRemoval = { [weak whisperKitKernelDriver] in
       await whisperKitKernelDriver?.unloadEngineForRemoval()
     }
+    // ONE lookup, three readers: the polish-runtime eviction rule below, the
+    // import page's privacy line, and the configuration an import freezes at
+    // Start. Two of those are promises to the user about where their words went,
+    // so they must not be able to disagree with the third.
+    let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -588,7 +611,9 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
+      ollamaRemotenessLookup: ollamaRemoteness,
+      importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
+      importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -878,12 +903,20 @@ package final class WisprBootstrapper {
     }
 
     let navigationCoordinator = NavigationCoordinator()
-    // #1386 PR-2: the one door to whichever engine is active, for the two callers
-    // that never used the normal dictation doors (crash recovery, Diagnostics).
+    // #1386 PR-2: the one door to whichever engine is active, for the callers
+    // that never used the normal dictation doors — crash recovery, Diagnostics,
+    // and since #2648 file import, which needs the engine the user picked on the
+    // Transcription step rather than the one the manager happens to own.
     let activeEngine = ActiveEngineOperation.live(
       asrManager: asrManager, whisperKitBackend: whisperKitBackend)
 
-    let diagnosticsCoordinator = DiagnosticsCoordinator(engineMutationScope: engineMutationScope)
+    // The benchmark is a FOURTH workload on the one inference slot, so it takes
+    // the same claim a dictation, a replay and an import take. Built here rather
+    // than inside `DiagnosticsCoordinator`, whose import ceiling refuses to know
+    // about the pipeline — correctly, since its job is owning the surface.
+    let diagnosticsCoordinator = DiagnosticsCoordinator(
+      benchmark: BenchmarkSuite(
+        engineMutationScope: engineMutationScope, engineLease: engineLease))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -978,6 +1011,9 @@ package final class WisprBootstrapper {
           || (engineCoordinatorForRecoveryGate?.isMintingAnySession ?? false)
       },
       recoveryEngineClaim: recoveryEngineClaim,
+      // #2648 — a replay runs the same polish server a dictation does, so it
+      // takes the same one-workload claim for the whole item.
+      engineAdmission: .live(lease: engineLease, as: .crashRecovery),
       // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
@@ -1020,6 +1056,10 @@ package final class WisprBootstrapper {
           (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
+        // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
+        // press while the cancelled work is still inside the engine, and a
+        // switch admitted in that window unloads the backend underneath it.
+        isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperKitSetup.setupState == .ready
         },
@@ -1119,7 +1159,11 @@ package final class WisprBootstrapper {
       settings: settings,
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
-      recordingLockedAccess: recordingLockedAccess
+      recordingLockedAccess: recordingLockedAccess,
+      // #2648 — the running session's claim comes back here, on the session's
+      // terminal transition, because both start methods return while the
+      // recording is still running.
+      releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
     )
     dictationLifecycleCoordinator.install()
     // #1171 — every pipeline state change pokes the coordinator: non-terminal
@@ -1144,6 +1188,10 @@ package final class WisprBootstrapper {
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
       recoveryCoordinator: recoveryCoordinator,
       recordingLockedAccess: recordingLockedAccess,
+      // #2648 — the record-start paths claim the shared resource as a DICTATION
+      // and can claim as nothing else: the holder is bound here, not at the call
+      // site.
+      engineAdmission: .live(lease: engineLease, as: .dictation),
       resolveActiveCaptureBackend: { [weak dictationLifecycleCoordinator] in
         dictationLifecycleCoordinator?.activeCaptureBackend()
       },
@@ -1283,6 +1331,160 @@ package final class WisprBootstrapper {
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
+    // #2648 — Transcribe a File. Built here because the job outlives every view
+    // that shows it: leaving the page and coming back has to land on whatever
+    // the run has reached.
+    //
+    // The runner is constructed with the same polish handles live dictation and
+    // crash recovery use, so an imported part is polished by the same engine,
+    // under the same key, as anything else this app produces.
+    let fileImportRunner = FileImportRunner(
+      keychainManager: keychainManager,
+      egOneRuntime: egOneRuntime,
+      s1MiniRuntime: s1MiniRuntime,
+      // #2648, cloud review: the SAME output-safety classifier live dictation
+      // and crash recovery get. Without it an imported part polished by Apple
+      // Intelligence silently loses the classifier-aware output filter, even
+      // when the classifier prewarmed successfully.
+      outputClassifierHolder: outputClassifierHolder)
+    // #2648: the health probe asks the lease, not the settings sync, because
+    // the question is "is the ONE inference slot occupied" and every workload
+    // that can occupy it takes this claim. `isBusy` had no production reader
+    // when the lease shipped; file import is what made the gap live, so it is
+    // wired here rather than deferred again. Codex confirming round.
+    egOneRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
+    s1MiniRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
+    egOneRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
+      engineLease?.admissionEpoch ?? 0
+    }
+    s1MiniRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
+      engineLease?.admissionEpoch ?? 0
+    }
+
+    let fileImportCoordinator = FileImportCoordinator(
+      decode: { url in try await AudioFileDecoder.decode(url: url) },
+      // **The user's locked language reaches ASR, not just the cleanup.** Cloud
+      // review found `.default` here: WhisperKit uses `options.language` to turn
+      // auto-detection OFF and Parakeet uses it for its language/script filter,
+      // so a locked non-English recording could be recognised in the wrong
+      // script before post-processing ever saw it.
+      // **Through `ActiveEngineOperation`, which is the ONE door for "whichever
+      // speech engine is active".** Calling `asrManager.transcribe` directly
+      // reached Parakeet and only Parakeet: with All Languages selected it threw
+      // `ASRManagerNotOwnedError`, because WhisperKit does not live in the
+      // manager.
+      //
+      // No load here: `ensureEngineReady` above owns warming, and it runs before
+      // the claim precisely so the switch it may trigger is not deferred by the
+      // claim. A second loader here would be a second answer to the same
+      // question, which is the shape that produced this feature's first defect.
+      transcribe: { [activeEngine, settings] samples in
+        var options = TranscriptionOptions.default
+        if case .locked(let code) = settings.languageMode { options.language = code }
+        // The engine's own language answer travels with the words. Reducing this
+        // to `.text` threw away the better half: the cleanup chain's ladder
+        // prefers what the engine heard over what a text identifier guesses from
+        // the ASR output.
+        let result = try await activeEngine.transcribe(samples, options)
+        return (text: result.text, language: result.language)
+      },
+      // The third workload, claiming the same one-slot engine as a dictation and
+      // a crash replay.
+      engineAdmission: .live(lease: engineLease, as: .fileImport),
+      // The SAME lookup the polish-runtime reconciliation uses, so the page's
+      // privacy line and the eviction rule cannot disagree about one model. An
+      // unknown model answers `nil`, read here as NOT remote, which matches the
+      // provider-only classification this replaced and never over-claims a
+      // cloud upload the user did not make.
+      // Three answers, passed through. `nil` means the daemon has not been
+      // asked, which the page must not read as "runs here".
+      polishOllamaLocalityNow: { [settings, ollamaRemoteness] in
+        settings.llmProvider == .ollama ? ollamaRemoteness(settings.llmModel) : false
+      },
+      refreshOllamaFacts: { [ollamaSetup = setup.ollamaSetup] in
+        await ollamaSetup.refreshDownloadedModels()
+      },
+      // The SAME authority a record press uses, so "is the engine the user
+      // picked ready" has one answer in the app rather than two.
+      //
+      // **`.notReady` is not a refusal on its own, and this is the import's own
+      // cold-press path.** `ensureSelectedReadyForPress` deliberately leaves a
+      // SELECTED-AND-ACTIVE BUT COLD engine to dictation's cold-press path,
+      // which warms it on the next press. Import has no next press, so it read
+      // that answer as "no" and refused a file whose engine only needed loading
+      // — reachable through the ordinary memory-saving unload setting. Found by
+      // Codex. `load()`'s postcondition is readiness, not merely that the call
+      // returned, so a warm that fails still refuses.
+      // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
+      // earlier arms a timer under the user's model-unload setting, and its
+      // mutation gate does not consult `EngineLease`, so it could fire mid-import
+      // and clear the model the decoder is running on. Each engine arms its OWN
+      // timer, so both are named on both sides; `ParakeetEngineAdapter` forwards
+      // to `ASRManager.noteTranscriptionComplete`, which is why going through
+      // the adapters covers both engines rather than one of them twice.
+      // Idempotent, so both are always touched rather than whichever looks
+      // active.
+      engineIsLoaded: { [activeEngine] in await activeEngine.isLoaded() },
+      disarmEngineTimers: { [kernelDriver, whisperKitKernelDriver] in
+        kernelDriver.cancelPendingEngineUnload()
+        whisperKitKernelDriver.cancelPendingEngineUnload()
+      },
+      rearmEngineTimers: { [kernelDriver, whisperKitKernelDriver, settings] in
+        kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+        whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+      },
+      ensureEngineReady: { [weak engineCoordinator, activeEngine] in
+        guard let engineCoordinator else { return .notReady }
+        switch await engineCoordinator.ensureSelectedReadyForPress() {
+        case .ready: return .ready
+        case .notInstalled: return .notInstalled
+        case .notReady:
+          guard (try? await activeEngine.load()) != nil else { return .notReady }
+          return await activeEngine.isLoaded() ? .ready : .notReady
+        }
+      },
+      // The same three retries a finished dictation fires
+      // (`DictationLifecycleCoordinator` on its terminal), because an import
+      // blocks the same three things: an engine switch deferred by gate 6b, an
+      // Ollama eviction deferred by the pinned model, and an EG-1 deactivation
+      // deferred by the pinned runtime. Without this a settings change made
+      // during a long import stayed pending until something unrelated happened
+      // to poke the same paths.
+      onEngineReleased: {
+        [
+          weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
+          asrManager
+        ] in
+        engineCoordinator?.poke(.driverStateChanged)
+        settingsSync.retryDeferredOllamaEviction(settings: settings)
+        settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+        // **Recovery needs its OWN wake.** A poke that finds the selected and
+        // active engines already matching returns without reaching recovery, so
+        // a scan that released its mutation gate because an import held the
+        // engine would wait for an unrelated trigger, or for the next launch.
+        // Same call the engine-mutation scope already uses as its wake. Found by
+        // Codex; timing not reproduced, and fixed because it is one line and its
+        // failure is silent.
+        recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+      },
+      // The user's words, read LIVE at Start rather than held from launch: the
+      // propagator is the one place that knows the current vocabulary, and an
+      // import started after the user adds a word should use it.
+      // The wizard's steps WRITE settings when the user picks, so freezing
+      // settings here freezes exactly what the user chose on those screens.
+      beginRun: { [settings, customWordsPropagator] in
+        let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
+        fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        return FileImportSettingsFreeze.configuration(
+          for: snapshot,
+          ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
+            ? ollamaRemoteness(snapshot.llmModel) : false)
+      },
+      processPart: { [fileImportRunner] part, language in
+        try await fileImportRunner.process(part: part, engineLanguage: language)
+      })
+    fileImportCoordinatorForGates = fileImportCoordinator
+    self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -1335,9 +1537,34 @@ package final class WisprBootstrapper {
     // owner) — a start that has committed but not yet frozen its config would
     // otherwise read as "no session" and let Remove delete under it. nil
     // either way refuses, fail safe.
-    setup.whisperKitSetup.isDictationInFlight = { [weak settingsSync, weak engineCoordinator] in
+    // #2648: the lease term is the THIRD clause and the general one.
+    //
+    // **Enumerated rather than patched, because this is the third seam an import
+    // needed.** Every place the composition root answers "may I mutate, unload
+    // or delete the shared engine or a polish runtime right now" is:
+    //
+    // | seam | who answers | import covered by |
+    // |---|---|---|
+    // | `EngineCoordinator` gate 5 / 6 / 6b | recording, recovery, import | `isFileImportRunning` → `isEngineHeld` |
+    // | `egOneRuntime.isPinnedInFlight` (+ S1-mini) | `pinnedLocalProvider()` | `importPinnedLocalProvider` |
+    // | `isBlockedByOtherPinnedSession` (+ S1-mini) | `pinnedLocalProvider()` | same |
+    // | `isSharedEngineBusy` (+ S1-mini) | `EngineLease.isBusy` | the lease itself |
+    // | `isOllamaModelPinnedInFlight` | the two session configs | `importPinnedOllamaModel` |
+    // | the ASR idle-unload timer | `cancelIdleTimer` / `noteTranscriptionComplete` | bracketed around the hold |
+    // | THIS one, WhisperKit Remove | dictation config + minting flag | the lease term below |
+    //
+    // Sweeping that list found exactly one gap, this seam: an All Languages
+    // import held the engine while Remove deleted the model out from under it,
+    // because the closure asked only about DICTATION. `isBusy` is the universal
+    // answer — every workload that can occupy the one inference slot takes the
+    // claim — and it stays true after Stop until the cancelled work has
+    // physically exited, which is the window the refusal most needs to cover.
+    // Found by Codex; the sweep is mine.
+    setup.whisperKitSetup.isDictationInFlight = {
+      [weak settingsSync, weak engineCoordinator, weak engineLease] in
       (settingsSync?.isWhisperKitDictationInFlight() ?? true)
         || (engineCoordinator?.isMintingWhisperKitSession ?? true)
+        || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()
 
@@ -1513,6 +1740,7 @@ private struct MainWindowRoot: View {
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
       .environment(b.transcriptCoordinator)
+      .environment(b.fileImportCoordinator)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

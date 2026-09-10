@@ -47,6 +47,9 @@ import Testing
     /// What the recovery notice's Discard button reached, and whether the notice
     /// was still up when it did (#2292 C4b).
     let discards: DiscardProbe
+    /// #2648: the real claim the starter was wired to, so an admission row can
+    /// hold it as another workload before pressing record.
+    let engineLease: EngineLease
   }
 
   /// What the pill is showing, as a person would describe it (#2292 C6).
@@ -74,6 +77,21 @@ import Testing
       return false
     }
     return notice.kind == .recovery
+  }
+
+  /// #2648 — the shared-resource refusal, read as the sentence a person sees.
+  ///
+  /// A `.warning` intent renders as a `.notification` notice whose `text` IS
+  /// `DictationNarrator.copy(for:)` (`PillCatalog.swift:210-216`), so comparing
+  /// against the narrator asserts the rendered sentence without freezing a
+  /// second copy of the words in this file.
+  private static func showsSharedEngineBusy(
+    _ overlay: OverlayDirector, holder: SharedEngineHolder
+  ) -> Bool {
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else {
+      return false
+    }
+    return notice.text == DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
   }
 
   private static func showsRecording(_ overlay: OverlayDirector) -> Bool {
@@ -143,6 +161,7 @@ import Testing
     )
     let lastRecordingResult = LastRecordingResult()
     let discards = DiscardProbe()
+    let engineLease = EngineLease()
     // `recovering` is a captured var both the arm closure (mutates) and the gate
     // closure (reads) share — lets a test flip recovery ON during the arm await
     // (#1063 PR2: the post-arm re-check). Both run on the MainActor.
@@ -187,7 +206,11 @@ import Testing
         discardActive: {
           discards.count += 1
           discards.noticeWasStillUp.append(Self.showsRecoveryOffer(overlay))
-        })
+        }),
+      // #2648: a REAL lease, not the always-allow seam. The admission rows hold
+      // it as another workload and assert both start routes refuse, which a seam
+      // that always says yes could not show.
+      engineAdmission: .live(lease: engineLease, as: .dictation)
     )
     return Fixture(
       starter: starter,
@@ -202,7 +225,8 @@ import Testing
       overlay: overlay,
       overlayHost: overlayHost,
       settings: settings,
-      discards: discards
+      discards: discards,
+      engineLease: engineLease
     )
   }
 
@@ -637,6 +661,199 @@ import Testing
     #expect(outcome == .noRecording)
   }
 
+
+  // MARK: - #2648 shared-resource admission
+
+  /// **This is the pair the whole safety promise rests on.** `RecordingStarter`
+  /// has exactly two non-private methods that begin a recording, and its ceiling
+  /// suite caps that surface at 3, so a third route cannot be added without
+  /// failing `RecordingStarterCeilingsTests.nonPrivateMethodCount` first. These
+  /// rows cover both of the two that exist.
+  ///
+  /// A pair is the dangerous number: gating one reads exactly like gating both
+  /// (`workflow-process.md`
+  /// RULE: fix-the-path-that-runs-first-not-the-one-you-were-reading), and the
+  /// first draft of this feature gated a facade the hotkey does not even call.
+
+  @Test func pttStartIsRefusedWhileAnotherWorkloadHoldsTheResource() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted = fx.engineLease.admit(.fileImport) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+
+    let outcome = await fx.starter.start()
+
+    #expect(outcome == .noRecording)
+    #expect(fx.kernelDriver.state == .idle, "a refused press must mint no session")
+    #expect(
+      Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport),
+      "the refusal must reach the user, naming the job to wait for")
+  }
+
+  @Test func toggleStartIsRefusedWhileAnotherWorkloadHoldsTheResource() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted = fx.engineLease.admit(.fileImport) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.kernelDriver.state == .idle, "a refused press must mint no session")
+    #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport))
+  }
+
+  /// A refused press must not disturb the claim it lost to. Releasing someone
+  /// else's claim would be worse than refusing wrongly: the import would keep
+  /// running while a dictation walked into the same inference slot.
+  @Test func aRefusedPressLeavesTheResourceWithItsHolder() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    _ = fx.engineLease.admit(.fileImport)
+
+    _ = await fx.starter.start()
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.engineLease.isBusy)
+    #expect(fx.engineLease.currentHolder == .fileImport)
+  }
+
+  /// The refusal is a refusal, not a wedge: once the other workload finishes,
+  /// the very next press gets past this gate.
+  @Test func bothRoutesGetPastTheGateOnceTheResourceIsFree() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted(let importToken) = fx.engineLease.admit(.fileImport) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+    _ = await fx.starter.start()
+    #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport))
+
+    #expect(fx.engineLease.release(importToken))
+    fx.lastRecordingResult.polishError = "from the previous take"
+    _ = await fx.starter.start()
+
+    // The oracle is a POSITIVE signal from past the gate, not the absence of the
+    // pill. The refusal pill stays on screen until something replaces it, so
+    // "the busy pill is gone" would be asserting that a later step happened to
+    // draw over it. Clearing the previous take's polish error is the first thing
+    // both routes do AFTER the claim, so it says the press got through.
+    #expect(
+      fx.lastRecordingResult.polishError == nil,
+      "a press after the release was still refused for a job that has finished")
+  }
+
+  /// The same row for the OTHER route. The first draft covered `start()` only,
+  /// which is the pair trap this whole gate exists inside: one route passing
+  /// reads exactly like both passing.
+  @Test func theToggleRouteGetsPastTheGateOnceTheResourceIsFree() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted(let importToken) = fx.engineLease.admit(.fileImport) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+    await fx.starter.toggle(source: .toggleHotkey)
+    #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport))
+
+    #expect(fx.engineLease.release(importToken))
+    fx.lastRecordingResult.polishError = "from the previous take"
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    // Same positive oracle as the PTT row above, and for the same reason.
+    #expect(
+      fx.lastRecordingResult.polishError == nil,
+      "the toggle route was still refused for a job that has finished")
+  }
+
+  // **Stopping is never refused — and this suite cannot stage it.** A toggle that
+  // would STOP a running dictation must not consult the claim at all, because
+  // the running session IS the holder: a lease-first toggle would refuse the
+  // user's own stop and leave the recording running with no way to end it. The
+  // guard for that is structural (the claim sits inside `isStartingFromIdle`),
+  // and staging it needs a driver in `.recording`, which `KernelDictationDriver`
+  // exposes no seam for — `state` is computed (`:739`). Asserting it here would
+  // need a fake driver, which would test the fake.
+  //
+  // It is covered as Live UAT instead, on the real app: start a dictation, press
+  // the toggle, confirm it stops. Named here so the gap is visible rather than
+  // absent (#2648).
+
+  /// Ordering, asserted rather than described: recovery refuses FIRST on both
+  /// routes, so the user keeps the pill that carries Discard even though the
+  /// replay is also holding the shared claim.
+  @Test func recoveryRefusalWinsOverTheClaimOnBothRoutes() async {
+    for useToggle in [false, true] {
+      let fx = Self.makeFixture(isRecovering: true)
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      // The replay holds the claim too, which is what a real replay does.
+      _ = fx.engineLease.admit(.crashRecovery)
+
+      if useToggle {
+        await fx.starter.toggle(source: .toggleHotkey)
+      } else {
+        _ = await fx.starter.start()
+      }
+
+      #expect(
+        Self.showsRecoveryOffer(fx.overlay),
+        "the \(useToggle ? "toggle" : "PTT") route showed the generic refusal instead of Discard")
+    }
+  }
+
+  /// **The leak row.** A start that claims the resource and then aborts before
+  /// minting anything has to hand it back, or the next press is refused for a
+  /// dictation that never happened — a limb permanently blocking the heart path.
+  ///
+  /// `recoveringDuringArm` drives the abort through a real gate: recovery starts
+  /// during the recovery-arm await, and the post-arm re-check bails after the
+  /// claim was already taken.
+  @Test func aStartThatAbortsAfterClaimingHandsTheResourceBack() async {
+    let fx = Self.makeFixture(recoveringDuringArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    _ = await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .idle, "the fixture must actually abort for this row to mean anything")
+    #expect(fx.engineLease.isBusy == false, "an aborted start left the shared resource claimed")
+  }
+
+  @Test func aToggleThatAbortsAfterClaimingHandsTheResourceBack() async {
+    let fx = Self.makeFixture(recoveringDuringArm: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    await fx.starter.toggle(source: .toggleHotkey)
+
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.engineLease.isBusy == false, "an aborted toggle left the shared resource claimed")
+  }
+
+  /// A press refused by RECOVERY must not take the claim on its way out either.
+  /// Recovery is refused one gate earlier precisely so its own pill, with its
+  /// Discard button, is what the user sees.
+  @Test func aRecoveryRefusalNeverTouchesTheSharedResource() async {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    _ = await fx.starter.start()
+
+    #expect(Self.showsRecoveryOffer(fx.overlay), "recovery owns this refusal, not the shared claim")
+    #expect(fx.engineLease.isBusy == false)
+  }
+
 }
 
 /// Counts accessibility-refresh invocations for #904. A `@MainActor` reference
@@ -645,4 +862,5 @@ import Testing
 @MainActor
 private final class AXRefreshCounter {
   var count = 0
+
 }

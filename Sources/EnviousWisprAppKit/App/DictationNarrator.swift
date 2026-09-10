@@ -176,6 +176,27 @@ enum DictationNarrator {
       case (.otherInterruption, false):
         return "Recording interrupted. Text may be cut short."
       }
+    // #2648. Says what the user has to act on: nothing was recorded, and when
+    // to try again. The mechanism is a single inference slot they have never
+    // heard of, so the words name the JOB that is using it instead.
+    //
+    // **Length is a constraint, not a preference.** This renders in the 280x44
+    // single-line notification pill (`PillCatalog.swift:210-216`), which
+    // TRUNCATES rather than wrapping. Live UAT on 2026-09-09 showed the first
+    // draft on screen as "A file is being transcribed. Try ag..." — the half
+    // telling the user what to do was the half that got cut. The shipped
+    // neighbours in this same pill top out around 46 characters
+    // ("Microphone disconnected. Text may be cut short."), so these stay under
+    // that. `DictationNarratorTests` holds the ceiling.
+    case .sharedEngineBusy(let holder):
+      switch holder {
+      case .fileImport:
+        return "A file is being transcribed. Try again soon."
+      case .crashRecovery:
+        return "Finishing an earlier take. Try again soon."
+      case .dictation:
+        return "Already recording."
+      }
     }
   }
 

@@ -178,6 +178,18 @@ final class RecoveryCoordinator {
   /// in explicitly via `.alwaysAllowedForTesting`.
   private let recoveryEngineClaim: RecoveryEngineClaim
 
+  /// #2648 — the shared ASR-and-polish resource, claimed for the whole of one
+  /// replay item.
+  ///
+  /// Separate from `recoveryEngineClaim` above because the two answer different
+  /// questions and neither implies the other: that one keeps recovery away from
+  /// engine MUTATION and deliberately admits several mutations at once
+  /// (`EngineRecoveryGate.swift:56-59`); this one admits exactly one WORKLOAD.
+  /// A replay runs the same polish server a file import would
+  /// (`RecoveryTextProcessor.swift:62`), so recovery has to hold it too, or an
+  /// import could start underneath a replay.
+  private let engineAdmission: EngineAdmissionAccess
+
   /// #1707 Phase 3 (§3.1) — set by `RecordingStarter`'s refusal path when a
   /// live record-press was refused because recovery held the engine. Checked
   /// before each item's handshake so a multi-item scan yields the engine
@@ -234,6 +246,7 @@ final class RecoveryCoordinator {
     existingRecoveryIDs: @escaping @MainActor () async -> Set<String>,
     isDictationActive: @escaping @MainActor () -> Bool,
     recoveryEngineClaim: RecoveryEngineClaim,
+    engineAdmission: EngineAdmissionAccess,
     resetEngine: @escaping @MainActor () -> Void = {}
   ) {
     self.keyStore = keyStore
@@ -242,6 +255,7 @@ final class RecoveryCoordinator {
     self.existingRecoveryIDs = existingRecoveryIDs
     self.isDictationActive = isDictationActive
     self.recoveryEngineClaim = recoveryEngineClaim
+    self.engineAdmission = engineAdmission
     self.resetEngine = resetEngine
   }
 
@@ -1313,6 +1327,22 @@ final class RecoveryCoordinator {
         // when it releases, so stopping here is never a stranded deferral.
         return false
       }
+      // #2648 — the shared resource, claimed for this item and held across the
+      // whole replay. Refused means a dictation or a file import is using it;
+      // the spools stay on disk and the next scan retries, exactly as the two
+      // guards above do. Ordered AFTER the mutation gate so a refusal here
+      // cannot strand that gate's `recoveryRetryOwed` wake-up: the `defer`
+      // below releases both.
+      let engineTokenForThisItem: EngineLease.Token
+      switch engineAdmission.claim() {
+      case .granted(let token):
+        engineTokenForThisItem = token
+      case .refused(let holder):
+        RecoveryLog.line(
+          "deferred — the shared engine is held by \(holder.rawValue); spools stay on disk")
+        recoveryEngineClaim.end()
+        return false
+      }
       isRecovering = true
 
       activeRecoveryID = id
@@ -1327,6 +1357,20 @@ final class RecoveryCoordinator {
         activeRecoveryID = nil
         isRecovering = false
         recoveryEngineClaim.end()
+        // #2648 — released after `replayer.replay` returns. **This bounds
+        // ownership by caller lifetime; it does not prove underlying inference
+        // has stopped.** Releasing earlier — at the point a stop is decided —
+        // would be strictly worse, because the replay can still be inside the
+        // polish server then.
+        //
+        // A replay that never returns therefore never releases. That is not new:
+        // `isRecovering` is cleared by this same `defer`, so a wedged replay
+        // already blocked every record press before this claim existed
+        // (`RecordingStarter`'s recovery gate). WhisperKit is the known case —
+        // `WhisperKitBackend.swift:537` says cancellation depends on
+        // transcription returning, and Discard's `unload()` does not interrupt a
+        // running Core ML decode.
+        engineAdmission.release(engineTokenForThisItem)
         onRecoveryComplete?()
       }
       // #1762: BEFORE the await, not after. If the process wedges or dies inside

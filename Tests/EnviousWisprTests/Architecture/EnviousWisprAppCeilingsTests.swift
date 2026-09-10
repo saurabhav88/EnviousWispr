@@ -190,9 +190,15 @@ import Testing
       // needs for the onboarding-dismissal policy change. ONE property, not two:
       // the panel seam is consumed by collaborators and is passed through rather
       // than retained here.
-      count <= 42,
+      // #2648: 42 -> 43. `fileImportCoordinator`, Transcribe a File's state
+      // machine. It is held here, on the composition root, for the reason this
+      // cap's own note gives: a new App-owned home belongs on the App struct.
+      // The job outlives every view that shows it — leaving the page and coming
+      // back has to land on whatever the run reached — so a view could not own
+      // it, and the sidebar's running indicator reads the same object.
+      count <= 43,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 41. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 43. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

@@ -41,6 +41,17 @@ final class DictationLifecycleCoordinator {
   let languageSuggestionPresenter: LanguageSuggestionPresenter?  // 10
   let recordingLockedAccess: RecordingLockedAccess  // 11
 
+  /// #2648 — hands the shared-resource claim back when a session reaches a
+  /// terminal state.
+  ///
+  /// A bare closure, not a package: it is ONE capability, matching how
+  /// `RecordingStarter` stores `beginMinting` / `endMinting`. It is also not a
+  /// collaborator by the ceiling parser's definition, so this home's
+  /// collaborator cap is unchanged at 12 — said out loud rather than left for a
+  /// reader to notice, because the method cap in the same suite DID have to be
+  /// raised for `acceptEngineToken` below.
+  let releaseEngineClaim: @MainActor (EngineLease.Token) -> Void
+
   /// Bidirectional accessor for the hands-free `isRecordingLocked` flag (rehomed
   /// onto `LiveRecordingState` in PR-C.3 of #763). The state-change closure both
   /// READS the lock state (to pass into
@@ -71,6 +82,23 @@ final class DictationLifecycleCoordinator {
   /// #1342: exact-once start/stop sound cue, tracked per backend. `var`, not
   /// `let` — excluded from the collaborator ceiling by design.
   private var recordingSoundCue = RecordingSoundCue()
+
+  /// #2648 — the running session's claim on the shared ASR-and-polish resource,
+  /// handed over by `RecordingStarter` at the moment the session was minted,
+  /// **paired with the backend that minted it**.
+  ///
+  /// It lives here rather than on the start path because both start methods
+  /// RETURN while the recording is still running
+  /// (`RecordingStarter.swift:437-497`, `:610-626`), so a release on the way out
+  /// of `start()` would admit a file import into the middle of a live dictation.
+  /// Owned mutable state, so it is excluded from the collaborator ceiling.
+  ///
+  /// **The backend is stored because both handlers below read the same slot.**
+  /// Without it, a terminal transition published by the backend that is NOT
+  /// running this session releases the running session's claim, and the release
+  /// looks entirely correct at the site that performs it. Found by cloud review
+  /// of this chunk.
+  private var liveEngineToken: (token: EngineLease.Token, backend: LastCapturingBackend)?
 
   /// Cancellable Task for the deferred polish-failed warning overlay. Cancelled
   /// on every new recording start. Shared across both backends because the
@@ -156,7 +184,8 @@ final class DictationLifecycleCoordinator {
     settings: SettingsManager,
     lastRecordingResult: LastRecordingResult,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
-    recordingLockedAccess: RecordingLockedAccess
+    recordingLockedAccess: RecordingLockedAccess,
+    releaseEngineClaim: @escaping @MainActor (EngineLease.Token) -> Void
   ) {
     self.application = application
     self.kernelDriver = kernelDriver
@@ -170,6 +199,7 @@ final class DictationLifecycleCoordinator {
     self.lastRecordingResult = lastRecordingResult
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.recordingLockedAccess = recordingLockedAccess
+    self.releaseEngineClaim = releaseEngineClaim
   }
 
   /// Wire the two pipelines' `onStateChange` callbacks. Called once by the
@@ -194,6 +224,21 @@ final class DictationLifecycleCoordinator {
     }
     whisperKitKernelDriver.onSessionEndedWithoutSave = { [weak self] id, ending in
       self?.onRecordingEndedWithoutDurableSave(id, ending)
+    }
+    // #2648: the shared-resource claim comes back on the kernel's ACCEPTED
+    // terminal, not on the published state.
+    //
+    // The published state was the first design and it was wrong in a way that is
+    // reachable today, without file import: an error pinned during finalization
+    // publishes a terminal while the kernel is still finalizing, and crash
+    // recovery — which competes for this same claim — takes it and starts a
+    // replay while the first take is still in the polish server. Found by cloud
+    // review, which also supplied the sequence.
+    kernelDriver.onSessionTerminalAccepted = { [weak self] _ in
+      self?.releaseEngineClaimIfHeld(mintedBy: .parakeet)
+    }
+    whisperKitKernelDriver.onSessionTerminalAccepted = { [weak self] _ in
+      self?.releaseEngineClaimIfHeld(mintedBy: .whisperKit)
     }
     // #930: the overlay-only sub-status channel. A `.transcribing` →
     // `.polishing` flip mid-`.finalizing` does NOT change the public
@@ -496,6 +541,39 @@ final class DictationLifecycleCoordinator {
   /// stale warning from the previous session cannot race the new dictation's
   /// visual feedback. PR10 will inline this when start/stop/cancel migrate
   /// into the recording-state homes; this method retires with it.
+  /// #2648 — takes ownership of this session's claim on the shared resource,
+  /// naming the backend that minted it.
+  ///
+  /// Called once per minted session, by whichever start route minted it. A
+  /// second call before the first session ends would mean two live sessions,
+  /// which the claim itself makes impossible; if it ever happened, the earlier
+  /// token would be dropped rather than released, so it is released here first.
+  func acceptEngineToken(_ token: EngineLease.Token, mintedBy backend: LastCapturingBackend) {
+    if let liveEngineToken { releaseEngineClaim(liveEngineToken.token) }
+    liveEngineToken = (token, backend)
+  }
+
+  /// Hands the claim back on the kernel's ACCEPTED terminal, **and only for the
+  /// backend that minted it**.
+  ///
+  /// Driven from `onSessionTerminalAccepted` for both backends, which fires
+  /// exactly once per take from `finishTerminal`'s own `defer` — after the
+  /// guards, unreachable from a stale or losing terminal, and independent of the
+  /// published state that an external reason can pin early.
+  ///
+  /// The backend check is what keeps two call sites from being worse than one:
+  /// the idle engine reaches terminals too, and an unmatched release hands the
+  /// shared resource away while the running session is still using it.
+  ///
+  /// A repeated or unrelated completion does nothing: the claim is cleared
+  /// before it is handed back, and a token that is not the live one cannot
+  /// release it (`EngineLease.release`).
+  private func releaseEngineClaimIfHeld(mintedBy backend: LastCapturingBackend) {
+    guard let held = liveEngineToken, held.backend == backend else { return }
+    liveEngineToken = nil
+    releaseEngineClaim(held.token)
+  }
+
   func cancelPendingWarning() {
     postCompletionWarningTask?.cancel()
   }

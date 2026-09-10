@@ -386,6 +386,25 @@ internal final class TextProcessingRunner {
         let isCancellationLike =
           error is CancellationError
           || (error as? URLError)?.code == .cancelled
+
+        // #2648: **the set of silent skips, named ONCE and read twice.**
+        //
+        // These five terms already decided, below, whether the user is shown a
+        // failure. They are therefore also the answer to "was this a bypass",
+        // and the two questions cannot be allowed to disagree — which is exactly
+        // what happened when the bypass flag was derived from
+        // `PolishSkipReason(silentLLMError:)` alone: a context-window skip, an
+        // Apple Intelligence timeout and an EG-1 timeout are all silent HERE and
+        // were reported to the file-import user as failed cleanup. Two rounds of
+        // review found two different members of this set; the third stopped
+        // extending the list and read the expression that produces it.
+        //
+        // `localPolishSkipReason` is deliberately NOT a member: that branch
+        // SURFACES a skipped-tone notice, so the user has already been told.
+        let polishSkippedSilently =
+          isSilentPolishSkip || contextWindowSkip != nil || isAppleIntelligencePolishTimeout
+          || isLocalEnginePolishTimeout || isCancellationLike
+        if polishSkippedSilently { context.polishWasBypassed = true }
         if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed
@@ -393,11 +412,7 @@ internal final class TextProcessingRunner {
           polishError =
             skipReason.ollamaPreflightSkipMessage
             ?? skipReason.composedMessage(provider: .ollama)
-        } else if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
-          && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
-          && !isLocalEnginePolishTimeout
-          && !isCancellationLike
-        {
+        } else if step.errorSurfacePolicy == .surface && !polishSkippedSilently {
           let model = polishModelAtStart ?? "unknown"
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
             // Cloud (OpenAI/Gemini) or local (Ollama): classify the specific

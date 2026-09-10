@@ -133,7 +133,8 @@ struct HotkeyControllerAbandonmentDisarmTests {
         lastUserStopAccess: finalizer.lastUserStopAccess,
         lastRecordingResult: LastRecordingResult(),
         dictationLifecycleCoordinator: nil,
-      recovery: .disabled)
+        // #2648: hotkey disarm behaviour, not admission — the frozen seam.
+        recovery: .disabled, engineAdmission: .alwaysAllowedForTesting)
       let controller = HotkeyController(
         hotkeyService: hotkey, starter: starter, finalizer: finalizer, settings: settings)
       return Fixture(controller: controller, hotkeyService: hotkey, kernelDriver: pipeline)

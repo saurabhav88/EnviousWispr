@@ -168,6 +168,39 @@ import Testing
         == "Recording interrupted. Words may be missing.")
   }
 
+  /// #2648's shared-resource refusal. **These three are NOT founder-locked** —
+  /// they are new copy shipped with the engine claim, pinned here so a later
+  /// edit is a deliberate one. Every holder is covered, from the enum itself
+  /// rather than from a list written by hand, because the sentence a user reads
+  /// depends on WHICH job is using the engine.
+  @Test(
+    "every shared-engine holder has its own sentence, and none of them mentions a slot",
+    arguments: SharedEngineHolder.allCases)
+  func sharedEngineBusyCopy(_ holder: SharedEngineHolder) {
+    let expected: [SharedEngineHolder: String] = [
+      .fileImport: "A file is being transcribed. Try again soon.",
+      .crashRecovery: "Finishing an earlier take. Try again soon.",
+      .dictation: "Already recording.",
+    ]
+    let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
+    #expect(sentence == expected[holder])
+    // **The pill truncates rather than wrapping**, and Live UAT on 2026-09-09
+    // caught the first draft on screen as "A file is being transcribed. Try
+    // ag..." — losing exactly the half that tells the user what to do. 46 is
+    // the longest shipped sentence in this same 280x44 pill
+    // ("Microphone disconnected. Text may be cut short.").
+    #expect(
+      sentence.count <= 46,
+      "\(sentence.count) characters will be cut off in the pill: \(sentence)")
+    // The user has never heard of an inference slot, a lease or a claim; the
+    // words name the job to wait for instead.
+    for jargon in ["slot", "lease", "claim", "engine", "resource"] {
+      #expect(
+        !sentence.lowercased().contains(jargon),
+        "the refusal sentence for \(holder) leaked the mechanism: \(sentence)")
+    }
+  }
+
   /// Only a VERIFIED device removal may name the microphone. If this fails, a
   /// user whose engine died with the mic still attached is being lied to.
   @Test("the neutral interruption family never mentions the microphone")

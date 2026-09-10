@@ -33,14 +33,26 @@ import Testing
     // tightening a cap on the back of a counter fix would fail the next PR for
     // a reason that has nothing to do with it. Ratchet when a real removal
     // lands.
+    // #2648: 7 -> 8. `engineAdmission`, the claim on the shared ASR-and-polish
+    // resource. Both start routes have to consult it, and the claim has to
+    // outlive the call, so it is a real dependency of this home rather than
+    // something the composition root can hold on its behalf.
+    //
+    // Raised rather than dodged, deliberately. The two shapes that would have
+    // kept the number at 7 were both available and both worse: hiding it inside
+    // the existing `RecoveryAccess` package (recovery's domain, not this one),
+    // or storing it as a bare closure purely because the closure bin had room.
+    // Picking a shape to satisfy a counter is how a cap stops measuring
+    // anything. The SUM cap below is unchanged and is what actually holds.
     #expect(
-      count <= 7,
+      count <= 8,
       """
-      RecordingStarter collaborator ceiling exceeded: \(count) > 7. \
+      RecordingStarter collaborator ceiling exceeded: \(count) > 8. \
       Allowed: audioCapture, asrManager, kernelDriver, whisperKitKernelDriver, \
-      settings, recordingOverlay. Note the closure cap below — a dependency \
-      added as a bare closure does not land here, which is the point of having \
-      both. Raising the ceiling requires a Bible §30 entry.
+      settings, recordingOverlay, recovery, engineAdmission. Note the closure \
+      cap below — a dependency added as a bare closure does not land here, \
+      which is the point of having both. Raising the ceiling requires a Bible \
+      §30 entry.
       """)
   }
 

@@ -198,6 +198,8 @@ struct UnifiedWindowView: View {
       page(.appearance) { AppearanceSettingsView() }
     case .speechEngine:
       page(.speechEngine) { SpeechEngineSettingsView() }
+    case .transcribeFile:
+      page(.transcribeFile) { TranscribeFileView() }
     case .livePreview:
       page(.livePreview) { LivePreviewSettingsView(packs: livePreviewPacks) }
     case .audio:

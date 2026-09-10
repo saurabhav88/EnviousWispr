@@ -84,6 +84,9 @@ struct RecoveryCoordinatorTests {
     /// construction (e.g. from a concurrently-spawned Task simulating a live
     /// press that mints its own session mid-scan).
     let dictationActiveBox: Box<Bool>
+    /// #2648: the real claim on the shared ASR-and-polish resource, so a row can
+    /// hold it as another workload and assert a replay defers.
+    let engineLease: EngineLease
   }
 
   /// `existing` and `dictationActive` are boxed so a test can mutate them after
@@ -106,6 +109,7 @@ struct RecoveryCoordinatorTests {
     // The probe needs the coordinator, set after construction.
     var coordinatorRef: RecoveryCoordinator?
     let replayer = FakeReplayer(isRecoveringProbe: { coordinatorRef?.isRecovering ?? false })
+    let engineLease = EngineLease()
     let coordinator = RecoveryCoordinator(
       keyStore: keyStore,
       makeSpoolStore: { RecoverySpoolStore(directory: spoolDir) },
@@ -113,12 +117,16 @@ struct RecoveryCoordinatorTests {
       existingRecoveryIDs: { existingBox.value },
       isDictationActive: { activeBox.value },
       recoveryEngineClaim: recoveryEngineClaim,
+      // #2648: a real lease, so a row can hold it as a file import and watch a
+      // replay item defer rather than run on top of one.
+      engineAdmission: .live(lease: engineLease, as: .crashRecovery),
       resetEngine: { resetEngineCount.value += 1 })
     coordinatorRef = coordinator
     return Harness(
       coordinator: coordinator, keyStore: keyStore,
       spoolStore: RecoverySpoolStore(directory: spoolDir), replayer: replayer,
-      resetEngineCount: resetEngineCount, dictationActiveBox: activeBox)
+      resetEngineCount: resetEngineCount, dictationActiveBox: activeBox,
+      engineLease: engineLease)
   }
 
   private static func writeSpool(_ store: RecoverySpoolStore, _ id: String) throws {
@@ -1103,6 +1111,55 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - #1707 Phase 3: nextLaunchOnlyRecoveryIDs
 
+  // MARK: - #2648 the shared ASR-and-polish resource
+
+  /// A replay runs the same polish server a file import does
+  /// (`RecoveryTextProcessor.swift:62`), so recovery has to take the same
+  /// one-workload claim. While an import holds it, the orphan stays on disk and
+  /// the next scan retries — exactly what the two contention guards beside it
+  /// already do for a live dictation and an engine switch.
+  ///
+  /// **When this fails, an import and a crash replay run on one inference slot
+  /// at the same time**, and the user's recovered take comes back unpolished
+  /// while the import's parts queue behind it.
+  @Test("a replay defers while another workload holds the shared engine")
+  func replayDefersWhileTheSharedEngineIsHeld() async throws {
+    let h = Self.makeHarness()
+    let orphanID = "held-engine-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, orphanID)
+    guard case .granted(let importToken) = h.engineLease.admit(.fileImport) else {
+      Issue.record("a fresh lease refused the first claim")
+      return
+    }
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(h.replayer.replayedIDs.isEmpty, "no replay may start while the engine is held")
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: orphanID).path),
+      "a deferred orphan stays on disk")
+
+    // And it is a deferral, not a discard: once the import finishes, the next
+    // scan picks the same orphan up.
+    #expect(h.engineLease.release(importToken))
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs == [orphanID])
+  }
+
+  /// The claim is handed back when the item finishes, or the first crash replay
+  /// after launch would block every dictation for the life of the app.
+  @Test("a finished replay hands the shared engine back")
+  func aFinishedReplayReleasesTheSharedEngine() async throws {
+    let h = Self.makeHarness()
+    let orphanID = "release-after-replay-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, orphanID)
+
+    await h.coordinator.scanAndRecover()
+
+    #expect(h.replayer.replayedIDs == [orphanID], "the fixture must actually replay")
+    #expect(h.engineLease.isBusy == false, "a finished replay left the shared engine claimed")
+  }
+
   /// #1740 narrowed this to ONE case: `.failed(.saveMarkerClearFailed)` no longer
   /// exists, and launch-replay `.failed(.save)` now DELETES and relies on its
   /// committed marker rather than on this set.
@@ -1585,7 +1642,9 @@ struct RecoveryCoordinatorTests {
       replayer: replayer,
       existingRecoveryIDs: { [] },
       isDictationActive: { false },
-      recoveryEngineClaim: .alwaysAllowedForTesting)
+      recoveryEngineClaim: .alwaysAllowedForTesting,
+      // #2648: this row is about a failing key store, not admission.
+      engineAdmission: .alwaysAllowedForTesting)
     let result = await coordinator.makeDirective(
       settings: Self.freshSettings(crashRecoveryEnabled: true),
       backendType: .parakeet, supportsLanguageDetection: false)

@@ -65,6 +65,12 @@ final class PipelineSettingsSync {
   /// cannot observe a request that was never scheduled.
   var evictionScheduler: ((String) -> Void)?
 
+  /// #2648 — see the initializer parameter of the same name.
+  private let importPinnedLocalProvider: @MainActor () -> LLMProvider?
+
+  /// #2648 — the Ollama model a RUNNING file import froze, or nil.
+  private let importPinnedOllamaModel: @MainActor () -> String?
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
@@ -73,8 +79,28 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
-    ollamaRemotenessLookup: @escaping (String) -> Bool?
+    ollamaRemotenessLookup: @escaping (String) -> Bool?,
+    /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
+    /// nil.
+    ///
+    /// `pinnedLocalProvider()` reads the two dictation drivers' session configs,
+    /// and an import has no session config, so switching provider mid-import
+    /// deactivated the very server the import was polishing through and the
+    /// remaining parts came back raw. Found by cloud review. Defaults to nil so
+    /// every existing construction is unchanged.
+    importPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
+    /// #2648 — the Ollama model a RUNNING file import froze, or nil.
+    ///
+    /// `isOllamaModelPinnedInFlight` reads the two DICTATION drivers' session
+    /// configs, and an import has no session config, so its frozen model was
+    /// unprotected: a provider or model change elsewhere in Settings evicted the
+    /// weights the remaining passages were about to use, and each one then paid
+    /// a reload it could exceed its polish deadline waiting for. Found by Codex.
+    /// Defaults to nil so every existing construction is unchanged.
+    importPinnedOllamaModel: @escaping @MainActor () -> String? = { nil }
   ) {
+    self.importPinnedLocalProvider = importPinnedLocalProvider
+    self.importPinnedOllamaModel = importPinnedOllamaModel
     self.kernelDriver = kernelDriver
     self.whisperKitKernelDriver = whisperKitKernelDriver
     self.audioCapture = audioCapture
@@ -424,6 +450,9 @@ final class PipelineSettingsSync {
   /// for a take that is still running", and the answer has to say WHICH, so a
   /// switch back to the frozen engine is not needlessly deferred.
   func pinnedLocalProvider() -> LLMProvider? {
+    // #2648: the file import is a third holder of a bundled local server, and it
+    // has no session config for the loop below to read.
+    if let imported = importPinnedLocalProvider() { return imported }
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       // #2651: the optional is unwrapped BEFORE the switch, so `.none` means
       // `LLMProvider.none` and nothing else. Matching on `cfg?.llmProvider`
@@ -563,6 +592,9 @@ final class PipelineSettingsSync {
   /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
   /// a model the in-flight polish still needs.
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
+    // #2648: a file import is the THIRD workload that can have this model
+    // frozen, and it is the one with no `DictationSessionConfig` to read.
+    if importPinnedOllamaModel() == model { return true }
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && cfg.llmModel == model {

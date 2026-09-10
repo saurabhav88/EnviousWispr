@@ -55,6 +55,11 @@ final class DictationRuntime {
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
     recoveryCoordinator: RecoveryCoordinator,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
+    // #2648 — passed straight through to `RecordingStarter`, never stored here.
+    // This type owns no arbitration decision; it forwards the one seam the start
+    // path needs so the composition root stays the only place that knows the
+    // shared claim exists.
+    engineAdmission: EngineAdmissionAccess,
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?,
     resolveActiveTelemetryTarget: @escaping @MainActor () -> (any HeartPathTelemetryTarget)?,
@@ -127,6 +132,7 @@ final class DictationRuntime {
       // bare closures, so the starter stays off its collaborator cap and the
       // kernel never sees the coordinator.
       recovery: RecoveryWiring.access(binding: recoveryCoordinator),
+      engineAdmission: engineAdmission,
       // #1171: drive the selected engine to ready before recording, gate a press
       // during an in-flight switch, and hold the start-window state-gate so the
       // coordinator can't switch the engine out mid-startup.

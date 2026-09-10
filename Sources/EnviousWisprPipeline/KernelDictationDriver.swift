@@ -118,6 +118,23 @@ struct LimbSteps {
       inverseTextNormalization, llmPolish, emojiRestore,
     ]
   }
+
+  /// #2648 — the chain a FILE IMPORT runs: `orderedChain` minus snippet
+  /// expansion.
+  ///
+  /// **Snippet expansion is excluded because an imported recording is not the
+  /// user typing.** A literal trigger word spoken by somebody in a meeting would
+  /// be replaced with the user's saved text, silently putting words into a
+  /// transcript of someone else's speech.
+  ///
+  /// **Derived from `orderedChain`, never spelled out again.** Writing the list
+  /// a second time is precisely the defect the property above exists to prevent,
+  /// and the one that adding the snippet step surfaced: a new limb would reach
+  /// dictation and recovery and quietly skip every imported file.
+  @MainActor
+  var orderedChainForFileImport: [any TextProcessingStep] {
+    orderedChain.filter { !($0 is SnippetExpansionStep) }
+  }
 }
 
 /// Issue #1339: sessionless model-load wedge guard for `ensureEngineWarm`.
@@ -344,6 +361,23 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onSessionEndedWithoutSave: (@MainActor (String?, RecordingRecoveryEnding) -> Void)?
 
+  /// #2648 — fired exactly once per ACCEPTED terminal, carrying that take's id.
+  ///
+  /// **This is the raw kernel signal, NOT the published state.** Every other
+  /// "the dictation ended" hook on this type is driven by `state`, which applies
+  /// an external terminal reason on top of the kernel's own — so an error pinned
+  /// during finalization publishes a terminal while the kernel is still
+  /// finalizing and `RecordingSessionKernel.cancel()` is deliberately ignoring
+  /// cancellation (`RecordingSessionKernel.swift:1309`). A consumer that must
+  /// not act until the take is genuinely finished cannot use those.
+  ///
+  /// Wired by `KernelDictationDriverFactory` to the same `finishTerminal` defer
+  /// that delivers the terminal telemetry snapshot: set-once, after the guards,
+  /// unreachable from a stale or losing terminal. `@MainActor`, defaulted to
+  /// nil, so nothing in this module knows who consumes it.
+  @ObservationIgnored
+  public var onSessionTerminalAccepted: (@MainActor (String) -> Void)?
+
   /// #1707 Phase 3 (§3.4 wake-up table) — fired whenever this driver's
   /// dictation ends (from BOTH `fireStateChangeIfNeeded()`'s transition out
   /// of an active phase and `fireSessionEndedWithoutSaveIfNeeded()`): may
@@ -504,6 +538,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// joined_in_flight / success / failed) so that dashboard keeps continuity
   /// after this became the launch warm-up entry (replacing `loadModelSilently`).
   @discardableResult
+  /// Disarms this driver's engine's pending model-unload timer. See
+  /// `RecordingSessionKernel.cancelPendingEngineUnload()`.
+  public func cancelPendingEngineUnload() { kernel.cancelPendingEngineUnload() }
+
+  /// Re-arms it. The other half; call both or neither.
+  public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
+    kernel.applyEngineUnloadPolicy(policy)
+  }
+
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {

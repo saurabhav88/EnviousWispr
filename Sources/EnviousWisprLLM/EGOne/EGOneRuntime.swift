@@ -136,6 +136,25 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// download's auto-start. The deferred reconciliation retries once the
   /// recording ends, so a refused start is delayed, never lost.
   public var isBlockedByOtherPinnedSession: (@MainActor () -> Bool)?
+
+  /// Live "is another workload using the one inference slot right now?" read,
+  /// set by the composition root (#2648).
+  ///
+  /// **Suppresses the PROBE, never the activation.** The server launches with no
+  /// `-np`, so it serves one request at a time. A probe issued while a file
+  /// import is polishing a passage queues behind it for seconds and then reports
+  /// `probe_slow` or `probe_failed` for an engine that is perfectly healthy —
+  /// opening AI Polish mid-import was enough to do it. A health check that fails
+  /// because something else is legitimately using the engine is worse than no
+  /// health check. The engine still starts; only the verdict is skipped, and the
+  /// next activation takes one.
+  public var isSharedEngineBusy: (@MainActor () -> Bool)?
+
+  /// How many workloads the shared lease has admitted, ever. Read before and
+  /// after a health probe: any change means something occupied the one inference
+  /// slot while the probe was in flight, whatever the instantaneous busy flag
+  /// said at either end. See `EngineLease.admissionEpoch`.
+  public var sharedEngineAdmissionEpoch: (@MainActor () -> Int)?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -544,10 +563,27 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
+      // The engine is up either way; the QUESTION is what is skipped.
+      guard self.isSharedEngineBusy?() != true else { return }
+      // **The instrument measures the INTERVAL, not two instants.** Sampling
+      // "is it busy" before and after both read false for a workload that
+      // claimed and released inside the probe — a one-part re-polish does
+      // exactly that — while the probe queued behind it and came back slow. Two
+      // rounds of review each moved a sample; this reads a counter that cannot
+      // miss a visit however brief. Found by cloud review.
+      let epochBefore = self.sharedEngineAdmissionEpoch?()
       let result = await self.server.probeHealth(
         self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
+      // **The verdict is DISCARDED rather than the slot reserved**, deliberately.
+      // Taking the claim would be the atomic answer to a question nobody is
+      // asking: exclusivity is not wanted here, because a probe holding it would
+      // refuse a user's record press for the length of a health check. What this
+      // exists to prevent is publishing a verdict measured under contention, and
+      // dropping it does that. The next activation takes a fresh one.
+      guard self.isSharedEngineBusy?() != true else { return }
+      guard self.sharedEngineAdmissionEpoch?() == epochBefore else { return }
       if case .ready = self.serverState { self.health = result }
     }
   }

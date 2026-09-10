@@ -42,6 +42,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case whatsNew
   case appearance
   case speechEngine
+  case transcribeFile
   case livePreview
   case audio
   case recordingSounds
@@ -65,6 +66,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "What's New"
     case .appearance: return "Appearance"
     case .speechEngine: return "Transcription"
+    case .transcribeFile: return "Transcribe a File"
     case .livePreview: return "Live Preview"
     case .audio: return "Microphone"
     case .recordingSounds: return "Sounds"
@@ -88,6 +90,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "sparkle.magnifyingglass"
     case .appearance: return "circle.lefthalf.filled"
     case .speechEngine: return "waveform"
+    case .transcribeFile: return "waveform.badge.plus"
     case .livePreview: return "text.viewfinder"
     case .audio: return "speaker.wave.2"
     case .recordingSounds: return "bell.and.waveform"
@@ -114,6 +117,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     // joined this page. The old line described one section rather than the page.
     case .appearance: return "How the app looks, and the pill you see while dictating."
     case .speechEngine: return "The speech engine that turns your voice into text."
+    // #2648. Says what the user gets, not what the feature is: eight of thirteen
+    // competitors accept a file and the three r/macapps requests were a walk, a
+    // lecture and a meeting.
+    case .transcribeFile:
+      return "Turn a recording you already have into clean text."
     case .livePreview: return "See your words on screen while you are still speaking."
     case .audio: return "Choose your input source and readiness behavior."
     case .recordingSounds: return "Play a short sound when recording starts and stops."
@@ -137,7 +145,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   var group: SettingsGroup {
     switch self {
     case .history, .whatsNew, .appearance: return .app
-    case .speechEngine, .livePreview, .audio, .recordingSounds, .keybinds: return .record
+    case .speechEngine, .transcribeFile, .livePreview, .audio, .recordingSounds, .keybinds:
+      return .record
     case .aiPolish, .wordCorrection, .snippets: return .process
     case .clipboard: return .output
     case .permissions, .checkForUpdates, .openSourceLicenses: return .system

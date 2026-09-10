@@ -85,7 +85,10 @@ import Testing
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: LastRecordingResult(),
       dictationLifecycleCoordinator: nil,
-      recovery: .disabled
+      recovery: .disabled,
+      // #2648: this suite is about hotkey callback wiring, not admission, so it
+      // takes the frozen always-allow seam rather than a real lease.
+      engineAdmission: .alwaysAllowedForTesting
     )
     let controller = HotkeyController(
       hotkeyService: hotkey,
