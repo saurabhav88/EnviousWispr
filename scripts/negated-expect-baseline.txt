@@ -22,7 +22,7 @@
 13	Tests/EnviousWisprTests/App/DictationNarratorTests.swift
 2	Tests/EnviousWisprTests/App/EngineCoordinatorTests.swift
 10	Tests/EnviousWisprTests/App/EngineRecoveryGateTests.swift
-5	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift
+6	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift
 1	Tests/EnviousWisprTests/App/EscapeRecoveryPillLayoutTests.swift
 2	Tests/EnviousWisprTests/App/EscapeRecoveryPillTests.swift
 7	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift
@@ -186,14 +186,14 @@
 1	Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerNeighbourWindowTests.swift
 1	Tests/EnviousWisprTests/PostProcessing/MultiWordDomainSuffixTests.swift
 4	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift
-11	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift
+12	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift
 8	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift
 7	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift
 2	Tests/EnviousWisprTests/PostProcessing/VocabularyPackOverridesStoreTests.swift
 5	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift
 14	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift
 9	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift
-34	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift
+35	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift
 1	Tests/EnviousWisprTests/Recovery/RecoveryFailureCategoryTests.swift
 3	Tests/EnviousWisprTests/Recovery/RecoveryLogLabelTests.swift
 1	Tests/EnviousWisprTests/Recovery/RecoverySpoolCodecTests.swift

@@ -60,13 +60,46 @@ struct NegatedExpectRatchetTests {
   /// The two Swift Testing macros that take a boolean condition first.
   private static let conditionMacros: Set<String> = ["expect", "require"]
 
+  /// Peel one transparent layer off an expression, or return nil when there is none left.
+  ///
+  /// **The set is taken from the PRODUCING CODE, not from imagination.** These are every
+  /// single-child wrapper expression the pinned swift-syntax generates:
+  /// `grep -rhoE "public struct [A-Za-z]+ExprSyntax" <checkout>/Sources/SwiftSyntax/generated/`.
+  /// Re-run that when the pin moves. A wrapper this does not know about is a hole, and the
+  /// fixture row at the bottom of this file is what would notice one going missing.
+  ///
+  /// A parenthesised condition arrives as a one-element unlabelled tuple, which is why
+  /// `#expect((!value))` needs peeling too.
+  private static func peel(_ expr: ExprSyntax) -> ExprSyntax? {
+    if let e = expr.as(TryExprSyntax.self) { return e.expression }
+    if let e = expr.as(AwaitExprSyntax.self) { return e.expression }
+    if let e = expr.as(UnsafeExprSyntax.self) { return e.expression }
+    if let e = expr.as(BorrowExprSyntax.self) { return e.expression }
+    if let e = expr.as(ConsumeExprSyntax.self) { return e.expression }
+    if let e = expr.as(CopyExprSyntax.self) { return e.expression }
+    if let e = expr.as(TupleExprSyntax.self), e.elements.count == 1,
+      let only = e.elements.first, only.label == nil
+    {
+      return only.expression
+    }
+    return nil
+  }
+
   /// A hidden negation is a leading `!` on the macro's FIRST argument, which is the condition.
-  /// `#expect(!value)` and `#expect(!(x == y))` are the same node shape; a `!` anywhere else in the
-  /// expression is ordinary Swift and is not what the rule forbids.
+  ///
+  /// **The `!` is not necessarily the OUTERMOST node**, and reading it as if it were is how the
+  /// first version of this shipped a hole: `#expect(try !words.isEmpty)` arrives as a
+  /// `TryExprSyntax` wrapping the negation, so the check accepted it and the baseline undercounted
+  /// a real site in `SmartImportStableStoreTests`. Found by cloud review on PR #2771. Peel every
+  /// transparent layer first, then ask.
+  ///
+  /// A `!` anywhere else inside the condition is ordinary Swift and is not what the rule forbids.
   private static func isHiddenNegation(_ macro: MacroExpansionExprSyntax) -> Bool {
     guard conditionMacros.contains(macro.macroName.text) else { return false }
     guard let first = macro.arguments.first, first.label == nil else { return false }
-    guard let prefix = first.expression.as(PrefixOperatorExprSyntax.self) else { return false }
+    var condition = first.expression
+    while let inner = peel(condition) { condition = inner }
+    guard let prefix = condition.as(PrefixOperatorExprSyntax.self) else { return false }
     return prefix.operator.text == "!"
   }
 
@@ -213,22 +246,38 @@ struct NegatedExpectRatchetTests {
   @Test("the detector separates a hidden negation from an ordinary assertion")
   func theDetectorIsTwoWay() throws {
     let source = """
-      func rows() {
+      func rows() async throws {
         #expect(value == false)
+        #expect(a.contains("!"))
+        #expect(x != y)
+        somethingElse(!value)
+
         #expect(!value)
         #expect(!(x == y))
-        #expect(a.contains("!"))
+        #expect((!value))
+        #expect(try !thing().isEmpty)
+        #expect(await !thing())
+        #expect(try await !thing())
         #require(!maybe)
-        somethingElse(!value)
       }
       """
     let found = Self.counts(in: Syntax(Parser.parse(source: source)))
     #expect(
-      found.macros == 5,
-      "saw \(found.macros) condition macros in the fixture, expected 5")
+      found.macros == 10,
+      """
+      saw \(found.macros) condition macros in the fixture, expected 10. The `somethingElse(!value)`
+      row is not one of these macros and must never be counted as one.
+      """)
     #expect(
-      found.negated == 3,
-      "saw \(found.negated) hidden negations in the fixture, expected exactly the three leading `!`"
-    )
+      found.negated == 7,
+      """
+      saw \(found.negated) hidden negations in the fixture, expected 7.
+
+      The first three macro rows are honest and must NOT count: a comparison, a `!` inside a
+      string literal, and an inequality. The `!` on a non-macro call must not count either.
+
+      The last seven are the same negation wearing every wrapper the peel loop knows about. A
+      DROP means a wrapper stopped being peeled; a RISE means an honest row started counting.
+      """)
   }
 }
