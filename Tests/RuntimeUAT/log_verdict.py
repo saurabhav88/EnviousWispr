@@ -85,13 +85,13 @@ def collect_dictations(lines):
 
         c = CORRECTION.search(msg)
         if c:
-            head = c.group("head").strip()
+            head = c.group("head")
             is_out = bool(c.group("marker"))
             is_raw = c.group("step") == "RAW ASR"
             # Skip status ONLY on a bare, non-RAW row. RAW ASR is always content;
             # an OUT row is always real output even if it happens to read like a
-            # status word.
-            if not is_out and not is_raw and CORRECTION_STATUS.match(head):
+            # status word. Normalise with `.strip()` for the STATUS MATCH only.
+            if not is_out and not is_raw and CORRECTION_STATUS.match(head.strip()):
                 i += 1
                 continue
             body = [head]
@@ -99,7 +99,14 @@ def collect_dictations(lines):
             while j < len(lines) and not LINE.match(lines[j]):
                 body.append(lines[j].rstrip("\n"))
                 j += 1
-            text = "\n".join(body).strip()
+            # Preserve CONTENT whitespace: only surrounding blank lines are
+            # boundary noise, so strip newlines but never the indentation inside a
+            # line. Stripping the first line and the whole block changed indented
+            # output and made a reviewer see inconsistent indentation the app never
+            # produced (local Codex review, PR #2780; code-uat.md requires the
+            # reader preserve output shape). Emptiness is checked with `.strip()`
+            # elsewhere, so trailing spaces here do not leak into a verdict.
+            text = "\n".join(body).strip("\n")
             if c.group("step") == "RAW ASR":
                 # RAW ASR is the FIRST row of a dictation's processing chain, so
                 # start a fresh step set here. A file import ALSO runs
@@ -285,6 +292,15 @@ def _self_test():
           len(rb) == 1 and rb[0]["steps"]["LLM Polish"] == "Items:\n[x] one\n[y] two")
     # Empty input.
     check("empty input -> no record, no raise", collect_dictations([]) == [])
+
+    # Indented / blank-delimited output keeps its shape: stripping the first line
+    # while later lines keep their indent would fake inconsistent indentation
+    # (local Codex review, PR #2780).
+    indented = [d(1, "CORRECTION_DEBUG [LLM Polish] OUT:     first line"),
+                "    second line", t(2, terminal)]
+    rind = collect_dictations(indented)[0]
+    check("indented output keeps leading whitespace on every line",
+          rind["steps"]["LLM Polish"] == "    first line\n    second line")
 
     # A file import runs the polish engine but writes NO terminal row; a new RAW
     # ASR block starts a fresh step set so the import's steps do not leak into

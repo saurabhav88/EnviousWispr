@@ -373,6 +373,26 @@ def cmd_run(args):
         if level != "ok":
             print(f"HEADS UP: {detail}")
     full_head = _git("rev-parse", "HEAD")
+    # Build-vs-HEAD freshness for the receipt (local Codex review, PR #2780). The
+    # front door does NOT prove the running build == HEAD — that is the push
+    # gate's job — so if the running binary PREDATES HEAD's commit, these results
+    # are from an older build and stamping them with head_sha would misattribute
+    # them. Record what is verifiable: True (binary built at/after HEAD), False
+    # (older, stale), or None (cannot tell — no single instance at this worktree's
+    # path). A heads-up, never a gate.
+    head_commit_epoch = _git("show", "-s", "--format=%ct", "HEAD")
+    expected_bin = worktree + DEV_BUNDLE_SUFFIX
+    running_here = [p for p, path in running_enviouswispr_instances().items() if path == expected_bin]
+    build_matches_head = None
+    if len(running_here) == 1 and head_commit_epoch.isdigit():
+        try:
+            build_matches_head = os.path.getmtime(expected_bin) >= int(head_commit_epoch)
+        except OSError:
+            build_matches_head = None
+    if build_matches_head is False:
+        print("HEADS UP: the running build is OLDER than HEAD's commit, so these results are from a build that "
+              "predates this commit; head_sha would misattribute them. Rebuild + relaunch via "
+              "/wispr-rebuild-debug before trusting the saved revision.")
     run_dir = resolve_run_dir(args.run_dir, worktree)
 
     import wispr_eyes as w
@@ -465,6 +485,7 @@ def cmd_run(args):
         "harness_verdict": harness_verdict,
         "take": take,
         "head_sha": full_head,
+        "build_matches_head": build_matches_head,
         "skipped": False,
         "dictations": recs,
         "ran_at": now_iso(),
