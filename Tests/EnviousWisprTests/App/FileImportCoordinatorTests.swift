@@ -421,6 +421,27 @@ struct FileImportCoordinatorTests {
           coordinator.step == .done || coordinator.canGo(to: .done),
           "\(coordinator.step)/\(Self.label(for: coordinator.state)) strands the document")
       }
+      // **"Somewhere to move" was too weak, and round 9 proved it.** From a
+      // refused Review, going BACKWARDS was allowed, so the check passed — and
+      // the user who went back to change the engine could not come forward
+      // again, because Continue asked for a state a refusal had already left.
+      // The property is not "can move" but "can still get FORWARD", which is
+      // what reaches Start.
+      //
+      // Asserted one step at a time, deliberately: the wizard is a sequence, so
+      // "Review is reachable" IS "each next step is reachable", and demanding
+      // Review in one hop would fail Upload, which is correct behaviour.
+      if coordinator.isReadyToRun, !coordinator.isRunning,
+        let next = FileImportCoordinator.Step(rawValue: coordinator.step.rawValue + 1),
+        coordinator.step.rawValue < FileImportCoordinator.Step.review.rawValue
+      {
+        #expect(
+          coordinator.canGo(to: next, advancing: true),
+          """
+          \(coordinator.step)/\(Self.label(for: coordinator.state)) cannot go forward to \
+          \(next.title), so Start is unreachable with audio already in hand
+          """)
+      }
     }
 
     // Path A: the ordinary run, recorded at every step.
@@ -498,6 +519,21 @@ struct FileImportCoordinatorTests {
       record(d)
     }
 
+    // Path D2: refused for a busy engine, then Back to change the engine and
+    // forward again — the walk round 9 found, which no earlier path took.
+    let d2 = makeCoordinator(lease: EngineLease(), ensureEngineReady: { .notInstalled })
+    d2.choose(url: Self.anyURL)
+    _ = await settleUntil { if case .ready = d2.state { return true } else { return false } }
+    d2.advance(); d2.advance(); d2.advance(); d2.advance()
+    await settleUntil { d2.state == .rejected(.engineNotInstalled) }
+    record(d2)
+    d2.goBack(); record(d2)
+    d2.goBack(); record(d2)
+    d2.advance(); record(d2)
+    d2.advance()
+    #expect(d2.step == .review, "the user could not get back to Start after changing the engine")
+    record(d2)
+
     // Path E: a refusal WITH a document in hand.
     let lease = EngineLease()
     let e = await finishedCoordinator(lease: lease)
@@ -527,8 +563,11 @@ struct FileImportCoordinatorTests {
       "done/stopped",
       "done/rejected",
       // An ENGINE refusal with the audio still in memory. The user stays where
-      // Try again is rather than being sent back to the file picker.
+      // Try again is rather than being sent back to the file picker, and can go
+      // back to change the engine and come forward again.
       "review/rejected",
+      "transcription/rejected",
+      "polish/rejected",
     ]
     #expect(
       seen == expected,

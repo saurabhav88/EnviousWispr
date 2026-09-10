@@ -545,6 +545,17 @@ struct TranscribeFileView: View {
     }
   }
 
+  /// Where a provider runs, for the ones the tile grid does not render. Derived
+  /// from the provider so a new one cannot be silently blank here.
+  static func availability(_ provider: LLMProvider) -> String {
+    switch provider {
+    case .egOne, .s1Mini, .appleIntelligence: return "On device"
+    case .ollama: return "Needs the app"
+    case .openAI, .gemini, .claude: return "Needs a key"
+    case .none: return ""
+    }
+  }
+
   private var selectedPolish: PolishChoice? {
     Self.polishChoices.first { $0.provider == settings.llmProvider }
   }
@@ -627,12 +638,18 @@ struct TranscribeFileView: View {
       Image(systemName: "arrow.down")
         .foregroundStyle(Color.stTextSecondary)
         .frame(maxWidth: .infinity)
+      // **Named from the PROVIDER, not from the tile list.** `polishChoices`
+      // renders six tiles and S1-mini is not one of them, so a user who had
+      // selected it in AI Polish was told "No polish" on the one screen that
+      // exists to confirm what is about to happen — while the freeze kept
+      // S1-mini and the runner ran it. A hand-written list of what to DISPLAY
+      // cannot answer a question about what will RUN. Found by Codex.
       pathCard(
         icon: selectedPolish?.icon ?? "sparkles",
-        title: selectedPolish?.title ?? "No polish",
+        title: settings.llmProvider.displayName,
         recommended: settings.llmProvider == .egOne,
         blurb: "Cleans it into readable text.",
-        rows: [("Runs on", selectedPolish?.availability ?? "")])
+        rows: [("Runs on", selectedPolish?.availability ?? Self.availability(settings.llmProvider))])
     }
   }
 

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -65,6 +66,28 @@ struct TranscribeFilePrivacyFooterTests {
             && !line.lowercased().contains("audio goes"),
           "the \(step.title) step suggests the recording is uploaded: \"\(line)\"")
       }
+    }
+  }
+
+  /// **Review is the screen that confirms what is about to happen, so it must be
+  /// able to name every polisher that can actually run.**
+  ///
+  /// The label came from `polishChoices`, a hand-written list of the six tiles
+  /// the grid renders. S1-mini is not one of them, so a user who had selected it
+  /// in AI Polish was told "No polish" while the freeze kept S1-mini and the
+  /// runner ran it. A list of what to DISPLAY cannot answer a question about
+  /// what will RUN. Found by Codex.
+  ///
+  /// Exhaustive over the provider enum: a seventh provider fails this until
+  /// somebody decides what Review says about it.
+  @Test("Review names every provider that can run, including ones with no tile")
+  func reviewNamesEveryProvider() {
+    for provider in LLMProvider.allCases {
+      let name = provider.displayName
+      #expect(!name.isEmpty, "\(provider) has no name for Review to show")
+      #expect(
+        !TranscribeFileView.availability(provider).isEmpty || provider == .none,
+        "\(provider) has no 'Runs on' line, so Review would show a blank row")
     }
   }
 

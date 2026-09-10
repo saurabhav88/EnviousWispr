@@ -474,6 +474,14 @@ final class FileImportCoordinator {
     }
   }
 
+  /// Whether there is audio in hand to run, however the screen got here: a file
+  /// that decoded cleanly, or one whose run was refused for a reason about the
+  /// ENGINE rather than the file.
+  var isReadyToRun: Bool {
+    if case .ready = state { return true }
+    return canRetry
+  }
+
   /// Whether Try again is offered: an engine refusal, with the audio still here.
   var canRetry: Bool {
     guard case .rejected(let reason) = state else { return false }
@@ -612,7 +620,12 @@ final class FileImportCoordinator {
     case .transcription, .polish, .review:
       guard file != nil else { return false }
       if hasDocument || target.rawValue < step.rawValue { return true }
-      guard advancing, case .ready = state else { return false }
+      // **A retryable file goes forward exactly like a ready one.** Refused for
+      // a busy engine, the user goes Back to pick a different one — and could
+      // not come forward again, because this asked for `.ready` and a refusal
+      // leaves `.rejected`. The audio is decoded and in hand either way, which
+      // is the only thing "forward" depends on. Found by Codex.
+      guard advancing, isReadyToRun else { return false }
       return target.rawValue == step.rawValue + 1
     }
   }
