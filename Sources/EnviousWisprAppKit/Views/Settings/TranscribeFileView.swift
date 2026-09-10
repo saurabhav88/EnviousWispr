@@ -44,21 +44,48 @@ struct TranscribeFileView: View {
     VStack(spacing: 0) {
       stepBar
       ScrollView {
-        VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-          switch coordinator.step {
-          case .upload: uploadStep
-          case .transcription: transcriptionStep
-          case .polish: polishStep
-          case .review: reviewStep
-          case .working: workingStep
-          case .done: doneStep
+        // #2772 finding 3: the green bar sits DIRECTLY under the content, on every step.
+        // It used to be pinned to the window's bottom edge, which on a short step left a
+        // void the height of half the window between the last card and the sentence about
+        // where the audio goes. Founder: "the footer touches the tiles ... Applies to ALL
+        // SIX steps."
+        //
+        // TWO rules, because the two kinds of step behave differently, and Codex's read is
+        // that this justifies them rather than excusing them. On the four SETUP steps the
+        // content is short and a pinned bar leaves the void the founder reported, so the bar
+        // follows the content. On Working and Done the content is a transcript of any
+        // length, and there the bar carries "Safe to leave this page" — the one reassurance
+        // that step exists to give — so it stays pinned and visible, which is also what the
+        // prototype does.
+        VStack(spacing: 0) {
+          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+            switch coordinator.step {
+            case .upload: uploadStep
+            case .transcription: transcriptionStep
+            case .polish: polishStep
+            case .review: reviewStep
+            case .working: workingStep
+            case .done: doneStep
+            }
+          }
+          .padding(.top, SettingsLayout.contentTop)
+          .padding(.horizontal, SettingsLayout.contentH)
+          .padding(.bottom, SettingsLayout.contentBottom)
+          .frame(maxWidth: .infinity)
+          .background(Color.stPageBg)
+          if !pinsPrivacyFooter {
+            privacyFooter
           }
         }
-        .padding(.top, SettingsLayout.contentTop)
-        .padding(.horizontal, SettingsLayout.contentH)
-        .padding(.bottom, SettingsLayout.contentBottom)
       }
-      privacyFooter
+      // Whatever is left below the bar carries the bar's OWN tone, so a short step reads as
+      // a page that has ended rather than as a bar floating in the middle of one. Without
+      // it, moving the bar up to touch the content just moved the void from above it to
+      // below it, which looks less deliberate, not more.
+      .background(Color.stSidebarBg)
+      if pinsPrivacyFooter {
+        privacyFooter
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
@@ -79,6 +106,16 @@ struct TranscribeFileView: View {
     // EG-1. Attached to the whole page rather than the Polish step, because the editor's
     // state must survive stepping forward to Review and back.
     .modifier(ProviderSetupLifecycle(model: setupModel, surface: .fileImport))
+  }
+
+  /// Whether the privacy bar is pinned to the window's bottom edge rather than following
+  /// the content. Exhaustive over the step, so a seventh has to be decided rather than
+  /// inheriting whichever branch it falls into.
+  private var pinsPrivacyFooter: Bool {
+    switch coordinator.step {
+    case .working, .done: return true
+    case .upload, .transcription, .polish, .review: return false
+    }
   }
 
   // MARK: - The step bar
@@ -160,6 +197,38 @@ struct TranscribeFileView: View {
 
   /// The row every choosing step ends with: a plain sentence about the choice on
   /// the left, and the way forward on the right.
+  /// The prototype's button pair, in one place so "buttons need to look like this
+  /// everywhere" is a property of the type rather than a habit at eight call sites.
+  ///
+  /// Secondary is `quiet`: a hairline divider-tone border, no fill, ordinary label. The
+  /// shipped pair used `outlined`, which is the purple-bordered pill the founder rejected
+  /// by name. Primary is filled and carries the prototype's trailing arrow. Both are 9pt
+  /// rounded rectangles at the same height, never capsules (#2772 findings 5, 9, 14).
+  private func wizardSecondary(
+    _ title: String, isEnabled: Bool = true, systemImage: String? = nil,
+    action: @escaping () -> Void
+  ) -> some View {
+    SettingsActionButton(
+      title: title, isEnabled: isEnabled, emphasis: .quiet, shape: .roundedRect,
+      size: .medium, systemImage: systemImage, action: action)
+  }
+
+  /// `showsArrow` is opt-OUT, because the prototype's primaries carry the arrow wherever
+  /// they move the user forward: "Continue ->", "Start transcription ->". The one that does
+  /// not is "Choose a file", which opens a chooser rather than advancing a step, and it
+  /// carries none in the prototype either.
+  /// `action` is OPTIONAL: `nil` draws the treatment without being a control, which the drop
+  /// zone needs because the whole box is already the button (#2772 finding 1).
+  private func wizardPrimary(
+    _ title: String, isEnabled: Bool = true, size: SettingsActionButton.Size = .medium,
+    systemImage: String? = nil, showsArrow: Bool = true, action: (() -> Void)? = nil
+  ) -> some View {
+    SettingsActionButton(
+      title: title, isEnabled: isEnabled, emphasis: .filled, shape: .roundedRect,
+      size: size, trailingSystemImage: showsArrow ? "arrow.right" : nil,
+      systemImage: systemImage, action: action)
+  }
+
   /// `forwardEnabled` exists for #2772 finding 7a: with a cloud engine selected and no key
   /// saved, this row used to offer an enabled Continue, and the run then skipped polish in
   /// silence. Back stays enabled whatever the gate says, so a blocked user is never trapped
@@ -173,10 +242,9 @@ struct TranscribeFileView: View {
         Text(note).foregroundStyle(Color.stTextSecondary)
         Spacer(minLength: 12)
         if showBack, coordinator.canGoBack {
-          SettingsActionButton(title: "Back", isEnabled: true, action: { coordinator.goBack() })
+          wizardSecondary("Back") { coordinator.goBack() }
         }
-        SettingsActionButton(
-          title: forwardTitle, isEnabled: forwardEnabled, emphasis: .filled, action: forward)
+        wizardPrimary(forwardTitle, isEnabled: forwardEnabled, action: forward)
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
@@ -235,11 +303,43 @@ struct TranscribeFileView: View {
   /// The empty state. A dashed target rather than a bare button, because the
   /// design accepts a dropped file as well as a chosen one and the shape has to
   /// say so before the sentence does.
+  ///
+  /// **The WHOLE box is the control** (#2772 finding 1). The prototype's drop zone is a
+  /// `<button>`, and the founder's note is that only our inner button answered a click:
+  /// aiming at a 400pt dashed rectangle and hitting nothing teaches people the target is
+  /// decoration. The inner "Choose a file" stays because it is what the design draws and
+  /// what says the box is pressable at all; it is `allowsHitTesting(false)` so the two
+  /// cannot both fire, and the outer button carries the label VoiceOver reads.
   private var dropZone: some View {
+    Button(action: { chooseFile() }) {
+      dropZoneContent
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Choose a file")
+    .accessibilityHint("Opens the file chooser. You can also drag a file here.")
+    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+      guard let provider = providers.first else { return false }
+      _ = provider.loadObject(ofClass: URL.self) { url, _ in
+        guard let url else { return }
+        Task { @MainActor in coordinator.choose(url: url) }
+      }
+      return true
+    }
+  }
+
+  private var dropZoneContent: some View {
     VStack(spacing: 7) {
       iconTile("arrow.up", size: 50, radius: 13)
-      SettingsActionButton(
-        title: "Choose a file", isEnabled: true, emphasis: .filled, action: { chooseFile() })
+      // `.large` is the prototype's `.btn.big`. Founder finding 2: the shipped one was
+      // "noticeably" smaller than the mock's.
+      //
+      // NO ACTION, deliberately. This draws the button; the box around it IS the button.
+      // A real `Button` here was a second actionable control in one target: hit-testing is
+      // off for the pointer and says nothing about keyboard focus or VoiceOver activation,
+      // so anyone not using a mouse met both. Found by Codex.
+      wizardPrimary("Choose a file", size: .large, showsArrow: false)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
       Text("or drag and drop here").foregroundStyle(Color.stTextSecondary)
       WrappingHStack(spacing: 6) {
         Text("Supported formats").foregroundStyle(Color.stTextTertiary)
@@ -263,14 +363,9 @@ struct TranscribeFileView: View {
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
         .strokeBorder(Color.stDivider, style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
     )
-    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-      guard let provider = providers.first else { return false }
-      _ = provider.loadObject(ofClass: URL.self) { url, _ in
-        guard let url else { return }
-        Task { @MainActor in coordinator.choose(url: url) }
-      }
-      return true
-    }
+    // Without this the click-through region is only the drawn glyphs and text, so the gaps
+    // between them would still swallow a press on a box that now claims to be a button.
+    .contentShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
   }
 
   static let supportedFormats = ["m4a", "mp3", "wav", "aiff", "caf", "mp4", "mov", "flac"]
@@ -312,34 +407,92 @@ struct TranscribeFileView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 
+  /// The chosen file: ONE card, THREE rows, a full-width hairline between each pair.
+  ///
+  /// **This is the headline visual defect the founder named**, in his words: "you see how
+  /// there are lines dividing everything vs you just smushed it all into 1 box". The shipped
+  /// version smushed the file row and the checks together with no divider, and then exiled
+  /// the action row into a SECOND detached card floating below. The prototype's `.selected`
+  /// card is `.selhead` / `.selchecks` / `.selact`, each separated by a 1pt divider, all
+  /// inside one border (#2772 findings 5, 5a, 5b).
   @ViewBuilder
   private var chosenFileCard: some View {
     if let file = coordinator.file {
       BrandedSection {
-        VStack(alignment: .leading, spacing: 14) {
-          HStack(alignment: .top, spacing: 14) {
-            SettingsRowIcon(systemName: "waveform")
-            VStack(alignment: .leading, spacing: 4) {
-              Text(file.name).font(.stRowTitle)
-              Text(file.detailLine).foregroundStyle(Color.stTextSecondary)
-            }
-            Spacer(minLength: 12)
-            SettingsActionButton(
-              title: "Choose a different file", isEnabled: !coordinator.isRunning,
-              action: { chooseFile() })
-          }
-          HStack(spacing: 24) {
-            check("Audio found")
-            check("Ready in \(coordinator.estimateText)")
-          }
+        VStack(alignment: .leading, spacing: 0) {
+          fileHeadRow(file)
+          Divider()
+          fileChecksRow
+          Divider()
+          fileActionRow
         }
-        .padding(.horizontal, SettingsLayout.rowPaddingH)
-        .padding(.vertical, SettingsLayout.rowPaddingV)
       }
-      actionRow(
-        note: "Nothing has run yet. You can still change everything.", showBack: false,
-        forwardTitle: "Continue", forward: { coordinator.advance() })
     }
+  }
+
+  private func fileHeadRow(_ file: FileImportCoordinator.ChosenFile) -> some View {
+    HStack(spacing: 12) {
+      // The prototype's `.artwork`: a tinted rounded tile, not a bare glyph. The same tile
+      // the hero card and the drop zone already draw, so there is one of them.
+      iconTile("waveform", size: 40, radius: 10)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(file.name).font(.system(size: 16, weight: .semibold))
+          .lineLimit(1).truncationMode(.middle)
+        Text(file.detailLine).foregroundStyle(Color.stTextTertiary)
+      }
+      Spacer(minLength: 12)
+      wizardSecondary("Choose a different file", isEnabled: !coordinator.isRunning) {
+        chooseFile()
+      }
+      // #2772 finding 4: the prototype's `.ellip`, a bordered square to the RIGHT of
+      // "Choose a different file". The shipped card had no way to put the page back to an
+      // empty drop zone at all — the only exit was choosing a different file, which is a
+      // different intention.
+      clearFileButton
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 12)
+  }
+
+  /// The X. `startOver()` rather than a bare clear, because the document and the decoded
+  /// audio have to go with the file; that is the method the coordinator already exposes for
+  /// exactly this, and it is what returns the page to an empty Upload step.
+  private var clearFileButton: some View {
+    Button(action: { coordinator.startOver() }) {
+      Image(systemName: "xmark")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(Color.stTextSecondary)
+        .frame(width: 30, height: 30)
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.stDivider))
+    .disabled(coordinator.isRunning)
+    .help("Remove this file")
+    .accessibilityLabel("Remove this file")
+  }
+
+  /// The two checks, SPREAD across the row rather than crammed together on the left, which
+  /// is the prototype's `.selchecks` grid (#2772 finding 5). Equal-width columns, so the
+  /// second one starts at the halfway mark whatever the first one says.
+  private var fileChecksRow: some View {
+    HStack(spacing: 20) {
+      check("Audio found").frame(maxWidth: .infinity, alignment: .leading)
+      check("Ready in \(coordinator.estimateText)").frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+  }
+
+  private var fileActionRow: some View {
+    HStack(spacing: 10) {
+      Text("Nothing has run yet. You can still change everything.")
+        .foregroundStyle(Color.stTextTertiary)
+      Spacer(minLength: 12)
+      wizardPrimary("Continue") { coordinator.advance() }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
   }
 
   private func check(_ text: String) -> some View {
@@ -923,7 +1076,7 @@ struct TranscribeFileView: View {
         }
         Spacer(minLength: 12)
         Text("\(coordinator.wordCount) words").foregroundStyle(Color.stTextSecondary)
-        SettingsActionButton(title: "Stop", isEnabled: true, action: { coordinator.stop() })
+        wizardSecondary("Stop") { coordinator.stop() }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
@@ -1026,17 +1179,18 @@ struct TranscribeFileView: View {
         // Copy would then CLEAR the user's clipboard while Save wrote an empty
         // file — both of which destroy something the user had, to give them
         // nothing. Found enumerating (step, state) rather than by review.
-        SettingsActionButton(
-          title: "Copy everything", isEnabled: coordinator.hasDocument, emphasis: .filled,
-          systemImage: "doc.on.doc", action: { copyDocument() })
-        SettingsActionButton(
-          title: "Save as...", isEnabled: coordinator.hasDocument,
-          systemImage: "square.and.arrow.down",
-          action: { saveDocument() })
+        // No trailing arrow on any of these: the arrow means "this moves you forward a
+        // step", and copying, saving and starting over do not.
+        wizardPrimary(
+          "Copy everything", isEnabled: coordinator.hasDocument, systemImage: "doc.on.doc",
+          showsArrow: false, action: { copyDocument() })
+        wizardSecondary(
+          "Save as...", isEnabled: coordinator.hasDocument,
+          systemImage: "square.and.arrow.down", action: { saveDocument() })
         Spacer(minLength: 12)
-        SettingsActionButton(
-          title: "New transcription", isEnabled: true, systemImage: "arrow.up",
-          action: { coordinator.startOver() })
+        wizardSecondary("New transcription", systemImage: "arrow.up") {
+          coordinator.startOver()
+        }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
