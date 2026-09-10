@@ -20,11 +20,27 @@ This directory is tracked in git. Output artifacts (screenshots, logs, generated
 4. **EnviousWispr.app built and launchable** at the expected path. For dev runs use `scripts/build-dev-app.sh`. For release runs use the installed `EnviousWispr.app`.
 5. **OpenAI API key** at `~/.enviouswispr-keys/openai-api-key` for high-quality TTS (`echo` voice). Falls back to macOS `say` (Evan Enhanced) if missing.
 
+## Start here — the front door (#2775)
+
+```bash
+python3 Tests/RuntimeUAT/uat.py recipes     # every recipe + which harness functions lie + where the gotchas are written up
+python3 Tests/RuntimeUAT/uat.py preflight    # right build running, debug log on, speaker unmuted, room quiet
+python3 Tests/RuntimeUAT/uat.py run <recipe> # heart-path | ptt | quality | silent-probe
+python3 Tests/RuntimeUAT/uat.py verdict      # read dictation results from the log, multi-line polish kept whole
+```
+
+It is a nudge, not a gate: nothing blocks you. A PreToolUse hook (`nudge-uat-frontdoor.sh`) surfaces these
+once per session when harness use begins, so a session reuses the harness instead of rebuilding a driver.
+
 ## Layout
 
 | File / dir | Purpose |
 |---|---|
-| `wispr_eyes.py` | High-level harness — `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_ptt()`, `test_hands_free()`, `tts()`, `record_tts()`, `check_recording_state()`. The primary entry point. |
+| `uat.py` | **The front door.** `recipes` / `preflight` / `run <recipe>` / `verdict`. Dev-machine only (imports PyObjC). |
+| `uat_catalog.py` | Closed recipe set + `HARNESS_STATUS`, the single owner of which harness functions are trustworthy. Pure; CI self-test fails if a public `wispr_eyes` function has no row. |
+| `log_verdict.py` | The one dictation-verdict reader: both `CORRECTION_DEBUG` forms, multi-line blocks kept whole, fed from rotated logs. Pure; CI-tested. |
+| `preflight.py` | Machine probes (volume, output transport, Accessibility, Screen Recording, TTS key) + `proc_start_epoch` and `output_volume`, which `faultInjection.py` imports. Pure; CI-tested. |
+| `wispr_eyes.py` | High-level harness — `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_ptt()`, `tts()`, `record_tts()`, `log_entries_since()` (the content log reader). `uat.py recipes` prints the current trust status of each; several lie in named ways (`test_hands_free` #2409, `check`/`verify`/`scan`/`tap` #1296/#2511). |
 | `uat_runner.py` | Behavioral test runner (suite-based). Run `python3 Tests/RuntimeUAT/uat_runner.py list` to see suites. |
 | `ui_helpers.py` | Lower-level AX accessors used by `wispr_eyes` and `uat_runner`. |
 | `simulate_input.py` | CGEvent input synthesis (clicks, key presses, modifier-aware). |

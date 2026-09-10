@@ -827,20 +827,12 @@ def _running_app_executable_path(pid: int) -> str:
     return out if idx == -1 else out[: idx + len(marker)]
 
 
-def _proc_start_epoch(pid: int):
-    """Epoch seconds when PID started, or None on any failure. `ps -o lstart=` in
-    the C locale gives a stable `Sat Jul 11 15:36:48 2026`. Used to prove the
-    RUNNING image is the build we hashed: a stale process (image A) left running
-    when a new build (image B) is copied over the same shared-bundle-id path would
-    otherwise pass identity — argv[0] path matches and the on-disk hash matches
-    manifest B — while actually executing image A. Its start predates B's build."""
-    try:
-        raw = subprocess.check_output(
-            ["ps", "-o", "lstart=", "-p", str(pid)], text=True,
-            env={**os.environ, "LC_ALL": "C"}).strip()
-        return datetime.strptime(raw, "%a %b %d %H:%M:%S %Y").timestamp()
-    except (subprocess.CalledProcessError, ValueError, OSError):
-        return None
+# `_proc_start_epoch` moved to `preflight.proc_start_epoch` (#2775): the Live UAT
+# front door needs the same reading to bind a receipt to a running image, and one
+# owner beats two copies that drift. Imported under the old name so every call
+# site and docstring reference here still resolves.
+from preflight import proc_start_epoch as _proc_start_epoch  # noqa: E402
+from preflight import output_volume as _output_volume  # noqa: E402
 
 
 
@@ -1074,22 +1066,19 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # records silence, the replay reports `empty_text` on a correct build, and
     # the scenario reads that as the #2207 data loss. Report the real
     # prerequisite instead of misdiagnosing the product.
-    volume = subprocess.run(
-        ["osascript",
-         "-e", "set s to (get volume settings)",
-         "-e", '(output volume of s as text) & "," & (output muted of s as text)'],
-        capture_output=True, text=True)
-    reading = volume.stdout.strip().split(",")
-    if volume.returncode != 0 or len(reading) != 2:
+    # The probe itself lives in `preflight.output_volume` (#2775). Both refusal
+    # texts are preserved verbatim: an UNREADABLE volume refuses just like a low
+    # one, because an instrument it cannot verify is an instrument it must not run.
+    _lvl, _detail, level, muted = _output_volume()
+    if level is None:
         return invalid(
             "could not read the system output volume "
-            f"(rc={volume.returncode}, stdout={volume.stdout.strip()!r}). This "
+            f"({_detail}). This "
             "scenario speaks to the app through the microphone, so it refuses "
             "rather than run an instrument it cannot verify.")
-    level, muted = reading[0].strip(), reading[1].strip()
-    if muted == "true" or not level.isdigit() or int(level) < 25:
+    if muted or level < 25:
         return invalid(
-            f"system output is muted={muted} volume={level}: this scenario "
+            f"system output is muted={str(muted).lower()} volume={level}: this scenario "
             "speaks to the app through the microphone, so the take would be "
             "silent and the replay would correctly report empty text. Unmute "
             "and raise the output volume above 25, then retry.")
