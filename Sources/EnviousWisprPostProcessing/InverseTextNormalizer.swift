@@ -716,15 +716,145 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Lexical passes (email / url / decimals)
 
+  /// NO already-dotted pass exists, and that is a measured conclusion rather than a gap (#2770).
+  ///
+  /// Parakeet often emits `anna.schmidt at gmail.com` — it converts the spoken dots itself and
+  /// leaves "at" as a word — so a pass matching `<name> at <host>.<tld>` would catch the shape
+  /// that actually arrives. Three licences for such a pass were built and each was falsified by
+  /// running ordinary sentences through `normalize`, 2026-09-10:
+  ///
+  /// 1. A property of the CANDIDATE (punctuation in the local part, or a context word within four
+  ///    tokens) converted `download report.pdf at example.com` and `read the email online at
+  ///    example.com`. `report.pdf` and `anna.schmidt` are the same shape, so no property of the
+  ///    token can separate them.
+  /// 2. A property of the SENTENCE (an English introducer or noun-plus-copula immediately before)
+  ///    converted seven more, including `You need to register at example.com`, `Contact us at
+  ///    example.com for details` and `my email address is listed at example.com`.
+  /// 3. A NON-ENGLISH cue within two tokens, with or without a punctuated local part, converted
+  ///    `Read about Mir online at wikipedia.org`, `Check the IST check-in at example.com`,
+  ///    `Open dir user-guide.pdf at example.com` and `Send the Mich. tax-free at example.com` —
+  ///    English proper nouns and abbreviations lowercase onto German cues.
+  ///
+  /// The root is a property of the language, not of any word list: English spells a website
+  /// `<verb> at <host>` and an address `<name> at <host>`, so the marker is the same word in both
+  /// and no amount of surrounding context decides it. The set of English words that may precede a
+  /// website is not bounded by anything, and neither is the set of proper nouns.
+  ///
+  /// The language would decide it, and is not available here: `InverseTextNormalizationStep`
+  /// SKIPS this engine outright for an explicitly non-English take, so a German dictation reaches
+  /// this code only when the language is unknown — exactly the case a language gate cannot serve.
+  ///
+  /// What ships instead is the pass below, which is self-limiting because the speaker must SAY
+  /// the dot. Reopening this needs an admission condition that is unambiguous, not a longer list.
+
+  /// What speakers actually say for `@` and for `.`, in the languages we cover.
+  ///
+  /// German has no localised at-word here and that is the measured point, not an omission: German
+  /// borrowed the English word and says "at". `klammeraffe` and `affenschwanz` appear only
+  /// because Apple's German voice renders a written `@` as those words, so they turn up in
+  /// synthesised audio even though speakers do not use them.
+  ///
+  /// These words are only ever read INSIDE the address frame, never as standalone rewrites, which
+  /// is what keeps an ordinary `chiocciola` (snail), `собака` (dog), `malpa` (monkey) or `punto`
+  /// (full stop) safe in prose.
+  ///
+  /// Native spellings checked against dictionaries, 2026-09-10, one word at a time rather than by
+  /// eye: `małpa` is the only ASCII-looking entry whose standard spelling is not ASCII (Polish
+  /// Academy dictionary), and the ASCII `malpa` is kept beside it because a recognizer may drop
+  /// the diacritic. A missing native spelling is SILENT — the conversion simply never fires —
+  /// and an ASCII-only test row hides it, which is how `małpa` was missed.
+  ///
+  /// A language needs BOTH halves or it converts nothing. Belarusian shipped with `малпа` and no
+  /// `кропка` and was dead on arrival; the Latin `kropka` beside it is the POLISH word. That is
+  /// why the two halves live in ONE table below and the regex alternations are GENERATED from it.
+  /// Completed 2026-09-10 with sources: Belarusian `сабака`/`кропка`, Ukrainian
+  /// `собачка`/`равлик`/`крапка`, Finnish `ät`/`miuku`/`miukumauku`/`kissanhäntä` beside the
+  /// existing `piste`, Norwegian `krøllalfa`, and `punktum` for Norwegian and Danish, which had
+  /// `snabel-a` and no dot-word at all.
+  ///
+  /// NOT COVERED, recorded rather than implied: Czech (`zavináč`/`tečka`), Estonian, Bulgarian,
+  /// Macedonian, Catalan and Afrikaans. `prikk` is kept for Norwegian but its use for reciting an
+  /// address is NOT VERIFIED — Norway's language council uses `punktum`, which is why that was
+  /// added rather than substituted. `.no` and `.by` stay excluded from `countryCodeTLDs` under the
+  /// existing English-word policy, so a Norwegian or Belarusian address at its own national
+  /// domain still does not convert.
+  ///
+  /// WHERE THIS RUNS (#2783). `InverseTextNormalizationStep.skipReason` skips this engine
+  /// outright for a take resolved as explicitly non-English, so these words reach a take whose
+  /// language is UNKNOWN (Parakeet reports none) or resolved as English. They are not, by
+  /// themselves, support for dictating in those languages. Both halves are pinned in
+  /// `InverseTextNormalizationStepTests`, which is the only suite that sees the gate — the
+  /// direct-formatter suite calls `normalize` and cannot.
+  ///
+  /// THE LICENCE: the at-word and dot-word a language ACTUALLY uses together, keyed by at-word.
+  /// A table, not a judgement about which words are English. Three review rounds falsified the judgement version, each with a measured sentence:
+  ///
+  /// - `We left because at one point me and John got tired.` -> `We left because@one.me`.
+  ///   `point` is an English word in the dot slot beside the English `at`.
+  /// - `look at the punto de vista` -> `look@the.de vista`. `punto` is NOT an English word, and
+  ///   English prose carries borrowed phrases anyway, with `de` a valid TLD.
+  /// - `Can the arroba example point me to the setting?` -> `Can the@example.me to the setting?`.
+  ///   An English sentence ABOUT the `arroba` symbol, with English `point` in the dot slot.
+  ///
+  /// "Can this word appear in an English sentence" has no bound and returned a new counterexample
+  /// every round. "Which pair does this language use" is a finite table, and the third sentence
+  /// above is refused by it because Spanish says `punto`, never `point`.
+  ///
+  /// English and German share the `at` key: German borrowed the English word (measured on a
+  /// native teaching recording and on four of the founder's own dictations, 2026-09-10) and pairs
+  /// it with `punkt`, English with `dot`.
+  ///
+  /// RESIDUAL RISK, stated rather than implied. French pairs `arobase` with `point`, which IS an
+  /// English word, so an English sentence ABOUT the `arobase` symbol in this exact frame still
+  /// converts. That is the same shape as the third sentence above and it is not closed — it is
+  /// narrower, because it needs the reader to be discussing the French term by name. Dropping
+  /// `point` would remove French entirely, since `point` is the French word for the dot.
+  /// #2781 tracks the equivalent hole in the shipped `at`/`dot` pair.
+  static let addressWordPairs: [String: Set<String>] = [
+    "at": ["dot", "punkt"],                          // English, and German which borrowed "at"
+    "klammeraffe": ["punkt"], "affenschwanz": ["punkt"],  // German
+    "arroba": ["punto", "ponto"],                    // Spanish, Portuguese
+    "chiocciola": ["punto"],                         // Italian
+    "apenstaartje": ["punt"], "apestaartje": ["punt"],    // Dutch
+    "malpa": ["kropka"], "małpa": ["kropka"],        // Polish
+    "sobaka": ["точка"], "собака": ["точка"],        // Russian
+    "сабака": ["кропка"], "малпа": ["кропка"],       // Belarusian
+    "собачка": ["крапка"], "равлик": ["крапка"],     // Ukrainian
+    "snabel-a": ["punkt", "punktum"], "snabela": ["punkt", "punktum"],  // Swedish, Danish
+    "krøllalfa": ["punktum", "prikk"],               // Norwegian
+    "kukac": ["pont"],                               // Hungarian
+    "arobase": ["point"],                            // French
+    "ät": ["piste"], "miuku": ["piste"], "miukumauku": ["piste"], "kissanhäntä": ["piste"],  // Finnish
+  ]
+
+  /// Both halves of the table as regex alternations. Generated FROM the table, never written out
+  /// again beside it — a second hand-written list is how a word ends up in one and not the other,
+  /// which is exactly what made Belarusian dead on arrival.
+  static let addressAtAlt = alt(Array(addressWordPairs.keys))
+  static let addressDotAlt = alt(Array(Set(addressWordPairs.values.flatMap { $0 })))
+
+  /// Does this at-word and this dot-word belong to one language?
+  static func isPairedAddressWording(_ atWord: String, _ dotWord: String) -> Bool {
+    guard let dots = addressWordPairs[atWord.lowercased()] else { return false }
+    return dots.contains(dotWord.lowercased())
+  }
+
   private func emails(_ t: String) -> String {
+    // Fully spoken: "name <at-word> domain <dot-word> tld", where the at-word and the dot-word
+    // must belong to ONE language. The pair is checked in the closure rather than by running a
+    // frame per language, so this stays a single pass — `emails` runs on every dictation and the
+    // engine has a 0.5 s deadline (#2770).
     let pat =
-      #"\b(?<name>[a-z][a-z0-9_]*)\s+at\s+(?<dom>[a-z][a-z0-9-]*)\s+dot\s+"#
+      #"\b(?<name>[a-z][a-z0-9_]*)\s+(?<atw>"# + Self.addressAtAlt + #")\s+"#
+      + #"(?<dom>[a-z][a-z0-9-]*)\s+(?<dotw>"# + Self.addressDotAlt + #")\s+"#
       + #"(?<tld>"# + Self.emailTLDAlt + #")\b"#
     return reSub(pat, t) { m in
+      guard Self.isPairedAddressWording(m.g("atw") ?? "", m.g("dotw") ?? "") else { return nil }
       let name = (m.g("name") ?? "").replacingOccurrences(of: " ", with: "")
       return "\(name)@\(m.g("dom") ?? "").\(m.g("tld") ?? "")"
     }
   }
+
 
   /// Two independent passes over two different recognizer shapes for the same spoken
   /// URL (#2257, #2049/#2050 — Parakeet v3 sometimes leaves "dot"/"slash" as literal
