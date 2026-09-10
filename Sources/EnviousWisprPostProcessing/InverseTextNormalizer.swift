@@ -405,7 +405,9 @@ public struct InverseTextNormalizer: Sendable {
     let trailAndPat = #"^\s+and\s+(?:"# + Self.numwordAlt + #"|\d)"#  // number-word OR digit endpoint
     t = reSub(betweenPat, t) { m in
       let end = m.result.range.location + m.result.range.length
-      if firstMatch(trailAndPat, Self.tailWindow(m.ns, end)) != nil { return nil }
+      // No readable neighbour = no conversion (see `neighbourScanCap`).
+      guard let after = Self.tailWindow(m.ns, end) else { return nil }
+      if firstMatch(trailAndPat, after) != nil { return nil }
       guard let r = rng(m.g("a") ?? "", m.g("b") ?? "") else { return nil }
       return " between \(r) "
     }
@@ -439,7 +441,8 @@ public struct InverseTextNormalizer: Sendable {
       // all-ones AND no unit noun after (so "one by one inch" stays a real dimension). "two by
       // two", "three by three", or any >=10 are dimensions and convert.
       let end = m.result.range.location + m.result.range.length
-      let nxtAfter = Self.clean(Self.splitWords(Self.tailWindow(m.ns, end)).first ?? "")
+      guard let afterBy = Self.tailWindow(m.ns, end) else { return nil }
+      let nxtAfter = Self.clean(Self.splitWords(afterBy).first ?? "")
       if Set(legs) == [1], !Self.unitNouns.contains(nxtAfter) { return nil }
       return " " + legs.map { comma($0) }.joined(separator: " by ") + " "
     }
@@ -467,7 +470,7 @@ public struct InverseTextNormalizer: Sendable {
       let tailAnd = String(repeating: " and", count: trailAnd)
       let start = m.result.range.location
       let end = start + m.result.range.length
-      let after = Self.tailWindow(m.ns, end)
+      guard let after = Self.tailWindow(m.ns, end) else { return nil }
       let toksAfter = Self.splitWords(after)
       let nxt = toksAfter.first ?? ""
       let nxtCap = nxt.first?.isUppercase ?? false
@@ -502,7 +505,7 @@ public struct InverseTextNormalizer: Sendable {
         if shout {
           capsConvert = true
         } else {
-          let prevW = Self.lastTokenBefore(m.ns, start).token
+          guard let prevW = Self.lastTokenBefore(m.ns, start)?.token else { return nil }
           if capsw(prevW) || capsw(nxt) { return nil }  // part of an all-caps Title -> leave
           capsConvert = true  // isolated caps number = emphasis -> convert
         }
@@ -511,7 +514,7 @@ public struct InverseTextNormalizer: Sendable {
         if noninitialCap { return nil }  // "One Million Moms"
         if firstCap && single && nxtCap { return nil }  // brand "Hundred Acre Wood","Forty Niners"
         if firstCap {
-          let before = Self.lastTokenBefore(m.ns, start)
+          guard let before = Self.lastTokenBefore(m.ns, start) else { return nil }
           let sentinel: Set<Character> = [".", "!", "?", "\n", "\"", "'", "(", "["]
           let sentenceInitial = before.headIsBlank || sentinel.contains(before.token.last!)
           if !sentenceInitial { return nil }  // capitalized mid-sentence, ambiguous -> spelled
@@ -1194,10 +1197,15 @@ public struct InverseTextNormalizer: Sendable {
   // actually reads are the ones the whole text would have given. Surrogates are not whitespace
   // under either rule, so a cut can never land inside a pair.
   //
-  // `neighbourScanCap` bounds the growth. Reaching it needs text that is mostly combining marks
-  // sitting against whitespace, which dictation does not produce, and the behaviour there is the
-  // OLD short-window behaviour: a guard that cannot see its neighbour declines to convert, so the
-  // cap fails SAFE (a number stays spelled) exactly like `runIsCleanlyPaired`'s walk ceiling.
+  // `neighbourScanCap` bounds the growth, and hitting it returns `nil` rather than a short window.
+  // A short window is NOT the safe answer, because these guards are mostly PROTECTIONS: the
+  // all-caps title guard declines when the previous token is all-caps, and the brand guard
+  // declines when the next token is capitalized. Hand either of them an empty neighbour and the
+  // protection simply does not fire, so a capped read CONVERTS what the whole text preserved —
+  // measured on a lead of 33 combining marks, where "NASA … TWELVE times" turned into "12" and
+  // "Twenty … Niners" into "20". `nil` means "I could not see the neighbour", every caller
+  // declines on it, and the number stays spelled, which is the direction `runIsCleanlyPaired`'s
+  // walk ceiling already fails in.
   //
   // One shape stays linear in the take and cannot be helped here: text with no whitespace at all
   // ("twenty/twenty/twenty/…") is ONE token, so the window is the rest of the take. Speech
@@ -1218,7 +1226,7 @@ public struct InverseTextNormalizer: Sendable {
   /// inside token 1 sees the same following character (the boundary that ended the token) as it
   /// would in the full text. There is no character cap — a cap could cut a token in half and
   /// change what `clean` compares against, and a token is short in real dictation.
-  static func tailWindow(_ ns: NSString, _ end: Int) -> String {
+  static func tailWindow(_ ns: NSString, _ end: Int) -> String? {
     let n = ns.length
     guard end < n else { return "" }
     var i = end
@@ -1237,7 +1245,12 @@ public struct InverseTextNormalizer: Sendable {
       else { continue }
       break
     }
-    return ns.substring(with: NSRange(location: end, length: i - end))
+    let window = ns.substring(with: NSRange(location: end, length: i - end))
+    // `i == n` means the scan ran out of TEXT, not out of budget: the window is the whole tail and
+    // is complete however few tokens it holds. Anything else that stopped short of three tokens
+    // stopped on the cap, and cannot answer what the caller is about to ask.
+    guard i == n || Self.splitWords(window).count >= 3 else { return nil }
+    return window
   }
 
   /// The last `splitWords` token before `start`, plus whether NOTHING but whitespace precedes it —
@@ -1248,7 +1261,7 @@ public struct InverseTextNormalizer: Sendable {
   /// trimming trailing whitespace empties a head exactly when it holds no token). When
   /// `headIsBlank` is false the token is non-empty and its LAST character is the last character
   /// of that trimmed head, which is the sentence-boundary sentinel the cardinal pass tests.
-  static func lastTokenBefore(_ ns: NSString, _ start: Int) -> (token: String, headIsBlank: Bool) {
+  static func lastTokenBefore(_ ns: NSString, _ start: Int) -> (token: String, headIsBlank: Bool)? {
     var q = start
     var scanned = 0
     while q > 0, scanned < neighbourScanCap {
@@ -1264,11 +1277,16 @@ public struct InverseTextNormalizer: Sendable {
       break
     }
     let head = ns.substring(with: NSRange(location: q, length: start - q))
+    let tokens = Self.splitWords(head)
+    // `q == 0` means the scan ran out of TEXT: the window IS the whole head. Otherwise a window
+    // holding fewer than two tokens stopped on the cap, and its last token may be cut by the
+    // window's own left edge rather than by real whitespace.
+    guard q == 0 || tokens.count >= 2 else { return nil }
     // `splitWords(head).last` and "the head trimmed of trailing whitespace is empty" are the two
     // questions the whole-head read answered, and asking `splitWords` for BOTH is what keeps the
     // pair consistent: a non-empty token is returned only when `splitWords` found one, so
     // `headIsBlank == false` always carries a token whose `.last` exists.
-    if let last = Self.splitWords(head).last, !last.isEmpty { return (last, false) }
+    if let last = tokens.last, !last.isEmpty { return (last, false) }
     return ("", true)
   }
 
@@ -1730,7 +1748,9 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(scalePat, t) { m in
       let sword = (m.g("s") ?? "").lowercased()
       // fraction guard: "a thousandth of a second" is 1/1000, not the 1,000th -> leave spelled.
-      let afterScale = Self.tailWindow(m.ns, m.result.range.location + m.result.range.length)
+      guard
+        let afterScale = Self.tailWindow(m.ns, m.result.range.location + m.result.range.length)
+      else { return nil }
       if firstMatch(#"^\s+of\b"#, afterScale) != nil { return nil }
       let n: Int
       if let lead = m.g("lead") {

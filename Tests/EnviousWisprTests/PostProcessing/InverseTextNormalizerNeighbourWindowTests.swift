@@ -68,7 +68,7 @@ struct InverseTextNormalizerNeighbourWindowTests {
   func lastTokenBeforeIsBounded() {
     let lead = String(repeating: sentenceLead, count: 500) + "roughly"
     let ns = "\(lead) twenty miles" as NSString
-    let before = InverseTextNormalizer.lastTokenBefore(ns, (lead as NSString).length)
+    let before = try! #require(InverseTextNormalizer.lastTokenBefore(ns, (lead as NSString).length))
 
     #expect(before.token == "roughly")
     #expect(before.headIsBlank == false)
@@ -93,7 +93,7 @@ struct InverseTextNormalizerNeighbourWindowTests {
     ] as [(head: String, blank: Bool, token: String)])
   func lastTokenBeforeMatchesWholeHead(head: String, blank: Bool, token: String) {
     let ns = "\(head)twenty" as NSString
-    let got = InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length)
+    let got = try! #require(InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length))
     #expect(got.headIsBlank == blank)
     #expect(got.token == token)
   }
@@ -123,11 +123,15 @@ struct InverseTextNormalizerNeighbourWindowTests {
       " \u{1F1FA}\u{1F1F8} square miles",
       " e\u{0301}clair square miles",
       " \u{200D} square miles",
+      // U+0600 is Prepend: Swift joins it to the FOLLOWING character, so a scan that stops on the
+      // space after it would end its window inside a cluster.
+      " square miles\u{0600} out later",
+      " square \u{0600} miles out",
     ])
   func windowKeepsTheFirstTwoTokens(tail: String) {
     let head = "twenty"
     let ns = "\(head)\(tail)" as NSString
-    let window = InverseTextNormalizer.tailWindow(ns, (head as NSString).length)
+    let window = try! #require(InverseTextNormalizer.tailWindow(ns, (head as NSString).length))
     #expect(
       Array(InverseTextNormalizer.splitWords(window).prefix(2))
         == Array(InverseTextNormalizer.splitWords(tail).prefix(2)))
@@ -142,10 +146,11 @@ struct InverseTextNormalizerNeighbourWindowTests {
       "", "   ", "\n\n", "He said.", "He said. ", "He said.\n", "(", "a NASA ",
       "He said. \u{0301} ", "NASA \u{0301} ", "x\u{0301} ", " \u{0301}\u{0301} ",
       "He said.\u{00A0}", "one\r\ntwo ", "\u{0301}", "he said e\u{0301}clair ",
+      "NASA\u{0600} ", "he said\u{0600}NASA ",
     ])
   func headMatchesTheWholeHead(head: String) {
     let ns = "\(head)twenty" as NSString
-    let got = InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length)
+    let got = try! #require(InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length))
     var trimmed = head
     while let last = trimmed.last, last.isWhitespace { trimmed.removeLast() }
     #expect(got.headIsBlank == trimmed.isEmpty)
@@ -169,6 +174,36 @@ struct InverseTextNormalizerNeighbourWindowTests {
     let head = "twenty"
     let ns = "\(head)\(tail)" as NSString
     #expect(InverseTextNormalizer.tailWindow(ns, (head as NSString).length) == window)
+  }
+
+  /// The cap is a REFUSAL, and that is the half a short window cannot deliver. These guards are
+  /// protections — the all-caps title guard and the brand guard both DECLINE on what they see —
+  /// so an empty neighbour makes the protection silently not fire and converts what the whole
+  /// text preserved. Refusing instead is also the only assertion here that a whole-text
+  /// implementation could not pass, so it is what pins the read as bounded at all.
+  @Test("a neighbour the scan cannot reach is refused, not answered short")
+  func capRefusesRatherThanAnsweringShort() {
+    let gap = String(repeating: " \u{0301}", count: InverseTextNormalizer.neighbourScanCap + 1)
+    let head = "Twenty"
+    let tailNS = "\(head)\(gap) Niners arrived" as NSString
+    #expect(InverseTextNormalizer.tailWindow(tailNS, (head as NSString).length) == nil)
+
+    let lead = "NASA\(gap) "
+    let headNS = "\(lead)TWELVE times" as NSString
+    #expect(InverseTextNormalizer.lastTokenBefore(headNS, (lead as NSString).length) == nil)
+  }
+
+  /// And the refusal reaches the user as the SAFE outcome: the number the whole-text read
+  /// preserved is still preserved, rather than converted by a guard that saw nothing.
+  @Test(
+    "a number whose neighbour is out of reach stays spelled",
+    arguments: ["Twenty%@ Niners arrived", "NASA%@ TWELVE times"])
+  func capKeepsTheNumberSpelled(template: String) {
+    let gap = String(repeating: " \u{0301}", count: InverseTextNormalizer.neighbourScanCap + 1)
+    let input = template.replacingOccurrences(of: "%@", with: gap)
+    let got = InverseTextNormalizer().normalize(input, spokenPunctuation: false)
+    #expect(!got.contains("20"))
+    #expect(!got.contains("12"))
   }
 }
 

@@ -26,6 +26,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// Always-on safety floor (#145, founder Gate-1 2026-06-02: ON for all, no toggle).
   var isEnabled: Bool { true }
 
+  /// The step's own wall-clock budget: the `withDeadline` in `process(...)`, the seconds the
+  /// `TimeoutError` reports, and the line the timeout breadcrumb's `engine_started` is decided
+  /// against. Named once so those three cannot drift apart (#2758).
+  static let deadlineSeconds: Double = 0.5
+
   /// Runner-level runaway BACKSTOP only. The real cap is the step's own 0.5s
   /// `withDeadline` in `process(...)` — a TRUE wall-clock bound that abandons a
   /// pathological `normalize` so the heart path's paste is never held. This outer
@@ -113,34 +118,37 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // read below happens after `withDeadline` returns, back on this actor.
     let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
-    let maybeConverted = await withDeadline(seconds: 0.5) {
+    let maybeConverted = await withDeadline(seconds: Self.deadlineSeconds) {
       engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
       return normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
-      // Read AFTER `withDeadline` returned, so a closure that the timer already beat can still
-      // enter and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from
-      // being scheduled. A stamp later than the budget therefore means the closure had NOT begun
-      // when the deadline fired, which is the queued case, so it is reported as not-started
-      // rather than as a wait longer than the run it is supposed to sit inside. That guard is
-      // also what keeps `latency_ms - queue_wait_ms` non-negative and readable as engine time.
+      // Read AFTER `withDeadline` returned, so a closure the timer already beat can still enter
+      // and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from being
+      // scheduled. Compare the stamp against the BUDGET, not against `elapsedMs`: `elapsedMs` is
+      // the caller's own resume time and on a loaded machine runs well past the budget, so a
+      // closure that entered at 600 ms would clear a 800 ms `elapsedMs` and be reported as having
+      // been running when the timer won, which it was not.
       let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
-      let queueWaitMs = engineStartMs.flatMap { $0 <= elapsedMs ? $0 : nil }
+      let queueWaitMs = engineStartMs.flatMap { $0 <= Self.deadlineSeconds * 1000 ? $0 : nil }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
       // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
       // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
       SentryBreadcrumb.captureError(
-        TimeoutError(seconds: 0.5),
+        TimeoutError(seconds: Self.deadlineSeconds),
         category: .inverseNormalizationTimeout,
         stage: "inverse_text_normalization",
         extra: [
           "latency_ms": elapsedMs,
           "len_before": lenBefore,
-          // false = the closure had not begun when the deadline fired: the budget was spent
-          // QUEUED, not normalizing, and nothing about the engine is implicated. True carries the
-          // wait before it started, so `latency_ms - queue_wait_ms` is what the engine itself
-          // actually consumed before being abandoned.
+          // false = no closure entry was observed within the budget, so the deadline was spent
+          // QUEUED rather than normalizing and nothing about the engine is implicated. True
+          // carries the delay to closure ENTRY. Read the pair as "did the engine get a thread in
+          // time, and how long did it wait" — `latency_ms` is the caller's own resume time and
+          // overshoots the budget under load, so `latency_ms - queue_wait_ms` is NOT engine
+          // execution time. Timing the engine itself needs a stamp at the timer's decision, which
+          // is inside `withDeadline` and not available here.
           "engine_started": queueWaitMs != nil,
           "queue_wait_ms": queueWaitMs ?? -1,
         ])
