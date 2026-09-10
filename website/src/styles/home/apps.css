@@ -56,18 +56,15 @@ html[data-theme='dark']
   svg {
   color: var(--ink);
 }
-@media (max-width: 999px), (pointer: coarse), (prefers-reduced-motion: reduce) {
+@media (max-width: 999px), (pointer: coarse) {
   .compatible-list {
     padding-inline: 16px;
   }
+}
+@media (max-width: 999px), (pointer: coarse), (prefers-reduced-motion: reduce) {
   .compatible-viewport {
     scrollbar-color: var(--line) transparent;
     scrollbar-width: thin;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .compatible-duplicate {
-    display: none;
   }
 }
 @media (max-width: 600px) {
