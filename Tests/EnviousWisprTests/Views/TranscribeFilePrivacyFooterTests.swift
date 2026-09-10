@@ -29,7 +29,7 @@ struct TranscribeFilePrivacyFooterTests {
       FileImportCoordinator.Step.upload, .transcription, .polish, .review, .working, .done,
     ] {
       let line = TranscribeFileView.footerDetail(
-        step: step, isCloudPolish: true, providerName: "Claude")
+        step: step, isCloudPolish: true, provider: .claude)
       for promise in Self.staysHerePromises {
         #expect(
           !line.contains(promise),
@@ -51,7 +51,7 @@ struct TranscribeFilePrivacyFooterTests {
       FileImportCoordinator.Step.upload, .transcription, .polish, .review, .working, .done,
     ] {
       let line = TranscribeFileView.footerDetail(
-        step: step, isCloudPolish: false, providerName: "Claude")
+        step: step, isCloudPolish: false, provider: .claude)
       #expect(
         !line.contains("provider") && !line.contains("Claude"),
         "the \(step.title) step mentions a provider with none chosen: \"\(line)\"")
@@ -66,7 +66,7 @@ struct TranscribeFilePrivacyFooterTests {
         FileImportCoordinator.Step.upload, .transcription, .polish, .review, .working, .done,
       ] {
         let line = TranscribeFileView.footerDetail(
-          step: step, isCloudPolish: cloud, providerName: "Claude")
+          step: step, isCloudPolish: cloud, provider: .claude)
         #expect(
           !line.lowercased().contains("audio is sent")
             && !line.lowercased().contains("audio goes"),
@@ -134,10 +134,31 @@ struct TranscribeFilePrivacyFooterTests {
   func everyProviderCanBeNamedInTheFooter() {
     for provider in LLMProvider.allCases where provider != .none {
       let line = TranscribeFileView.footerDetail(
-        step: .working, isCloudPolish: true, providerName: provider.displayName)
+        step: .working, isCloudPolish: true, provider: provider)
       #expect(
         line.contains(provider.displayName),
         "\(provider) is not named in \"\(line)\"")
+    }
+  }
+
+  /// **"under your own key" is a claim about the USER'S ACCOUNT, so it may only appear for a
+  /// provider they actually hold a key with.** Ollama reaches the cloud branch whenever the
+  /// daemon proxies the selected model to Ollama's own servers, and no key of theirs is
+  /// involved there. Found in Live UAT on 2026-09-10: the footer read "Only the text goes to
+  /// Ollama, under your own key."
+  @Test("only a bring-your-own-key provider is described as using the user's key")
+  func onlyByokProvidersClaimTheUsersKey() {
+    for provider in LLMProvider.allCases {
+      for step in [
+        FileImportCoordinator.Step.upload, .transcription, .polish, .review, .working, .done,
+      ] {
+        let line = TranscribeFileView.footerDetail(
+          step: step, isCloudPolish: true, provider: provider)
+        let claimsKey = line.contains("under your own key")
+        #expect(
+          claimsKey == TranscribeFileView.usesTheUsersOwnKey(provider),
+          "\(provider) on \(step.title): \"\(line)\"")
+      }
     }
   }
 
@@ -151,7 +172,7 @@ struct TranscribeFilePrivacyFooterTests {
         let line =
           TranscribeFileView.footerLead(step: step)
           + TranscribeFileView.footerDetail(
-            step: step, isCloudPolish: cloud, providerName: "Claude")
+            step: step, isCloudPolish: cloud, provider: .claude)
         #expect(!line.contains("\u{2014}") && !line.contains("\u{2013}"), "dash in \"\(line)\"")
       }
     }

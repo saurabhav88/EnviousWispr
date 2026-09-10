@@ -1065,7 +1065,7 @@ struct TranscribeFileView: View {
       Text(
         Self.footerDetail(
           step: coordinator.step, isCloudPolish: isCloudPolish,
-          providerName: footerProviderName))
+          provider: footerProvider))
         .foregroundStyle(Color.stTextSecondary)
       Spacer(minLength: 0)
     }
@@ -1087,44 +1087,63 @@ struct TranscribeFileView: View {
   /// document, which cloud review caught in the first build.
   /// #2772 finding 7e: the sentence NAMES the provider. "The provider you chose" is true
   /// and asks the reader to remember which one that was, on the screen whose whole job is
-  /// telling them where their words go. The name is passed in rather than read here so the
-  /// Working and Done steps can name the provider FROZEN with the run, which is a different
+  /// telling them where their words go. The provider is passed in rather than read here so
+  /// the Working and Done steps can name the one FROZEN with the run, which is a different
   /// answer from the one selected now.
+  ///
+  /// **"under your own key" is NOT part of the cloud branch, and that is the point.** The
+  /// first version appended it to every cloud sentence, and Ollama reaches the cloud branch
+  /// whenever the daemon proxies the selected model to Ollama's own servers — where no key
+  /// exists. Found in Live UAT: the footer read "Only the text goes to Ollama, under your
+  /// own key" with no key involved anywhere. The clause belongs to the three BYOK providers
+  /// and only to them.
   static func footerDetail(
-    step: FileImportCoordinator.Step, isCloudPolish: Bool, providerName: String
+    step: FileImportCoordinator.Step, isCloudPolish: Bool, provider: LLMProvider
   ) -> String {
+    let providerName = provider.displayName
+    let underOwnKey = Self.usesTheUsersOwnKey(provider) ? ", under your own key" : ""
     switch step {
     case .working:
       // The cloud branch belongs HERE most of all: this is the step during
       // which the text is actually being sent. A line claiming both stay on the
       // Mac would be false at the exact moment it is on screen.
       return isCloudPolish
-        ? "Your audio never leaves this Mac. The text is going to \(providerName), under your own key."
+        ? "Your audio never leaves this Mac. The text is going to \(providerName)\(underOwnKey)."
         : "Your audio and text both stay on this Mac."
     case .done:
       return isCloudPolish
-        ? "Your audio stayed on this Mac. Only the text went to \(providerName), under your own key."
+        ? "Your audio stayed on this Mac. Only the text went to \(providerName)\(underOwnKey)."
         : "Your untouched words are kept beside this one."
     case .upload, .transcription, .polish, .review:
       return isCloudPolish
-        ? "Your audio never leaves this Mac. Only the text goes to \(providerName), under your own key."
+        ? "Your audio never leaves this Mac. Only the text goes to \(providerName)\(underOwnKey)."
         : "Your audio and text both stay on this Mac."
+    }
+  }
+
+  /// Whether the user supplies their own credential to this provider.
+  ///
+  /// Exhaustive, never `default:`, because the sentence it decides is a claim about the
+  /// user's own account. Ollama is the case that matters: a hosted Ollama model sends the
+  /// text off this Mac with no key of the user's involved.
+  static func usesTheUsersOwnKey(_ provider: LLMProvider) -> Bool {
+    switch provider {
+    case .openAI, .gemini, .claude: return true
+    case .ollama, .egOne, .s1Mini, .appleIntelligence, .none: return false
     }
   }
 
   /// Which provider the footer names, on the same split as `isCloudPolish`: the FROZEN one
   /// once a run exists, the live one before that. Reading the live selection after a run
   /// would name an engine that never touched those words.
-  private var footerProviderName: String {
+  private var footerProvider: LLMProvider {
     switch coordinator.step {
     case .working, .done:
-      if let frozen = coordinator.runConfiguration {
-        return frozen.polishProvider.displayName
-      }
+      if let frozen = coordinator.runConfiguration { return frozen.polishProvider }
     case .upload, .transcription, .polish, .review:
       break
     }
-    return settings.effectiveFileImportLLMProvider.displayName
+    return settings.effectiveFileImportLLMProvider
   }
 
   /// Whether the text this sentence is ABOUT leaves the Mac.
