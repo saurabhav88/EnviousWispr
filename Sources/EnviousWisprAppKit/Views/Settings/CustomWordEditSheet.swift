@@ -64,15 +64,15 @@ struct CustomWordEditSheet: View {
         Text(word.canonical.isEmpty ? "Add Custom Word" : "Edit Custom Word")
           .font(.stRowTitle)
           .foregroundStyle(.stTextPrimary)
-        Text("Set how this word is recognised in what you dictate.")
+        Text("Set how this word is recognized in what you dictate.")
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       }
 
       // Canonical
       VStack(alignment: .leading, spacing: 5) {
-        groupLabel("Word")
-        TextField("Word", text: $word.canonical)
+        groupLabel("The correct word")
+        TextField("How it should be written", text: $word.canonical)
           .focused($wordFieldFocused)
           .settingsFieldChrome(focused: wordFieldFocused)
       }
@@ -255,7 +255,7 @@ struct CustomWordEditSheet: View {
   private var aliasesCard: some View {
     card {
       HStack(alignment: .firstTextBaseline) {
-        groupLabel("Aliases")
+        groupLabel("Aliases (aka the common misspellings)")
         Spacer()
         Text(aliasCountLabel)
           .font(.stHelper)
@@ -263,7 +263,7 @@ struct CustomWordEditSheet: View {
       }
 
       HStack(spacing: 8) {
-        TextField("Add a variant you hear back (e.g. clawed)", text: $newAlias)
+        TextField("Add a misspelling (e.g. clawed)", text: $newAlias)
           .focused($aliasFieldFocused)
           .settingsFieldChrome(focused: aliasFieldFocused)
           .onSubmit { addAlias() }
@@ -300,7 +300,7 @@ struct CustomWordEditSheet: View {
   @ViewBuilder
   private var aliasChips: some View {
     if word.aliases.isEmpty {
-      Text("No aliases yet. Type one above and click Add.")
+      Text("No misspellings yet. Type one above and click Add.")
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -334,11 +334,11 @@ struct CustomWordEditSheet: View {
     }
   }
 
-  // MARK: - Recognition behaviour
+  // MARK: - Recognition behavior
 
   private var recognitionCard: some View {
     card {
-      groupLabel("Recognition behaviour")
+      groupLabel("Recognition behavior")
 
       Text("Match strictness")
         .font(.stHelper)
