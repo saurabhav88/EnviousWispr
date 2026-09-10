@@ -28,6 +28,30 @@ struct OverlayCapsuleBackground: View {
   var animatesGlow: Bool = true
   @State private var glowOpacity: Double = 0.3
 
+  /// Outcome observer for the hairline's target opacity, called every time the loop is armed or
+  /// parked. Production uses the no-op default; tests use it because an off-screen
+  /// `NSHostingView` does not advance a `repeatForever`, so a re-arm cannot be seen in pixels.
+  /// Same shape and same reason as `RainbowLevelMeter.onHistoryChange`.
+  var onGlowTarget: (Double) -> Void = { _ in }
+
+  /// #2303: the person's own answer, alongside #2201's and #2435's.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  /// Every condition for the hairline to breathe, in one place. `OverlayMotion` owns the
+  /// Reduce Motion half and states why the still value costs nothing here.
+  private var breathes: Bool {
+    animatesGlow && cornerStyle == .capsule
+      && OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion)
+  }
+
+  /// The loop's own two endpoints, named so the stop branch parks on the value the loop starts
+  /// from rather than on a second opinion about what "dim" means.
+  private static let dimGlowOpacity: Double = 0.3
+  private static let brightGlowOpacity: Double = 0.65
+
+
   /// #2201: the preview pill's rainbow hairline holds still instead of breathing
   /// on a permanent two-second loop.
   ///
@@ -110,21 +134,23 @@ struct OverlayCapsuleBackground: View {
         // Breathing is the ONLY case that reads the animated value. Everything
         // else — the reading well, and any capsule asked to hold still — takes
         // the chosen steady one.
-        .opacity(
-          animatesGlow && cornerStyle == .capsule ? glowOpacity : Self.steadyGlowOpacity
-        )
+        .opacity(breathes ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
-      .onAppear {
-        // #2201: only the capsule breathes. Arming a `repeatForever` for the
-        // preview would keep it re-rendering whether or not anything read
-        // `glowOpacity`, and the point of this chunk is that the preview pill
-        // stops moving on its own.
-        guard animatesGlow, cornerStyle == .capsule else { return }
-        withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-          glowOpacity = 0.65
-        }
+      // #2201: only the capsule breathes. Arming a `repeatForever` for the
+      // preview would keep it re-rendering whether or not anything read
+      // `glowOpacity`, and the point of this chunk is that the preview pill
+      // stops moving on its own.
+      //
+      // `initial: true` keeps the appear case, so arming and re-arming stay one mechanism
+      // rather than two. `OverlayMotion.syncAmbientLoop` owns both directions and records why
+      // the loop is keyed to the SETTING rather than to this view's appearance.
+      .onChange(of: breathes, initial: true) { _, _ in
+        OverlayMotion.syncAmbientLoop(
+          enabled: breathes, opacity: $glowOpacity,
+          dim: Self.dimGlowOpacity, bright: Self.brightGlowOpacity,
+          duration: 2, onTarget: onGlowTarget)
       }
       .accessibilityHidden(true)
   }
@@ -135,6 +161,29 @@ struct OverlayCapsuleBackground: View {
 /// Capsule background for interruption warnings: red glow instead of rainbow.
 struct DistressCapsuleBackground: View {
   @State private var glowOpacity: Double = 0.3
+
+  /// Outcome observer for the target opacity, armed or parked. Production uses the no-op
+  /// default; the reason it exists is recorded on `OverlayCapsuleBackground.onGlowTarget`.
+  var onGlowTarget: (Double) -> Void = { _ in }
+
+  /// #2303. The red hairline pulses to draw the eye; the RED is what says something is wrong,
+  /// and it survives holding still.
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  /// Mid-point of this pulse's own 0.3-to-0.6 endpoints, for the same reason
+  /// `OverlayCapsuleBackground.steadyGlowOpacity` is the mid-point of its loop: a still line is
+  /// no dimmer on average than the moving one it replaces.
+  private static let steadyGlowOpacity: Double = 0.45
+
+  /// Whether the red hairline pulses at all.
+  private var pulses: Bool { OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) }
+
+  /// The pulse's own two endpoints. Same reason as the rainbow hairline's pair above.
+  private static let dimGlowOpacity: Double = 0.3
+  private static let brightGlowOpacity: Double = 0.6
+
 
   var body: some View {
     Capsule()
@@ -156,14 +205,18 @@ struct DistressCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        .opacity(glowOpacity)
+        // The still value is chosen HERE rather than in the arming closure, so a person with
+        // Reduce Motion on gets it on the FIRST frame — the same shape the rainbow hairline
+        // above already uses.
+        .opacity(pulses ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
-      .onAppear {
-        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-          glowOpacity = 0.6
-        }
+      .onChange(of: pulses, initial: true) { _, _ in
+        OverlayMotion.syncAmbientLoop(
+          enabled: pulses, opacity: $glowOpacity,
+          dim: Self.dimGlowOpacity, bright: Self.brightGlowOpacity,
+          duration: 0.4, onTarget: onGlowTarget)
       }
       .accessibilityHidden(true)
   }
