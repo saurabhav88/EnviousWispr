@@ -948,3 +948,31 @@ main > section:not(#opening) h2 {
     color: #24132f;
   }
 }
+
+/* Real sibling cards use the same native scrolling as the engine/provider rails. */
+.home-carousel {
+  display: grid;
+  gap: 14px;
+  grid-auto-columns: 100%;
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+}
+.home-carousel > * {
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.home-carousel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .home-carousel { grid-auto-columns: 90%; }
+}
+#polish:not([data-enhancement='ready']) .polish-count,
+#people:not([data-enhancement='ready']) #case-count { visibility: hidden; }
