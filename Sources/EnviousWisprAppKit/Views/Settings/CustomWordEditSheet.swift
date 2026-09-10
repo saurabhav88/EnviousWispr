@@ -74,7 +74,7 @@ struct CustomWordEditSheet: View {
         groupLabel("The correct word")
         TextField("How it should be written", text: $word.canonical)
           .focused($wordFieldFocused)
-          .settingsFieldChrome(focused: wordFieldFocused)
+          .settingsFieldChrome(focused: $wordFieldFocused)
       }
 
       // Category
@@ -240,6 +240,9 @@ struct CustomWordEditSheet: View {
       .overlay(
         RoundedRectangle(cornerRadius: 10)
           .strokeBorder(Color.stDivider, lineWidth: 1)
+          // Decoration, same class as the field border. A card wraps the alias
+          // list's own tap gesture and every control in it.
+          .allowsHitTesting(false)
       )
   }
 
@@ -265,7 +268,7 @@ struct CustomWordEditSheet: View {
       HStack(spacing: 8) {
         TextField("Add a mishearing (e.g. clawed)", text: $newAlias)
           .focused($aliasFieldFocused)
-          .settingsFieldChrome(focused: aliasFieldFocused)
+          .settingsFieldChrome(focused: $aliasFieldFocused)
           .onSubmit { addAlias() }
         // Enabled whatever the field holds. Empty, it puts the cursor in the
         // field rather than doing nothing — a greyed-out Add was the second

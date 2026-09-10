@@ -1157,7 +1157,12 @@ struct SettingsActionButton: View {
 /// passed IN rather than read here, because `@FocusState` must be declared by
 /// the view that owns the field.
 struct SettingsFieldChrome: ViewModifier {
-  let focused: Bool
+  /// A BINDING, not a value, so the whole painted box can claim focus. The
+  /// padding that makes the box look like a box sits OUTSIDE the `TextField`,
+  /// so a click in it reaches nothing — a field that draws a large target and
+  /// then answers only where its text is, which is the same defect one level
+  /// down from the one this modifier exists to fix (local Codex, PR #2774).
+  @FocusState.Binding var focused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   func body(content: Content) -> some View {
@@ -1172,14 +1177,23 @@ struct SettingsFieldChrome: ViewModifier {
           .strokeBorder(
             focused ? Color.stAccent : Color.stInputBorder,
             lineWidth: focused ? 2 : 1)
+          // Decoration. On the hit-test path it can swallow a click on the very
+          // edge the border is drawn to advertise (cloud Codex, PR #2774).
+          .allowsHitTesting(false)
       )
+      // Scoped to the painted shape, NEVER to the whole modified view: the
+      // `TextField` is a child and takes its own clicks first, so this only
+      // picks up the padding.
+      .contentShape(RoundedRectangle(cornerRadius: 8))
+      .onTapGesture { focused = true }
       .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: focused)
   }
 }
 
 extension View {
-  /// See `SettingsFieldChrome`. Pass the owning view's `@FocusState` value.
-  func settingsFieldChrome(focused: Bool) -> some View {
+  /// See `SettingsFieldChrome`. Pass the owning view's `@FocusState` projection,
+  /// e.g. `.settingsFieldChrome(focused: $wordFieldFocused)`.
+  func settingsFieldChrome(focused: FocusState<Bool>.Binding) -> some View {
     modifier(SettingsFieldChrome(focused: focused))
   }
 }
