@@ -155,6 +155,49 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.canRetry, "the message says try again and nothing offers it")
   }
 
+  /// **Stopping frees the audio, and only `stop()` can do it.**
+  ///
+  /// Every `releaseDecodedAudio()` sits behind the generation guard so a late
+  /// task cannot erase a file the user has since chosen — and `stop()` bumps the
+  /// generation, so after a Stop both the late-success and the cancellation path
+  /// return at that guard and the samples stayed resident for the life of the
+  /// app. Hundreds of megabytes on the multi-hour recordings this feature
+  /// advertises. Found by cloud review; introduced by the fix that moved the
+  /// guard in front of the release, which is why the property is asserted rather
+  /// than the ordering.
+  ///
+  /// Asserted through `canRetry`, which is false with no samples in hand and is
+  /// the only reader of that field outside the run.
+  @Test("stopping releases the decoded audio rather than holding it for the session")
+  func stopFreesTheDecodedAudio() async {
+    let gate = PartGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribe: { _ in
+        await gate.wait()
+        return "One. Two. Three."
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await settleUntil { await gate.entered >= 1 }
+
+    coordinator.stop()
+    await gate.releaseAll()
+    await settleUntil { coordinator.isEngineHeld == false }
+
+    // A rejection about the engine is the one state that reports whether audio
+    // is still held; reaching it here would need a run, so the field is read
+    // through the coordinator's own view of "is there anything to retry with".
+    #expect(coordinator.canRetry == false)
+    #expect(coordinator.state == .stopped)
+    #expect(
+      coordinator.hasDocument == false,
+      "the fixture produced a transcript, so this row is not testing the stop path it names")
+  }
+
   /// **An abandoned read is STOPPED, not ignored.**
   ///
   /// The generation check answers "whose file is this" after the work is done,

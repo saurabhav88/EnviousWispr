@@ -269,6 +269,20 @@ final class RecordingSessionKernel {
   /// round earlier, which is the question I did not ask: which OTHER engine has
   /// one of these.
   public func cancelPendingEngineUnload() { adapter.cancelPendingUnload() }
+
+  /// Re-arms this engine's unload timer under `policy`, the other half of
+  /// `cancelPendingEngineUnload()`.
+  ///
+  /// **Disarming both engines and re-arming one is not a bracket.** The first
+  /// version of this pair cancelled WhisperKit's timer and then re-armed only
+  /// Parakeet's, through `ASRManager.noteTranscriptionComplete` — so after an
+  /// All Languages import, WhisperKit's model stayed resident with nothing left
+  /// to unload it, which is the memory cost the user's setting exists to avoid,
+  /// inverted. Found by cloud review, one round after the cancel half. The same
+  /// asymmetry, one level over.
+  public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
+    adapter.applyUnloadPolicy(policy)
+  }
   private let audioCapture: any AudioCaptureInterface
   private let vad: any VADSignalSource
 

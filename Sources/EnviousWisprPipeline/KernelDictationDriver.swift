@@ -542,6 +542,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `RecordingSessionKernel.cancelPendingEngineUnload()`.
   public func cancelPendingEngineUnload() { kernel.cancelPendingEngineUnload() }
 
+  /// Re-arms it. The other half; call both or neither.
+  public func applyEngineUnloadPolicy(_ policy: ModelUnloadPolicy) {
+    kernel.applyEngineUnloadPolicy(policy)
+  }
+
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {

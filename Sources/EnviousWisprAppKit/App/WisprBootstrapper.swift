@@ -1442,10 +1442,14 @@ package final class WisprBootstrapper {
           weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
           asrManager
         ] in
-        // The other half of the bracket above: the user's model-unload setting
-        // is honoured again now the import is done with the engine, the same
-        // call `ParakeetEngineAdapter.applyUnloadPolicy` makes after a take.
-        asrManager.noteTranscriptionComplete(policy: settings.modelUnloadPolicy)
+        // The other half of the bracket above, and it must name the SAME two
+        // engines. Going through each adapter rather than through
+        // `asrManager.noteTranscriptionComplete` directly is what makes that
+        // true by construction: Parakeet's adapter forwards to exactly that
+        // call, and WhisperKit's arms its own Task, so one line each covers both
+        // instead of covering Parakeet twice.
+        kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+        whisperKitKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredEGOneDeactivation(settings: settings)

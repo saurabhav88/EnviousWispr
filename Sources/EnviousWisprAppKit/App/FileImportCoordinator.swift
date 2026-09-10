@@ -741,6 +741,19 @@ final class FileImportCoordinator {
     // already been pressed.
     step = .done
     phase = ""
+    // **Released HERE, because the run task can no longer do it.** Every
+    // `releaseDecodedAudio()` sits behind the generation guard — deliberately,
+    // so a late task cannot erase a file the user has since chosen — and `stop()`
+    // bumps the generation, so after a Stop both the late-success and the
+    // cancellation path return at that guard and the samples stayed resident for
+    // the life of the app. Hundreds of megabytes on the multi-hour recordings
+    // this feature advertises. Found by cloud review; introduced by the fix that
+    // moved the guard in front of the release.
+    //
+    // Safe because Stop is terminal for this audio: `start()` requires `.ready`
+    // and Stop leaves `.stopped`, `canRetry` requires a rejection about the
+    // ENGINE, and a re-polish reads `rawTranscript`. Nothing left can want it.
+    releaseDecodedAudio()
     runTask?.cancel()
   }
 
