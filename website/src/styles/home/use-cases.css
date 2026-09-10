@@ -639,11 +639,11 @@ main > #people .section-heading {
     height: 180px;
     margin: 0;
   }
-  .case-person .case-scene {
+  #people .case-person .case-scene {
     height: 100%;
     left: -16px;
     mask-image: linear-gradient(180deg, transparent, #000 5%, #000 87%, transparent);
-    object-position: 50% 36%;
+    object-position: 50% 16%;
     width: calc(100% + 32px);
   }
   .case-screen {
