@@ -172,6 +172,32 @@ public struct InverseTextNormalizer: Sendable {
   static let lowerRiskURLTLDAlt = #"com|org|io|co|dev|me|net"#
   static let commonWordURLTLDAlt = #"ai|app|xyz"#
   static let urlTLDAlt = lowerRiskURLTLDAlt + "|" + commonWordURLTLDAlt
+
+  /// Country-code TLDs, and the reason this is a list rather than "every ccTLD".
+  ///
+  /// The generic list above has no country code in it at all, so a spoken `.de`, `.nl` or `.fr`
+  /// never converted — for a GERMAN speaker or for an English one dictating a German address.
+  /// That is the same defect in both languages and it is fixed here for both.
+  ///
+  /// **A ccTLD that is also an ordinary word is EXCLUDED, because the email frame does not
+  /// protect it.** `emails(_:)` matches `<name> at <dom> dot <tld>`, and `dom` is any single
+  /// token, so admitting `it` would turn the ordinary sentence "he pointed at the dot it made"
+  /// into "he pointed@the.it made". Excluded on those grounds: `it`, `at`, `in`, `is`, `be`,
+  /// `no`, `so`, `us`, `my`, `am`, `do`, `id`. (`me` predates this and stays; it is already
+  /// shipped behaviour and its removal is not this change's business.)
+  ///
+  /// **Italy, Austria, Belgium, Norway and Indonesia are therefore NOT supported here**, which is
+  /// a real coverage hole and is stated rather than hidden: those need the stronger evidence the
+  /// joined-host pass has (a literal "." the recognizer already committed to) and that route does
+  /// not exist for email. Tracked on #2764.
+  ///
+  /// Scope is our supported and adjacent European markets plus `eu`; this is deliberately not
+  /// the full IANA list, because every added entry widens the false-positive surface and none of
+  /// the rest has a user behind it. Extending it is adding a string here, not new logic.
+  static let countryCodeTLDs = [
+    "de", "nl", "fr", "es", "pt", "pl", "se", "dk", "fi", "hu", "cz", "sk", "ru", "ua",
+    "ch", "gr", "ie", "uk", "eu", "si", "hr", "lt", "lv", "ee", "bg", "ro",
+  ]
   // Deliberately NOT derived from urlTLDAlt (#2257, local Codex review round 2):
   // emails(_:)'s "name at domain dot tld" pattern has no path requirement to disambiguate
   // it the way urls(_:) does, so ANY newly-added TLD widens "at <domain> dot <tld>" — a
@@ -179,7 +205,8 @@ public struct InverseTextNormalizer: Sendable {
   // Measured: adding just ai/app/xyz turned "learn more at startup dot ai" into
   // "learn more@startup.ai" and "find it at docs dot xyz" into "find it@docs.xyz". Kept
   // identical to the pre-#2257 list; the new TLDs are URL-only.
-  static let emailTLDAlt = #"com|org|io|co|dev|me|net|edu|gov"#
+  static let emailTLDAlt = alt(["com", "org", "io", "co", "dev", "me", "net", "edu", "gov"]
+    + countryCodeTLDs)
   // A domain label: may start with a letter OR digit (cloud Codex review, PR #2265 —
   // "3m.com", "1password.com" are real domains excluded by a letter-only start), may
   // contain digits/hyphens, never ENDS on a hyphen (a trailing "-" is not a valid
