@@ -731,7 +731,17 @@ struct TranscribeFileView: View {
           }
         }
         HStack(spacing: 8) {
-          chip("Polished by \(selectedPolish?.title ?? "nothing")")
+          // **The provider this document was RUN with**, from the frozen
+          // configuration, and named by `LLMProvider.displayName` so the six
+          // names have one owner. Reading the live selection credited whatever
+          // was picked after the run — pick Claude on Change, return to Done,
+          // and unchanged EG-1 output was labelled Claude's. It says
+          // "cleanup engine" rather than "polished by" because a passage whose
+          // polish failed carries its own note and this line must not overrule
+          // it. Found by Codex.
+          chip(
+            "Cleanup engine: \((coordinator.runConfiguration?.polishProvider ?? .none).displayName)"
+          )
           Button("Change") { coordinator.choosePolisherAgain() }
             .buttonStyle(.plain)
             .foregroundStyle(Color.stAccent)

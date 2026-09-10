@@ -55,6 +55,7 @@ enum FileImportSettingsFreeze {
         provider, ollamaModelIsRemote: ollamaModelIsRemote),
       // Only the BUNDLED servers are pinnable: Ollama is the user's own process
       // and the cloud providers have nothing on this Mac to tear down.
-      localPolishProvider: (provider == .egOne || provider == .s1Mini) ? provider : nil)
+      localPolishProvider: (provider == .egOne || provider == .s1Mini) ? provider : nil,
+      polishProvider: provider)
   }
 }

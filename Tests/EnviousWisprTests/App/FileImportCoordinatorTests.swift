@@ -67,7 +67,8 @@ struct FileImportCoordinatorTests {
       Self.outcome($0)
     },
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
-      FileImportCoordinator.RunConfiguration(polishIsCloud: false, localPolishProvider: nil)
+      FileImportCoordinator.RunConfiguration(
+        polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne)
     },
     ensureEngineReady: @escaping @MainActor () async -> FileImportCoordinator.EngineReadiness = {
       .ready
@@ -288,6 +289,41 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.documentText == document, "the refusal ate the document")
   }
 
+  /// **A behavioural walk cannot establish that every WRITER asks the rule.**
+  /// Round 4 enumerated the writers from the source and found five of seven
+  /// navigation sites bypassing the authority the commit message claimed was
+  /// single — and every behavioural row still passed, because they exercised the
+  /// two writers that did ask. So this row reads the FILE.
+  ///
+  /// The seven permitted direct writers are the two resets and the five
+  /// run transitions, each named at `jump(to:advancing:)`. A new one fails here
+  /// until somebody says which it is.
+  @Test("every navigation writer goes through the one authority")
+  func navigationHasOneWriter() throws {
+    let source = try String(
+      contentsOf: RepoRoot.url.appendingPathComponent(
+        "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift"),
+      encoding: .utf8)
+
+    let writers = source.split(separator: "\n")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { $0.hasPrefix("step = ") }
+
+    // `step = target` is the authority's own write and is not counted.
+    let direct = writers.filter { $0 != "step = target" }
+    #expect(
+      direct.count == 7,
+      """
+      \(direct.count) direct writes to `step`, expected 7 \
+      (choose, startOver, start, stop, rePolish, and polishAll twice). \
+      A new one is either a navigation — which must call `jump(to:advancing:)` \
+      — or an exception that needs naming at `jump`. Found: \(direct)
+      """)
+    #expect(
+      writers.contains("step = target"),
+      "the authority no longer writes the step; this test is measuring nothing")
+  }
+
   /// The other direction, so a rule that refused everything would fail too.
   @Test("before any run the bar goes back to Upload and no further forward")
   func freshRunNavigatesBackwardsOnly() async {
@@ -304,6 +340,25 @@ struct FileImportCoordinatorTests {
     #expect(coordinator.canGo(to: .transcription))
     #expect(coordinator.canGo(to: .review) == false, "the bar skipped a step forward")
     #expect(coordinator.canGo(to: .done) == false, "Done was offered with no document")
+
+    // Continue is the one mover that goes forward, one step, and only then.
+    #expect(coordinator.canGo(to: .review, advancing: true))
+    #expect(
+      coordinator.canGo(to: .done, advancing: true) == false,
+      "Continue could skip the whole wizard")
+  }
+
+  /// **Continue must not work before a file has been read.** `advance()` used to
+  /// carry that check itself, which is exactly why it could not call the
+  /// authority; folding it in is what let every writer share one rule.
+  @Test("Continue does nothing on an empty Upload step")
+  func continueNeedsAFile() {
+    let coordinator = makeCoordinator(lease: EngineLease())
+    #expect(coordinator.step == .upload)
+
+    coordinator.advance()
+
+    #expect(coordinator.step == .upload, "the wizard advanced with no file chosen")
   }
 
   /// A save confirmation belongs to ONE set of words. Left standing over a new
@@ -583,7 +638,8 @@ struct FileImportCoordinatorTests {
       lease: lease,
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne)
+          polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
+          polishProvider: cloud ? .openAI : .egOne)
       })
     coordinator.choose(url: Self.anyURL)
     await settleUntil { if case .ready = coordinator.state { return true } else { return false } }

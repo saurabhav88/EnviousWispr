@@ -1396,10 +1396,19 @@ package final class WisprBootstrapper {
       // deferred by the pinned runtime. Without this a settings change made
       // during a long import stayed pending until something unrelated happened
       // to poke the same paths.
-      onEngineReleased: { [weak engineCoordinator, settings] in
+      onEngineReleased: {
+        [weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings] in
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+        // **Recovery needs its OWN wake.** A poke that finds the selected and
+        // active engines already matching returns without reaching recovery, so
+        // a scan that released its mutation gate because an import held the
+        // engine would wait for an unrelated trigger, or for the next launch.
+        // Same call the engine-mutation scope already uses as its wake. Found by
+        // Codex; timing not reproduced, and fixed because it is one line and its
+        // failure is silent.
+        recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
       },
       // The user's words, read LIVE at Start rather than held from launch: the
       // propagator is the one place that knows the current vocabulary, and an

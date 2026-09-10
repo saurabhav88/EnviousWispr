@@ -217,9 +217,18 @@ final class FileImportCoordinator {
   /// The bundled local polisher a RUNNING import has pinned, or nil. Read by the
   /// settings sync so a provider switch defers tearing down the server this run
   /// is using, exactly as it already defers for a live dictation.
+  ///
+  /// **Held separately from `runConfiguration`, which is document metadata and
+  /// is RESETTABLE.** Stop returns while the cancelled work still holds the
+  /// engine; pressing New transcription in that window cleared the configuration
+  /// and with it the pin, so a provider change could tear down a server the work
+  /// was still inside. The pin now lives and dies with the physical hold. Found
+  /// by Codex.
   var pinnedLocalPolishProvider: LLMProvider? {
-    isEngineHeld ? runConfiguration?.localPolishProvider : nil
+    isEngineHeld ? heldLocalPolishProvider : nil
   }
+
+  private var heldLocalPolishProvider: LLMProvider?
 
   /// The document as one piece of text, for copy and save.
   /// The document as one piece of text, for Copy and Save.
@@ -310,6 +319,11 @@ final class FileImportCoordinator {
     /// The BUNDLED local polisher this run froze, if any, so the settings sync
     /// can defer tearing its server down until the run releases its claim.
     let localPolishProvider: LLMProvider?
+    /// The polisher this run was configured with, for the line crediting the
+    /// document. Reading LIVE settings there credited whatever was selected
+    /// NOW: finishing with EG-1, pressing Change, picking Claude and returning
+    /// to Done labelled unchanged EG-1 output as Claude's. Found by Codex.
+    let polishProvider: LLMProvider
   }
 
   /// Freezes the configuration this run uses and returns it. Called once per
@@ -409,7 +423,7 @@ final class FileImportCoordinator {
     // sent the user to a screen from which their finished transcript could not
     // be copied, saved or retried. Done renders the same refusal beside the
     // words. Found by Codex.
-    step = hasDocument ? .done : .upload
+    jump(to: hasDocument ? .done : .upload)
   }
 
   /// Moves forward through the wizard. Refused once a run is in flight: the
@@ -418,10 +432,9 @@ final class FileImportCoordinator {
   func advance() {
     guard !isRunning else { return }
     switch step {
-    case .upload:
-      if case .ready = state { step = .transcription }
-    case .transcription: step = .polish
-    case .polish: step = .review
+    case .upload: jump(to: .transcription, advancing: true)
+    case .transcription: jump(to: .polish, advancing: true)
+    case .polish: jump(to: .review, advancing: true)
     // With a transcript already in hand, Start means POLISH AGAIN: the audio
     // has been read and transcribed, and re-doing either would be slower and
     // would produce the same words.
@@ -443,8 +456,8 @@ final class FileImportCoordinator {
 
   /// Goes back one step, if that step is one the user may be on.
   func goBack() {
-    guard let previous = Step(rawValue: step.rawValue - 1), canGo(to: previous) else { return }
-    step = previous
+    guard let previous = Step(rawValue: step.rawValue - 1) else { return }
+    jump(to: previous)
   }
 
   /// Takes the user back to the Polish step with the finished document intact.
@@ -455,8 +468,8 @@ final class FileImportCoordinator {
   /// so picking a different polisher and pressing Start again costs no re-read
   /// and no second transcription. Found by Codex.
   func choosePolisherAgain() {
-    guard !isRunning, !rawTranscript.isEmpty else { return }
-    step = .polish
+    guard hasDocument else { return }
+    jump(to: .polish)
   }
 
   /// **The ONE answer to "may the user be on this step right now".**
@@ -471,7 +484,13 @@ final class FileImportCoordinator {
   /// this is the rule, and nothing moves `step` without asking it.
   ///
   /// **The test that decides every case: can the user get back to their words?**
-  func canGo(to target: Step) -> Bool {
+  /// - Parameter advancing: true only for Continue, which is the one mover that
+  ///   goes FORWARD through a wizard the user has not finished. Without it this
+  ///   predicate answered a narrower question than its name — backward step-bar
+  ///   navigation — and `advance()` had to bypass it to work at all, which is
+  ///   how a "single authority" ended up with five writers around it. Codex
+  ///   round 4 enumerated them from the code and found the claim false.
+  func canGo(to target: Step, advancing: Bool = false) -> Bool {
     guard !isRunning, target != step else { return false }
     switch target {
     // Never by navigation: it shows a run in progress, and after one there is
@@ -484,15 +503,27 @@ final class FileImportCoordinator {
     case .upload: return !hasDocument
     // With a document the choice steps go both ways: picking a different
     // polisher and returning to the words is a supported thing to do. Without
-    // one, the wizard runs forwards and the bar only goes back.
+    // one, the bar only goes back and Continue is the only way forward — one
+    // step at a time, and only once a file has actually been read.
     case .transcription, .polish, .review:
-      return file != nil && (hasDocument || target.rawValue < step.rawValue)
+      guard file != nil else { return false }
+      if hasDocument || target.rawValue < step.rawValue { return true }
+      guard advancing, case .ready = state else { return false }
+      return target.rawValue == step.rawValue + 1
     }
   }
 
-  /// Takes the user to `target` if `canGo(to:)` allows it.
-  func jump(to target: Step) {
-    guard canGo(to: target) else { return }
+  /// Takes the user to `target` if `canGo(to:advancing:)` allows it. **The only
+  /// navigation writer.** Three writers remain outside it and are exceptions by
+  /// construction, not by oversight:
+  ///
+  /// - `choose(url:)` and `startOver()` RESET to Upload while clearing what made
+  ///   Upload unreachable, so asking a predicate about the state they are in the
+  ///   middle of replacing would answer about the old one.
+  /// - `start()`, `stop()`, `rePolish()` and `polishAll` move the user because
+  ///   the WORK moved. They are not navigation and must not be refusable.
+  func jump(to target: Step, advancing: Bool = false) {
+    guard canGo(to: target, advancing: advancing) else { return }
     step = target
   }
 
@@ -561,6 +592,8 @@ final class FileImportCoordinator {
         finishEngineHold()
       }
       runConfiguration = beginRun()
+      // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
+      heldLocalPolishProvider = runConfiguration?.localPolishProvider
       phase = "Writing down what was said"
 
       await run(generationAtStart: generationAtStart)
@@ -599,6 +632,8 @@ final class FileImportCoordinator {
     }
 
     runConfiguration = beginRun()
+    // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
+    heldLocalPolishProvider = runConfiguration?.localPolishProvider
 
     generation += 1
     let generationAtStart = generation
@@ -661,6 +696,7 @@ final class FileImportCoordinator {
   /// the same paths. Found by Codex.
   private func finishEngineHold() {
     isEngineHeld = false
+    heldLocalPolishProvider = nil
     onEngineReleased()
   }
 
