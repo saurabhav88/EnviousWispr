@@ -368,6 +368,14 @@ internal final class TextProcessingRunner {
           PolishSkipReason(silentLLMError: $0)
         }
         let isSilentPolishSkip = silentPolishSkipReason != nil
+        // #2648: a silent skip is a BYPASS, and this is its second producer.
+        // `LLMPolishStep.bypassedContext` covers the step declining up front;
+        // this covers the step THROWING a reason `PolishSkipReason` classifies
+        // as silent — Apple Intelligence unavailable, an unsupported input
+        // language, output-language drift, every EG-1 reason. Both producers
+        // read the same classifier, which is what makes this the whole set
+        // rather than the two cases somebody happened to think of.
+        if isSilentPolishSkip { context.polishWasBypassed = true }
         // #945: a raw `URLError.cancelled` from a torn-down request is not a real
         // failure — never surface a notice or fire a capture for it.
         // #1707 Phase 2 (Open Decision #9): a bare `CancellationError` reaching

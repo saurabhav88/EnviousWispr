@@ -1418,6 +1418,7 @@ package final class WisprBootstrapper {
       // the adapters covers both engines rather than one of them twice.
       // Idempotent, so both are always touched rather than whichever looks
       // active.
+      engineIsLoaded: { [activeEngine] in await activeEngine.isLoaded() },
       disarmEngineTimers: { [kernelDriver, whisperKitKernelDriver] in
         kernelDriver.cancelPendingEngineUnload()
         whisperKitKernelDriver.cancelPendingEngineUnload()

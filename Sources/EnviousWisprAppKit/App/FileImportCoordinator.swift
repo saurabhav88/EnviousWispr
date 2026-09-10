@@ -325,6 +325,10 @@ final class FileImportCoordinator {
   /// for a run that is itself waiting for the switch.
   private let ensureEngineReady: @MainActor () async -> EngineReadiness
 
+  /// Whether the selected engine still has a model resident. Asked once, after
+  /// the claim, because the unload timer is only disarmed from that point on.
+  private let engineIsLoaded: @MainActor () async -> Bool
+
   /// Mirrors `EngineCoordinator.PressReadiness` without importing it, so this
   /// type keeps knowing nothing about who owns engine switching.
   enum EngineReadiness: Sendable, Equatable {
@@ -411,6 +415,7 @@ final class FileImportCoordinator {
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
+    engineIsLoaded: @escaping @MainActor () async -> Bool = { true },
     disarmEngineTimers: @escaping @MainActor () -> Void = {},
     rearmEngineTimers: @escaping @MainActor () -> Void = {},
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
@@ -422,6 +427,7 @@ final class FileImportCoordinator {
     self.polishOllamaLocalityNow = polishOllamaLocalityNow
     self.refreshOllamaFacts = refreshOllamaFacts
     self.ensureEngineReady = ensureEngineReady
+    self.engineIsLoaded = engineIsLoaded
     self.disarmEngineTimers = disarmEngineTimers
     self.rearmEngineTimers = rearmEngineTimers
     self.onEngineReleased = onEngineReleased
@@ -729,11 +735,6 @@ final class FileImportCoordinator {
     runTask = Task { [weak self] in
       guard let self else { return }
 
-      // **The whole run, inside one bracket.** Nothing below can exit without
-      // the user's model-unload setting being put back.
-      disarmEngineTimers()
-      defer { rearmEngineTimers() }
-
       // 1. The engine the user picked, actually active and actually warm.
       let readiness = await ensureEngineReady()
       guard generationAtStart == generation else { return }
@@ -751,13 +752,35 @@ final class FileImportCoordinator {
       case .refused(let holder): showRejection(.engineBusy(holder)); return
       }
       isEngineHeld = true
+      // **The unload-timer bracket lives INSIDE the claim, and that placement is
+      // the fix.** Put around the whole task it also fired on the paths where
+      // this run never got the claim — and `ensureEngineReady()` suspends, so
+      // another workload can take the lease while it is running. The `defer`
+      // then re-armed the timers under SOMEBODY ELSE'S run, which is the same
+      // unload it exists to prevent, aimed at a different victim. Found by cloud
+      // review, one round after the leak it was fixing.
+      //
+      // Nothing is lost by disarming later: a timer that fires between the
+      // readiness drive and here unloads a model the readiness postcondition has
+      // already confirmed, and the re-check below reloads it.
+      disarmEngineTimers()
       // **The claim goes back only here**, after the physical work has exited.
       // Releasing where Stop is DECIDED would let a dictation in while a
       // cancelled part was still inside the one-slot polish server.
       defer {
+        rearmEngineTimers()
         engineAdmission.release(token)
         finishEngineHold()
       }
+      // The timer above could have fired while we were claiming. Cheap to ask,
+      // and the alternative is transcribing on an engine that just unloaded.
+      if await engineIsLoaded() == false {
+        guard await ensureEngineReady() == .ready else {
+          showRejection(.engineNotReady)
+          return
+        }
+      }
+
       runConfiguration = beginRun()
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
       heldLocalPolishProvider = runConfiguration?.localPolishProvider

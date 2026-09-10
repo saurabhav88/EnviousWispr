@@ -133,7 +133,15 @@ public enum AudioFileDecoder {
     // A user who wants a different track has no way to say so yet, and that is a
     // real limitation rather than a hidden one: the alternative on offer was
     // mixing all of them, which is worse in every case including this one.
-    let chosenTrack = tracks.prefix(1)
+    // **Enabled first, then first.** Track ORDER is not the asset's playback
+    // selection: a movie can carry a disabled commentary, descriptive-audio or
+    // alternate-language track ahead of the main program, and `prefix(1)` would
+    // hand the engine the commentary. `isEnabled` is the flag a player reads to
+    // decide what you hear on opening the file. Falling back to the first track
+    // keeps a file whose tracks are all marked disabled working rather than
+    // refusing it. Found by cloud review, one round after the mixing finding
+    // this replaced.
+    let chosenTrack = [tracks.first(where: \.isEnabled) ?? tracks[0]]
 
     // The conversion is the READER's job, not a second pass of ours: these
     // settings make every source format arrive already downmixed to mono and
