@@ -1863,7 +1863,118 @@ def log_lines_since(start):
     # nothing.
     # Two passes, always merged. Comparing them was tried three ways and every
     # one had to CHOOSE which pass to trust; the union chooses nothing.
+    #
+    # KNOWN AND DELIBERATE: this returns STAMPED LINES ONLY. A multi-line
+    # `CORRECTION_DEBUG ... OUT:` block continues on unstamped lines, and
+    # `_line_in_window` answers NO for those, so a polish that spans lines comes
+    # back as its first line. Every caller here asks a membership or a count
+    # question about stamped markers, for which that is right. For CONTENT, use
+    # `log_entries_since`, which keeps whole entries (#2775).
     return _merge_sweeps(sweep(), sweep())
+
+
+_LOG_SHELF = [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]
+
+
+def _entries_from_texts(named_texts, start):
+    """The pure half of `log_entries_since`: [(fileid, name, index, [lines])] for
+    every ENTRY whose stamped first line is at or after `start`.
+
+    An entry is one stamped line plus every unstamped line that follows it, in
+    file order. A continuation line before any stamp belongs to an entry that
+    began in an earlier file (or was truncated) and is dropped, because there is
+    nothing to attach it to.
+
+    `fileid` is the STABLE identity of the file the entry came from — its
+    (device, inode) — and `index` the entry's line number within it. Merging on
+    (fileid, index) survives rotation between the two sweeps: `app.log` moved to
+    `app.1.log` keeps its inode, so the same entry read twice collapses, while a
+    fresh `app.log` gets a new inode and is kept. `name` rides along only to order
+    the output oldest-file-first; it is NEVER part of the identity, because the
+    name is exactly what rotation changes. Two byte-identical entries in one file
+    have different `index`, so both survive.
+    """
+    out = []
+    for fileid, name, text in named_texts:
+        current = None
+        for i, line in enumerate(text.splitlines()):
+            if _line_timestamp(line) is not None:
+                if current is not None and _line_in_window(current[3][0], start):
+                    out.append(current)
+                current = (fileid, name, i, [line])
+            elif current is not None:
+                current[3].append(line)
+        if current is not None and _line_in_window(current[3][0], start):
+            out.append(current)
+    return out
+
+
+def _merge_entries(entries):
+    """Dedup entries by (fileid, index) and flatten to lines, oldest file first.
+
+    Extracted so the ROTATION-BETWEEN-SWEEPS case is testable without staging a
+    real 10 MiB rotation: the self-test hands it two synthetic sweeps where the
+    same fileid reappears under a rotated name plus a fresh fileid for the new
+    file, and asserts nothing is duplicated or lost.
+    """
+    # Resolve each file's CURRENT name from the LATEST sweep. `entries` is
+    # sweep1 + sweep2, so a later entry for the same fileid overwrites an earlier
+    # one — after a rotation between sweeps, sweep1 saw the file as `app.log` and
+    # sweep2 as `app.1.log`, and the shelf ORDER must use the latter. Without this,
+    # a deduped entry keeps its stale `app.log` name and sorts as if it were the
+    # live file, interleaving an old take's lines with the new take's (Codex diff
+    # review r2).
+    latest_name = {}
+    for fileid, name, _index, _body in entries:
+        latest_name[fileid] = name
+
+    seen, merged = set(), []
+    for fileid, _name, index, body in entries:
+        key = (fileid, index)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append((fileid, index, body))
+
+    def shelf_key(fileid):
+        name = latest_name.get(fileid)
+        return _LOG_SHELF.index(name) if name in _LOG_SHELF else len(_LOG_SHELF)
+
+    merged.sort(key=lambda e: (shelf_key(e[0]), e[1]))
+    lines = []
+    for _fileid, _idx, body in merged:
+        lines.extend(body)
+    return lines
+
+
+def log_entries_since(start):
+    """Every `app.log` ENTRY stamped at or after `start`, as a flat list of lines,
+    oldest first, across the rotated predecessors. THE READER FOR CONTENT.
+
+    Differs from `log_lines_since` in exactly one way: unstamped continuation
+    lines stay attached to the stamped line before them, so a multi-line polish
+    block (`code-uat.md` RULE: read-a-multi-line-polish-from-the-LOG-BLOCK-not-
+    the-harness-field) survives. Two sweeps are taken for the same rotation reason
+    as `log_lines_since`, and merged by (device, inode, line index) so a rotation
+    BETWEEN the sweeps neither duplicates an entry (the renamed file keeps its
+    inode) nor loses the new one (a fresh file has a new inode). Grounded review
+    r2 + diff review of #2775.
+    """
+    directory = os.path.dirname(_APP_LOG_PATH)
+
+    def sweep():
+        named = []
+        for name in _LOG_SHELF:
+            try:
+                with open(os.path.join(directory, name), "rb") as fh:
+                    st = os.fstat(fh.fileno())
+                    fileid = (st.st_dev, st.st_ino)
+                    named.append((fileid, name, fh.read().decode("utf-8", "replace")))
+            except OSError:
+                continue
+        return _entries_from_texts(named, start)
+
+    return _merge_entries(sweep() + sweep())
 
 
 def launch_banners_since(start):
@@ -3011,8 +3122,58 @@ def _self_test():
         else:
             print(f"  ok      {name}")
 
+    # `log_entries_since`'s pure half (#2775). The rows are the three defects
+    # grounded review named: a continuation line dropped, identical entries
+    # collapsed, and an orphan continuation attached to nothing.
+    S = "[2026-01-01T12:00:05-05:00] [DEBUG] [TextProcessing] "
+    entry_cases = [
+        ("continuation lines stay attached to their entry, even in a rotated predecessor",
+         [("app.1.log", S + "CORRECTION_DEBUG [LLM Polish] OUT: Hi Sam,\n\nThanks\n"),
+          ("app.log", S + "[Pipeline] Pipeline timing TOTAL: 1.0s\n")],
+         [S + "CORRECTION_DEBUG [LLM Polish] OUT: Hi Sam,", "", "Thanks",
+          S + "[Pipeline] Pipeline timing TOTAL: 1.0s"]),
+        ("two byte-identical entries are two entries",
+         [("app.log", S + "same\n" + S + "same\n")],
+         [S + "same", S + "same"]),
+        ("an orphan continuation before any stamp is dropped",
+         [("app.log", "orphan tail\n" + S + "real\n")],
+         [S + "real"]),
+        ("an entry before the window is dropped WITH its continuation",
+         [("app.log", "[2026-01-01T11:00:00-05:00] [DEBUG] [x] old\nold tail\n" + S + "new\n")],
+         [S + "new"]),
+    ]
+    entry_rows = len(entry_cases)
+    for name, named, want in entry_cases:
+        # Give each synthetic file a distinct fileid; names come from the shelf.
+        tagged = [(("dev", idx), fname, text) for idx, (fname, text) in enumerate(named)]
+        got = [ln for _fid, _n, _i, body in _entries_from_texts(tagged, T0) for ln in body]
+        if got != want:
+            failures.append(f"{name}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok      {name}")
+
+    # ROTATION BETWEEN SWEEPS (Codex diff review P2). Sweep 1 reads the entry from
+    # `app.log` (inode A). Rotation renames it to `app.1.log`, inode A unchanged,
+    # and a fresh `app.log` (inode B) gets a new entry. Sweep 2 sees both. The
+    # merge must keep exactly two lines: the old entry ONCE and the new entry.
+    # Two lines PER take (raw + terminal), so a wrong sort would interleave the
+    # two takes and misattribute the new transcript to the old take.
+    old_raw, old_term = S + "old raw", S + "old terminal"
+    new_raw, new_term = S + "new raw", S + "new terminal"
+    A, B = ("dev", 100), ("dev", 200)
+    sweep1 = [(A, "app.log", 0, [old_raw]), (A, "app.log", 1, [old_term])]
+    sweep2 = [(A, "app.1.log", 0, [old_raw]), (A, "app.1.log", 1, [old_term]),
+              (B, "app.log", 0, [new_raw]), (B, "app.log", 1, [new_term])]
+    merged = _merge_entries(sweep1 + sweep2)
+    want = [old_raw, old_term, new_raw, new_term]
+    if merged != want:
+        failures.append(f"rotation between sweeps: got {merged!r}, want {want!r}")
+    else:
+        print("  ok      rotation between sweeps keeps each take's lines together and in order")
+    entry_rows += 1
+
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
-             + len(window_cases))
+             + len(window_cases) + entry_rows)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
