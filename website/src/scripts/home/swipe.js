@@ -48,7 +48,6 @@ export function bindSwipe(card, scope, onSwipe, onStart = () => {}) {
     card.setPointerCapture(event.pointerId);
     // Mobile-preview dragging should move the card, not select its demonstration text.
     if (event.pointerType === 'mouse') event.preventDefault();
-    onStart(event);
   });
   listen(card, 'pointermove', (event) => {
     if (gesture?.id !== event.pointerId) return;
@@ -62,6 +61,7 @@ export function bindSwipe(card, scope, onSwipe, onStart = () => {}) {
       }
       gesture.horizontal = true;
       card.classList.add('is-swiping');
+      onStart(event);
     }
     if (event.cancelable) event.preventDefault();
     card.style.setProperty('--swipe-offset', Math.max(-28, Math.min(28, dx * 0.2)) + 'px');
