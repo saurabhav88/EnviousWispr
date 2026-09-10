@@ -194,7 +194,12 @@ enum FileImportPolishGate {
     // a draft left unsaved runs exactly as if no key existed; a user who has typed one and
     // is told "finish setting this up" reasonably believes they already did.
     case .absent: return .blocked(hasUnsavedDraft ? .unsavedKey : .needsSetup)
+    // A REPLACEMENT typed over a saved key is the same fact and reads WORSE: the run
+    // proceeds under the OLD key while the user believes they changed it, so the failure is
+    // silent rather than blocked. `hasUnsavedDraft` is asked FIRST for that reason. Found by
+    // the cloud review of PR #2786.
     case .present:
+      if hasUnsavedDraft { return .blocked(.unsavedKey) }
       if case .invalid = validation { return .blocked(.needsSetup) }
       return .ready
     }

@@ -683,30 +683,36 @@ struct TranscribeFileView: View {
   /// readiness would be a second authority on the same question.
   private func readiness(for provider: LLMProvider) -> FileImportPolishReadiness {
     let savedKey: FileImportSavedKeyState
-    // The TYPED text, which is not the same fact as the SAVED one: polish reads the
-    // Keychain, so a draft nobody pressed Save on runs as no key.
-    let draft: String
+    // Whether the field was TYPED IN since it was last loaded or saved, which is not the
+    // same fact as the SAVED one: polish reads the Keychain, so a key nobody pressed Save
+    // on does not run.
+    //
+    // **Not "the field is non-empty".** The field is FILLED FROM the Keychain on appear, so
+    // non-empty is true for every user who has a key and would block all of them. A
+    // REPLACEMENT key typed over a saved one is the case this exists for: the old key is
+    // still what runs. Found by the cloud review of PR #2786.
+    let edited: Bool
     switch provider {
     case .openAI:
       savedKey = .from(setupModel.openAIKeySaved)
-      draft = setupModel.openAIKey
+      edited = setupModel.openAIKeyEdited
     case .gemini:
       savedKey = .from(setupModel.geminiKeySaved)
-      draft = setupModel.geminiKey
+      edited = setupModel.geminiKeyEdited
     case .claude:
       savedKey = .from(setupModel.claudeKeySaved)
-      draft = setupModel.claudeKey
+      edited = setupModel.claudeKeyEdited
     // Enumerated, never `default:`. These carry no API key, so "absent" is the true
     // answer and the gate ignores it for them. A NEW key-carrying provider on a default
     // arm would have read as permanently key-less and blocked forever.
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       savedKey = .absent
-      draft = ""
+      edited = false
     }
     return FileImportPolishGate.readiness(
       provider: provider,
       savedKey: savedKey,
-      hasUnsavedKeyDraft: !draft.isEmpty,
+      hasUnsavedKeyDraft: edited,
       // Only when the discovery coordinator's verdict is about THIS provider. It is shared
       // with the AI Polish page, which may have validated a different one.
       keyValidation: llmDiscovery.stateProvider == provider

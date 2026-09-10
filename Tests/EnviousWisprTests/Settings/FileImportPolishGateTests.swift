@@ -86,6 +86,27 @@ struct FileImportPolishGateTests {
         == .blocked(.needsSetup))
   }
 
+  /// The replacement-key case, which is the same fact as the row above wearing a saved key.
+  /// It reads worse than a missing key: the run does not stop, it proceeds under the OLD
+  /// value while the user believes they changed it. Found by the cloud review of PR #2786.
+  @Test("a replacement key typed over a saved one blocks until it is saved")
+  func aReplacementKeyBlocksUntilSaved() {
+    let verdict = Self.readiness(
+      provider: .openAI, savedKey: .present, hasUnsavedKeyDraft: true)
+    #expect(verdict == .blocked(.unsavedKey))
+    #expect(
+      FileImportPolishSubtitle.text(provider: .openAI, readiness: verdict) == "Key not saved")
+    // Both other sides, so no arm can swallow another: a saved key nobody has retyped is
+    // ready, and the block outranks a stale invalid verdict about the key being replaced.
+    #expect(
+      Self.readiness(provider: .openAI, savedKey: .present, hasUnsavedKeyDraft: false)
+        == .ready)
+    #expect(
+      Self.readiness(
+        provider: .openAI, savedKey: .present, hasUnsavedKeyDraft: true,
+        keyValidation: .invalid("nope")) == .blocked(.unsavedKey))
+  }
+
   /// Named for what the state IS, not for one cause of it. `KeyValidationState.invalid`
   /// also carries general discovery and network failures, so "the provider refused the key"
   /// would be a claim this row cannot make. Narrowed by Codex.
