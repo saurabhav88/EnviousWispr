@@ -24,7 +24,10 @@ struct PolishLengthCopyTests {
       .deletingLastPathComponent()  // repo root
     return (try? String(
       contentsOf: root.appendingPathComponent(
-        "Sources/EnviousWisprAppKit/Views/Settings/AIPolishSettingsView.swift"),
+        // #2772 chunk 1: the explainer copy moved with the setup editor when
+        // `AIPolishSettingsView` was split. The subject is the copy, not the file
+        // it used to live in.
+        "Sources/EnviousWisprAppKit/Views/Settings/ProviderSetup.swift"),
       encoding: .utf8)) ?? ""
   }
 

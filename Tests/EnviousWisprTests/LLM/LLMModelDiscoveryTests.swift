@@ -93,7 +93,7 @@ struct LLMModelDiscoveryTests {
   /// the founder screenshotted") — this test pins the fix at the layer #1947
   /// actually complained about AND through to `LLMModelInfo`, the row the
   /// picker actually renders (`Text(model.displayName)` in
-  /// `AIPolishSettingsView.swift`; cited by SYMBOL because the line number this
+  /// `ProviderSetup.swift`; cited by SYMBOL because the line number this
   /// used to carry was already pointing at unrelated code, #2602) — a
   /// `DiscoveryCandidate`-only
   /// assertion stops one hop short of what the picker consumes. Uses the
