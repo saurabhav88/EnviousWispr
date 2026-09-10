@@ -69,8 +69,10 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
       0,
       Math.min(
         viewport.scrollWidth - viewport.clientWidth,
-        viewport.scrollLeft + slides[target].getBoundingClientRect().left -
-          viewport.getBoundingClientRect().left - viewport.clientLeft,
+        viewport.scrollLeft +
+          slides[target].getBoundingClientRect().left -
+          viewport.getBoundingClientRect().left -
+          viewport.clientLeft,
       ),
     );
     pending = target;
@@ -94,37 +96,67 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     keys.clear();
     goTo(nearest(), { instant: true });
   }
-  listen(viewport, 'scroll', () => {
-    const left = viewport.scrollLeft;
-    if (Math.abs(left - lastLeft) < 0.5) return;
-    lastLeft = left;
-    moving = true;
-    if (pending === undefined) takeControl();
-    if (!hasScrollEnd) fallback();
-  }, { passive: true });
+  listen(
+    viewport,
+    'scroll',
+    () => {
+      const left = viewport.scrollLeft;
+      if (Math.abs(left - lastLeft) < 0.5) return;
+      lastLeft = left;
+      moving = true;
+      if (pending === undefined) takeControl();
+      if (!hasScrollEnd) fallback();
+    },
+    { passive: true },
+  );
   if (hasScrollEnd) listen(viewport, 'scrollend', () => finish());
-  listen(viewport, 'pointerdown', (event) => {
-    pointers.add(event.pointerId);
-    if (pending !== undefined) takeControl();
-  }, { passive: true });
+  listen(
+    viewport,
+    'pointerdown',
+    (event) => {
+      pointers.add(event.pointerId);
+      if (pending !== undefined) takeControl();
+    },
+    { passive: true },
+  );
   for (const type of ['pointerup', 'pointercancel']) {
-    listen(win, type, (event) => {
-      pointers.delete(event.pointerId);
-      if (moving && (!hasScrollEnd || ended)) fallback();
-    }, { passive: true });
+    listen(
+      win,
+      type,
+      (event) => {
+        pointers.delete(event.pointerId);
+        if (moving && (!hasScrollEnd || ended)) fallback();
+      },
+      { passive: true },
+    );
   }
-  listen(viewport, 'touchstart', (event) => {
-    touches = event.touches.length;
-  }, { passive: true });
-  for (const type of ['touchend', 'touchcancel']) {
-    listen(win, type, (event) => {
+  listen(
+    viewport,
+    'touchstart',
+    (event) => {
       touches = event.touches.length;
-      if (moving && (!hasScrollEnd || ended)) fallback();
-    }, { passive: true });
+    },
+    { passive: true },
+  );
+  for (const type of ['touchend', 'touchcancel']) {
+    listen(
+      win,
+      type,
+      (event) => {
+        touches = event.touches.length;
+        if (moving && (!hasScrollEnd || ended)) fallback();
+      },
+      { passive: true },
+    );
   }
-  listen(viewport, 'wheel', (event) => {
-    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) takeControl();
-  }, { passive: true });
+  listen(
+    viewport,
+    'wheel',
+    (event) => {
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) takeControl();
+    },
+    { passive: true },
+  );
   listen(viewport, 'keydown', (event) => {
     if (event.target !== viewport) return;
     const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
@@ -163,8 +195,15 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
     slides,
     goTo,
     step,
-    get index() { return index; },
-    get moving() { return moving; },
-    get interacting() { return held(); },
+    stop,
+    get index() {
+      return index;
+    },
+    get moving() {
+      return moving;
+    },
+    get interacting() {
+      return held();
+    },
   };
 }

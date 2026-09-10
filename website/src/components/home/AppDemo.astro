@@ -1,7 +1,7 @@
 ---
 import { renderHost } from '../../utils/home/app-shell.js';
 import { renderDraft } from '../../utils/home/text.js';
-const { app, context = {}, text, hero = false, lang = 'en' } = Astro.props;
+const { app, context = {}, text, hero = false, lang = 'en', focusable = false } = Astro.props;
 const draft =
   '<div class="host-draft-slot"><div class="' +
   (hero ? 'hero-draft' : 'illustrated-result') +
@@ -10,8 +10,12 @@ const draft =
   '">' +
   renderDraft(text) +
   '</div></div>';
+const host = renderHost(app, context).replace('<div class="host-draft-slot"></div>', draft);
+const accessibleHost = focusable
+  ? host.replace('class="host-app', 'tabindex="0" role="region" aria-label="App message preview" class="host-app')
+  : host;
 ---
 
 <Fragment
-  set:html={renderHost(app, context).replace('<div class="host-draft-slot"></div>', draft)}
+  set:html={accessibleHost}
 />
