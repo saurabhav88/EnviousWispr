@@ -137,23 +137,39 @@ def classify_silent(recs):
     return ("occupied" if words >= 2 else "quiet"), words
 
 
-def collect_settled(w, mark, grace=3.0):
+def collect_settled(w, mark, grace=3.0, stable_reads=3, interval=0.2,
+                    _read=None, _now=time.time, _sleep=time.sleep):
     """Collect dictation records after the harness reports completion, waiting
-    briefly for the terminal row to land.
+    for the record set to be STABLE (its length unchanged across `stable_reads`
+    consecutive non-empty reads) or until `grace` elapses.
 
     The harness returns as soon as it sees `Pipeline timing TOTAL`, but the
     `dictation_terminal` row that ANCHORS a record is written by a separate
     async task in TelemetryService and lands a beat later (cloud Codex review,
-    PR #2780). Reading immediately can miss it, so a genuinely good take reports
-    as lost evidence (exit 2). Poll until at least one record is present, or the
-    grace elapses. Two takes in the window still resolve to `cannot attribute`
-    (exit 2) upstream, which is the correct safe outcome, so stopping at the
-    first non-empty read hides nothing a later read would have flagged."""
-    deadline = time.time() + grace
-    recs = lv.collect_dictations(w.log_entries_since(mark))
-    while not recs and time.time() < deadline:
-        time.sleep(0.2)  # settle: poll interval; the loop WAITS on the terminal row appearing (recs non-empty), this is only the gap between reads, with `grace` as the deadline fallback
-        recs = lv.collect_dictations(w.log_entries_since(mark))
+    PR #2780). Reading immediately misses it, so a good take reports as lost
+    evidence (exit 2). Gating on STABILITY, not on the first non-empty read, is
+    load-bearing: when TWO takes finish close together — two instances answering
+    one PTT gesture — their terminals are separately scheduled, so stopping at
+    the first record would miss the second and attribute a single-take verdict
+    where the honest answer is `cannot attribute` (two records -> exit 2). This
+    is FACT: ew-watcher-classification (gate on stability, not a count); it also
+    restores the two-in-one-second safety `_line_in_window` relies on.
+
+    `_read`/`_now`/`_sleep` are test seams; the defaults drive the live app."""
+    read = _read if _read is not None else (lambda: lv.collect_dictations(w.log_entries_since(mark)))
+    deadline = _now() + grace
+    recs = read()
+    stable, last_n = 0, len(recs)
+    while _now() < deadline:
+        _sleep(interval)  # settle: poll interval around the STABILITY signal below (count unchanged across `stable_reads`), with `grace` as the deadline fallback
+        recs = read()
+        n = len(recs)
+        if n and n == last_n:
+            stable += 1
+            if stable >= stable_reads:
+                break
+        else:
+            stable, last_n = 0, n
     return recs
 
 
@@ -348,6 +364,14 @@ def cmd_run(args):
 
     import wispr_eyes as w
 
+    # silent-probe always plays its OWN generated silence and derives its own
+    # empty expectation, so --audio / --sentence / --expect are silently ignored.
+    # A caller passing `--audio speech.wav` would believe they tested speech while
+    # the probe played silence (cloud Codex review, PR #2780). Refuse them.
+    if args.recipe == "silent-probe" and (args.audio or args.sentence or args.expect):
+        raise SystemExit("REFUSED: silent-probe plays its own 6 s of silence and takes no --audio / "
+                         "--sentence / --expect; drop them, or use heart-path / ptt to test a clip")
+
     # Reject inputs the recipe cannot honor rather than silently substituting the
     # default (Codex diff review r2): `record_tts` generates speech from a
     # sentence and has no audio-file input, so `--audio` there would be dropped
@@ -514,10 +538,11 @@ def _self_test():
     """Pure verdict-classifier control. uat.py imports no PyObjC at module level,
     so this runs on the hosted runner and locks the contract Codex diff review
     r2-r5 kept probing."""
-    failures = []
+    failures, ran = [], []
 
     def check(name, cond):
         print(("  PASS  " if cond else "  FAIL  ") + name)
+        ran.append(name)
         if not cond:
             failures.append(name)
 
@@ -561,6 +586,34 @@ def _self_test():
     check("no record -> inconclusive", classify_silent([]) == ("inconclusive", None))
     check("two records -> inconclusive", classify_silent([rec(), rec(take="t2")]) == ("inconclusive", None))
 
+    # --- collect_settled gates on STABILITY, not the first record ---
+    # A second terminal landing a beat later (two instances answering one PTT
+    # gesture) must not be missed; the reader waits for the count to hold across
+    # stable_reads (cloud Codex review, PR #2780). Scripted reader + fake clock,
+    # no real app.
+    def scripted(seq):
+        state = {"i": 0}
+        def _read():
+            v = seq[min(state["i"], len(seq) - 1)]
+            state["i"] += 1
+            return v
+        return _read
+    clock = {"t": 0.0}
+    def now():
+        return clock["t"]
+    def tick(_):
+        clock["t"] += 0.2
+    one, two = [{"take": "a"}], [{"take": "a"}, {"take": "b"}]
+    # One record, stable -> returns the single record.
+    clock["t"] = 0.0
+    r_one = collect_settled(None, None, stable_reads=3, _read=scripted([one, one, one, one, one]), _now=now, _sleep=tick)
+    check("collect_settled: one stable record -> 1", len(r_one) == 1)
+    # A second terminal appears on read 2; must NOT stop at the first record.
+    clock["t"] = 0.0
+    r_two = collect_settled(None, None, stable_reads=3,
+                            _read=scripted([one, two, two, two, two, two]), _now=now, _sleep=tick)
+    check("collect_settled: a late second record is not missed -> 2", len(r_two) == 2)
+
     # --- silent wav is real ---
     import wave
     p = _silent_wav(6.0)
@@ -568,7 +621,9 @@ def _self_test():
         check("silent wav is ~6 s mono 16-bit", abs(wv.getnframes() / wv.getframerate() - 6.0) < 0.01
               and wv.getnchannels() == 1 and wv.getsampwidth() == 2)
 
-    total = 19
+    # Counted from the rows that RAN, never a literal (a hardcoded total drifts
+    # the first time a check is added and reports N/N+1 as a pass).
+    total = len(ran)
     if failures:
         print(f"\nuat self-test: {len(failures)} of {total} FAILED")
         return 1
