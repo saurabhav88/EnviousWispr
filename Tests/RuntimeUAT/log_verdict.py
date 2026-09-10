@@ -152,19 +152,22 @@ def final_text(record):
     and fail a take the user saw succeed (Codex diff review r3). Walk the steps
     backward to the last non-empty one, then fall back to raw ASR."""
     steps = record.get("steps") or {}
+    # A snippet take carries the EWSNIP sentinel somewhere in its chain.
+    # `SnippetFinalizer` runs AFTER the logged chain: it substitutes the real
+    # expansion, and where polish DROPPED the sentinel it rejects that polish and
+    # delivers the deterministic expansion instead. Either way the DELIVERED text
+    # is not in the log, so ANY step carrying the sentinel makes the take
+    # inconclusive — including when a LATER polish step no longer shows it. Scan
+    # the WHOLE chain, not just the final step (cloud + local Codex review, PR
+    # #2780), and return None so classify reports inconclusive (exit 2) rather
+    # than judging against text the log never held (code-tooling.md RULE:
+    # uat-verdicts-from-app-log). RAW ASR is the pre-processing transcript and
+    # never carries the sentinel, so it is not scanned.
+    if any(_SNIPPET_PLACEHOLDER in (v or "") for v in steps.values()):
+        return None
     for text in reversed(list(steps.values())):
-        if not (text and text.strip()):
-            continue
-        if _SNIPPET_PLACEHOLDER in text:
-            # A snippet take logs an EWSNIP placeholder; `SnippetFinalizer`
-            # substitutes the real expansion AFTER the logged processing chain
-            # (cloud Codex review, PR #2780), so the DELIVERED text is not in the
-            # log. Return None -> classify reports the take inconclusive (exit 2)
-            # rather than judging it against a placeholder or rejected polish,
-            # keeping the log-based verdict requirement (code-tooling.md RULE:
-            # uat-verdicts-from-app-log).
-            return None
-        return text
+        if text and text.strip():
+            return text
     return record.get("raw_asr")
 
 
@@ -298,6 +301,15 @@ def _self_test():
     rsnip = collect_dictations(snip)[0]
     check("snippet placeholder in delivered text -> final_text None (inconclusive)",
           final_text(rsnip) is None)
+    # The whole class: a LATER polish step that DROPPED the sentinel must not let
+    # an earlier sentinel through — SnippetFinalizer rejects that polish, so the
+    # log's polished text is not what was delivered (local Codex review, PR #2780).
+    snip_dropped = [d(1, "CORRECTION_DEBUG [RAW ASR] insert my fox snippet"),
+                    d(2, "CORRECTION_DEBUG [Filler Removal] EWSNIPfox placeholder"),
+                    d(3, "CORRECTION_DEBUG [LLM Polish] OUT: unrelated dog"), t(4, terminal)]
+    rsd = collect_dictations(snip_dropped)[0]
+    check("sentinel in an EARLIER step -> final_text None even when polish dropped it",
+          final_text(rsd) is None)
 
     # Counted from the rows that RAN, never a literal: a literal total drifts the
     # first time a row is added and then reports N/N+1 as a pass.
