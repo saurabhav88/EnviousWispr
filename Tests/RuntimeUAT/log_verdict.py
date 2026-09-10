@@ -54,6 +54,10 @@ CORRECTION = re.compile(r"CORRECTION_DEBUG \[(?P<step>[^\]]+)\] (?P<marker>OUT: 
 # `IN:` is the input echo of the pair form and is not the output.
 CORRECTION_STATUS = re.compile(r"^(no change$|IN:)")
 
+# The snippet sentinel prefix (SnippetExpander.prefix = "EWSNIP"). A logged step
+# still carrying it is a PRE-finalization placeholder, not delivered text.
+_SNIPPET_PLACEHOLDER = "EWSNIP"
+
 PIPELINE_TOTAL = re.compile(r"Pipeline timing TOTAL: (?P<total>[0-9.]+s)")
 VAD_DETAIL = re.compile(
     r"VAD detail: segments=(?P<segments>\d+), voicedMs=(?P<voiced_ms>\d+), "
@@ -97,6 +101,14 @@ def collect_dictations(lines):
                 j += 1
             text = "\n".join(body).strip()
             if c.group("step") == "RAW ASR":
+                # RAW ASR is the FIRST row of a dictation's processing chain, so
+                # start a fresh step set here. A file import ALSO runs
+                # TextProcessingRunner and emits correction rows with NO
+                # dictation_terminal (cloud Codex review, PR #2780); without this
+                # reset its steps would linger in `pending` and be read as the
+                # NEXT live take's delivered text — a false verdict. pipeline_total
+                # is re-emitted at every completion and vad is diagnostic only.
+                pending["steps"] = {}
                 pending["raw_asr"] = text
             else:
                 pending["steps"][c.group("step")] = text
@@ -141,8 +153,18 @@ def final_text(record):
     backward to the last non-empty one, then fall back to raw ASR."""
     steps = record.get("steps") or {}
     for text in reversed(list(steps.values())):
-        if text and text.strip():
-            return text
+        if not (text and text.strip()):
+            continue
+        if _SNIPPET_PLACEHOLDER in text:
+            # A snippet take logs an EWSNIP placeholder; `SnippetFinalizer`
+            # substitutes the real expansion AFTER the logged processing chain
+            # (cloud Codex review, PR #2780), so the DELIVERED text is not in the
+            # log. Return None -> classify reports the take inconclusive (exit 2)
+            # rather than judging it against a placeholder or rejected polish,
+            # keeping the log-based verdict requirement (code-tooling.md RULE:
+            # uat-verdicts-from-app-log).
+            return None
+        return text
     return record.get("raw_asr")
 
 
@@ -250,6 +272,32 @@ def _self_test():
           len(rb) == 1 and rb[0]["steps"]["LLM Polish"] == "Items:\n[x] one\n[y] two")
     # Empty input.
     check("empty input -> no record, no raise", collect_dictations([]) == [])
+
+    # A file import runs the polish engine but writes NO terminal row; a new RAW
+    # ASR block starts a fresh step set so the import's steps do not leak into
+    # the next live take and get read as its delivered text (cloud Codex review,
+    # PR #2780).
+    import_then_live = [
+        d(1, "CORRECTION_DEBUG [RAW ASR] imported file words"),
+        d(2, "CORRECTION_DEBUG [LLM Polish] OUT: Imported polished sentence."),
+        d(3, "CORRECTION_DEBUG [RAW ASR] the quick brown fox"),
+        t(4, terminal),
+    ]
+    ril = collect_dictations(import_then_live)
+    check("import steps do not leak into the next live take",
+          len(ril) == 1 and "LLM Polish" not in ril[0]["steps"])
+    check("leaked import: final_text is the live raw ASR, not the import polish",
+          final_text(ril[0]) == "the quick brown fox")
+
+    # A snippet take logs an EWSNIP placeholder; SnippetFinalizer substitutes the
+    # real expansion AFTER the logged chain, so the delivered text is not in the
+    # log. final_text returns None -> the take is judged inconclusive, never on
+    # the placeholder (cloud Codex review, PR #2780).
+    snip = [d(1, "CORRECTION_DEBUG [RAW ASR] insert my address snippet"),
+            d(2, "CORRECTION_DEBUG [LLM Polish] OUT: EWSNIPaddr placeholder"), t(3, terminal)]
+    rsnip = collect_dictations(snip)[0]
+    check("snippet placeholder in delivered text -> final_text None (inconclusive)",
+          final_text(rsnip) is None)
 
     # Counted from the rows that RAN, never a literal: a literal total drifts the
     # first time a row is added and then reports N/N+1 as a pass.
