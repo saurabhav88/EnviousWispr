@@ -175,7 +175,12 @@ import Testing
     /// own claim internally on every invocation, or performs no actual engine
     /// mutation (a pure readiness read, or — #1654 — pure error classification
     /// on a throw path, which mutates nothing and only renames the error
-    /// already in hand).
+    /// already in hand), or (d) — #2648 — reached only while `EngineLease` is
+    /// held for the WORKLOAD's full duration, which is the same full-duration
+    /// mutual exclusion (b) describes, applied to a whole file import rather
+    /// than to one switch: recovery's own admission now takes that same claim
+    /// (`RecoveryCoordinator`, the per-item handshake), so it cannot be granted
+    /// while an import holds it.
     case structurallySafe
     /// Present in source, reachable in theory, but never exercised by current
     /// production configuration (a test-seam override that is always nil in
@@ -412,6 +417,30 @@ import Testing
         reason:
           "recovery's claim does not wait for a just-ended ordinary session's unawaited termination cleanup to finish before this call proceeds"
       )),
+    // #2648 — Transcribe a File. All three sites are reached only while
+    // `EngineLease` is held by `.fileImport` for the whole run, and recovery's
+    // per-item handshake now takes that same claim, so a replay cannot begin
+    // underneath one. Full-duration exclusion, which is what (d) means.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
+      text: "try await asrManager.transcribe(audioSamples: samples, options: .default).text",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
+      text: "let transcript = try await transcribe(decodedSamples)",
+      classification: .structurallySafe),
+    // Not a call at all: the initializer storing the injected closure. Matched
+    // because the scanner reads NAMES, which is the right trade — a scanner that
+    // tried to tell a call from an assignment would be the approximation
+    // business this inventory's parser rewrite left behind.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
+      text: "self.transcribe = transcribe",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
+      text: "self.transcribe = transcribe",
+      classification: .structurallySafe),
     // #1749: recovery's two concrete transcribe routes, reached only after
     // the `load` calls directly above.
     CallSite(
@@ -1905,11 +1934,15 @@ import Testing
   // MARK: 5 — no production consumer uses .alwaysAllowedForTesting
 
   @Test(
-    "no production consumer references .alwaysAllowedForTesting outside its two declaring files")
+    "no production consumer references .alwaysAllowedForTesting outside its declaring files")
   func alwaysAllowedForTestingHasNoProductionConsumer() throws {
     let declaringFiles: Set<String> = [
       "Sources/EnviousWisprASR/EngineMutationScope.swift",
       "Sources/EnviousWisprAppKit/App/RecoveryEngineClaim.swift",
+      // #2648: the shared-resource claim's own test seam, named identically on
+      // purpose so this scan covers it rather than leaving a second, unwatched
+      // always-allow value in the tree.
+      "Sources/EnviousWisprAppKit/App/EngineAdmissionAccess.swift",
     ]
     let hits = try Self.sourceAuthoritySnapshot.get().alwaysAllowedForTesting
     let offenders = hits.filter { hit in

@@ -29,7 +29,8 @@ import Testing
     audio: RouterTestAudioCapture,
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
-    recordingLocked: TestRecordingLockedBox
+    recordingLocked: TestRecordingLockedBox,
+    engineLease: EngineLease
   ) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -55,6 +56,7 @@ import Testing
     let transcriptCoordinator = TranscriptCoordinator(store: store)
     let lastRecordingResult = LastRecordingResult()
     let lockBox = TestRecordingLockedBox()
+    let engineLease = EngineLease()
     let coordinator = DictationLifecycleCoordinator(
       application: RecordingDesktopPresentationEffects(),
       kernelDriver: pipeline,
@@ -70,9 +72,12 @@ import Testing
       recordingLockedAccess: .init(
         get: { lockBox.isLocked },
         set: { lockBox.isLocked = $0 }
-      )
+      ),
+      // #2648: the real lease, so a row can hand the coordinator a live claim
+      // and watch it come back on the session's terminal transition.
+      releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
     )
-    return (coordinator, audio, pipeline, whisperKitKernelDriver, lockBox)
+    return (coordinator, audio, pipeline, whisperKitKernelDriver, lockBox, engineLease)
   }
 
   @Test func constructionDoesNotCrash() {
@@ -151,6 +156,110 @@ import Testing
       #expect(
         fx.recordingLocked.isLocked == false,
         "WhisperKit terminal state \(terminal) must clear the hands-free lock")
+    }
+  }
+
+  // MARK: - #2648 the running session's claim on the shared resource
+
+  /// **The hand-off has to complete, or a file import can never run again.**
+  /// `RecordingStarter` gives this coordinator the claim at the moment a session is minted, because both
+  /// start methods return while the recording is still running. If the terminal never handed it back,
+  /// one dictation would hold the shared engine for the life of the app.
+  ///
+  /// Driven through the KERNEL's accepted-terminal signal, for both backends. That signal is the release
+  /// trigger, not the published state — see the row below for why.
+  @Test func theAcceptedTerminalHandsTheEngineClaimBack() throws {
+    for useWhisperKit in [false, true] {
+      let fx = Self.makeCoordinator()
+      fx.coordinator.install()
+      guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
+        Issue.record("a fresh lease refused the first claim")
+        return
+      }
+      fx.coordinator.acceptEngineToken(token, mintedBy: useWhisperKit ? .whisperKit : .parakeet)
+      #expect(fx.engineLease.isBusy, "the claim must still be held while the session runs")
+
+      let driver = useWhisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+      driver.onSessionTerminalAccepted?("take-1")
+
+      #expect(
+        fx.engineLease.isBusy == false,
+        "\(useWhisperKit ? "WhisperKit" : "Parakeet")'s accepted terminal left the engine claimed")
+    }
+  }
+
+  /// **The published state must NOT release it, and this is the row that says why the trigger moved.**
+  ///
+  /// An error can be published while the kernel is still finalizing — `RecordingSessionKernel.cancel()`
+  /// deliberately ignores cancellation there — so the screen says the take ended while polish is still
+  /// running. Releasing on that signal let crash recovery, which competes for the same claim, start a
+  /// replay on top of a take that had not finished. Found by cloud review, which supplied the sequence.
+  @Test func aPublishedTerminalDoesNotReleaseTheClaim() throws {
+    let terminals: [PipelineState] = [
+      .idle, .complete, .error(.modelWedged), .advisory(.zeroSignal),
+    ]
+    for terminal in terminals {
+      let fx = Self.makeCoordinator()
+      fx.coordinator.install()
+      guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
+        Issue.record("a fresh lease refused the first claim")
+        return
+      }
+      fx.coordinator.acceptEngineToken(token, mintedBy: .parakeet)
+
+      fx.kernelDriver.onStateChange?(terminal)
+
+      #expect(
+        fx.engineLease.isBusy,
+        "the published state \(terminal) released the claim; only the kernel's terminal may")
+    }
+  }
+
+  /// **The idle engine reaches terminals too.** Both handlers read one stored claim, so without the
+  /// backend pairing a signal from the engine that is NOT running this session releases the running
+  /// session's claim — and the release looks entirely correct at the site performing it.
+  ///
+  /// When this fails, a file import starts in the middle of a live dictation and the dictation comes
+  /// back unpolished.
+  @Test func aTerminalFromTheOtherBackendLeavesTheClaimAlone() throws {
+    for mintedByWhisperKit in [false, true] {
+      let fx = Self.makeCoordinator()
+      fx.coordinator.install()
+      guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
+        Issue.record("a fresh lease refused the first claim")
+        return
+      }
+      fx.coordinator.acceptEngineToken(
+        token, mintedBy: mintedByWhisperKit ? .whisperKit : .parakeet)
+
+      let idleEngine = mintedByWhisperKit ? fx.kernelDriver : fx.whisperKitKernelDriver
+      idleEngine.onSessionTerminalAccepted?("someone-elses-take")
+
+      #expect(
+        fx.engineLease.isBusy,
+        "a terminal from the engine that minted nothing released the running session's claim")
+
+      let owner = mintedByWhisperKit ? fx.whisperKitKernelDriver : fx.kernelDriver
+      owner.onSessionTerminalAccepted?("take-1")
+      #expect(fx.engineLease.isBusy == false)
+    }
+  }
+
+  /// A transition that is NOT terminal must not hand the claim back either: polish runs after
+  /// `.transcribing` and inside `.polishing`, and releasing there would let a file import into the same
+  /// inference slot mid-dictation.
+  @Test func aRunningSessionKeepsItsEngineClaim() throws {
+    let fx = Self.makeCoordinator()
+    fx.coordinator.install()
+    guard case .granted(let token) = fx.engineLease.admit(.dictation) else {
+      Issue.record("a fresh lease refused the first claim")
+      return
+    }
+    fx.coordinator.acceptEngineToken(token, mintedBy: .parakeet)
+
+    for running in [PipelineState.recording, .transcribing, .polishing] {
+      fx.kernelDriver.onStateChange?(running)
+      #expect(fx.engineLease.isBusy, "\(running) is not the end of the session")
     }
   }
 

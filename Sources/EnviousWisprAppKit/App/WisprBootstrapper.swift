@@ -33,6 +33,9 @@ package final class WisprBootstrapper {
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
+  /// #2648 — Transcribe a File's state machine, held here so the run survives
+  /// the page being closed.
+  let fileImportCoordinator: FileImportCoordinator
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
@@ -230,6 +233,16 @@ package final class WisprBootstrapper {
     // needs the gate, and the one shared capability value below, to already
     // exist.
     let engineRecoveryGate = EngineRecoveryGate()
+    // #2648 — the ONE claim on the shared ASR-and-polish resource, built here
+    // beside `engineRecoveryGate` because it is the same kind of thing: an
+    // arbitration authority the composition root owns and hands downward as
+    // narrow closures, so no lower module imports upward to reach it.
+    //
+    // It is NOT the same authority. `engineRecoveryGate` keeps crash recovery
+    // away from engine MUTATION and deliberately admits several mutations at
+    // once; this admits exactly one WORKLOAD — a dictation, a replay, or (from
+    // #2648's later chunks) a file import — onto EG-1's single inference slot.
+    let engineLease = EngineLease()
     // #1741 Chunk 3 — forward reference for the shared scope's wake closure;
     // `recoveryCoordinator` isn't constructed until much later in this
     // function. Matches the existing `engineCoordinatorForRecoveryGate`
@@ -978,6 +991,9 @@ package final class WisprBootstrapper {
           || (engineCoordinatorForRecoveryGate?.isMintingAnySession ?? false)
       },
       recoveryEngineClaim: recoveryEngineClaim,
+      // #2648 — a replay runs the same polish server a dictation does, so it
+      // takes the same one-workload claim for the whole item.
+      engineAdmission: .live(lease: engineLease, as: .crashRecovery),
       // Discard hard-resets the ACTIVE engine (#445 service-kill) so an in-flight,
       // otherwise-uncancellable recovery load/transcribe aborts and the next
       // recording gets a clean engine. Routed through the active-engine door
@@ -1119,7 +1135,11 @@ package final class WisprBootstrapper {
       settings: settings,
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
-      recordingLockedAccess: recordingLockedAccess
+      recordingLockedAccess: recordingLockedAccess,
+      // #2648 — the running session's claim comes back here, on the session's
+      // terminal transition, because both start methods return while the
+      // recording is still running.
+      releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
     )
     dictationLifecycleCoordinator.install()
     // #1171 — every pipeline state change pokes the coordinator: non-terminal
@@ -1144,6 +1164,10 @@ package final class WisprBootstrapper {
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
       recoveryCoordinator: recoveryCoordinator,
       recordingLockedAccess: recordingLockedAccess,
+      // #2648 — the record-start paths claim the shared resource as a DICTATION
+      // and can claim as nothing else: the holder is bound here, not at the call
+      // site.
+      engineAdmission: .live(lease: engineLease, as: .dictation),
       resolveActiveCaptureBackend: { [weak dictationLifecycleCoordinator] in
         dictationLifecycleCoordinator?.activeCaptureBackend()
       },
@@ -1283,6 +1307,35 @@ package final class WisprBootstrapper {
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
+    // #2648 — Transcribe a File. Built here because the job outlives every view
+    // that shows it: leaving the page and coming back has to land on whatever
+    // the run has reached.
+    //
+    // The runner is constructed with the same polish handles live dictation and
+    // crash recovery use, so an imported part is polished by the same engine,
+    // under the same key, as anything else this app produces.
+    let fileImportRunner = FileImportRunner(
+      keychainManager: keychainManager,
+      egOneRuntime: egOneRuntime,
+      s1MiniRuntime: s1MiniRuntime)
+    let fileImportCoordinator = FileImportCoordinator(
+      decode: { url in try await AudioFileDecoder.decode(url: url) },
+      transcribe: { [asrManager] samples in
+        try await asrManager.transcribe(audioSamples: samples, options: .default).text
+      },
+      // The third workload, claiming the same one-slot engine as a dictation and
+      // a crash replay.
+      engineAdmission: .live(lease: engineLease, as: .fileImport),
+      // The user's words, read LIVE at Start rather than held from launch: the
+      // propagator is the one place that knows the current vocabulary, and an
+      // import started after the user adds a word should use it.
+      beginRun: { [settings, customWordsPropagator] in
+        fileImportRunner.freeze(
+          settings: FileImportSettingsFreeze.snapshot(settings: settings),
+          vocabulary: customWordsPropagator.corrector)
+      },
+      processPart: { [fileImportRunner] part in try await fileImportRunner.process(part: part) })
+    self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -1513,6 +1566,7 @@ private struct MainWindowRoot: View {
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
       .environment(b.transcriptCoordinator)
+      .environment(b.fileImportCoordinator)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

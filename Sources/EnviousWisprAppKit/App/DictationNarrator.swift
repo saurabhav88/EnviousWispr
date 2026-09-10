@@ -176,6 +176,18 @@ enum DictationNarrator {
       case (.otherInterruption, false):
         return "Recording interrupted. Text may be cut short."
       }
+    // #2648. Says what the user has to act on: nothing was recorded, and when
+    // to try again. The mechanism is a single inference slot they have never
+    // heard of, so the words name the JOB that is using it instead.
+    case .sharedEngineBusy(let holder):
+      switch holder {
+      case .fileImport:
+        return "A file is being transcribed. Try again when it finishes."
+      case .crashRecovery:
+        return "Finishing an earlier recording. Try again in a moment."
+      case .dictation:
+        return "Already recording."
+      }
     }
   }
 

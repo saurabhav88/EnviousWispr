@@ -816,6 +816,19 @@ public enum KernelDictationDriverFactory {
     )
     driver.start()  // arms driver-side state observation (PR-4a)
 
+    // #2648: re-point the relay's terminal hook now that the driver exists, so
+    // ONE kernel signal reaches both consumers. Assigned here rather than at
+    // `:789` for the same construction-order reason that line documents — the
+    // driver does not exist yet up there.
+    //
+    // Telemetry stays FIRST and the second call cannot displace it: both are
+    // synchronous, and the snapshot is complete at this point by the kernel's
+    // own contract.
+    telemetryRelay.sessionTerminal = { [lifecycleSink, weak driver] snapshot in
+      lifecycleSink.emitTerminal(snapshot)
+      driver?.onSessionTerminalAccepted?(snapshot.takeID)
+    }
+
     // Observer's `observeKernelState()` is the PR-4b.1 split of the old
     // `observer.start()` — the factory drives it after construction since
     // the App-side `start()` shim no longer exists.

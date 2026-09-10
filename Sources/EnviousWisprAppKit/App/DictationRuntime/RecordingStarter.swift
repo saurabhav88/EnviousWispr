@@ -93,6 +93,20 @@ final class RecordingStarter {
 
   let recovery: RecoveryAccess
 
+  /// #2648 — the shared ASR-and-polish resource, claimed for THIS dictation.
+  ///
+  /// One slot, and the holder is bound at wiring time, so the start path cannot
+  /// claim the resource as anything but a dictation. The starter never sees
+  /// `EngineLease`; `EngineAdmissionAccess` is the same wrapper shape
+  /// `RecoveryEngineClaim` uses over `EngineRecoveryGate`.
+  ///
+  /// This is the eighth `let` collaborator, and the ceiling suite was raised
+  /// from 7 to 8 in the same change. The alternatives were worse: the existing
+  /// `RecoveryAccess` package is recovery's domain, and choosing a bare closure
+  /// purely because the closure bin has room would be picking a shape to satisfy
+  /// a counter rather than to describe the dependency.
+  let engineAdmission: EngineAdmissionAccess
+
   /// #1171 — drives the SELECTED engine to ready (the coordinator owns the
   /// single-flight switch + warm) and returns the outcome (ready / notInstalled /
   /// notReady). Bound to `EngineCoordinator.ensureSelectedReadyForPress`; default
@@ -187,6 +201,30 @@ final class RecordingStarter {
     TelemetryService.shared.recoveryPressBlocked(asrBackend: backend.rawValue)
   }
 
+  /// #2648 — the session-claim hand-off found no lifecycle coordinator.
+  ///
+  /// A fault worth seeing rather than a case to handle quietly: the same shape
+  /// (and the same error type) `HotkeyController` uses for its own nil
+  /// collaborators, so both land in one Sentry group.
+  private static func reportNilCollaborator(callback: String) {
+    SentryBreadcrumb.captureError(
+      HotkeyController.NilCollaboratorError(callback: callback),
+      category: .pipelineDispatchFailed, stage: "recording",
+      extra: ["callback": callback])
+  }
+
+  /// #2648 — every shared-resource refusal read site funnels through here.
+  ///
+  /// **Ordering is load-bearing and it is checked AFTER the recovery gate, not
+  /// before.** Crash recovery holds the same claim while it replays, so a
+  /// lease-first ladder would answer a recovery press with this generic pill
+  /// instead of the recovery notice, which carries a Discard button and is the
+  /// only way out of a stuck replay. Recovery refuses first; whatever reaches
+  /// here is a different workload.
+  private func handleSharedEngineBusyPressRefused(holder: EngineLease.Holder) {
+    recordingOverlay.present(.warning(reason: .sharedEngineBusy(holder: holder)))
+  }
+
   /// Called immediately before a press commits to minting an active kernel
   /// session (every gate, including the recovery one, has already passed).
   /// Consumes any pending blocked-press info and emits the pairing
@@ -218,6 +256,7 @@ final class RecordingStarter {
     dictationLifecycleCoordinator: DictationLifecycleCoordinator?,
     accessibilityRefresh: (@MainActor () -> Void)? = nil,
     recovery: RecoveryAccess,
+    engineAdmission: EngineAdmissionAccess,
     ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
       {
         .notReady
@@ -227,6 +266,7 @@ final class RecordingStarter {
     endMinting: @escaping @MainActor () -> Void = {}
   ) {
     self.recovery = recovery
+    self.engineAdmission = engineAdmission
     self.ensureSelectedReadyForPress = ensureSelectedReadyForPress
     self.isEngineSwitching = isEngineSwitching
     self.beginMinting = beginMinting
@@ -281,6 +321,27 @@ final class RecordingStarter {
     if recovery.isRecovering() {
       handleRecoveryPressRefused(backend: backend)
       return .noRecording
+    }
+    // #2648 — the shared ASR-and-polish resource. Claimed HERE, before any
+    // engine work: a refusal must reach the user as a pill at press time, not
+    // after a pre-warm they cannot see the point of. Recovery is refused one
+    // gate above, so a claim that fails here belongs to another workload.
+    let engineToken: EngineLease.Token
+    switch engineAdmission.claim() {
+    case .granted(let token):
+      engineToken = token
+    case .refused(let holder):
+      handleSharedEngineBusyPressRefused(holder: holder)
+      return .noRecording
+    }
+    // Handed to `DictationLifecycleCoordinator` at the moment a session is
+    // minted, and released here on every path that mints nothing. `defer` reads
+    // this variable's FINAL value, so the single assignment at the hand-off
+    // covers every early return between here and there, however many get added
+    // later — which is why the release is not repeated at each one.
+    var unmintedEngineToken: EngineLease.Token? = engineToken
+    defer {
+      if let unmintedEngineToken { engineAdmission.release(unmintedEngineToken) }
     }
     // #1171 — start-of-recording safety: never record on an engine other than the
     // one the user selected (a switch deferred while busy/recovering may not have
@@ -425,6 +486,24 @@ final class RecordingStarter {
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
       try await active.handle(event: .toggleRecording(config))
+      // The session is minted, so the claim now belongs to the session rather
+      // than to this call. Both start methods RETURN while the recording is
+      // still running, so releasing on the way out would admit an import into
+      // the middle of a live dictation; the lifecycle coordinator releases it on
+      // the session's single terminal path, after ASR and polish.
+      //
+      // A nil coordinator is a FAULT, not a quiet case: nothing would ever
+      // drive this session to a terminal, so nothing would hand the claim back
+      // and every later press would be refused for a dictation that had already
+      // ended. Leaving the token in `unmintedEngineToken` makes the `defer`
+      // release it on the way out, which costs this session's exclusivity and
+      // keeps the record button working — the right way round for a limb.
+      if let coordinator = dictationLifecycleCoordinator {
+        coordinator.acceptEngineToken(engineToken, mintedBy: isWhisperKit ? .whisperKit : .parakeet)
+        unmintedEngineToken = nil
+      } else {
+        Self.reportNilCollaborator(callback: "acceptEngineToken")
+      }
     } catch {
       heartControlRecovery.recover(
         error: error, op: "toggle-from-prewarm",
@@ -512,6 +591,14 @@ final class RecordingStarter {
     let active: KernelDictationDriver = isWK ? whisperKitKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive)
+    // #2648 — held from the claim below until either the mint hands it to the
+    // lifecycle coordinator or this call ends without minting. Declared out here
+    // because the claim happens inside the start-only gate block and the release
+    // has to cover every exit after it.
+    var claimedEngineToken: EngineLease.Token?
+    defer {
+      if let claimedEngineToken { engineAdmission.release(claimedEngineToken) }
+    }
     if isStartingFromIdle {
       // #1063 PR2 — recovery hold, same as the PTT path. A toggle that would START
       // while recovery holds the engine mints no session: show the pill and bail.
@@ -519,6 +606,17 @@ final class RecordingStarter {
       // `isStartingFromIdle`).
       if recovery.isRecovering() {
         handleRecoveryPressRefused(backend: backend)
+        return
+      }
+      // #2648 — the shared-resource claim, same as the PTT path and in the same
+      // position: after recovery, before any engine work. A STOP toggle never
+      // reaches here (guarded by `isStartingFromIdle`), so stopping a recording
+      // is never refused.
+      switch engineAdmission.claim() {
+      case .granted(let token):
+        claimedEngineToken = token
+      case .refused(let holder):
+        handleSharedEngineBusyPressRefused(holder: holder)
         return
       }
       // #1171 — start-of-recording safety, same as the PTT path: never record on
@@ -592,6 +690,19 @@ final class RecordingStarter {
         // NOT switch the active engine, so `active` is still the user's choice.
       }
       try await active.handle(event: .toggleRecording(config))
+      // Minted, so the claim belongs to the session now — same hand-off as the
+      // PTT path, for the same reason: this method returns while the recording
+      // is still running.
+      // Same hand-off, same nil-coordinator fault handling as the PTT path: the
+      // claim is only cleared here when somebody real took ownership of it.
+      if let token = claimedEngineToken {
+        if let coordinator = dictationLifecycleCoordinator {
+          coordinator.acceptEngineToken(token, mintedBy: isWK ? .whisperKit : .parakeet)
+          claimedEngineToken = nil
+        } else {
+          Self.reportNilCollaborator(callback: "acceptEngineToken")
+        }
+      }
       // GitHub cloud review, PR #1732: consume the pending blocked-press info
       // (and emit `recovery.press_unblocked`) only after `handle(event:)`
       // returned WITHOUT throwing AND the pipeline is genuinely active — a

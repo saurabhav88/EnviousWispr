@@ -168,6 +168,31 @@ import Testing
         == "Recording interrupted. Words may be missing.")
   }
 
+  /// #2648's shared-resource refusal. **These three are NOT founder-locked** —
+  /// they are new copy shipped with the engine claim, pinned here so a later
+  /// edit is a deliberate one. Every holder is covered, from the enum itself
+  /// rather than from a list written by hand, because the sentence a user reads
+  /// depends on WHICH job is using the engine.
+  @Test(
+    "every shared-engine holder has its own sentence, and none of them mentions a slot",
+    arguments: SharedEngineHolder.allCases)
+  func sharedEngineBusyCopy(_ holder: SharedEngineHolder) {
+    let expected: [SharedEngineHolder: String] = [
+      .fileImport: "A file is being transcribed. Try again when it finishes.",
+      .crashRecovery: "Finishing an earlier recording. Try again in a moment.",
+      .dictation: "Already recording.",
+    ]
+    let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
+    #expect(sentence == expected[holder])
+    // The user has never heard of an inference slot, a lease or a claim; the
+    // words name the job to wait for instead.
+    for jargon in ["slot", "lease", "claim", "engine", "resource"] {
+      #expect(
+        !sentence.lowercased().contains(jargon),
+        "the refusal sentence for \(holder) leaked the mechanism: \(sentence)")
+    }
+  }
+
   /// Only a VERIFIED device removal may name the microphone. If this fails, a
   /// user whose engine died with the mic still attached is being lied to.
   @Test("the neutral interruption family never mentions the microphone")

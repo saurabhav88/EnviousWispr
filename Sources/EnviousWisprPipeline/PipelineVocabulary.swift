@@ -42,6 +42,24 @@ public enum CompletionInterruptionDisclosure: Equatable, Sendable {
   }
 }
 
+/// #2648: every production workload that can occupy the shared ASR-and-polish
+/// resource, enumerated from the resource boundary rather than from a caller
+/// list (grounded review round 2).
+///
+/// It lives here, in the shared vocabulary, rather than nested inside
+/// `EngineLease`, because a refusal REASON is user-facing vocabulary and
+/// `RecordingWarningReason` below carries one. `EngineLease` is the authority
+/// that hands these out; this is only the name of who holds it.
+///
+/// EG-1's health probe is a fourth producer of inference and is deliberately
+/// absent: it never takes a claim, it asks whether the resource is busy and
+/// skips.
+public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
+  case dictation
+  case crashRecovery
+  case fileImport
+}
+
 /// #1567 (heartpath E3): a typed fact explaining a post-completion or advisory
 /// warning rendered through `OverlayIntent.warning`. The engine/coordinator
 /// emits this; `DictationNarrator` in AppKit authors the user-facing words.
@@ -69,6 +87,16 @@ public enum RecordingWarningReason: Equatable, Sendable {
   /// picks the sentence family (verified device removal vs neutral);
   /// `alsoTrimmedLead` is true when the take ALSO lost its opening (#1408/#1434).
   case interruptedTail(disclosure: CompletionInterruptionDisclosure, alsoTrimmedLead: Bool)
+  /// #2648: another workload holds the shared ASR-and-polish resource, so this
+  /// press minted nothing. Carries WHO holds it, because the honest sentence
+  /// differs per holder and the narrator authors the words.
+  ///
+  /// Crash recovery has its own pill with a Discard button and is refused one
+  /// gate EARLIER in both start routes, so `.crashRecovery` is not the holder a
+  /// user reaches here. It is still carried rather than assumed away: the
+  /// holder is read from the claim, and a case that cannot be constructed from
+  /// the data is a claim about reachability that nothing enforces.
+  case sharedEngineBusy(holder: SharedEngineHolder)
 }
 
 /// Events the recording driver handles.
