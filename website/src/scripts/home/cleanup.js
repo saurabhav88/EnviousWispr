@@ -75,7 +75,7 @@ export function init(root, motion, scope) {
   prev.addEventListener('click', () => carousel.step(-1, { user: true }), { signal: scope.signal });
   next.addEventListener('click', () => carousel.step(1, { user: true }), { signal: scope.signal });
   clock = scope.timeline(root, (delta) => {
-    if (carousel.moving) return true;
+    if (carousel.moving || carousel.interacting) return true;
     if (reveal > 0) {
       reveal -= delta;
       if (reveal <= 0) raws[carousel.index].classList.add('is-live');
