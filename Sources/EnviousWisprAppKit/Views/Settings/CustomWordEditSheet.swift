@@ -16,6 +16,7 @@ struct CustomWordEditSheet: View {
   @State private var word: CustomWord
   @State private var newAlias: String = ""
   @FocusState private var aliasFieldFocused: Bool
+  @FocusState private var wordFieldFocused: Bool
   @State private var isLoadingSuggestions = false
   @State private var suggestionsApplied = false
   @State private var noSuggestionsAvailable = false
@@ -72,7 +73,8 @@ struct CustomWordEditSheet: View {
       VStack(alignment: .leading, spacing: 5) {
         groupLabel("Word")
         TextField("Word", text: $word.canonical)
-          .textFieldStyle(.roundedBorder)
+          .focused($wordFieldFocused)
+          .settingsFieldChrome(focused: wordFieldFocused)
       }
 
       // Category
@@ -262,8 +264,8 @@ struct CustomWordEditSheet: View {
 
       HStack(spacing: 8) {
         TextField("Add a variant you hear back (e.g. clawed)", text: $newAlias)
-          .textFieldStyle(.roundedBorder)
           .focused($aliasFieldFocused)
+          .settingsFieldChrome(focused: aliasFieldFocused)
           .onSubmit { addAlias() }
         // Enabled whatever the field holds. Empty, it puts the cursor in the
         // field rather than doing nothing — a greyed-out Add was the second

@@ -1145,3 +1145,41 @@ struct SettingsActionButton: View {
     return hovering ? Color.clear : tone
   }
 }
+
+// MARK: - Text field chrome
+
+/// Makes a `TextField` on a settings surface look like something you can type
+/// in: a recessed fill, a real border, and a brand focus ring.
+///
+/// The system `.roundedBorder` style was the whole problem. Its hairline sits
+/// at almost the card's own value on the dark palette, so the field read as a
+/// label and the alias field lost the click to the list beneath it. Focus is
+/// passed IN rather than read here, because `@FocusState` must be declared by
+/// the view that owns the field.
+struct SettingsFieldChrome: ViewModifier {
+  let focused: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  func body(content: Content) -> some View {
+    content
+      .textFieldStyle(.plain)
+      .font(.stBody)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 7)
+      .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8))
+      .overlay(
+        RoundedRectangle(cornerRadius: 8)
+          .strokeBorder(
+            focused ? Color.stAccent : Color.stInputBorder,
+            lineWidth: focused ? 2 : 1)
+      )
+      .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: focused)
+  }
+}
+
+extension View {
+  /// See `SettingsFieldChrome`. Pass the owning view's `@FocusState` value.
+  func settingsFieldChrome(focused: Bool) -> some View {
+    modifier(SettingsFieldChrome(focused: focused))
+  }
+}
