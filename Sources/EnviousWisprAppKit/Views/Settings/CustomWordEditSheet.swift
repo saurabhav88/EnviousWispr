@@ -48,7 +48,7 @@ struct CustomWordEditSheet: View {
 
   private var aliasCountLabel: String {
     let count = word.aliases.count
-    return "\(count) \(count == 1 ? "alias" : "aliases")"
+    return "\(count) \(count == 1 ? "mishearing" : "mishearings")"
   }
 
   var body: some View {
@@ -165,7 +165,7 @@ struct CustomWordEditSheet: View {
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Removes this word and its aliases. Can't be undone.")
+      Text("Removes this word and its mishearings. Can't be undone.")
     }
     .padding(20)
     .frame(width: 520, height: 640)
@@ -255,7 +255,7 @@ struct CustomWordEditSheet: View {
   private var aliasesCard: some View {
     card {
       HStack(alignment: .firstTextBaseline) {
-        groupLabel("Aliases (aka the common misspellings)")
+        groupLabel("Aliases (aka the common mishearings)")
         Spacer()
         Text(aliasCountLabel)
           .font(.stHelper)
@@ -263,7 +263,7 @@ struct CustomWordEditSheet: View {
       }
 
       HStack(spacing: 8) {
-        TextField("Add a misspelling (e.g. clawed)", text: $newAlias)
+        TextField("Add a mishearing (e.g. clawed)", text: $newAlias)
           .focused($aliasFieldFocused)
           .settingsFieldChrome(focused: aliasFieldFocused)
           .onSubmit { addAlias() }
@@ -294,13 +294,13 @@ struct CustomWordEditSheet: View {
     .contentShape(Rectangle())
     .onTapGesture { aliasFieldFocused = true }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("Aliases")
+    .accessibilityLabel("Mishearings")
   }
 
   @ViewBuilder
   private var aliasChips: some View {
     if word.aliases.isEmpty {
-      Text("No misspellings yet. Type one above and click Add.")
+      Text("No mishearings yet. Type one above and click Add.")
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -323,7 +323,7 @@ struct CustomWordEditSheet: View {
             }
             .buttonStyle(.plain)
             .fixedSize()
-            .accessibilityLabel("Remove alias \(alias)")
+            .accessibilityLabel("Remove mishearing \(alias)")
           }
           .padding(.horizontal, 9)
           .padding(.vertical, 4)
