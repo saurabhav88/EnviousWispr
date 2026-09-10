@@ -48,16 +48,18 @@ struct InverseTextNormalizerNeighbourWindowTests {
 
   /// The invariant the timeout fix rests on: text beyond the second token cannot make the
   /// window any bigger, so the per-match cost stops tracking the length of the take.
-  @Test("tailWindow size is set by the next two tokens, not by the length of the take")
+  @Test("tailWindow size is set by the next few tokens, not by the length of the take")
   func tailWindowIsBounded() {
     let head = "we counted twenty"
     let short = "\(head) miles out"
     let long = "\(head) miles out\(inertTail)"
     let end = (head as NSString).length
 
+    // A tail with nothing past its own two tokens stops at the end of the text.
     #expect(InverseTextNormalizer.tailWindow(short as NSString, end) == " miles out")
-    #expect(InverseTextNormalizer.tailWindow(long as NSString, end) == " miles out")
-    // The tail the old read copied, and `splitWords` then tokenized, on every match.
+    // 15 characters of window against a take of more than fifteen THOUSAND — and the padding is
+    // what the old read copied, and `splitWords` then tokenized, on every single match.
+    #expect(InverseTextNormalizer.tailWindow(long as NSString, end) == " miles out plus")
     #expect((long as NSString).length > 15_000)
   }
 
@@ -96,6 +98,60 @@ struct InverseTextNormalizerNeighbourWindowTests {
     #expect(got.token == token)
   }
 
+  /// The equivalence the whole thing rests on, checked against the whole-text read it replaced
+  /// rather than against baked values.
+  ///
+  /// `splitWords` asks `Character.isWhitespace`, which classifies a whole GRAPHEME CLUSTER by its
+  /// FIRST scalar, so a combining mark sitting against a space is whitespace to it and a token to
+  /// a scalar scan. An earlier draft of `tailWindow` scanned scalars and stopped a token short on
+  /// exactly that input, which cost `"it covers two \u{0301} square miles"` its conversion.
+  @Test(
+    "the window's first two tokens are the whole tail's first two tokens",
+    arguments: [
+      "",
+      " ",
+      " miles",
+      " square miles out",
+      "-year-old boy now",
+      " of a second",
+      " and one hundred more",
+      " \u{0301} square miles",
+      " \u{0301}\u{0301} square miles out",
+      "\u{0301} square miles out",
+      "\r\n square miles out",
+      "\u{00A0}square\u{2028}miles out",
+      " \u{1F1FA}\u{1F1F8} square miles",
+      " e\u{0301}clair square miles",
+      " \u{200D} square miles",
+    ])
+  func windowKeepsTheFirstTwoTokens(tail: String) {
+    let head = "twenty"
+    let ns = "\(head)\(tail)" as NSString
+    let window = InverseTextNormalizer.tailWindow(ns, (head as NSString).length)
+    #expect(
+      Array(InverseTextNormalizer.splitWords(window).prefix(2))
+        == Array(InverseTextNormalizer.splitWords(tail).prefix(2)))
+    // The anchored `^\s+...` probes and the `.first == "-"` glue test read from the very start.
+    #expect(window.first == tail.first)
+  }
+
+  /// The head side of the same equivalence, against the same oracle.
+  @Test(
+    "lastTokenBefore reports the whole head's last token and its blankness",
+    arguments: [
+      "", "   ", "\n\n", "He said.", "He said. ", "He said.\n", "(", "a NASA ",
+      "He said. \u{0301} ", "NASA \u{0301} ", "x\u{0301} ", " \u{0301}\u{0301} ",
+      "He said.\u{00A0}", "one\r\ntwo ", "\u{0301}", "he said e\u{0301}clair ",
+    ])
+  func headMatchesTheWholeHead(head: String) {
+    let ns = "\(head)twenty" as NSString
+    let got = InverseTextNormalizer.lastTokenBefore(ns, (head as NSString).length)
+    var trimmed = head
+    while let last = trimmed.last, last.isWhitespace { trimmed.removeLast() }
+    #expect(got.headIsBlank == trimmed.isEmpty)
+    #expect(got.token == (InverseTextNormalizer.splitWords(head).last ?? ""))
+  }
+
   /// The leading gap is kept, because the anchored probes that read the window
   /// (`^\s+and\s+...`, `^\s+of\b`) and the `.first == "-"` glue test all start at `end`. A
   /// tail with fewer than two tokens degrades to exactly what the whole-tail read gave.
@@ -105,8 +161,8 @@ struct InverseTextNormalizerNeighbourWindowTests {
       ("", ""),
       (" ", " "),
       ("-year-old", "-year-old"),
-      (" of a second", " of a"),
-      (" and one hundred", " and one"),
+      (" of a second", " of a second"),
+      (" and one hundred", " and one hundred"),
       (" miles", " miles"),
     ] as [(tail: String, window: String)])
   func tailWindowShapes(tail: String, window: String) {
@@ -189,6 +245,16 @@ struct InverseTextNormalizerLongTakeConversionTests {
     let long = Self.itn.normalize(
       String(repeating: lead, count: 300) + input, spokenPunctuation: false)
     #expect(long.hasSuffix(short))
+  }
+
+  /// A combining mark between a number and the unit noun that anchors it is whitespace to
+  /// `splitWords`, so the unit is still the neighbour the AP rule reads and the number still
+  /// becomes a figure.
+  @Test("a combining mark beside a number does not cost it its conversion")
+  func combiningMarkKeepsTheConversion() {
+    let got = Self.itn.normalize("it covers two \u{0301} square miles", spokenPunctuation: false)
+    #expect(got.contains("2"))
+    #expect(!got.contains("two"))
   }
 
   // MARK: - The oracle's own rows, re-run with a long tail

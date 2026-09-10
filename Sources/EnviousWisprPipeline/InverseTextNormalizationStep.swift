@@ -119,7 +119,14 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
-      let queueWaitMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
+      // Read AFTER `withDeadline` returned, so a closure that the timer already beat can still
+      // enter and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from
+      // being scheduled. A stamp later than the budget therefore means the closure had NOT begun
+      // when the deadline fired, which is the queued case, so it is reported as not-started
+      // rather than as a wait longer than the run it is supposed to sit inside. That guard is
+      // also what keeps `latency_ms - queue_wait_ms` non-negative and readable as engine time.
+      let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
+      let queueWaitMs = engineStartMs.flatMap { $0 <= elapsedMs ? $0 : nil }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
       // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
       // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
@@ -130,9 +137,10 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         extra: [
           "latency_ms": elapsedMs,
           "len_before": lenBefore,
-          // nil = the closure never ran: the deadline was spent QUEUED, not normalizing, and
-          // nothing about the engine is implicated. Otherwise the wait before it started, so
-          // `latency_ms - queue_wait_ms` is what the engine itself actually consumed.
+          // false = the closure had not begun when the deadline fired: the budget was spent
+          // QUEUED, not normalizing, and nothing about the engine is implicated. True carries the
+          // wait before it started, so `latency_ms - queue_wait_ms` is what the engine itself
+          // actually consumed before being abandoned.
           "engine_started": queueWaitMs != nil,
           "queue_wait_ms": queueWaitMs ?? -1,
         ])

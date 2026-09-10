@@ -1179,21 +1179,41 @@ public struct InverseTextNormalizer: Sendable {
   // SCANNING utf-16 units to a token boundary and materializing only that, so the cost is the
   // length of the neighbouring tokens rather than the length of the rest of the take.
   //
-  // Both use `isWhitespace` — the Unicode White_Space property spelled out in `whitespaceSet` —
-  // which is the same boundary `splitWords` (`Character.isWhitespace`) splits on. That equality
-  // is what makes these drop-in: the caller keeps running the identical `splitWords` /
-  // `firstMatch` / `.first` / `.last` logic, just over a window instead of the whole tail.
-  // Surrogates are not whitespace under either rule, so a cut can never land inside a pair.
+  // The scan walks utf-16 units against `isWhitespace` (`whitespaceSet`, the Unicode White_Space
+  // property). THAT IS NOT THE SAME BOUNDARY `splitWords` USES, and assuming it was is what an
+  // earlier draft of these helpers got wrong: `splitWords` asks `Character.isWhitespace`, which
+  // classifies a whole GRAPHEME CLUSTER by its FIRST scalar. A combining mark after a space joins
+  // the space's cluster, so Swift calls the pair whitespace while a scalar scan calls the mark a
+  // token of its own. Measured: on `"it covers two \u{0301} square miles"` the whole tail splits
+  // to `["square", "miles"]` and a two-token scalar window yields only `["square"]`, so the
+  // cardinal pass stopped seeing the unit noun and left "two" spelled.
+  //
+  // So the scan PROPOSES and `splitWords` DISPOSES: each helper grows its window by scalar-token
+  // steps and hands the candidate back to `splitWords` itself, stopping only once `splitWords`
+  // reports enough complete tokens. Whatever the scan miscounts on the way, the tokens the caller
+  // actually reads are the ones the whole text would have given. Surrogates are not whitespace
+  // under either rule, so a cut can never land inside a pair.
+  //
+  // `neighbourScanCap` bounds the growth. Reaching it needs text that is mostly combining marks
+  // sitting against whitespace, which dictation does not produce, and the behaviour there is the
+  // OLD short-window behaviour: a guard that cannot see its neighbour declines to convert, so the
+  // cap fails SAFE (a number stays spelled) exactly like `runIsCleanlyPaired`'s walk ceiling.
+  //
+  // One shape stays linear in the take and cannot be helped here: text with no whitespace at all
+  // ("twenty/twenty/twenty/…") is ONE token, so the window is the rest of the take. Speech
+  // arrives with spaces; this is a property of the input, not of the window.
+  static let neighbourScanCap = 32
 
-  /// The text from `end` through the end of its SECOND whitespace-delimited token — the window
-  /// every "what follows this match" reader in this file stays inside.
+  /// The text from `end` through the end of its THIRD `splitWords` token — the window every
+  /// "what follows this match" reader in this file stays inside.
   ///
-  /// TWO tokens, because that is the deepest any caller looks: the cardinal pass reads
-  /// `toksAfter[1]` for a unit with a modifier ("two square miles") and for an age period
-  /// ("two years old"). Leading whitespace is preserved so an anchored `^\s+...` probe and a
-  /// `.first == "-"` glue test read exactly what they read on the full tail.
+  /// TWO tokens are what a caller reads: the cardinal pass reads `toksAfter[1]` for a unit with a
+  /// modifier ("two square miles") and for an age period ("two years old"). The window carries a
+  /// third so those two are each closed inside it; see the note above. Leading whitespace is
+  /// preserved so an anchored `^\s+...` probe and a `.first == "-"` glue test read exactly what
+  /// they read on the full tail.
   ///
-  /// Truncating at a token boundary cannot change an answer: a reader that wants token 1 or 2
+  /// Ending on a `splitWords` boundary cannot change an answer: a reader that wants token 1 or 2
   /// gets it whole, `count >= 2` is decided identically, and a `\b` closing an anchored probe
   /// inside token 1 sees the same following character (the boundary that ended the token) as it
   /// would in the full text. There is no character cap — a cap could cut a token in half and
@@ -1202,28 +1222,54 @@ public struct InverseTextNormalizer: Sendable {
     let n = ns.length
     guard end < n else { return "" }
     var i = end
-    for _ in 0..<2 {
+    var scanned = 0
+    while i < n, scanned < neighbourScanCap {
       while i < n, isWhitespace(ns.character(at: i)) { i += 1 }
       guard i < n else { break }
       while i < n, !isWhitespace(ns.character(at: i)) { i += 1 }
+      scanned += 1
+      // THREE, so the two the callers read are each closed by a whitespace run INSIDE the window.
+      // Stopping at two would leave token 2 ending on the window edge, and a cluster that Swift
+      // continues across that edge (a Prepend scalar before the space the scan stopped on) would
+      // hand the caller a token the whole text does not have.
+      guard scanned >= 3,
+        Self.splitWords(ns.substring(with: NSRange(location: end, length: i - end))).count >= 3
+      else { continue }
+      break
     }
     return ns.substring(with: NSRange(location: end, length: i - end))
   }
 
-  /// The last whitespace-delimited token before `start`, plus whether NOTHING but whitespace
-  /// precedes it — the two things a "what came before this match" reader in this file asks.
+  /// The last `splitWords` token before `start`, plus whether NOTHING but whitespace precedes it —
+  /// the two things a "what came before this match" reader in this file asks.
   ///
   /// `token` is `splitWords(everythingBefore).last ?? ""`, and `headIsBlank` is what
-  /// `everythingBefore` trimmed of trailing whitespace answers to `isEmpty`. When `headIsBlank`
-  /// is false the token is non-empty and its LAST character is the last character of that
-  /// trimmed head, which is the sentence-boundary sentinel the cardinal pass tests.
+  /// `everythingBefore` trimmed of trailing whitespace answers to `isEmpty` (the two agree:
+  /// trimming trailing whitespace empties a head exactly when it holds no token). When
+  /// `headIsBlank` is false the token is non-empty and its LAST character is the last character
+  /// of that trimmed head, which is the sentence-boundary sentinel the cardinal pass tests.
   static func lastTokenBefore(_ ns: NSString, _ start: Int) -> (token: String, headIsBlank: Bool) {
-    var p = start
-    while p > 0, isWhitespace(ns.character(at: p - 1)) { p -= 1 }
-    guard p > 0 else { return ("", true) }
-    var q = p
-    while q > 0, !isWhitespace(ns.character(at: q - 1)) { q -= 1 }
-    return (ns.substring(with: NSRange(location: q, length: p - q)), false)
+    var q = start
+    var scanned = 0
+    while q > 0, scanned < neighbourScanCap {
+      while q > 0, isWhitespace(ns.character(at: q - 1)) { q -= 1 }
+      guard q > 0 else { break }
+      while q > 0, !isWhitespace(ns.character(at: q - 1)) { q -= 1 }
+      scanned += 1
+      // TWO. The last token is already closed on its right by `start`, so one complete token in
+      // front of it is what puts its LEFT boundary inside the window.
+      guard scanned >= 2,
+        Self.splitWords(ns.substring(with: NSRange(location: q, length: start - q))).count >= 2
+      else { continue }
+      break
+    }
+    let head = ns.substring(with: NSRange(location: q, length: start - q))
+    // `splitWords(head).last` and "the head trimmed of trailing whitespace is empty" are the two
+    // questions the whole-head read answered, and asking `splitWords` for BOTH is what keeps the
+    // pair consistent: a non-empty token is returned only when `splitWords` found one, so
+    // `headIsBlank == false` always carries a token whose `.last` exists.
+    if let last = Self.splitWords(head).last, !last.isEmpty { return (last, false) }
+    return ("", true)
   }
 
   static func gluedRunIsOnlyPunctuation(_ ns: NSString, _ from: Int, _ to: Int) -> Bool {
