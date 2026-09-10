@@ -385,14 +385,26 @@ def cmd_run(args):
     running_here = [p for p, path in running_enviouswispr_instances().items() if path == expected_bin]
     build_matches_head = None
     if len(running_here) == 1 and head_commit_epoch.isdigit():
+        app_start = pf.proc_start_epoch(int(running_here[0]))
         try:
-            build_matches_head = os.path.getmtime(expected_bin) >= int(head_commit_epoch)
+            bin_mtime = os.path.getmtime(expected_bin)
         except OSError:
-            build_matches_head = None
+            bin_mtime = None
+        if app_start is None or bin_mtime is None:
+            build_matches_head = None  # cannot read one side; do not certify
+        elif bin_mtime > app_start + 1:
+            # Built AFTER the running app launched: rebuilt but not relaunched, so
+            # the RUNNING process is the OLD binary whatever the on-disk mtime says
+            # (the stale-process trap cmd_preflight already checks). A fresh binary
+            # on disk does NOT mean fresh code is running.
+            build_matches_head = False
+        else:
+            # The running app IS this on-disk binary; certify it against HEAD.
+            build_matches_head = bin_mtime >= int(head_commit_epoch)
     if build_matches_head is False:
-        print("HEADS UP: the running build is OLDER than HEAD's commit, so these results are from a build that "
-              "predates this commit; head_sha would misattribute them. Rebuild + relaunch via "
-              "/wispr-rebuild-debug before trusting the saved revision.")
+        print("HEADS UP: the running app is NOT this commit's build (either built without relaunching, or the "
+              "build predates HEAD), so these results are from older code; head_sha would misattribute them. "
+              "Rebuild + relaunch via /wispr-rebuild-debug before trusting the saved revision.")
     run_dir = resolve_run_dir(args.run_dir, worktree)
 
     import wispr_eyes as w
