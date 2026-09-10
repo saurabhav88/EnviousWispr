@@ -25,31 +25,40 @@ import Testing
 /// (`LivePreviewSettingsView.swift:50`) describing why the form is wrong. A text scan of Swift
 /// cannot tell a prohibition from its own explanation. A macro-expansion node can.
 ///
-/// ## Why a per-file count, and why the invariant is an EQUALITY
+/// ## The invariant: the SET of hidden negations may only shrink
 ///
-/// The rule grandfathers existing sites "until edited", and there are hundreds. A whole-tree ban
-/// would be red on arrival and get switched off; a diff-scoped lint would need the test to shell
-/// out to git. A frozen per-file count ratchets: a file may never gain a negation, and a file that
-/// loses one must say so.
+/// The rule grandfathers existing sites "until edited", and there are over a thousand. A whole-tree
+/// ban is red on arrival and gets switched off; a diff-scoped lint would need the test to shell out
+/// to git. So the baseline freezes the negations that exist, and none may be added.
 ///
-/// The equality is the same reasoning `TestInventoryFreezeTests` records for its own baseline. A
-/// count left higher than the truth is a REUSABLE EXEMPTION: the file could shed a negation in one
-/// change and silently reacquire one in the next, with nothing failing. Line numbers are
-/// deliberately NOT the key — every edit above a site would move it, and the baseline would churn
-/// on changes that add no negation at all.
+/// **The key is the negated CONDITION's own text, not a per-file count** (PR #2771 cloud review
+/// r2). A count cannot see a swap: delete one grandfathered negation and add a different one in the
+/// same file and the count is unchanged, so a brand-new hidden negation lands with nothing failing.
+/// The rule's words are "new or MODIFIED", and only an identity can see a modification. With text
+/// as the key a swap reads as one line no longer earned plus one line never granted, and both
+/// halves fail.
+///
+/// **Line numbers are deliberately NOT part of the key.** Every edit above a site would move it,
+/// so the baseline would churn on changes that add no negation at all.
+///
+/// The equality — a baseline line must still name something real — is the reasoning
+/// `TestInventoryFreezeTests` records for its own list. An entry left behind is a REUSABLE
+/// EXEMPTION: a later assertion landing on the same text inherits it for free.
 @Suite(.tags(.driftGuard))
 struct NegatedExpectRatchetTests {
 
   private static let baselinePath = "scripts/negated-expect-baseline.txt"
 
   private static let header = """
-    # Hidden negations in test assertions, frozen per file (#2449).
+    # Hidden negations in test assertions, frozen one line per distinct assertion (#2449).
     # Owner: .claude/rules/swift-testing-patterns.md `swift-testing-no-negated-expect`.
     #
-    # A file may never gain one. A file that LOSES one must have its line lowered or removed here,
-    # because a count left above the truth is an exemption the next change inherits for free.
+    # The SET may only shrink. Adding a negation fails; so does leaving a line here after the
+    # assertion it names is gone, because that line is an exemption the next change inherits.
     #
-    # Keyed by "<count>\\t<path relative to the repo root>".
+    # Keyed by "<count>\\t<path relative to the repo root>\\t<the negated condition, whitespace
+    # collapsed>". The condition rather than a per-file count, so that swapping one negation for
+    # another inside a file cannot pass unnoticed.
     # Regenerate: TEST_RUNNER_EW_WRITE_NEGATED_EXPECT_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/NegatedExpectRatchetTests
     # (the TEST_RUNNER_ prefix is load-bearing — without it the row SKIPS, the run greens, and the
     # baseline is untouched, which reads exactly like "nothing needed regenerating")
@@ -103,28 +112,48 @@ struct NegatedExpectRatchetTests {
     return prefix.operator.text == "!"
   }
 
-  /// Every condition-taking macro call in one tree, and how many of them are negated.
-  private static func counts(in node: Syntax) -> (macros: Int, negated: Int) {
+  /// One line of source, with every run of whitespace collapsed, so a reformat of an untouched
+  /// assertion does not read as a different assertion.
+  private static func normalised(_ expr: ExprSyntax) -> String {
+    expr.description
+      .split(whereSeparator: { $0.isWhitespace })
+      .joined(separator: " ")
+  }
+
+  /// Every condition-taking macro call in one tree, and the text of each negated condition.
+  private static func counts(in node: Syntax) -> (macros: Int, negated: [String]) {
     var macros = 0
-    var negated = 0
+    var negated: [String] = []
     if let macro = node.as(MacroExpansionExprSyntax.self),
       conditionMacros.contains(macro.macroName.text)
     {
       macros += 1
-      if isHiddenNegation(macro) { negated += 1 }
+      if isHiddenNegation(macro), let first = macro.arguments.first {
+        negated.append(normalised(first.expression))
+      }
     }
     for child in node.children(viewMode: .sourceAccurate) {
       let sub = counts(in: child)
       macros += sub.macros
-      negated += sub.negated
+      negated.append(contentsOf: sub.negated)
     }
     return (macros, negated)
   }
 
+  /// A distinct hidden negation: which file, and the condition's own text. Two identical
+  /// assertions in one file share a key and are counted, which is why the value is a count.
+  private struct Site: Hashable, Comparable {
+    let file: String
+    let condition: String
+    var line: String { "\(file)\t\(condition)" }
+    static func < (a: Site, b: Site) -> Bool { a.line < b.line }
+  }
+
   private struct Sweep {
-    var negatedByFile: [String: Int] = [:]
+    var negations: [Site: Int] = [:]
     var totalMacros = 0
     var filesRead = 0
+    var totalNegations: Int { negations.values.reduce(0, +) }
   }
 
   private static func sweep() throws -> Sweep {
@@ -144,28 +173,30 @@ struct NegatedExpectRatchetTests {
       let tree = Parser.parse(source: text)
       let found = counts(in: Syntax(tree))
       out.totalMacros += found.macros
-      guard found.negated > 0 else { continue }
+      guard !found.negated.isEmpty else { continue }
       var relative = url.path
       if relative.hasPrefix(root + "/") { relative.removeFirst(root.count + 1) }
-      out.negatedByFile[relative, default: 0] += found.negated
+      for condition in found.negated {
+        out.negations[Site(file: relative, condition: condition), default: 0] += 1
+      }
     }
     return out
   }
 
   // MARK: - The baseline
 
-  private static func baseline() throws -> [String: Int] {
+  private static func baseline() throws -> [Site: Int] {
     let text = try String(contentsOf: RepoRoot.sourceURL(baselinePath), encoding: .utf8)
-    var out: [String: Int] = [:]
+    var out: [Site: Int] = [:]
     for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
       let row = String(line)
       guard !row.hasPrefix("#"), !row.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-      let parts = row.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
-      guard parts.count == 2, let count = Int(parts[0]) else {
+      let parts = row.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+      guard parts.count == 3, let count = Int(parts[0]) else {
         Issue.record("unparseable baseline row, so the whole file is untrusted: \(row)")
         continue
       }
-      out[String(parts[1])] = count
+      out[Site(file: String(parts[1]), condition: String(parts[2]))] = count
     }
     return out
   }
@@ -178,21 +209,19 @@ struct NegatedExpectRatchetTests {
   func regenerateBaseline() throws {
     let found = try Self.sweep()
     let body =
-      found.negatedByFile
+      found.negations
       .sorted { $0.key < $1.key }
-      .map { "\($0.value)\t\($0.key)" }
+      .map { "\($0.value)\t\($0.key.line)" }
       .joined(separator: "\n")
     try (Self.header + "\n" + body + "\n").write(
       to: RepoRoot.sourceURL(Self.baselinePath), atomically: true, encoding: .utf8)
-    print(
-      "Wrote \(found.negatedByFile.count) file(s), "
-        + "\(found.negatedByFile.values.reduce(0, +)) negated assertion(s).")
+    print("Wrote \(found.negations.count) distinct site(s), \(found.totalNegations) assertion(s).")
   }
 
   // MARK: - The gate
 
-  @Test("no test file gains a hidden negation, and none keeps a count it no longer earns")
-  func theCountNeverRises() throws {
+  @Test("no hidden negation is added, and no frozen line outlives its assertion")
+  func theSetOnlyShrinks() throws {
     let found = try Self.sweep()
 
     // Fail closed twice. An empty sweep and a parser that stopped recognising the macro both look
@@ -209,34 +238,36 @@ struct NegatedExpectRatchetTests {
 
     let frozen = try Self.baseline()
     try #require(
-      frozen.count > 50,
-      "baseline lists \(frozen.count) files; refusing to treat that as 'everything is new'")
+      frozen.count > 500,
+      "baseline lists \(frozen.count) sites; refusing to treat that as 'everything is new'")
 
-    let gained = found.negatedByFile
+    let gained =
+      found.negations
       .filter { $0.value > (frozen[$0.key] ?? 0) }
       .sorted { $0.key < $1.key }
     #expect(
       gained.isEmpty,
       """
-      \(gained.count) file(s) gained a hidden negation. Write the comparison instead:
-      `#expect(value == false)`, `#expect(x != y)` — never `#expect(!value)`.
+      \(gained.count) hidden negation(s) were added. Write the comparison instead:
+      `#expect(value == false)`, `#expect(x != y)` — never `#expect(!value)`, and the `!` still
+      counts through a `try`, an `await` or a bracket.
       Owner: .claude/rules/swift-testing-patterns.md `swift-testing-no-negated-expect`.
 
-      \(gained.map { "  \($0.key): \(frozen[$0.key] ?? 0) -> \($0.value)" }.joined(separator: "\n"))
+      \(gained.map { "  \($0.key.file)\n    \($0.key.condition)" }.joined(separator: "\n"))
       """)
 
     let stale =
       frozen
-      .filter { $0.value > (found.negatedByFile[$0.key] ?? 0) }
+      .filter { $0.value > (found.negations[$0.key] ?? 0) }
       .sorted { $0.key < $1.key }
     #expect(
       stale.isEmpty,
       """
-      \(stale.count) baseline line(s) are now higher than the truth. Each one is an exemption the
-      next change inherits for free, so lower or delete them:
+      \(stale.count) frozen line(s) no longer name an assertion that exists. Each is an exemption a
+      later assertion inherits by landing on the same text, so regenerate:
       TEST_RUNNER_EW_WRITE_NEGATED_EXPECT_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/NegatedExpectRatchetTests
 
-      \(stale.map { "  \($0.key): frozen at \($0.value), actually \(found.negatedByFile[$0.key] ?? 0)" }.joined(separator: "\n"))
+      \(stale.map { "  \($0.key.file)\n    \($0.key.condition)" }.joined(separator: "\n"))
       """)
   }
 
@@ -269,9 +300,9 @@ struct NegatedExpectRatchetTests {
       row is not one of these macros and must never be counted as one.
       """)
     #expect(
-      found.negated == 7,
+      found.negated.count == 7,
       """
-      saw \(found.negated) hidden negations in the fixture, expected 7.
+      saw \(found.negated.count) hidden negations in the fixture, expected 7.
 
       The first three macro rows are honest and must NOT count: a comparison, a `!` inside a
       string literal, and an inequality. The `!` on a non-macro call must not count either.

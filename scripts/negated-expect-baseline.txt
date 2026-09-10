@@ -1,236 +1,813 @@
-# Hidden negations in test assertions, frozen per file (#2449).
+# Hidden negations in test assertions, frozen one line per distinct assertion (#2449).
 # Owner: .claude/rules/swift-testing-patterns.md `swift-testing-no-negated-expect`.
 #
-# A file may never gain one. A file that LOSES one must have its line lowered or removed here,
-# because a count left above the truth is an exemption the next change inherits for free.
+# The SET may only shrink. Adding a negation fails; so does leaving a line here after the
+# assertion it names is gone, because that line is an exemption the next change inherits.
 #
-# Keyed by "<count>\t<path relative to the repo root>".
+# Keyed by "<count>\t<path relative to the repo root>\t<the negated condition, whitespace
+# collapsed>". The condition rather than a per-file count, so that swapping one negation for
+# another inside a file cannot pass unnoticed.
 # Regenerate: TEST_RUNNER_EW_WRITE_NEGATED_EXPECT_BASELINE=1 scripts/xcode-test.sh --filter EnviousWisprTests/NegatedExpectRatchetTests
 # (the TEST_RUNNER_ prefix is load-bearing — without it the row SKIPS, the run greens, and the
 # baseline is untouched, which reads exactly like "nothing needed regenerating")
-4	Tests/EnviousWisprASRTests/FluidAudioBridgeClassificationTests.swift
-8	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift
-1	Tests/EnviousWisprASRTests/ParakeetDeliveryModeTests.swift
-2	Tests/EnviousWisprASRTests/ParakeetStreamingIdentityBridgeTests.swift
-3	Tests/EnviousWisprASRTests/WhisperKitStreamingSessionTests.swift
-6	Tests/EnviousWisprTests/App/AppWindowCoordinatorTests.swift
-4	Tests/EnviousWisprTests/App/ApplePackCatalogTests.swift
-5	Tests/EnviousWisprTests/App/BluetoothAwarenessPresenterTests.swift
-4	Tests/EnviousWisprTests/App/BulkImportEnrichmentCoordinatorTests.swift
-6	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift
-1	Tests/EnviousWisprTests/App/CustomWordsImportReviewFlowTests.swift
-13	Tests/EnviousWisprTests/App/DictationNarratorTests.swift
-2	Tests/EnviousWisprTests/App/EngineCoordinatorTests.swift
-10	Tests/EnviousWisprTests/App/EngineRecoveryGateTests.swift
-6	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift
-1	Tests/EnviousWisprTests/App/EscapeRecoveryPillLayoutTests.swift
-2	Tests/EnviousWisprTests/App/EscapeRecoveryPillTests.swift
-7	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift
-1	Tests/EnviousWisprTests/App/LanguageSuggestionPresenterTests.swift
-2	Tests/EnviousWisprTests/App/LivePreview/PillWordsCapabilityTests.swift
-16	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift
-1	Tests/EnviousWisprTests/App/LivePreviewEngineChoiceTests.swift
-7	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift
-3	Tests/EnviousWisprTests/App/LivePreviewPackCopyTests.swift
-4	Tests/EnviousWisprTests/App/LivePreviewPackPresentationTests.swift
-2	Tests/EnviousWisprTests/App/LivePreviewPacksModelTests.swift
-1	Tests/EnviousWisprTests/App/LivePreviewStatusBarPresentationTests.swift
-5	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift
-4	Tests/EnviousWisprTests/App/MenuBarControllerTests.swift
-4	Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift
-2	Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift
-2	Tests/EnviousWisprTests/App/Overlay/AppearancePillPickerTests.swift
-2	Tests/EnviousWisprTests/App/Overlay/NoticeLeafModelTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/OverlayHostingContractTests.swift
-2	Tests/EnviousWisprTests/App/Overlay/PillAtomicFrameTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/PillExpiryClockTests.swift
-2	Tests/EnviousWisprTests/App/Overlay/PillOfferabilityTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/PillRequestParityTests.swift
-5	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/RecordingPollingLifetimeTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/RecordingTransactionTests.swift
-1	Tests/EnviousWisprTests/App/Overlay/RenderedPillFreezeTests.swift
-3	Tests/EnviousWisprTests/App/PipelineSettingsSyncMirrorGuardTests.swift
-1	Tests/EnviousWisprTests/App/PreviewPillPaletteTests.swift
-8	Tests/EnviousWisprTests/App/QuarantineStripTests.swift
-5	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift
-2	Tests/EnviousWisprTests/App/QuickAddServiceDeclarationTests.swift
-2	Tests/EnviousWisprTests/App/QuickAddTelemetryPrivacyTests.swift
-1	Tests/EnviousWisprTests/App/RecordingOverlayPreviewChromeTests.swift
-3	Tests/EnviousWisprTests/App/RecordingOverlayPreviewTypographyTests.swift
-3	Tests/EnviousWisprTests/App/RecordingStarterStartPathTests.swift
-3	Tests/EnviousWisprTests/App/SettingsChangeTelemetryTests.swift
-1	Tests/EnviousWisprTests/App/VocabularyPackManagerOverridesTests.swift
-3	Tests/EnviousWisprTests/App/WhisperPreviewSessionHandleTests.swift
-2	Tests/EnviousWisprTests/Architecture/AdapterShapeTests.swift
-1	Tests/EnviousWisprTests/Architecture/AppStateFreezeTests.swift
-7	Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift
-2	Tests/EnviousWisprTests/Architecture/DeliveryManifestSourcePinningTests.swift
-1	Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift
-3	Tests/EnviousWisprTests/Architecture/EscapeRecoveryBoundaryFreezeTests.swift
-2	Tests/EnviousWisprTests/Architecture/PasteBakeoffReleaseContainmentTests.swift
-1	Tests/EnviousWisprTests/Architecture/SetupCoordinatorTests.swift
-1	Tests/EnviousWisprTests/Architecture/WhisperKitStitchFreezeTests.swift
-15	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift
-2	Tests/EnviousWisprTests/Audio/AudioCaptureManagerLiveInputTests.swift
-1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerMaxDurationBackstopTests.swift
-5	Tests/EnviousWisprTests/Audio/AudioInputSourceConformanceFreezeTests.swift
-2	Tests/EnviousWisprTests/Audio/BuiltInInputKindTests.swift
-1	Tests/EnviousWisprTests/Audio/CoreAudioDeviceLivenessTests.swift
-20	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift
-1	Tests/EnviousWisprTests/Audio/EngineInterruptionCauseTests.swift
-6	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift
-9	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift
-7	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift
-1	Tests/EnviousWisprTests/Audio/ResolvedRouteTransportsGridTests.swift
-1	Tests/EnviousWisprTests/Audio/RouteResolvedProducerTests.swift
-1	Tests/EnviousWisprTests/Audio/VADInputConditioningFixtureTests.swift
-6	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift
-1	Tests/EnviousWisprTests/Contacts/ImportedVocabularyPriorityTests.swift
-1	Tests/EnviousWisprTests/Core/AppLoggerCompileOutTests.swift
-1	Tests/EnviousWisprTests/Core/AppLoggerPreSinkBufferTests.swift
-1	Tests/EnviousWisprTests/Core/CustomWordSchemaTests.swift
-1	Tests/EnviousWisprTests/Core/CustomWordSourceMigrationTests.swift
-19	Tests/EnviousWisprTests/Core/LoadProgressWatcherTests.swift
-3	Tests/EnviousWisprTests/Core/RotatingFileSinkTests.swift
-1	Tests/EnviousWisprTests/Core/S1ControlSettingsTests.swift
-3	Tests/EnviousWisprTests/EnviousWisprTests.swift
-1	Tests/EnviousWisprTests/LLM/AppleIntelligencePolishTests.swift
-5	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift
-7	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift
-7	Tests/EnviousWisprTests/LLM/EGOneDeliveryAdapterTests.swift
-2	Tests/EnviousWisprTests/LLM/EGOneManifestTests.swift
-11	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift
-6	Tests/EnviousWisprTests/LLM/EGOneRuntimeReplacementActivationTests.swift
-1	Tests/EnviousWisprTests/LLM/EGOneServerManagerTests.swift
-24	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift
-4	Tests/EnviousWisprTests/LLM/EngineLaunchArgumentTests.swift
-5	Tests/EnviousWisprTests/LLM/KeychainManagerTests.swift
-1	Tests/EnviousWisprTests/LLM/LLMModelDiscoveryTests.swift
-3	Tests/EnviousWisprTests/LLM/LLMProviderCapabilityTests.swift
-6	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift
-2	Tests/EnviousWisprTests/LLM/LLMTaskMetricsCollectorTests.swift
-2	Tests/EnviousWisprTests/LLM/LLMWarmupGateTests.swift
-14	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift
-5	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift
-1	Tests/EnviousWisprTests/LLM/MeasuredModelVerdictFixtureTests.swift
-8	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift
-4	Tests/EnviousWisprTests/LLM/OllamaReadinessPreflightTests.swift
-2	Tests/EnviousWisprTests/LLM/OllamaSetupServiceCloudCatalogTests.swift
-3	Tests/EnviousWisprTests/LLM/OllamaSetupServiceDetectStateTests.swift
-1	Tests/EnviousWisprTests/LLM/OllamaTranscriptTagStrippingTests.swift
-2	Tests/EnviousWisprTests/LLM/OllamaWarmupPolicyTests.swift
-1	Tests/EnviousWisprTests/LLM/OpenAILiveSweepTests.swift
-1	Tests/EnviousWisprTests/LLM/OpenAIParamStripTests.swift
-1	Tests/EnviousWisprTests/LLM/OpenAIRequestBodyTests.swift
-4	Tests/EnviousWisprTests/LLM/PolishFailureReasonTests.swift
-15	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift
-5	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift
-8	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift
-4	Tests/EnviousWisprTests/ModelDelivery/DeliveryManifestTests.swift
-7	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift
-8	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift
-9	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift
-5	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift
-1	Tests/EnviousWisprTests/Pipeline/CaptureSessionFenceTests.swift
-10	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift
-2	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerTailTrimTests.swift
-8	Tests/EnviousWisprTests/Pipeline/ClipboardCleanupTests.swift
-3	Tests/EnviousWisprTests/Pipeline/DegradedLeadDiagnosticsTests.swift
-9	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift
-1	Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift
-5	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift
-2	Tests/EnviousWisprTests/Pipeline/EngineLeaseTests.swift
-1	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryActivationTests.swift
-11	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift
-4	Tests/EnviousWisprTests/Pipeline/FileImportRunnerTests.swift
-4	Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryEmitterTests.swift
-1	Tests/EnviousWisprTests/Pipeline/Issue1358EmptyRecoveryTests.swift
-1	Tests/EnviousWisprTests/Pipeline/Issue1358FillerEmptyReproTests.swift
-1	Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift
-1	Tests/EnviousWisprTests/Pipeline/KernelFrozenBindGuardTests.swift
-1	Tests/EnviousWisprTests/Pipeline/KernelLifecycleTelemetrySinkTests.swift
-3	Tests/EnviousWisprTests/Pipeline/KernelPhase2RetryTests.swift
-1	Tests/EnviousWisprTests/Pipeline/LLMPolishStepLanguageFallbackTests.swift
-1	Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift
-2	Tests/EnviousWisprTests/Pipeline/ListMarkerUpstreamCasingTests.swift
-2	Tests/EnviousWisprTests/Pipeline/ParakeetEngineAdapterTests.swift
-2	Tests/EnviousWisprTests/Pipeline/ParakeetStreamingStartTelemetryTests.swift
-2	Tests/EnviousWisprTests/Pipeline/PasteCopiesSelectionTrustTests.swift
-1	Tests/EnviousWisprTests/Pipeline/PasteDeliveryPolicyTests.swift
-7	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift
-5	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift
-26	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift
-7	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelDeadAirFloorTests.swift
-3	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelSalvageTests.swift
-2	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelTests.swift
-11	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift
-1	Tests/EnviousWisprTests/Pipeline/Simulator/ScenarioInventoryTests.swift
-3	Tests/EnviousWisprTests/Pipeline/Simulator/ScenarioRunnerTests.swift
-1	Tests/EnviousWisprTests/Pipeline/Simulator/SimulatorWallClockBanTests.swift
-2	Tests/EnviousWisprTests/Pipeline/SnippetChainPlacementTests.swift
-2	Tests/EnviousWisprTests/Pipeline/SnippetFinalizerTests.swift
-5	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift
-2	Tests/EnviousWisprTests/Pipeline/TranscriptSplitterTests.swift
-15	Tests/EnviousWisprTests/Pipeline/WhisperKitLegacyUpgradeCoordinatorTests.swift
-6	Tests/EnviousWisprTests/PostProcessing/CursorInsertionRepairTests.swift
-2	Tests/EnviousWisprTests/PostProcessing/CustomWordsBackupRoundTripTests.swift
-3	Tests/EnviousWisprTests/PostProcessing/CustomWordsBatchTests.swift
-1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBulkEnrichmentTests.swift
-2	Tests/EnviousWisprTests/PostProcessing/CustomWordsExportWriterTests.swift
-4	Tests/EnviousWisprTests/PostProcessing/CustomWordsPersistenceTests.swift
-5	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift
-1	Tests/EnviousWisprTests/PostProcessing/ExactTriggerIndexTests.swift
-8	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift
-1	Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerCountryTLDTests.swift
-1	Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerNeighbourWindowTests.swift
-1	Tests/EnviousWisprTests/PostProcessing/MultiWordDomainSuffixTests.swift
-4	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift
-12	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift
-8	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift
-7	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift
-2	Tests/EnviousWisprTests/PostProcessing/VocabularyPackOverridesStoreTests.swift
-5	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift
-14	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift
-9	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift
-35	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift
-1	Tests/EnviousWisprTests/Recovery/RecoveryFailureCategoryTests.swift
-3	Tests/EnviousWisprTests/Recovery/RecoveryLogLabelTests.swift
-1	Tests/EnviousWisprTests/Recovery/RecoverySpoolCodecTests.swift
-5	Tests/EnviousWisprTests/Recovery/RecoverySpoolReplayerTests.swift
-5	Tests/EnviousWisprTests/Recovery/RecoverySpoolStoreTests.swift
-6	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift
-7	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift
-1	Tests/EnviousWisprTests/Services/HeartPathErrorTests.swift
-1	Tests/EnviousWisprTests/Services/HotkeyCancelShortcutTests.swift
-1	Tests/EnviousWisprTests/Services/HotkeyGlobeKeyTests.swift
-5	Tests/EnviousWisprTests/Services/HotkeyQuickAddShortcutTests.swift
-6	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift
-1	Tests/EnviousWisprTests/Services/PasteAccessibilityInsertionTests.swift
-6	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift
-1	Tests/EnviousWisprTests/Services/PasteServiceActivationTimeoutTests.swift
-13	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift
-8	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift
-1	Tests/EnviousWisprTests/Services/SettingsManagerOllamaTruthTests.swift
-10	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift
-6	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift
-4	Tests/EnviousWisprTests/Services/TerminalProcessScannerTests.swift
-28	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift
-10	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift
-4	Tests/EnviousWisprTests/Settings/LanguageLockOptionsTests.swift
-3	Tests/EnviousWisprTests/Settings/LivePreviewSettingsCopyTests.swift
-3	Tests/EnviousWisprTests/Settings/LocalEngineDescriptorTests.swift
-10	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift
-4	Tests/EnviousWisprTests/Settings/OllamaModelPickerPresentationTests.swift
-4	Tests/EnviousWisprTests/Settings/PolishLengthCopyTests.swift
-3	Tests/EnviousWisprTests/Settings/PolishRailCatalogTests.swift
-1	Tests/EnviousWisprTests/Settings/ProviderStatusMappingTests.swift
-5	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift
-8	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift
-6	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift
-5	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift
-1	Tests/EnviousWisprTests/Views/KeybindRowDefaultsTests.swift
-28	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift
-4	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelModelTests.swift
-5	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift
-3	Tests/EnviousWisprTests/Views/TranscribeFilePrivacyFooterTests.swift
+1	Tests/EnviousWisprASRTests/FluidAudioBridgeClassificationTests.swift	!String(describing: classifyFluidAudioStreamingError(configured)).contains(secret)
+1	Tests/EnviousWisprASRTests/FluidAudioBridgeClassificationTests.swift	!String(describing: kind).contains(secret)
+1	Tests/EnviousWisprASRTests/FluidAudioBridgeClassificationTests.swift	!fluidAudioStreamingErrorWrapsCancellation(ForeignError())
+1	Tests/EnviousWisprASRTests/FluidAudioBridgeClassificationTests.swift	!fluidAudioStreamingErrorWrapsCancellation(error)
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!LanguageTypes.isNonLatinScript("")
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!LanguageTypes.isNonLatinScript("xx")
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!LanguageTypes.isNonLatinScript(code)
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!LanguageTypes.isSupported("xx")
+2	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!LanguageTypes.isUnsegmentedScript(code)
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!r.abstained
+1	Tests/EnviousWisprASRTests/LanguageDetectorTests.swift	!r.usedSessionPrior
+1	Tests/EnviousWisprASRTests/ParakeetDeliveryModeTests.swift	!ModelHub.offlineMode
+1	Tests/EnviousWisprASRTests/ParakeetStreamingIdentityBridgeTests.swift	!String(describing: bridged.userInfo).contains(secret)
+1	Tests/EnviousWisprASRTests/ParakeetStreamingIdentityBridgeTests.swift	!bridged.localizedDescription.contains(secret)
+3	Tests/EnviousWisprASRTests/WhisperKitStreamingSessionTests.swift	!r.accepted
+3	Tests/EnviousWisprTests/App/AppWindowCoordinatorTests.swift	!present
+2	Tests/EnviousWisprTests/App/AppWindowCoordinatorTests.swift	!replayed
+1	Tests/EnviousWisprTests/App/AppWindowCoordinatorTests.swift	!secondReplay
+1	Tests/EnviousWisprTests/App/ApplePackCatalogTests.swift	!body.contains("assetInstallationRequest")
+1	Tests/EnviousWisprTests/App/ApplePackCatalogTests.swift	!body.contains("downloadAndInstall")
+1	Tests/EnviousWisprTests/App/ApplePackCatalogTests.swift	!calls.contains { $0.hasPrefix("reserve:") }
+1	Tests/EnviousWisprTests/App/ApplePackCatalogTests.swift	!files.isEmpty
+3	Tests/EnviousWisprTests/App/BluetoothAwarenessPresenterTests.swift	!h.cardIsShowing
+1	Tests/EnviousWisprTests/App/BluetoothAwarenessPresenterTests.swift	!s.contains("\u{2013}")
+1	Tests/EnviousWisprTests/App/BluetoothAwarenessPresenterTests.swift	!s.contains("\u{2014}")
+3	Tests/EnviousWisprTests/App/BulkImportEnrichmentCoordinatorTests.swift	!presented.contains("Finished importing your words.")
+1	Tests/EnviousWisprTests/App/BulkImportEnrichmentCoordinatorTests.swift	!qualtrics.aliases.contains("late-duplicate")
+1	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift	!CustomWordsManager.builtinDefaults.contains { $0.word.canonical == canonical }
+1	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift	!document.words.contains { $0.canonical == "GitHub" }
+1	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift	!live.contains { $0.canonical == "Kubernetes" }
+1	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift	!live.contains { $0.canonical == bad }
+2	Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift	!panelOpened
+1	Tests/EnviousWisprTests/App/CustomWordsImportReviewFlowTests.swift	!v1.contains("Replaced")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!DictationNarrator.copy(for: .transcribing).contains("\u{2026}")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!DictationNarrator.loadingModelBadge.contains("...")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!DictationNarrator.recoveryAccessibilityLabel.contains("…")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!DictationNarrator.recoverySubtitle.contains(DictationNarrator.recoverySucceededSubtitle)
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!DictationNarrator.statusBadgeCopy(for: .transcribing).contains("...")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!copy.contains(" -- ")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!copy.contains(banned)
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!copy.localizedCaseInsensitiveContains("mic")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!copy.localizedCaseInsensitiveContains("microphone")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!sentence.lowercased().contains(jargon)
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!spoken.hasPrefix("Error:")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!spoken.hasPrefix("Warning:")
+1	Tests/EnviousWisprTests/App/DictationNarratorTests.swift	!spoken.lowercased().contains(lie)
+2	Tests/EnviousWisprTests/App/EngineCoordinatorTests.swift	!c.isMintingAnySession
+1	Tests/EnviousWisprTests/App/EngineRecoveryGateTests.swift	!gate.isRecoveryClaimed
+3	Tests/EnviousWisprTests/App/EngineRecoveryGateTests.swift	!gate.tryBeginMutation()
+6	Tests/EnviousWisprTests/App/EngineRecoveryGateTests.swift	!gate.tryBeginRecovery()
+1	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift	!capFired
+3	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift	!coordinator.hasPendingPulseForTesting
+1	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift	!swept.deletedIDs.contains(id)
+1	Tests/EnviousWisprTests/App/EscapeRecoveryDiskExpiryTests.swift	try await !store.pendingRecoverySessionIDs().isEmpty
+1	Tests/EnviousWisprTests/App/EscapeRecoveryPillLayoutTests.swift	!RailMotion.showsBloom(reduceMotion: true)
+2	Tests/EnviousWisprTests/App/EscapeRecoveryPillTests.swift	!host.isShowing
+1	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!before.isEmpty
+1	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!coordinator.parts.isEmpty
+2	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!coordinator.rawTranscript.isEmpty
+1	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!document.isEmpty
+1	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!isAssignment("if step == .done {")
+1	Tests/EnviousWisprTests/App/FileImportCoordinatorTests.swift	!isAssignment("previousStep = .done")
+1	Tests/EnviousWisprTests/App/LanguageSuggestionPresenterTests.swift	!afterRefusal.contains("chip_shown")
+1	Tests/EnviousWisprTests/App/LivePreview/PillWordsCapabilityTests.swift	!c.isEnabledForGeometry
+1	Tests/EnviousWisprTests/App/LivePreview/PillWordsCapabilityTests.swift	!c.wordsCapability.hasWords
+1	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!bridge.isEnabledForGeometry()
+2	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!coordinator.hasLiveSessionForTests
+8	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!coordinator.hasPreparedEngineForTests
+2	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!coordinator.isEnabledForGeometry
+2	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!drained.isSet
+1	Tests/EnviousWisprTests/App/LivePreviewCoordinatorTests.swift	!seen.all.contains("second")
+1	Tests/EnviousWisprTests/App/LivePreviewEngineChoiceTests.swift	!seen.keys.contains(.livePreviewEnabled)
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!LivePreviewEngineCopy.downloadStopped.lowercased().contains("beginning")
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!LivePreviewEngineCopy.universalDescription.contains("\(megabytes + 1) MB")
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!LivePreviewEnginePresentation.appleCard(isSelected: false, isSupported: true).isSelected
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!apple.description.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!universal(routeExists: false, state).description.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!universal(selected: false, state).isSelected
+1	Tests/EnviousWisprTests/App/LivePreviewEnginePresentationTests.swift	!universal(state).description.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewPackCopyTests.swift	!loading.localizedCaseInsensitiveContains("download")
+1	Tests/EnviousWisprTests/App/LivePreviewPackCopyTests.swift	!s.contains("–")
+1	Tests/EnviousWisprTests/App/LivePreviewPackCopyTests.swift	!s.contains("—")
+2	Tests/EnviousWisprTests/App/LivePreviewPackPresentationTests.swift	!groups.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewPackPresentationTests.swift	!heading.contains("–")
+1	Tests/EnviousWisprTests/App/LivePreviewPackPresentationTests.swift	!heading.contains("—")
+1	Tests/EnviousWisprTests/App/LivePreviewPacksModelTests.swift	!opened
+1	Tests/EnviousWisprTests/App/LivePreviewPacksModelTests.swift	!stateOwnsPacks
+1	Tests/EnviousWisprTests/App/LivePreviewStatusBarPresentationTests.swift	!text.contains(phrase)
+1	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift	!disk.detail.lowercased().contains("connection")
+1	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift	!label.lowercased().contains(phrase)
+1	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift	!s.chip.label.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift	!s.detail.isEmpty
+1	Tests/EnviousWisprTests/App/LivePreviewStatusMappingTests.swift	!without.detail.contains("Universal")
+1	Tests/EnviousWisprTests/App/MenuBarControllerTests.swift	!empty.enabled
+1	Tests/EnviousWisprTests/App/MenuBarControllerTests.swift	!inert.enabled
+1	Tests/EnviousWisprTests/App/MenuBarControllerTests.swift	!item.enabled
+1	Tests/EnviousWisprTests/App/MenuBarControllerTests.swift	!item.title.contains("\u{2026}")
+1	Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift	!gate.removalFinished
+1	Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift	!on.removalStepsForTests.contains("refused")
+1	Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift	!previewPath.hasPrefix(transcriptionPath + "/")
+1	Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift	!transcriptionPath.hasPrefix(previewPath + "/")
+1	Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift	!vm.cancelRequested
+1	Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift	!vm.setupCancelled
+1	Tests/EnviousWisprTests/App/Overlay/AppearancePillPickerTests.swift	!text.hasPrefix("Live Preview is on")
+1	Tests/EnviousWisprTests/App/Overlay/AppearancePillPickerTests.swift	!text.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/NoticeLeafModelTests.swift	!action.label.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/NoticeLeafModelTests.swift	!action.spokenLabel.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/OverlayHostingContractTests.swift	!host.isShowing
+1	Tests/EnviousWisprTests/App/Overlay/PillAtomicFrameTests.swift	!afterClear.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/PillAtomicFrameTests.swift	!afterMorph.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/PillExpiryClockTests.swift	!armed.isCancelled
+1	Tests/EnviousWisprTests/App/Overlay/PillOfferabilityTests.swift	!withWords.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/PillOfferabilityTests.swift	!without.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/PillRequestParityTests.swift	!rig.director.isCurrent(first!)
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift	!design.canHoldWords
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift	!label.contains("\u{2013}")
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift	!label.contains("\u{2014}")
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift	!sentence.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPillTileTests.swift	!unseeded.histories.isEmpty
+1	Tests/EnviousWisprTests/App/Overlay/RecordingPollingLifetimeTests.swift	!flag.returned
+1	Tests/EnviousWisprTests/App/Overlay/RecordingTransactionTests.swift	!r.state.isHovered
+1	Tests/EnviousWisprTests/App/Overlay/RenderedPillFreezeTests.swift	!(row.width == empty.width && row.height == empty.height)
+1	Tests/EnviousWisprTests/App/PipelineSettingsSyncMirrorGuardTests.swift	!PipelineSettingsSync.shouldMirrorLLMModelToOllama(provider: .none, llmModel: "")
+1	Tests/EnviousWisprTests/App/PipelineSettingsSyncMirrorGuardTests.swift	!PipelineSettingsSync.shouldMirrorLLMModelToOllama(provider: .ollama, llmModel: "")
+1	Tests/EnviousWisprTests/App/PipelineSettingsSyncMirrorGuardTests.swift	!PipelineSettingsSync.shouldMirrorLLMModelToOllama(provider: .openAI, llmModel: "gpt-4o")
+1	Tests/EnviousWisprTests/App/PreviewPillPaletteTests.swift	!same
+1	Tests/EnviousWisprTests/App/QuarantineStripTests.swift	!Self.hasQuarantine(dest)
+3	Tests/EnviousWisprTests/App/QuarantineStripTests.swift	!Self.hasQuarantine(inner)
+3	Tests/EnviousWisprTests/App/QuarantineStripTests.swift	!Self.hasQuarantine(root)
+1	Tests/EnviousWisprTests/App/QuarantineStripTests.swift	!Self.hasQuarantine(stage)
+1	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift	!QuickAddWiring.mayBeginCapture(panelVisible: true, hasLiveInvocation: true)
+1	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift	!model.ranking.candidates.isEmpty
+1	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift	!model.spellingToWrite.isEmpty
+1	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift	!recorder.events.contains { if case .failed(let stage, _) = $0 { stage == "resolve" } else { false } }
+1	Tests/EnviousWisprTests/App/QuickAddCoordinatorTests.swift	!target.alreadyHasHeardSpelling
+1	Tests/EnviousWisprTests/App/QuickAddServiceDeclarationTests.swift	!title.contains("\u{2013}")
+1	Tests/EnviousWisprTests/App/QuickAddServiceDeclarationTests.swift	!title.contains("\u{2014}")
+2	Tests/EnviousWisprTests/App/QuickAddTelemetryPrivacyTests.swift	!value.contains(Self.secret)
+1	Tests/EnviousWisprTests/App/RecordingOverlayPreviewChromeTests.swift	!s.lowercased().contains("live")
+1	Tests/EnviousWisprTests/App/RecordingOverlayPreviewTypographyTests.swift	!PreviewWellText.wellIsFull(measuredHeight: Self.cap - 5, cap: Self.cap)
+1	Tests/EnviousWisprTests/App/RecordingOverlayPreviewTypographyTests.swift	!PreviewWellText.wellIsFull(measuredHeight: height, cap: Self.cap)
+1	Tests/EnviousWisprTests/App/RecordingOverlayPreviewTypographyTests.swift	!PreviewWellText.wellIsFull(measuredHeight: oneLine, cap: Self.cap)
+1	Tests/EnviousWisprTests/App/RecordingStarterStartPathTests.swift	!RecordingStarter.shouldStampPostConditionWedge( pipelineActive: false, hasTerminalResult: false, userStoppedDuringStart: true)
+1	Tests/EnviousWisprTests/App/RecordingStarterStartPathTests.swift	!RecordingStarter.shouldStampPostConditionWedge( pipelineActive: false, hasTerminalResult: true, userStoppedDuringStart: false)
+1	Tests/EnviousWisprTests/App/RecordingStarterStartPathTests.swift	!RecordingStarter.shouldStampPostConditionWedge( pipelineActive: true, hasTerminalResult: false, userStoppedDuringStart: false)
+1	Tests/EnviousWisprTests/App/SettingsChangeTelemetryTests.swift	!allKeys.contains("key_code")
+1	Tests/EnviousWisprTests/App/SettingsChangeTelemetryTests.swift	!allKeys.contains("toggle_key_code")
+1	Tests/EnviousWisprTests/App/SettingsChangeTelemetryTests.swift	!defaultOllamaModel.isEmpty
+1	Tests/EnviousWisprTests/App/VocabularyPackManagerOverridesTests.swift	!manager.enabledPackTerms().contains { $0.canonical == canonical }
+1	Tests/EnviousWisprTests/App/WhisperPreviewSessionHandleTests.swift	!box.delivered.contains("")
+1	Tests/EnviousWisprTests/App/WhisperPreviewSessionHandleTests.swift	!box.delivered.contains("after the end")
+1	Tests/EnviousWisprTests/App/WhisperPreviewSessionHandleTests.swift	!ended.isSet
+1	Tests/EnviousWisprTests/Architecture/AdapterShapeTests.swift	!Self.scan(source).isEmpty
+1	Tests/EnviousWisprTests/Architecture/AdapterShapeTests.swift	!violations.isEmpty
+1	Tests/EnviousWisprTests/Architecture/AppStateFreezeTests.swift	!FileManager.default.fileExists(atPath: url.path)
+4	Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift	!inspection.predicateUsesGeneralBoardIdentity
+2	Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift	!inspection.routeWritesAreDistinct
+1	Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift	!unsafe.predicateUsesGeneralBoardIdentity
+1	Tests/EnviousWisprTests/Architecture/DeliveryManifestSourcePinningTests.swift	!names.isEmpty
+1	Tests/EnviousWisprTests/Architecture/DeliveryManifestSourcePinningTests.swift	!sources.isEmpty
+1	Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift	!gap.reason.trimmingCharacters(in: .whitespaces).isEmpty
+1	Tests/EnviousWisprTests/Architecture/EscapeRecoveryBoundaryFreezeTests.swift	!matches(declRegex, " disposition = FinalizationDisposition.ordinary")
+1	Tests/EnviousWisprTests/Architecture/EscapeRecoveryBoundaryFreezeTests.swift	!matches(declRegex, " var disposition: FinalizationDisposition = .ordinary")
+1	Tests/EnviousWisprTests/Architecture/EscapeRecoveryBoundaryFreezeTests.swift	!matches(publicRegex, "enum FinalizationDisposition: Equatable, Sendable {")
+1	Tests/EnviousWisprTests/Architecture/PasteBakeoffReleaseContainmentTests.swift	!PasteDeliveryPolicy.baseline.boundTier1MessagingTimeout
+1	Tests/EnviousWisprTests/Architecture/PasteBakeoffReleaseContainmentTests.swift	!data.contains(pattern)
+1	Tests/EnviousWisprTests/Architecture/SetupCoordinatorTests.swift	!(await migrationLog.triggers.contains("preload-fired"))
+1	Tests/EnviousWisprTests/Architecture/WhisperKitStitchFreezeTests.swift	!FileManager.default.fileExists(atPath: url.path)
+2	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: 0)
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 0, wakeSamples: nil)
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 1, wakeSamples: 8000)
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: 3, wakeSamples: 0)
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: nil, wakeSamples: 8000)
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!AudioCaptureManager.wakeIsStreamMeasured(gapCount: nil, wakeSamples: nil)
+3	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!manager.zeroSignalDiscriminatorSawIneligible
+5	Tests/EnviousWisprTests/Audio/AudioCaptureManagerDeadAirLatchTests.swift	!manager.zeroSignalRunWasClassifiedReactively
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerLiveInputTests.swift	!capture.samples.isEmpty
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerLiveInputTests.swift	!manager.isCapturing
+1	Tests/EnviousWisprTests/Audio/AudioCaptureManagerMaxDurationBackstopTests.swift	!manager.isCapturing
+4	Tests/EnviousWisprTests/Audio/AudioInputSourceConformanceFreezeTests.swift	!source.boundDeviceMatchesResolvedTargetForReuse()
+1	Tests/EnviousWisprTests/Audio/AudioInputSourceConformanceFreezeTests.swift	!source.captureSourceType.isEmpty
+1	Tests/EnviousWisprTests/Audio/BuiltInInputKindTests.swift	!kind.contains("BC-87-FA")
+1	Tests/EnviousWisprTests/Audio/BuiltInInputKindTests.swift	!kind.contains("CBB85FCE")
+1	Tests/EnviousWisprTests/Audio/CoreAudioDeviceLivenessTests.swift	!causeFor(.unverified).isDeviceLoss
+1	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!arrayResult
+1	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isAllZeroFromStart( ceilingSamples: AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
+1	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isAllZeroFromStart(ceilingSamples: 1)
+1	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isAllZeroFromStart(ceilingSamples: AudioConstants.minimumTranscriptionSamples)
+2	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isAllZeroFromStart(ceilingSamples: ceiling)
+6	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isAllZeroFromStart(ceilingSamples: threshold)
+6	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.isBecameZeroMidCapture
+2	Tests/EnviousWisprTests/Audio/DeadAirStreamingDetectorTests.swift	!detector.meaningfulSignalSeen
+1	Tests/EnviousWisprTests/Audio/EngineInterruptionCauseTests.swift	!EngineInterruptionCause.engineLost.isDeviceLoss
+1	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift	!HALDeviceInputSource.isUsableFormat(sampleRate: -44100, channelCount: 1)
+1	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift	!HALDeviceInputSource.isUsableFormat(sampleRate: 0, channelCount: 0)
+2	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift	!HALDeviceInputSource.isUsableFormat(sampleRate: 0, channelCount: 1)
+1	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift	!HALDeviceInputSource.isUsableFormat(sampleRate: 44100, channelCount: 0)
+1	Tests/EnviousWisprTests/Audio/FormatStabilizationValidityTests.swift	!settled
+1	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!HALDeviceInputSource.isUsableRate(-1)
+1	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!HALDeviceInputSource.isUsableRate(0)
+1	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!HALDeviceInputSource.isUsableRate(Double.nan)
+1	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!HALDeviceInputSource.isUsableRate(nil)
+1	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!fields.contains("drainedPreRollSampleCount")
+4	Tests/EnviousWisprTests/Audio/HALFormatStabilizationTests.swift	!outcome.matchesPrepared
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible( bind(30, .listFallback), preferredUID: "airpods", defaultID: nil, spy: spy)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible( bind(30, .systemDefault), preferredUID: "airpods", defaultID: nil, spy: spy)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible( bind(7, .listFallback), defaultID: 8, defaultTransport: kAudioDeviceTransportTypeUSB, spy: spy)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible(bind(30, .pinnedUID), defaultID: nil, spy: spy3)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible(bind(30, .systemDefault), defaultID: nil, spy: spy2)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible(bind(42, .systemDefault), defaultID: 43, spy: spy)
+1	Tests/EnviousWisprTests/Audio/InputDeviceResolverTests.swift	!warmCompatible(bind(42, .systemDefault), preferredUID: "gone", defaultID: 43, spy: spy2)
+1	Tests/EnviousWisprTests/Audio/ResolvedRouteTransportsGridTests.swift	!r.effective.isEmpty
+1	Tests/EnviousWisprTests/Audio/RouteResolvedProducerTests.swift	!CaptureRouteDecision.routeResolvedChanged(from: d, to: d)
+1	Tests/EnviousWisprTests/Audio/VADInputConditioningFixtureTests.swift	!samples.isEmpty
+2	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift	!cw.customWords.contains { $0.canonical == "Rajesh Ramachandran" }
+1	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift	!cw.customWords.contains { $0.canonical == "Rajesh" }
+1	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift	!cw.customWords.contains { $0.canonical == "Ramachandran" }
+1	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift	!store.load().importedWordIDs.contains(ids[0])
+1	Tests/EnviousWisprTests/Contacts/ContactsImportCoordinatorTests.swift	!store.load().importedWordIDs.isEmpty
+1	Tests/EnviousWisprTests/Contacts/ImportedVocabularyPriorityTests.swift	!rendered.contains("ImportedNameZZZ")
+1	Tests/EnviousWisprTests/Core/AppLoggerCompileOutTests.swift	!Self.fileContains(url, marker: marker)
+1	Tests/EnviousWisprTests/Core/AppLoggerPreSinkBufferTests.swift	!contents.contains("EW1361-bound-\(runID)-0 ")
+1	Tests/EnviousWisprTests/Core/CustomWordSchemaTests.swift	!serialized.contains("\"lastUsed\"")
+1	Tests/EnviousWisprTests/Core/CustomWordSourceMigrationTests.swift	!serialized.contains("\"source\"")
+19	Tests/EnviousWisprTests/Core/LoadProgressWatcherTests.swift	!watcher.hasFired
+1	Tests/EnviousWisprTests/Core/RotatingFileSinkTests.swift	!FileManager.default.fileExists(atPath: three.path)
+2	Tests/EnviousWisprTests/Core/RotatingFileSinkTests.swift	!ok
+1	Tests/EnviousWisprTests/Core/S1ControlSettingsTests.swift	!line.contains("\n")
+1	Tests/EnviousWisprTests/EnviousWisprTests.swift	!PipelineState.complete.isActive
+1	Tests/EnviousWisprTests/EnviousWisprTests.swift	!PipelineState.error(.modelWedged).isActive
+1	Tests/EnviousWisprTests/EnviousWisprTests.swift	!PipelineState.idle.isActive
+1	Tests/EnviousWisprTests/LLM/AppleIntelligencePolishTests.swift	!known.contains(lang)
+1	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift	!anyOverBudget
+1	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift	!anyTimeout
+1	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift	!compliedLiterally
+1	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift	!offered.isEmpty
+1	Tests/EnviousWisprTests/LLM/ClaudeLiveSweepTests.swift	!preambleMarkers.contains { lower.hasPrefix($0) }
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(input).contains("<transcript>")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(makeInput(appName: nil)).contains("The user is dictating in")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(makeInput(language: "")).contains("LANGUAGE:")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(makeInput(language: nil)).contains("LANGUAGE:")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(makeInput(transcript: long)).contains("Very short input")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!system(makeInput(vocab: [])).contains("preferred spellings")
+1	Tests/EnviousWisprTests/LLM/CloudFixedPromptBuilderTests.swift	!user(input).contains("<transcript>")
+7	Tests/EnviousWisprTests/LLM/EGOneDeliveryAdapterTests.swift	!FileManager.default.fileExists(atPath: markerURL(h.root).path)
+1	Tests/EnviousWisprTests/LLM/EGOneManifestTests.swift	!manifest.artifactFileName.contains("1.1")
+1	Tests/EnviousWisprTests/LLM/EGOneManifestTests.swift	!manifest.downloadURL.absoluteString.lowercased().contains(token)
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!(await subject.onboardingDidComplete())
+5	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!FileManager.default.fileExists(atPath: declineMarker(root).path)
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!FileManager.default.fileExists(atPath: owedMarker.path)
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!failed.events.contains(.upgradeDeclined(targetRevision: Self.currentRevision))
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!probe.events.contains(.legacyDetected)
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!probe.events.contains(.legacyRetired)
+1	Tests/EnviousWisprTests/LLM/EGOneRevisionUpgradeTests.swift	!probe.removedURLs.contains(decoy)
+1	Tests/EnviousWisprTests/LLM/EGOneRuntimeReplacementActivationTests.swift	!deleted
+5	Tests/EnviousWisprTests/LLM/EGOneRuntimeReplacementActivationTests.swift	!h.signal.sawServerBinaryMissing
+1	Tests/EnviousWisprTests/LLM/EGOneServerManagerTests.swift	!inner.contains("<TRANSCRIPT>")
+6	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: artifact.path)
+1	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: installedManifest.path)
+13	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: marker(root).path)
+1	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!fm.fileExists(atPath: exactPartial.path)
+1	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!fm.fileExists(atPath: exactResume.path)
+1	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!probe.events.contains(.legacyRetirementFailed(reason: .containment))
+1	Tests/EnviousWisprTests/LLM/EGOneUpgradeCoordinatorTests.swift	!probe.events.contains(.replacementCompleted)
+1	Tests/EnviousWisprTests/LLM/EngineLaunchArgumentTests.swift	!EGOneRuntime.engineArguments(for: .egOne).contains("--reasoning-budget")
+1	Tests/EnviousWisprTests/LLM/EngineLaunchArgumentTests.swift	!EGOneRuntime.engineArguments(for: .s1Mini).contains("--reasoning-budget")
+1	Tests/EnviousWisprTests/LLM/EngineLaunchArgumentTests.swift	!egOne.contains("--chat-template-kwargs")
+1	Tests/EnviousWisprTests/LLM/EngineLaunchArgumentTests.swift	!egOne.contains("--jinja")
+1	Tests/EnviousWisprTests/LLM/KeychainManagerTests.swift	!FileManager.default.fileExists( atPath: dir.appendingPathComponent(KeychainManager.geminiKeyID).path)
+4	Tests/EnviousWisprTests/LLM/KeychainManagerTests.swift	!FileManager.default.fileExists( atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path)
+1	Tests/EnviousWisprTests/LLM/LLMModelDiscoveryTests.swift	!LLMModelDiscovery.modelInfo(from: local, provider: .ollama, isAvailable: true).isRemote
+1	Tests/EnviousWisprTests/LLM/LLMProviderCapabilityTests.swift	!c.supportsChatCompletions
+1	Tests/EnviousWisprTests/LLM/LLMProviderCapabilityTests.swift	!caps("GPT-5-Pro").supportsChatCompletions
+1	Tests/EnviousWisprTests/LLM/LLMProviderCapabilityTests.swift	!caps(model).supportsChatCompletions
+1	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift	!LLMRetryPolicy.isRetryable(LLMError.classified(reason))
+1	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift	!LLMRetryPolicy.isRetryable(LLMError.rateLimited)
+1	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift	!LLMRetryPolicy.isRetryable(LLMError.requestFailed(""))
+1	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift	!LLMRetryPolicy.isRetryable(URLError(code))
+2	Tests/EnviousWisprTests/LLM/LLMRetryPolicyTests.swift	!LLMRetryPolicy.isRetryable(error)
+1	Tests/EnviousWisprTests/LLM/LLMTaskMetricsCollectorTests.swift	!line.contains("\n")
+1	Tests/EnviousWisprTests/LLM/LLMTaskMetricsCollectorTests.swift	!line.contains("call=042")
+1	Tests/EnviousWisprTests/LLM/LLMWarmupGateTests.swift	!session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: justInside)
+1	Tests/EnviousWisprTests/LLM/LLMWarmupGateTests.swift	!session.claimWarmupSlot(provider: .openAI, model: "gpt-5.4-nano", now: now)
+2	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!system.contains("CUSTOM VOCABULARY")
+2	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!system.contains("EnviousWispr")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!system.contains("Zqxjvbrn")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!system.contains("Überlegung")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!system.contains("日本語")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("Tiếng Việt")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("Türkçe")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("français")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("latinonly")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("niño")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("straße")
+1	Tests/EnviousWisprTests/LLM/LanguageAwarePromptInjectionTests.swift	!terms.contains("video")
+1	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift	!plan.envelope.messages[0].content.contains("Very short input")
+1	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift	!system.contains("Keep the cleaned text in the same language(s)")
+1	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift	!system.contains("LANGUAGE:")
+1	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift	!system.contains("The user is dictating in")
+1	Tests/EnviousWisprTests/LLM/LocalFixedPromptBuilderTests.swift	!system.contains("preferred spellings")
+1	Tests/EnviousWisprTests/LLM/MeasuredModelVerdictFixtureTests.swift	!f.primaryJudge.isEmpty
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("eg-1-acme-client")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("eg-1-q4")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("eg-10")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("gemma-eg-1")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("lego-eg-1")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!OllamaSetupService.isFirstPartyModel("llama3.2")
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!catalog.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" }
+1	Tests/EnviousWisprTests/LLM/OllamaModelCatalogTests.swift	!undownloaded.contains { OllamaSetupService.canonicalModelName($0.name) == "eg-1" }
+1	Tests/EnviousWisprTests/LLM/OllamaReadinessPreflightTests.swift	!LLMRetryPolicy.isRetryable(LLMError.localPolishNotReady(.modelUnavailable))
+1	Tests/EnviousWisprTests/LLM/OllamaReadinessPreflightTests.swift	!LLMRetryPolicy.isRetryable(LLMError.localPolishNotReady(.providerUnreachable))
+1	Tests/EnviousWisprTests/LLM/OllamaReadinessPreflightTests.swift	!message.contains("\u{2013}")
+1	Tests/EnviousWisprTests/LLM/OllamaReadinessPreflightTests.swift	!message.contains("\u{2014}")
+1	Tests/EnviousWisprTests/LLM/OllamaSetupServiceCloudCatalogTests.swift	!service.pullOperationIsHostedRegistration
+1	Tests/EnviousWisprTests/LLM/OllamaSetupServiceCloudCatalogTests.swift	!service.pullStepLabel.lowercased().contains("download")
+1	Tests/EnviousWisprTests/LLM/OllamaSetupServiceDetectStateTests.swift	!OllamaSetupState.detecting.allowsSilentBackgroundRefresh
+1	Tests/EnviousWisprTests/LLM/OllamaSetupServiceDetectStateTests.swift	!OllamaSetupState.pullingModel(progress: 0, status: "x").allowsSilentBackgroundRefresh
+1	Tests/EnviousWisprTests/LLM/OllamaSetupServiceDetectStateTests.swift	!running
+1	Tests/EnviousWisprTests/LLM/OllamaTranscriptTagStrippingTests.swift	!result.polishedText.localizedCaseInsensitiveContains("<transcript>")
+1	Tests/EnviousWisprTests/LLM/OllamaWarmupPolicyTests.swift	!reason.contains("http")
+1	Tests/EnviousWisprTests/LLM/OllamaWarmupPolicyTests.swift	!reason.contains("ollama.com")
+1	Tests/EnviousWisprTests/LLM/OpenAILiveSweepTests.swift	!offered.isEmpty
+1	Tests/EnviousWisprTests/LLM/OpenAIParamStripTests.swift	!OpenAIConnector.recordOmission(model: model, param: "temperature")
+1	Tests/EnviousWisprTests/LLM/OpenAIRequestBodyTests.swift	!LLMModelDiscovery.isOpenAIChatCompletionCandidate(id)
+1	Tests/EnviousWisprTests/LLM/PolishFailureReasonTests.swift	!PolishFailureReason.outOfCredits.message(provider: .openAI).lowercased().contains( "try again")
+1	Tests/EnviousWisprTests/LLM/PolishFailureReasonTests.swift	!msg.contains("\u{2013}")
+1	Tests/EnviousWisprTests/LLM/PolishFailureReasonTests.swift	!msg.contains("\u{2014}")
+1	Tests/EnviousWisprTests/LLM/PolishFailureReasonTests.swift	!msg.lowercased().contains("rate limit")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!fileText.split(separator: "\n").contains { $0.trimmingCharacters( in: .whitespaces).hasPrefix("#") }
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!inner.contains("</TRANSCRIPT>")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!inner.contains("<TRANSCRIPT>")
+2	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!plan.envelope.messages.isEmpty
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("Clean up this dictated transcript")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("English")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("FooFlux")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("Keep as one paragraph, no formatting")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("Now clean up this text:")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.contains("Slack")
+1	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!system.hasPrefix("Clean dictated speech for direct paste.")
+3	Tests/EnviousWisprTests/LLM/PromptPlannerTests.swift	!user.contains("<transcript>")
+1	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift	!envelope.messages[0].content.contains("Kubernetes")
+1	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift	!envelope.messages[1].content.contains("Kubernetes")
+1	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift	!envelope.messages[1].content.contains("Slack")
+1	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift	!envelope.messages[1].content.contains("TRANSCRIPT")
+1	Tests/EnviousWisprTests/LLM/S1ControlLinePromptTests.swift	!fileText.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+1	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!CacheAdmission.hasExtraFiles( component: component, expectedFiles: expected, installDirectory: installDirectory)
+1	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!FileManager.default.fileExists(atPath: priorRevision.path)
+1	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!bumped.isAdmitted()
+1	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!fm.fileExists(atPath: install.appendingPathComponent("ObsoleteDecoder.mlmodelc").path)
+1	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!fm.fileExists(atPath: install.appendingPathComponent("stray.tmp").path)
+3	Tests/EnviousWisprTests/ModelDelivery/CacheAdmissionTests.swift	!gate.isAdmitted()
+1	Tests/EnviousWisprTests/ModelDelivery/DeliveryManifestTests.swift	!backup.contains("/resolve/main/")
+2	Tests/EnviousWisprTests/ModelDelivery/DeliveryManifestTests.swift	!baseURL.contains("/resolve/main/")
+1	Tests/EnviousWisprTests/ModelDelivery/DeliveryManifestTests.swift	!components.contains("TextDecoderContextPrefill.mlmodelc")
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift	!FileManager.default.fileExists(atPath: landed.path)
+3	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift	!FileManager.default.fileExists(atPath: world.install.path)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift	!donor.path.hasPrefix(install.path)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift	!install.path.contains("FluidAudio")
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyDonorMigrationTests.swift	!install.path.hasPrefix(donor.path)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!FileManager.default.fileExists(atPath: marker.path)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!FileManager.default.fileExists(atPath: root.appendingPathComponent("mine.bin").path)
+3	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!FileManager.default.fileExists(atPath: url.path)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!LegacyRetirement.isContained(link, within: root)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!LegacyRetirement.isContained(root.appendingPathComponent("../escape"), within: root)
+1	Tests/EnviousWisprTests/ModelDelivery/LegacyRetirementTests.swift	!LegacyRetirement.writeMarkerAtomically(unwritable)
+3	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!(await controller.isAdmitted(registration))
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!admitted
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!bEvents.isEmpty
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!defaults.bool(forKey: "modelDelivery.parakeet.forceRevalidate")
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!log.names.contains("started")
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!log.names.contains(where: { $0.hasPrefix("failed") })
+1	Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift	!probeAdmitted
+1	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift	!lower.contains("content")
+1	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift	!lower.contains("output")
+1	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift	!lower.contains("prompt")
+1	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift	!lower.contains("text")
+1	Tests/EnviousWisprTests/Pipeline/ASREmptyResultDiagnosticsTests.swift	!lower.contains("transcript")
+1	Tests/EnviousWisprTests/Pipeline/CaptureSessionFenceTests.swift	!capture.isCapturing
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!result.samplesPaddedToMinimum
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!result.usedRawFallbackAfterVAD
+2	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!result.usedRawSoftOnsetPreservation
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve( raw: 40_000, filtered: 26_000, segs: [seg(35_000, 39_000), seg(maxFirstStart, 38_000)])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve(raw: 0, filtered: 0, segs: [seg(0, 0)])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve(raw: 40_000, filtered: 29_000, segs: [seg(maxFirstStart, 39_000)])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve(raw: 40_000, filtered: 30_001, segs: [seg(5_000, 25_000)])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve(raw: 40_000, filtered: 40_000, segs: [])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerSoftOnsetTests.swift	!shouldPreserve(raw: maxRaw + 1, filtered: 90_000, segs: [seg(4_000, 100_000)])
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerTailTrimTests.swift	!out.usedRawFallbackAfterVAD
+1	Tests/EnviousWisprTests/Pipeline/CapturedAudioConditionerTailTrimTests.swift	!out.usedRawSoftOnsetPreservation
+5	Tests/EnviousWisprTests/Pipeline/ClipboardCleanupTests.swift	!ClipboardCleanup.hasPending
+1	Tests/EnviousWisprTests/Pipeline/ClipboardCleanupTests.swift	!ClipboardCleanup.wasSuperseded(first)
+2	Tests/EnviousWisprTests/Pipeline/ClipboardCleanupTests.swift	!ClipboardCleanup.wasSuperseded(token)
+1	Tests/EnviousWisprTests/Pipeline/DegradedLeadDiagnosticsTests.swift	!DegradedLeadDiagnostics.trimCandidates(samples: above, sampleRate: rate).isEmpty
+2	Tests/EnviousWisprTests/Pipeline/DegradedLeadDiagnosticsTests.swift	!candidates.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!DictationAudioArchive.isArchiveOptedIn(envValue: "0", settingsOptIn: false)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!DictationAudioArchive.isArchiveOptedIn(envValue: nil, settingsOptIn: false)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!FileManager.default.fileExists(atPath: folder.appendingPathComponent("fed.wav").path)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!K.dictationFedUsesBatchBuffer( decodesConditionedBatch: false, isStreaming: false, cameFromBatchRescue: false)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!K.dictationFedUsesBatchBuffer( decodesConditionedBatch: false, isStreaming: true, cameFromBatchRescue: false)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!K.dictationFedUsesBatchBuffer( decodesConditionedBatch: true, isStreaming: true, cameFromBatchRescue: false)
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!entries.contains { $0.hasSuffix(".tmp") }
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!remaining.contains("old-1")
+1	Tests/EnviousWisprTests/Pipeline/DictationAudioArchiveTests.swift	!remaining.contains("old-2")
+1	Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift	!factorySource.contains("s1Control: .default")
+1	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift	!LLMRetryPolicy.isRetryable(LLMError.egOneSkipped(.crashed))
+1	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift	!LLMRetryPolicy.isRetryable(LLMError.egOneSkipped(.downloadPending))
+1	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift	!LLMRetryPolicy.isRetryable(LLMError.egOneSkipped(.inputTooLong))
+1	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift	!LLMRetryPolicy.isRetryable(LLMError.egOneSkipped(.notReady))
+1	Tests/EnviousWisprTests/Pipeline/EGOnePipelineRoutingTests.swift	!legacyFactoryCalled
+2	Tests/EnviousWisprTests/Pipeline/EngineLeaseTests.swift	!lease.isBusy
+1	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryActivationTests.swift	!h.wrapper.testKernel.escapeRecoveryUnavailable
+2	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift	!plan.effects.contains(.appendCompletedTranscript)
+2	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift	!plan.effects.contains(.appendPendingTranscript)
+4	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift	!plan.effects.contains(.presentEscapeRecoveryPill)
+2	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift	!plan.effects.contains(.reportDictationCompleted)
+1	Tests/EnviousWisprTests/Pipeline/EscapeRecoveryPlanRoutingTests.swift	!plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk full"))
+1	Tests/EnviousWisprTests/Pipeline/FileImportRunnerTests.swift	!outcome.isUnpolished
+1	Tests/EnviousWisprTests/Pipeline/FileImportRunnerTests.swift	!skipped.isUnpolished
+1	Tests/EnviousWisprTests/Pipeline/FileImportRunnerTests.swift	!skipped.wasPolishAttempted
+1	Tests/EnviousWisprTests/Pipeline/FileImportRunnerTests.swift	!steps.orderedChainForFileImport.contains { $0 is SnippetExpansionStep }
+2	Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryEmitterTests.swift	!secondFired
+1	Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryEmitterTests.swift	!shouldEmitNow
+1	Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryEmitterTests.swift	!wasStreaming
+1	Tests/EnviousWisprTests/Pipeline/Issue1358EmptyRecoveryTests.swift	!kernel.testIsLegalConclusion(forbidden)
+1	Tests/EnviousWisprTests/Pipeline/Issue1358FillerEmptyReproTests.swift	!out.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift	!repaired.lowercased().hasPrefix("the ")
+1	Tests/EnviousWisprTests/Pipeline/KernelFrozenBindGuardTests.swift	!ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/KernelLifecycleTelemetrySinkTests.swift	!(recorder.captureErrors.first?.extraKeys.contains("asr_salvage_outcome") ?? true)
+2	Tests/EnviousWisprTests/Pipeline/KernelPhase2RetryTests.swift	!(ctx.engine.lastRetryDecodeInputSamples?.isEmpty ?? true)
+1	Tests/EnviousWisprTests/Pipeline/KernelPhase2RetryTests.swift	!controller.hasLiveArmForTesting
+1	Tests/EnviousWisprTests/Pipeline/LLMPolishStepLanguageFallbackTests.swift	!prompt.contains("LANGUAGE: This transcript is in")
+1	Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift	!controls.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/ListMarkerUpstreamCasingTests.swift	!atCeiling.contains("P one")
+1	Tests/EnviousWisprTests/Pipeline/ListMarkerUpstreamCasingTests.swift	!out.contains("A1")
+1	Tests/EnviousWisprTests/Pipeline/ParakeetEngineAdapterTests.swift	!adapter.capabilities.supportsLanguageDetection
+1	Tests/EnviousWisprTests/Pipeline/ParakeetEngineAdapterTests.swift	!fired
+1	Tests/EnviousWisprTests/Pipeline/ParakeetStreamingStartTelemetryTests.swift	!category.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/ParakeetStreamingStartTelemetryTests.swift	!value.contains("fell_back")
+1	Tests/EnviousWisprTests/Pipeline/PasteCopiesSelectionTrustTests.swift	!PasteCopiesObserver.selectionStillDescribesTheField(fallbackRan: true, selectionLength: 1)
+1	Tests/EnviousWisprTests/Pipeline/PasteCopiesSelectionTrustTests.swift	!PasteCopiesObserver.selectionStillDescribesTheField(fallbackRan: true, selectionLength: 27)
+1	Tests/EnviousWisprTests/Pipeline/PasteDeliveryPolicyTests.swift	!resolved.policy.isBaseline
+2	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!c.canAttemptKeyPaste
+1	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!isKnownWebWrapperBundle("")
+1	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!isKnownWebWrapperBundle("com.apple.Notes")
+1	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!isKnownWebWrapperBundle("com.pak")
+1	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!isKnownWebWrapperBundle("com.slack.app")
+1	Tests/EnviousWisprTests/Pipeline/PasteFocusClassificationTests.swift	!isKnownWebWrapperBundle(nil)
+1	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift	!lower.contains("content")
+1	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift	!lower.contains("output")
+1	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift	!lower.contains("prompt")
+1	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift	!lower.contains("text")
+1	Tests/EnviousWisprTests/Pipeline/PasteTelemetryPayloadTests.swift	!lower.contains("transcript")
+1	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!hasInterruptionPill
+1	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains( .reportPipelineFailed(errorCode: TerminalNoticeReason.zeroSignal.rawValue))
+1	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains( .scheduleInterruptionWarning(disclosure: .deviceRemoved, alsoTrimmedLead: false))
+1	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains( .scheduleInterruptionWarning(disclosure: disclosure, alsoTrimmedLead: false))
+3	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.appendCompletedTranscript)
+3	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.cancelPendingWarning)
+2	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.reportDictationCompleted)
+1	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk is full"))
+6	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.schedulePolishFailedWarning)
+3	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.scheduleSalvagedLeadWarning)
+2	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.showOverlay(.accessibilityToast))
+2	Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift	!plan.effects.contains(.showOverlay(.clipboardFallback))
+1	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelDeadAirFloorTests.swift	!isDeadAir([Float](repeating: 0.0013, count: 16_000))
+1	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelDeadAirFloorTests.swift	!isDeadAir([Float](repeating: 0.0025, count: 320))
+4	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelDeadAirFloorTests.swift	!isDeadAir(samples)
+1	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelDeadAirFloorTests.swift	!isDeadAir(trimmed)
+2	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelSalvageTests.swift	!EngineInterruptionCause.engineLost.isDeviceLoss
+1	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelSalvageTests.swift	!deviceLoss.contains(.engineLost)
+2	Tests/EnviousWisprTests/Pipeline/RecordingSessionKernelTests.swift	!applied
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding("")
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding("com.apple")
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding("com.apple.ScreenSharing.agent")
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding("com.apple.TextEdit")
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding("com.some.remote.client.shipping.next.year")
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionAcquisition.isKeystrokeForwarding(nil)
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionReader.isFallbackEligible(.refused(refusal))
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionReader.isFallbackEligible(.text("codecs"))
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionReader.isSecureField(.subrole("AXTextField"))
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!SelectionReader.isSecureField(.subrole(nil))
+1	Tests/EnviousWisprTests/Pipeline/SelectionAcquisitionTests.swift	!code.contains(where: { $0.contains("NSWorkspace.shared.frontmostApplication") })
+1	Tests/EnviousWisprTests/Pipeline/Simulator/ScenarioInventoryTests.swift	!scenario.steps.isEmpty
+3	Tests/EnviousWisprTests/Pipeline/Simulator/ScenarioRunnerTests.swift	!result.passed
+1	Tests/EnviousWisprTests/Pipeline/Simulator/SimulatorWallClockBanTests.swift	!swiftFiles.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/SnippetChainPlacementTests.swift	!result.text.contains("sam@example.com")
+1	Tests/EnviousWisprTests/Pipeline/SnippetChainPlacementTests.swift	!source.contains("steps.wordCorrection, steps.fillerRemoval")
+1	Tests/EnviousWisprTests/Pipeline/SnippetFinalizerTests.swift	!(ctx.polishedText ?? "").contains(record.sentinel)
+1	Tests/EnviousWisprTests/Pipeline/SnippetFinalizerTests.swift	!ctx.text.contains(record.sentinel)
+1	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift	!copy.contains("Try again.")
+1	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift	!copy.contains("\u{2013}")
+1	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift	!copy.contains("\u{2014}")
+1	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift	!copy.contains("error.")
+1	Tests/EnviousWisprTests/Pipeline/TerminalAdvisoryTests.swift	!spoken.hasPrefix("Error:")
+2	Tests/EnviousWisprTests/Pipeline/TranscriptSplitterTests.swift	!parts.isEmpty
+1	Tests/EnviousWisprTests/Pipeline/WhisperKitLegacyUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: world.declinedURL.path)
+3	Tests/EnviousWisprTests/Pipeline/WhisperKitLegacyUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: world.foreignDirectory.path)
+11	Tests/EnviousWisprTests/Pipeline/WhisperKitLegacyUpgradeCoordinatorTests.swift	!FileManager.default.fileExists(atPath: world.markerURL.path)
+1	Tests/EnviousWisprTests/PostProcessing/CursorInsertionRepairTests.swift	!cut.candidateRules.contains(.droppedDuplicateWord)
+5	Tests/EnviousWisprTests/PostProcessing/CursorInsertionRepairTests.swift	!payloads.candidateRules.contains(.droppedDuplicateWord)
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBackupRoundTripTests.swift	!json.contains("Claude")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBackupRoundTripTests.swift	!json.contains("deletedBuiltinIds")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBatchTests.swift	!reloaded.contains { $0.canonical == "Ghost Test" }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBatchTests.swift	!words.contains { $0.canonical == "Ghost Test" }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBatchTests.swift	!words.contains { $0.id == a.id }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsBulkEnrichmentTests.swift	!word.aliases.contains("kube")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsExportWriterTests.swift	!CustomWordsExportWriter.wouldOverwriteLiveWords( dir.appendingPathComponent("EnviousWispr Words.json"))
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsExportWriterTests.swift	!CustomWordsExportWriter.wouldOverwriteLiveWords(sibling)
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsPersistenceTests.swift	!FileManager.default.fileExists(atPath: url.path)
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsPersistenceTests.swift	!words.contains { $0.canonical == "Alpha Term" }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsPersistenceTests.swift	!words.contains { $0.canonical == "Beta Term" }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsPersistenceTests.swift	!words.contains { $0.canonical.isEmpty }
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift	!json.contains("enrichmentPending")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift	!json.contains("frequencyUsed")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift	!json.contains("lastUsed")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift	!json.contains("pendingEnrichmentBatchTotal")
+1	Tests/EnviousWisprTests/PostProcessing/CustomWordsTransferDocumentTests.swift	!json.contains("source")
+1	Tests/EnviousWisprTests/PostProcessing/ExactTriggerIndexTests.swift	!claims.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.contains("(\"\")")
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.contains("<U+0020>")
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.contains("\" \"")
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.contains("\(limit + 1)")
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.lowercased().contains("file")
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!message.unicodeScalars.contains { $0.value == 0x202E }
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!normalized.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift	!types.contains(.commaSeparatedText)
+1	Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerCountryTLDTests.swift	!Self.itn.normalize(input, spokenPunctuation: false).contains("@")
+1	Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerNeighbourWindowTests.swift	!got.contains("two")
+1	Tests/EnviousWisprTests/PostProcessing/MultiWordDomainSuffixTests.swift	!result.contains(".com.com")
+1	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift	!QuickAddRanker.clearsConfidenceBar(QuickAddRanker.confidenceBar.nextDown)
+1	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift	!ranked.candidates.contains { $0.word.canonical == "codec" }
+1	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift	!ranking.candidates.contains { $0.isPackTerm }
+1	Tests/EnviousWisprTests/PostProcessing/QuickAddRankerTests.swift	!ranking.candidates.isEmpty
+2	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!FileManager.default.fileExists(atPath: url.path + "-shm")
+2	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!FileManager.default.fileExists(atPath: url.path + "-wal")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!canonicals.contains("DisabledWord")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!canonicals.contains("my long signature")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!canonicals.contains("sig")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!paths[0].contains("Documents")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!words.contains("my long signature")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!words.contains("sig")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	!words.map(\.canonical).contains("deleted word")
+1	Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift	try !stable.loadWords(at: store.url).words.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!SnippetText.endsSentence(" ")
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!SnippetText.endsSentence("")
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!SnippetText.endsSentence("Saurabh")
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!SnippetText.endsSentence("\u{201D}")
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!SnippetText.endsSentence("email,")
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!a.collidesWith(c)
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!blank.collidesWith(blank)
+1	Tests/EnviousWisprTests/PostProcessing/SnippetExpanderTests.swift	!out.records[0].suppressFollowingSentenceEnding
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!FileManager.default.fileExists(atPath: url.path)
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!SnippetStarters.isUneditedExample( Snippet(id: starter.id, trigger: "my work email", expansion: starter.expansion))
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!SnippetStarters.isUneditedExample( Snippet(id: starter.id, trigger: starter.trigger, expansion: "mine@example.com"))
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!SnippetStarters.isUneditedExample( Snippet(trigger: "my email", expansion: "john.doe@example.com"))
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!SnippetStarters.isUneditedExample(reloaded)
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!SnippetStarters.isUneditedExample(snippet)
+1	Tests/EnviousWisprTests/PostProcessing/SnippetStartersTests.swift	!snippet.collidesWith(other)
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackOverridesStoreTests.swift	!VocabularyPackWordOverride(aliases: []).isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackOverridesStoreTests.swift	!VocabularyPackWordOverride(isEnabled: false).isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift	!lookups.canonicals.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift	!lookups.packSingleFuzzyCandidates.contains { $0.surface == "abcdef" }
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift	!lookups.singleFuzzyCandidates.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift	!pack.terms.isEmpty
+1	Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift	!terms.isEmpty
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!CrashBoundaryFaultController.readReached( trialID: "", boundary: .beforeSpoolDelete, reachedFilePath: fx.reachedPath)
+2	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!FileManager.default.fileExists(atPath: fx.armPath)
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!FileManager.default.fileExists(atPath: fx.reachedPath)
+2	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fresh.hasLiveArmForTesting
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.arm(trialID: "", boundary: .beforeSpoolDelete)
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.hasLiveArmForTesting
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.isReached(trialID: "old-trial", boundary: .beforeKeyDelete)
+3	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.isReached(trialID: "t1", boundary: .beforeSpoolDelete)
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.isReached(trialID: "t1", boundary: .retryExhaustionDecided)
+1	Tests/EnviousWisprTests/Recovery/CrashBoundaryFaultControllerTests.swift	!fx.controller.isReached(trialID: "t5", boundary: .destructionAPIReturn)
+1	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!FileManager.default.fileExists(atPath: temp.path)
+1	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!RecoveryCoordinator.shouldDeleteAfterReplay(.deferredPersistenceFailed)
+1	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!described.contains("ASREngineNotReadyAfterLoad")
+1	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!described.contains("EnviousWispr")
+1	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!h.store.hasAttemptMarker(for: h.id)
+4	Tests/EnviousWisprTests/Recovery/ReadinessRetryTests.swift	!h.store.hasReadinessRetryMarker(for: h.id)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: a.recoverySessionID).path)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path)
+13	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: saved).path)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!RecoveryCoordinator.shouldDeleteAfterReplay(.aborted)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!RecoveryCoordinator.shouldDeleteAfterReplay(.deferred)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!RecoveryCoordinator.shouldDeleteAfterReplay(.deferredMarkerClearFailed)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!controller.isReached(trialID: "cb3", boundary: .destructionAPIReturn)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!crumbs.contains(where: { $0.message == "deletion_failed" && $0.data["component"] == "marker" })
+12	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!h.coordinator.isRecovering
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	!h.spoolStore.hasAttemptMarker(for: id)
+1	Tests/EnviousWisprTests/Recovery/RecoveryCoordinatorTests.swift	await !access.isRecovering()
+1	Tests/EnviousWisprTests/Recovery/RecoveryFailureCategoryTests.swift	!RecoverySpoolReplayer.isCountedNotAlerted(reason)
+1	Tests/EnviousWisprTests/Recovery/RecoveryLogLabelTests.swift	!gaveUp.contains("saved to History")
+1	Tests/EnviousWisprTests/Recovery/RecoveryLogLabelTests.swift	!label.contains("/")
+1	Tests/EnviousWisprTests/Recovery/RecoveryLogLabelTests.swift	!label.isEmpty
+1	Tests/EnviousWisprTests/Recovery/RecoverySpoolCodecTests.swift	!String(decoding: legacy, as: UTF8.self).contains("s1Control")
+1	Tests/EnviousWisprTests/Recovery/RecoverySpoolReplayerTests.swift	!RecoverySpoolReplayer.isCountedNotAlerted(.malformedEscapeMarker)
+4	Tests/EnviousWisprTests/Recovery/RecoverySpoolReplayerTests.swift	!h.spoolStore.hasAttemptMarker(for: id)
+2	Tests/EnviousWisprTests/Recovery/RecoverySpoolStoreTests.swift	!FileManager.default.fileExists(atPath: tmp.path)
+1	Tests/EnviousWisprTests/Recovery/RecoverySpoolStoreTests.swift	!store.hasAttemptMarker(for: "gamma")
+2	Tests/EnviousWisprTests/Recovery/RecoverySpoolStoreTests.swift	!store.hasAttemptMarker(for: id)
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!String(describing: context).contains("HealthcareClient")
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!rendered.contains("AirPods-Pro")
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!rendered.contains("HealthcareClient")
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!rendered.contains("com.microsoft.teams")
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!rendered.contains("com.spotify.client")
+1	Tests/EnviousWisprTests/Services/AudioEnvironmentSnapshotTests.swift	!rendered.contains("com.zoom.xos")
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.matches( bundleIdentifier: "com.apple.Safari", axIdentifier: nil, axDOMClassList: ["OmniboxViewViews"])
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.matches( bundleIdentifier: "com.example.SomeOtherApp", axIdentifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD", axDOMClassList: ["OmniboxViewViews"])
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.matches( bundleIdentifier: "com.google.Chrome", axIdentifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD", axDOMClassList: nil)
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.matches( bundleIdentifier: "com.google.Chrome", axIdentifier: nil, axDOMClassList: ["gmail-compose-textarea", "editable"])
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.matches( bundleIdentifier: nil, axIdentifier: nil, axDOMClassList: nil)
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.recognizedBundleIdentifiers.contains("company.thebrowser.browser")
+1	Tests/EnviousWisprTests/Services/BrowserAddressBarDetectorTests.swift	!BrowserAddressBarDetector.recognizedBundleIdentifiers.contains("org.mozilla.firefox")
+1	Tests/EnviousWisprTests/Services/HeartPathErrorTests.swift	!desc.isEmpty
+1	Tests/EnviousWisprTests/Services/HotkeyCancelShortcutTests.swift	!service.shouldInstallModifierMonitors
+1	Tests/EnviousWisprTests/Services/HotkeyGlobeKeyTests.swift	!spy.identities.isEmpty
+1	Tests/EnviousWisprTests/Services/HotkeyQuickAddShortcutTests.swift	!HotkeyService.quickAddMayHoldItsChord( isEnabled: false, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: false)
+2	Tests/EnviousWisprTests/Services/HotkeyQuickAddShortcutTests.swift	!HotkeyService.quickAddMayHoldItsChord( isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: true)
+1	Tests/EnviousWisprTests/Services/HotkeyQuickAddShortcutTests.swift	!HotkeyService.quickAddMayHoldItsChord( isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: true)
+1	Tests/EnviousWisprTests/Services/HotkeyQuickAddShortcutTests.swift	!HotkeyService.quickAddMayHoldItsChord( isEnabled: true, isSuspended: true, quickAdd: quickAdd, cancel: cancel, isCancelArmed: false)
+1	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift	!ModifierKeyCodes.isModifierOnly(0)
+2	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift	!ModifierKeyCodes.isModifierOnly(code)
+1	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift	!label.contains("Left")
+1	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift	!label.contains("Right")
+1	Tests/EnviousWisprTests/Services/KeySymbolsTests.swift	!spoken.contains("🌐")
+1	Tests/EnviousWisprTests/Services/PasteAccessibilityInsertionTests.swift	!PasteService.mayCommitAccessibilityWrite( requireFocusedElementMatch: true, isFocused: false)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: "c", modifiers: 0)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: "v", modifiers: -1)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: "v", modifiers: 1)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: "v", modifiers: 2)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: "v", modifiers: 8)
+1	Tests/EnviousWisprTests/Services/PasteMenuProbeTests.swift	!PasteService.isPasteShortcut(cmdChar: nil, modifiers: 0)
+1	Tests/EnviousWisprTests/Services/PasteServiceActivationTimeoutTests.swift	!activated
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs("")
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs("com.apple.TextEdit")
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs("com.enviouswispr")
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs("com.enviouswispr.app.dev.extra")
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs("com.enviouswispr.asrservice")
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!AppBundleIdentity.isOurs(nil)
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!PasteService.isUnfocusedResponse(.apiDisabled)
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!PasteService.isUnfocusedResponse(.attributeUnsupported)
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!PasteService.isUnfocusedResponse(.cannotComplete)
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!PasteService.isUnfocusedResponse(.invalidUIElement)
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!SelectionReader.isFallbackEligible(.refused(.unreadable))
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!coordinatorOwned.isEmpty
+1	Tests/EnviousWisprTests/Services/SelectionReaderTests.swift	!seen.contains(.refused(owned))
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!Set(SettingsManager.unifiedDefaultsKeys).contains("useExtendedThinking")
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation( for: ModifierKeyCodes.globe)
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!keys.contains("accessibilityWarningDismissed")
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!keys.contains("noiseSuppression")
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!keys.contains("sessionLanguagePriors")
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!settings.claimGlobeKeyGuidancePresentation(for: 0)
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.globe)
+1	Tests/EnviousWisprTests/Services/SettingsDefaultsRoutingTests.swift	!settings.claimGlobeKeyGuidancePresentation(for: ModifierKeyCodes.rightOption)
+1	Tests/EnviousWisprTests/Services/SettingsManagerOllamaTruthTests.swift	!settings.llmModel.isEmpty
+2	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift	!breaker.isOpen(for: 900)
+1	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift	!breaker.isOpen(for: 901)
+1	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift	!budget.isExhausted
+4	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift	!scanned.wasRaised
+2	Tests/EnviousWisprTests/Services/TerminalContextResolverTests.swift	!screenRead.wasRaised
+1	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift	!caret.isScreenDerived
+1	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift	!joined.contains(" ")
+1	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift	!ordinary.isScreenDerived
+1	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift	!rule.deletesDictatedText
+2	Tests/EnviousWisprTests/Services/TerminalInsertionPolicyTests.swift	!seamCalled
+1	Tests/EnviousWisprTests/Services/TerminalProcessScannerTests.swift	!TerminalProcessScanner.holdsControllingTerminal(pid_t(Int32.max))
+1	Tests/EnviousWisprTests/Services/TerminalProcessScannerTests.swift	!mine.arguments.isEmpty
+1	Tests/EnviousWisprTests/Services/TerminalProcessScannerTests.swift	!mine.executablePath.isEmpty
+1	Tests/EnviousWisprTests/Services/TerminalProcessScannerTests.swift	!parsed.arguments.isEmpty
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("chatgpt-4o-latest")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("flashlight-v1")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-2.5-flash-image")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-2.5-flash-live")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-2.5-flash-native-audio-preview")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-2.5-flash-preview-tts")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-2.5-pro")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-omni-1.1-flash")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gemini-omni-flash-preview")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4.1")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-audio-preview")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-realtime-preview")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-search-preview")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-transcribe")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-transcribe-2025-12-15")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5-pro")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.1-codex-mini")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.4-pro")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.5")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-transcribe")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-transcribe-2026-01-01")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-sol")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-terra")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("gpt-image-1-mini")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("minimax-text")
+1	Tests/EnviousWisprTests/Settings/AIPolishClassifierTests.swift	!AIPolishModelClassifier.isRecommendedForCleanup("nano-banana")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("-")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("-25291")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("-25308")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("-34018")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("-99999")
+2	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("99999")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("\(status)")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("fake-cleanup-error")
+1	Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift	!result.contains("fake-rollback-error")
+1	Tests/EnviousWisprTests/Settings/LanguageLockOptionsTests.swift	!Self.namesFastBackend(in: "// ParakeetBackend\nlet note = \"ParakeetBackend\"")
+1	Tests/EnviousWisprTests/Settings/LanguageLockOptionsTests.swift	!Self.namesFastBackend(in: "let backend = OtherBackend.self")
+1	Tests/EnviousWisprTests/Settings/LanguageLockOptionsTests.swift	!Self.namesFastBackend(in: "return self.lockableLanguageCodes")
+1	Tests/EnviousWisprTests/Settings/LanguageLockOptionsTests.swift	!catalogue.contains(packSubtag)
+1	Tests/EnviousWisprTests/Settings/LivePreviewSettingsCopyTests.swift	!["uses your mac", "follows your mac", "goes by your mac"].contains( where: universal.contains)
+1	Tests/EnviousWisprTests/Settings/LivePreviewSettingsCopyTests.swift	!string.lowercased().contains(promise)
+1	Tests/EnviousWisprTests/Settings/LivePreviewSettingsCopyTests.swift	!withoutApprovedNames.contains("live")
+1	Tests/EnviousWisprTests/Settings/LocalEngineDescriptorTests.swift	!LocalEngineDescriptor.s1Mini.name.contains("SuperWhisper")
+1	Tests/EnviousWisprTests/Settings/LocalEngineDescriptorTests.swift	!LocalEngineDescriptor.s1Mini.showsLowMemoryNote
+1	Tests/EnviousWisprTests/Settings/LocalEngineDescriptorTests.swift	!svg.contains("viewBox=\"0 0 24 24\"")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!OllamaCatalogPresentation.rowIsPulling( entry, currentPullingModel: "kimi-k3:cloud", hostedPullAdvertisedID: "kimi-k3")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!OllamaCatalogPresentation.rowIsPulling( entry, currentPullingModel: nil, hostedPullAdvertisedID: "glm-5.2")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!OllamaCatalogPresentation.rowIsPulling( hosted, currentPullingModel: "gpt-oss:20b", hostedPullAdvertisedID: nil)
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!OllamaCatalogPresentation.rowIsPulling( hosted, currentPullingModel: nil, hostedPullAdvertisedID: "glm-5.2")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!OllamaCatalogPresentation.rowIsPulling( local, currentPullingModel: "gpt-oss:20b-cloud", hostedPullAdvertisedID: "gpt-oss:20b")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!catalog.isEmpty
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!label.contains("%")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!label.lowercased().contains("download")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!text.contains("4")
+1	Tests/EnviousWisprTests/Settings/OllamaManageModelsPresentationTests.swift	!title.lowercased().contains(word)
+1	Tests/EnviousWisprTests/Settings/OllamaModelPickerPresentationTests.swift	!groups.other.map(\.id).contains("gpt-oss:120b-cloud")
+1	Tests/EnviousWisprTests/Settings/OllamaModelPickerPresentationTests.swift	!groups.recommended.map(\.id).contains("gpt-oss:120b-cloud")
+1	Tests/EnviousWisprTests/Settings/OllamaModelPickerPresentationTests.swift	!title.contains("\u{2013}")
+1	Tests/EnviousWisprTests/Settings/OllamaModelPickerPresentationTests.swift	!title.contains("\u{2014}")
+1	Tests/EnviousWisprTests/Settings/PolishLengthCopyTests.swift	!after.contains("minutes")
+1	Tests/EnviousWisprTests/Settings/PolishLengthCopyTests.swift	!source.contains(exact)
+1	Tests/EnviousWisprTests/Settings/PolishLengthCopyTests.swift	!source.contains(padding)
+1	Tests/EnviousWisprTests/Settings/PolishLengthCopyTests.swift	!source.isEmpty
+1	Tests/EnviousWisprTests/Settings/PolishRailCatalogTests.swift	!row.tagline.contains("SuperWhisper")
+1	Tests/EnviousWisprTests/Settings/PolishRailCatalogTests.swift	!value.contains("\u{2013}")
+1	Tests/EnviousWisprTests/Settings/PolishRailCatalogTests.swift	!value.contains("\u{2014}")
+1	Tests/EnviousWisprTests/Settings/ProviderStatusMappingTests.swift	!blankLabel.hasPrefix("EG-1 V")
+1	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift	!bullet.trimmingCharacters(in: .whitespaces).isEmpty
+1	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift	!entries.isEmpty
+1	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift	!entry.description.trimmingCharacters(in: .whitespaces).isEmpty
+1	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift	!entry.icon.trimmingCharacters(in: .whitespaces).isEmpty
+1	Tests/EnviousWisprTests/Settings/WhatsNewContentTests.swift	!entry.title.trimmingCharacters(in: .whitespaces).isEmpty
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: corrupt.path)
+2	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: file.path)
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: misnamed.path)
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: shadow.path)
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: stray.path)
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!FileManager.default.fileExists(atPath: unreadable.path)
+1	Tests/EnviousWisprTests/Storage/PendingTranscriptStoreTests.swift	!swept.deletedIDs.contains(row.id)
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!GlobeKeyCopy.accessibilityLabel.contains("🌐")
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!GlobeKeyCopy.body.contains("is using")
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!GlobeKeyCopy.body.lowercased().contains("conflict")
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!all.contains("\u{2013}")
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!all.contains("\u{2014}")
+1	Tests/EnviousWisprTests/Views/GlobeKeyCopyTests.swift	!all.lowercased().contains("toggle")
+1	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift	!HotkeyCapture.isCancel( flagsChanged(keyCode: ModifierKeyCodes.globe, flags: [.function]))
+1	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift	!HotkeyCapture.isCancel(event)
+1	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift	!HotkeyCapture.isCancel(flagsChanged(keyCode: 53, flags: []))
+1	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift	!handled
+1	Tests/EnviousWisprTests/Views/HotkeyRecorderGlobeTests.swift	!view.acceptsFirstResponder
+1	Tests/EnviousWisprTests/Views/KeybindRowDefaultsTests.swift	!block.contains("//")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!QuickAddPanelCopy.alreadyHasThisSpelling.contains("add")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!QuickAddPanelCopy.legendBack.isEmpty
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!QuickAddPanelCopy.refusalMessage(.selectionUnavailable).lowercased() .contains("try again")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!QuickAddPanelCopy.spellingCount(4).contains("add")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!body.contains("\\(heard)")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!header.contains("\n")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!low.contains("Add")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!message.contains(name)
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!message.contains(term)
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!message.isEmpty
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!message.lowercased().contains("terminal")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!message.lowercased().contains("will not share")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!noSelection.contains("\"\"")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!noSelection.isEmpty
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!none.contains("Add")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!none.lowercased().contains("pick")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!nothing.lowercased().contains("added")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!rendered.lowercased().contains("not added")
+4	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.contains("\"\"")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.contains("\u{2013}")
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.contains("\u{2014}")
+2	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.isEmpty
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.lowercased().contains(pointsAtTheList)
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelCopyTests.swift	!text.lowercased().contains(promise)
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelModelTests.swift	!model.isSearching
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelModelTests.swift	!model.ranking.candidates.isEmpty
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelModelTests.swift	!panel(heard: "", heardRanking: .empty).showsGroupHeader
+1	Tests/EnviousWisprTests/Views/QuickAdd/QuickAddPanelModelTests.swift	!refused.showsSearchField
+1	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift	!S1ControlCardVisibility.shows(provider: .ollama, effectiveModel: "eg-1")
+1	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift	!S1ControlCardVisibility.shows(provider: .ollama, effectiveModel: "qwen2.5:3b")
+1	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift	!S1ControlCardVisibility.shows(provider: provider, effectiveModel: "s1-mini")
+1	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift	!S1ControlCopy.intro.contains("SuperWhisper")
+1	Tests/EnviousWisprTests/Views/S1ControlCopyTests.swift	!text.isEmpty
+1	Tests/EnviousWisprTests/Views/TranscribeFilePrivacyFooterTests.swift	!line.contains("provider")
+1	Tests/EnviousWisprTests/Views/TranscribeFilePrivacyFooterTests.swift	!line.contains(promise)
+1	Tests/EnviousWisprTests/Views/TranscribeFilePrivacyFooterTests.swift	!name.isEmpty
