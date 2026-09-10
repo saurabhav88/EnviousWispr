@@ -202,8 +202,9 @@ struct InverseTextNormalizerNeighbourWindowTests {
     let gap = String(repeating: " \u{0301}", count: InverseTextNormalizer.neighbourScanCap + 1)
     let input = template.replacingOccurrences(of: "%@", with: gap)
     let got = InverseTextNormalizer().normalize(input, spokenPunctuation: false)
-    #expect(!got.contains("20"))
-    #expect(!got.contains("12"))
+    // Whole-text equality, not just "no digits": a refusal that DELETED the number, or corrupted
+    // the text around it, would satisfy a negative check and is not what refusing means.
+    #expect(got == input)
   }
 }
 
