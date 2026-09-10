@@ -50,6 +50,15 @@ struct TranscribeFileView: View {
     .background(Color.stPageBg)
     .tint(.stAccent)
     .font(.stBody)
+    // **Asked where the answer is needed, once per arrival.** The Ollama catalog
+    // is populated by the AI Polish page, so a user who opens this wizard
+    // directly after a relaunch has never asked the daemon anything and every
+    // model reads as unknown. Keyed on the step so it is one local request when
+    // the user reaches a screen whose words depend on it, not one per redraw.
+    .task(id: coordinator.step) {
+      guard coordinator.step == .polish || coordinator.step == .review else { return }
+      await coordinator.refreshOllamaFacts()
+    }
   }
 
   // MARK: - The step bar
@@ -465,10 +474,14 @@ struct TranscribeFileView: View {
   ]
 
   /// Where an Ollama polish actually sends the text, for the model selected now.
+  /// The unknown case says so rather than guessing either way.
   private var ollamaPrivacyLine: String {
-    coordinator.polishIsRemoteOllamaNow()
-      ? "The model you picked runs on Ollama's servers, so the text is sent there."
-      : "That model runs on this Mac, so nothing leaves it."
+    switch coordinator.polishOllamaLocalityNow() {
+    case true: return "The model you picked runs on Ollama's servers, so the text is sent there."
+    case false: return "That model runs on this Mac, so nothing leaves it."
+    case nil:
+      return "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out."
+    }
   }
 
   private func polishCard(_ choice: PolishChoice) -> some View {
@@ -541,6 +554,10 @@ struct TranscribeFileView: View {
   @ViewBuilder
   private var reviewStep: some View {
     stepHeading("Review and start")
+    if case .rejected(let reason) = coordinator.state {
+      InsetNotice(
+        text: Self.sentence(for: reason), systemImage: "exclamationmark.triangle", tint: .orange)
+    }
     HStack(alignment: .top, spacing: 14) {
       VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
         BrandedSection(header: "SELECTED FILE") {
@@ -570,15 +587,19 @@ struct TranscribeFileView: View {
             is finished, \(coordinator.estimateText).
             """,
           systemImage: "mic.slash", tint: .orange)
-        // The words change when a transcript already exists, because the action
-        // does: nothing is transcribed a second time, only cleaned again.
+        // The words change with what the action IS. After a refusal the file is
+        // still read and still in memory, so this is a retry, not a fresh start.
         actionRow(
-          note: coordinator.rawTranscript.isEmpty
-            ? "Nothing has run yet."
-            : "Already transcribed. Only the cleanup runs again.",
-          forwardTitle: coordinator.rawTranscript.isEmpty
-            ? "Start transcription" : "Clean it again",
-          forward: { coordinator.advance() })
+          note: coordinator.canRetry
+            ? "Your file is still here. Nothing needs reading again."
+            : (coordinator.rawTranscript.isEmpty
+              ? "Nothing has run yet."
+              : "Already transcribed. Only the cleanup runs again."),
+          forwardTitle: coordinator.canRetry
+            ? "Try again"
+            : (coordinator.rawTranscript.isEmpty
+              ? "Start transcription" : "Clean it again"),
+          forward: { coordinator.canRetry ? coordinator.retry() : coordinator.advance() })
       }
       processingPath.frame(width: 300)
     }
@@ -682,7 +703,7 @@ struct TranscribeFileView: View {
   /// never just a spinner.
   private var liveTranscript: some View {
     VStack(alignment: .leading, spacing: 14) {
-      ForEach(coordinator.parts) { part in
+      ForEach(coordinator.isShowingOriginal ? [] : coordinator.parts) { part in
         VStack(alignment: .leading, spacing: 4) {
           Text(part.text)
             .lineSpacing(6)
@@ -695,7 +716,9 @@ struct TranscribeFileView: View {
           }
         }
       }
-      if coordinator.parts.isEmpty, !coordinator.rawTranscript.isEmpty {
+      if coordinator.isShowingOriginal || coordinator.parts.isEmpty,
+        !coordinator.rawTranscript.isEmpty
+      {
         Text(coordinator.rawTranscript)
           .lineSpacing(6)
           .foregroundStyle(Color.stTextSecondary)
@@ -745,6 +768,16 @@ struct TranscribeFileView: View {
           Button("Change") { coordinator.choosePolisherAgain() }
             .buttonStyle(.plain)
             .foregroundStyle(Color.stAccent)
+          Spacer(minLength: 12)
+          // The page promises the untouched words are kept. This is where the
+          // user reads them, and Copy and Save follow whichever is on screen.
+          if !coordinator.parts.isEmpty {
+            Button(coordinator.isShowingOriginal ? "Show cleaned words" : "Show original words") {
+              coordinator.isShowingOriginal.toggle()
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.stAccent)
+          }
         }
       }
       .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -851,7 +884,7 @@ struct TranscribeFileView: View {
       break
     }
     return Self.isCloud(
-      settings.llmProvider, ollamaModelIsRemote: coordinator.polishIsRemoteOllamaNow())
+      settings.llmProvider, ollamaModelIsRemote: coordinator.polishOllamaLocalityNow())
   }
 
   /// Enumerated, never `default:`. A new provider must be classified here
@@ -866,10 +899,18 @@ struct TranscribeFileView: View {
   /// remoteness is resolved by the same lookup `PipelineSettingsSync` uses and
   /// FROZEN with the run, so a document already polished is never re-described.
   /// Found by Codex.
-  static func isCloud(_ provider: LLMProvider, ollamaModelIsRemote: Bool) -> Bool {
+  /// - Parameter ollamaModelIsRemote: `nil` when the daemon has not been asked.
+  ///   **Unknown counts as leaving the Mac**, because the two mistakes are not
+  ///   equal: promising local processing for a model Ollama proxies to its own
+  ///   servers is a broken privacy promise, while saying the text may be sent
+  ///   when it is not is merely cautious. The eviction rule uses the SAME lookup
+  ///   with the opposite default on purpose — there an unknown model is evicted,
+  ///   because the cost of a needless unload is one local request and the cost
+  ///   of skipping a real local model is weights left in memory.
+  static func isCloud(_ provider: LLMProvider, ollamaModelIsRemote: Bool?) -> Bool {
     switch provider {
     case .openAI, .gemini, .claude: return true
-    case .ollama: return ollamaModelIsRemote
+    case .ollama: return ollamaModelIsRemote ?? true
     case .egOne, .s1Mini, .appleIntelligence, .none: return false
     }
   }
@@ -903,7 +944,7 @@ struct TranscribeFileView: View {
 
   private func copyDocument() {
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(coordinator.documentText, forType: .string)
+    NSPasteboard.general.setString(coordinator.exportText, forType: .string)
   }
 
   private func saveDocument() {
@@ -913,7 +954,7 @@ struct TranscribeFileView: View {
       (coordinator.file?.name as NSString?)?.deletingPathExtension ?? "Transcript"
     guard panel.runModal() == .OK, let url = panel.url else { return }
     do {
-      try coordinator.documentText.write(to: url, atomically: true, encoding: .utf8)
+      try coordinator.exportText.write(to: url, atomically: true, encoding: .utf8)
       coordinator.noteSaveSucceeded(fileName: url.lastPathComponent)
     } catch {
       coordinator.noteSaveFailed(error)

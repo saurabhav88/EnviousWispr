@@ -315,11 +315,22 @@ final class FileImportCoordinator {
   /// shared engine. The composition root points it at the existing retry paths.
   let onEngineReleased: @MainActor () -> Void
 
-  /// Whether the polish model selected RIGHT NOW is an Ollama model the daemon
-  /// proxies to its own servers. Read live before a run for the page's privacy
-  /// line, and frozen into `RunConfiguration` at Start so a finished document is
-  /// never re-described by a later catalog refresh.
-  let polishIsRemoteOllamaNow: @MainActor () -> Bool
+  /// Where an Ollama polish would send the text, for the model selected NOW.
+  ///
+  /// **Three answers, and the third one is the point.** `true` proxied to
+  /// Ollama's servers, `false` running on this Mac, `nil` the daemon has not
+  /// been asked yet — which is the ordinary state after a relaunch, because the
+  /// catalog is populated by the AI Polish page and a user who opens Transcribe
+  /// a File directly has never been there. Collapsing `nil` into `false` made
+  /// the page promise the transcript stays on this Mac while sending it to
+  /// Ollama's servers. Found by Codex. A privacy promise may only be made from
+  /// a KNOWN answer.
+  let polishOllamaLocalityNow: @MainActor () -> Bool?
+
+  /// Asks the daemon, so the answer above stops being `nil`. Called when the
+  /// Polish step appears rather than at launch: it is one local request, and
+  /// only this screen needs it.
+  let refreshOllamaFacts: @MainActor () async -> Void
 
   /// What one run is pinned to, captured at Start.
   ///
@@ -341,8 +352,10 @@ final class FileImportCoordinator {
     let polishProvider: LLMProvider
     /// The LOCAL Ollama model this run froze, if any, so the eviction rule can
     /// leave its weights alone while the run is using them. Nil for every other
-    /// provider and for a model Ollama proxies to its own servers, which has no
-    /// weights on this Mac to protect.
+    /// provider, for a model Ollama proxies to its own servers (no weights here
+    /// to protect), and for one whose location is unknown — an unknown model is
+    /// evicted by the existing rule on purpose, and pinning it would defer an
+    /// eviction on a guess.
     let ollamaModel: String?
   }
 
@@ -371,13 +384,15 @@ final class FileImportCoordinator {
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
     transcribe: @escaping @MainActor ([Float]) async throws -> String,
     engineAdmission: EngineAdmissionAccess,
-    polishIsRemoteOllamaNow: @escaping @MainActor () -> Bool = { false },
+    polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
+    refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome
   ) {
-    self.polishIsRemoteOllamaNow = polishIsRemoteOllamaNow
+    self.polishOllamaLocalityNow = polishOllamaLocalityNow
+    self.refreshOllamaFacts = refreshOllamaFacts
     self.ensureEngineReady = ensureEngineReady
     self.onEngineReleased = onEngineReleased
     self.decode = decode
@@ -433,6 +448,36 @@ final class FileImportCoordinator {
   /// at Start leaves them on Review with an inert button. Both go back to Upload,
   /// which is the one step that renders a refusal AND offers the way out of it —
   /// choosing another file. Found by Codex.
+  /// Whether this refusal is about the ENGINE rather than the file.
+  ///
+  /// **The difference decides what the user has to redo.** A file we could not
+  /// read needs a different file. A busy engine, a missing model or a warm-up
+  /// that did not take needs nothing redone at all — the audio is decoded and in
+  /// memory, and the message says "try again". It did not mean it: the only
+  /// route back was choosing the file again and paying the read a second time,
+  /// which on a long recording is the slowest part. Found by Codex.
+  static func isAboutTheEngine(_ reason: FileImportRejection) -> Bool {
+    switch reason {
+    case .engineBusy, .engineNotInstalled, .engineNotReady: return true
+    case .cannotRead, .noAudio, .noSpeechFound, .failed: return false
+    }
+  }
+
+  /// Whether Try again is offered: an engine refusal, with the audio still here.
+  var canRetry: Bool {
+    guard case .rejected(let reason) = state else { return false }
+    return Self.isAboutTheEngine(reason) && !decodedSamples.isEmpty && file != nil
+  }
+
+  /// Puts the already-decoded file back in hand and starts it again.
+  func retry() {
+    guard canRetry, let file else { return }
+    // Back to the state `start()` requires. The user is already standing on
+    // Review, where the refusal placed them and where Try again is.
+    state = .ready(fileName: file.name, seconds: file.seconds)
+    start()
+  }
+
   private func showRejection(_ reason: FileImportRejection) {
     state = .rejected(reason)
     phase = ""
@@ -443,7 +488,22 @@ final class FileImportCoordinator {
     // sent the user to a screen from which their finished transcript could not
     // be copied, saved or retried. Done renders the same refusal beside the
     // words. Found by Codex.
-    jump(to: hasDocument ? .done : .upload)
+    //
+    // An ENGINE refusal with the audio still in hand stays on Review, where Try
+    // again is, because nothing about the file needs redoing.
+    step =
+      if hasDocument {
+        // Done renders the refusal above the words it did not touch. Upload
+        // would offer only the thing that destroys them.
+        .done
+      } else if canRetry {
+        // Already read, nothing to redo: stay where Try again is.
+        .review
+      } else {
+        // The one step that renders a refusal AND offers the way out: a
+        // different file.
+        .upload
+      }
   }
 
   /// Moves forward through the wizard. Refused once a run is in flight: the
@@ -466,6 +526,19 @@ final class FileImportCoordinator {
   /// Whether there is a document to go back TO. The single fact three of the
   /// rules below turn on.
   var hasDocument: Bool { !rawTranscript.isEmpty }
+
+  /// Whether the Done screen is showing the ORIGINAL words instead of the
+  /// cleaned ones.
+  ///
+  /// **The page promises "Original kept" and "Your untouched words are kept
+  /// beside this one", and nothing showed them.** Once the first cleaned passage
+  /// landed, the raw transcript was in memory and unreachable — no view rendered
+  /// it, and Copy and Save exported only the cleaned passages. A promise with no
+  /// way to check it is a promise the product does not keep. Found by Codex.
+  var isShowingOriginal = false
+
+  /// What Copy and Save hand over, which is always what the screen is showing.
+  var exportText: String { isShowingOriginal ? rawTranscript : documentText }
 
   /// Whether Back is offered right now, so the button is absent rather than
   /// present and inert.
@@ -542,6 +615,11 @@ final class FileImportCoordinator {
   ///   middle of replacing would answer about the old one.
   /// - `start()`, `stop()`, `rePolish()` and `polishAll` move the user because
   ///   the WORK moved. They are not navigation and must not be refusable.
+  /// - `showRejection(_:)` PLACES the user where a refusal can be read and acted
+  ///   on. That destination is chosen by what they would LOSE, not by where they
+  ///   asked to go, and on a refusal raised from Review it is Review itself —
+  ///   which `canGo` refuses by construction, since it never returns true for
+  ///   the step you are already on.
   func jump(to target: Step, advancing: Bool = false) {
     guard canGo(to: target, advancing: advancing) else { return }
     step = target

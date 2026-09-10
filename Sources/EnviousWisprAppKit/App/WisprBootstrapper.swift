@@ -1379,8 +1379,13 @@ package final class WisprBootstrapper {
       // unknown model answers `nil`, read here as NOT remote, which matches the
       // provider-only classification this replaced and never over-claims a
       // cloud upload the user did not make.
-      polishIsRemoteOllamaNow: { [settings, ollamaRemoteness] in
-        settings.llmProvider == .ollama && ollamaRemoteness(settings.llmModel) == true
+      // Three answers, passed through. `nil` means the daemon has not been
+      // asked, which the page must not read as "runs here".
+      polishOllamaLocalityNow: { [settings, ollamaRemoteness] in
+        settings.llmProvider == .ollama ? ollamaRemoteness(settings.llmModel) : false
+      },
+      refreshOllamaFacts: { [ollamaSetup = setup.ollamaSetup] in
+        await ollamaSetup.refreshDownloadedModels()
       },
       // The SAME authority a record press uses, so "is the engine the user
       // picked ready" has one answer in the app rather than two.
@@ -1393,8 +1398,16 @@ package final class WisprBootstrapper {
       // — reachable through the ordinary memory-saving unload setting. Found by
       // Codex. `load()`'s postcondition is readiness, not merely that the call
       // returned, so a warm that fails still refuses.
-      ensureEngineReady: { [weak engineCoordinator, activeEngine] in
+      ensureEngineReady: { [weak engineCoordinator, activeEngine, asrManager] in
         guard let engineCoordinator else { return .notReady }
+        // **The pending idle unload is cancelled here, exactly as
+        // `ParakeetEngineAdapter.beginSession()` does it for a recording.** A
+        // dictation minutes earlier arms a timer under the user's model-unload
+        // setting; nothing was disarming it for an import, and its mutation gate
+        // does not consult `EngineLease`, so the timer could fire mid-import and
+        // `ParakeetBackend.unload()` would clear the model the decoder was
+        // running on. `onEngineReleased` re-arms it. Found by Codex.
+        asrManager.cancelIdleTimer()
         switch await engineCoordinator.ensureSelectedReadyForPress() {
         case .ready: return .ready
         case .notInstalled: return .notInstalled
@@ -1411,7 +1424,14 @@ package final class WisprBootstrapper {
       // during a long import stayed pending until something unrelated happened
       // to poke the same paths.
       onEngineReleased: {
-        [weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings] in
+        [
+          weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
+          asrManager
+        ] in
+        // The other half of the bracket above: the user's model-unload setting
+        // is honoured again now the import is done with the engine, the same
+        // call `ParakeetEngineAdapter.applyUnloadPolicy` makes after a take.
+        asrManager.noteTranscriptionComplete(policy: settings.modelUnloadPolicy)
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredEGOneDeactivation(settings: settings)
@@ -1435,7 +1455,7 @@ package final class WisprBootstrapper {
         return FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
-            && ollamaRemoteness(snapshot.llmModel) == true)
+            ? ollamaRemoteness(snapshot.llmModel) : false)
       },
       processPart: { [fileImportRunner] part in try await fileImportRunner.process(part: part) })
     fileImportCoordinatorForGates = fileImportCoordinator

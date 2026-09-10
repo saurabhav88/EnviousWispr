@@ -48,11 +48,13 @@ enum FileImportSettingsFreeze {
   /// line and the engine reconciliation cannot disagree with what the parts are
   /// actually polished by.
   /// - Parameter ollamaModelIsRemote: whether THIS run's Ollama model is one the
-  ///   daemon proxies to its own servers. Passed in rather than looked up here
-  ///   so the value is taken once, at Start, and cannot change under a document
-  ///   that has already been polished.
+  ///   daemon proxies to its own servers, or `nil` when the daemon has not been
+  ///   asked. Passed in rather than looked up here so the value is taken once,
+  ///   at Start, and cannot change under a document that has already been
+  ///   polished. The `nil` case travels all the way to the disclosure, which
+  ///   refuses to promise local processing on an unknown.
   static func configuration(
-    for snapshot: RecordingSettingsSnapshot, ollamaModelIsRemote: Bool
+    for snapshot: RecordingSettingsSnapshot, ollamaModelIsRemote: Bool?
   ) -> FileImportCoordinator.RunConfiguration {
     let provider = LLMProvider(rawValue: snapshot.llmProvider) ?? .none
     return FileImportCoordinator.RunConfiguration(
@@ -66,7 +68,10 @@ enum FileImportSettingsFreeze {
       // to unload, so a remote one is deliberately nil: pinning it would defer
       // an eviction that was never going to happen and leave the tracker asking
       // the same question on every later settings change.
-      ollamaModel: (provider == .ollama && !ollamaModelIsRemote)
+      // A KNOWN-local model only. Unknown is not pinned: the eviction rule
+      // deliberately evicts an unknown model, and deferring that on a guess
+      // would leave its tracker asking the same question forever.
+      ollamaModel: (provider == .ollama && ollamaModelIsRemote == false)
         ? OllamaConnector.effectiveOllamaModel(provider: provider, model: snapshot.llmModel)
         : nil)
   }

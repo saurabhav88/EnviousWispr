@@ -18,6 +18,15 @@ struct FileImportCoordinatorTests {
 
   /// Lets a row hold a part inside the runner for as long as it wants, which is the only way to observe
   /// the property that matters: Stop changes the screen at once, and the claim waits for the work.
+  /// Counts calls made from a `@Sendable` closure. Same shape as `PartGate`
+  /// below: a plain captured var is refused by strict concurrency, and a lock
+  /// here would be a second way of doing what the suite already does once.
+  private actor CallCounter {
+    private var count = 0
+    func record() { count += 1 }
+    var value: Int { count }
+  }
+
   private actor PartGate {
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var enteredCount = 0
@@ -138,9 +147,50 @@ struct FileImportCoordinatorTests {
 
     #expect(coordinator.state == .rejected(expected))
     #expect(transcribed == false, "the import transcribed on an engine it was told was not ready")
-    #expect(
-      coordinator.step == .upload,
-      "the refusal landed on a step that does not render one")
+    // **Stays on Review, because nothing about the FILE needs redoing.** The
+    // audio is decoded and in memory; sending the user to Upload made the only
+    // recovery choosing the file again and paying the read a second time, which
+    // on a long recording is the slowest part of the whole job.
+    #expect(coordinator.step == .review, "an engine refusal sent the user back to the file picker")
+    #expect(coordinator.canRetry, "the message says try again and nothing offers it")
+  }
+
+  /// Try again does what it says: no second read, no second decode.
+  @Test("retrying after a busy engine reuses the audio already in memory")
+  func retryDoesNotReadTheFileAgain() async {
+    let lease = EngineLease()
+    let decodes = CallCounter()
+    let coordinator = makeCoordinator(
+      lease: lease,
+      decode: { _ in
+        await decodes.record()
+        return Self.decoded(seconds: 1.0)
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    #expect(await decodes.value == 1)
+
+    // Something else holds the engine, so Start is refused.
+    guard case .granted(let token) = lease.admit(.dictation) else {
+      Issue.record("the fixture could not take the engine")
+      return
+    }
+    coordinator.advance()
+    coordinator.advance()
+    coordinator.advance()
+    coordinator.advance()
+    await settleUntil { coordinator.state == .rejected(.engineBusy(.dictation)) }
+    #expect(coordinator.canRetry)
+
+    // The engine frees up and the user presses Try again.
+    lease.release(token)
+    coordinator.retry()
+    await settleUntil { coordinator.state == .finished }
+
+    #expect(await decodes.value == 1, "Try again read the file a second time")
+    #expect(!coordinator.rawTranscript.isEmpty)
   }
 
   /// The claim is taken only AFTER the engine is confirmed, so a refused import
@@ -362,7 +412,8 @@ struct FileImportCoordinatorTests {
     await settleUntil { b.state == .rejected(.noAudio) }
     record(b)
 
-    // Path C: the engine the user picked is not there.
+    // Path C: the engine the user picked is not there. Lands on Review with the
+    // audio still in hand, which is the `review/rejected` cell.
     let c = makeCoordinator(lease: EngineLease(), ensureEngineReady: { .notInstalled })
     c.choose(url: Self.anyURL)
     _ = await settleUntil { if case .ready = c.state { return true } else { return false } }
@@ -435,6 +486,9 @@ struct FileImportCoordinatorTests {
       "done/finished",
       "done/stopped",
       "done/rejected",
+      // An ENGINE refusal with the audio still in memory. The user stays where
+      // Try again is rather than being sent back to the file picker.
+      "review/rejected",
     ]
     #expect(
       seen == expected,
@@ -476,17 +530,47 @@ struct FileImportCoordinatorTests {
         "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift"),
       encoding: .utf8)
 
-    let writers = source.split(separator: "\n")
+    // **Matches the ASSIGNMENT, not one of its spellings.** The first version
+    // required the value on the same line, so `showRejection`'s multi-line
+    // `step =` followed by an `if` expression was invisible to it and the count
+    // came back one short — a detector comparing a RENDERING rather than the
+    // property it is about. This accepts `step =`, `step=`, `self.step =` and a
+    // value on the next line, and rejects `==`.
+    func isAssignment(_ line: String) -> Bool {
+      guard !line.hasPrefix("//") else { return false }
+      guard let equals = line.range(of: "step") else { return false }
+      let after = line[equals.upperBound...].drop { $0 == " " }
+      guard after.first == "=", after.dropFirst().first != "=" else { return false }
+      // `myStep = x` and `a.step = x` are not writes to THIS property.
+      let beforeIndex = equals.lowerBound
+      if beforeIndex > line.startIndex {
+        let previous = line[line.index(before: beforeIndex)]
+        if previous.isLetter || previous.isNumber || previous == "_" { return false }
+        if previous == "." { return line.contains("self.step") }
+      }
+      return true
+    }
+
+    // **Two-way control, because a count from a detector I just wrote is a
+    // hypothesis.** A line that IS a write must match and a comparison must not,
+    // or the number below is measuring the detector rather than the file.
+    #expect(isAssignment("step = .upload"), "the detector misses a plain write")
+    #expect(isAssignment("step ="), "the detector misses a multi-line write")
+    #expect(isAssignment("self.step = .done"), "the detector misses a qualified write")
+    #expect(!isAssignment("if step == .done {"), "the detector counts a comparison")
+    #expect(!isAssignment("previousStep = .done"), "the detector counts another property")
+
+    let writers = source.split(separator: "\n", omittingEmptySubsequences: false)
       .map { $0.trimmingCharacters(in: .whitespaces) }
-      .filter { $0.hasPrefix("step = ") }
+      .filter(isAssignment)
 
     // `step = target` is the authority's own write and is not counted.
     let direct = writers.filter { $0 != "step = target" }
     #expect(
-      direct.count == 7,
+      direct.count == 8,
       """
-      \(direct.count) direct writes to `step`, expected 7 \
-      (choose, startOver, start, stop, rePolish, and polishAll twice). \
+      \(direct.count) direct writes to `step`, expected 8 \
+      (choose, startOver, showRejection, start, stop, rePolish, polishAll twice). \
       A new one is either a navigation — which must call `jump(to:advancing:)` \
       — or an exception that needs naming at `jump`. Found: \(direct)
       """)
