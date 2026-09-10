@@ -2,7 +2,6 @@
 import polish from '../../data/home/polish.json';
 import Icon from './Icon.astro';
 import { renderTokens } from '../../utils/home/text.js';
-const first = polish.chips[0];
 const icons = [
   'person',
   'wave',
@@ -61,29 +60,32 @@ const icons = [
               </button>
             ))
           }
-        </div><div class="polish-card">
-          <div class="polish-card-head">
-            <div class="polish-card-title-row">
-              <span id="polish-active-icon" aria-hidden="true"><Icon name={icons[0]} /></span><h3
-                class="polish-card-title"
-                id="polish-name"
-              >
-                {first.name}
-              </h3><span class="polish-where" id="polish-where">On your Mac</span>
-            </div>
-            <p class="polish-card-note" id="polish-note">{first.note}</p>
-          </div>
-          <div class="polish-compare">
-            <div class="polish-side">
-              <span class="polish-side-label">You say</span>
-              <p class="polish-raw is-live" id="polish-raw" set:html={renderTokens(first.raw)} />
-            </div>
-            <div class="polish-arrow" aria-hidden="true"><span>→</span></div>
-            <div class="polish-side polish-side-out">
-              <span class="polish-side-label">Your finished text</span>
-              <p class="polish-out" id="polish-out" set:html={renderTokens(first.out)} />
-            </div>
-          </div>
+        </div>
+        <div class="home-carousel polish-carousel" tabindex="0" role="region" aria-label="Cleanup examples">
+          {polish.chips.map((chip, i) => (
+            <article class="polish-card" aria-labelledby={`polish-name-${i}`}>
+              <div class="polish-card-head">
+                <div class="polish-card-title-row">
+                  <Icon name={icons[i]} />
+                  <h3 class="polish-card-title" id={`polish-name-${i}`}>{chip.name}</h3>
+                  <span class:list={['polish-where', `is-${chip.where}`]}>{chip.where === 'mac' ? 'On your Mac' : 'With AI polish'}</span>
+                </div>
+                <p class="polish-card-note">{chip.note}</p>
+              </div>
+              <div class="polish-compare">
+                <div class="polish-side">
+                  <span class="polish-side-label">You say</span>
+                  <p class="polish-raw is-live" lang={chip.lang || 'en'} set:html={renderTokens(chip.raw)} />
+                </div>
+                <div class="polish-arrow" aria-hidden="true"><span>→</span></div>
+                <div class="polish-side polish-side-out">
+                  <span class="polish-side-label">Your finished text</span>
+                  <p class="polish-out" lang={chip.lang || 'en'} set:html={renderTokens(chip.out)} />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
           <div class="polish-nav">
             <p class="polish-count" id="polish-count">1 of {polish.chips.length}</p>
             <div class="polish-arrows">
@@ -104,7 +106,6 @@ const icons = [
             </div>
             <p class="polish-hint"><span aria-hidden="true">⇄</span>Swipe, or use the arrows</p>
           </div>
-        </div>
       </div><div class="polish-guards" id="polish-guards">
         <p class="polish-guards-heading">What each one means</p>
         <div class="polish-guard-row" id="polish-guard-notes">

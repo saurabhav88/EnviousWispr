@@ -1,137 +1,98 @@
-import polish from '../../data/home/polish.json';
-import paths from '../../data/home/icons.json';
-import { renderTokens } from '../../utils/home/text.js';
-import { bindSwipe } from './swipe.js';
-const icons = [
-  'person',
-  'wave',
-  'undo',
-  'calendar',
-  'undo',
-  'text',
-  'mail',
-  'list',
-  'document',
-  'text',
-  'smile',
-  'list',
-];
+import { createCarousel } from './carousel.js';
+
 export function init(root, motion, scope) {
   const choices = root.querySelector('#polish-dots'),
-    buttons = [...choices.querySelectorAll('button')];
-  const raw = root.querySelector('#polish-raw'),
-    out = root.querySelector('#polish-out'),
-    card = root.querySelector('.polish-card');
-  const count = root.querySelector('#polish-count'),
-    note = root.querySelector('#polish-note');
+    buttons = [...choices.querySelectorAll('button')],
+    prev = root.querySelector('#polish-prev'),
+    next = root.querySelector('#polish-next'),
+    count = root.querySelector('#polish-count'),
+    raws = [...root.querySelectorAll('.polish-raw')];
   const announce = document.createElement('span');
   announce.className = 'visually-hidden';
   announce.setAttribute('role', 'status');
   root.append(announce);
-  let index = 0,
-    elapsed = 0,
+  let elapsed = 0,
     pinned = false,
     reveal = 0,
+    direction = 1,
+    prepared,
     clock;
-  function show(next, manual = false) {
-    index = (next + polish.chips.length) % polish.chips.length;
-    const sample = polish.chips[index];
-    root.querySelector('#polish-name').textContent = sample.name;
-    note.textContent = sample.note;
-    root.querySelector('#polish-active-icon path').setAttribute('d', paths[icons[index]]);
-    const where = root.querySelector('#polish-where');
-    where.textContent = sample.where === 'mac' ? 'On your Mac' : 'With AI polish';
-    where.className = 'polish-where is-' + sample.where;
-    raw.innerHTML = renderTokens(sample.raw);
-    out.innerHTML = renderTokens(sample.out);
-    raw.lang = out.lang = sample.lang || 'en';
-    count.textContent = index + 1 + ' of ' + polish.chips.length;
+  function finishExamples() {
+    raws.forEach((raw) => raw.classList.add('is-live'));
+    prepared = undefined;
+    reveal = 0;
+  }
+  const carousel = createCarousel(root.querySelector('.polish-carousel'), scope, motion, {
+    onManual() {
+      pinned = true;
+      elapsed = 0;
+      finishExamples();
+      root.querySelector('.polish-nav').classList.add('is-used');
+    },
+    onSettle(index, { manual }) {
+      if (prepared === index && !pinned && !motion.paused && !motion.reduced.matches) {
+        reveal = 340;
+        prepared = undefined;
+      } else finishExamples();
+      elapsed = 0;
+      sync(index);
+      if (manual) {
+        const card = carousel.slides[index];
+        announce.textContent = card.querySelector('h3').textContent + '. ' +
+          card.querySelector('.polish-out').textContent;
+      }
+      clock?.wake();
+    },
+  });
+  function sync(index) {
+    count.textContent = `${index + 1} of ${buttons.length}`;
+    prev.disabled = index === 0;
+    next.disabled = index === buttons.length - 1;
     buttons.forEach((button, i) => {
       button.classList.toggle('is-current', i === index);
       button.setAttribute('aria-current', String(i === index));
     });
     const active = buttons[index];
     if (choices.scrollWidth > choices.clientWidth) {
-      const left = active.offsetLeft,
-        right = left + active.offsetWidth;
+      const left = active.offsetLeft, right = left + active.offsetWidth;
       if (left < choices.scrollLeft) choices.scrollLeft = left;
       else if (right > choices.scrollLeft + choices.clientWidth)
         choices.scrollLeft = right - choices.clientWidth;
     }
-    // A manual selection is immediately readable, including while page motion is paused.
-    const settled = manual || motion.reduced.matches || motion.paused;
-    raw.classList.toggle('is-live', settled);
-    reveal = settled ? 0 : 340;
-    if (manual) announce.textContent = sample.name + '. ' + sample.out.map((t) => t.t).join('');
-  }
-  function choose(next) {
-    pinned = true;
-    elapsed = 0;
-    root.querySelector('.polish-nav').classList.add('is-used');
-    show(next, true);
-    clock.wake();
   }
   buttons.forEach((button, i) => {
     button.disabled = false;
-    button.addEventListener('click', () => choose(i), { signal: scope.signal });
+    button.addEventListener('click', () => carousel.goTo(i, { user: true }), { signal: scope.signal });
   });
-  choices.addEventListener(
-    'pointerdown',
-    () => {
-      pinned = true;
-    },
-    { signal: scope.signal, passive: true },
-  );
-  for (const [id, direction] of [
-    ['polish-prev', -1],
-    ['polish-next', 1],
-  ]) {
-    const button = root.querySelector('#' + id);
-    button.disabled = false;
-    button.addEventListener('click', () => choose(index + direction), { signal: scope.signal });
-  }
-  choices.addEventListener(
-    'keydown',
-    (event) => {
-      const by = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      if (!by) return;
-      event.preventDefault();
-      choose(index + by);
-      buttons[index].focus();
-    },
-    { signal: scope.signal },
-  );
-  clock = scope.timeline(
-    root,
-    (delta) => {
-      if (reveal > 0) {
-        reveal -= delta;
-        if (reveal <= 0) raw.classList.add('is-live');
-      }
-      if (pinned) return reveal > 0;
-      elapsed += delta;
-      if (elapsed >= 4200) {
-        elapsed = 0;
-        show(index + 1);
-      }
-      return true;
-    },
-    (reduced) => {
-      if (reduced || motion.paused) {
-        reveal = 0;
-        raw.classList.add('is-live');
-      }
-    },
-  );
-  bindSwipe(
-    card,
-    scope,
-    (direction) => choose(index + direction),
-    () => {
-      pinned = true;
-      reveal = 0;
-      raw.classList.add('is-live');
-    },
-  );
-  show(0);
+  choices.addEventListener('keydown', (event) => {
+    const by = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!by) return;
+    event.preventDefault();
+    const target = Math.max(0, Math.min(buttons.length - 1, buttons.indexOf(event.target) + by));
+    carousel.goTo(target, { user: true });
+    buttons[target].focus();
+  }, { signal: scope.signal });
+  prev.addEventListener('click', () => carousel.step(-1, { user: true }), { signal: scope.signal });
+  next.addEventListener('click', () => carousel.step(1, { user: true }), { signal: scope.signal });
+  clock = scope.timeline(root, (delta) => {
+    if (carousel.moving) return true;
+    if (reveal > 0) {
+      reveal -= delta;
+      if (reveal <= 0) raws[carousel.index].classList.add('is-live');
+    }
+    if (pinned) return reveal > 0;
+    elapsed += delta;
+    if (elapsed >= 4200) {
+      elapsed = 0;
+      if (carousel.index === buttons.length - 1) direction = -1;
+      else if (carousel.index === 0) direction = 1;
+      prepared = carousel.index + direction;
+      raws[prepared].classList.remove('is-live');
+      carousel.goTo(prepared);
+    }
+    return true;
+  }, () => {
+    if (motion.reduced.matches || motion.paused) finishExamples();
+  });
+  sync(carousel.index);
 }
