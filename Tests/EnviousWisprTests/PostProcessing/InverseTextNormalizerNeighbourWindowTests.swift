@@ -40,15 +40,11 @@ private let midSentenceLead = "Then he said that "
 /// 2. Every guard that reads a neighbour decides the same way with a long take around it as it
 ///    does alone — the case the old whole-tail read paid for and a too-small window breaks.
 ///
-/// Claim 2 is asserted as an INVARIANT (`long` extends `short`) rather than against baked
-/// output, so these tests pin the property under test and cannot drift into a second, weaker
-/// copy of the parity fixture. The handful of exact outputs at the end are the oracle's own
-/// rows, re-run with a long tail attached.
+/// Claim 1 is this suite, and it is a DRIFT GUARD: an unbounded window still produces the
+/// right text, just slowly, so nothing here is safety for the user. Claim 2 is the product
+/// outcome and lives in `InverseTextNormalizerLongTakeConversionTests` below.
+@Suite("ITN neighbour reads stay bounded (#2758)", .tags(.driftGuard))
 struct InverseTextNormalizerNeighbourWindowTests {
-
-  private static let itn = InverseTextNormalizer()
-
-  // MARK: - 1. The window is bounded
 
   /// The invariant the timeout fix rests on: text beyond the second token cannot make the
   /// window any bigger, so the per-match cost stops tracking the length of the take.
@@ -118,8 +114,21 @@ struct InverseTextNormalizerNeighbourWindowTests {
     let ns = "\(head)\(tail)" as NSString
     #expect(InverseTextNormalizer.tailWindow(ns, (head as NSString).length) == window)
   }
+}
 
-  // MARK: - 2. Every neighbour-reading guard decides the same way
+/// Bounding the neighbour reads changed nothing about what the ITN passes DECIDE: a take with
+/// numbers in it comes back formatted the same way whether it stands alone or sits inside a
+/// long dictation. When this fails the user is pasted a phone number, date, currency amount or
+/// measurement left in spoken form.
+///
+/// Claim 2 is asserted as an INVARIANT (`long` extends `short`) rather than against baked
+/// output, so these tests pin the property under test and cannot drift into a second, weaker
+/// copy of the parity fixture. The exact outputs in the last test are the oracle's own rows,
+/// re-run with a long tail attached.
+@Suite("ITN converts the same inside a long take (#2758)", .tags(.productOutcome))
+struct InverseTextNormalizerLongTakeConversionTests {
+
+  private static let itn = InverseTextNormalizer()
 
   /// One row per guard that reads across the match boundary. Each is normalized alone and
   /// again with `inertTail` appended; since the padding adds no match of its own, a correct
@@ -182,7 +191,7 @@ struct InverseTextNormalizerNeighbourWindowTests {
     #expect(long.hasSuffix(short))
   }
 
-  // MARK: - 3. The oracle's own rows, re-run with a long tail
+  // MARK: - The oracle's own rows, re-run with a long tail
 
   /// A prefix invariant proves the window did not change the decision; these pin what that
   /// decision IS, so a window failure cannot hide behind two identically-wrong outputs. Every
