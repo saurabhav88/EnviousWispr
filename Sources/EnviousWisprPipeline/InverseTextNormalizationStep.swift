@@ -130,8 +130,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       // and stamp itself — `operationTask.cancel()` cannot stop a synchronous body from being
       // scheduled. Compare the stamp against the NOMINAL BUDGET, not against `elapsedMs`:
       // `elapsedMs` is the caller's own resume time and on a loaded machine runs well past the
-      // budget, so a closure that entered at 600 ms would clear an 800 ms `elapsedMs` and be
-      // reported as having been running when the timer won, which it was not.
+      // budget, so comparing against an 800 ms `elapsedMs` would accept a 600 ms entry even
+      // though that entry missed the nominal 500 ms budget.
       let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
       let queueWaitMs = engineStartMs.flatMap { $0 <= Self.deadlineSeconds * 1000 ? $0 : nil }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
