@@ -18,7 +18,6 @@
   gap: 22px;
   padding: 28px 30px 18px;
   position: relative;
-  touch-action: pan-y;
 }
 .polish-card,
 .polish-card-head {
@@ -260,24 +259,13 @@
   flex-direction: column;
   gap: 14px;
 }
-.polish-guards-toggle {
-  align-items: center;
+.polish-guards-heading {
   align-self: flex-end;
-  background: none;
-  border: 0;
   color: var(--eg-body);
-  cursor: pointer;
-  display: flex;
-  font: inherit;
   font-size: 14px;
   font-weight: 500;
-  gap: 10px;
-  min-height: 44px;
+  margin: 0;
   padding: 0;
-  transition: color 0.2s;
-}
-.polish-guards-toggle:hover {
-  color: var(--eg-accent);
 }
 .polish-guard-row {
   align-items: start;
@@ -289,13 +277,23 @@
   min-width: 0;
 }
 .polish-guard-name {
+  align-items: center;
   border-bottom: 2px solid var(--eg-hi-line);
   color: var(--eg-ink);
+  cursor: pointer;
+  display: flex;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.2px;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
   margin: 0;
-  padding-bottom: 12px;
+  min-height: 54px;
+  padding-block: 12px;
+}
+.polish-guard-name::-webkit-details-marker {
+  display: none;
 }
 .polish-guard-note {
   color: var(--eg-body);
@@ -303,9 +301,6 @@
   line-height: 1.5;
   margin: 12px 0 0;
   text-wrap: pretty;
-}
-.polish-guards[data-open='false'] .polish-guard-note {
-  display: none;
 }
 .polish-guard-mark {
   border: 1px solid var(--eg-line);
@@ -337,11 +332,11 @@
   transform: translate(-50%, -50%);
   width: 1.5px;
 }
-.polish-guards[data-open='true'] .polish-guard-mark {
+.polish-guard[open] .polish-guard-mark {
   border-color: var(--eg-accent);
   transform: rotate(45deg);
 }
-.polish-guards-toggle:hover .polish-guard-mark {
+.polish-guard-name:hover .polish-guard-mark {
   border-color: var(--eg-accent);
 }
 @media (max-width: 1320px) {
@@ -818,7 +813,16 @@ html[data-theme='dark'] #polish .polish-raw.is-live .is-cut {
   }
   #polish .polish-explorer {
     border-radius: 18px;
+    overflow: hidden;
     padding: 10px;
+  }
+  #polish .polish-nav {
+    flex-wrap: wrap;
+  }
+  #polish[data-enhancement='ready'] .polish-hint {
+    display: flex;
+    flex-basis: 100%;
+    justify-content: center;
   }
   #polish .polish-dots {
     display: grid;
@@ -861,7 +865,8 @@ main
     #story,
     #download
   )
-  .eyebrow {
+  .eyebrow,
+#apps .eyebrow {
   align-items: center;
   color: var(--body);
   display: flex;
@@ -886,7 +891,8 @@ main
     #story,
     #download
   )
-  .eyebrow:after {
+  .eyebrow:after,
+#apps .eyebrow:after {
   background: var(--line);
   content: '';
   display: block;

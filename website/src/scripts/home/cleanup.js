@@ -1,6 +1,7 @@
 import polish from '../../data/home/polish.json';
 import paths from '../../data/home/icons.json';
 import { renderTokens } from '../../utils/home/text.js';
+import { bindSwipe } from './swipe.js';
 const icons = [
   'person',
   'wave',
@@ -100,27 +101,6 @@ export function init(root, motion, scope) {
     },
     { signal: scope.signal },
   );
-  let touch;
-  card.addEventListener(
-    'touchstart',
-    (event) => {
-      const p = event.changedTouches[0];
-      touch = { x: p.clientX, y: p.clientY };
-    },
-    { signal: scope.signal, passive: true },
-  );
-  card.addEventListener(
-    'touchend',
-    (event) => {
-      if (!touch) return;
-      const p = event.changedTouches[0],
-        dx = p.clientX - touch.x,
-        dy = p.clientY - touch.y;
-      touch = null;
-      if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) choose(index + (dx < 0 ? 1 : -1));
-    },
-    { signal: scope.signal, passive: true },
-  );
   clock = scope.timeline(
     root,
     (delta) => {
@@ -143,18 +123,15 @@ export function init(root, motion, scope) {
       }
     },
   );
-  const guards = root.querySelector('#polish-guards'),
-    toggle = guards.querySelector('button');
-  function setGuards(open) {
-    guards.dataset.open = String(open);
-    toggle.setAttribute('aria-expanded', String(open));
-  }
-  toggle.addEventListener(
-    'click',
-    () => setGuards(toggle.getAttribute('aria-expanded') !== 'true'),
-    { signal: scope.signal },
+  bindSwipe(
+    card,
+    scope,
+    (direction) => choose(index + direction),
+    () => {
+      pinned = true;
+      reveal = 0;
+      raw.classList.add('is-live');
+    },
   );
-  toggle.hidden = false;
-  setGuards(false);
   show(0);
 }

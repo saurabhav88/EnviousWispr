@@ -321,40 +321,15 @@ main > #hood h2 {
     grid-template-columns: 1fr;
   }
   #hood .hood-steps {
-    gap: 22px;
-    grid-template-columns: repeat(5, minmax(180px, 1fr));
-    overflow-x: auto;
-    padding-bottom: 12px;
-    scroll-snap-type: x mandatory;
-  }
-  #hood .hood-step {
-    scroll-snap-align: start;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
   }
   #hood .hood-privacy {
     padding: 18px;
   }
   #hood .workflow-promise {
     display: none;
-  }
-}
-@media (max-width: 600px) {
-  #hood {
-    padding-block: 34px;
-  }
-  main > #hood h2 {
-    font-size: 36px;
-  }
-  #hood .section-heading {
-    margin-bottom: 22px;
-  }
-  #hood .section-heading > p {
-    font-size: 17px;
-  }
-  #hood .hood-steps {
-    gap: 14px;
-    grid-template-columns: 1fr;
-    overflow: visible;
-    padding: 0;
   }
   #hood .hood-step {
     align-items: center;
@@ -400,6 +375,20 @@ main > #hood h2 {
     top: auto;
     z-index: 1;
   }
+}
+@media (max-width: 600px) {
+  #hood {
+    padding-block: 34px;
+  }
+  main > #hood h2 {
+    font-size: 36px;
+  }
+  #hood .section-heading {
+    margin-bottom: 22px;
+  }
+  #hood .section-heading > p {
+    font-size: 17px;
+  }
   #hood .hood-privacy {
     align-items: flex-start;
     gap: 12px;
@@ -442,30 +431,6 @@ main > #hood h2 {
     padding: 16px 20px;
   }
 }
-@media (max-width: 600px) {
-  #hood .hood-steps {
-    display: grid;
-    gap: 14px;
-    grid-auto-columns: 90%;
-    grid-auto-flow: column;
-    grid-template-columns: none;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding: 0 0 12px;
-    scroll-snap-type: x mandatory;
-    scrollbar-color: var(--line) transparent;
-    scrollbar-width: thin;
-  }
-  #hood .hood-step {
-    align-content: start;
-    min-height: 200px;
-    min-width: 0;
-    scroll-snap-align: start;
-  }
-  #hood .hood-step:not(:last-child):after {
-    display: none;
-  }
-}
 main > section#hood .section-heading {
   gap: 14px;
   grid-template-columns: 1fr;
@@ -491,12 +456,11 @@ main > section#hood .section-heading > p {
   #hood h2 br {
     display: none;
   }
+}
+@media (max-width: 999px) {
   #hood .hood-step-name {
     font-size: 18px;
     justify-content: flex-start;
     min-height: 0;
-  }
-  #hood .hood-step {
-    min-height: 220px;
   }
 }

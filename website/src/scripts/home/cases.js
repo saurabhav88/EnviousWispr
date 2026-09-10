@@ -1,5 +1,6 @@
 import cases from '../../data/home/cases.json';
 import { mountDemo } from './demo.js';
+import { bindSwipe } from './swipe.js';
 const apps = ['vscode', 'clinical', 'keep', 'gmail', 'docs', 'slack', 'discord', 'notes', 'teams'];
 export function init(root, motion, scope) {
   const stage = root.querySelector('.case-stage'),
@@ -151,15 +152,16 @@ export function init(root, motion, scope) {
     { signal: scope.signal },
   );
   stage.addEventListener(
-    'mouseenter',
-    () => {
-      hovered = true;
+    'pointerenter',
+    (event) => {
+      if (event.pointerType === 'mouse') hovered = true;
     },
     { signal: scope.signal },
   );
   stage.addEventListener(
-    'mouseleave',
-    () => {
+    'pointerleave',
+    (event) => {
+      if (event.pointerType !== 'mouse') return;
       hovered = false;
       clock.wake();
     },
@@ -178,5 +180,19 @@ export function init(root, motion, scope) {
       return (auto && !hovered) || elapsed < (index === 1 ? 5300 : 2700);
     },
     render,
+  );
+  bindSwipe(
+    stage,
+    scope,
+    (direction) => {
+      choose(Math.max(0, Math.min(cases.length - 1, index + direction)), true);
+    },
+    (event) => {
+      auto = false;
+      if (event.pointerType !== 'mouse') hovered = false;
+      elapsed = Math.max(elapsed, 5400);
+      tour.textContent = 'Play tour';
+      render();
+    },
   );
 }
