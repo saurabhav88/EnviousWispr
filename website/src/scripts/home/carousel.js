@@ -57,10 +57,8 @@ export function createCarousel(viewport, scope, motion, { onManual, onSettle }) 
   }
   function takeControl() {
     pending = undefined;
-    if (!manual) {
-      manual = true;
-      onManual();
-    }
+    manual = true;
+    onManual();
   }
   function goTo(next, { user = false, instant = false } = {}) {
     const target = Math.max(0, Math.min(slides.length - 1, next));

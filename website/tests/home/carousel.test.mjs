@@ -120,3 +120,13 @@ test('quiet fallback does not settle during held touch and completes after relea
   assert.equal(f.carousel.index, 1);
   assert.equal(f.settled.length, 1);
 });
+
+
+test('a new explicit selection notifies the tour owner even after stationary focus', (t) => {
+  const f = fixture(t);
+  f.emit(f.rail, 'focusin');
+  assert.equal(f.manual, 1);
+  // The section may restart its tour between these two independent actions.
+  f.carousel.goTo(1, { user: true });
+  assert.equal(f.manual, 2);
+});

@@ -59,6 +59,7 @@ export function init(root, motion, scope) {
   }
   const carousel = createCarousel(viewport, scope, motion, {
     onManual() {
+      if (!auto) return;
       auto = false;
       elapsed = 5400;
       finishExamples();

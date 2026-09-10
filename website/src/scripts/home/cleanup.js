@@ -24,6 +24,7 @@ export function init(root, motion, scope) {
   }
   const carousel = createCarousel(root.querySelector('.polish-carousel'), scope, motion, {
     onManual() {
+      if (pinned) return;
       pinned = true;
       elapsed = 0;
       finishExamples();
