@@ -52,6 +52,42 @@ struct TranscriptCoordinatorTests {
     }
   }
 
+  // MARK: - updateExistingRow(_:) contract (#2772)
+
+  /// The write a file import's cleanup makes, minutes after its first one.
+  ///
+  /// History is reachable throughout a cleanup, so the user can delete the row in between.
+  /// `saveAndShow` inserts an id it does not find, which put the deleted row back and
+  /// rewrote its file. Found by the cloud review of PR #2786.
+  ///
+  /// Driven through the real store on a temp directory, so the DISK is asserted as well as
+  /// the list: a version that only skipped the in-memory insert would still leave the file.
+  @Test("updateExistingRow updates a row that is there, and cannot recreate a deleted one")
+  func updateExistingRowCannotInsert() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let store = TranscriptStore(directory: dir)
+    let coordinator = TranscriptCoordinator(store: store)
+    let row = Self.makeTranscript(text: "um one two three")
+    let onDisk = dir.appendingPathComponent("\(row.id.uuidString).json").path
+    let cleaned = row.withImportResult(
+      "One two three.", wasPolished: true, llmProvider: "egOne", llmModel: "eg-1")
+
+    try coordinator.saveAndShow(row)
+    #expect(try coordinator.updateExistingRow(cleaned) == true)
+    #expect(coordinator.visibleTranscripts.count == 1)
+    #expect(coordinator.visibleTranscripts.first?.displayText == "One two three.")
+    #expect(FileManager.default.fileExists(atPath: onDisk))
+
+    coordinator.delete(row)
+    #expect(coordinator.visibleTranscripts.isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: onDisk))
+
+    #expect(try coordinator.updateExistingRow(cleaned) == false)
+    #expect(coordinator.visibleTranscripts.isEmpty, "the deleted row came back on screen")
+    #expect(!FileManager.default.fileExists(atPath: onDisk), "the deleted file was rewritten")
+  }
+
   // MARK: - append(_:) contract
 
   @Test("append inserts at index 0")

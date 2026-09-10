@@ -561,6 +561,32 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
+  /// Save a row that must ALREADY be in History, reporting whether it was.
+  ///
+  /// #2772: an import's two writes are minutes apart, and History is reachable the whole
+  /// time. Between them the user can delete the raw row. `saveAndShow` INSERTS an id it does
+  /// not find, so the second write put the row back and rewrote its file, undoing an
+  /// explicit deletion with nothing on screen to say so. Found by the cloud review of
+  /// PR #2786.
+  ///
+  /// Update-only by CONSTRUCTION rather than by a tombstone the caller has to remember to
+  /// check: this method has no insert branch, so no future caller can reach one.
+  ///
+  /// The in-memory list is the oracle, not the disk. `delete` and `deleteAll` empty both on
+  /// this actor, and the list is what the user is looking at.
+  @discardableResult
+  func updateExistingRow(_ transcript: Transcript) throws -> Bool {
+    guard let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) else {
+      return false
+    }
+    try store.save(transcript)
+    historyWriteRevision += 1
+    writtenAtRevision[transcript.id] = historyWriteRevision
+    transcripts[existing] = transcript
+    startPulseIfNeeded()
+    return true
+  }
+
   /// Counts writes, so a disk read that began earlier can be told it is stale.
   ///
   /// `load()` prefers the DISK row whenever an id already exists, which is right for a

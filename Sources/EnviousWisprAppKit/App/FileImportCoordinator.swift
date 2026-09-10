@@ -471,6 +471,13 @@ final class FileImportCoordinator {
   /// on demand.
   private let saveToHistory: @MainActor (Transcript) throws -> Void
 
+  /// The SECOND write, which may only ever update. Returns false when the row is no longer
+  /// in History, which means the user deleted it while the cleanup ran.
+  ///
+  /// Separate from `saveToHistory` because they are different operations, not one operation
+  /// with a flag: the first CREATES and must be allowed to, the second may not.
+  private let updateHistoryRow: @MainActor (Transcript) throws -> Bool
+
   /// The row this import first wrote, kept whole rather than as an id.
   ///
   /// **Rebuilding it per write was wrong in three ways at once**, all found by Codex: a
@@ -498,6 +505,14 @@ final class FileImportCoordinator {
   /// silently is worse than not cleaning them.
   private(set) var historySaveFailure: String?
 
+  /// Set when the cleaned write found no row to update, because the user deleted this
+  /// import from History while the cleanup ran.
+  ///
+  /// Not a failure: nothing went wrong and there is nothing to retry. It is a separate fact
+  /// because the notice that fits it is different, and because reusing the failure field
+  /// would put a retry offer under a deletion the user meant.
+  private(set) var historyRowWasDeleted = false
+
   /// **Generation protects STATE. Terminal completion protects the RESOURCE.**
   /// Neither substitutes for the other, and this coordinator needs both: Stop
   /// changes what the user sees at once and bumps this, so a late part cannot
@@ -522,6 +537,9 @@ final class FileImportCoordinator {
     beginRun: @escaping @MainActor () -> RunConfiguration,
     prepareLocalPolish: @escaping @MainActor (RunConfiguration) async -> Void = { _ in },
     saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
+    // Reports success, exactly as the no-op save above does, so a coordinator built with
+    // neither closure has one consistent story about History rather than two.
+    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
     processPart:
       @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
   ) {
@@ -538,6 +556,7 @@ final class FileImportCoordinator {
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
     self.saveToHistory = saveToHistory
+    self.updateHistoryRow = updateHistoryRow
     self.processPart = processPart
   }
 
@@ -565,6 +584,7 @@ final class FileImportCoordinator {
     savedHistoryRow = nil
     rawIsSavedToHistory = false
     historySaveFailure = nil
+    historyRowWasDeleted = false
     pendingPieces = []
     state = .reading(fileName: name)
     // **Cancelled, not merely ignored.** The generation check discards a stale
@@ -813,6 +833,7 @@ final class FileImportCoordinator {
     savedHistoryRow = nil
     rawIsSavedToHistory = false
     historySaveFailure = nil
+    historyRowWasDeleted = false
     pendingPieces = []
     state = .idle
     step = .upload
@@ -1077,6 +1098,10 @@ final class FileImportCoordinator {
     // through. Guarding inside `run` covered only the first transcription; a re-polish
     // reaches the cleanup directly, so a document whose original write was refused could
     // lose everything to a second interrupted cleanup. Found by Codex.
+    // A re-polish after the user DELETED the row writes it again under the same id, which is
+    // deliberate and not the case the update-only rule exists for. Pressing Clean it again is
+    // asking for the work on this document; the rule protects a deletion made while work was
+    // already running, where the user is not looking at the page and gets no say.
     guard rawIsSavedToHistory || saveRawToHistory() else {
       finishRun(savingDocument: false)
       return
@@ -1186,9 +1211,18 @@ final class FileImportCoordinator {
       llmProvider: runConfiguration?.polishProvider.rawValue,
       llmModel: runConfiguration?.polishModel)
     do {
-      try saveToHistory(polished)
+      guard try updateHistoryRow(polished) else {
+        // The user deleted this import from History while it was being cleaned. Their
+        // deletion stands; the words are still on screen, and Copy and Save still work.
+        historyRowWasDeleted = true
+        savedHistoryRow = nil
+        rawIsSavedToHistory = false
+        historySaveFailure = nil
+        return
+      }
       savedHistoryRow = polished
       historySaveFailure = nil
+      historyRowWasDeleted = false
     } catch {
       historySaveFailure = String(describing: error)
     }
@@ -1226,6 +1260,15 @@ final class FileImportCoordinator {
   /// would alarm the first user and under-warn the second.
   var historySaveNotice: String? {
     guard hasDocument, !isSavedToHistory else { return nil }
+    // First, because the two below both tell the user to put something in History and this
+    // user just took it out. Repeating "your original words are saved" over a row they
+    // deleted would be the page describing what was CONFIGURED rather than what happened.
+    if historyRowWasDeleted {
+      return """
+        You deleted this from History while it was being cleaned, so the cleaned version was \
+        not saved there. Copy or save it before you leave.
+        """
+    }
     if rawIsSavedToHistory {
       return """
         Your original words are saved to History. This cleaned version is not. Copy or save \

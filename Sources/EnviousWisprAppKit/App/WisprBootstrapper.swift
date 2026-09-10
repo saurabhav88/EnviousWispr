@@ -1525,6 +1525,11 @@ package final class WisprBootstrapper {
       saveToHistory: { [transcriptCoordinator] transcript in
         try transcriptCoordinator.saveAndShow(transcript)
       },
+      // The cleaned write, which may only update a row that is still there. History is
+      // reachable throughout a cleanup, so a deletion between the two writes has to stand.
+      updateHistoryRow: { [transcriptCoordinator] transcript in
+        try transcriptCoordinator.updateExistingRow(transcript)
+      },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })

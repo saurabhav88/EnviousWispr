@@ -37,6 +37,22 @@ struct FileImportHistoryTests {
       }
       writes.append(transcript)
     }
+
+    /// Whether the user removed this import from History while the cleanup ran. The real
+    /// coordinator answers by looking for the row and finding nothing.
+    var rowWasDeleted = false
+
+    /// The cleaned write, which may only ever update. Returning false is a deletion, not a
+    /// failure, so it records neither a write nor a refusal.
+    func update(_ transcript: Transcript) throws -> Bool {
+      if refuse {
+        refusals += 1
+        throw Refused()
+      }
+      guard !rowWasDeleted else { return false }
+      writes.append(transcript)
+      return true
+    }
   }
 
   private static let anyURL = URL(fileURLWithPath: "/tmp/marketing-sync.m4a")
@@ -61,6 +77,7 @@ struct FileImportHistoryTests {
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       saveToHistory: { try spy.save($0) },
+      updateHistoryRow: { try spy.update($0) },
       processPart: { _, _ in
         onPart?()
         return FileImportRunner.PartOutcome(
@@ -98,6 +115,39 @@ struct FileImportHistoryTests {
     #expect(spy.writes.last?.importedFileName == "marketing-sync.m4a")
     #expect(spy.writes.last?.isImported == true)
     #expect(c.isSavedToHistory)
+  }
+
+  /// A deletion the user made while the cleanup ran must stand.
+  ///
+  /// The two writes are minutes apart and History is reachable the whole time, so this is an
+  /// ordinary thing to do: start a long import, go and tidy History, remove the row. The
+  /// cleaned write then found no row, PUT ONE BACK, and rewrote its file. Found by the cloud
+  /// review of PR #2786.
+  ///
+  /// The control is in the same test, because a rule that simply stopped writing would pass
+  /// the first half and fail the second.
+  @Test("an import deleted from History while it was cleaning does not come back")
+  func adeletedImportStaysDeleted() async {
+    let spy = HistorySpy()
+    let c = Self.coordinator(spy: spy, onPart: { spy.rowWasDeleted = true })
+    await run(c)
+
+    #expect(spy.writes.count == 1, "the cleaned write recreated a row the user deleted")
+    #expect(spy.writes.last?.polishedText == nil, "the row put back carries the cleaned text")
+    #expect(c.historyRowWasDeleted)
+    #expect(!c.isSavedToHistory)
+    #expect(c.historySaveFailure == nil, "a deletion is not a failure and offers no retry")
+    // The words are still on screen, which is what makes the deletion safe to respect.
+    #expect(!c.documentText.isEmpty)
+    #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
+
+    // The control: the same run with nothing deleted writes twice and says it saved.
+    let kept = HistorySpy()
+    let keptRun = Self.coordinator(spy: kept)
+    await run(keptRun)
+    #expect(kept.writes.count == 2)
+    #expect(!keptRun.historyRowWasDeleted)
+    #expect(keptRun.isSavedToHistory)
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half
@@ -288,6 +338,7 @@ struct FileImportHistoryTests {
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       saveToHistory: { try spy.save($0) },
+      updateHistoryRow: { try spy.update($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.
       processPart: { part, _ in
