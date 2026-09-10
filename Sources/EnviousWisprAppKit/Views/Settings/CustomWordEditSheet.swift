@@ -206,12 +206,18 @@ struct CustomWordEditSheet: View {
     }
   }
 
+  /// Focus is claimed FIRST, before the empty/duplicate guard, because Add is
+  /// always enabled: an empty field is the case where clicking Add has nothing
+  /// to append and putting the cursor in the field is the whole response. Set
+  /// after the guard, that click would do nothing at all — which is the "this
+  /// is broken" reading the always-enabled button exists to remove
+  /// (Codex review, 2026-09-10).
   private func addAlias() {
+    aliasFieldFocused = true
     let trimmed = newAlias.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty, !word.aliases.contains(trimmed) else { return }
     word.aliases.append(trimmed)
     newAlias = ""
-    aliasFieldFocused = true
   }
 
   // MARK: - Group label
