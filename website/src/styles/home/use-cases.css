@@ -1,7 +1,7 @@
 /* Each example owns its illustration and app; leave room for the desktop fade. */
 .case-carousel {
-  margin: -24px;
-  padding: 24px;
+  margin: -16px;
+  padding: 16px;
 }
 .case-frame {
   padding: 0;

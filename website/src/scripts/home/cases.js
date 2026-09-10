@@ -64,7 +64,11 @@ export function init(root, motion, scope) {
       finishExamples();
       tour.textContent = 'Play tour';
     },
-    onSettle(index, { manual }) {
+    onSettle(index, { manual, changed }) {
+      if (!changed && !manual && prepared === undefined) {
+        sync(index);
+        return;
+      }
       const play = auto && prepared === index && !motion.paused && !motion.reduced.matches;
       finishExamples();
       elapsed = play ? 0 : 5400;
