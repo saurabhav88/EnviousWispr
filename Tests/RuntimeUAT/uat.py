@@ -263,10 +263,22 @@ def cmd_preflight(args):
                                  "relaunch. Relaunch via /wispr-rebuild-debug before UAT")
             except OSError:
                 bin_mtime = None
-            import wispr_eyes as w  # heavy; only once an instance is established
+            try:
+                import wispr_eyes as w  # heavy; only once an instance is established
+            except ImportError as e:
+                # Preflight EXISTS to diagnose readiness, so a missing PyObjC must be
+                # a reported NOT-READY item, never a crash before the report prints
+                # (local Codex review, PR #2780). Skip the banner check (it needs the
+                # driver); the machine probes below still run.
+                w = None
+                fails.append(f"harness: cannot import the driver in this Python ({e}); PyObjC is missing. "
+                             "Run uat.py with the dev Python that has pyobjc (or `pip install pyobjc`). "
+                             "Skipping the Debug-mode banner check")
             since = dt.datetime.fromtimestamp(app_start).astimezone()
-            banners = w.launch_banners_since(since)
-            if banners == 0:
+            banners = w.launch_banners_since(since) if w is not None else None
+            if banners is None:
+                pass  # harness import failed above; the fail item is already recorded
+            elif banners == 0:
                 fails.append("log: no `[AppLogger] Debug mode enabled` banner since the app started. Either this "
                              "is not a debug build (use /wispr-rebuild-debug) or Debug Mode is off "
                              "(Settings > Diagnostics > Enable debug mode). Without it, app.log carries no verdicts")
