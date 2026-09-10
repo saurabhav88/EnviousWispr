@@ -28,6 +28,12 @@ struct OverlayCapsuleBackground: View {
   var animatesGlow: Bool = true
   @State private var glowOpacity: Double = 0.3
 
+  /// Outcome observer for the hairline's target opacity, called every time the loop is armed or
+  /// parked. Production uses the no-op default; tests use it because an off-screen
+  /// `NSHostingView` does not advance a `repeatForever`, so a re-arm cannot be seen in pixels.
+  /// Same shape and same reason as `RainbowLevelMeter.onHistoryChange`.
+  var onGlowTarget: (Double) -> Void = { _ in }
+
   /// #2303: the person's own answer, alongside #2201's and #2435's.
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
@@ -38,6 +44,30 @@ struct OverlayCapsuleBackground: View {
   private var breathes: Bool {
     animatesGlow && cornerStyle == .capsule
       && OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion)
+  }
+
+  /// The loop's own two endpoints, named so the stop branch parks on the value the loop starts
+  /// from rather than on a second opinion about what "dim" means.
+  private static let dimGlowOpacity: Double = 0.3
+  private static let brightGlowOpacity: Double = 0.65
+
+  /// Bring the loop into line with `breathes`, in BOTH directions.
+  ///
+  /// The stop branch is not decoration. Nothing reads `glowOpacity` once `breathes` is false,
+  /// so a loop left running would be invisible and would still re-render forever, which is the
+  /// cost #2201 exists to avoid. Parking it also leaves a known value for the next arm.
+  private func syncGlow() {
+    guard breathes else {
+      var stop = Transaction()
+      stop.animation = nil
+      withTransaction(stop) { glowOpacity = Self.dimGlowOpacity }
+      onGlowTarget(Self.dimGlowOpacity)
+      return
+    }
+    withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+      glowOpacity = Self.brightGlowOpacity
+    }
+    onGlowTarget(Self.brightGlowOpacity)
   }
 
   /// #2201: the preview pill's rainbow hairline holds still instead of breathing
@@ -126,16 +156,17 @@ struct OverlayCapsuleBackground: View {
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
-      .onAppear {
-        // #2201: only the capsule breathes. Arming a `repeatForever` for the
-        // preview would keep it re-rendering whether or not anything read
-        // `glowOpacity`, and the point of this chunk is that the preview pill
-        // stops moving on its own.
-        guard breathes else { return }
-        withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-          glowOpacity = 0.65
-        }
-      }
+      // #2201: only the capsule breathes. Arming a `repeatForever` for the
+      // preview would keep it re-rendering whether or not anything read
+      // `glowOpacity`, and the point of this chunk is that the preview pill
+      // stops moving on its own.
+      //
+      // **Keyed to `breathes` rather than to `onAppear` (#2303, cloud review r1).** Reduce
+      // Motion can be switched off while this pill is still mounted, and an `onAppear` guard
+      // runs once: the loop would never arm, `glowOpacity` would sit at its dim starting
+      // value, and the hairline would be DIMMER than in either state it is meant to have.
+      // `initial: true` keeps the appear case, so this stays one mechanism rather than two.
+      .onChange(of: breathes, initial: true) { _, _ in syncGlow() }
       .accessibilityHidden(true)
   }
 }
@@ -145,6 +176,10 @@ struct OverlayCapsuleBackground: View {
 /// Capsule background for interruption warnings: red glow instead of rainbow.
 struct DistressCapsuleBackground: View {
   @State private var glowOpacity: Double = 0.3
+
+  /// Outcome observer for the target opacity, armed or parked. Production uses the no-op
+  /// default; the reason it exists is recorded on `OverlayCapsuleBackground.onGlowTarget`.
+  var onGlowTarget: (Double) -> Void = { _ in }
 
   /// #2303. The red hairline pulses to draw the eye; the RED is what says something is wrong,
   /// and it survives holding still.
@@ -159,6 +194,25 @@ struct DistressCapsuleBackground: View {
 
   /// Whether the red hairline pulses at all.
   private var pulses: Bool { OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) }
+
+  /// The pulse's own two endpoints. Same reason as the rainbow hairline's pair above.
+  private static let dimGlowOpacity: Double = 0.3
+  private static let brightGlowOpacity: Double = 0.6
+
+  /// Bring the pulse into line with `pulses`, in BOTH directions (#2303, cloud review r1).
+  private func syncGlow() {
+    guard pulses else {
+      var stop = Transaction()
+      stop.animation = nil
+      withTransaction(stop) { glowOpacity = Self.dimGlowOpacity }
+      onGlowTarget(Self.dimGlowOpacity)
+      return
+    }
+    withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
+      glowOpacity = Self.brightGlowOpacity
+    }
+    onGlowTarget(Self.brightGlowOpacity)
+  }
 
   var body: some View {
     Capsule()
@@ -180,19 +234,14 @@ struct DistressCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        // The still value is chosen HERE rather than assigned in `onAppear`, so a person with
+        // The still value is chosen HERE rather than in the arming closure, so a person with
         // Reduce Motion on gets it on the FIRST frame — the same shape the rainbow hairline
         // above already uses.
         .opacity(pulses ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
-      .onAppear {
-        guard pulses else { return }
-        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-          glowOpacity = 0.6
-        }
-      }
+      .onChange(of: pulses, initial: true) { _, _ in syncGlow() }
       .accessibilityHidden(true)
   }
 }

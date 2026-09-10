@@ -130,6 +130,133 @@ struct OverlayReduceMotionTests {
       "the lips changed across time with Reduce Motion on, so the pulse is still running")
   }
 
+  // MARK: - Turning the setting OFF while the pill is on screen
+
+  /// **Measured 2026-09-09: an off-screen `NSHostingView` does NOT advance a `repeatForever`.**
+  /// Three renders 0.4 s apart of a capsule that has been breathing since it mounted are
+  /// byte-identical, so "did the hairline start moving again" has no pixel answer in this
+  /// process. That is why the rows below read the target opacity the view reports at the moment
+  /// it arms or parks the loop, rather than reading paint like every other row in this suite.
+  /// Whether the hairline visibly breathes is a Live UAT row and is claimed nowhere here.
+
+  /// Holds the setting so a mounted pill can watch it change, the way the real environment does.
+  @Observable final class MotionBox {
+    var reduceMotion: Bool
+    init(reduceMotion: Bool) { self.reduceMotion = reduceMotion }
+  }
+
+  final class TargetLog: @unchecked Sendable {
+    private(set) var targets: [Double] = []
+    func record(_ value: Double) { targets.append(value) }
+  }
+
+  /// A CONCRETE wrapper, never `AnyView`. `AnyView` can break SwiftUI's view identity, which
+  /// would remount the capsule on the toggle and re-arm it for free — the exact defect this
+  /// exists to catch would then pass.
+  private struct ToggleHarness: View {
+    let box: MotionBox
+    let log: TargetLog
+    var body: some View {
+      OverlayCapsuleBackground(onGlowTarget: { log.record($0) })
+        .environment(\.overlayReduceMotionOverride, box.reduceMotion)
+        .frame(width: 200, height: 44)
+    }
+  }
+
+  /// The interruption pill carries the identical mechanism, so it carries identical rows. One
+  /// pill passing says nothing about the other: they are two `onChange` wirings, not one.
+  private struct DistressToggleHarness: View {
+    let box: MotionBox
+    let log: TargetLog
+    var body: some View {
+      DistressCapsuleBackground(onGlowTarget: { log.record($0) })
+        .environment(\.overlayReduceMotionOverride, box.reduceMotion)
+        .frame(width: 200, height: 44)
+    }
+  }
+
+  private static func distressTargetsAcrossToggle(
+    startingReduced: Bool, thenReduced: Bool
+  ) -> [Double] {
+    let box = MotionBox(reduceMotion: startingReduced)
+    let log = TargetLog()
+    let host = NSHostingView(rootView: DistressToggleHarness(box: box, log: log))
+    let size = CGSize(width: 200, height: 44)
+    host.frame = NSRect(origin: .zero, size: size)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+
+    box.reduceMotion = thenReduced
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return log.targets
+  }
+
+  private static func targetsAcrossToggle(startingReduced: Bool, thenReduced: Bool) -> [Double] {
+    let box = MotionBox(reduceMotion: startingReduced)
+    let log = TargetLog()
+    let host = NSHostingView(rootView: ToggleHarness(box: box, log: log))
+    let size = CGSize(width: 200, height: 44)
+    host.frame = NSRect(origin: .zero, size: size)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+
+    box.reduceMotion = thenReduced
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return log.targets
+  }
+
+  /// #2767 cloud review r1. Reduce Motion can be switched OFF while a pill is still mounted.
+  /// Arming from `onAppear` runs once, so the hairline would sit at its dim starting value
+  /// forever — dimmer than either state it is meant to have.
+  @Test("turning Reduce Motion off re-arms the hairline without remounting the pill")
+  func theGlowReArmsWhenTheSettingGoesOff() {
+    let targets = Self.targetsAcrossToggle(startingReduced: true, thenReduced: false)
+    #expect(
+      targets.count == 2,
+      "\(targets.count) glow decisions across the toggle, not two: it never saw the change")
+    #expect(
+      targets.last == 0.65,
+      "last glow decision \(String(describing: targets.last)), not the bright endpoint: no re-arm")
+  }
+
+  /// The opposite direction, so a view that simply always arms cannot pass the row above.
+  @Test("turning Reduce Motion on parks the hairline without remounting the pill")
+  func theGlowParksWhenTheSettingGoesOn() {
+    let targets = Self.targetsAcrossToggle(startingReduced: false, thenReduced: true)
+    #expect(
+      targets.count == 2,
+      "the capsule reported \(targets.count) glow decisions across the toggle, not two")
+    #expect(
+      targets.last == 0.3,
+      "last glow decision \(String(describing: targets.last)), not the dim endpoint: still looping")
+  }
+
+  @Test("turning Reduce Motion off re-arms the interruption pill without remounting it")
+  func theDistressGlowReArmsWhenTheSettingGoesOff() {
+    let targets = Self.distressTargetsAcrossToggle(startingReduced: true, thenReduced: false)
+    #expect(targets.count == 2, "\(targets.count) glow decisions across the toggle, not two")
+    #expect(
+      targets.last == 0.6,
+      "last glow decision \(String(describing: targets.last)), not the bright endpoint: no re-arm")
+  }
+
+  @Test("turning Reduce Motion on parks the interruption pill without remounting it")
+  func theDistressGlowParksWhenTheSettingGoesOn() {
+    let targets = Self.distressTargetsAcrossToggle(startingReduced: false, thenReduced: true)
+    #expect(targets.count == 2, "\(targets.count) glow decisions across the toggle, not two")
+    #expect(
+      targets.last == 0.3,
+      "last glow decision \(String(describing: targets.last)), not the dim endpoint: still looping")
+  }
+
   // MARK: - The policy, and the seam that lets these rows exist
 
   @Test("an ambient loop runs only while Reduce Motion is off")
