@@ -40,26 +40,30 @@ const first = cases[0];
         ))
       }
     </div>
-    <div class="case-stage" data-case="0" data-case-assets={JSON.stringify(assets)}>
-      <div class="case-copy">
-        <h3>{first.title}</h3><p>{first.note}</p><span class="case-status"
-          >{first.sampleLabel || ''}</span
-        >
-      </div><figure class="case-person">
-        <img
-          class="case-scene"
-          src={assets[0].src}
-          srcset={assets[0].srcset}
-          sizes="(max-width:600px) 100vw, 50vw"
-          width={assets[0].width}
-          height={assets[0].height}
-          loading="lazy"
-          decoding="async"
-          alt="Illustrated developer speaking toward a computer"
-        />
-      </figure><div class="case-screen" data-phase="finished">
-        <AppDemo app="vscode" text={first.final} />
+    <div class="case-frame">
+      <div class="case-stage" data-case="0" data-case-assets={JSON.stringify(assets)}>
+        <div class="case-copy">
+          <h3>{first.title}</h3><p>{first.note}</p><span class="case-status"
+            >{first.sampleLabel || ''}</span
+          >
+        </div><figure class="case-person">
+          <img
+            class="case-scene"
+            src={assets[0].src}
+            srcset={assets[0].srcset}
+            sizes="(max-width:600px) 100vw, 50vw"
+            width={assets[0].width}
+            height={assets[0].height}
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+            alt="Illustrated developer speaking toward a computer"
+          />
+        </figure><div class="case-screen" data-phase="finished">
+          <AppDemo app="vscode" text={first.final} />
+        </div>
       </div>
+      <p class="case-swipe-hint" aria-hidden="true">Swipe to explore more ways to use it ↔</p>
     </div>
     <div class="case-controls">
       <div>

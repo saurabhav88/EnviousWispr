@@ -30,6 +30,9 @@ html[data-theme='dark'] .audience-choices button[aria-pressed='true'] {
   min-height: 410px;
   position: relative;
 }
+.case-swipe-hint {
+  display: none;
+}
 .case-copy {
   padding: 20px 12px 20px 0;
   position: relative;
@@ -609,23 +612,31 @@ main > #people .section-heading {
   #people .section-heading h2 {
     font-size: 37px;
   }
+  .case-frame {
+    background: var(--eg-card);
+    border: 1px solid var(--eg-line);
+    border-radius: 22px;
+    overflow: hidden;
+  }
   .case-stage {
     display: flex;
     flex-direction: column;
     gap: 0;
+    padding: 16px;
   }
   .case-copy {
-    margin-bottom: 18px;
+    margin-bottom: 14px;
   }
   .case-copy h3 {
-    font-size: 27px;
+    font-size: 23px;
   }
   .case-copy p {
-    font-size: 16px;
+    font-size: 15px;
+    line-height: 1.55;
   }
   .case-person {
     flex: none;
-    height: 330px;
+    height: 180px;
     margin: 0;
   }
   .case-person .case-scene {
@@ -637,9 +648,17 @@ main > #people .section-heading {
   }
   .case-screen {
     flex: none;
-    height: 450px;
-    margin-top: -5px;
+    height: 400px;
+    margin-top: -18px;
     padding: 8px;
+  }
+  #people[data-enhancement='ready'] .case-swipe-hint {
+    color: var(--eg-body);
+    display: block;
+    font-size: 13px;
+    margin: 0;
+    padding: 0 16px 16px;
+    text-align: center;
   }
   .case-screen .clinical-notes .illustrated-result {
     font-size: 13px;

@@ -105,23 +105,20 @@ const icons = [
             <p class="polish-hint"><span aria-hidden="true">⇄</span>Swipe, or use the arrows</p>
           </div>
         </div>
-      </div><div class="polish-guards" id="polish-guards" data-open="true">
-        <button
-          class="polish-guards-toggle"
-          aria-expanded="true"
-          aria-controls="polish-guard-notes"
-          hidden
-          ><span>What each one means</span><i class="polish-guard-mark" aria-hidden="true"
-          ></i></button
-        ><div class="polish-guard-row" id="polish-guard-notes">
+      </div><div class="polish-guards" id="polish-guards">
+        <p class="polish-guards-heading">What each one means</p>
+        <div class="polish-guard-row" id="polish-guard-notes">
           {
             polish.guards.map((guard) => (
-              <div class="polish-guard">
+              <details class="polish-guard">
                 <>
-                  <p class="polish-guard-name">{guard.name}</p>
+                  <summary class="polish-guard-name">
+                    <span>{guard.name}</span>
+                    <i class="polish-guard-mark" aria-hidden="true" />
+                  </summary>
                   <p class="polish-guard-note">{guard.note}</p>
                 </>
-              </div>
+              </details>
             ))
           }
         </div>
