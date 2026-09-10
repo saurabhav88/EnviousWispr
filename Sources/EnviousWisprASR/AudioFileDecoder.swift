@@ -196,7 +196,13 @@ public enum AudioFileDecoder {
     // 'CMAudioFormatDescription' will always succeed"). The compiler is
     // asserting the cast cannot fail; a defensive `as?` would be dead code the
     // build refuses.
-    let format = tracks.first?.formatDescriptions.first as! CMAudioFormatDescription?
+    // **The track we DECODED, not the first one.** Choosing an enabled track
+    // above and then describing `tracks.first` here left the Upload screen
+    // reporting the codec, sample rate and channel count of the disabled
+    // commentary it had just declined to transcribe. Twenty lines apart, in one
+    // function, and found by cloud review rather than by me — which is the twin
+    // question in its purest form.
+    let format = chosenTrack.first?.formatDescriptions.first as! CMAudioFormatDescription?
     let basic = format.flatMap(CMAudioFormatDescriptionGetStreamBasicDescription)
     let byteCount = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64
     return Decoded(

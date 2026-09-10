@@ -563,6 +563,20 @@ public final class EGOneRuntime: EGOneEndpointProviding {
         self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
+      // **Asked AGAIN, after the request.** The check above is a check-then-act:
+      // a workload can claim the lease while `probeHealth` is suspended, and the
+      // probe then queues behind a passage for seconds and comes back
+      // `probe_slow` or `probe_failed` for a healthy engine. Found by cloud
+      // review.
+      //
+      // The verdict is DISCARDED rather than the slot being reserved,
+      // deliberately. Taking the claim would be the atomic answer to a question
+      // nobody is asking: exclusivity is not wanted here, because a probe
+      // holding it would refuse a user's record press for the length of a health
+      // check. What this exists to prevent is publishing a verdict measured
+      // under contention, and dropping it does exactly that. The next
+      // activation takes a fresh one.
+      guard self.isSharedEngineBusy?() != true else { return }
       if case .ready = self.serverState { self.health = result }
     }
   }

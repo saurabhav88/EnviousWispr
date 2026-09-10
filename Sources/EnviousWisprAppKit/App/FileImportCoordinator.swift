@@ -774,12 +774,21 @@ final class FileImportCoordinator {
       }
       // The timer above could have fired while we were claiming. Cheap to ask,
       // and the alternative is transcribing on an engine that just unloaded.
+      //
+      // **Both awaits are suspension points a Stop can land in**, and this one
+      // was added by the previous fix — for WhisperKit, readiness hops to the
+      // backend actor, so the window is real rather than theoretical. Neither
+      // await throws on cancellation, so without the guard a stopped run carried
+      // on and transcribed. Found by cloud review.
       if await engineIsLoaded() == false {
+        guard generationAtStart == generation else { return }
         guard await ensureEngineReady() == .ready else {
+          guard generationAtStart == generation else { return }
           showRejection(.engineNotReady)
           return
         }
       }
+      guard generationAtStart == generation else { return }
 
       runConfiguration = beginRun()
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
