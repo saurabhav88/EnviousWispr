@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -136,6 +137,26 @@ def classify_silent(recs):
     return ("occupied" if words >= 2 else "quiet"), words
 
 
+def collect_settled(w, mark, grace=3.0):
+    """Collect dictation records after the harness reports completion, waiting
+    briefly for the terminal row to land.
+
+    The harness returns as soon as it sees `Pipeline timing TOTAL`, but the
+    `dictation_terminal` row that ANCHORS a record is written by a separate
+    async task in TelemetryService and lands a beat later (cloud Codex review,
+    PR #2780). Reading immediately can miss it, so a genuinely good take reports
+    as lost evidence (exit 2). Poll until at least one record is present, or the
+    grace elapses. Two takes in the window still resolve to `cannot attribute`
+    (exit 2) upstream, which is the correct safe outcome, so stopping at the
+    first non-empty read hides nothing a later read would have flagged."""
+    deadline = time.time() + grace
+    recs = lv.collect_dictations(w.log_entries_since(mark))
+    while not recs and time.time() < deadline:
+        time.sleep(0.2)  # settle: poll interval; the loop WAITS on the terminal row appearing (recs non-empty), this is only the gap between reads, with `grace` as the deadline fallback
+        recs = lv.collect_dictations(w.log_entries_since(mark))
+    return recs
+
+
 def run_silent_probe(w, seconds=6.0):
     """Record `seconds` of true silence and report what the mic heard.
 
@@ -149,7 +170,7 @@ def run_silent_probe(w, seconds=6.0):
     audio = _silent_wav(seconds)
     mark = dt.datetime.now().astimezone()
     w.test_recording(audio=audio, expect="\x00nomatch")
-    recs = lv.collect_dictations(w.log_entries_since(mark))
+    recs = collect_settled(w, mark)
     state, words = classify_silent(recs)
     rec = recs[0] if len(recs) == 1 else (recs[-1] if recs else None)
     return state, words, rec
@@ -340,6 +361,17 @@ def cmd_run(args):
     if args.audio and not args.expect and args.recipe != "silent-probe":
         raise SystemExit(f"REFUSED: --audio needs --expect (a word the clip actually says); without it the "
                          "check would look for the default sentence the clip never played")
+    # A missing, unreadable or empty --audio file makes `afplay` fail silently
+    # (its stderr is suppressed and its exit is never checked in test_recording /
+    # test_ptt), so the app records SILENCE and the front door would report a
+    # false pass on a clip that never played (cloud Codex review, PR #2780).
+    # Reject it up front rather than at the recipe.
+    if args.audio:
+        if not os.path.isfile(args.audio) or not os.access(args.audio, os.R_OK):
+            raise SystemExit(f"REFUSED: --audio {args.audio!r} is not a readable file; the app would record "
+                             "silence and the verdict would be a false pass")
+        if os.path.getsize(args.audio) == 0:
+            raise SystemExit(f"REFUSED: --audio {args.audio!r} is empty (0 bytes); nothing would play")
 
     sentence = args.sentence
 
@@ -381,7 +413,7 @@ def cmd_run(args):
         else:
             harness_verdict = bool(result)
 
-        recs = lv.collect_dictations(w.log_entries_since(mark))
+        recs = collect_settled(w, mark)
         exit_code, observed, take, note = classify_transcription(recs, expected_token)
         if note:
             print(("INSTRUMENT: " if exit_code == 2 else "") + note)
