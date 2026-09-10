@@ -30,8 +30,22 @@ struct FileImportCoordinatorTests {
   private actor PartGate {
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var enteredCount = 0
+    private var arrivalCount = 0
 
     var entered: Int { enteredCount }
+
+    /// Counts a caller REACHING the gate and returns its 1-based position (#2779).
+    ///
+    /// **Separate from `entered`, and the separation is the bug this fixes.** `entered`
+    /// counts callers that are BLOCKED, and it only moves inside `wait()`. A caller that
+    /// asks `entered >= 1` before anybody has waited always reads 0, skips the wait, and
+    /// leaves the counter at 0 for the next caller — so a gate written that way never
+    /// blocks anything, and the test around it passes or fails purely on scheduling.
+    /// Ask "am I the first to arrive", never "is anyone already blocked".
+    func arrive() -> Int {
+      arrivalCount += 1
+      return arrivalCount
+    }
 
     func wait() async {
       enteredCount += 1
@@ -953,8 +967,10 @@ struct FileImportCoordinatorTests {
       lease: lease,
       // Long enough to split into several parts.
       transcribe: { _ in (0..<900).map { "word\($0)" }.joined(separator: " ") },
+      // Part 1 passes; every part after it BLOCKS until released. #2779: this used to
+      // read `if await gate.entered >= 1`, which never blocked at all — see `arrive()`.
       processPart: { text in
-        if await gate.entered >= 1 { await gate.wait() }
+        if await gate.arrive() > 1 { await gate.wait() }
         return Self.outcome(text)
       })
     coordinator.choose(url: Self.anyURL)
@@ -962,11 +978,19 @@ struct FileImportCoordinatorTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await settleUntil { coordinator.parts.count == 1 }
+    // #2779: wait for the CONDITION the test needs, not for a count that happens to
+    // coincide with it. `parts.count == 1` says part 1 finished and says nothing about
+    // where part 2 is; `entered == 1` says part 2 is provably parked at the gate, so Stop
+    // lands in a window that is CLOSED rather than merely narrow.
+    await settleUntil { await gate.entered == 1 }
+    #expect(coordinator.parts.count == 1, "part 1 must be recorded before part 2 blocks")
 
     coordinator.stop()
     await gate.releaseAll()
-    for _ in 0..<50 { await Task.yield() }
+    // #2779: a condition, not a yield count. `50` was a parameter tuned to one machine —
+    // enough on a fast runner, and nothing about the system. The run is over when the
+    // engine claim comes back.
+    await settleUntil { coordinator.isEngineHeld == false }
 
     #expect(coordinator.state == .stopped)
     #expect(

@@ -330,6 +330,16 @@ struct TranscribeFileView: View {
   @ViewBuilder
   private var transcriptionStep: some View {
     stepHeading("Select transcription engine")
+    // #2772 §3.2. There is ONE transcription engine slot and `EngineCoordinator` owns
+    // exactly one live target, so this choice is shared with dictation rather than
+    // per-import — unlike the polisher on the next step, which is not. Shipped #2648
+    // changed the dictation engine from here with no indication at all; saying so is the
+    // fix, not hiding it. Always visible, above the cards, because it has to be readable
+    // BEFORE the click it describes.
+    Text("This choice also changes the transcription engine used for dictation.")
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
     HStack(alignment: .top, spacing: 14) {
       engineCard(
         backend: .parakeet, title: "Fast", icon: "bolt.fill", recommended: true,
@@ -424,6 +434,17 @@ struct TranscribeFileView: View {
       }
     }
     polishDetailCard
+    // #2772: the ONLY way out of an override. Without it, one curious tap on a second
+    // engine is permanent, and a user who wants their imports to simply track their
+    // dictation engine again has nothing to press. Shown only when there is something to
+    // undo, so a follower never sees a control that would do nothing.
+    if settings.fileImportLLMProvider != nil {
+      Button("Use dictation's polish settings") {
+        settings.followDictationForFileImportPolish()
+      }
+      .buttonStyle(.link)
+      .font(.stHelper)
+    }
     actionRow(
       note: "Numbers, dates, your saved words and filler removal run either way.",
       forwardTitle: "Continue", forward: { coordinator.advance() })
@@ -485,12 +506,24 @@ struct TranscribeFileView: View {
   }
 
   private func polishCard(_ choice: PolishChoice) -> some View {
-    // Same door the AI Polish page uses. `SettingsManager` canonicalizes the
-    // model id for the new provider and `PipelineSettingsSync` starts or stops
-    // the runtime; writing a private copy did neither.
-    let selected = settings.llmProvider == choice.provider
+    // #2772: the IMPORT's polisher, which is a SEPARATE choice from dictation's.
+    //
+    // The first version of this wrote `settings.llmProvider` — the same door the AI Polish
+    // page uses — on the reasoning that writing a private copy would neither canonicalize
+    // the model nor start the runtime. That reasoning was right about the mechanism and
+    // wrong about the target: it meant picking an engine for ONE import silently changed
+    // what every later DICTATION used. The founder found it in UAT.
+    //
+    // Reading `effectiveFileImportLLMProvider` rather than the stored override is what
+    // makes a user who has never chosen show dictation's engine as selected, which is what
+    // their next import will actually use.
+    let selected = settings.effectiveFileImportLLMProvider == choice.provider
     return Button {
-      settings.llmProvider = choice.provider
+      // An explicit pick is an override even when it EQUALS dictation's engine: choosing
+      // the same thing on purpose is still choosing, and must not silently resume
+      // following dictation on its next change.
+      settings.seedFileImportPolishModelsIfNeeded()
+      settings.fileImportLLMProvider = .some(choice.provider)
     } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -557,7 +590,7 @@ struct TranscribeFileView: View {
   }
 
   private var selectedPolish: PolishChoice? {
-    Self.polishChoices.first { $0.provider == settings.llmProvider }
+    Self.polishChoices.first { $0.provider == settings.effectiveFileImportLLMProvider }
   }
 
   // MARK: - 4. Review
@@ -646,10 +679,16 @@ struct TranscribeFileView: View {
       // cannot answer a question about what will RUN. Found by Codex.
       pathCard(
         icon: selectedPolish?.icon ?? "sparkles",
-        title: settings.llmProvider.displayName,
-        recommended: settings.llmProvider == .egOne,
+        title: settings.effectiveFileImportLLMProvider.displayName,
+        recommended: settings.effectiveFileImportLLMProvider == .egOne,
         blurb: "Cleans it into readable text.",
-        rows: [("Runs on", selectedPolish?.availability ?? Self.availability(settings.llmProvider))])
+        rows: [
+          (
+            "Runs on",
+            selectedPolish?.availability
+              ?? Self.availability(settings.effectiveFileImportLLMProvider)
+          )
+        ])
     }
   }
 
@@ -903,7 +942,8 @@ struct TranscribeFileView: View {
       break
     }
     return Self.isCloud(
-      settings.llmProvider, ollamaModelIsRemote: coordinator.polishOllamaLocalityNow())
+      settings.effectiveFileImportLLMProvider,
+      ollamaModelIsRemote: coordinator.polishOllamaLocalityNow())
   }
 
   /// Enumerated, never `default:`. A new provider must be classified here

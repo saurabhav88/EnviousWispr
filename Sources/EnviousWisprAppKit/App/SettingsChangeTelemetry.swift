@@ -18,6 +18,17 @@ enum SettingsProjection {
     case recordingMode = "recording_mode"
     case llmProvider = "llm_provider"
     case llmModel = "llm_model"
+    /// #2772: the FILE-IMPORT polisher, separate from dictation's.
+    ///
+    /// This exists to answer one question the plan named before the code was written: do
+    /// people actually run different engines for dictation and for imports, or is the
+    /// per-surface split machinery nobody uses? The projection deliberately reports
+    /// `follows_dictation` rather than the resolved engine when the user has not chosen,
+    /// because "never touched it" and "chose the same engine on purpose" are the two
+    /// answers that decide whether the split earned its cost, and the resolved value
+    /// cannot tell them apart.
+    case fileImportLLMProvider = "file_import_llm_provider"
+    case fileImportLLMModel = "file_import_llm_model"
     case autoCopy = "auto_copy"
     case hotkeyEnabled = "hotkey_enabled"
     case vadAutoStop = "vad_auto_stop"
@@ -101,6 +112,11 @@ enum SettingsProjection {
     // collapses a `.llmModel`+`.ollamaModel` pair (the Ollama mirror) into ONE
     // delta. (Codex r7 pivot.)
     case .llmModel, .ollamaModel: return [.llmModel]
+    // #2772: mirrors the dictation pair one line up, for the same reason — the import's
+    // cloud and Ollama model fields feed ONE logical, projected through the effective
+    // resolution, so a write to either re-emits and the two coalesce into one delta.
+    case .fileImportLLMProvider: return [.fileImportLLMProvider]
+    case .fileImportLLMModel, .fileImportOllamaModel: return [.fileImportLLMModel]
     case .autoCopyToClipboard: return [.autoCopy]
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
@@ -164,6 +180,16 @@ enum SettingsProjection {
     case .recordingMode: return settings.recordingMode.rawValue
     case .llmProvider: return settings.llmProvider.rawValue
     case .llmModel: return model(settings)
+    // Shape, never content, and the distinction below is the whole point of the field.
+    case .fileImportLLMProvider:
+      // Three states, one optional. Absent is "never chose"; `LLMProvider.none` is
+      // "turned polish off for imports only". Flattening them would lose exactly the
+      // distinction this field exists to measure.
+      guard let chosen = settings.fileImportLLMProvider else { return "follows_dictation" }
+      return chosen.rawValue
+    case .fileImportLLMModel:
+      return settings.fileImportLLMProvider == nil
+        ? "follows_dictation" : settings.effectiveFileImportLLMModel
     case .autoCopy: return onOff(settings.autoCopyToClipboard)
     case .hotkeyEnabled: return onOff(settings.hotkeyEnabled)
     case .vadAutoStop: return onOff(settings.vadAutoStop)

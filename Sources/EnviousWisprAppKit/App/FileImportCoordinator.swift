@@ -391,6 +391,21 @@ final class FileImportCoordinator {
   /// polished two different ways.
   private let beginRun: @MainActor () -> RunConfiguration
 
+  /// Brings THIS run's bundled polisher up, and waits for it.
+  ///
+  /// **Separate from `beginRun`, and the separation is the point.** Freezing stays
+  /// synchronous, because `runConfiguration` is the finished document's disclosure and a
+  /// test rightly pins that it is set the moment a run starts. Only the WAITING is async.
+  ///
+  /// Since #2772 the import's bundled polisher can differ from dictation's, so this run may
+  /// be the thing that starts it, and a fire-and-forget start loses the race. Live UAT on
+  /// 2026-09-10 measured exactly that: `provider=egOne, model=eg-1` requested, then
+  /// `EG-1 polish skipped (notReady) after 0.2ms`, then `Local polish server ready` — the
+  /// server came up two tenths of a millisecond after the part that needed it, and the user
+  /// got raw words with nothing on screen saying why. No test found it; three review rounds
+  /// argued about it; one forty-second clip settled it.
+  private let prepareLocalPolish: @MainActor (RunConfiguration) async -> Void
+
   /// Runs one part. A closure rather than the concrete `FileImportRunner` for
   /// one reason and it is not style: the property this type exists to hold —
   /// that Stop changes the screen at once while the claim waits for the work to
@@ -421,6 +436,7 @@ final class FileImportCoordinator {
     ensureEngineReady: @escaping @MainActor () async -> EngineReadiness = { .ready },
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
+    prepareLocalPolish: @escaping @MainActor (RunConfiguration) async -> Void = { _ in },
     processPart:
       @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
   ) {
@@ -435,6 +451,7 @@ final class FileImportCoordinator {
     self.transcribe = transcribe
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
+    self.prepareLocalPolish = prepareLocalPolish
     self.processPart = processPart
   }
 
@@ -790,11 +807,14 @@ final class FileImportCoordinator {
       }
       guard generationAtStart == generation else { return }
 
-      runConfiguration = beginRun()
+      let configuration = beginRun()
+      runConfiguration = configuration
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
-      heldLocalPolishProvider = runConfiguration?.localPolishProvider
-      heldOllamaModel = runConfiguration?.ollamaModel
+      heldLocalPolishProvider = configuration.localPolishProvider
+      heldOllamaModel = configuration.ollamaModel
       phase = "Writing down what was said"
+      await prepareLocalPolish(configuration)
+      guard generationAtStart == generation else { return }
 
       await run(generationAtStart: generationAtStart)
     }
@@ -844,10 +864,11 @@ final class FileImportCoordinator {
       return
     }
 
-    runConfiguration = beginRun()
+    let configuration = beginRun()
+    runConfiguration = configuration
     // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
-    heldLocalPolishProvider = runConfiguration?.localPolishProvider
-    heldOllamaModel = runConfiguration?.ollamaModel
+    heldLocalPolishProvider = configuration.localPolishProvider
+    heldOllamaModel = configuration.ollamaModel
 
     generation += 1
     let generationAtStart = generation
@@ -864,6 +885,11 @@ final class FileImportCoordinator {
         self?.finishEngineHold()
       }
       guard let self else { return }
+      // #2772: wait for THIS run's polisher before asking it to polish anything. The screen
+      // is already on Working, so the wait is behind a progress bar rather than in front of
+      // a page that still says Review.
+      await prepareLocalPolish(configuration)
+      guard generationAtStart == generation else { return }
       await polishAll(
         TranscriptSplitter.split(rawTranscript), generationAtStart: generationAtStart)
     }

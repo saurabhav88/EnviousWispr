@@ -226,6 +226,14 @@ final class PipelineSettingsSync {
       reconcileOllamaEviction(settings: settings)
     case .ollamaModel:
       reconcileOllamaEviction(settings: settings)
+    // #2772: import preference changes trigger reconciliation. Ollama eviction still
+    // tracks DICTATION's previous model and protects in-flight import pins; import-only
+    // model cleanup is not established here. Bundled-runtime activation for an import is
+    // the import's own job at run start, not this reconciler's — see the note on
+    // `reconcileEGOneActivation`.
+    case .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel:
+      reconcileOllamaEviction(settings: settings)
+      reconcileEGOneActivation(settings: settings)
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:
@@ -418,13 +426,25 @@ final class PipelineSettingsSync {
   /// in-flight session ends. Called alongside `retryDeferredOllamaEviction`
   /// on terminal pipeline states. Idempotent: each retry no-ops unless
   /// actually pending.
-  func retryDeferredEGOneDeactivation(settings: SettingsManager) {
+  /// - Parameter forceReconciliation: reconcile even when nothing armed the pending flag.
+  ///   **#2772: a file import that started its OWN bundled polisher arms nothing.** The
+  ///   flag is set when a SETTINGS CHANGE is deferred, and an import that runs start to
+  ///   finish with no interaction never sets it — so dictation on S1-mini, an import on
+  ///   EG-1, and a clean finish left EG-1 resident and S1-mini never restored. Caught by
+  ///   chunk-2 review round 2; the first version's comment claimed restoration happened
+  ///   through this path, which was a promise the code did not keep.
+  ///   Requesting reconciliation is not the same as completing it: the pin checks inside
+  ///   `reconcileEGOneActivation` still apply, which is why this routes through it rather
+  ///   than activating anything directly.
+  func retryDeferredEGOneDeactivation(
+    settings: SettingsManager, forceReconciliation: Bool = false
+  ) {
     egOneRuntime?.retryPendingRemoval()
     // #2649: a deferred REMOVAL belongs to whichever engine the user asked to
     // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
     // pending forever, with the model still on disk and nothing saying so.
     s1MiniRuntime?.retryPendingRemoval()
-    guard egOneDeactivationPending else { return }
+    guard forceReconciliation || egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)
   }
 
@@ -474,7 +494,26 @@ final class PipelineSettingsSync {
 
   func isLocalPolishPinnedInFlight() -> Bool { pinnedLocalProvider() != nil }
 
+  /// #2772: **bundled-runtime activation has ONE target, and it is dictation's.**
+  ///
+  /// The first version of this chunk took the UNION of both surfaces here. Chunk-2 review
+  /// rejected it for two reasons, both correct. It only widened the DESELECT pass — the
+  /// two activation calls below it still read dictation alone, so an import-only EG-1 was
+  /// never started and the widening bought nothing. And widening the activation calls too
+  /// would be worse: the #2649 note above records that these two engines COMPETE for one
+  /// resource, so starting both is the outcome the ordering exists to prevent.
+  ///
+  /// The import does not need a permanently resident server. It needs one running for the
+  /// length of its run, which is what `FileImportSettingsFreeze` already pins and what
+  /// `pinnedLocalProvider()` already reports. So the import ACTIVATES its own bundled
+  /// polisher as part of starting a run (`WisprBootstrapper`'s `beginRun`), the pin guard
+  /// above keeps this reconciler off it while the run holds it, and `onEngineReleased`
+  /// reconciles back to dictation's selection afterwards.
+
   private func reconcileOllamaEviction(settings: SettingsManager) {
+    // #2772: the model DICTATION would ask for. The import's model is protected
+    // separately below, because evicting weights an import is about to use would make
+    // the import pay for a reload the user cannot see the reason for.
     let new = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: settings.effectiveLLMModel
     )
