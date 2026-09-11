@@ -1432,8 +1432,13 @@ package final class WisprBootstrapper {
       // cloud upload the user did not make.
       // Three answers, passed through. `nil` means the daemon has not been
       // asked, which the page must not read as "runs here".
+      // #2772: the IMPORT's polisher, not dictation's. This answers the privacy line on
+      // the wizard's own page, so reading dictation's provider here would promise local
+      // processing about an engine this import is not using. Same resolver the freeze
+      // reads, so the line and the run cannot disagree.
       polishOllamaLocalityNow: { [settings, ollamaRemoteness] in
-        settings.llmProvider == .ollama ? ollamaRemoteness(settings.llmModel) : false
+        settings.effectiveFileImportLLMProvider == .ollama
+          ? ollamaRemoteness(settings.effectiveFileImportLLMModel) : false
       },
       refreshOllamaFacts: { [ollamaSetup = setup.ollamaSetup] in
         await ollamaSetup.refreshDownloadedModels()
@@ -1491,7 +1496,11 @@ package final class WisprBootstrapper {
         ] in
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
-        settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+        // #2772: FORCED. An import that started its own bundled polisher armed no
+        // pending flag, so the unforced call returned without reconciling and the
+        // import's engine stayed resident in place of dictation's.
+        settingsSync.retryDeferredEGOneDeactivation(
+          settings: settings, forceReconciliation: true)
         // **Recovery needs its OWN wake.** A poke that finds the selected and
         // active engines already matching returns without reaching recovery, so
         // a scan that released its mutation gate because an import held the
@@ -1506,14 +1515,68 @@ package final class WisprBootstrapper {
       // import started after the user adds a word should use it.
       // The wizard's steps WRITE settings when the user picks, so freezing
       // settings here freezes exactly what the user chose on those screens.
-      beginRun: { [settings, customWordsPropagator] in
+      beginRun: { [settings, customWordsPropagator, localPolishRuntimes] in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
         fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
-        return FileImportSettingsFreeze.configuration(
+        let configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
             ? ollamaRemoteness(snapshot.llmModel) : false)
+        // #2772: **the import starts its OWN bundled polisher.**
+        //
+        // Since the import's polisher is chosen independently of dictation's, EG-1 can be
+        // this run's engine while dictation is on Gemini — and `PipelineSettingsSync`
+        // deliberately activates dictation's engine only, because these two servers compete
+        // for one resource and starting both is the conflict its ordering exists to
+        // prevent. Without this call the run would ask a stopped server to polish and every
+        // part would come back raw, silently. Found by chunk-2 review; the first attempt
+        // widened that reconciler to a union and only widened its STOP half, which bought
+        // nothing.
+        //
+        // Ordered AFTER the freeze on purpose: the configuration names which server this
+        // run depends on, `pinnedLocalProvider()` reports it for as long as the run holds
+        // it, and `onEngineReleased` reconciles back to dictation's selection at the end.
+        // Idempotent, so a run whose engine is already the resident one costs nothing.
+        return configuration
       },
+      // #2772: AWAITED, not fired and forgotten. `activateAndProbe` returns the task that
+      // brings the server up; discarding it let the first part reach a server that was
+      // still starting. Measured in Live UAT 2026-09-10: EG-1 requested, skipped `notReady`
+      // after 0.2ms, `Local polish server ready` immediately afterwards, user got raw words
+      // with nothing on screen saying why.
+      //
+      // Only the BUNDLED servers are prepared here. Ollama is the user's own process and
+      // the cloud providers have nothing on this Mac to start, which is the same set
+      // `localPolishProvider` already names for the eviction pin.
+      prepareLocalPolish: { [localPolishRuntimes] configuration in
+        guard let localPolish = configuration.localPolishProvider else { return true }
+        // A nil activation is a refusal before the server is even asked: another session
+        // pins the engine, or an activation blocker stands. Red after the probe is the server
+        // itself not coming up. Either way the cleanup is refused rather than run against a
+        // missing endpoint, which the polish step would read as a silent skip.
+        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+          let activation = runtime.activateAndProbe()
+        else { return false }
+        await activation.value
+        // The ENDPOINT, not `health`. The import already holds the engine lease here, so the
+        // activation's probe sees the engine busy and skips on purpose, leaving `health` at
+        // whatever the last probe said; a server that just came up after an earlier red
+        // verdict would be refused on stale advice. The endpoint is what the run will use.
+        return await runtime.activeEndpoint() != nil
+      },
+      // #2772 finding 11: the third writer of History, beside dictation and crash replay.
+      // Through the COORDINATOR rather than the store, so the row appears immediately —
+      // writing to disk alone would leave History showing the old list until the next
+      // launch, which is indistinguishable from not saving at all.
+      saveToHistory: { [transcriptCoordinator] transcript in
+        try transcriptCoordinator.saveAndShow(transcript)
+      },
+      // The cleaned write, which may only update a row that is still there. History is
+      // reachable throughout a cleanup, so a deletion between the two writes has to stand.
+      updateHistoryRow: { [transcriptCoordinator] transcript in
+        try transcriptCoordinator.updateExistingRow(transcript)
+      },
+      historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })

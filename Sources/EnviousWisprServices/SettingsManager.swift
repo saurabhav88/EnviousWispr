@@ -10,6 +10,12 @@ public final class SettingsManager {
     case llmProvider
     case llmModel
     case ollamaModel
+    /// #2772: the file-import polisher, chosen independently of dictation's.
+    /// One key per field, matching the dictation trio above, so a delta names
+    /// which one moved.
+    case fileImportLLMProvider
+    case fileImportLLMModel
+    case fileImportOllamaModel
     /// #2649: S1-mini's three control-line picks, one key each so a change to
     /// one axis emits one delta and telemetry can answer which axis users touch.
     case s1MiniStyling
@@ -208,36 +214,79 @@ public final class SettingsManager {
   /// until async discovery happened to repair it (#158, Codex r4):
   /// `modelIDLooksLikeCloudProvider` catches that case as well.
   private func canonicalizeLLMModelForProvider() {
+    llmModel = Self.normalizedModel(
+      for: llmProvider, cloudModel: llmModel, ollamaModel: ollamaModel)
+  }
+
+  /// #2772: the same sweep for the FILE-IMPORT provider, run synchronously on every import
+  /// provider change.
+  ///
+  /// **Seeding is not validation, and chunk-2 review caught the gap.** Becoming an
+  /// overrider copies dictation's model into the import fields; if the user then picks a
+  /// DIFFERENT provider, that copy is the old provider's id. Gemini for dictation and
+  /// OpenAI for imports — the founder's own example — produced an OpenAI configuration
+  /// carrying a Gemini model id, and every import 404'd until something repaired it.
+  /// A follower has no fields of its own to sweep, so it is skipped.
+  private func canonicalizeFileImportLLMModelForProvider() {
+    guard fileImportLLMProvider != nil else { return }
+    fileImportLLMModel = Self.normalizedModel(
+      for: effectiveFileImportLLMProvider,
+      cloudModel: fileImportLLMModel,
+      ollamaModel: fileImportOllamaModel)
+  }
+
+  /// Which model id a provider may legitimately carry — ONE policy, two surfaces (#2772).
+  ///
+  /// Fixed-literal providers (Apple Intelligence, EG-1, S1-mini) pin their literal;
+  /// switching AWAY from one must sweep that literal too, or a cloud provider inherits it
+  /// as its model name and every polish request fails until discovery repairs it (#1271
+  /// Codex r7: only "apple-intelligence" was swept, so "eg-1" leaked into OpenAI/Gemini).
+  /// The same class applies BETWEEN cloud providers — OpenAI→Gemini→Claude with a real
+  /// model selected left it unswept and every request failed until async discovery
+  /// happened to repair it (#158, Codex r4); `modelIDLooksLikeCloudProvider` catches that.
+  static func normalizedModel(
+    for provider: LLMProvider, cloudModel: String, ollamaModel: String
+  ) -> String {
     let fixedLiterals = [
       "apple-intelligence", LLMProvider.egOneModelName, LLMProvider.s1MiniModelName,
     ]
-    switch llmProvider {
+    switch provider {
     case .appleIntelligence:
-      llmModel = "apple-intelligence"
+      return "apple-intelligence"
     case .egOne:
-      llmModel = LLMProvider.egOneModelName
+      return LLMProvider.egOneModelName
     case .s1Mini:
-      llmModel = LLMProvider.s1MiniModelName
+      return LLMProvider.s1MiniModelName
     case .ollama:
       // #1305: empty stays empty for Ollama — refilling from `ollamaModel`
       // here silently re-armed the phantom picker selection at every launch
       // after discovery had cleared it. Only discovery and an explicit user
       // pick may arm an Ollama model; fixed literals still get swept.
-      if fixedLiterals.contains(llmModel) {
-        llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+      if fixedLiterals.contains(cloudModel) {
+        return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
       }
+      // #2772: and a value that is not the armed model is a LEFTOVER, swept to empty. The
+      // picker writes this field and the settings sync mirrors it into `ollamaModel`, so at
+      // a provider change the two either agree or this one is stale: the previous cloud
+      // provider's id, or an Ollama name discovery has since replaced. Left in place, the
+      // mirror copied it over the armed model ("gpt-5" became the import's Ollama model),
+      // and the readiness gate then blocked on a model the daemon does not have. Empty
+      // does not mirror, so the armed model survives. Found by the cloud review of
+      // PR #2786; the same line serves dictation, whose provider change runs this too.
+      return cloudModel == ollamaModel ? cloudModel : ""
     case .openAI, .gemini, .claude, .none:
-      // #1770: a WITHDRAWN id is well-formed, so the prefix check below waves
-      // it through and the user 404s on every dictation, forever. Discovery
-      // would repair it, but discovery does not run at launch and opening AI
-      // Polish settings only loads CACHED rows — the real rescan sits behind
-      // the manual refresh button, which a user has no reason to press.
-      if fixedLiterals.contains(llmModel) || llmModel.isEmpty
-        || LLMProvider.isRetiredModel(llmModel, for: llmProvider)
-        || !LLMProvider.modelIDLooksLikeCloudProvider(llmModel, llmProvider)
+      // #1770: a WITHDRAWN id is well-formed, so the prefix check waves it
+      // through and the user 404s on every dictation, forever. Discovery would
+      // repair it, but discovery does not run at launch and opening AI Polish
+      // settings only loads CACHED rows — the real rescan sits behind the
+      // manual refresh button, which a user has no reason to press.
+      if fixedLiterals.contains(cloudModel) || cloudModel.isEmpty
+        || LLMProvider.isRetiredModel(cloudModel, for: provider)
+        || !LLMProvider.modelIDLooksLikeCloudProvider(cloudModel, provider)
       {
-        llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+        return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
       }
+      return cloudModel
     }
   }
 
@@ -253,6 +302,110 @@ public final class SettingsManager {
       defaults.set(ollamaModel, forKey: "ollamaModel")
       onChange?(.ollamaModel)
     }
+  }
+
+  // MARK: - File-import polisher (#2772)
+
+  /// The polisher Transcribe a File uses, chosen independently of dictation's.
+  ///
+  /// **Three states in one optional**, because `LLMProvider` has its own `.none` case:
+  /// - `nil` — never chosen for imports. Follow dictation, provider AND model together.
+  ///   New users, and everyone who never opens the wizard, are here, so nobody carries a
+  ///   second stale choice they did not make.
+  /// - `.some(LLMProvider.none)` — polish explicitly OFF for imports, dictation untouched.
+  /// - `.some(provider)` — that provider.
+  ///
+  /// A DOUBLE optional was the first shape and chunk-2 review rejected it: it admits TWO
+  /// spellings of "off" (`Optional.some(Optional.none)` and
+  /// `Optional.some(Optional.some(LLMProvider.none))`), and a field with two spellings of
+  /// one state is a field that will eventually hold both.
+  ///
+  /// **Opening the wizard must never write this.** Only an explicit provider or model
+  /// edit does, and it does so even when the chosen provider equals dictation's — a user
+  /// who picks the same engine on purpose has still chosen, and must not silently start
+  /// following dictation again on the next change.
+  public var fileImportLLMProvider: LLMProvider? {
+    didSet {
+      if let chosen = fileImportLLMProvider {
+        defaults.set(chosen.rawValue, forKey: "fileImportLLMProvider")
+      } else {
+        defaults.removeObject(forKey: "fileImportLLMProvider")
+      }
+      // Synchronous, and before the notification: a provider change can leave the model
+      // field holding the PREVIOUS provider's id, and every consumer of the change must
+      // see the pair already consistent. Chunk-2 review, blocking finding 1.
+      canonicalizeFileImportLLMModelForProvider()
+      onChange?(.fileImportLLMProvider)
+    }
+  }
+
+  /// The import polisher's CLOUD model. Read only when `fileImportLLMProvider` is an
+  /// override; a follower reads dictation's, per `effectiveFileImportLLMModel`.
+  public var fileImportLLMModel: String {
+    didSet {
+      defaults.set(fileImportLLMModel, forKey: "fileImportLLMModel")
+      onChange?(.fileImportLLMModel)
+    }
+  }
+
+  /// The import polisher's OLLAMA model. Separate from `fileImportLLMModel` for exactly
+  /// the reason the dictation pair is separate: `effectiveLLMModel` reads the Ollama field
+  /// for Ollama, and a single field would make a remembered Ollama pick look unarmed after
+  /// a visit to another provider (`applyDiscoveredModels`, #1914).
+  public var fileImportOllamaModel: String {
+    didSet {
+      defaults.set(fileImportOllamaModel, forKey: "fileImportOllamaModel")
+      onChange?(.fileImportOllamaModel)
+    }
+  }
+
+  /// Copies dictation's models into the import fields, ONCE, at the moment the user is
+  /// about to become an overrider.
+  ///
+  /// Without this, the first explicit pick would hand the import provider a model field
+  /// seeded from a cold default rather than from the value the user was already looking
+  /// at — the import screen showed dictation's model while following, so changing only
+  /// the PROVIDER would silently change the model too.
+  ///
+  /// A no-op once an override exists, because after that the import fields are the user's
+  /// own and copying over them would discard a real choice.
+  public func seedFileImportPolishModelsIfNeeded() {
+    guard fileImportLLMProvider == nil else { return }
+    fileImportLLMModel = llmModel
+    fileImportOllamaModel = ollamaModel
+  }
+
+  /// Puts the import back to following dictation. Backs the wizard's
+  /// "Use dictation's polish settings", which is the only way out of an override — an
+  /// override is otherwise permanent, and a user who tried a second engine once would
+  /// have no way to say "actually, just do what my dictation does".
+  public func followDictationForFileImportPolish() {
+    fileImportLLMProvider = nil
+  }
+
+  /// The polisher an import will actually use. Following takes dictation's provider AND
+  /// model TOGETHER — never dictation's provider beside a stale import model.
+  public var effectiveFileImportLLMProvider: LLMProvider {
+    fileImportLLMProvider ?? llmProvider
+  }
+
+  /// The model an import will actually ask for.
+  ///
+  /// **Resolved through the same policy as dictation, never a second copy of it.** When
+  /// the user is following, this IS `effectiveLLMModel`. When they have overridden, the
+  /// same provider-to-field mapping runs over the import fields.
+  ///
+  /// #2772 §3.3: the shipped import path froze the RAW `llmModel`, which for Ollama is
+  /// the wrong field — `applyDiscoveredModels` arms `ollamaModel` and deliberately does
+  /// not refill `llmModel` (#1305, #1914), so an Ollama import could be configured with a
+  /// cloud model id left over from another provider. Routing every import read through
+  /// this resolver is what fixes it.
+  public var effectiveFileImportLLMModel: String {
+    guard let overridden = fileImportLLMProvider else { return effectiveLLMModel }
+    return Self.model(
+      for: overridden,
+      cloudModel: fileImportLLMModel,
+      ollamaModel: fileImportOllamaModel)
   }
 
   // MARK: - S1-mini control line (#2649)
@@ -792,7 +945,19 @@ public final class SettingsManager {
   /// telemetry projection both read THIS, so neither re-derives the model from
   /// raw fields that lag during a provider switch.
   public var effectiveLLMModel: String {
-    switch llmProvider {
+    Self.model(for: llmProvider, cloudModel: llmModel, ollamaModel: ollamaModel)
+  }
+
+  /// Which of a surface's two model fields a provider actually READS. Distinct from
+  /// `normalizedModel`, which decides whether that field's value is legitimate.
+  ///
+  /// **One policy, two callers** (#2772): dictation's `effectiveLLMModel` and the import's
+  /// `effectiveFileImportLLMModel`. A second copy is how the two surfaces would come to
+  /// disagree about where an Ollama model id lives, which is the defect §3.3 records.
+  public static func model(
+    for provider: LLMProvider, cloudModel: String, ollamaModel: String
+  ) -> String {
+    switch provider {
     case .appleIntelligence: return "apple-intelligence"
     // #1271: fixed literal, the apple-intelligence pattern — Services cannot
     // import the LLM-module manifest; version detail rides eg1.* telemetry.
@@ -802,7 +967,7 @@ public final class SettingsManager {
     // model the user pulled themselves.
     case .s1Mini: return LLMProvider.s1MiniModelName
     case .ollama: return ollamaModel
-    case .openAI, .gemini, .claude, .none: return llmModel
+    case .openAI, .gemini, .claude, .none: return cloudModel
     }
   }
 
@@ -860,6 +1025,19 @@ public final class SettingsManager {
     defaults.set(seededLastProvider.rawValue, forKey: "lastLLMProvider")
     llmModel = defaults.string(forKey: "llmModel") ?? LLMProvider.defaultModel(for: .openAI)
     ollamaModel = defaults.string(forKey: "ollamaModel") ?? SettingsDefaultValues.ollamaModel
+    // #2772: ABSENT means follow dictation, so the key genuinely not being there is the
+    // default and `nil` must survive the round trip. `object(forKey:)` distinguishes an
+    // absent key from a stored `.none`; `string(forKey:) ?? default` could not.
+    // An UNRECOGNISED value (a provider a later build added, read after a downgrade) is
+    // also "follow", never `.none`: `.none` is the user's explicit "no AI polish for
+    // imports", and a downgrade must not turn polish off on their behalf. Found by the
+    // cloud review of PR #2786.
+    fileImportLLMProvider = (defaults.object(forKey: "fileImportLLMProvider") as? String)
+      .flatMap { LLMProvider(rawValue: $0) }
+    fileImportLLMModel =
+      defaults.string(forKey: "fileImportLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
+    fileImportOllamaModel =
+      defaults.string(forKey: "fileImportOllamaModel") ?? SettingsDefaultValues.ollamaModel
     autoCopyToClipboard =
       defaults.object(forKey: "autoCopyToClipboard") as? Bool
       ?? SettingsDefaultValues.autoCopyToClipboard
@@ -1108,20 +1286,43 @@ public final class SettingsManager {
 
     // Canonicalize provider-coupled model names after all properties are loaded.
     canonicalizeLLMModelForProvider()
+    // #2772: the IMPORT's fields need the same launch-time repair. A model id retired by a
+    // later version, or one left behind by a provider the user has since changed, survives
+    // in `defaults` and no discovery runs at launch to fix it. The helper skips a follower,
+    // whose fields are dictation's and already repaired one line up.
+    canonicalizeFileImportLLMModelForProvider()
   }
 
   /// Apply discovered models from async discovery. SettingsManager decides whether to update.
   /// - Parameters:
   ///   - models: Models returned by the provider's API.
   ///   - provider: The provider these models belong to. Stale results (user already switched) are dropped.
-  public func applyDiscoveredModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
-    guard provider == llmProvider else { return }
-    // System write (#1173): the model/ollamaModel mutations below are an
-    // auto-correction, not a user pick — tag their deltas `source=system`. The
-    // flag covers the full body (incl. the early-return `models.isEmpty` path)
-    // via `defer`.
-    isApplyingSystemWrite = true
-    defer { isApplyingSystemWrite = false }
+  /// What a discovery result asks one surface to change about its stored model fields.
+  ///
+  /// #2772 chunk 3. `nil` means LEAVE IT ALONE, which is a different instruction from `""`
+  /// (arm nothing) and the distinction is load-bearing in both directions: the empty-catalog
+  /// path deliberately keeps the remembered Ollama name, and the all-hosted path
+  /// deliberately discards it.
+  public struct DiscoveredModelRepair: Equatable, Sendable {
+    public var cloudModel: String?
+    public var ollamaModel: String?
+  }
+
+  /// The repair itself, as a pure decision over ONE surface's three coupled values.
+  ///
+  /// #2772 chunk 3 lifted this out of `applyDiscoveredModels`, which had the policy welded
+  /// to dictation's stored properties. Chunk 2 recorded why the obvious alternative is
+  /// wrong: swapping the import's fields into the dictation ones and back fires
+  /// `llmProvider`'s `didSet`, which emits a provider-changed event that never happened and
+  /// re-canonicalizes dictation's model on the way past. Widening the caller's
+  /// `provider == llmProvider` guard is worse, because that guard IS its contract.
+  ///
+  /// Pure and static, so `FileImportDiscoveryRepairTests` can walk the grid, and so
+  /// the two surfaces cannot come to disagree about what a catalog means.
+  public static func discoveredModelRepair(
+    for models: [LLMModelInfo], provider: LLMProvider,
+    cloudModel: String, ollamaModel: String
+  ) -> DiscoveredModelRepair {
     if models.isEmpty {
       // #1305: for Ollama, empty discovery means NOTHING is installed — arming
       // the remembered `ollamaModel` name here was the root cause of the
@@ -1136,26 +1337,26 @@ public final class SettingsManager {
       // that gate, not by clearing this field. Cloud providers keep the
       // default-fill (their catalogs are never legitimately empty; an empty
       // result is a discovery hiccup).
-      llmModel =
-        llmProvider == .ollama
-        ? ""
-        : LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
-      return
+      return DiscoveredModelRepair(
+        cloudModel: provider == .ollama
+          ? ""
+          : LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel),
+        ollamaModel: nil)
     }
     // #1914 (PR #1949 cloud review): for Ollama the ARMED model is
-    // `ollamaModel`, not `llmModel` — `effectiveLLMModel` reads it (`:574`), and
-    // `canonicalizeLLMModelForProvider` deliberately does NOT refill `llmModel`
-    // from it (#1305: refilling at launch re-armed a picker selection discovery
-    // had cleared).
+    // `ollamaModel`, not the cloud field — `effectiveLLMModel` reads it, and
+    // `canonicalizeLLMModelForProvider` deliberately does NOT refill the cloud
+    // field from it (#1305: refilling at launch re-armed a picker selection
+    // discovery had cleared).
     //
-    // So switching provider away from Ollama and back leaves `llmModel` holding
-    // the OTHER provider's id while `ollamaModel` still holds the user's Ollama
-    // pick. Testing `llmModel` here made that remembered pick look UNARMED, so
-    // the repair below ran — and because the repair excludes hosted rows, a
-    // deliberately chosen HOSTED model was replaced by a local one, or cleared
-    // outright on a hosted-only install, purely from visiting another provider
-    // and coming back. That is the "existing selections are LEFT ALONE" founder
-    // decision below being violated by the very branch that documents it.
+    // So switching provider away from Ollama and back leaves the cloud field
+    // holding the OTHER provider's id while `ollamaModel` still holds the user's
+    // Ollama pick. Testing the cloud field here made that remembered pick look
+    // UNARMED, so the repair below ran — and because the repair excludes hosted
+    // rows, a deliberately chosen HOSTED model was replaced by a local one, or
+    // cleared outright on a hosted-only install, purely from visiting another
+    // provider and coming back. That is the "existing selections are LEFT ALONE"
+    // founder decision below being violated by the very branch that documents it.
     //
     // Test what is actually armed.
     //
@@ -1165,7 +1366,7 @@ public final class SettingsManager {
     // `llama3.2:latest` discovered) — so an exact compare here would call an installed
     // model missing and repair away a selection that works. One rule, in Core,
     // because this module cannot import the Ollama one (PR #1949).
-    let armedModel = provider == .ollama ? ollamaModel : llmModel
+    let armedModel = provider == .ollama ? ollamaModel : cloudModel
     let armedRow = models.first { candidate in
       guard candidate.isAvailable else { return false }
       return provider == .ollama
@@ -1175,11 +1376,11 @@ public final class SettingsManager {
     }
     if let armedRow {
       // Armed and available: this is the user's selection and it stands. Re-sync
-      // the picker field, which binds `llmModel` (`AIPolishSettingsView:473`),
-      // so the UI shows the model the runtime will actually use instead of the
-      // previous provider's leftover id.
+      // the picker field, which binds the surface's cloud model, so the UI shows
+      // the model the runtime will actually use instead of the previous
+      // provider's leftover id.
       //
-      // This does NOT resurrect #1305. That bug refilled `llmModel` from a
+      // This does NOT resurrect #1305. That bug refilled the cloud field from a
       // REMEMBERED name with no availability check, re-arming a model discovery
       // had just cleared. This runs only when discovery itself has just proven
       // the model is present and available, and it never invents a name: on the
@@ -1189,97 +1390,147 @@ public final class SettingsManager {
       // match can differ by `:latest`, and the picker lists discovered rows, so
       // storing `llama3.2` against a `llama3.2:latest` row would leave the
       // picker showing nothing selected.
-      if provider == .ollama {
-        if llmModel != armedRow.id { llmModel = armedRow.id }
-        if ollamaModel != armedRow.id { ollamaModel = armedRow.id }
-      }
-    } else {
-      // Prefer the provider's own default-model family (an exact id match,
-      // or that default id as a dated-snapshot prefix — Anthropic returns
-      // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
-      // discovered `claude-haiku-4-5-20251001`) over the plain first-available
-      // pick. Provider-generic, not Claude-specific: for OpenAI/Gemini/Ollama,
-      // whose default ids already exist verbatim in their own catalogs, only
-      // the exact-id branch is reachable — a no-op preserving prior behavior.
-      // For Claude, the dated-snapshot branch is load-bearing: a plain
-      // first-available pick would default a fresh user to whatever model
-      // sorts first alphabetically, not the fast/cheap Haiku default.
-      let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
-      let datedSnapshotPrefix = "\(defaultID)-"
+      guard provider == .ollama else { return DiscoveredModelRepair() }
+      return DiscoveredModelRepair(cloudModel: armedRow.id, ollamaModel: armedRow.id)
+    }
+    // Prefer the provider's own default-model family (an exact id match,
+    // or that default id as a dated-snapshot prefix — Anthropic returns
+    // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
+    // discovered `claude-haiku-4-5-20251001`) over the plain first-available
+    // pick. Provider-generic, not Claude-specific: for OpenAI/Gemini/Ollama,
+    // whose default ids already exist verbatim in their own catalogs, only
+    // the exact-id branch is reachable — a no-op preserving prior behavior.
+    // For Claude, the dated-snapshot branch is load-bearing: a plain
+    // first-available pick would default a fresh user to whatever model
+    // sorts first alphabetically, not the fast/cheap Haiku default.
+    let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+    let datedSnapshotPrefix = "\(defaultID)-"
 
-      // #1914 (founder decision 2026-08-04): this repair branch may arm a model
-      // automatically, so its candidates exclude hosted Ollama models. It is the
-      // only site that can do so — verified by enumerating every writer of the
-      // two fields.
-      //
-      // An available model already armed before this call bypasses the branch.
-      // The stored fields carry no provenance, so that existing selection may
-      // have come from either a manual pick or the pre-Chunk-4 automatic
-      // fallback (`4b668907`, `models.first(where: \.isAvailable)`), whose
-      // result is byte-identical to a manual pick. The same is true of the
-      // remembered `ollamaModel` the launch-time canonicalization reads.
-      //
-      // FOUNDER DECISION 2026-08-04: existing selections are LEFT ALONE. No
-      // one-time migration clears a pre-existing hosted selection.
-      //
-      // The reason is this branch's own behaviour, not the population size. An
-      // armed, available model never reaches here, so this change PRESERVES its
-      // current selection — for identified users and unidentified ones alike.
-      // Chunk 2 separately improves thinking-model request behaviour without
-      // changing that selection. Note what is NOT claimed: availability in
-      // discovery does not prove usable cloud access, so a preserved hosted
-      // model may still fail at inference (ENVIOUSWISPR-4M's is paid-tier and
-      // 403s). A forced unselect would be the only action that REMOVES a
-      // selection someone may have made deliberately.
-      //
-      // Do NOT re-derive the population from telemetry and reach a different
-      // conclusion: it CANNOT answer the question. We record model names, not
-      // the daemon's `remote_host`, and hosted models do not reliably carry a
-      // `-cloud` suffix — §3 Decision 1 rejects that suffix as a classifier for
-      // exactly this reason. A 2026-08-04 query matching plan-documented
-      // cloud-only names found one person (`deepseek-v4-flash:latest`, the
-      // ENVIOUSWISPR-4M user) out of 16 Ollama users in 365 days. That is a
-      // LOWER BOUND from a name list, not a count. An earlier revision of this
-      // comment claimed the population was "measured EMPTY" by grepping for
-      // `-cloud`; that classifier is the one the plan forbids, and the claim
-      // was false.
-      //
-      // Reopen only if provenance-bearing evidence shows that a pre-Chunk-4
-      // automatic hosted selection survived the upgrade and harmed a user.
-      // Chunk 7's remoteness field alone CANNOT do this: it says where a model
-      // runs, never who chose it, and those are different questions.
-      let eligible = models.filter { model in
-        guard model.isAvailable else { return false }
-        return provider == .ollama ? !model.isRemote : true
-      }
-      let preferredDefault = eligible.first { model in
-        if model.id == defaultID { return true }
-        guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
-        let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
-        return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
-      }
-      if let fallback = preferredDefault ?? eligible.first {
-        llmModel = fallback.id
-        if provider == .ollama { ollamaModel = fallback.id }
-      } else if provider == .ollama {
-        // Every available model is hosted. Arm NOTHING rather than pick one.
-        //
-        // BOTH fields, and that is the whole point: `effectiveLLMModel` reads
-        // `ollamaModel` for this provider, not `llmModel`, so clearing only the
-        // picker field would leave the runtime still armed to whatever was
-        // remembered and the refusal would be cosmetic. Clearing both is what
-        // makes the readiness preflight see an empty model, classify it
-        // `.noModelSelected`, and show the user the pill.
-        //
-        // This is the one place the remembered preference is deliberately
-        // discarded. The `models.isEmpty` branch above keeps it on purpose (it
-        // powers the Download-suggestion copy and nothing is installed to
-        // contradict it); here models DO exist and every one of them is a model
-        // we must not choose, so a remembered name would resurrect the exact
-        // silent arming this refuses.
-        llmModel = ""
-        ollamaModel = ""
-      }
+    // #1914 (founder decision 2026-08-04): this repair branch may arm a model
+    // automatically, so its candidates exclude hosted Ollama models. It is the
+    // only site that can do so — verified by enumerating every writer of the
+    // two fields.
+    //
+    // An available model already armed before this call bypasses the branch.
+    // The stored fields carry no provenance, so that existing selection may
+    // have come from either a manual pick or the pre-Chunk-4 automatic
+    // fallback (`4b668907`, `models.first(where: \.isAvailable)`), whose
+    // result is byte-identical to a manual pick. The same is true of the
+    // remembered `ollamaModel` the launch-time canonicalization reads.
+    //
+    // FOUNDER DECISION 2026-08-04: existing selections are LEFT ALONE. No
+    // one-time migration clears a pre-existing hosted selection.
+    //
+    // The reason is this branch's own behaviour, not the population size. An
+    // armed, available model never reaches here, so this change PRESERVES its
+    // current selection — for identified users and unidentified ones alike.
+    // Chunk 2 separately improves thinking-model request behaviour without
+    // changing that selection. Note what is NOT claimed: availability in
+    // discovery does not prove usable cloud access, so a preserved hosted
+    // model may still fail at inference (ENVIOUSWISPR-4M's is paid-tier and
+    // 403s). A forced unselect would be the only action that REMOVES a
+    // selection someone may have made deliberately.
+    //
+    // Do NOT re-derive the population from telemetry and reach a different
+    // conclusion: it CANNOT answer the question. We record model names, not
+    // the daemon's `remote_host`, and hosted models do not reliably carry a
+    // `-cloud` suffix — §3 Decision 1 rejects that suffix as a classifier for
+    // exactly this reason. A 2026-08-04 query matching plan-documented
+    // cloud-only names found one person (`deepseek-v4-flash:latest`, the
+    // ENVIOUSWISPR-4M user) out of 16 Ollama users in 365 days. That is a
+    // LOWER BOUND from a name list, not a count. An earlier revision of this
+    // comment claimed the population was "measured EMPTY" by grepping for
+    // `-cloud`; that classifier is the one the plan forbids, and the claim
+    // was false.
+    //
+    // Reopen only if provenance-bearing evidence shows that a pre-Chunk-4
+    // automatic hosted selection survived the upgrade and harmed a user.
+    // Chunk 7's remoteness field alone CANNOT do this: it says where a model
+    // runs, never who chose it, and those are different questions.
+    let eligible = models.filter { model in
+      guard model.isAvailable else { return false }
+      return provider == .ollama ? !model.isRemote : true
+    }
+    let preferredDefault = eligible.first { model in
+      if model.id == defaultID { return true }
+      guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
+      let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
+      return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
+    }
+    if let fallback = preferredDefault ?? eligible.first {
+      return DiscoveredModelRepair(
+        cloudModel: fallback.id, ollamaModel: provider == .ollama ? fallback.id : nil)
+    }
+    guard provider == .ollama else { return DiscoveredModelRepair() }
+    // Every available model is hosted. Arm NOTHING rather than pick one.
+    //
+    // BOTH fields, and that is the whole point: `effectiveLLMModel` reads
+    // `ollamaModel` for this provider, not the cloud field, so clearing only the
+    // picker field would leave the runtime still armed to whatever was
+    // remembered and the refusal would be cosmetic. Clearing both is what
+    // makes the readiness preflight see an empty model, classify it
+    // `.noModelSelected`, and show the user the pill.
+    //
+    // This is the one place the remembered preference is deliberately
+    // discarded. The empty-catalog branch above keeps it on purpose (it
+    // powers the Download-suggestion copy and nothing is installed to
+    // contradict it); here models DO exist and every one of them is a model
+    // we must not choose, so a remembered name would resurrect the exact
+    // silent arming this refuses.
+    return DiscoveredModelRepair(cloudModel: "", ollamaModel: "")
+  }
+
+  /// Apply discovered models from async discovery to DICTATION's fields.
+  /// - Parameters:
+  ///   - models: Models returned by the provider's API.
+  ///   - provider: The provider these models belong to. Stale results (user already switched) are dropped.
+  public func applyDiscoveredModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
+    guard provider == llmProvider else { return }
+    // System write (#1173): the model/ollamaModel mutations below are an
+    // auto-correction, not a user pick — tag their deltas `source=system`. The
+    // flag covers the full body via `defer`.
+    isApplyingSystemWrite = true
+    defer { isApplyingSystemWrite = false }
+    let repair = Self.discoveredModelRepair(
+      for: models, provider: provider, cloudModel: llmModel, ollamaModel: ollamaModel)
+    // The lifted policy preserves every model-value decision; the branch-by-branch
+    // comparison against the pre-lift body is in the chunk 3 review record.
+    //
+    // Equal-value writes are intentionally suppressed, where before the lift only the
+    // already-armed Ollama branch guarded them. So they no longer invoke
+    // `SettingsManager.onChange` or rewrite `UserDefaults`. `SettingsChangeTelemetry`
+    // suppresses unchanged logical values, which is not by itself proof that every
+    // reconciliation side effect is equivalent — `PipelineSettingsSync` also mirrors and
+    // reconciles eviction on these keys. No behavioural difference was found; the claim is
+    // scoped to that rather than to "unobservable". Narrowed by Codex.
+    if let newCloud = repair.cloudModel, llmModel != newCloud { llmModel = newCloud }
+    if let newOllama = repair.ollamaModel, ollamaModel != newOllama { ollamaModel = newOllama }
+  }
+
+  /// Apply discovered models to the FILE IMPORT's fields (#2772 chunk 3).
+  ///
+  /// The same policy over the import's own three values, which is what the lift above
+  /// exists for. A FOLLOWER has no fields of its own — its provider and model ARE
+  /// dictation's — so it is routed to the dictation applier rather than given a private copy
+  /// that would immediately be stale.
+  public func applyDiscoveredModelsForFileImport(
+    _ models: [LLMModelInfo], for provider: LLMProvider
+  ) {
+    guard fileImportLLMProvider != nil else {
+      applyDiscoveredModels(models, for: provider)
+      return
+    }
+    guard provider == effectiveFileImportLLMProvider else { return }
+    isApplyingSystemWrite = true
+    defer { isApplyingSystemWrite = false }
+    let repair = Self.discoveredModelRepair(
+      for: models, provider: provider,
+      cloudModel: fileImportLLMModel, ollamaModel: fileImportOllamaModel)
+    if let newCloud = repair.cloudModel, fileImportLLMModel != newCloud {
+      fileImportLLMModel = newCloud
+    }
+    if let newOllama = repair.ollamaModel, fileImportOllamaModel != newOllama {
+      fileImportOllamaModel = newOllama
     }
   }
 }

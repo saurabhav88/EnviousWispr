@@ -319,14 +319,14 @@ public struct ExecutionMetrics: Codable, Sendable {
 public struct Transcript: Codable, Identifiable, Sendable {
   public let id: UUID
   public let text: String
-  public let polishedText: String?
+  public private(set) var polishedText: String?
   public let language: String?
   public let duration: TimeInterval
   public let processingTime: TimeInterval
   public let backendType: ASRBackendType
   public let createdAt: Date
-  public let llmProvider: String?
-  public let llmModel: String?
+  public private(set) var llmProvider: String?
+  public private(set) var llmModel: String?
   public var metrics: ExecutionMetrics?
   /// Links a transcript to its crash-recovery spool (the durable kernel
   /// `SessionID`). On a live transcript it lets the recovery scan dedup — a
@@ -363,7 +363,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// to nil rather than failing. Optional so pre-#2087 JSON decodes rather than
   /// throwing (synthesized `Codable`, no custom decode), matching
   /// `isRecovered` (#1063) and `inputDeviceWasRemoved` (#1408).
-  public let escapeRecoveredAt: Date?
+  public private(set) var escapeRecoveredAt: Date?
   /// The originating dictation's telemetry take id, persisted so the
   /// restored / kept / expired events can still join the funnel after a
   /// relaunch (#2087). `take_id` is an EPHEMERAL per-take correlation id and is
@@ -371,6 +371,35 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// here or the funnel breaks at exactly the point it exists to measure.
   /// Metadata only; never rendered to the user.
   public let escapeRecoveryTakeID: String?
+
+  /// The file this transcript was IMPORTED from, or nil for a dictation (#2772).
+  ///
+  /// **One field doing three jobs, deliberately.** It is the flag (non-nil means imported),
+  /// the badge's evidence, and the row's title. A separate `isImported` Boolean beside a name
+  /// could disagree with it, and the disagreement would be "is this row an import", which is
+  /// the question the badge answers.
+  ///
+  /// Optional so pre-#2772 JSON decodes to nil rather than throwing (synthesized `Codable`,
+  /// no custom decode), matching `isRecovered` (#1063), `inputDeviceWasRemoved` (#1408) and
+  /// `escapeRecoveredAt` (#2087).
+  public let importedFileName: String?
+
+  /// Derived output retained even when no AI polish succeeded (#2772).
+  ///
+  /// **A THIRD text, because two were not enough.** `text` is the raw ASR and `polishedText`
+  /// is evidence that an AI polisher ran — six readers treat a non-nil value as exactly that,
+  /// from the History badge to the polish-success metric. A file import whose polish was
+  /// bypassed, refused or entirely failed still produces a DERIVED document: numbers and
+  /// dates formatted, saved words corrected, filler removed. Storing that in `polishedText`
+  /// claims an AI polish that did not happen; dropping it loses work the user can see on
+  /// screen. It goes here.
+  ///
+  /// Nil on older rows, and nil for an ordinary dictation, whose deterministic output has
+  /// always been carried by the pipeline rather than persisted separately.
+  public private(set) var processedText: String? = nil
+
+  /// Whether this row came from Transcribe a File. Derived, never stored twice.
+  public var isImported: Bool { importedFileName != nil }
 
   public init(
     id: UUID = UUID(),
@@ -388,7 +417,9 @@ public struct Transcript: Codable, Identifiable, Sendable {
     isRecovered: Bool? = nil,
     inputDeviceWasRemoved: Bool? = nil,
     escapeRecoveredAt: Date? = nil,
-    escapeRecoveryTakeID: String? = nil
+    escapeRecoveryTakeID: String? = nil,
+    importedFileName: String? = nil,
+    processedText: String? = nil
   ) {
     self.id = id
     self.text = text
@@ -406,34 +437,53 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.inputDeviceWasRemoved = inputDeviceWasRemoved
     self.escapeRecoveredAt = escapeRecoveredAt
     self.escapeRecoveryTakeID = escapeRecoveryTakeID
+    self.importedFileName = importedFileName
+    self.processedText = processedText
   }
 
-  /// A copy promoted to permanent History: the clock is cleared, everything
-  /// else is preserved. `Transcript` is immutable, so `Keep` constructs a
-  /// replacement rather than mutating in place. Idempotent — promoting an
-  /// already-permanent row returns an equal value.
+  /// A copy promoted to permanent History: the clock is cleared, everything else is
+  /// preserved. Idempotent — promoting an already-permanent row returns an equal value.
+  ///
+  /// **A value copy, not a field list.** Both of these used to name every field, which is two
+  /// places for a field added later to be silently dropped — and #2772 added one, so that was
+  /// not hypothetical. Copying the whole value and changing only what the operation is ABOUT
+  /// preserves a new field automatically, with no test to remember to write. Found by Codex,
+  /// which also pointed out that the doc comment here had promised a preservation test I had
+  /// not built.
   public func promotedFromPending() -> Transcript {
-    Transcript(
-      id: id,
-      text: text,
-      polishedText: polishedText,
-      language: language,
-      duration: duration,
-      processingTime: processingTime,
-      backendType: backendType,
-      createdAt: createdAt,
-      llmProvider: llmProvider,
-      llmModel: llmModel,
-      metrics: metrics,
-      recoverySessionID: recoverySessionID,
-      isRecovered: isRecovered,
-      inputDeviceWasRemoved: inputDeviceWasRemoved,
-      escapeRecoveredAt: nil,
-      escapeRecoveryTakeID: escapeRecoveryTakeID)
+    var copy = self
+    copy.escapeRecoveredAt = nil
+    return copy
   }
 
-  /// The text to display — polished if available, otherwise raw.
+  /// The same row with an import's finished document filled in, everything else preserved.
+  ///
+  /// #2772: a file import saves its RAW words BEFORE polish and updates the SAME id when the
+  /// cleanup lands, so the words survive the app dying mid-clean. `text` is untouched by
+  /// construction — overwriting the original with derived output is the one thing this
+  /// feature promises not to do, on the screen that says "Original kept".
+  ///
+  /// **`wasPolished` decides whether this row carries AI EVIDENCE.** A run whose polish was
+  /// bypassed or failed everywhere still has a document worth keeping, and it lands in
+  /// `processedText` with no provider credited. Writing it to `polishedText` gave a History
+  /// row a sparkle badge, a "Polished Transcript" heading and a polish-success metric for
+  /// work that never ran. Found by the cloud review of PR #2786; recovery already followed
+  /// this rule (`RecoverySpoolReplayer`).
+  public func withImportResult(
+    _ output: String, wasPolished: Bool, llmProvider: String?, llmModel: String?
+  ) -> Transcript {
+    var copy = self
+    copy.processedText = output
+    copy.polishedText = wasPolished ? output : nil
+    copy.llmProvider = wasPolished ? llmProvider : nil
+    copy.llmModel = wasPolished ? llmModel : nil
+    return copy
+  }
+
+  /// The text to display: the AI-polished words if any, then a derived document if one was
+  /// kept, then the raw words. The middle rung is #2772's: an import with no successful
+  /// polish still has formatting and saved-word corrections worth showing.
   public var displayText: String {
-    polishedText ?? text
+    polishedText ?? processedText ?? text
   }
 }

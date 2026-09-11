@@ -8,6 +8,10 @@ struct UnifiedWindowView: View {
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  /// #2772 finding 15: the sidebar dot while an import runs. Shows an ACTIVE import job,
+  /// including preparation. Stop clears the dot immediately; the physical engine release may
+  /// finish later, and `isEngineHeld` is what protects the resource until it does.
+  @Environment(FileImportCoordinator.self) private var fileImportCoordinator
   @State private var selectedSection: SettingsSection = .history
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
@@ -257,7 +261,7 @@ struct UnifiedWindowView: View {
       let selected = selectedSection == section
       SidebarNavRow(
         label: section.label, isSelected: selected,
-        showsBadge: yourWordsEnrichmentBadgeVisible(for: section)
+        showsBadge: sectionShowsActivityBadge(section)
       ) {
         Image(systemName: section.icon)
           .font(.system(size: 15, weight: .medium))
@@ -277,6 +281,19 @@ struct UnifiedWindowView: View {
   /// finding 5).
   private func yourWordsEnrichmentBadgeVisible(for section: SettingsSection) -> Bool {
     section == .wordCorrection && customWordsCoordinator.pendingEnrichmentCount > 0
+  }
+
+  /// Which sidebar rows carry the "something is running here" dot.
+  ///
+  /// #2772 finding 15. Founder: "transcribe is supposed to show it's active". The point is
+  /// the long run he walked away from — the sidebar is how he knows it is still going.
+  ///
+  /// **Through the badge that already exists, deliberately.** `SidebarNavRow(showsBadge:)`
+  /// has done this job for Your Words since #1701, and its accessibility value already says
+  /// "in progress". A second dot mechanism would be a second answer to one question.
+  private func sectionShowsActivityBadge(_ section: SettingsSection) -> Bool {
+    if section == .transcribeFile { return fileImportCoordinator.isRunning }
+    return yourWordsEnrichmentBadgeVisible(for: section)
   }
 
   /// The centered top-bar identity: the brand mark plus the app wordmark. Held

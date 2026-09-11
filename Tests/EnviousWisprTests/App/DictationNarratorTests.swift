@@ -178,27 +178,64 @@ import Testing
     arguments: SharedEngineHolder.allCases)
   func sharedEngineBusyCopy(_ holder: SharedEngineHolder) {
     let expected: [SharedEngineHolder: String] = [
-      .fileImport: "A file is being transcribed. Try again soon.",
-      .crashRecovery: "Finishing an earlier take. Try again soon.",
+      .fileImport: "Transcribing a file. Please wait.",
+      .crashRecovery: "Finishing a take. Please wait.",
       .dictation: "Already recording.",
       // #2787: the decode the user stopped waiting for still owns the engine.
-      .abandonedDecode: "Previous take still running. Restart the app.",
+      .abandonedDecode: "A take is stuck. Restart the app.",
     ]
     let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
     #expect(sentence == expected[holder])
-    // **The pill truncates rather than wrapping**, and Live UAT on 2026-09-09
-    // caught the first draft on screen as "A file is being transcribed. Try
-    // ag..." — losing exactly the half that tells the user what to do. 46 is
-    // the longest shipped sentence in this same 280x44 pill
-    // ("Microphone disconnected. Text may be cut short.").
+    // **The pill truncates rather than wrapping. Live UAT determines whether each sentence
+    // fits; this 34-character limit is a conservative editing heuristic, not a measured
+    // width limit.** An earlier version of this note called it MEASURED, which one sentence
+    // fitting cannot establish. Corrected by Codex.
+    //
+    // The old ceiling was 46, taken from the longest sentence shipped in the same catalog
+    // entry ("Microphone disconnected. Text may be cut short.", 47). That was a guess
+    // dressed as a measurement: a NEIGHBOUR's length says nothing about what fits, and the
+    // neighbour may itself be cut off. It was. Live UAT on 2026-09-10 pressed the record key
+    // during a real import and photographed the pill:
+    //
+    //   41 characters rendered as "A file is being transcribed. Pleas..." — TRUNCATED
+    //   33 characters rendered in full
+    //
+    // 34 is that bracket. The same sweep found the crash-recovery sentence at 42, shipped
+    // and cut off in the same place for the same reason; it is now 30.
+    //
+    // **This is still a proxy and the bracket is still the evidence.** A character count
+    // cannot see a proportional font, and a sentence of 34 wide glyphs may yet overflow. The
+    // instrument that decides is the screenshot; this cap only stops an obvious regression
+    // between screenshots. Do not raise it without a new photograph.
     #expect(
-      sentence.count <= 46,
+      sentence.count <= 34,
       "\(sentence.count) characters will be cut off in the pill: \(sentence)")
     // The user has never heard of an inference slot, a lease or a claim; the
     // words name the job to wait for instead.
+    //
+    // **Matched as WORDS, not as substrings.** Substring matching incorrectly rejects
+    // "please" because it contains "lease", which is how it refused the founder's own
+    // chosen sentence. Token matching rejects standalone engineering words, including
+    // hyphen-separated ones, without rejecting that innocent word.
+    //
+    // An earlier version of this note claimed the substring check would have ACCEPTED
+    // "Engine-busy". It would have rejected it: that string contains "engine". Corrected by
+    // Codex.
+    func words(in text: String) -> Set<String> {
+      Set(
+        text.lowercased()
+          .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+          .map(String.init))
+    }
+    // Two-way control THROUGH the tokenizer, because a matcher I just wrote is a hypothesis.
+    // The first version built unrelated sets by hand, so it would still have passed with the
+    // tokenizer broken. Found by Codex.
+    #expect(words(in: "Engine-busy").contains("engine"))
+    #expect(!words(in: "Please wait.").contains("lease"))
+    let sentenceWords = words(in: sentence)
     for jargon in ["slot", "lease", "claim", "engine", "resource"] {
       #expect(
-        !sentence.lowercased().contains(jargon),
+        !sentenceWords.contains(jargon),
         "the refusal sentence for \(holder) leaked the mechanism: \(sentence)")
     }
   }

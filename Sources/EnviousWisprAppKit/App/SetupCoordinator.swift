@@ -95,7 +95,7 @@ final class SetupCoordinator {
   }
 
   /// Start the settings-pane-scoped poll for Ollama status, called from
-  /// `AIPolishSettingsView.onAppear`/`.onChange(llmProvider)`. Idempotent:
+  /// `ProviderSetupLifecycle.onAppear`/`.onChange(llmProvider)` (#2772 chunk 1). Idempotent:
   /// cancels-before-restart, mirroring `startPreloadObservation()`'s own
   /// precedent for the sibling WhisperKit observer.
   func startOllamaStatusWatch() {

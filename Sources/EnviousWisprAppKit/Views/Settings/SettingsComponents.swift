@@ -314,6 +314,10 @@ struct InsetNotice: View {
 enum SettingsCopy {
   static let frozenPerRecording =
     "Changes made during a recording apply to the next recording."
+  /// The same rule on the Transcribe a File page, where the run that freezes settings is a
+  /// cleanup, not a recording (#2772). Found by the cloud review of PR #2786.
+  static let frozenPerImport =
+    "Changes made during a cleanup apply to the next file."
 }
 
 /// Page-level banner stating that this page's settings freeze at recording start.
@@ -378,8 +382,11 @@ struct BrandedRow<Content: View>: View {
 /// start via `DictationSessionConfig`. Placed in a `BrandedSection`'s footer
 /// slot or inline under affected controls.
 struct FrozenPerRecordingFootnote: View {
+  /// The dictation sentence unless the host says otherwise; the shared provider editor passes
+  /// `SettingsCopy.frozenPerImport` when hosted on the Transcribe a File page.
+  var text: String = SettingsCopy.frozenPerRecording
   var body: some View {
-    Text(SettingsCopy.frozenPerRecording)
+    Text(text)
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
   }
@@ -1016,6 +1023,26 @@ struct SettingsSheetCloseButton: View {
 /// so a button's affordance depended on which container it landed in. Owning the
 /// fill, border and hover here makes the appearance a property of the control
 /// rather than of its surroundings.
+/// A type-erased `InsettableShape`, so one button can be cut from either a capsule or a
+/// rounded rectangle without three modifiers each branching on which (#2772 finding 9).
+///
+/// `AnyShape` exists and is not enough: `strokeBorder` requires `InsettableShape`, which
+/// `AnyShape` does not conform to. `stroke` would compile and draw the border straddling the
+/// edge instead of inside it, which is a 1pt size difference between the two shapes for no
+/// reason a reader could see.
+struct AnyInsettableShape: InsettableShape {
+  private let makePath: @Sendable (CGRect) -> Path
+  private let makeInset: @Sendable (CGFloat) -> AnyInsettableShape
+
+  init<S: InsettableShape>(_ shape: S) where S: Sendable, S.InsetShape: Sendable {
+    makePath = { shape.path(in: $0) }
+    makeInset = { AnyInsettableShape(shape.inset(by: $0)) }
+  }
+
+  func path(in rect: CGRect) -> Path { makePath(rect) }
+  func inset(by amount: CGFloat) -> AnyInsettableShape { makeInset(amount) }
+}
+
 struct SettingsActionButton: View {
   /// How loud this button is. `outlined` is a row-level action, `filled` the one
   /// primary on a surface — a hierarchy the system styles could not express here
@@ -1025,11 +1052,32 @@ struct SettingsActionButton: View {
   /// which on a settings page rendered as grey with red text — the same
   /// "looks disabled" reading that made the Download buttons unreadable, on the
   /// one class of action where a misread is expensive.
-  enum Emphasis { case outlined, filled, destructive }
+  ///
+  /// #2772 finding 9: `quiet` is the SECONDARY of the approved Transcribe a File prototype
+  /// — a hairline border in the divider tone, no fill, and the ordinary body colour for the
+  /// label. Founder: "Secondary (Back): rounded RECTANGLE ... hairline border, no fill,
+  /// plain white label. NOT a pill, NO purple border." `outlined` is the purple-bordered
+  /// pill that description rejects, and it stays exactly as it is because every other
+  /// settings page ships it.
+  enum Emphasis { case outlined, filled, destructive, quiet }
+
+  /// The outline this button is cut from. Capsule everywhere in Settings; the file-import
+  /// wizard uses the prototype's 9pt rounded rectangle (#2772 finding 9).
+  enum Shape { case capsule, roundedRect }
+
+  /// How big. `regular` is every pre-#2772 call site, byte for byte. The other two are the
+  /// prototype's `.btn` (14px, 8x14) and `.btn.big` (15px, 10x22), which the founder called
+  /// "visibly larger than shipped".
+  enum Size { case regular, medium, large }
 
   let title: String
   let isEnabled: Bool
   var emphasis: Emphasis = .outlined
+  var shape: Shape = .capsule
+  var size: Size = .regular
+  /// A trailing SF Symbol, for the prototype's "Continue ->" arrow. Separate from
+  /// `systemImage`, which leads, because a button can want one, the other, or neither.
+  var trailingSystemImage: String? = nil
   /// An optional leading SF Symbol, for the few actions whose glyph does real
   /// work: Preview's play triangle, Refresh's arrows.
   var systemImage: String? = nil
@@ -1047,7 +1095,18 @@ struct SettingsActionButton: View {
   /// this type and kept its own modifier still works when CLICKED, so nothing on
   /// screen would say Escape had stopped answering.
   var shortcut: KeyboardShortcut? = nil
-  let action: () -> Void
+
+  /// OPTIONAL, so this type can render its treatment WITHOUT being a control.
+  ///
+  /// #2772 chunk 4: the file-import drop zone is itself a button, and the "Choose a file"
+  /// inside it is what the design draws to say so. Nesting a real `Button` there put TWO
+  /// actionable controls in one target: `allowsHitTesting(false)` excludes the pointer and
+  /// says nothing about keyboard focus or accessibility activation, so a VoiceOver user or
+  /// anyone tabbing still met the inner one. Found by Codex.
+  ///
+  /// `nil` means "draw the button, do not be one". Every existing call site passes a
+  /// closure, including through trailing-closure syntax, and is unchanged.
+  var action: (() -> Void)? = nil
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// A PARENT can disable this control without touching `isEnabled`, and then
   /// the two disagree. See `SettingsHover.respondsToPointer`.
@@ -1060,14 +1119,20 @@ struct SettingsActionButton: View {
   }
 
   var body: some View {
-    shortcutBound(button)
-      .buttonStyle(.plain)
-      .disabled(!isEnabled)
-      .onHover { pointerInside = $0 }
-      .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
+    Group {
+      if let action {
+        shortcutBound(button(action))
+      } else {
+        styledLabel
+      }
+    }
+    .buttonStyle(.plain)
+    .disabled(!isEnabled)
+    .onHover { pointerInside = $0 }
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
   }
 
-  private var button: some View {
+  private func button(_ action: @escaping () -> Void) -> some View {
     // **The ROLE, not just the colour.** `emphasis` decides how this looks;
     // `role` is what AppKit and VoiceOver read, and the system `Button`s this
     // replaced supplied it. Carrying the tone visually while dropping the
@@ -1075,7 +1140,15 @@ struct SettingsActionButton: View {
     // ordinary one to anyone not looking at the pixels -- which is the same
     // defect as the grey Delete button, one sense over (cloud review, #2447).
     Button(role: emphasis == .destructive ? .destructive : nil, action: action) {
-      HStack(spacing: 5) {
+      styledLabel
+    }
+  }
+
+  /// The treatment, with no control around it. Shared so a decorative instance and a real
+  /// button cannot drift apart visually — which is the whole reason the drop zone draws one
+  /// at all.
+  private var styledLabel: some View {
+    HStack(spacing: 5) {
         if let systemImage {
           Image(systemName: systemImage)
             .font(.system(size: 11, weight: .semibold))
@@ -1086,14 +1159,52 @@ struct SettingsActionButton: View {
             .accessibilityHidden(true)
         }
         Text(title)
-          .font(.system(size: 12, weight: .semibold))
+          .font(.system(size: fontSize, weight: .semibold))
+        if let trailingSystemImage {
+          Image(systemName: trailingSystemImage)
+            .font(.system(size: fontSize - 1, weight: .semibold))
+            // Decoration, same reason as the leading glyph above: the arrow in "Continue ->"
+            // is the shape of the word, not a second thing to announce.
+            .accessibilityHidden(true)
+        }
       }
-      .padding(.horizontal, 14)
-      .padding(.vertical, 6)
+      .padding(.horizontal, horizontalPadding)
+      .padding(.vertical, verticalPadding)
       .foregroundStyle(foreground)
-      .background(fill, in: Capsule())
-      .overlay(Capsule().strokeBorder(border, lineWidth: 1))
-      .contentShape(Capsule())
+      .background(fill, in: outline)
+      .overlay(outline.strokeBorder(border, lineWidth: 1))
+      .contentShape(outline)
+  }
+
+  /// The one place `shape` becomes geometry, so the fill, the border and the hit target
+  /// cannot end up cut from three different outlines.
+  private var outline: AnyInsettableShape {
+    switch shape {
+    case .capsule: return AnyInsettableShape(Capsule())
+    case .roundedRect: return AnyInsettableShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+  }
+
+  private var fontSize: CGFloat {
+    switch size {
+    case .regular: return 12
+    case .medium: return 14
+    case .large: return 15
+    }
+  }
+
+  private var horizontalPadding: CGFloat {
+    switch size {
+    case .regular, .medium: return 14
+    case .large: return 22
+    }
+  }
+
+  private var verticalPadding: CGFloat {
+    switch size {
+    case .regular: return 6
+    case .medium: return 8
+    case .large: return 10
     }
   }
 
@@ -1124,6 +1235,9 @@ struct SettingsActionButton: View {
   private var foreground: Color {
     guard isEnabled else { return Color.stTextTertiary }
     if emphasis == .filled { return Color.white }
+    // The prototype's `.btn.sec`: body colour at rest, accent on hover. It never fills, so
+    // white-on-hover would be white on the page background.
+    if emphasis == .quiet { return hovering ? Color.stAccent : Color.stTextPrimary }
     return hovering ? Color.white : tone
   }
 
@@ -1136,12 +1250,15 @@ struct SettingsActionButton: View {
       return hovering ? Color.stError : Color.stError.opacity(0.12)
     case .outlined:
       return hovering ? Color.stAccentSolid : Color.stAccentLight
+    case .quiet:
+      return Color.clear
     }
   }
 
   private var border: Color {
     guard isEnabled else { return Color.stDivider }
     if emphasis == .filled { return Color.clear }
+    if emphasis == .quiet { return hovering ? Color.stAccent : Color.stDivider }
     return hovering ? Color.clear : tone
   }
 }

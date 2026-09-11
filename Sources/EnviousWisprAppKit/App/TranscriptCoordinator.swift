@@ -78,17 +78,46 @@ final class TranscriptCoordinator {
     // would otherwise pollute results for 24 hours, and the row is reachable
     // the whole time by scrolling History, which is where the user left it.
     return visible.filter {
-      $0.escapeRecoveredAt == nil && $0.displayText.localizedCaseInsensitiveContains(searchQuery)
+      // #2772: the imported file's name is on the row, and it is the thing a person looking
+      // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
+      // `marketing_sync.wav` removed the row while its badge said the word. Found by the
+      // cloud review of PR #2786.
+      $0.escapeRecoveredAt == nil
+        && ($0.displayText.localizedCaseInsensitiveContains(searchQuery)
+          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false))
     }
   }
 
   /// Completed dictations. A held recovery is an OFFER, not a dictation the
   /// user made — counting it would inflate the stat the moment they cancelled
   /// something, which is the opposite of what cancelling meant.
+  ///
+  /// **Two questions, two counts (#2772).** This one is the sidebar's, beside the search
+  /// field: how many rows History lists, so an import that appears in the list is counted
+  /// in it. `dictationCount` is onboarding's: how many DICTATIONS exist, read as
+  /// `producedWords = transcriptCount > transcriptCountAtTakeStart`, where an import
+  /// finishing during a practice take must not mark that take successful for a user who
+  /// said nothing. One count serving both was wrong for one of them whichever way it went:
+  /// first it counted imports and broke onboarding, then it excluded them and History
+  /// showed a row its own count did not have. Found by Codex, twice.
+  ///
+  /// `deletableCount` deliberately counts imports too: it answers "how many rows would
+  /// Delete All take", where an uncounted row is a row destroyed without warning.
   var transcriptCount: Int {
     _ = expiryPulse
     let now = Date()
-    return transcripts.filter { Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil }.count
+    return transcripts.filter { Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil }
+      .count
+  }
+
+  /// How many dictations exist: `transcriptCount` without the imports. Onboarding's success
+  /// detector reads this one.
+  var dictationCount: Int {
+    _ = expiryPulse
+    let now = Date()
+    return transcripts.filter {
+      Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
+    }.count
   }
 
   /// How many rows a Delete All would actually take, from the user's point of
@@ -457,8 +486,19 @@ final class TranscriptCoordinator {
       // telemetry, never what the user can see. That is also why a missed sweep
       // is not a user-facing bug.
       await sweepExpiredPending()
+      guard !Task.isCancelled else { return }
       do {
-        let diskRows = try await store.loadAll()
+        // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
+        // recognised as newer than what the disk handed back.
+        let revisionAtRead = historyWriteRevision
+        // And the deletion generation, for the opposite race: a row DELETED while this read
+        // was suspended is still in the picture the disk handed back, and the merge below
+        // would reinstate it. For an import that is worse than a stale list, because the
+        // cleanup's update then finds the row and rewrites its file — the deletion
+        // `updateExistingRow` exists to respect. Every removal bumps this synchronously
+        // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
+        let generationAtRead = diskStateGeneration
+        var diskRows = try await store.loadAll()
         // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
         // are not yet on disk (append-during-load race window) in their
         // existing order, then append disk rows. Protects the newest-first
@@ -470,6 +510,21 @@ final class TranscriptCoordinator {
         // wins, and the user sees the row they kept exactly once rather than a
         // permanent row shadowed by a copy still counting down.
         let pendingRows = (try? await store.loadPending()) ?? []
+        guard !Task.isCancelled else { return }
+        guard generationAtRead == diskStateGeneration else {
+          load()
+          return
+        }
+        // #2772: a row written SINCE this read began is newer than the disk copy that came
+        // back, and the merge below prefers the disk one whenever the id already exists. An
+        // import writes twice under one id, so without this the raw version read at the
+        // start of a load replaces the cleaned version saved a moment later, and History
+        // shows unpolished words until something else refreshes it. Found by Codex.
+        let newerRows = Dictionary(
+          uniqueKeysWithValues: transcripts
+            .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+            .map { ($0.id, $0) })
+        diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
         let rootIDs = Set(diskRows.map(\.id))
         let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
         let knownIDs = rootIDs.union(heldRows.map(\.id))
@@ -510,6 +565,72 @@ final class TranscriptCoordinator {
     // appeared. No-op for an ordinary dictation, which carries no stamp.
     startPulseIfNeeded()
   }
+
+  /// Save a row to disk AND show it, replacing an existing row with the same id.
+  ///
+  /// #2772: a file import writes TWICE under one id — the raw words the moment transcription
+  /// lands, then the cleaned document when the cleanup finishes. `append` would have put two
+  /// rows on screen for one recording, because it inserts unconditionally while the store,
+  /// which names its file by id, was correctly overwriting. The two would then disagree
+  /// until the next launch re-read the disk.
+  ///
+  /// Throws, deliberately. The import STOPS before polishing when the first write fails,
+  /// which it cannot do if this swallows the error.
+  func saveAndShow(_ transcript: Transcript) throws {
+    try store.save(transcript)
+    // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
+    historyWriteRevision += 1
+    writtenAtRevision[transcript.id] = historyWriteRevision
+    if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      transcripts[existing] = transcript
+    } else {
+      transcripts.insert(transcript, at: 0)
+    }
+    startPulseIfNeeded()
+  }
+
+  /// Save a row that must ALREADY be in History, reporting whether it was.
+  ///
+  /// #2772: an import's two writes are minutes apart, and History is reachable the whole
+  /// time. Between them the user can delete the raw row. `saveAndShow` INSERTS an id it does
+  /// not find, so the second write put the row back and rewrote its file, undoing an
+  /// explicit deletion with nothing on screen to say so. Found by the cloud review of
+  /// PR #2786.
+  ///
+  /// Update-only by CONSTRUCTION rather than by a tombstone the caller has to remember to
+  /// check: this method has no insert branch, so no future caller can reach one.
+  ///
+  /// The in-memory list is the oracle, not the disk. `delete` and `deleteAll` empty both on
+  /// this actor, and the list is what the user is looking at.
+  @discardableResult
+  func updateExistingRow(_ transcript: Transcript) throws -> Bool {
+    guard let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) else {
+      return false
+    }
+    try store.save(transcript)
+    historyWriteRevision += 1
+    writtenAtRevision[transcript.id] = historyWriteRevision
+    transcripts[existing] = transcript
+    startPulseIfNeeded()
+    return true
+  }
+
+  /// Whether a row is in History right now. The import's "Saved to History" badge asks this
+  /// live rather than remembering that a write once succeeded (#2772): a row can be deleted
+  /// at any moment after either of the import's writes, and a remembered success then
+  /// describes a file that is gone.
+  func hasRow(id: UUID) -> Bool {
+    transcripts.contains { $0.id == id }
+  }
+
+  /// Counts writes, so a disk read that began earlier can be told it is stale.
+  ///
+  /// `load()` prefers the DISK row whenever an id already exists, which is right for a
+  /// launch and wrong for a write that landed while it was reading: an import's raw row read
+  /// at the start of a load would replace the cleaned row saved a moment later, and History
+  /// would show the unpolished version until something else refreshed it. Found by Codex.
+  private var historyWriteRevision = 0
+  private var writtenAtRevision: [UUID: Int] = [:]
 
   func delete(_ transcript: Transcript) {
     do {

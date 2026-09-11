@@ -47,9 +47,16 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          if let polished = transcript.polishedText {
-            transcriptSection("Polished Transcript", icon: "sparkles") {
-              Text(polished)
+          // #2772: a THIRD rung. An import whose polish was bypassed or failed everywhere
+          // still has a derived document worth showing — numbers formatted, saved words
+          // corrected — and it must not be labelled as AI-polished. Falling back to the raw
+          // words instead would silently discard that work.
+          if let output = transcript.polishedText ?? transcript.processedText {
+            transcriptSection(
+              transcript.polishedText == nil ? "Processed Transcript" : "Polished Transcript",
+              icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
+            ) {
+              Text(output)
                 .font(.system(size: 16))
                 .lineSpacing(3)
                 .foregroundStyle(.stTextPrimary)

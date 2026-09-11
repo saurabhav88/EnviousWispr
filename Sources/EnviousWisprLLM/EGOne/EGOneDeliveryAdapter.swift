@@ -390,7 +390,7 @@ public final class EGOneDeliveryAdapter {
   }
 
   /// Map the shared engine's closed failure taxonomy onto EG-1's existing UI
-  /// copy buckets (`AIPolishSettingsView.egOneFailureCopy`). Every class is a
+  /// copy buckets (`ProviderSetupSection.egOneFailureCopy`). Every class is a
   /// retry-able RED — the limb never blocks dictation.
   nonisolated static func mapFailure(_ reason: DeliveryFailureClass) -> EGOneDownloadFailure {
     switch reason {

@@ -213,7 +213,7 @@ struct AbandonedDecodeHoldTests {
     #expect(lease.currentHolder == .abandonedDecode)
     #expect(
       DictationNarrator.copy(for: .sharedEngineBusy(holder: .abandonedDecode))
-        == "Previous take still running. Restart the app.")
+        == "A take is stuck. Restart the app.")
     decode.finish()
     _ = await vendorCall.value
   }

@@ -191,17 +191,25 @@ enum DictationNarrator {
     case .sharedEngineBusy(let holder):
       switch holder {
       case .fileImport:
-        return "A file is being transcribed. Try again soon."
+        // #2772 finding 8b: the founder chose this shorter wording. His first phrasing was
+        // 58 characters and this pill truncates rather than wrapping. The character-count
+        // test is a heuristic; live overlay UAT verifies fit. The earlier version of this
+        // comment quoted the exact truncated string, which nobody had observed.
+        return "Transcribing a file. Please wait."
       case .crashRecovery:
-        return "Finishing an earlier take. Try again soon."
+        // 42 characters, and MEASURED truncating in the same pill on 2026-09-10 by the
+        // sweep that caught the file-import one. Pre-existing, shipped, and cut off in
+        // exactly the same place. 30 fits.
+        return "Finishing a take. Please wait."
       case .dictation:
         return "Already recording."
       case .abandonedDecode:
         // #2787: the decode the user stopped waiting for still owns the engine.
         // Say what will actually work, not "try again soon" — on the machine
         // this was written for, soon never came.
-        // 45 characters: the pill truncates at 46 (DictationNarratorTests).
-        return "Previous take still running. Restart the app."
+        // 33 characters. #2787 shipped this at 45 against a 46 "ceiling" that #2772
+        // photographed cutting a 41-character sentence short; the two met at the merge.
+        return "A take is stuck. Restart the app."
       }
     }
   }

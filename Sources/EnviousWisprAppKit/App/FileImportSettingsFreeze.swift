@@ -21,10 +21,24 @@ import EnviousWisprServices
 /// be a second thing to keep in step every time a limb gains a setting.
 @MainActor
 enum FileImportSettingsFreeze {
-  /// Reads settings and nothing else. The wizard's Transcription and Polish
-  /// steps WRITE these settings when the user picks, so by the time Start is
-  /// pressed the user's choice IS the setting — there is no second copy to
-  /// prefer, and no way for the two to disagree.
+  /// Reads settings and nothing else.
+  ///
+  /// **#2772 replaced the reason this used to carry.** It said: "The wizard's Transcription
+  /// and Polish steps WRITE these settings when the user picks, so by the time Start is
+  /// pressed the user's choice IS the setting — there is no second copy to prefer, and no
+  /// way for the two to disagree." That was true and it was the defect: the Polish step
+  /// wrote DICTATION's polisher, so choosing an engine for one import silently changed
+  /// what every later dictation used. There is now deliberately a second choice, and
+  /// `effectiveFileImportLLMProvider` is the one authority on which one an import gets.
+  ///
+  /// The TRANSCRIPTION engine is still shared and still written by the wizard, on purpose
+  /// (#2772 §3.2): there is one ASR slot and `EngineCoordinator` owns exactly one live
+  /// target. The wizard now says so above its cards rather than changing it silently.
+  ///
+  /// **The polish model is resolved, not raw.** Reading `settings.llmModel` here was wrong
+  /// for Ollama — the armed model is `ollamaModel`, and `applyDiscoveredModels`
+  /// deliberately does not refill `llmModel` (#1305, #1914), so an Ollama import could
+  /// freeze a cloud model id left over from another provider. #2772 §3.3.
   static func snapshot(settings: SettingsManager) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: settings.selectedBackend,
@@ -39,8 +53,8 @@ enum FileImportSettingsFreeze {
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
       spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
       customWordsVersion: nil,
-      llmProvider: settings.llmProvider.rawValue,
-      llmModel: settings.llmModel,
+      llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
+      llmModel: settings.effectiveFileImportLLMModel,
       s1Control: settings.s1Control)
   }
 
@@ -77,6 +91,10 @@ enum FileImportSettingsFreeze {
       // would leave its tracker asking the same question forever.
       ollamaModel: (provider == .ollama && ollamaModelIsRemote == false)
         ? OllamaConnector.effectiveOllamaModel(provider: provider, model: snapshot.llmModel)
-        : nil)
+        : nil,
+      // #2772: taken from the SAME snapshot as everything above, so the History row's
+      // provenance cannot disagree with what actually polished the words.
+      polishModel: snapshot.llmModel,
+      backendType: snapshot.backendType)
   }
 }

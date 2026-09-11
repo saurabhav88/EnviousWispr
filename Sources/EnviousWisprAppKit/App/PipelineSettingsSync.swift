@@ -39,6 +39,13 @@ final class PipelineSettingsSync {
   /// corrupt a pre-snapshot read from the polish step.
   private var lastEvictableOllamaModel: String?
 
+  /// The import's counterpart (#2772). With dictation on another provider, an import can
+  /// load its own Ollama model and leave it resident for the keep-alive window; tracking
+  /// only dictation's model meant an import swap evicted nothing. Found by the cloud review
+  /// of PR #2786, the same class as every other import-surface reach into shared engine
+  /// state: the reconciler was keyed on dictation's settings alone.
+  private var lastEvictableImportOllamaModel: String?
+
   /// #1914: is this Ollama model one the daemon proxies to Ollama's servers?
   ///
   /// `true` proven remote · `false` proven local · **`nil` absent from the
@@ -171,9 +178,13 @@ final class PipelineSettingsSync {
       energyGate: settings.vadEnergyGate
     )
 
-    // #295: seed eviction tracker. No initial eviction on app launch.
+    // #295: seed eviction trackers. No initial eviction on app launch.
     lastEvictableOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: settings.effectiveLLMModel
+    )
+    lastEvictableImportOllamaModel = OllamaConnector.effectiveOllamaModel(
+      provider: settings.effectiveFileImportLLMProvider,
+      model: settings.effectiveFileImportLLMModel
     )
 
     // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
@@ -226,6 +237,26 @@ final class PipelineSettingsSync {
       reconcileOllamaEviction(settings: settings)
     case .ollamaModel:
       reconcileOllamaEviction(settings: settings)
+    // #2772: import preference changes trigger reconciliation. Ollama eviction tracks the
+    // import's previous model beside dictation's and protects in-flight import pins.
+    // Bundled-runtime activation for an import is the import's own job at run start, not
+    // this reconciler's — see the note on `reconcileEGOneActivation`.
+    case .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel:
+      // #2772 chunk 3: the import's model picker writes `fileImportLLMModel`, exactly as
+      // dictation's writes `llmModel`. For Ollama the ARMED field is the ollama one, so
+      // without this mirror an Ollama pick made on the Transcribe a File screen changed a
+      // field nothing reads and the import kept running the previous model. Same policy
+      // object as dictation's arm above, over the import's own two fields, so the two
+      // surfaces cannot come to disagree about when a pick is mirrored.
+      if key == .fileImportLLMModel,
+        Self.shouldMirrorLLMModelToOllama(
+          provider: settings.effectiveFileImportLLMProvider,
+          llmModel: settings.fileImportLLMModel)
+      {
+        settings.fileImportOllamaModel = settings.fileImportLLMModel
+      }
+      reconcileOllamaEviction(settings: settings)
+      reconcileEGOneActivation(settings: settings)
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:
@@ -418,13 +449,25 @@ final class PipelineSettingsSync {
   /// in-flight session ends. Called alongside `retryDeferredOllamaEviction`
   /// on terminal pipeline states. Idempotent: each retry no-ops unless
   /// actually pending.
-  func retryDeferredEGOneDeactivation(settings: SettingsManager) {
+  /// - Parameter forceReconciliation: reconcile even when nothing armed the pending flag.
+  ///   **#2772: a file import that started its OWN bundled polisher arms nothing.** The
+  ///   flag is set when a SETTINGS CHANGE is deferred, and an import that runs start to
+  ///   finish with no interaction never sets it — so dictation on S1-mini, an import on
+  ///   EG-1, and a clean finish left EG-1 resident and S1-mini never restored. Caught by
+  ///   chunk-2 review round 2; the first version's comment claimed restoration happened
+  ///   through this path, which was a promise the code did not keep.
+  ///   Requesting reconciliation is not the same as completing it: the pin checks inside
+  ///   `reconcileEGOneActivation` still apply, which is why this routes through it rather
+  ///   than activating anything directly.
+  func retryDeferredEGOneDeactivation(
+    settings: SettingsManager, forceReconciliation: Bool = false
+  ) {
     egOneRuntime?.retryPendingRemoval()
     // #2649: a deferred REMOVAL belongs to whichever engine the user asked to
     // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
     // pending forever, with the model still on disk and nothing saying so.
     s1MiniRuntime?.retryPendingRemoval()
-    guard egOneDeactivationPending else { return }
+    guard forceReconciliation || egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)
   }
 
@@ -474,13 +517,61 @@ final class PipelineSettingsSync {
 
   func isLocalPolishPinnedInFlight() -> Bool { pinnedLocalProvider() != nil }
 
+  /// #2772: **bundled-runtime activation has ONE target, and it is dictation's.**
+  ///
+  /// The first version of this chunk took the UNION of both surfaces here. Chunk-2 review
+  /// rejected it for two reasons, both correct. It only widened the DESELECT pass — the
+  /// two activation calls below it still read dictation alone, so an import-only EG-1 was
+  /// never started and the widening bought nothing. And widening the activation calls too
+  /// would be worse: the #2649 note above records that these two engines COMPETE for one
+  /// resource, so starting both is the outcome the ordering exists to prevent.
+  ///
+  /// The import does not need a permanently resident server. It needs one running for the
+  /// length of its run, which is what `FileImportSettingsFreeze` already pins and what
+  /// `pinnedLocalProvider()` already reports. So the import ACTIVATES its own bundled
+  /// polisher as part of starting a run (`WisprBootstrapper`'s `beginRun`), the pin guard
+  /// above keeps this reconciler off it while the run holds it, and `onEngineReleased`
+  /// reconciles back to dictation's selection afterwards.
+
   private func reconcileOllamaEviction(settings: SettingsManager) {
-    let new = OllamaConnector.effectiveOllamaModel(
+    // #2772: two surfaces, two trackers, one policy. Each surface's PREVIOUS model is
+    // evicted when that surface leaves it, unless the other surface still selects it: a
+    // model one surface walked away from is not idle while the other is about to ask for
+    // it. And a model both walked away from in the same pass is evicted once.
+    let dictation = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: settings.effectiveLLMModel
     )
-    let pre = lastEvictableOllamaModel
-    guard let pre, pre != new else {
-      lastEvictableOllamaModel = new
+    let fileImport = OllamaConnector.effectiveOllamaModel(
+      provider: settings.effectiveFileImportLLMProvider,
+      model: settings.effectiveFileImportLLMModel
+    )
+    // Canonical, like every other Ollama-name comparison in this file: `llama3.2` and
+    // `llama3.2:latest` are one model, and the two surfaces can hold either spelling. An
+    // exact set let an import walk away from `:latest` and evict the model dictation still
+    // selected under the bare name. Found by the cloud review of PR #2786.
+    let stillWanted = Set([dictation, fileImport].compactMap { $0 }.map(Self.canonical))
+    var scheduledThisPass = Set<String>()
+    reconcileEvictableModel(
+      \.lastEvictableOllamaModel, new: dictation, stillWanted: stillWanted,
+      scheduled: &scheduledThisPass)
+    reconcileEvictableModel(
+      \.lastEvictableImportOllamaModel, new: fileImport, stillWanted: stillWanted,
+      scheduled: &scheduledThisPass)
+  }
+
+  /// One surface's tracker. The rules below predate the second tracker and apply to each
+  /// unchanged; only the "still wanted elsewhere" and "already scheduled" checks are new.
+  private func reconcileEvictableModel(
+    _ tracker: ReferenceWritableKeyPath<PipelineSettingsSync, String?>, new: String?,
+    stillWanted: Set<String>, scheduled: inout Set<String>
+  ) {
+    let pre = self[keyPath: tracker]
+    guard let pre, Self.canonical(pre) != new.map(Self.canonical) else {
+      self[keyPath: tracker] = new
+      return
+    }
+    if stillWanted.contains(Self.canonical(pre)) || scheduled.contains(Self.canonical(pre)) {
+      self[keyPath: tracker] = new
       return
     }
     // #1914: remote models are skipped BEFORE the in-flight deferral below,
@@ -501,7 +592,7 @@ final class PipelineSettingsSync {
     // costs are reversed: a needless warm-up spends cloud quota and a skipped
     // one only costs a slower first polish.
     if ollamaRemotenessLookup(pre) == true {
-      lastEvictableOllamaModel = new
+      self[keyPath: tracker] = new
       Task {
         await AppLogger.shared.log(
           "Ollama eviction skipped: model=\(pre) reason=remote",
@@ -513,11 +604,18 @@ final class PipelineSettingsSync {
     // Phase B: if either pipeline has frozen `pre` into its in-flight
     // session via `DictationSessionConfig`, the upcoming polish call is
     // pinned to that model. Evicting now would cold-swap the active
-    // recording's polish. Defer by leaving `lastEvictableOllamaModel` at
+    // recording's polish. Defer by leaving the tracker at
     // `pre`; the next setting change re-evaluates.
     if isOllamaModelPinnedInFlight(pre) { return }
-    lastEvictableOllamaModel = new
+    self[keyPath: tracker] = new
+    scheduled.insert(Self.canonical(pre))
     scheduleOllamaEviction(pre)
+  }
+
+  /// The repository's one Ollama-name identity rule, so a tag-less spelling and its
+  /// `:latest` twin compare equal everywhere this file asks whether two names are one model.
+  private static func canonical(_ model: String) -> String {
+    OllamaSetupService.canonicalModelName(model)
   }
 
   /// #1106: eviction is a stateless server-unload by model NAME
@@ -594,10 +692,11 @@ final class PipelineSettingsSync {
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
     // #2648: a file import is the THIRD workload that can have this model
     // frozen, and it is the one with no `DictationSessionConfig` to read.
-    if importPinnedOllamaModel() == model { return true }
+    let target = Self.canonical(model)
+    if importPinnedOllamaModel().map(Self.canonical) == target { return true }
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
-      if cfg.llmProvider == .ollama && cfg.llmModel == model {
+      if cfg.llmProvider == .ollama && Self.canonical(cfg.llmModel) == target {
         return true
       }
     }

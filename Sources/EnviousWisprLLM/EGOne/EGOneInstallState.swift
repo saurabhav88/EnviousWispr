@@ -106,7 +106,7 @@ public enum EGOneInstallState: Sendable, Equatable {
 }
 
 /// EG-1 download-failure vocabulary for user-facing copy (settings row copy in
-/// `AIPolishSettingsView.egOneFailureCopy`). Relocated from the retired store;
+/// `ProviderSetupSection.egOneFailureCopy`). Relocated from the retired store;
 /// the adapter maps the shared engine's `DeliveryFailureClass` onto these
 /// buckets so the existing copy is preserved (limb: every failure is a RED
 /// row + retry, never a dictation block).

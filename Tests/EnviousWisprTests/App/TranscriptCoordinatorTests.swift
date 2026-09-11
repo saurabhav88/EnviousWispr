@@ -52,6 +52,89 @@ struct TranscriptCoordinatorTests {
     }
   }
 
+  // MARK: - two counts (#2772)
+
+  /// The sidebar counts what History lists; onboarding counts dictations. An import is in
+  /// the first and not the second. Found by the cloud review of PR #2786, after the single
+  /// count had been wrong for each reader in turn.
+  @Test("an import counts as a History row and not as a dictation")
+  func anImportCountsAsARowNotADictation() throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    try coordinator.saveAndShow(Self.makeTranscript(text: "a dictation"))
+    try coordinator.saveAndShow(
+      Transcript(
+        text: "an import", language: "en", duration: 61, backendType: .parakeet,
+        importedFileName: "sync.m4a"))
+    #expect(coordinator.transcriptCount == 2, "History lists two rows")
+    #expect(coordinator.dictationCount == 1, "only one of them was dictated")
+  }
+
+  // MARK: - search reaches the imported file name (#2772)
+
+  /// The History row shows the imported file's name, and that name is what a person looking
+  /// for a meeting they transcribed types. Searching it removed the row while the badge said
+  /// the word. Found by the cloud review of PR #2786.
+  @Test("searching History by an imported file's name finds the row")
+  func searchReachesTheImportedFileName() throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let imported = Transcript(
+      text: "um so the numbers for the quarter", language: "en", duration: 61,
+      backendType: .parakeet, importedFileName: "marketing_sync.wav")
+    let dictated = Self.makeTranscript(text: "a plain dictation")
+    try coordinator.saveAndShow(imported)
+    try coordinator.saveAndShow(dictated)
+
+    coordinator.searchQuery = "marketing"
+    #expect(coordinator.filteredTranscripts.map(\.id) == [imported.id])
+    // The words still work, and a name nobody has does not match anything.
+    coordinator.searchQuery = "quarter"
+    #expect(coordinator.filteredTranscripts.map(\.id) == [imported.id])
+    coordinator.searchQuery = "budget"
+    #expect(coordinator.filteredTranscripts.isEmpty)
+  }
+
+  // MARK: - updateExistingRow(_:) contract (#2772)
+
+  /// The write a file import's cleanup makes, minutes after its first one.
+  ///
+  /// History is reachable throughout a cleanup, so the user can delete the row in between.
+  /// `saveAndShow` inserts an id it does not find, which put the deleted row back and
+  /// rewrote its file. Found by the cloud review of PR #2786.
+  ///
+  /// Driven through the real store on a temp directory, so the DISK is asserted as well as
+  /// the list: a version that only skipped the in-memory insert would still leave the file.
+  @Test("updateExistingRow updates a row that is there, and cannot recreate a deleted one")
+  func updateExistingRowCannotInsert() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let store = TranscriptStore(directory: dir)
+    let coordinator = TranscriptCoordinator(store: store)
+    let row = Self.makeTranscript(text: "um one two three")
+    let onDisk = dir.appendingPathComponent("\(row.id.uuidString).json").path
+    let cleaned = row.withImportResult(
+      "One two three.", wasPolished: true, llmProvider: "egOne", llmModel: "eg-1")
+
+    try coordinator.saveAndShow(row)
+    #expect(coordinator.hasRow(id: row.id))
+    #expect(try coordinator.updateExistingRow(cleaned) == true)
+    #expect(coordinator.visibleTranscripts.count == 1)
+    #expect(coordinator.visibleTranscripts.first?.displayText == "One two three.")
+    #expect(FileManager.default.fileExists(atPath: onDisk))
+
+    coordinator.delete(row)
+    #expect(coordinator.visibleTranscripts.isEmpty)
+    #expect(!coordinator.hasRow(id: row.id))
+    #expect(!FileManager.default.fileExists(atPath: onDisk))
+
+    #expect(try coordinator.updateExistingRow(cleaned) == false)
+    #expect(coordinator.visibleTranscripts.isEmpty, "the deleted row came back on screen")
+    #expect(!FileManager.default.fileExists(atPath: onDisk), "the deleted file was rewritten")
+  }
+
   // MARK: - append(_:) contract
 
   @Test("append inserts at index 0")

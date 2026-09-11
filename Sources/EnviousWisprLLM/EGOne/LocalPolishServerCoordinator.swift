@@ -281,4 +281,20 @@ public final class LocalPolishRuntimeSet {
     self.egOne = egOne
     self.s1Mini = s1Mini
   }
+
+  /// The runtime a BUNDLED local provider owns, or `nil` for every provider that has no
+  /// server on this Mac.
+  ///
+  /// #2772: added so a caller that already holds a provider — the file import's frozen run
+  /// configuration — can reach its runtime without restating which providers are bundled.
+  /// Exhaustive on purpose: a third bundled engine must fail to compile here rather than
+  /// fall into a `default:` and silently never start, which is the shape #2649 fixed twice.
+  @MainActor
+  public func runtime(for provider: LLMProvider) -> EGOneRuntime? {
+    switch provider {
+    case .egOne: return egOne
+    case .s1Mini: return s1Mini
+    case .appleIntelligence, .ollama, .openAI, .gemini, .claude, .none: return nil
+    }
+  }
 }

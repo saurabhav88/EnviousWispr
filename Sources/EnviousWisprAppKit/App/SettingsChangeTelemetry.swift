@@ -18,6 +18,17 @@ enum SettingsProjection {
     case recordingMode = "recording_mode"
     case llmProvider = "llm_provider"
     case llmModel = "llm_model"
+    /// #2772: the FILE-IMPORT polisher, separate from dictation's.
+    ///
+    /// This exists to answer one question the plan named before the code was written: do
+    /// people actually run different engines for dictation and for imports, or is the
+    /// per-surface split machinery nobody uses? The projection deliberately reports
+    /// `follows_dictation` rather than the resolved engine when the user has not chosen,
+    /// because "never touched it" and "chose the same engine on purpose" are the two
+    /// answers that decide whether the split earned its cost, and the resolved value
+    /// cannot tell them apart.
+    case fileImportLLMProvider = "file_import_llm_provider"
+    case fileImportLLMModel = "file_import_llm_model"
     case autoCopy = "auto_copy"
     case hotkeyEnabled = "hotkey_enabled"
     case vadAutoStop = "vad_auto_stop"
@@ -101,6 +112,15 @@ enum SettingsProjection {
     // collapses a `.llmModel`+`.ollamaModel` pair (the Ollama mirror) into ONE
     // delta. (Codex r7 pivot.)
     case .llmModel, .ollamaModel: return [.llmModel]
+    // #2772: mirrors the dictation pair one line up, for the same reason — the import's
+    // cloud and Ollama model fields feed ONE logical, projected through the effective
+    // resolution, so a write to either re-emits and the two coalesce into one delta.
+    // #2772: switching between FOLLOW and an override changes the model projection with no
+    // model write of its own — `follows_dictation` becomes a redacted id or back — so the
+    // model logical must be refreshed alongside. The flush drops it when the projection is
+    // unchanged. Found by the local lens on the cloud review.
+    case .fileImportLLMProvider: return [.fileImportLLMProvider, .fileImportLLMModel]
+    case .fileImportLLMModel, .fileImportOllamaModel: return [.fileImportLLMModel]
     case .autoCopyToClipboard: return [.autoCopy]
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
@@ -163,7 +183,26 @@ enum SettingsProjection {
     switch logical {
     case .recordingMode: return settings.recordingMode.rawValue
     case .llmProvider: return settings.llmProvider.rawValue
-    case .llmModel: return model(settings)
+    case .llmModel:
+      return model(provider: settings.llmProvider, id: settings.effectiveLLMModel)
+    // Preserve follow mode as a preference.
+    // Explicit model selections pass through the shared redaction policy.
+    case .fileImportLLMProvider:
+      // Three states, one optional. Absent is "never chose"; `LLMProvider.none` is
+      // "turned polish off for imports only". Flattening them would lose exactly the
+      // distinction this field exists to measure.
+      guard let chosen = settings.fileImportLLMProvider else { return "follows_dictation" }
+      return chosen.rawValue
+    case .fileImportLLMModel:
+      // **THROUGH the redaction policy, which this returned the RAW id past.** A user who
+      // runs a locally-named Ollama model for imports had that name leave the machine, while
+      // dictation's identical value was redacted to "custom" — and the comment above this
+      // said "Shape, never content", which is the property the code did not have. Found by
+      // the cloud review of PR #2786.
+      guard settings.fileImportLLMProvider != nil else { return "follows_dictation" }
+      return model(
+        provider: settings.effectiveFileImportLLMProvider,
+        id: settings.effectiveFileImportLLMModel)
     case .autoCopy: return onOff(settings.autoCopyToClipboard)
     case .hotkeyEnabled: return onOff(settings.hotkeyEnabled)
     case .vadAutoStop: return onOff(settings.vadAutoStop)
@@ -237,9 +276,12 @@ enum SettingsProjection {
   ///   suffix normalized away). A stale local id carried over before discovery
   ///   corrects `llmModel` is not on this list → `custom`, never the raw name.
   @MainActor
-  private static func model(_ settings: SettingsManager) -> String {
-    let id = settings.effectiveLLMModel
-    switch settings.llmProvider {
+  /// Takes the provider and id as VALUES rather than reading dictation's settings, so both
+  /// surfaces run one redaction policy. Lifted for #2772 for the same reason the discovery
+  /// repair was: a second copy is how the two would come to disagree, and here the
+  /// disagreement is whether a user's own words leave their Mac.
+  private static func model(provider: LLMProvider, id: String) -> String {
+    switch provider {
     case .appleIntelligence: return "apple-intelligence"
     // #1271: native EG-1 — the model id is OUR fixed literal from the
     // manifest contract (`effectiveLLMModel` returns `eg-1`), never user
