@@ -68,14 +68,38 @@ public enum WordDiff {
     }
 
     /// The legend above the text. Founder's example: "1,204 words removed · 318 changed".
-    public var legend: String {
-      let removed = Self.count(removedWords, "word", "words")
-      let changed = changedWords.formatted()
+    /// Numbers follow the locale: a German user reads "1.204".
+    public var legend: String { legend(locale: .current) }
+
+    public func legend(locale: Locale) -> String {
+      let removed = Self.count(removedWords, "word", "words", locale: locale)
+      let changed = changedWords.formatted(.number.locale(locale))
       return "\(removed) removed · \(changed) changed"
     }
 
-    private static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
-      "\(n.formatted()) \(n == 1 ? singular : plural)"
+    private static func count(_ n: Int, _ singular: String, _ plural: String, locale: Locale)
+      -> String
+    {
+      "\(n.formatted(.number.locale(locale))) \(n == 1 ? singular : plural)"
+    }
+
+    /// Two results in reading order, as one. Counts add; the segments concatenate.
+    func appending(_ other: Result) -> Result {
+      Result(
+        segments: segments + other.segments, removedWords: removedWords + other.removedWords,
+        changedWords: changedWords + other.changedWords)
+    }
+  }
+
+  /// One passage of the original with what the cleanup made of it, or nil when the cleanup
+  /// never reached it.
+  public struct Passage: Equatable, Sendable {
+    public let original: String
+    public let cleaned: String?
+
+    public init(original: String, cleaned: String?) {
+      self.original = original
+      self.cleaned = cleaned
     }
   }
 
@@ -129,6 +153,32 @@ public enum WordDiff {
   }
 
   // MARK: - The comparison
+
+  /// Passage by passage, which is how the cleanup itself ran. Comparing the whole original
+  /// against the whole output as one block lost the boundaries: after a Stop, a global
+  /// alignment could match the finished part's few words against the START of the original
+  /// and mark the untouched waiting passages as removed, and a passage the splitter cut
+  /// inside a run with no spaces read as two words against one. Each passage is compared
+  /// with its own original; a passage the cleanup never reached is all `.same`. The
+  /// original's own whitespace carries the layout between passages; the raw transcript is
+  /// the concatenation of its pieces, so nothing is inserted between them.
+  public static func compare(passages: [Passage]) -> Result {
+    var result = Result(segments: [], removedWords: 0, changedWords: 0)
+    for passage in passages {
+      let piece: Result
+      if let cleaned = passage.cleaned {
+        piece = compare(original: passage.original, cleaned: cleaned)
+      } else {
+        piece = Result(
+          segments: tokenize(passage.original).map {
+            Segment(kind: .same, text: $0.text, trailing: $0.trailing)
+          },
+          removedWords: 0, changedWords: 0)
+      }
+      result = result.appending(piece)
+    }
+    return result
+  }
 
   public static func compare(original: String, cleaned: String) -> Result {
     let a = tokenize(original)

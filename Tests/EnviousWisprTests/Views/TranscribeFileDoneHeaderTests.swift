@@ -92,8 +92,8 @@ struct TranscribeFileDoneHeaderTests {
     // And the weight, which is what makes the highlight readable without its colour.
     let weighted = text.runs
       .filter { !String(text[$0.range].characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-      .map { $0.swiftUI.font != nil }
-    #expect(weighted == [false, false, true, true])
+      .map { $0.swiftUI.font }
+    #expect(weighted == [nil, nil, .body.weight(.semibold), .body.weight(.semibold)])
     // What a screen reader gets, since the marks say nothing aloud.
     #expect(
       TranscribeFileView.markedUpAccessibilityText([

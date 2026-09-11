@@ -97,13 +97,40 @@ struct WordDiffTests {
     #expect(hunk.segments.filter { $0.kind == .added }.isEmpty)
   }
 
-  @Test("the legend reads like the founder's example")
+  @Test("the legend reads like the founder's example, in the reader's number format")
   func legend() {
     let r = WordDiff.Result(segments: [], removedWords: 1204, changedWords: 318)
-    #expect(r.legend == "1,204 words removed · 318 changed")
+    #expect(r.legend(locale: Locale(identifier: "en_US")) == "1,204 words removed · 318 changed")
+    #expect(r.legend(locale: Locale(identifier: "de_DE")) == "1.204 words removed · 318 changed")
     #expect(
-      WordDiff.Result(segments: [], removedWords: 1, changedWords: 0).legend
-        == "1 word removed · 0 changed")
+      WordDiff.Result(segments: [], removedWords: 1, changedWords: 0)
+        .legend(locale: Locale(identifier: "en_US")) == "1 word removed · 0 changed")
+  }
+
+  /// Passage by passage (#2773, second-pass review). A global alignment matched a finished
+  /// part's few words against the START of the original and marked the untouched waiting
+  /// passages as removed; and a passage the splitter cut inside a run with no spaces read as
+  /// two words against one.
+  @Test("passages are compared with their own originals; an unreached one is all the same")
+  func passagesAreComparedSeparately() {
+    let r = WordDiff.compare(passages: [
+      .init(original: "alpha alpha alpha alpha\n\n", cleaned: "Alpha."),
+      .init(original: "alpha alpha four five six", cleaned: nil),
+    ])
+    #expect(r.removedWords == 3, "three of the first passage's four; none of the waiting one")
+    #expect(r.changedWords == 0)
+    let waiting = r.segments.suffix(5)
+    #expect(waiting.allSatisfy { $0.kind == .same })
+    #expect(waiting.map(\.text) == ["alpha", "alpha", "four", "five", "six"])
+    // The original's whitespace between passages survives; nothing is inserted.
+    #expect(r.segments.map { $0.text + $0.trailing }.joined().hasPrefix("alpha alpha alpha alpha\n\nalpha"))
+
+    // A run with no spaces that the splitter cut in two, each half cleaned to itself.
+    let noSpaces = WordDiff.compare(passages: [
+      .init(original: String(repeating: "あ", count: 30), cleaned: String(repeating: "あ", count: 30)),
+      .init(original: String(repeating: "あ", count: 30), cleaned: String(repeating: "あ", count: 30)),
+    ])
+    #expect(noSpaces.removedWords == 0 && noSpaces.changedWords == 0)
   }
 
   // MARK: - The algorithm, against a reference

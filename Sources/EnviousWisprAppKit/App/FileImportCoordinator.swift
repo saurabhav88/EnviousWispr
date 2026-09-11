@@ -617,6 +617,8 @@ final class FileImportCoordinator {
     originalHistoryRow = nil
     documentView = .cleaned
     markedUpCache = nil
+    markedUpWorker?.task.cancel()
+    markedUpWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -775,22 +777,24 @@ final class FileImportCoordinator {
   /// passage as REMOVED by a cleanup that never touched it. Found by Codex (chunk review).
   /// Comparison only; Copy, Save and Share still export `documentText`.
   var markedUpInput: MarkedUpInput {
-    MarkedUpInput(
-      raw: rawTranscript, cleanedParts: parts.map(\.text),
-      untouched: Array(pendingPieces.dropFirst(parts.count)))
+    // The split's pieces are the passages the cleanup ran on, in order; `parts[i]` is what
+    // it made of `pendingPieces[i]`. A piece past the last finished part was never reached.
+    // With no split in hand (nothing has run) the whole transcript is one untouched passage.
+    guard !pendingPieces.isEmpty else {
+      return MarkedUpInput(passages: [.init(original: rawTranscript, cleaned: nil)])
+    }
+    return MarkedUpInput(
+      passages: pendingPieces.enumerated().map { index, original in
+        .init(original: original, cleaned: index < parts.count ? parts[index].text : nil)
+      })
   }
 
-  /// The pieces, not the joined text: this is read on every redraw as the view's task id and
-  /// as the cache key, and joining a three-hour transcript on each read is an allocation
-  /// nobody asked for. The join happens once, inside `prepareMarkedUp`. Codex, round 2.
+  /// The passages, not a joined text: this is read on every redraw as the view's task id and
+  /// as the cache key, and the strings inside are the coordinator's own, shared not copied.
+  /// Passage by passage because that is how the cleanup ran; one joined block lost the
+  /// boundaries and could mark untouched waiting words as removed (second-pass review).
   struct MarkedUpInput: Equatable, Sendable {
-    let raw: String
-    let cleanedParts: [String]
-    let untouched: [String]
-
-    var cleaned: String {
-      cleanedParts.isEmpty ? raw : (cleanedParts + untouched).joined(separator: "\n\n")
-    }
+    let passages: [WordDiff.Passage]
   }
 
   /// The comparison, once `prepareMarkedUp` has run for the current input; nil while it is
@@ -812,12 +816,33 @@ final class FileImportCoordinator {
   func prepareMarkedUp() async {
     let input = markedUpInput
     guard markedUp == nil else { return }
-    let result = await Task.detached(priority: .userInitiated) {
-      WordDiff.compare(original: input.raw, cleaned: input.cleaned)
-    }.value
-    guard !Task.isCancelled, markedUpInput == input else { return }
+    // ONE comparison per input. Leaving the view cancels its task but not the detached work,
+    // and coming back before it finished used to start a second; switching back and forth on
+    // a large, heavily rewritten transcript piled them up. A worker for a different input is
+    // cancelled (its result is dropped; the algorithm itself runs to its end, bounded by the
+    // worst case noted on `WordDiff`), and a worker for THIS input is awaited, not repeated.
+    // Second-pass review.
+    if let inFlight = markedUpWorker, inFlight.input != input {
+      inFlight.task.cancel()
+      markedUpWorker = nil
+    }
+    let task: Task<WordDiff.Result, Never>
+    if let inFlight = markedUpWorker {
+      task = inFlight.task
+    } else {
+      task = Task.detached(priority: .userInitiated) {
+        WordDiff.compare(passages: input.passages)
+      }
+      markedUpWorker = (input, task)
+    }
+    let result = await task.value
+    guard markedUpInput == input else { return }
+    if markedUpWorker?.input == input { markedUpWorker = nil }
     markedUpCache = (input, result)
   }
+
+  @ObservationIgnored private var markedUpWorker:
+    (input: MarkedUpInput, task: Task<WordDiff.Result, Never>)?
 
   /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
   /// cleaned part to show instead.
@@ -942,6 +967,8 @@ final class FileImportCoordinator {
     originalHistoryRow = nil
     documentView = .cleaned
     markedUpCache = nil
+    markedUpWorker?.task.cancel()
+    markedUpWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []

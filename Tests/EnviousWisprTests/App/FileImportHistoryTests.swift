@@ -327,6 +327,14 @@ struct FileImportHistoryTests {
     c.documentView = .markedUp
     await c.prepareMarkedUp()
     let result = try #require(c.markedUp)
+    // EVERY word of every waiting passage is untouched, not only the distinctive one: the
+    // first passage's alphas may be removed, the waiting passages' alphas may not.
+    let firstPassageWords = c.pendingPieces[0].split(whereSeparator: \.isWhitespace).count
+    #expect(result.removedWords == firstPassageWords - 1, "\(result.removedWords) removed")
+    #expect(result.changedWords == 0)
+    let waitingWords = c.pendingPieces.dropFirst().joined(separator: " ")
+      .split(whereSeparator: \.isWhitespace).count
+    #expect(result.segments.suffix(waitingWords).allSatisfy { $0.kind == .same })
     let tail = try #require(result.segments.first { $0.text == "four" })
     #expect(tail.kind == .same, "an unfinished passage was marked \(tail.kind)")
   }
