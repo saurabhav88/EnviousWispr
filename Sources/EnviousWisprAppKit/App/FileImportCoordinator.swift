@@ -786,11 +786,12 @@ final class FileImportCoordinator {
     // Each passage's original is recovered FROM the transcript, not taken from the piece:
     // `TranscriptSplitter` slices from a word's start to a word's end and drops the
     // whitespace between pieces, so the pieces concatenated rendered "alphaalpha" across a
-    // cut. Scanning forward for each piece and taking the text up to the next piece's start
-    // (the end of the transcript for the last) keeps every gap exactly as spoken. A piece
-    // the scan cannot place should not happen (the splitter yields ordered verbatim slices);
-    // if it did, the piece stands in for itself and the rendering loses that one gap rather
-    // than the app crashing. Codex, confirming round.
+    // cut. Each piece is found by scanning forward, and the passage is the text from the
+    // cursor to the piece's end, so the gap BEFORE a piece rides with it; the last passage
+    // runs to the transcript's end. Every gap renders exactly as spoken. A piece the scan
+    // cannot place should not happen (the splitter yields ordered verbatim slices); if it
+    // did, that piece is compared directly and exact reconstruction is not guaranteed on
+    // that path, which is preferred to crashing on a data invariant. Codex, confirming round.
     var cursor = rawTranscript.startIndex
     var passages: [WordDiff.Passage] = []
     for (index, piece) in pendingPieces.enumerated() {
