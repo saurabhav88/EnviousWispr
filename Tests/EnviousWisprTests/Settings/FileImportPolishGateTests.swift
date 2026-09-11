@@ -310,4 +310,26 @@ struct FileImportPolishGateTests {
     #expect(
       Self.readiness(provider: .ollama, ollamaSetup: .ready, ollamaModelIsArmed: true) == .ready)
   }
+
+  /// "Edited" means the screen and the store disagree, and nothing else (#2772). A flag set
+  /// by typing stayed true after the user typed and then put the saved key back exactly, and
+  /// the gate blocked a key that was saved and correct. Found by the cloud review of
+  /// PR #2786.
+  @Test("a key typed and then restored to the saved value is not edited")
+  @MainActor
+  func aRestoredKeyIsNotEdited() {
+    let model = ProviderSetupModel()
+    model.openAIKey = "sk-saved"
+    model.openAIKeyPersistedDigest = ProviderSetupModel.digest("sk-saved")
+    #expect(!model.openAIKeyEdited)
+    model.openAIKey = "sk-replacement"
+    #expect(model.openAIKeyEdited)
+    model.openAIKey = "sk-saved"
+    #expect(!model.openAIKeyEdited, "the store and the screen agree again")
+    // A fresh model with nothing persisted: empty is not edited, typing is.
+    let fresh = ProviderSetupModel()
+    #expect(!fresh.geminiKeyEdited)
+    fresh.geminiKey = "AIza"
+    #expect(fresh.geminiKeyEdited)
+  }
 }

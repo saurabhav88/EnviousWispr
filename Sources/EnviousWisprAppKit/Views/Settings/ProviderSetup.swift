@@ -4,6 +4,7 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import OSLog
 import Security
+import CryptoKit
 import SwiftUI
 
 /// #2772 chunk 1 — the provider SETUP editor, lifted out of `AIPolishSettingsView`
@@ -121,20 +122,31 @@ final class ProviderSetupModel {
   var geminiKeySaved: Bool?
   var claudeKeySaved: Bool?
 
-  /// Whether the field has been TYPED IN since it was last loaded or saved (#2772).
+  /// Whether what is ON SCREEN differs from what is STORED (#2772).
   ///
   /// **Not "the field is non-empty", which is true for everyone who has a key.** The field
-  /// is filled from the Keychain on appear, so a user with a saved key sees it there. The
-  /// question the import gate needs is whether what is ON SCREEN differs from what is
-  /// STORED, because polish reads the Keychain: a replacement key typed and not saved means
-  /// the run would quietly use the OLD one while the user believes they changed it. Found by
-  /// the cloud review of PR #2786.
+  /// is filled from the Keychain on appear. The question the import gate needs is whether
+  /// the screen and the store disagree, because polish reads the Keychain: a replacement
+  /// key typed and not saved means the run would quietly use the OLD one while the user
+  /// believes they changed it. Found by the cloud review of PR #2786.
   ///
-  /// A flag rather than a second copy of the value to compare against: the secret is already
-  /// in memory once and there is no reason to hold it twice.
-  var openAIKeyEdited = false
-  var geminiKeyEdited = false
-  var claudeKeyEdited = false
+  /// DERIVED from a digest of the persisted value, never remembered as a flag. A flag set by
+  /// the setter stayed true after the user typed and then restored the saved key exactly, so
+  /// the gate blocked a key that was saved and correct (second cloud finding). A digest is
+  /// not a second copy of the secret; it is the one comparison the question needs.
+  var openAIKeyEdited: Bool { Self.digest(openAIKey) != openAIKeyPersistedDigest }
+  var geminiKeyEdited: Bool { Self.digest(geminiKey) != geminiKeyPersistedDigest }
+  var claudeKeyEdited: Bool { Self.digest(claudeKey) != claudeKeyPersistedDigest }
+
+  /// Digest of each field's value the last time it was read from or written to the Keychain
+  /// (or cleared). `ProviderSetupKeys.load` and `setKeySaved` are the two writers.
+  var openAIKeyPersistedDigest = ProviderSetupModel.digest("")
+  var geminiKeyPersistedDigest = ProviderSetupModel.digest("")
+  var claudeKeyPersistedDigest = ProviderSetupModel.digest("")
+
+  nonisolated static func digest(_ value: String) -> Data {
+    Data(SHA256.hash(data: Data(value.utf8)))
+  }
 
   /// #1950: the model id awaiting download confirmation, or nil.
   ///
@@ -236,12 +248,14 @@ enum ProviderSetupDownloads {
 @MainActor
 enum ProviderSetupKeys {
   static func load(into model: ProviderSetupModel, using keychainManager: KeychainManager) {
-    // Every arm below writes the field from the Keychain or empties it, so nothing on
-    // screen is a typed change afterwards. Cleared here rather than in the three successful
-    // reads, because a THROWN read empties the field and must clear it too.
-    model.openAIKeyEdited = false
-    model.geminiKeyEdited = false
-    model.claudeKeyEdited = false
+    // Every arm below writes the field from the Keychain or empties it, so what is on screen
+    // afterwards IS the persisted value; the digests are taken at the end, once, which also
+    // covers a THROWN read that emptied the field.
+    defer {
+      model.openAIKeyPersistedDigest = ProviderSetupModel.digest(model.openAIKey)
+      model.geminiKeyPersistedDigest = ProviderSetupModel.digest(model.geminiKey)
+      model.claudeKeyPersistedDigest = ProviderSetupModel.digest(model.claudeKey)
+    }
     do {
       let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
       model.openAIKey = stored
@@ -840,32 +854,9 @@ struct ProviderSetupSection: View {
 
   private var activeKeyBinding: Binding<String> {
     switch provider {
-    // Each setter marks the field EDITED, which is what the import gate reads. Guarded on a
-    // real change so a redraw that writes the same value back does not report a typed key.
-    case .openAI:
-      return Binding(
-        get: { model.openAIKey },
-        set: {
-          guard $0 != model.openAIKey else { return }
-          model.openAIKey = $0
-          model.openAIKeyEdited = true
-        })
-    case .gemini:
-      return Binding(
-        get: { model.geminiKey },
-        set: {
-          guard $0 != model.geminiKey else { return }
-          model.geminiKey = $0
-          model.geminiKeyEdited = true
-        })
-    case .claude:
-      return Binding(
-        get: { model.claudeKey },
-        set: {
-          guard $0 != model.claudeKey else { return }
-          model.claudeKey = $0
-          model.claudeKeyEdited = true
-        })
+    case .openAI: return Binding(get: { model.openAIKey }, set: { model.openAIKey = $0 })
+    case .gemini: return Binding(get: { model.geminiKey }, set: { model.geminiKey = $0 })
+    case .claude: return Binding(get: { model.claudeKey }, set: { model.claudeKey = $0 })
     // #2651: enumerated rather than `default:`. A constant binding silently
     // discards every keystroke, which is the right answer only where no key
     // field is shown. A NEW cloud provider on a `default:` arm would render a
@@ -875,18 +866,18 @@ struct ProviderSetupSection: View {
   }
 
   /// Records the outcome of a Save or a Clear, both of which make the field agree with the
-  /// Keychain again, so each also clears the typed-since-loaded flag the import gate reads.
+  /// Keychain again, so each also re-takes the persisted digest the import gate compares.
   private func setKeySaved(_ saved: Bool) {
     switch provider {
     case .openAI:
       model.openAIKeySaved = saved
-      model.openAIKeyEdited = false
+      model.openAIKeyPersistedDigest = ProviderSetupModel.digest(model.openAIKey)
     case .gemini:
       model.geminiKeySaved = saved
-      model.geminiKeyEdited = false
+      model.geminiKeyPersistedDigest = ProviderSetupModel.digest(model.geminiKey)
     case .claude:
       model.claudeKeySaved = saved
-      model.claudeKeyEdited = false
+      model.claudeKeyPersistedDigest = ProviderSetupModel.digest(model.claudeKey)
     // #2651: enumerated rather than `default:`. There is no saved-key flag to
     // set for these. A NEW cloud provider on a `default:` arm would save its
     // key and never record that it had, so the missing-key notice would stay
