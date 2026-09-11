@@ -536,10 +536,11 @@ final class FileImportCoordinator {
     onEngineReleased: @escaping @MainActor () -> Void = {},
     beginRun: @escaping @MainActor () -> RunConfiguration,
     prepareLocalPolish: @escaping @MainActor (RunConfiguration) async -> Void = { _ in },
-    saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
-    // Reports success, exactly as the no-op save above does, so a coordinator built with
-    // neither closure has one consistent story about History rather than two.
-    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
+    // No defaults (#2772): a coordinator built without History closures would report every
+    // run as saved, and the general test factory did exactly that. A caller that means to
+    // simulate History says so at the call site.
+    saveToHistory: @escaping @MainActor (Transcript) throws -> Void,
+    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool,
     processPart:
       @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
   ) {
@@ -721,8 +722,20 @@ final class FileImportCoordinator {
   /// way to check it is a promise the product does not keep. Found by Codex.
   var isShowingOriginal = false
 
+  /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
+  /// cleaned part to show instead.
+  ///
+  /// ONE answer to "what is the screen showing", read by the export text, the saved badge and
+  /// the view. Each had been answering it on its own, and the badge's copy had only the
+  /// second half: after a Stop with one cleaned part and Show original words pressed, the
+  /// screen and Copy both had the raw transcript, which was saved, while the badge compared
+  /// the partial cleaned document and said it was not. Found by the cloud review of
+  /// PR #2786, and the same shape as the credit it fixed earlier: a status about what was
+  /// held rather than what was shown.
+  var screenShowsRawWords: Bool { isShowingOriginal || parts.isEmpty }
+
   /// What Copy and Save hand over, which is always what the screen is showing.
-  var exportText: String { isShowingOriginal ? rawTranscript : documentText }
+  var exportText: String { screenShowsRawWords ? rawTranscript : documentText }
 
   /// Whether Back is offered right now, so the button is absent rather than
   /// present and inert.
@@ -1188,6 +1201,9 @@ final class FileImportCoordinator {
       savedHistoryRow = row
       rawIsSavedToHistory = true
       historySaveFailure = nil
+      // The row is back: a Clean it again after a deletion writes it anew, and the notice
+      // must stop saying it is gone.
+      historyRowWasDeleted = false
       return true
     } catch {
       historySaveFailure = String(describing: error)
@@ -1241,13 +1257,13 @@ final class FileImportCoordinator {
   /// over words that were not. Found by Codex.
   var isSavedToHistory: Bool {
     guard let savedHistoryRow else { return false }
-    // With NO cleaned parts the screen is showing the raw words, and the right question is
-    // whether THOSE are saved. Comparing display text alone raised a false alarm on a real
-    // sequence: finish a cleanup, press Clean it again, stop before the first part. `parts`
-    // is empty so the screen falls back to the raw transcript, while the saved row's
-    // display text is the PREVIOUS cleaned version — a mismatch over words that are safely
-    // stored. Found by Codex.
-    if parts.isEmpty { return savedHistoryRow.text == rawTranscript }
+    // When the screen is showing the raw words the right question is whether THOSE are
+    // saved. Comparing display text alone raised a false alarm on a real sequence: finish a
+    // cleanup, press Clean it again, stop before the first part. `parts` is empty so the
+    // screen falls back to the raw transcript, while the saved row's display text is the
+    // PREVIOUS cleaned version — a mismatch over words that are safely stored. Found by
+    // Codex. The Show original words toggle is the same question asked by the user.
+    if screenShowsRawWords { return savedHistoryRow.text == rawTranscript }
     return savedHistoryRow.displayText == documentText
   }
 

@@ -150,6 +150,59 @@ struct FileImportHistoryTests {
     #expect(keptRun.isSavedToHistory)
   }
 
+  /// After a deletion, Clean it again is a fresh request for this document and writes the
+  /// row anew, so the notice must stop saying it is gone. Found by Codex: the raw re-save
+  /// left the deletion fact standing.
+  @Test("cleaning again after a deletion writes the row back and drops the deletion notice")
+  func cleaningAgainAfterADeletionWritesTheRowBack() async {
+    let spy = HistorySpy()
+    // Deleted during the FIRST cleanup only: the hook fires again on the re-clean, when the
+    // raw row has been written twice, and must not stage a second deletion there.
+    let c = Self.coordinator(
+      spy: spy, onPart: { if spy.writes.count == 1 { spy.rowWasDeleted = true } })
+    await run(c)
+    #expect(c.historyRowWasDeleted)
+
+    // The user restores the row by asking for the work again.
+    spy.rowWasDeleted = false
+    c.rePolish()
+    await settleUntil { c.state == .finished }
+
+    #expect(!c.historyRowWasDeleted, "the notice still says the row is gone")
+    #expect(spy.writes.count == 3, "raw, then raw again, then cleaned")
+    #expect(c.isSavedToHistory)
+    #expect(c.historySaveNotice == nil)
+  }
+
+  /// The saved badge answers about the words ON SCREEN (#2772).
+  ///
+  /// Staged with the raw write landed and the cleaned write refused, which leaves History
+  /// holding the raw words under a document with cleaned parts. That is what a Stop after one
+  /// part looks like too. With Show original words pressed the screen and Copy both carry
+  /// the raw transcript, which IS saved, and the badge used to compare the cleaned document
+  /// and say it was not. Found by the cloud review of PR #2786.
+  @Test("with the original words showing, the badge reports whether THOSE are saved")
+  func theBadgeFollowsTheToggle() async {
+    let spy = HistorySpy()
+    // The raw write has already landed when the first part runs; refusing from here on
+    // leaves the cleaned write unsaved.
+    let c = Self.coordinator(spy: spy, onPart: { spy.refuse = true })
+    await run(c)
+    #expect(spy.writes.count == 1)
+    #expect(!c.parts.isEmpty, "the staging needs a cleaned part on screen")
+
+    #expect(!c.isSavedToHistory, "the cleaned document was refused and still reads as saved")
+    #expect(c.exportText == "One two three.")
+
+    c.isShowingOriginal = true
+    #expect(c.isSavedToHistory, "the raw words are on screen and in History")
+    #expect(c.exportText == "um one two three")
+    #expect(c.historySaveNotice == nil)
+
+    c.isShowingOriginal = false
+    #expect(!c.isSavedToHistory)
+  }
+
   /// **The ordering IS the feature.** The raw words must be durable before the slow half
   /// starts, because by then the audio has been released and there is nothing left to redo
   /// the transcription from.

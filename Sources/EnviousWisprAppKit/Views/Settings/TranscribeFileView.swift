@@ -1154,7 +1154,7 @@ struct TranscribeFileView: View {
       // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
       // and honouring it there hid the finished parts during a re-polish.
       ForEach(
-        coordinator.step == .done && coordinator.isShowingOriginal ? [] : coordinator.parts
+        coordinator.step == .done && coordinator.screenShowsRawWords ? [] : coordinator.parts
       ) { part in
         VStack(alignment: .leading, spacing: 4) {
           Text(part.text)
@@ -1173,7 +1173,7 @@ struct TranscribeFileView: View {
       // DONE only. This is the "Show original words" view and the empty-document floor, and
       // both belong to the finished screen; on Working the queue shows the raw words.
       if coordinator.step == .done,
-        coordinator.isShowingOriginal || coordinator.parts.isEmpty,
+        coordinator.screenShowsRawWords,
         !coordinator.rawTranscript.isEmpty
       {
         Text(coordinator.rawTranscript)

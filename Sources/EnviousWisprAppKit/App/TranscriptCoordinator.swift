@@ -471,10 +471,18 @@ final class TranscriptCoordinator {
       // telemetry, never what the user can see. That is also why a missed sweep
       // is not a user-facing bug.
       await sweepExpiredPending()
+      guard !Task.isCancelled else { return }
       do {
         // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
         // recognised as newer than what the disk handed back.
         let revisionAtRead = historyWriteRevision
+        // And the deletion generation, for the opposite race: a row DELETED while this read
+        // was suspended is still in the picture the disk handed back, and the merge below
+        // would reinstate it. For an import that is worse than a stale list, because the
+        // cleanup's update then finds the row and rewrites its file — the deletion
+        // `updateExistingRow` exists to respect. Every removal bumps this synchronously
+        // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
+        let generationAtRead = diskStateGeneration
         var diskRows = try await store.loadAll()
         // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
         // are not yet on disk (append-during-load race window) in their
@@ -487,6 +495,11 @@ final class TranscriptCoordinator {
         // wins, and the user sees the row they kept exactly once rather than a
         // permanent row shadowed by a copy still counting down.
         let pendingRows = (try? await store.loadPending()) ?? []
+        guard !Task.isCancelled else { return }
+        guard generationAtRead == diskStateGeneration else {
+          load()
+          return
+        }
         // #2772: a row written SINCE this read began is newer than the disk copy that came
         // back, and the merge below prefers the disk one whenever the id already exists. An
         // import writes twice under one id, so without this the raw version read at the

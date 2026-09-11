@@ -62,6 +62,29 @@ enum ProviderSetupSurface {
   case fileImport
 }
 
+/// Whether leaving Ollama on ONE surface may tear down the Ollama work both surfaces share:
+/// the download in flight, a hosted name still resolving, the warm-up (#2772).
+///
+/// The provider-change observer below runs per surface, and it used to cancel unconditionally.
+/// With dictation on Ollama and a multi-gigabyte pull running, choosing a different polisher
+/// for file imports threw the pull away for a provider dictation had never left. Found by the
+/// cloud review of PR #2786. Same class as the selection-time engine probe deleted earlier
+/// in that PR: an import-surface action reaching a resource dictation owns.
+///
+/// A pure decision so it can be tested without a view. The caller passes the OTHER surface's
+/// live selection; a following import reads dictation's, so leaving Ollama on dictation with
+/// nothing overriding it correctly cancels.
+enum SharedOllamaCleanup {
+  static func mayCancel(
+    leaving surface: ProviderSetupSurface, dictation: LLMProvider, importEffective: LLMProvider
+  ) -> Bool {
+    switch surface {
+    case .dictation: return importEffective != .ollama
+    case .fileImport: return dictation != .ollama
+    }
+  }
+}
+
 // MARK: - Shared state
 
 /// The editor's own state, held by the host so both `Part`s and the lifecycle modifier
@@ -632,6 +655,12 @@ struct ProviderSetupSection: View {
         // Removing the selected engine must move the user somewhere that
         // works, or polish silently stops. Apple Intelligence is what a fresh
         // install selects, so it is where a removal lands.
+        //
+        // BOTH surfaces (#2772). The engine is shared; removing it from the import page
+        // while dictation still selected it left dictation pointing at nothing, and
+        // `EGOneRuntime.removeModel` then refused the file removal because its
+        // `isActiveProvider` still reported dictation's selection. Found by Codex.
+        if settings.llmProvider == .egOne { settings.llmProvider = .appleIntelligence }
         setProvider(.appleIntelligence)
       }
     }
@@ -641,6 +670,7 @@ struct ProviderSetupSection: View {
         allowsRuntimeActivation: surface == .dictation
       ) {
         localPolishRuntimes.s1Mini.removeModel()
+        if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
         setProvider(.appleIntelligence)
       }
     }
@@ -722,7 +752,11 @@ struct ProviderSetupSection: View {
       // states can never be reached. Hiding it is honest; leaving a dead
       // "Prepare Model" affordance on screen is the kind of control that teaches
       // users the app is unreliable.
-      if provider == .ollama && !selectedOllamaModelIsRemote {
+      // #2772: DICTATION only, same rule as the bundled-engine probe. Warm-up loads a model
+      // into the daemon's memory and cancels any other model's pending warm-up, so an import
+      // page browsing Ollama models would evict the one dictation is about to use. The
+      // import's run loads its own model when it starts.
+      if surface == .dictation, provider == .ollama, !selectedOllamaModelIsRemote {
         ollamaWarmupIndicator
       } else if surfaceIsDiscovering {
         ProgressView()
@@ -1866,6 +1900,17 @@ struct ProviderSetupSection: View {
               await setup.ollamaSetup.deleteModel(name: entry.name)
               await llmDiscovery.validateKeyAndDiscoverModels(
                 provider: .ollama, settings: settings, surface: surface)
+              // The model is gone for BOTH surfaces, and the discovery above repaired only
+              // this one's selection (#2772). Apply the same catalog to the other; each
+              // applier refuses when its surface is not on Ollama, so this is a no-op
+              // wherever there is nothing to repair. Found by Codex.
+              if llmDiscovery.stateProvider == .ollama,
+                llmDiscovery.keyValidationState == .valid
+              {
+                let models = llmDiscovery.discoveredModels
+                settings.applyDiscoveredModels(models, for: .ollama)
+                settings.applyDiscoveredModelsForFileImport(models, for: .ollama)
+              }
             }
           } label: {
             Text("Delete")
@@ -2196,21 +2241,33 @@ struct ProviderSetupLifecycle: ViewModifier {
       setup.stopOllamaStatusWatch()
     }
     .onChange(of: provider) { _, newProvider in
-      llmDiscovery.reset()
+      // No `llmDiscovery.reset()` here (#2772). The coordinator is shared, and resetting it
+      // on THIS surface's provider change threw away the other surface's discovered list and
+      // key verdict; `stateIsAboutThisSurface` already keeps a verdict earned for another
+      // provider off this screen, and the cached load below replaces ownership. The reset
+      // stays on Clear, where the credential itself is gone.
       // Model canonicalization handled by SettingsManager.llmProvider didSet.
       // Discovery will refine the model async if needed.
 
       // Clean up Ollama state when switching away
       if newProvider != .ollama {
-        setup.ollamaSetup.cancelPull()
-        // #1956: `cancelPull()` cannot reach a hosted Add that is still probing
-        // for its registrable name — there is no `pullTask` yet, so both of its
-        // branches are false and it correctly does nothing. Without this the
-        // resolution would finish and start a pull for the provider the user
-        // just left, and that late pull cancels whatever pull is current.
-        setup.ollamaSetup.cancelHostedResolution()
-        setup.ollamaSetup.resetWarmup()
+        // This page's daemon watch is this page's, whatever the other surface selected.
         setup.stopOllamaStatusWatch()
+        // The download, the resolving name and the warm-up are SHARED, and only go when no
+        // surface is still on Ollama. See `SharedOllamaCleanup`.
+        if SharedOllamaCleanup.mayCancel(
+          leaving: surface, dictation: settings.llmProvider,
+          importEffective: settings.effectiveFileImportLLMProvider)
+        {
+          setup.ollamaSetup.cancelPull()
+          // #1956: `cancelPull()` cannot reach a hosted Add that is still probing
+          // for its registrable name — there is no `pullTask` yet, so both of its
+          // branches are false and it correctly does nothing. Without this the
+          // resolution would finish and start a pull for the provider the user
+          // just left, and that late pull cancels whatever pull is current.
+          setup.ollamaSetup.cancelHostedResolution()
+          setup.ollamaSetup.resetWarmup()
+        }
       }
 
       switch newProvider {
@@ -2274,18 +2331,20 @@ struct ProviderSetupLifecycle: ViewModifier {
         // so it is the second and last automatic trigger. Separate task for the
         // same reason as the appearance one.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
-        // Warm up the selected model when Ollama becomes ready
-        if !surfaceCloudModel.isEmpty {
+        // Warm up the selected model when Ollama becomes ready. Dictation only (#2772): see
+        // the indicator above for why the import surface may not touch the shared warm-up.
+        if surface == .dictation, !surfaceCloudModel.isEmpty {
           setup.ollamaSetup.warmUpModel(surfaceCloudModel)
         }
-      } else if provider == .ollama {
+      } else if surface == .dictation, provider == .ollama {
         // Reset warmup when Ollama leaves .ready (server died, etc.)
         setup.ollamaSetup.resetWarmup()
       }
     }
     .onChange(of: surfaceCloudModel) { _, newModel in
-      // Warm up when user switches Ollama model
-      if provider == .ollama,
+      // Warm up when user switches Ollama model. Dictation only (#2772).
+      if surface == .dictation,
+        provider == .ollama,
         case .ready = setup.ollamaSetup.setupState,
         !newModel.isEmpty
       {

@@ -263,4 +263,31 @@ struct FileImportPolishGateTests {
       #expect(!line.contains("\u{2014}") && !line.contains("\u{2013}"), "dash in \"\(line)\"")
     }
   }
+
+  /// The other shared resource on the page (#2772). Leaving Ollama on one surface used to
+  /// cancel the download, the resolving name and the warm-up for both, so choosing a
+  /// different file polisher threw away gigabytes dictation was still waiting on. Found by
+  /// the cloud review of PR #2786.
+  ///
+  /// All four cells, because the fix is a two-way condition and either half alone would pass
+  /// a version that never cancels.
+  @Test("leaving Ollama on one surface keeps the shared download while the other still uses it")
+  func sharedOllamaWorkOutlivesAnImportOnlySwitch() {
+    // Import leaves; dictation stays on Ollama: keep.
+    #expect(
+      !SharedOllamaCleanup.mayCancel(
+        leaving: .fileImport, dictation: .ollama, importEffective: .appleIntelligence))
+    // Import leaves; dictation never used Ollama: cancel.
+    #expect(
+      SharedOllamaCleanup.mayCancel(
+        leaving: .fileImport, dictation: .claude, importEffective: .appleIntelligence))
+    // Dictation leaves; import overrides to Ollama on its own: keep.
+    #expect(
+      !SharedOllamaCleanup.mayCancel(
+        leaving: .dictation, dictation: .claude, importEffective: .ollama))
+    // Dictation leaves and import follows it, so its effective provider left too: cancel.
+    #expect(
+      SharedOllamaCleanup.mayCancel(
+        leaving: .dictation, dictation: .claude, importEffective: .claude))
+  }
 }

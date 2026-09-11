@@ -108,6 +108,11 @@ struct FileImportCoordinatorTests {
       engineAdmission: .live(lease: lease, as: .fileImport),
       ensureEngineReady: ensureEngineReady,
       beginRun: beginRun,
+      // History is SIMULATED here, deliberately: these rows are about the run, and
+      // `FileImportHistoryTests` owns what reaches History. A no-op save that reports
+      // success is the explicit statement of that, not a default.
+      saveToHistory: { _ in },
+      updateHistoryRow: { _ in true },
       processPart: { part, _ in try await processPart(part) })
   }
 
