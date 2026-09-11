@@ -78,7 +78,13 @@ final class TranscriptCoordinator {
     // would otherwise pollute results for 24 hours, and the row is reachable
     // the whole time by scrolling History, which is where the user left it.
     return visible.filter {
-      $0.escapeRecoveredAt == nil && $0.displayText.localizedCaseInsensitiveContains(searchQuery)
+      // #2772: the imported file's name is on the row, and it is the thing a person looking
+      // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
+      // `marketing_sync.wav` removed the row while its badge said the word. Found by the
+      // cloud review of PR #2786.
+      $0.escapeRecoveredAt == nil
+        && ($0.displayText.localizedCaseInsensitiveContains(searchQuery)
+          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false))
     }
   }
 
