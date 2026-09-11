@@ -589,7 +589,7 @@ struct TranscribeFileView: View {
           HStack(spacing: 8) {
             Image(systemName: icon).foregroundStyle(Color.stAccent)
             Text(title).font(.stRowTitle).lineLimit(1).fixedSize()
-            if recommended { Self.badge("Recommended") }
+            if recommended { Self.wizardBadge("Recommended") }
             Spacer(minLength: 8)
             check
           }
@@ -600,7 +600,7 @@ struct TranscribeFileView: View {
               Spacer(minLength: 8)
               check
             }
-            if recommended { Self.badge("Recommended") }
+            if recommended { Self.wizardBadge("Recommended") }
           }
         }
         Text(blurb)
@@ -629,7 +629,15 @@ struct TranscribeFileView: View {
 
   /// Static and internal so `TranscribeFilePolishGridTests` can measure the one badge that
   /// sets the polish card's minimum width.
-  static func badge(_ text: String) -> some View {
+  ///
+  /// Named so that no unqualified call can resolve to SwiftUI's own `View.badge(_:)`. When
+  /// this helper was `badge(_:)` and became static, one call site inside an instance method
+  /// stayed unqualified, and the compiler quietly chose `self.badge("Recommended")`: the
+  /// whole wizard, placed inside its own processing-path card, inside the wizard, without
+  /// end. On macOS 27.0 that was a main-thread stack overflow the moment Review opened
+  /// (#2798; 42,933 frames of SwiftUI stack sizing). `wizardBadge` has no SwiftUI twin, so
+  /// an unqualified call is a compile error rather than a recursion.
+  static func wizardBadge(_ text: String) -> some View {
     Text(text)
       .font(.system(size: 13, weight: .semibold))
       // Never "Recomme…": a badge that cannot say its word is not a badge. At the minimum
@@ -899,7 +907,7 @@ struct TranscribeFileView: View {
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
         }
         Text(choice.title).font(.stRowLabel).fixedSize(horizontal: false, vertical: true)
-        if choice.provider == .egOne { Self.badge("Recommended") }
+        if choice.provider == .egOne { Self.wizardBadge("Recommended") }
         // Wraps, like the title. A single-line subtitle truncated at three columns, and the
         // words it lost were the ones saying whether the engine is ready.
         Text(cardSubtitle(for: choice.provider))
@@ -1124,7 +1132,7 @@ struct TranscribeFileView: View {
       HStack(spacing: 8) {
         mark()
         Text(title).font(.stRowLabel)
-        if recommended { badge("Recommended") }
+        if recommended { Self.wizardBadge("Recommended") }
         Spacer(minLength: 0)
       }
       Text(blurb).foregroundStyle(Color.stTextSecondary)
