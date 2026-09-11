@@ -1028,8 +1028,12 @@ public final class SettingsManager {
     // #2772: ABSENT means follow dictation, so the key genuinely not being there is the
     // default and `nil` must survive the round trip. `object(forKey:)` distinguishes an
     // absent key from a stored `.none`; `string(forKey:) ?? default` could not.
+    // An UNRECOGNISED value (a provider a later build added, read after a downgrade) is
+    // also "follow", never `.none`: `.none` is the user's explicit "no AI polish for
+    // imports", and a downgrade must not turn polish off on their behalf. Found by the
+    // cloud review of PR #2786.
     fileImportLLMProvider = (defaults.object(forKey: "fileImportLLMProvider") as? String)
-      .map { LLMProvider(rawValue: $0) ?? LLMProvider.none }
+      .flatMap { LLMProvider(rawValue: $0) }
     fileImportLLMModel =
       defaults.string(forKey: "fileImportLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
     fileImportOllamaModel =

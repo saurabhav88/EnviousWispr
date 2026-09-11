@@ -216,4 +216,21 @@ struct FileImportDiscoveryRepairTests {
     #expect(
       SettingsManager.normalizedModel(for: .ollama, cloudModel: "", ollamaModel: "llama3") == "")
   }
+
+  /// A stored provider this build does not know (a later build added it; the user came
+  /// back) must read as "follow dictation", not as the explicit "no AI polish" override.
+  /// Found by the cloud review of PR #2786.
+  @Test("an unrecognised stored import provider reads as follow, and a stored none stays none")
+  func anUnknownStoredProviderFollows() {
+    let unknown = UserDefaults(suiteName: "SM-2772-unknown-\(UUID().uuidString)")!
+    unknown.set("provider-from-the-future", forKey: "fileImportLLMProvider")
+    #expect(SettingsManager(defaults: unknown).fileImportLLMProvider == nil)
+
+    let off = UserDefaults(suiteName: "SM-2772-off-\(UUID().uuidString)")!
+    off.set(LLMProvider.none.rawValue, forKey: "fileImportLLMProvider")
+    #expect(SettingsManager(defaults: off).fileImportLLMProvider == .some(.none))
+
+    let absent = UserDefaults(suiteName: "SM-2772-absent-\(UUID().uuidString)")!
+    #expect(SettingsManager(defaults: absent).fileImportLLMProvider == nil)
+  }
 }
