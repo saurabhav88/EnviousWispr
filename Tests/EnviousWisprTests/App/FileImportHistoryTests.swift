@@ -286,13 +286,39 @@ struct FileImportHistoryTests {
     #expect(!c.screenShowsRawWords)
     #expect(c.exportText == "One two three.")
     #expect(c.isSavedToHistory, "the cleaned document is what is saved and what exports")
+    // Nothing until the comparison has been made off the main actor.
+    #expect(c.markedUp == nil)
+    await c.prepareMarkedUp()
     // "um one two three" → "One two three.": one word removed, nothing changed.
-    #expect(c.markedUp.removedWords == 1)
-    #expect(c.markedUp.changedWords == 0)
-    #expect(c.markedUp.segments.map(\.kind) == [.removed, .same, .same, .same])
-    // A new file starts on Cleaned again.
+    #expect(c.markedUp?.removedWords == 1)
+    #expect(c.markedUp?.changedWords == 0)
+    #expect(c.markedUp?.segments.map(\.kind) == [.removed, .same, .same, .same])
+    // A new file starts on Cleaned again, with no comparison carried over.
     c.startOver()
     #expect(c.documentView == .cleaned)
+    #expect(c.markedUp == nil)
+  }
+
+  /// After a Stop, the passages the cleanup never reached are not "removed" (#2773). The
+  /// comparison runs against the finished parts plus the untouched tail; found by Codex.
+  @Test("a stopped import compares against the untouched tail, not against nothing")
+  func aStoppedImportDoesNotMarkTheTailRemoved() async {
+    let spy = HistorySpy()
+    let box = CoordinatorBox()
+    let raw = "um one two three\n\nfour five six"
+    let c = Self.coordinator(
+      spy: spy, raw: raw, cleaned: "One two three.",
+      onPart: { box.coordinator?.stop() })
+    box.coordinator = c
+    c.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = c.state { return true } else { return false } }
+    c.start()
+    await settleUntil { c.state == .stopped }
+    guard !c.parts.isEmpty else { return }
+    c.documentView = .markedUp
+    await c.prepareMarkedUp()
+    let removed = c.markedUp?.segments.filter { $0.kind == .removed }.map(\.text) ?? []
+    #expect(!removed.contains("four"), "an unfinished passage was marked as removed: \(removed)")
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half

@@ -1263,16 +1263,25 @@ struct TranscribeFileView: View {
       if coordinator.step == .done, coordinator.documentView == .markedUp,
         !coordinator.parts.isEmpty
       {
-        let markedUp = coordinator.markedUp
-        VStack(alignment: .leading, spacing: 8) {
-          Text(markedUp.legend)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-            .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
-          Text(Self.markedUpText(markedUp.segments))
-            .lineSpacing(6)
-            .textSelection(.enabled)
+        Group {
+          if let markedUp = coordinator.markedUp {
+            VStack(alignment: .leading, spacing: 8) {
+              Text(markedUp.legend)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextSecondary)
+                .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
+              Text(Self.markedUpText(markedUp.segments))
+                .lineSpacing(6)
+                .textSelection(.enabled)
+                // The marks are visual; this is what a screen reader gets instead.
+                .accessibilityLabel(Self.markedUpAccessibilityText(markedUp.segments))
+            }
+          } else {
+            ProgressView("Comparing words")
+              .controlSize(.small)
+          }
         }
+        .task(id: coordinator.markedUpInput) { await coordinator.prepareMarkedUp() }
       }
       // DONE only. This is the "Original" view and the empty-document floor, and both belong
       // to the finished screen; on Working the queue shows the raw words.
@@ -1571,9 +1580,23 @@ struct TranscribeFileView: View {
         run.font = .body.weight(.semibold)
       }
       out.append(run)
-      out.append(AttributedString(segment.trailing.isEmpty ? " " : segment.trailing))
+      // The original's own whitespace, never an invented one: `WordDiff` already put a
+      // separator before an addition that needs it.
+      out.append(AttributedString(segment.trailing))
     }
     return out
+  }
+
+  /// The marks in words, for a screen reader: strikethrough and highlight say nothing aloud.
+  static func markedUpAccessibilityText(_ segments: [WordDiff.Segment]) -> String {
+    segments.map { segment in
+      switch segment.kind {
+      case .same: return segment.text + segment.trailing
+      case .removed: return "Removed: \(segment.text). "
+      case .changed: return "Changed: \(segment.text). "
+      case .added: return "Added: \(segment.text). "
+      }
+    }.joined()
   }
 
   private func chip(_ text: String) -> some View {

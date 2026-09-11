@@ -12,17 +12,21 @@ import Foundation
 /// observable in the diff; no category ("filler", "grammar") is inferred, because the
 /// polisher never says why it changed anything.
 ///
-/// **Words, not characters, and words by their letters.** Tokens are whitespace-separated
-/// runs; two tokens are the same word when they agree after lowercasing and stripping
-/// leading and trailing punctuation. So "hello" and "Hello," are one word: a comma or a
-/// capital is not the cleanup the count is about, and counting it would make every sentence
-/// look rewritten. The original's exact spelling and spacing are what get rendered.
+/// **Tokens, and what counts as the same one.** Counts are over whitespace-separated tokens.
+/// Two tokens compare equal after lowercasing and stripping LEADING and TRAILING punctuation
+/// and symbols from an otherwise non-empty token, so "hello" and "Hello," are one word: a
+/// comma or a capital is not the cleanup the count is about, and counting it would make every
+/// sentence look rewritten. Internal punctuation stays significant ("don't" and "dont"
+/// differ). A token that is only punctuation or only an emoji stays a token and can count.
+/// A replacement hunk counts its ORIGINAL tokens once; an insert-only hunk counts what it
+/// inserted. The original's exact spelling and spacing are what get rendered.
 ///
-/// **Myers' algorithm in linear space** (the middle-snake refinement), so an hour of speech
-/// costs tens of milliseconds and a three-hour file about a hundred, once, when the user
-/// switches to the view. Measured before choosing, on #2773: 1.8 ms at 2,000 words, 26 ms at
-/// 9,000, 107 ms at 27,000. The quadratic-memory form of the same algorithm would need half
-/// a gigabyte at the three-hour size.
+/// **Myers' algorithm in linear space** (the middle-snake refinement). The quadratic-memory
+/// form would need half a gigabyte at a three-hour transcript. Time is linear in the edit
+/// distance as well as the length: the cleanup-shaped inputs measured on #2773 took 1.8 ms
+/// at 2,000 words, 26 ms at 9,000 and 107 ms at 27,000 in Release, and two transcripts with
+/// nothing in common at 27,000 took about three seconds (Codex, chunk review). The
+/// coordinator therefore runs it off the main actor and the view shows a placeholder.
 public enum WordDiff {
 
   public enum Kind: Equatable, Sendable {
@@ -95,12 +99,11 @@ public enum WordDiff {
       word = ""
       space = ""
     }
-    for scalar in text.unicodeScalars {
-      let c = Character(scalar)
+    for c in text {
       if c.isWhitespace || c.isNewline {
         if word.isEmpty {
-          // Leading whitespace before any word: attach to the previous token's trailing run,
-          // or drop it at the very start.
+          // Whitespace before any word: attach to the previous token's trailing run. At the
+          // very start there is no token yet; `compare` keeps that run as its own segment.
           if var last = tokens.popLast() {
             last = Token(text: last.text, trailing: last.trailing + String(c), key: last.key)
             tokens.append(last)
@@ -131,7 +134,14 @@ public enum WordDiff {
     let a = tokenize(original)
     let b = tokenize(cleaned)
     let ops = edits(a.map(\.key), b.map(\.key))
-    return assemble(ops, original: a, cleaned: b)
+    let result = assemble(ops, original: a, cleaned: b)
+    // The original's leading whitespace is layout, not a word: kept as an unmarked segment
+    // so the rendering starts where the original did.
+    let leading = String(original.prefix { $0.isWhitespace })
+    guard !leading.isEmpty else { return result }
+    return Result(
+      segments: [Segment(kind: .same, text: leading, trailing: "")] + result.segments,
+      removedWords: result.removedWords, changedWords: result.changedWords)
   }
 
   enum Op: Equatable {
@@ -177,6 +187,12 @@ public enum WordDiff {
       }
       if deletes.isEmpty {
         for bi in inserts {
+          // An addition after the original's last word needs a separator the original
+          // never had; everywhere else the original's own whitespace does the job.
+          if let previous = segments.last, previous.trailing.isEmpty {
+            segments[segments.count - 1] = Segment(
+              kind: previous.kind, text: previous.text, trailing: " ")
+          }
           segments.append(Segment(kind: .added, text: b[bi].text, trailing: b[bi].trailing))
         }
         changed += inserts.count

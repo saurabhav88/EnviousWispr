@@ -89,5 +89,16 @@ struct TranscribeFileDoneHeaderTests {
     #expect(runs.map(\.0) == ["the", "um", "gonna", "morning."])
     #expect(runs.map(\.1) == [false, true, false, false], "strikethrough marks exactly the removed word")
     #expect(runs.map(\.2) == [false, false, true, true], "the highlight marks exactly the altered and added words")
+    // And the weight, which is what makes the highlight readable without its colour.
+    let weighted = text.runs
+      .filter { !String(text[$0.range].characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+      .map { $0.swiftUI.font != nil }
+    #expect(weighted == [false, false, true, true])
+    // What a screen reader gets, since the marks say nothing aloud.
+    #expect(
+      TranscribeFileView.markedUpAccessibilityText([
+        .init(kind: .same, text: "the", trailing: " "),
+        .init(kind: .removed, text: "um", trailing: " "),
+      ]) == "the Removed: um. ")
   }
 }

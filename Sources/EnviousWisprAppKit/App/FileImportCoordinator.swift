@@ -616,6 +616,7 @@ final class FileImportCoordinator {
     // Same rule as `startOver`: a different file is a different row (#2772).
     originalHistoryRow = nil
     documentView = .cleaned
+    markedUpCache = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -768,18 +769,47 @@ final class FileImportCoordinator {
     case original
   }
 
-  /// The comparison behind the marked-up view, computed on the first switch to it and kept
-  /// while the two texts it was made from stand. A hundred milliseconds on a three-hour file
-  /// once, not on every redraw.
-  @ObservationIgnored private var markedUpCache:
-    (raw: String, cleaned: String, result: WordDiff.Result)?
-  var markedUp: WordDiff.Result {
-    if let c = markedUpCache, c.raw == rawTranscript, c.cleaned == documentText {
-      return c.result
+  /// What the marked-up view compares the original against: the cleaned parts, then any
+  /// passage the cleanup never reached, unchanged. After a Stop, `documentText` holds only
+  /// the finished parts, and comparing the whole original against that marked every waiting
+  /// passage as REMOVED by a cleanup that never touched it. Found by Codex (chunk review).
+  /// Comparison only; Copy, Save and Share still export `documentText`.
+  var markedUpInput: MarkedUpInput {
+    let cleaned: String
+    if parts.isEmpty {
+      cleaned = rawTranscript
+    } else {
+      cleaned = (parts.map(\.text) + Array(pendingPieces.dropFirst(parts.count)))
+        .joined(separator: "\n\n")
     }
-    let result = WordDiff.compare(original: rawTranscript, cleaned: documentText)
-    markedUpCache = (rawTranscript, documentText, result)
-    return result
+    return MarkedUpInput(raw: rawTranscript, cleaned: cleaned)
+  }
+
+  struct MarkedUpInput: Equatable, Sendable {
+    let raw: String
+    let cleaned: String
+  }
+
+  /// The comparison, once `prepareMarkedUp` has run for the current input; nil while it is
+  /// still being made or the input moved. Kept while the two texts it was made from stand.
+  @ObservationIgnored private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result)?
+  var markedUp: WordDiff.Result? {
+    guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
+    return cached.result
+  }
+
+  /// Runs the comparison OFF the main actor. Cleanup-shaped inputs take milliseconds, but the
+  /// algorithm is linear in the edit distance too, and two transcripts with nothing in common
+  /// took three seconds at the three-hour size; done in a getter that froze the window.
+  /// Found by Codex (chunk review). A result for an input that moved while it ran is dropped.
+  func prepareMarkedUp() async {
+    let input = markedUpInput
+    guard markedUp == nil else { return }
+    let result = await Task.detached(priority: .userInitiated) {
+      WordDiff.compare(original: input.raw, cleaned: input.cleaned)
+    }.value
+    guard !Task.isCancelled, markedUpInput == input else { return }
+    markedUpCache = (input, result)
   }
 
   /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
@@ -904,6 +934,7 @@ final class FileImportCoordinator {
     // same property that makes the raw-then-polished pair an update rather than a duplicate.
     originalHistoryRow = nil
     documentView = .cleaned
+    markedUpCache = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []

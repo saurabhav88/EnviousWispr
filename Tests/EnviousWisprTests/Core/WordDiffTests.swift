@@ -77,6 +77,24 @@ struct WordDiffTests {
     #expect(r.segments.map(\.text) == ["first", "line", "second", "line"])
     #expect(r.segments[1].trailing == "\n")
     #expect(r.segments.allSatisfy { $0.kind == .same })
+    // Rebuilding the segments gives back the original byte for byte, leading run included.
+    let spaced = "  two  spaces\tand a tab\n"
+    let s = WordDiff.compare(original: spaced, cleaned: "Two spaces and a tab.")
+    #expect(s.segments.map { $0.text + $0.trailing }.joined() == spaced)
+    // An addition after the original's last word gets one separator; nothing else is added.
+    let added = WordDiff.compare(original: "call the doctor", cleaned: "Call the doctor tomorrow")
+    #expect(added.segments.map { $0.text + $0.trailing }.joined() == "call the doctor tomorrow")
+  }
+
+  /// The policy the doc comment states, pinned: internal punctuation counts, a lone
+  /// punctuation token counts, and a mixed hunk counts its original tokens once.
+  @Test("the count policy: internal punctuation and lone tokens count; a hunk counts once")
+  func countPolicy() {
+    #expect(WordDiff.compare(original: "dont go", cleaned: "don't go").changedWords == 1)
+    #expect(WordDiff.compare(original: "wait ...", cleaned: "wait !").changedWords == 1)
+    let hunk = WordDiff.compare(original: "x", cleaned: "a b c")
+    #expect(hunk.changedWords == 1, "a replacement hunk counts its original tokens, not its inserts")
+    #expect(hunk.segments.filter { $0.kind == .added }.isEmpty)
   }
 
   @Test("the legend reads like the founder's example")
