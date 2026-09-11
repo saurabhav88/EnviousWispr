@@ -225,6 +225,24 @@ enum FileImportPolishGate {
   }
 }
 
+// MARK: - Is the armed Ollama model really there?
+
+extension FileImportPolishGate {
+  /// Whether the import's remembered Ollama model is one the daemon actually has.
+  ///
+  /// `.ready` only says SOME model is installed. A remembered name that was removed or
+  /// renamed outside the app (`ollama rm` in a terminal) stayed armed, Continue enabled, and
+  /// every part then came back `modelMissing`: raw output from a run the gate admitted.
+  /// Found by the cloud review of PR #2786. Matched canonically, the way eviction and
+  /// discovery already match (`llama2` and `llama2:latest` are one model), against the
+  /// catalog the daemon reported.
+  static func ollamaModelIsArmed(_ model: String, downloaded: [String]) -> Bool {
+    guard !model.isEmpty else { return false }
+    let target = OllamaSetupService.canonicalModelName(model)
+    return downloaded.contains { OllamaSetupService.canonicalModelName($0) == target }
+  }
+}
+
 // MARK: - The card subtitle, driven by the same decision (#2772 finding 7g)
 
 /// The one line under an engine's name on the Polish step.

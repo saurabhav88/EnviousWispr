@@ -807,7 +807,10 @@ struct TranscribeFileView: View {
       // this function now runs for every card. With OpenAI selected it returns a cloud id,
       // which made the unselected Ollama card read "Ready" while its remembered Ollama
       // selection was empty. A per-card question needs a per-card field. Found by Codex.
-      ollamaModelIsArmed: !importOllamaModel.isEmpty)
+      // And present in the daemon's own list, not merely remembered. See the gate's
+      // `ollamaModelIsArmed(_:downloaded:)`.
+      ollamaModelIsArmed: FileImportPolishGate.ollamaModelIsArmed(
+        importOllamaModel, downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
   }
 
   struct PolishChoice {

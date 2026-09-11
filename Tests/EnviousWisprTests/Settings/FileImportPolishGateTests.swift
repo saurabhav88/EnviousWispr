@@ -290,4 +290,24 @@ struct FileImportPolishGateTests {
       SharedOllamaCleanup.mayCancel(
         leaving: .dictation, dictation: .claude, importEffective: .claude))
   }
+
+  /// The armed Ollama model must be one the daemon has (#2772). `.ready` only says some
+  /// model is installed; a name removed outside the app stayed armed and the run produced
+  /// raw output from every part. Found by the cloud review of PR #2786.
+  @Test("an Ollama model is armed only when the daemon's list has it, matched canonically")
+  func anArmedOllamaModelMustBeDownloaded() {
+    let downloaded = ["llama3:latest", "mistral:7b"]
+    #expect(FileImportPolishGate.ollamaModelIsArmed("llama3", downloaded: downloaded))
+    #expect(FileImportPolishGate.ollamaModelIsArmed("llama3:latest", downloaded: downloaded))
+    #expect(FileImportPolishGate.ollamaModelIsArmed("mistral:7b", downloaded: downloaded))
+    #expect(!FileImportPolishGate.ollamaModelIsArmed("mistral", downloaded: downloaded))
+    #expect(!FileImportPolishGate.ollamaModelIsArmed("gemma", downloaded: downloaded))
+    #expect(!FileImportPolishGate.ollamaModelIsArmed("", downloaded: downloaded))
+    // And the gate itself: a ready daemon with the model gone is "needs setup", not ready.
+    #expect(
+      Self.readiness(provider: .ollama, ollamaSetup: .ready, ollamaModelIsArmed: false)
+        == .blocked(.needsSetup))
+    #expect(
+      Self.readiness(provider: .ollama, ollamaSetup: .ready, ollamaModelIsArmed: true) == .ready)
+  }
 }
