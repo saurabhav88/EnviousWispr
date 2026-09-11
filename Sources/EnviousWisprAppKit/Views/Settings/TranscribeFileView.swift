@@ -128,7 +128,21 @@ struct TranscribeFileView: View {
   /// underlined; the rest are numbered and dim. Going back is offered only while
   /// nothing has run — after that the choices are frozen for the run, and a
   /// live-looking control would be a lie.
+  ///
+  /// Two renderings, and `ViewThatFits` picks the widest that fits. At the 750-point minimum
+  /// window six titled chips do not fit and SwiftUI broke the words mid-letter ("Uploa d",
+  /// "Worki ng"; photographed in `docs/feature-requests/2772-uat-evidence/`). The compact
+  /// row keeps every ring and only the CURRENT step's title; the rest keep their titles for
+  /// accessibility. Titles are `fixedSize` so the first candidate reports its true width
+  /// rather than "fitting" by wrapping, which is how the break got there.
   private var stepBar: some View {
+    ViewThatFits(in: .horizontal) {
+      stepBarRow(compact: false)
+      stepBarRow(compact: true)
+    }
+  }
+
+  private func stepBarRow(compact: Bool) -> some View {
     HStack(spacing: 2) {
       ForEach(FileImportCoordinator.Step.allCases, id: \.self) { step in
         let done = step.rawValue < coordinator.step.rawValue
@@ -155,9 +169,13 @@ struct TranscribeFileView: View {
                   .overlay(Circle().strokeBorder(tint, lineWidth: 1.5))
               }
             }
-            Text(step.title)
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(tint)
+            if !compact || current {
+              Text(step.title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .fixedSize()
+            }
           }
           .padding(.top, 10)
           .padding(.bottom, 9)
@@ -169,6 +187,7 @@ struct TranscribeFileView: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(step.title)
         .disabled(!coordinator.canGo(to: step))
       }
     }
@@ -595,6 +614,9 @@ struct TranscribeFileView: View {
   static func badge(_ text: String) -> some View {
     Text(text)
       .font(.system(size: 13, weight: .semibold))
+      // Never "Recomme…": a badge that cannot say its word is not a badge. At the minimum
+      // window the transcription card's header squeezed it before anything else gave.
+      .fixedSize()
       .padding(.horizontal, 9)
       .padding(.vertical, 2)
       .background(Capsule().fill(Color.stAccentSolid))
