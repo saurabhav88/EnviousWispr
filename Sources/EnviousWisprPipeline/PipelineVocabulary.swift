@@ -58,6 +58,11 @@ public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
   case dictation
   case crashRecovery
   case fileImport
+  /// #2787: a dictation ended (the user stopped waiting, or the session was
+  /// torn down) while its vendor decode was still running. The engine is not
+  /// free until that call returns, and on the machine that motivated this it
+  /// never did — so the honest answer to the next record press is "restart".
+  case abandonedDecode
 }
 
 /// #1567 (heartpath E3): a typed fact explaining a post-completion or advisory

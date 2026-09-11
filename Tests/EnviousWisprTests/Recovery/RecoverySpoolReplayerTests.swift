@@ -36,6 +36,7 @@ struct RecoverySpoolReplayerTests {
     var parakeetModelDirectory: URL?
     var activeBackendType: ASRBackendType = .parakeet
     var isModelLoaded = false
+    let vendorDecodeOccupancy = VendorDecodeOccupancy()
     var isStreaming = false
     var downloadProgress: Double = 0
     var downloadPhase = "idle"

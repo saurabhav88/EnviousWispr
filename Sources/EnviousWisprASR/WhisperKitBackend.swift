@@ -569,9 +569,9 @@ public actor WhisperKitBackend: ASRBackend {
   // in the base options (the session sets `clipTimestamps = [lastConfirmedSec]` and
   // keeps `.none` per cycle; it must NEVER inherit the `>30s -> .vad` branch that
   // would re-chunk the whole growing buffer, F2).
-  package func makeStreamingSession(options: TranscriptionOptions)
-    async -> (any WhisperKitIncrementalSession)?
-  {
+  package func makeStreamingSession(
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+  ) async -> (any WhisperKitIncrementalSession)? {
     guard let kit = await readyKitAfterWarmupDrain() else { return nil }
     var opts = makeDecodeOptions(from: options, sampleCount: 0)
     // LocalAgreement-2 confirmation is word-level — word timings are required
@@ -588,8 +588,10 @@ public actor WhisperKitBackend: ASRBackend {
     // (large-v3-turbo CoreML), a `<|startofprev|>` prompt makes the decoder
     // intermittently EOT whole speech-filled windows empty (WhisperKit trace,
     // investigation log 2026-07-04) — the buffer shape alone is the winner.
+    // #2787: every decode this session issues is counted (see the decorator).
     return WhisperKitStreamingSession(
-      whisperKit: kit, decodingOptions: opts,
+      whisperKit: OccupiedWhisperKitDecoder(base: kit, occupancy: vendorDecodeOccupancy),
+      decodingOptions: opts,
       conditionOnPriorText: false, localAgreement: true)
   }
 

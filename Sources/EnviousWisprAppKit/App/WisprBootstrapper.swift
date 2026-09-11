@@ -260,7 +260,13 @@ package final class WisprBootstrapper {
     // several chunks. A consumer not yet migrated stays on its existing
     // per-consumer closure wiring below until its own chunk lands.
     let engineMutationScope = EngineMutationScope.live(
-      tryBegin: { [engineRecoveryGate] in engineRecoveryGate.tryBeginMutation() },
+      // #2787: no warm-up, unload, download or migration while an abandoned
+      // vendor decode still owns the engine — the hold is the one holder the
+      // recovery gate cannot see, because it is not a recovery.
+      tryBegin: { [engineRecoveryGate, engineLease] in
+        guard engineLease.currentHolder != .abandonedDecode else { return false }
+        return engineRecoveryGate.tryBeginMutation()
+      },
       end: { [engineRecoveryGate] in engineRecoveryGate.endMutation() },
       wake: { recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck() },
       onRefused: { site in TelemetryService.shared.recoveryEngineActionDeferred(site: site) })
@@ -271,6 +277,9 @@ package final class WisprBootstrapper {
     // out from under an idle dictation. The `useXPCASRService` selector and
     // its `defaults write` escape hatch are retired along with it.
     let asrManager: any ASRManagerInterface = ASRManager(engineMutationScope: engineMutationScope)
+    // #2787: owns the engine AFTER a session ends with its decode still running.
+    let abandonedDecodeHold = AbandonedDecodeHold(
+      lease: engineLease, occupancy: asrManager.vendorDecodeOccupancy)
 
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
@@ -534,6 +543,7 @@ package final class WisprBootstrapper {
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
+        vendorDecodeOccupancy: asrManager.vendorDecodeOccupancy,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
@@ -1052,8 +1062,11 @@ package final class WisprBootstrapper {
         readiness: { [kernelDriver, whisperKitKernelDriver] backend in
           (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
         },
-        isEngineActive: { [kernelDriver, whisperKitKernelDriver] backend in
-          (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
+        // #2787: an engine whose abandoned decode is still running is ACTIVE
+        // for switching purposes, whatever the pipeline state says.
+        isEngineActive: { [kernelDriver, whisperKitKernelDriver, engineLease] backend in
+          engineLease.currentHolder == .abandonedDecode
+            || (backend == .whisperKit ? whisperKitKernelDriver : kernelDriver).state.isActive
         },
         isRecovering: { [weak recoveryCoordinator] in recoveryCoordinator?.isRecovering ?? false },
         // `isEngineHeld`, not `isRunning`: Stop flips the visible state at the
@@ -1147,6 +1160,13 @@ package final class WisprBootstrapper {
       get: { liveRecordingState.isRecordingLocked },
       set: { locked in liveRecordingState.isRecordingLocked = locked }
     )
+    // #2787: when the abandoned decode finally returns, wake the two consumers
+    // that deferred work while the engine was held — a pending engine switch
+    // and a deferred crash-recovery pass.
+    abandonedDecodeHold.onSettled = { [weak engineCoordinator, weak recoveryCoordinator] _ in
+      engineCoordinator?.poke(.driverStateChanged)
+      recoveryCoordinator?.requestRecoveryRecheck()
+    }
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       application: presentationEffects.application,
       kernelDriver: kernelDriver,
@@ -1162,8 +1182,11 @@ package final class WisprBootstrapper {
       recordingLockedAccess: recordingLockedAccess,
       // #2648 — the running session's claim comes back here, on the session's
       // terminal transition, because both start methods return while the
-      // recording is still running.
-      releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
+      // recording is still running. #2787: through the hold, which keeps the
+      // engine claimed if the session's vendor decode is still running.
+      releaseEngineClaim: { [abandonedDecodeHold] token in
+        abandonedDecodeHold.releaseFromDictation(token)
+      }
     )
     dictationLifecycleCoordinator.install()
     // #1171 — every pipeline state change pokes the coordinator: non-terminal

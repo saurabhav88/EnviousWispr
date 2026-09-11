@@ -946,6 +946,10 @@ struct TranscribeFileView: View {
       return "That transcription engine isn't downloaded yet. Get it in Transcription settings."
     case .engineNotReady: return "The transcription engine didn't start. Try again."
     case .engineBusy(.fileImport): return "Another file is being transcribed right now."
+    // #2787: a dictation ended but its transcription never returned; the engine
+    // is not free until the app restarts.
+    case .engineBusy(.abandonedDecode):
+      return "The last dictation is still transcribing. Restart the app, then try again."
     case .failed: return "Something went wrong reading that file. Try a different one."
     }
   }

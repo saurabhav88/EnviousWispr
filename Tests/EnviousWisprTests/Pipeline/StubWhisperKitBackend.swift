@@ -119,9 +119,9 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     return observeLIDResult
   }
 
-  func makeStreamingSession(options: TranscriptionOptions) async
-    -> (any WhisperKitIncrementalSession)?
-  {
+  func makeStreamingSession(
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+  ) async -> (any WhisperKitIncrementalSession)? {
     makeStreamingSessionCount += 1
     return streamingSessionFactory?()
   }

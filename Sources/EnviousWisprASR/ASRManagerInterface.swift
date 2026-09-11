@@ -168,6 +168,13 @@ public protocol ASRManagerInterface: AnyObject {
   // Batch transcription
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
+  /// #2787: whether a vendor decode (`transcribe` / `finalizeStreaming`) is
+  /// still running, independent of whether any session is still waiting for
+  /// it. No protocol default on purpose: a conformer that answered "idle"
+  /// by omission would let a record press mint a session on top of a decode
+  /// that never returned, which is the exact state this exists to expose.
+  var vendorDecodeOccupancy: VendorDecodeOccupancy { get }
+
   // Streaming transcription
   /// Create a fresh `attemptID` before scheduling the call and its deadline —
   /// `cancelInFlightStreamingStart(attemptID:)` needs it to name exactly

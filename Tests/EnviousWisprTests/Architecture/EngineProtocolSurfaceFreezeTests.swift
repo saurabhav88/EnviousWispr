@@ -480,6 +480,9 @@ import Testing
           signature:
             "func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult"
         ),
+        // #2787: the engine-busy authority a record press, replay and unload consult.
+        MemberSignature(
+          condition: nil, signature: "var vendorDecodeOccupancy: VendorDecodeOccupancy { get }"),
         MemberSignature(
           condition: nil,
           signature:
@@ -650,7 +653,7 @@ import Testing
         MemberSignature(
           condition: nil,
           signature:
-            "func makeStreamingSession(options: TranscriptionOptions) async\n    -> (any WhisperKitIncrementalSession)?"
+            "func makeStreamingSession(\n    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy\n  ) async -> (any WhisperKitIncrementalSession)?"
         ),
         MemberSignature(condition: nil, signature: "func unload() async"),
       ]),

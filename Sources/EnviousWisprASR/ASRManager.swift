@@ -64,6 +64,8 @@ public final class ASRManager: ASRManagerInterface {
   /// against the first; there is no "which one is newer" question left to
   /// get wrong.
   private var streamingStartInFlight = false
+  /// #2787: is a vendor decode call running right now, whoever is waiting.
+  public let vendorDecodeOccupancy = VendorDecodeOccupancy()
   /// This attempt's identity, supplied by the caller (`ParakeetEngineAdapter`
   /// mints a fresh one per `beginSession()`) rather than an internal counter,
   /// so `cancelInFlightStreamingStart(attemptID:)` can name exactly the
@@ -454,7 +456,12 @@ public final class ASRManager: ASRManagerInterface {
     async throws -> ASRResult
   {
     guard let activeBackend else { throw ASRManagerNotOwnedError(backend: activeBackendType) }
-    return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    // #2787: counted for the whole vendor call, so a session that stops
+    // waiting (cancel during transcribing) leaves the engine visibly BUSY
+    // until Core ML actually returns.
+    return try await vendorDecodeOccupancy.track {
+      try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    }
   }
 
   // MARK: - Streaming ASR
@@ -559,7 +566,10 @@ public final class ASRManager: ASRManagerInterface {
     // by the time this returns).
     let attemptID = streamingStartID
     do {
-      let result = try await activeBackend.finalizeStreaming()
+      // #2787: see `transcribe` — the streaming finalize is a vendor decode too.
+      let result = try await vendorDecodeOccupancy.track {
+        try await activeBackend.finalizeStreaming()
+      }
       // Identity-checked, not unconditional: a reclaim task or a newer
       // start's own admission could have moved `streamingStartID` on during
       // this suspension (round 9/10's lesson, applied here too).

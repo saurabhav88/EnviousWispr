@@ -283,6 +283,7 @@ private final class FactoryFakeASRManager: ASRManagerInterface {
   init(backend: ASRBackendType) { self.activeBackendType = backend }
 
   var isModelLoaded: Bool { true }
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
   var isStreaming: Bool { false }
   var downloadProgress: Double { 1 }
   var downloadPhase: String { "ready" }

@@ -1998,6 +1998,38 @@ public final class TelemetryService {
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])
   }
 
+  /// #2787 — a dictation session ended while its vendor decode was still
+  /// running, so the shared engine stays claimed as `abandonedDecode` until
+  /// that call returns. One event per hold. Pairs with
+  /// `abandonedDecodeHoldSettled`; a hold with no settle is a decode that
+  /// never returned before the app quit — the fleet-level count of the #2787
+  /// hang. `in_flight` is how many vendor calls were running at the time.
+  public func abandonedDecodeHoldStarted(inFlight: Int) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.abandoned_decode_hold_started", stringProps: [:],
+          intProps: ["in_flight": inFlight]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.abandoned_decode_hold_started", properties: ["in_flight": inFlight])
+  }
+
+  /// #2787 — the abandoned decode returned and the engine was released.
+  /// `seconds` is how long it stayed held past the session's end; `$value`
+  /// mirrors it in seconds (RULE: value-slot-carries-seconds-for-durations).
+  public func abandonedDecodeHoldSettled(seconds: Double) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.abandoned_decode_hold_settled", stringProps: [:], intProps: [:],
+          doubleProps: ["held_seconds": seconds]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.abandoned_decode_hold_settled",
+      properties: ["held_seconds": seconds, "$value": seconds])
+  }
+
   /// #1707 Phase 3 — pairs with `recoveryPressBlocked`: a press that was
   /// previously blocked went on to mint an active session. `waitSeconds` is
   /// the measured gap between the block and this later successful start,

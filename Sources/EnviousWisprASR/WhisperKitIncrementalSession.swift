@@ -92,6 +92,35 @@ package protocol WhisperKitTranscribing: Sendable {
   func encodeText(_ text: String) -> [Int]
 }
 
+/// #2787: counts every decode the streaming session issues against the shared
+/// `VendorDecodeOccupancy`, so a session that stops waiting mid-stream leaves
+/// the engine visibly busy until WhisperKit actually returns. Wraps the
+/// decoder INTERFACE rather than each call site: the streaming loop and both
+/// flush branches go through one `transcribe`, and any future call the
+/// session adds is counted by construction.
+package struct OccupiedWhisperKitDecoder: WhisperKitTranscribing {
+  let base: any WhisperKitTranscribing
+  let occupancy: VendorDecodeOccupancy
+
+  package init(base: any WhisperKitTranscribing, occupancy: VendorDecodeOccupancy) {
+    self.base = base
+    self.occupancy = occupancy
+  }
+
+  package func transcribe(
+    audioArray: [Float], decodeOptions: DecodingOptions?,
+    shouldContinueDecoding: (@Sendable () -> Bool)?
+  ) async throws -> [TranscriptionResult] {
+    try await occupancy.track {
+      try await base.transcribe(
+        audioArray: audioArray, decodeOptions: decodeOptions,
+        shouldContinueDecoding: shouldContinueDecoding)
+    }
+  }
+
+  package func encodeText(_ text: String) -> [Int] { base.encodeText(text) }
+}
+
 // Retroactive @unchecked Sendable: WhisperKit (upstream, @preconcurrency-imported)
 // has mutable stored properties so it cannot auto-synthesize Sendable, but every
 // caller of the shared instance in this package already goes through actor

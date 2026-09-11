@@ -249,6 +249,12 @@ public enum KernelDictationDriverFactory {
     /// the composition root, threaded into the driver, kernel, and
     /// `WhisperKitEngineAdapter` this factory builds. Required — no default.
     package let engineMutationScope: EngineMutationScope
+    /// #2787: the ONE occupancy counter the composition root owns
+    /// (`ASRManager.vendorDecodeOccupancy`). WhisperKit's live batch decode
+    /// does not go through `ASRManager.transcribe`, so the adapter counts its
+    /// own vendor call against this. Required — no default — so the production
+    /// site cannot leave WhisperKit invisible to the engine hold.
+    package let vendorDecodeOccupancy: VendorDecodeOccupancy
     /// #2087: writes the crash-provenance marker that tells the next launch this
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
@@ -273,6 +279,7 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       engineMutationScope: EngineMutationScope,
+      vendorDecodeOccupancy: VendorDecodeOccupancy,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -284,6 +291,7 @@ public enum KernelDictationDriverFactory {
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
+      self.vendorDecodeOccupancy = vendorDecodeOccupancy
       self.languageDetector = languageDetector
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
@@ -418,6 +426,7 @@ public enum KernelDictationDriverFactory {
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },
       engineMutationScope: inputs.engineMutationScope,
+      vendorDecodeOccupancy: inputs.vendorDecodeOccupancy,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,

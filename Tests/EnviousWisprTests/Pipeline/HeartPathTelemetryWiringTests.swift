@@ -622,6 +622,7 @@ private final class NoOpASRManager: ASRManagerInterface {
   var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded: Bool = false
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
   var isStreaming: Bool = false
   var downloadProgress: Double = 0
   var downloadPhase: String = "idle"

@@ -79,6 +79,7 @@ final class RouterTestASRManager: ASRManagerInterface {
   var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded: Bool = false
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
   var isStreaming: Bool = false
   var downloadProgress: Double = 0
   var downloadPhase: String = "idle"
@@ -176,7 +177,8 @@ enum DictationRuntimeFixtures {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
-        engineMutationScope: .alwaysAllowedForTesting
+        engineMutationScope: .alwaysAllowedForTesting,
+        vendorDecodeOccupancy: VendorDecodeOccupancy()
       ))
   }
 

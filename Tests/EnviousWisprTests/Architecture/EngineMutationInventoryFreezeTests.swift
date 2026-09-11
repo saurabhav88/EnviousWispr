@@ -941,7 +941,7 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift",
       matcher: "makeStreamingSession",
-      text: "guard let session = await backend.makeStreamingSession(options: options) else {",
+      text: "let session = await backend.makeStreamingSession(",
       classification: .structurallySafe),
     // Language-ID observation inside the adapter's own finalize/decode flow —
     // session-scoped, an `ASREngineLanguageIdentifying`-adjacent read that
@@ -962,7 +962,7 @@ import Testing
     // unawaited cancellation races recovery's gate opening.
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-      text: "let result = try await backend.transcribe(",
+      text: "try await backend.transcribe(audioSamples: samples, options: decodeOptions)",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -978,8 +978,7 @@ import Testing
     // review named, not cascaded through every deeper forwarding layer.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "transcribe",
-      text:
-        "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
+      text: "try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "feedAudio",
@@ -1008,7 +1007,7 @@ import Testing
     // discarding whatever is current IS the intent.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "finalizeStreaming",
-      text: "let result = try await activeBackend.finalizeStreaming()",
+      text: "try await activeBackend.finalizeStreaming()",
       classification: .transitivelyCoveredByCaller),
 
     // MARK: ParakeetBackend — new Chunk 11 entry, same inherited coverage as
@@ -1063,6 +1062,13 @@ import Testing
     // `transcribe` calls below are internal decode-loop steps; #1749 —
     // "ordinary-session operations that can remain in flight" per Codex's
     // grounded review: not guaranteed to stop before recovery's gate opens.
+    // #2787: the occupancy decorator every streaming decode passes through. It
+    // adds no vendor call of its own — it forwards the session's — so it
+    // inherits the caller's safety exactly as the sites above do.
+    CallSite(
+      file: "Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift", matcher: "transcribe",
+      text: "try await base.transcribe(",
+      classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
       text: "let results = try await whisperKit.transcribe(",
@@ -2111,7 +2117,7 @@ import Testing
         text: "let results = try await whisperKit.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-        text: "let result = try await backend.transcribe("),
+        text: "try await backend.transcribe(audioSamples: samples, options: decodeOptions)"),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
         text: "let result = try await asrManager.transcribe("),
