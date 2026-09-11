@@ -28,6 +28,9 @@ ROWS = [
     ("Sure! Here is the cleaned transcript:\nCall.", "Call."),
     ("Here's the cleaned up text:\nCall.", "Call."),
     ("Below is your transcript:\nCall.", "Call."),
+    ("Here is the revised transcript:\nHello.", "Hello."),
+    ("Here is the updated text:\nHello.", "Hello."),
+    ("Here is the final version:\nHello.", "Hello."),
     # dictated lead-ins survive (#2795)
     ("Here are the things we should do before lunch:\n- Call.",
      "Here are the things we should do before lunch:\n- Call."),

@@ -82,7 +82,7 @@ extension String {
       // review, Q7).
       let wrapperShape =
         #"^(?:here(?: is|'s|’s)|below is) (?:the |your )?"#
-        + #"(?:(?:cleaned|corrected|polished|rewritten|edited)(?: up)? )?(?:transcript|text|version):$"#
+        + #"(?:(?:cleaned|corrected|polished|rewritten|edited|revised|updated|fixed|formatted|improved|final|new)(?: up)? )?(?:transcript|text|version):$"#
       let namesWrappedThing =
         trimmedFirst.range(of: wrapperShape, options: .regularExpression) != nil
       return

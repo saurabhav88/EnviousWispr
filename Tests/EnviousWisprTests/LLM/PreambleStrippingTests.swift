@@ -71,6 +71,10 @@ struct PreambleStrippingTests {
       ("Here are the textile suppliers:\n- One.", "Here are the textile suppliers:\n- One."),
       ("Here's the cleaned up text:\nCall.", "Call."),
       ("Below is your transcript:\nCall.", "Call."),
+      // #2795 cloud review r2: the adjective set covers what models actually emit.
+      ("Here is the revised transcript:\nHello.", "Hello."),
+      ("Here is the updated text:\nHello.", "Hello."),
+      ("Here is the final version:\nHello.", "Hello."),
     ])
   func preambleLinesStripped(input: String, expected: String) {
     #expect(input.strippingLLMPreamble() == expected)

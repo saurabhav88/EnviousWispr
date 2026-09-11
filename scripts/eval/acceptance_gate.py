@@ -1858,7 +1858,7 @@ _PREAMBLE_PREFIXES = (
 # inside another word ("conVERSION", "TEXTile") cannot match.
 _PREAMBLE_WRAPPER_SHAPE = re.compile(
     r"^(?:here(?: is|'s|\u2019s)|below is) (?:the |your )?"
-    r"(?:(?:cleaned|corrected|polished|rewritten|edited)(?: up)? )?(?:transcript|text|version):$"
+    r"(?:(?:cleaned|corrected|polished|rewritten|edited|revised|updated|fixed|formatted|improved|final|new)(?: up)? )?(?:transcript|text|version):$"
 )
 _PREAMBLE_ACKS = (
     "Certainly!", "Sure!", "Sure,", "Of course!", "Got it.", "Got it!",
