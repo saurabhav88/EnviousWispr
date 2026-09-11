@@ -577,13 +577,31 @@ struct TranscribeFileView: View {
       settings.selectedBackend = backend
     } label: {
       VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 8) {
-          Image(systemName: icon).foregroundStyle(Color.stAccent)
-          Text(title).font(.stRowTitle)
-          if recommended { Self.badge("Recommended") }
-          Spacer(minLength: 8)
-          Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
+        // The design's header is one row: icon, title, badge, check. At two columns in the
+        // minimum window that row is wider than the card, and with the badge held whole the
+        // title was the flexible thing left, so "Fast" rendered as four stacked letters
+        // (photographed in `docs/feature-requests/2772-uat-evidence/`). `ViewThatFits`
+        // keeps the design's row wherever it fits and drops the badge under the title
+        // where it does not, which is where the polish card already puts it.
+        let check = Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(Color.stAccent)
+            Text(title).font(.stRowTitle).lineLimit(1).fixedSize()
+            if recommended { Self.badge("Recommended") }
+            Spacer(minLength: 8)
+            check
+          }
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              Image(systemName: icon).foregroundStyle(Color.stAccent)
+              Text(title).font(.stRowTitle).lineLimit(1).fixedSize()
+              Spacer(minLength: 8)
+              check
+            }
+            if recommended { Self.badge("Recommended") }
+          }
         }
         Text(blurb)
           .foregroundStyle(Color.stTextSecondary)
