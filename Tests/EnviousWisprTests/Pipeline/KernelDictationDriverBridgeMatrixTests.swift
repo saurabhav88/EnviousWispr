@@ -38,6 +38,8 @@ import Testing
     private struct Fixture {
       let driver: KernelDictationDriver
       let kernel: RecordingSessionKernel
+      /// #2787: the fake engine, so a test can end a session with its decode "still running".
+      let engine: FakeEngine
     }
 
     private func makeFixture() -> Fixture {
@@ -71,7 +73,7 @@ import Testing
         context: context, steps: steps, adapter: adapter,
         engineMutationScope: .alwaysAllowedForTesting)
       driver.start()
-      return Fixture(driver: driver, kernel: kernel)
+      return Fixture(driver: driver, kernel: kernel, engine: adapter)
     }
 
     private func drain() async {
@@ -317,6 +319,66 @@ import Testing
           box.value == .cancelled(.user(trigger)),
           "a later system cancel must not alter the already-emitted ending")
       }
+    }
+    /// #2787: a cancel during `.delivering(.transcribing)` projects to
+    /// `.stoppedWaitingForDecode` when the engine's vendor decode is still
+    /// running, and to the ordinary `.cancelled(origin)` when it is not. The
+    /// coordinator keys spool retention on exactly this projection, so a wrong
+    /// value here either deletes the audio the customer needs for a launch
+    /// replay, or retains a normal cancel's audio for a surprise replay.
+    @Test("a cancel while the decode is still running projects stoppedWaitingForDecode")
+    func cancelWithDecodeInFlightProjectsStopWaiting() async {
+      for inFlight in [true, false] {
+        let fx = makeFixture()
+        await place(fx.kernel, in: .deliveringTranscribing)
+        fx.engine.isVendorDecodeInFlight = inFlight
+        let box = EndingBox()
+        fx.driver.onSessionEndedWithoutSave = { _, ending in box.value = ending }
+
+        await fx.driver.cancelRecording(disposition: .user(.shortcut))
+        await drain()
+
+        #expect(
+          box.value == (inFlight ? .stoppedWaitingForDecode : .cancelled(.user(.shortcut))),
+          "inFlight=\(inFlight) must project \(inFlight ? "stoppedWaitingForDecode" : "cancelled")")
+      }
+    }
+
+    /// #2787 (Codex chunk-2 P1): the projection is a TERMINAL-TIME snapshot.
+    /// The ending is delivered from an observer Task, by which time another
+    /// workload could have moved the shared occupancy. Flipping the fake's
+    /// answer between the cancel and the delivery must change nothing.
+    @Test("the stop-waiting projection is frozen at the terminal, not read at delivery")
+    func stopWaitingProjectionIsFrozenAtTheTerminal() async {
+      for (atTerminal, atDelivery) in [(true, false), (false, true)] {
+        let fx = makeFixture()
+        await place(fx.kernel, in: .deliveringTranscribing)
+        fx.engine.isVendorDecodeInFlight = atTerminal
+        let box = EndingBox()
+        fx.driver.onSessionEndedWithoutSave = { _, ending in box.value = ending }
+        // `cancel` concludes synchronously; the observer Task has not run yet.
+        fx.kernel.cancel(origin: .user(.shortcut))
+        fx.engine.isVendorDecodeInFlight = atDelivery
+        await drain()
+        #expect(
+          box.value == (atTerminal ? .stoppedWaitingForDecode : .cancelled(.user(.shortcut))),
+          "terminal=\(atTerminal) delivery=\(atDelivery): only the terminal-time value may count")
+      }
+    }
+
+    /// #2787 (Codex chunk-2 P1): a cancel DURING RECORDING never projects
+    /// stop-waiting, even with a decode in flight — a live WhisperKit streaming
+    /// decode is the normal state there, and that audio is discarded (#1755).
+    @Test("a cancel before transcribing projects the ordinary cancelled ending even with a decode in flight")
+    func cancelBeforeTranscribingIsNeverStopWaiting() async {
+      let fx = makeFixture()
+      await place(fx.kernel, in: .stopping)
+      fx.engine.isVendorDecodeInFlight = true
+      let box = EndingBox()
+      fx.driver.onSessionEndedWithoutSave = { _, ending in box.value = ending }
+      await fx.driver.cancelRecording(disposition: .user(.shortcut))
+      await drain()
+      #expect(box.value == .cancelled(.user(.shortcut)))
     }
   }
 

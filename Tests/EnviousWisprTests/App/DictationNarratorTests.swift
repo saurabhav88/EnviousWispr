@@ -181,6 +181,8 @@ import Testing
       .fileImport: "A file is being transcribed. Try again soon.",
       .crashRecovery: "Finishing an earlier take. Try again soon.",
       .dictation: "Already recording.",
+      // #2787: the decode the user stopped waiting for still owns the engine.
+      .abandonedDecode: "Previous take still running. Restart the app.",
     ]
     let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
     #expect(sentence == expected[holder])

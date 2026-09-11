@@ -159,6 +159,26 @@
         #expect(obs.dispatchRan)  // the state guard passed and the dispatch was reached
         #expect(obs.stampAtEntry != nil)  // the timestamp was already set at dispatch entry
       }
+      /// #2787: a shortcut cancel during an ORDINARY transcription reaches the
+      /// dispatch. Before this the state guard refused `.transcribing`, so the
+      /// key was inert exactly when a stuck decode made it the only exit.
+      @Test("a cancel during an ordinary transcription is dispatched, not refused")
+      func cancelDuringOrdinaryTranscribingIsDispatched() async {
+        let fx = Self.makeFixture()
+        fx.asr.activeBackendType = .parakeet
+        let kernel = fx.kernelDriver.kernelForTesting
+        kernel.start(config: .testDefault())
+        kernel.testForceState(.delivering)
+        kernel.testSetDeliveringPhase(.transcribing)
+        #expect(fx.kernelDriver.state == .transcribing, "fixture must be transcribing")
+        #expect(fx.kernelDriver.isEscapeRecoveryTranscribing == false, "ordinary, not a recovery")
+        let obs = DispatchObservation()
+        fx.finalizer.cancelRecordingDispatch = { _, _ in obs.dispatchRan = true }
+        let abandoned = await fx.finalizer.cancel(trigger: .shortcut)
+        #expect(abandoned == false, "an ordinary cancel is not an abandonment")
+        #expect(obs.dispatchRan, "the state guard must admit .transcribing")
+      }
+
       /// #2087: the trigger must survive the whole chain, not merely be accepted.
       ///
       /// The earlier version of the dispatch-seam test ignored both closure

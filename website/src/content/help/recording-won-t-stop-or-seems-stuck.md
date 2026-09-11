@@ -4,10 +4,10 @@ description: "What to do when a recording seems to hang."
 category: "troubleshooting"
 section: "Recording Issues"
 order: 7
-keywords: ["wont stop", "stuck", "keeps recording", "frozen", "hung", "still recording", "cant stop", "spinning"]
-related: ["canceling-a-recording"]
+keywords: ["wont stop", "stuck", "keeps recording", "frozen", "hung", "still recording", "cant stop", "spinning", "transcribing", "previous take still running", "restart"]
+related: ["canceling-a-recording", "app-crashes-or-asr-engine-crashes"]
 seeAlso: "mac-dictation-keeps-stopping"
-updated: 2026-09-01
+updated: 2026-09-10
 ---
 If a recording will not stop, press **Escape**. This ends any recording in progress, in every recording mode. The on-screen bar disappears, which confirms it worked.
 
@@ -27,4 +27,8 @@ A pause shorter than your chosen duration is ignored. At the half-second setting
 
 ### If it seems stuck after you stop talking
 
-When the app appears unresponsive after you stop speaking, the recording has already ended. EnviousWispr is turning your speech into text and applying any polish you have chosen. That takes a moment, especially on the first dictation after opening the app. Because the Escape key only cancels a recording that is still running, pressing it now has no effect. Wait for the current dictation to finish before starting a new one.
+When the app appears unresponsive after you stop speaking, the recording has already ended. EnviousWispr is turning your speech into text and applying any polish you have chosen. That takes a moment, especially on the first dictation after opening the app. Give it a few seconds before starting a new one.
+
+If the bar stays on **transcribing** long after that, press **Escape**. The bar goes away and nothing is pasted. EnviousWispr stops waiting for that dictation. If the engine does finish the take later, its text is dropped, because you asked to stop waiting. Escape does not interrupt AI polish; polish has its own time limit and finishes on its own.
+
+If your next press of the record key shows **Previous take still running. Restart the app.**, the engine never came back from that take. Quit EnviousWispr and open it again. With crash recovery on (the default), the next launch transcribes the audio it kept from that take and saves the text to your History, the same way it [recovers a recording after a crash](/help/app-crashes-or-asr-engine-crashes/).

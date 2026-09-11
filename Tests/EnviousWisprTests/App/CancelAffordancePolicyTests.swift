@@ -17,69 +17,52 @@ import Testing
 @Suite("Cancel affordance policy (#2087)", .tags(.productOutcome))
 struct CancelAffordancePolicyTests {
 
-  /// Every state, both capability values. The pairs are written out rather than
-  /// generated so the expected answer is visible next to its input — a table
-  /// that computes its own expectations agrees with itself by construction.
-  private static let cases: [(state: PipelineState, recovery: Bool, armed: Bool)] = [
-    (.recording, false, true),
-    (.recording, true, true),
-    (.transcribing, false, false),
-    (.transcribing, true, true),
-    (.loadingModel, false, false),
-    (.loadingModel, true, false),
-    (.polishing, false, false),
-    (.polishing, true, false),
-    (.idle, false, false),
-    (.idle, true, false),
-    (.complete, false, false),
-    (.complete, true, false),
-    (.error(.asrFailed), false, false),
-    (.error(.asrFailed), true, false),
-    (.advisory(.zeroSignal), false, false),
-    (.advisory(.zeroSignal), true, false),
+  /// Every state. The pairs are written out rather than generated so the
+  /// expected answer is visible next to its input — a table that computes its
+  /// own expectations agrees with itself by construction.
+  ///
+  /// #2787 made `.transcribing` armed for every take, so the capability that
+  /// used to split it (`isEscapeRecoveryTranscribing`) no longer reaches this
+  /// half of the policy; it still decides `isAbandonment` below.
+  private static let cases: [(state: PipelineState, armed: Bool)] = [
+    (.recording, true),
+    (.transcribing, true),
+    (.loadingModel, false),
+    (.polishing, false),
+    (.idle, false),
+    (.complete, false),
+    (.error(.asrFailed), false),
+    (.advisory(.zeroSignal), false),
   ]
 
-  @Test("the affordance table holds for every state and both capability values")
+  @Test("the affordance table holds for every state")
   func truthTable() {
     for c in Self.cases {
       #expect(
-        CancelAffordancePolicy.isShortcutEnabled(
-          state: c.state, isEscapeRecoveryTranscribing: c.recovery) == c.armed,
-        "state \(c.state) with recovery=\(c.recovery) must be armed=\(c.armed)")
+        CancelAffordancePolicy.isShortcutEnabled(state: c.state) == c.armed,
+        "state \(c.state) must be armed=\(c.armed)")
     }
   }
 
-  /// `.transcribing` is the ONLY state whose answer depends on the capability,
-  /// and that is the entire behavioural change this policy introduces. Asserted
-  /// directly so a future edit that made some other state capability-dependent
-  /// has to come here and say so.
-  @Test("transcribing is the only state the capability can change")
-  func onlyTranscribingIsCapabilityDependent() {
-    let states: [PipelineState] = [
-      .recording, .transcribing, .loadingModel, .polishing, .idle, .complete,
-      .error(.asrFailed), .advisory(.zeroSignal),
-    ]
-    let dependent = states.filter { state in
-      CancelAffordancePolicy.isShortcutEnabled(state: state, isEscapeRecoveryTranscribing: true)
-        != CancelAffordancePolicy.isShortcutEnabled(
-          state: state, isEscapeRecoveryTranscribing: false)
-    }
-    #expect(dependent == [.transcribing])
+  /// #2787: the key is live through an ORDINARY transcription. Before this,
+  /// Escape during a stuck decode did nothing at all, and the customer's only
+  /// exit was to quit the app four times.
+  @Test("an ordinary transcription keeps the cancel shortcut live")
+  func ordinaryTranscribingIsArmed() {
+    #expect(CancelAffordancePolicy.isShortcutEnabled(state: .transcribing))
   }
 
   /// The other half of the policy, and the reason both halves live together:
-  /// `RecordingFinalizer` admits only `.recording` and `.loadingModel`, so if
-  /// this ever answered false where `isShortcutEnabled(.transcribing, true)`
-  /// answers true, the key would be armed and inert — a user pressing Escape
-  /// and nothing happening at all.
+  /// the state the finalizer must admit is exactly the state the key stays live
+  /// for. If this ever answered false where `isShortcutEnabled(.transcribing)`
+  /// answers true, the key would be armed and inert.
   @Test("the two halves agree: a shortcut cancel during a live recovery is an abandonment")
   func halvesAgree() {
     #expect(
       CancelAffordancePolicy.isAbandonment(
         trigger: .shortcut, isEscapeRecoveryTranscribing: true))
     #expect(
-      CancelAffordancePolicy.isShortcutEnabled(
-        state: .transcribing, isEscapeRecoveryTranscribing: true),
+      CancelAffordancePolicy.isShortcutEnabled(state: .transcribing),
       "the state the finalizer must admit is exactly the state the key stays live for")
   }
 
@@ -94,19 +77,5 @@ struct CancelAffordancePolicyTests {
       CancelAffordancePolicy.isAbandonment(
         trigger: .shortcut, isEscapeRecoveryTranscribing: false) == false,
       "and a shortcut outside a recovery is an ordinary cancel")
-  }
-
-  /// The inert claim, checked rather than asserted in prose: with the capability
-  /// false — which is every take until chunk 12 ships the setting — the policy
-  /// returns exactly what the six register/unregister calls it replaced did.
-  /// Armed in `.recording`, down everywhere else.
-  @Test("with the capability off the policy reproduces today's behaviour exactly")
-  func inertWithoutTheCapability() {
-    for c in Self.cases where !c.recovery {
-      let expected = (c.state == .recording)
-      #expect(
-        CancelAffordancePolicy.isShortcutEnabled(
-          state: c.state, isEscapeRecoveryTranscribing: false) == expected)
-    }
   }
 }

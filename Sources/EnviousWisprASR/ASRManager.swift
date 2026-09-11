@@ -64,6 +64,12 @@ public final class ASRManager: ASRManagerInterface {
   /// against the first; there is no "which one is newer" question left to
   /// get wrong.
   private var streamingStartInFlight = false
+  /// #2787: is a vendor decode call running right now, whoever is waiting.
+  public let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  /// #2787: observation only — fired once per vendor chunk the active backend
+  /// reports as scheduled during a batch `transcribe`. The adapter turns it
+  /// into an `.observation` finalize tick for the kernel's checkpoint.
+  public var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   /// This attempt's identity, supplied by the caller (`ParakeetEngineAdapter`
   /// mints a fresh one per `beginSession()`) rather than an internal counter,
   /// so `cancelInFlightStreamingStart(attemptID:)` can name exactly the
@@ -454,7 +460,27 @@ public final class ASRManager: ASRManagerInterface {
     async throws -> ASRResult
   {
     guard let activeBackend else { throw ASRManagerNotOwnedError(backend: activeBackendType) }
-    return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    // #2787: counted for the whole vendor call, so a session that stops
+    // waiting (cancel during transcribing) leaves the engine visibly BUSY
+    // until Core ML actually returns. The observation-only chunk observer is
+    // installed INSIDE the tracked region: installing it first would open a
+    // suspension before occupancy begins, during which a cancel could see an
+    // idle engine and release the lease under a decode about to start. The
+    // backend forwards reports only while its own `transcribe` runs, so the
+    // observer needs no clearing here.
+    //
+    // A decode must not START in a task the kernel has already cancelled
+    // (second-pass review): the session terminal drains its task bag, so a
+    // finalize suspended before this call — the streaming batch rescue awaits
+    // a log line first — resumes cancelled AFTER the lease was released on an
+    // idle count, and its decode would then run under a new take's session.
+    try Task.checkCancellation()
+    let chunkObserver = onVendorDecodeChunkScheduled
+    return try await vendorDecodeOccupancy.track {
+      await activeBackend.setDecodeChunkObserver { Task { @MainActor in chunkObserver?() } }
+      try Task.checkCancellation()
+      return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    }
   }
 
   // MARK: - Streaming ASR
@@ -559,7 +585,10 @@ public final class ASRManager: ASRManagerInterface {
     // by the time this returns).
     let attemptID = streamingStartID
     do {
-      let result = try await activeBackend.finalizeStreaming()
+      // #2787: see `transcribe` — the streaming finalize is a vendor decode too.
+      let result = try await vendorDecodeOccupancy.track {
+        try await activeBackend.finalizeStreaming()
+      }
       // Identity-checked, not unconditional: a reclaim task or a newer
       // start's own admission could have moved `streamingStartID` on during
       // this suspension (round 9/10's lesson, applied here too).

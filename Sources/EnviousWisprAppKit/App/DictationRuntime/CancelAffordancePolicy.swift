@@ -28,24 +28,18 @@ enum CancelAffordancePolicy {
 
   /// Whether the cancel shortcut should be armed for this state.
   ///
-  /// `.transcribing` is the only state whose answer depends on anything beyond
-  /// the state itself. During an ordinary transcription there is nothing a
-  /// cancel could do — the audio is already captured and the decode is not
-  /// interruptible — so the shortcut stays down, exactly as today. During an
-  /// Escape Recovery the same keypress means something new: discard the text
-  /// this recovery is producing.
-  ///
-  /// `isEscapeRecoveryTranscribing` is false for every take the setting is off
-  /// for, which is the default, so those takes get today's answers unchanged.
-  static func isShortcutEnabled(
-    state: PipelineState,
-    isEscapeRecoveryTranscribing: Bool
-  ) -> Bool {
+  /// `.transcribing` is armed for EVERY take (#2787). The audio is already
+  /// captured and the decode itself is not interruptible, but a cancel here
+  /// still does two things the user needs: it ends their wait (the kernel
+  /// honours a cancel in `.delivering(.transcribing)` and concludes
+  /// `.cancelled`), and — while the engine is still inside a decode that will
+  /// not return — it keeps the audio for a launch replay. During an Escape
+  /// Recovery the same keypress means "discard the text this recovery is
+  /// producing" (`isAbandonment` below); the finalizer routes the two.
+  static func isShortcutEnabled(state: PipelineState) -> Bool {
     switch state {
-    case .recording:
+    case .recording, .transcribing:
       return true
-    case .transcribing:
-      return isEscapeRecoveryTranscribing
     case .loadingModel, .polishing, .error, .idle, .complete, .advisory:
       // Every other state disarms, including all four terminals. Enumerated
       // rather than defaulted so a future `PipelineState` case is a compile
@@ -59,9 +53,10 @@ enum CancelAffordancePolicy {
   ///
   /// Lives here because it is the other half of `isShortcutEnabled`, and the
   /// two must agree or the shortcut is armed against a finalizer that refuses
-  /// it: `RecordingFinalizer.cancel` admits only `.recording` and
-  /// `.loadingModel`, so a key left live through `.transcribing` would be armed
-  /// and inert — a user pressing Escape and nothing happening at all.
+  /// it. `RecordingFinalizer.cancel` admits `.recording`, `.loadingModel` and
+  /// (#2787) `.transcribing`; before #2787 it refused `.transcribing`, so an
+  /// armed key there was inert — a user pressing Escape and nothing happening
+  /// at all, which is exactly what the customer's four force-quits were.
   ///
   /// An abandonment must ALSO skip that method's teardown. The session is still
   /// running until its decode returns, so hiding its overlay and clearing its

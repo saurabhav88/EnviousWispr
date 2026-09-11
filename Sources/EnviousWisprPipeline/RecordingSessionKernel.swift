@@ -985,6 +985,10 @@ final class RecordingSessionKernel {
       String, String, Int, ASRRetryDeadlineResolution, ASRRetryDeadlineDisposition, Int?, Int, Bool
     ) -> Void = { _, _, _, _, _, _, _, _ in },
     engineMutationScope: EngineMutationScope,
+    // #2787: persisted stage checkpoint for the take in flight. Defaulted to a
+    // no-op so every test construction site is untouched; the factory wires the
+    // real store. Observation only — it never gates the heart path.
+    transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
@@ -1034,6 +1038,7 @@ final class RecordingSessionKernel {
     self.asrRetryDeadlineStartedTelemetry = asrRetryDeadlineStartedTelemetry
     self.asrRetryDeadlineResolvedTelemetry = asrRetryDeadlineResolvedTelemetry
     self.engineMutationScope = engineMutationScope
+    self.transcriptionCheckpoint = transcriptionCheckpoint
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
@@ -1173,6 +1178,29 @@ final class RecordingSessionKernel {
   /// Both are cleared per session in `resetSessionState()`.
   private(set) var lastCancelOrigin: RecordingCancelOrigin = .systemOrFault
   private var cancelOriginLatched = false
+
+  /// #2787: frozen INSIDE `finishTerminal`, in the same synchronous turn as
+  /// `recordingOutcome`, so the recovery projection and the engine hold read
+  /// one terminal-time fact rather than two later reads of a shared counter
+  /// that another workload could have moved. True only for a `.cancelled`
+  /// accepted from `.delivering(.transcribing)` while THIS session's vendor
+  /// decode was still running — never for a cancel during recording, where a
+  /// live streaming decode is the normal state and the audio is discarded.
+  package private(set) var lastTerminalStoppedWaitingForDecode = false
+
+  /// #2787: see the init parameter. Called with `.mark` at each stop→decode
+  /// stage and `.clear` at every accepted terminal.
+  private let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
+  /// #2787: vendor chunks scheduled so far in this take's decode (chunk 4 feeds it).
+  private var decodeChunksScheduled = 0
+
+  private func markStage(_ stage: TranscriptionStage) {
+    transcriptionCheckpoint(
+      .mark(
+        takeID: currentSessionID.raw.uuidString,
+        backend: adapter.engineIdentity.backendType.rawValue,
+        stage: stage, chunksScheduled: decodeChunksScheduled))
+  }
 
   /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
   /// for why this is kernel-owned rather than read at delivery.
@@ -1971,6 +1999,10 @@ final class RecordingSessionKernel {
     captureLifecycle = .stopped
     resourcesReleased = true
     guard recordingOutcome == nil else { return }
+    // #2787: AFTER the outcome guard — a cancel accepted while `stopCapture`
+    // was suspended already cleared the checkpoint, and a mark here would
+    // recreate it as a false "interrupted" report at the next launch.
+    markStage(.captureStopped)
     // Heartpath 5b (#1520): capture the session-ownership token NOW, while THIS
     // take's source is still current, so a stale finish after the awaits below
     // can only retire the source it actually captured, never a newer take's.
@@ -2382,6 +2414,7 @@ final class RecordingSessionKernel {
     // "post-isCapturing audio only"; preserving it.
     let conditioned = CapturedAudioConditioner.condition(
       rawSamples: captureResult.samples, vadSegments: vadSegments)
+    markStage(.vadConditioned)
     let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
 
     // #1707 GitHub Codex code-diff r16: an ASR-interruption recovery always
@@ -2436,6 +2469,7 @@ final class RecordingSessionKernel {
       droppedTailSamples: droppedTailSamples,
       droppedTailMs: tailDroppedMs ?? 0,
       voicedFraction: tailFraction)
+    markStage(.tailChecked)
     let asrSamples: [Float]
     var recoveredTailMs: Int? = nil
     // nil when ineligible (engine/streaming); a real Bool on the eligible path so
@@ -2920,6 +2954,7 @@ final class RecordingSessionKernel {
       // synchronously, so a clock started before it charges the instrument's own
       // cost to the decode and can report an on-time retry as late.
       let retryEntry = ContinuousClock.now
+      markStage(.decodeStarted)  // #2787: the Phase-2 retry is a decode too
       let retryOutcome = await withMainActorOrderedDeadline(
         seconds: retryBudgetSec,  // measured, length-aware — see §11.1
         // `@MainActor` so the return stamp is taken on the SAME actor the decode
@@ -2929,7 +2964,10 @@ final class RecordingSessionKernel {
         // `retryDecode` is already `@MainActor`, so this removes a hop rather
         // than adding an actor requirement.
         operation: { @MainActor [adapter] in
-          let decoded = await adapter.retryDecode(inputSamples: retryInput)
+          // #2787: the retry is a decode attempt with its own progress identity.
+          let decoded = await self.withDecodeProgress(sid) {
+            await adapter.retryDecode(inputSamples: retryInput)
+          }
           retryOperationReturn.withLock { $0 = ContinuousClock.now - retryEntry }
           return decoded
         },
@@ -2990,6 +3028,9 @@ final class RecordingSessionKernel {
         emitRetryDeadlineObservation(.stale)
         return
       }
+      // #2787: only a RETURNED retry marks the decode returned — a deadline
+      // winning is not evidence the vendor came back.
+      if retryOutcome != nil { markStage(.decodeReturned) }
       // #2087: before `markASRTimingEnd()`, for the same reason the primary
       // decode's check is — the retry's latency belongs to work the user asked
       // to discard, and the `.failed(.asrFailed)` branch just below would
@@ -3428,15 +3469,35 @@ final class RecordingSessionKernel {
 
   // MARK: Finalize + wedge detection
 
-  private func finalize(_ sid: SessionID, batchSamples: [Float]?) async -> ASREngineOutcome {
-    finalizeWedgeDetected = false
-    finalizeCompleted = false
-    finalizeTickCount = 0
+  /// #2787: identity of the decode attempt whose progress ticks are live.
+  /// The primary finalize, the salvage re-finalize and the Phase-2 retry each
+  /// read a fresh stream; a tick buffered on an OLDER stream for the SAME
+  /// session must not be counted against a later attempt, and `isCurrent`
+  /// cannot tell them apart. Nil outside a decode.
+  private var observedDecodeID: UUID?
+
+  /// #2787: runs one decode attempt with its progress stream consumed for
+  /// exactly that attempt. `.observation` ticks record vendor chunk scheduling
+  /// on the checkpoint and nothing else; `.progress` ticks arm the wedge
+  /// detector as before (PR-1 §B.1.7).
+  private func withDecodeProgress(
+    _ sid: SessionID, operation: @MainActor () async -> ASREngineOutcome
+  ) async -> ASREngineOutcome {
+    let id = UUID()
+    observedDecodeID = id
+    defer { if observedDecodeID == id { observedDecodeID = nil } }
 
     if let stream = adapter.finalizeProgress {
       spawn(sid) { [weak self] in
-        for await _ in stream {
-          guard let self, self.isCurrent(sid) else { return }
+        for await tick in stream {
+          guard let self, self.isCurrent(sid), self.observedDecodeID == id,
+            self.recordingOutcome == nil
+          else { return }
+          if tick.kind == .observation {
+            self.decodeChunksScheduled += 1
+            self.markStage(.decodeChunkScheduled)
+            continue
+          }
           self.finalizeTickCount += 1
           self.lastFinalizeTickAt = self.currentTick()
           self.bump()
@@ -3448,12 +3509,27 @@ final class RecordingSessionKernel {
         }
       }
     }
+    return await operation()
+  }
 
-    let outcome = await adapter.finalize(batchSamples: batchSamples)
+  private func finalize(_ sid: SessionID, batchSamples: [Float]?) async -> ASREngineOutcome {
+    finalizeWedgeDetected = false
+    finalizeCompleted = false
+    finalizeTickCount = 0
+
+    // #2787: marked HERE, in the shared helper, so the salvage re-finalize is
+    // covered as well as the primary decode — a hang in either reads as
+    // `decode_started`, never as a stale `decode_returned` from the first.
+    guard isCurrent(sid), recordingOutcome == nil else { return .cancelled }
+    markStage(.decodeStarted)
+    let outcome = await withDecodeProgress(sid) {
+      await adapter.finalize(batchSamples: batchSamples)
+    }
     // Guard BEFORE touching kernel state — a `finalize()` unblocked after a
     // cancel, with a new session already started, must not clear the new
     // session's flags (Codex P2-round4 stale-completion guard).
     guard isCurrent(sid) else { return .cancelled }
+    if recordingOutcome == nil { markStage(.decodeReturned) }
     finalizeCompleted = true
     // `finalize()` is the adapter's own session-terminal hook — the open
     // session is now closed, so a later `finishTerminal` must NOT also call
@@ -4257,6 +4333,13 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    lastTerminalStoppedWaitingForDecode =
+      outcome == .cancelled
+      && state == .delivering
+      && deliveringPhase == .transcribing
+      && adapter.isVendorDecodeInFlight
+    // #2787: the app lived to see this terminal; nothing for the next launch to report.
+    transcriptionCheckpoint(.clear)
     // #1846: stamp the concluded take INSIDE the set-once barrier, so it is
     // first-wins under the same condition as the outcome itself and can only ever
     // name the session this terminal actually accepted (`audit-all-terminal-paths-
@@ -4461,6 +4544,8 @@ final class RecordingSessionKernel {
     // must clear with it — otherwise the first session's provenance would win
     // forever and every later take would read as that one's cancel.
     lastCancelOrigin = .systemOrFault
+    lastTerminalStoppedWaitingForDecode = false
+    decodeChunksScheduled = 0
     cancelOriginLatched = false
     // #2087: the disposition describes THIS take. Leaking it forward would make
     // the next session inherit an abandonment the user never requested, and the
@@ -4954,6 +5039,7 @@ final class RecordingSessionKernel {
     /// Bypasses `isLegalConclusion` so a test can stage any outcome directly.
     func testForceConclude(_ outcome: RecordingOutcome) {
       recordingOutcome = outcome
+      transcriptionCheckpoint(.clear)  // #2787: a forced conclusion is a terminal too
       state = .idle
       bump()
     }

@@ -26,6 +26,11 @@ public protocol ASRBackend: Actor {
   /// Batch transcription from raw Float32 samples (16kHz mono).
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
+  /// #2787: observation only — see the extension default below. A PROTOCOL
+  /// requirement, not only an extension member, so a call through the
+  /// existential dispatches to the backend's own implementation.
+  func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async
+
   /// Release model resources.
   func unload() async
 
@@ -50,6 +55,13 @@ public protocol ASRBackend: Actor {
 /// Default implementations for optional protocol members.
 extension ASRBackend {
   public var supportsStreaming: Bool { false }
+
+  /// #2787: observation only. A backend whose vendor reports chunk scheduling
+  /// (Parakeet, for audio longer than one model window) forwards each report
+  /// to `observer` for the duration of the next `transcribe`. Default: no
+  /// signal (WhisperKit has none), which is honest — the checkpoint simply
+  /// carries no chunk count for that engine.
+  public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async {}
 
   public func startStreaming(options _: TranscriptionOptions) async throws {
     throw ASRError.streamingNotSupported
