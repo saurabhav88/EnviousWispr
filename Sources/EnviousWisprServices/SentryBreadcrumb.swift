@@ -431,6 +431,11 @@ public enum SentryBreadcrumb {
     /// Do not add a failure sentence here or a failure case to `OverlayIntent`
     /// without reopening that decision.
     case recoveryDecryptFailed = "recovery_decrypt_failed"
+    /// #2787: the previous process died (quit, crash or force-quit) while a
+    /// take was between "stop" and "text in hand". Reported once on the NEXT
+    /// launch from the persisted `TranscriptionCheckpoint`; the fingerprint
+    /// carries the bounded stage name so the fleet groups by WHERE it stuck.
+    case transcriptionInterrupted = "transcription_interrupted"
     /// #1063 PR2: transcribing a recovered spool THREW. Non-crash limb (one
     /// attempt) — the orphan is deleted, and see `recoveryDecryptFailed` above
     /// for what the user is (not) shown.

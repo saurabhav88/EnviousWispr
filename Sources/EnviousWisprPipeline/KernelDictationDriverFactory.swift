@@ -166,6 +166,11 @@ public enum KernelDictationDriverFactory {
     /// than a spool with no provenance.
     package let escapeRecovery: PrepareEscapeRecovery
 
+    /// #2787: the persisted stage checkpoint sink. Defaulted to a no-op so
+    /// every test construction site is untouched; the composition root wires
+    /// the real `TranscriptionCheckpointStore`.
+    package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
+
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
     /// because `captureErrorSink`'s default is a main-actor-isolated value;
@@ -189,7 +194,8 @@ public enum KernelDictationDriverFactory {
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -208,6 +214,7 @@ public enum KernelDictationDriverFactory {
       self.parakeetDelivery = parakeetDelivery
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
+      self.transcriptionCheckpoint = transcriptionCheckpoint
     }
   }
 
@@ -249,11 +256,22 @@ public enum KernelDictationDriverFactory {
     /// the composition root, threaded into the driver, kernel, and
     /// `WhisperKitEngineAdapter` this factory builds. Required — no default.
     package let engineMutationScope: EngineMutationScope
+    /// #2787: the ONE occupancy counter the composition root owns
+    /// (`ASRManager.vendorDecodeOccupancy`). WhisperKit's live batch decode
+    /// does not go through `ASRManager.transcribe`, so the adapter counts its
+    /// own vendor call against this. Required — no default — so the production
+    /// site cannot leave WhisperKit invisible to the engine hold.
+    package let vendorDecodeOccupancy: VendorDecodeOccupancy
     /// #2087: writes the crash-provenance marker that tells the next launch this
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
     /// than a spool with no provenance.
     package let escapeRecovery: PrepareEscapeRecovery
+
+    /// #2787: the persisted stage checkpoint sink. Defaulted to a no-op so
+    /// every test construction site is untouched; the composition root wires
+    /// the real `TranscriptionCheckpointStore`.
+    package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -273,6 +291,7 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       engineMutationScope: EngineMutationScope,
+      vendorDecodeOccupancy: VendorDecodeOccupancy,
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
@@ -280,10 +299,12 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
+      self.vendorDecodeOccupancy = vendorDecodeOccupancy
       self.languageDetector = languageDetector
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
@@ -299,6 +320,7 @@ public enum KernelDictationDriverFactory {
       self.s1MiniRuntime = s1MiniRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
+      self.transcriptionCheckpoint = transcriptionCheckpoint
     }
   }
 
@@ -387,7 +409,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: inputs.egOneRuntime,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      escapeRecovery: inputs.escapeRecovery)
+      escapeRecovery: inputs.escapeRecovery,
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -418,6 +441,7 @@ public enum KernelDictationDriverFactory {
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID },
       engineMutationScope: inputs.engineMutationScope,
+      vendorDecodeOccupancy: inputs.vendorDecodeOccupancy,
       batchDecodeFaultController: inputs.batchDecodeFaultController)
     return assembleDriver(
       adapter: adapter,
@@ -435,7 +459,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: inputs.egOneRuntime,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      escapeRecovery: inputs.escapeRecovery)
+      escapeRecovery: inputs.escapeRecovery,
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -459,7 +484,8 @@ public enum KernelDictationDriverFactory {
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
-    escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+    escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+    transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme
@@ -655,6 +681,7 @@ public enum KernelDictationDriverFactory {
           callerResumeMs: callerResumeMs, acceptedAfterCutoff: acceptedAfterCutoff)
       },
       engineMutationScope: engineMutationScope,
+      transcriptionCheckpoint: transcriptionCheckpoint,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock
       // that would cancel cold model loads after ~200ms instead of the
@@ -826,6 +853,10 @@ public enum KernelDictationDriverFactory {
     // own contract.
     telemetryRelay.sessionTerminal = { [lifecycleSink, weak driver] snapshot in
       lifecycleSink.emitTerminal(snapshot)
+      // #2787: the recovery ending BEFORE the engine claim is handed back, in
+      // the same synchronous turn, so a `.stoppedWaitingForDecode` retention is
+      // registered before `AbandonedDecodeHold` can exist to settle it.
+      driver?.fireSessionEndedWithoutSaveIfNeeded()
       driver?.onSessionTerminalAccepted?(snapshot.takeID)
     }
 

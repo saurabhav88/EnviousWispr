@@ -207,6 +207,58 @@ struct RecoveryCoordinatorTests {
     #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
   }
 
+  // MARK: - #2787 stop-waiting: retain, then destroy only after the writer is done
+
+  /// #2787: a `.stoppedWaitingForDecode` ending keeps its spool (the user's
+  /// rescue is a restart and a launch replay). If the abandoned decode then
+  /// returns in this launch, the spool is destroyed — but only after the
+  /// writer has confirmed it will never touch the file again. Here the vendor
+  /// "returns" BEFORE the writer acknowledges, which is the ordering that
+  /// would delete beneath an unfinished writer if destruction were direct.
+  @Test("stop-waiting retains; a late decode return destroys only after writer quiescence")
+  func stopWaitingRetainsThenDestroysAfterWriterAck() async throws {
+    let h = Self.makeHarness()
+    let id = try await Self.armRealSession(h)
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+
+    // The live ending: retained, and excluded from same-launch replay.
+    let retain = h.coordinator.handleRecordingEndedWithoutDurableSave(
+      recoverySessionID: id, ending: .stoppedWaitingForDecode)
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    await h.coordinator.scanAndRecover()
+    #expect(h.replayer.replayedIDs.isEmpty, "a retained stop-waiting spool is next-launch only")
+
+    // The vendor returns while the writer has NOT yet acknowledged.
+    let destroys = h.coordinator.handleAbandonedDecodeReturned()
+    #expect(destroys.count == 1)
+    // A NEGATIVE: destruction must not have happened yet. Yield gives it the
+    // opportunity it must decline (a-test-that-proves-a-NEGATIVE-has-no-signal-to-park-on).
+    for _ in 0..<20 { await Task.yield() }
+    #expect(
+      FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path),
+      "the spool must survive until the writer is quiescent")
+
+    // The writer finishes: the retain settles, and the deferred destroy runs.
+    h.coordinator.acknowledgeWriterQuiescent(recoverySessionID: id)
+    await retain?.value
+    for task in destroys { await task.value }
+    #expect(!FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect(throws: RecoveryKeyStoreError.notFound) { try h.keyStore.retrieve(for: id) }
+  }
+
+  /// Two-way control: a decode return with NOTHING retained destroys nothing.
+  @Test("a decode return with no retained stop-waiting spool is inert")
+  func decodeReturnWithNothingRetainedIsInert() async throws {
+    let h = Self.makeHarness()
+    let id = "healthy-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    #expect(h.coordinator.handleAbandonedDecodeReturned().isEmpty)
+    #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+    #expect((try? h.keyStore.retrieve(for: id)) != nil)
+  }
+
   // MARK: - #1740 live History-save failure destroys instead of deferring
 
   @Test("live History-save failure destroys the spool AND the key")
@@ -533,7 +585,7 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - #1464 delete/retain predicates (adversarial: every case in both classes)
 
-  @Test("shouldDeleteOnLiveEnding: all nine ending cells delete (#1755 founder discard doctrine)")
+  @Test("shouldDeleteOnLiveEnding: nine ending cells delete (#1755), stop-waiting retains (#2787)")
   func liveEndingPredicate() {
     // Unchanged cells (already deleted before #1755):
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded), "unchanged")
@@ -564,6 +616,12 @@ struct RecoveryCoordinatorTests {
     // #1755: plain `.failed` (no retry consulted) ALSO deletes now — the
     // negative half of this same adversarial pair.
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.asrRetryExhausted), "unchanged")
+    // #2787: the ONE retaining cell. The user stopped waiting for a decode that
+    // is still inside the vendor; their rescue is a restart and a launch
+    // replay, so the audio must survive to that launch.
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.stoppedWaitingForDecode) == false,
+      "#2787: stop-waiting retains, because the user saw no outcome and the exit is a restart")
   }
 
   /// #1740: EVERY spent attempt deletes; only outcomes where ASR never ran

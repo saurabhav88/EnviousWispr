@@ -203,6 +203,12 @@ enum DictationNarrator {
         return "Finishing a take. Please wait."
       case .dictation:
         return "Already recording."
+      case .abandonedDecode:
+        // #2787: the decode the user stopped waiting for still owns the engine.
+        // Say what will actually work, not "try again soon" — on the machine
+        // this was written for, soon never came.
+        // 45 characters: the pill truncates at 46 (DictationNarratorTests).
+        return "Previous take still running. Restart the app."
       }
     }
   }

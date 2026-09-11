@@ -367,6 +367,42 @@ final actor FakeASRBackend: ASRBackend {
     for c in parked { c.resume() }
   }
 
+  /// #2787: when set, `transcribe` parks after its readiness guard until
+  /// `releaseTranscribeGate()` — the shape of a vendor decode that does not
+  /// return. Separate from the `prepare()` gate so a test can hold the decode
+  /// with the model loaded normally.
+  private var transcribeGated = false
+  private var transcribeGateContinuations: [CheckedContinuation<Void, Never>] = []
+
+  func gateTranscribe() { transcribeGated = true }
+
+  private var parkedWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+
+  /// Resolves `true` once a gated `transcribe` is parked, `false` after the
+  /// deadline — a signal wait, bounded so a test never hangs on it.
+  func transcribeParked() async -> Bool {
+    if !transcribeGateContinuations.isEmpty { return true }
+    return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+      let id = UUID()
+      parkedWaiters.append((id, c))
+      Task {
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        await self.expireParkedWaiter(id)
+      }
+    }
+  }
+
+  private func expireParkedWaiter(_ id: UUID) {
+    guard let index = parkedWaiters.firstIndex(where: { $0.id == id }) else { return }
+    parkedWaiters.remove(at: index).continuation.resume(returning: false)
+  }
+
+  func releaseTranscribeGate() {
+    let parked = transcribeGateContinuations
+    transcribeGateContinuations.removeAll()
+    for c in parked { c.resume() }
+  }
+
   func transcribe(audioSamples: [Float], options: TranscriptionOptions)
     async throws -> ASRResult
   {
@@ -374,6 +410,14 @@ final actor FakeASRBackend: ASRBackend {
     // (`guard isReady ... else { throw ASRError.notReady }`). A double must
     // refuse what the real tool refuses, or a test proves nothing about it.
     guard ready else { throw ASRError.notReady }
+    if transcribeGated {
+      await withCheckedContinuation { c in
+        transcribeGateContinuations.append(c)
+        let waiters = parkedWaiters
+        parkedWaiters.removeAll()
+        for waiter in waiters { waiter.continuation.resume(returning: true) }
+      }
+    }
     return ASRResult(
       text: "ok", language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
   }

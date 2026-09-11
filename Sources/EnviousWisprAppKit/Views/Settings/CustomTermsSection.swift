@@ -129,7 +129,7 @@ struct CustomTermsSection<Actions: View>: View {
               .foregroundStyle(.stTextSecondary)
               .font(.system(size: 12))
               .accessibilityHidden(true)
-            TextField("Search by name, alias, or category", text: $searchQuery)
+            TextField("Search by word, mishearing, or category", text: $searchQuery)
               .textFieldStyle(.plain)
               .onChange(of: searchQuery) { _, _ in currentPage = 0 }
               .onChange(of: selectedCategory) { _, _ in currentPage = 0 }

@@ -49,6 +49,34 @@ import Testing
     #expect(step.lastRun?.skipReason == "lid_backend_nil")
   }
 
+  // MARK: Where the localised address words actually reach a user (#2770)
+
+  /// The direct-formatter suite calls `InverseTextNormalizer.normalize` and so cannot see this
+  /// gate. These two rows are the ones that say where the localised at-words and dot-words reach
+  /// a real dictation, and where they do not.
+  @Test("a spoken address in the speaker's own words converts on a no-language take")
+  func localisedAddressConvertsOnNilLanguageTake() async throws {
+    let step = InverseTextNormalizationStep()
+    step.backendSupportsLID = false
+    let out = try await step.process(ctx("mandalo a marco arroba esempio punto com"))
+    #expect(out.text.contains("marco@esempio.com"))
+    #expect(step.lastRun?.ran == true)
+  }
+
+  /// The limit, as a test rather than a comment: a take the app KNOWS is Spanish skips this
+  /// engine entirely, so the Spanish words never run on it. The localised words serve a take
+  /// whose language is unknown (Parakeet reports none) or resolved as English. Routing them for
+  /// a resolved non-English take is tracked separately.
+  @Test("the same address does NOT convert on a take resolved as Spanish")
+  func localisedAddressSkippedOnResolvedNonEnglishTake() async throws {
+    let step = InverseTextNormalizationStep()
+    step.backendSupportsLID = true
+    let input = "mandalo a marco arroba esempio punto com"
+    let out = try await step.process(ctx(input, language: "es"))
+    #expect(out.text == input)
+    #expect(step.lastRun?.skipReason == "non_english")
+  }
+
   @Test("explicit non-English language → skips (non_english)")
   func skipsForNonEnglishLanguage() async throws {
     let step = InverseTextNormalizationStep()

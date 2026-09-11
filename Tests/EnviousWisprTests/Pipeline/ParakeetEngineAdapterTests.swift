@@ -15,6 +15,26 @@ import Testing
 @MainActor
 @Suite struct ParakeetEngineAdapterTests {
 
+  /// #2787 chunk 4: the manager's "vendor chunk scheduled" callback becomes an
+  /// `.observation` tick on the adapter's finalize stream — the non-destructive
+  /// mode the kernel records without arming its wedge detector. Each read of
+  /// `finalizeProgress` is a fresh stream, so a tick lands only on the current one.
+  @Test("a vendor chunk report becomes an observation tick on the current finalize stream")
+  func vendorChunkReportBecomesObservationTick() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let stream = try #require(adapter.finalizeProgress)
+    var iterator = stream.makeAsyncIterator()
+    manager.onVendorDecodeChunkScheduled?()
+    manager.onVendorDecodeChunkScheduled?()
+    let first = try #require(await iterator.next())
+    let second = try #require(await iterator.next())
+    #expect(first.kind == .observation)
+    #expect(second.kind == .observation)
+    #expect(second.marker > first.marker, "markers are monotonic")
+  }
+
+
   // MARK: Identity (PR-5 Rung 1)
 
   @Test("engineIdentity: Parakeet declares .parakeet backend")
@@ -879,6 +899,8 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded = false
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var isStreaming = false
   var downloadProgress: Double = 0
   var downloadPhase = "idle"

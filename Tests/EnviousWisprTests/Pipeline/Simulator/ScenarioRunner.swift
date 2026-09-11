@@ -128,6 +128,10 @@ struct ScenarioRunner {
         context.engine.emitLoadTick()
       case .emitFinalizeTick:
         context.engine.emitFinalizeTick()
+      case .emitObservationTick:
+        context.engine.emitObservationTick()
+      case .emitObservationTickOnPreviousStream:
+        context.engine.emitObservationTickOnPreviousStream()
       case .setLoadProgressAbsent(let absent):
         context.engine.loadProgressAbsent = absent
       case .setFinalizeProgressAbsent(let absent):

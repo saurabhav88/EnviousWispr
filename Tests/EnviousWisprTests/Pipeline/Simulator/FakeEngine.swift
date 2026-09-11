@@ -321,8 +321,13 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
 
   private let loadStream: AsyncStream<ASRLoadProgressTick>
   private let loadContinuation: AsyncStream<ASRLoadProgressTick>.Continuation
-  private let finalizeStream: AsyncStream<ASRFinalizeProgressTick>
-  private let finalizeContinuation: AsyncStream<ASRFinalizeProgressTick>.Continuation
+  /// #2787: a FRESH stream per read, mirroring `ParakeetEngineAdapter` — the
+  /// kernel reads once per decode attempt, and a tick yielded on an older
+  /// stream must not be counted against a later attempt. `emitFinalizeTick` /
+  /// `emitObservationTick` yield on the LATEST; `emitObservationTickOnPreviousStream`
+  /// deliberately targets the one before it.
+  private var finalizeContinuation: AsyncStream<ASRFinalizeProgressTick>.Continuation
+  private var previousFinalizeContinuation: AsyncStream<ASRFinalizeProgressTick>.Continuation?
   private var loadMarker: UInt64 = 0
   private var finalizeMarker: UInt64 = 0
 
@@ -340,8 +345,16 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
 
   /// `nil` when the engine exposes no finalize-progress stream.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? {
-    finalizeProgressAbsent ? nil : finalizeStream
+    guard !finalizeProgressAbsent else { return nil }
+    let (stream, continuation) = AsyncStream.makeStream(of: ASRFinalizeProgressTick.self)
+    previousFinalizeContinuation = finalizeContinuation
+    finalizeContinuation = continuation
+    return stream
   }
+
+  /// #2787: settable so a scenario can end a session with the fake's decode
+  /// "still running" and assert the driver projects `.stoppedWaitingForDecode`.
+  var isVendorDecodeInFlight: Bool = false
 
   // MARK: Wedge continuations
 
@@ -359,8 +372,7 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     self.loadProgressAbsent = loadProgressAbsent
     self.finalizeProgressAbsent = finalizeProgressAbsent
     (loadStream, loadContinuation) = AsyncStream.makeStream(of: ASRLoadProgressTick.self)
-    (finalizeStream, finalizeContinuation) = AsyncStream.makeStream(
-      of: ASRFinalizeProgressTick.self)
+    (_, finalizeContinuation) = AsyncStream.makeStream(of: ASRFinalizeProgressTick.self)
   }
 
   // MARK: Warm-up
@@ -540,6 +552,23 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   func emitFinalizeTick() {
     finalizeMarker += 1
     finalizeContinuation.yield(ASRFinalizeProgressTick(marker: finalizeMarker))
+  }
+
+  /// #2787: emit one OBSERVATION tick — the shape Parakeet's adapter produces
+  /// from a vendor "chunk scheduled" report. Must reach the checkpoint and
+  /// must NOT arm the finalize-wedge detector.
+  func emitObservationTick() {
+    finalizeMarker += 1
+    finalizeContinuation.yield(
+      ASRFinalizeProgressTick(marker: finalizeMarker, kind: .observation))
+  }
+
+  /// #2787: a LATE report from a previous decode attempt (the stream the kernel
+  /// read before the current one). Must never reach the current attempt's count.
+  func emitObservationTickOnPreviousStream() {
+    finalizeMarker += 1
+    previousFinalizeContinuation?.yield(
+      ASRFinalizeProgressTick(marker: finalizeMarker, kind: .observation))
   }
 
   func cancel() async {

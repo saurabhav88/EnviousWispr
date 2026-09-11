@@ -225,7 +225,7 @@ private struct PackWordRow: View {
     // the word carries. `ViewThatFits` used to compare a horizontal candidate
     // that INCLUDED the wrapping alias chips, so `amoxicillin` (11 aliases)
     // made that candidate too wide and the switch fell to the fallback's
-    // bottom left — under the "Add alias" field, reading as a control for
+    // bottom left — under the add-a-mishearing field, reading as a control for
     // that field rather than for the word (#2507). The chips and the add
     // field now sit BENEATH the title row instead of competing with it for
     // the same width, and `ViewThatFits` governs only the title row, which is
@@ -314,7 +314,7 @@ private struct PackWordRow: View {
             }
             .buttonStyle(.plain)
             .fixedSize()
-            .accessibilityLabel("Remove alias \(alias)")
+            .accessibilityLabel("Remove mishearing \(alias)")
           }
           .padding(.horizontal, 6)
           .padding(.vertical, 3)
@@ -327,7 +327,7 @@ private struct PackWordRow: View {
 
   private var addAliasRow: some View {
     HStack(spacing: 6) {
-      TextField("Add alias (e.g. a mishearing you've noticed)", text: $newAlias)
+      TextField("Add a mishearing (e.g. clawed)", text: $newAlias)
         .textFieldStyle(.plain)
         .font(.stHelper)
         .onSubmit(addAlias)

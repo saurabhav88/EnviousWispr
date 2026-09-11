@@ -15,6 +15,8 @@ import SwiftUI
 struct CustomWordEditSheet: View {
   @State private var word: CustomWord
   @State private var newAlias: String = ""
+  @FocusState private var aliasFieldFocused: Bool
+  @FocusState private var wordFieldFocused: Bool
   @State private var isLoadingSuggestions = false
   @State private var suggestionsApplied = false
   @State private var noSuggestionsAvailable = false
@@ -46,28 +48,38 @@ struct CustomWordEditSheet: View {
 
   private var aliasCountLabel: String {
     let count = word.aliases.count
-    return "\(count) \(count == 1 ? "alias" : "aliases")"
+    return "\(count) \(count == 1 ? "mishearing" : "mishearings")"
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Text(word.canonical.isEmpty ? "Add Custom Word" : "Edit Custom Word")
-        .font(.headline)
-
-      // Canonical
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Word")
+    // Two objects, not five loose stacks. Everything about the WORD (its
+    // spelling, its kind) sits plain at the top; everything about MATCHING
+    // (aliases, strictness, force) sits in cards, because those are the parts
+    // with sub-controls that need a container to belong to. Labels are one
+    // style throughout — the alias group used to be the only one shouting in a
+    // bold title, which is what made the sheet read as assembled rather than
+    // designed (founder, 2026-09-10).
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(word.canonical.isEmpty ? "Add Custom Word" : "Edit Custom Word")
+          .font(.stRowTitle)
+          .foregroundStyle(.stTextPrimary)
+        Text("Set how this word is recognized in what you dictate.")
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
-        TextField("Word", text: $word.canonical)
-          .textFieldStyle(.roundedBorder)
+      }
+
+      // Canonical
+      VStack(alignment: .leading, spacing: 5) {
+        groupLabel("The correct word")
+        TextField("How it should be written", text: $word.canonical)
+          .focused($wordFieldFocused)
+          .settingsFieldChrome(focused: $wordFieldFocused)
       }
 
       // Category
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Category")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
+      VStack(alignment: .leading, spacing: 5) {
+        groupLabel("Category")
         Picker("Category", selection: $word.category) {
           ForEach(WordCategory.allCases, id: \.self) { cat in
             Text(cat.rawValue.capitalized).tag(cat)
@@ -77,92 +89,8 @@ struct CustomWordEditSheet: View {
         .pickerStyle(.segmented)
       }
 
-      // Aliases
-      VStack(alignment: .leading, spacing: 4) {
-        HStack {
-          Text("Aliases (spoken variants the ASR produces)")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-          Spacer()
-          Text(aliasCountLabel)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-        }
-
-        HStack {
-          TextField("Add alias (e.g. clawed)", text: $newAlias)
-            .textFieldStyle(.roundedBorder)
-            .onSubmit { addAlias() }
-          Button("Add") { addAlias() }
-            .disabled(newAlias.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-
-        ScrollView(.vertical) {
-          if word.aliases.isEmpty {
-            Text("No aliases yet")
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(8)
-          } else {
-            WrappingHStack(spacing: 6) {
-              ForEach(word.aliases, id: \.self) { alias in
-                HStack(spacing: 3) {
-                  Text(alias)
-                    .font(.stHelper)
-                    .fixedSize(horizontal: false, vertical: true)
-                  Button {
-                    word.aliases.removeAll { $0 == alias }
-                  } label: {
-                    // An 8pt glyph inside a chip: the smallest target in the
-                    // whole window, and the one that deletes an alias.
-                    Image(systemName: "xmark")
-                      .font(.system(size: 8, weight: .bold))
-                      .settingsHoverQuiet(inset: 2, tint: .stError)
-                  }
-                  .buttonStyle(.plain)
-                  .fixedSize()
-                  .accessibilityLabel("Remove alias \(alias)")
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.stAccentLight)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-              }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-          }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 150)
-        .background(Color.stPageBg)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(Color.stDivider, lineWidth: 1)
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Aliases")
-      }
-
-      // Match strictness (Phase 2a override surface)
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Match strictness")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-        Picker("Match strictness", selection: strictnessBinding) {
-          Text("Loose").tag(MatchStrictness.loose)
-          Text("Default").tag(MatchStrictness.standard)
-          Text("Strict").tag(MatchStrictness.strict)
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-      }
-
-      // Force replace toggle
-      Toggle("Force replace (always apply, skip scoring)", isOn: $word.forceReplace)
-        .toggleStyle(BrandedToggleStyle())
+      aliasesCard
+      recognitionCard
 
       if let saveError {
         Label(saveError, systemImage: "exclamationmark.triangle.fill")
@@ -171,7 +99,7 @@ struct CustomWordEditSheet: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
-      Spacer()
+      Spacer(minLength: 0)
 
       // Suggestion status, LAID OUT rather than floated (#1705).
       //
@@ -237,10 +165,10 @@ struct CustomWordEditSheet: View {
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Removes this word and its aliases. Can't be undone.")
+      Text("Removes this word and its mishearings. Can't be undone.")
     }
     .padding(20)
-    .frame(width: 480, height: 600)
+    .frame(width: 520, height: 640)
     // Phase 1 (#637) + Phase 4 (#634) + Codex P2 fix: keyed task that restarts
     // when canonical changes. Empty-canonical guard prevents the AFM call from
     // running on the blank "+ Add term" sheet open. After the user types into
@@ -280,12 +208,158 @@ struct CustomWordEditSheet: View {
     }
   }
 
+  /// Focus is claimed FIRST, before the empty/duplicate guard, because Add is
+  /// always enabled: an empty field is the case where clicking Add has nothing
+  /// to append and putting the cursor in the field is the whole response. Set
+  /// after the guard, that click would do nothing at all — which is the "this
+  /// is broken" reading the always-enabled button exists to remove
+  /// (Codex review, 2026-09-10).
   private func addAlias() {
+    aliasFieldFocused = true
     let trimmed = newAlias.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty, !word.aliases.contains(trimmed) else { return }
     word.aliases.append(trimmed)
     newAlias = ""
   }
+
+  // MARK: - Group label
+
+  /// One label style for every group on this sheet, so nothing shouts.
+  private func groupLabel(_ text: String) -> some View {
+    Text(text)
+      .font(.stRowLabel)
+      .foregroundStyle(.stTextSecondary)
+  }
+
+  /// One card treatment for the two matching groups.
+  private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 10, content: content)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(12)
+      .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 10))
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .strokeBorder(Color.stDivider, lineWidth: 1)
+          // Decoration, same class as the field border. A card wraps the alias
+          // list's own tap gesture and every control in it.
+          .allowsHitTesting(false)
+      )
+  }
+
+  // MARK: - Aliases
+
+  /// The add field is the thing to click, and it kept losing that contest to
+  /// the alias list beneath it: a 150pt box wearing a border and the page
+  /// background, which reads as the place you type (founder, 2026-09-10 —
+  /// "I keep trying to click on the black box to add words"). The list no
+  /// longer wears a field's border and fill, Add is a real button rather than
+  /// a grey word, the list is sized to its chips instead of reserving an empty
+  /// void, and clicking anywhere in the list focuses the add field.
+  private var aliasesCard: some View {
+    card {
+      HStack(alignment: .firstTextBaseline) {
+        groupLabel("Aliases (aka the common mishearings)")
+        Spacer()
+        Text(aliasCountLabel)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
+
+      HStack(spacing: 8) {
+        TextField("Add a mishearing (e.g. clawed)", text: $newAlias)
+          .focused($aliasFieldFocused)
+          .settingsFieldChrome(focused: $aliasFieldFocused)
+          .onSubmit { addAlias() }
+        // Enabled whatever the field holds. Empty, it puts the cursor in the
+        // field rather than doing nothing — a greyed-out Add was the second
+        // thing on this sheet that looked broken.
+        SettingsActionButton(title: "Add", isEnabled: true, emphasis: .filled) {
+          addAlias()
+        }
+      }
+
+      aliasList
+    }
+  }
+
+  /// The chips, capped rather than fixed: `ViewThatFits` takes the plain flow
+  /// when it fits and only then falls back to a scroller, so two aliases occupy
+  /// two rows instead of reserving the height of nine.
+  private var aliasList: some View {
+    ViewThatFits(in: .vertical) {
+      aliasChips
+      ScrollView(.vertical) { aliasChips }
+    }
+    .frame(maxWidth: .infinity, maxHeight: 116, alignment: .leading)
+    // The whole list answers a click by focusing the field above it. The chips'
+    // own remove buttons still take their clicks first — this only picks up the
+    // taps that would otherwise land on nothing.
+    .contentShape(Rectangle())
+    .onTapGesture { aliasFieldFocused = true }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Mishearings")
+  }
+
+  @ViewBuilder
+  private var aliasChips: some View {
+    if word.aliases.isEmpty {
+      Text("No mishearings yet. Type one above and click Add.")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    } else {
+      WrappingHStack(spacing: 6) {
+        ForEach(word.aliases, id: \.self) { alias in
+          HStack(spacing: 4) {
+            Text(alias)
+              .font(.stHelper)
+              .fixedSize(horizontal: false, vertical: true)
+            Button {
+              word.aliases.removeAll { $0 == alias }
+            } label: {
+              // An 8pt glyph inside a chip: the smallest target in the
+              // whole window, and the one that deletes an alias.
+              Image(systemName: "xmark")
+                .font(.system(size: 8, weight: .bold))
+                .settingsHoverQuiet(inset: 2, tint: .stError)
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel("Remove mishearing \(alias)")
+          }
+          .padding(.horizontal, 9)
+          .padding(.vertical, 4)
+          .background(Color.stAccentLight, in: Capsule())
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  // MARK: - Recognition behavior
+
+  private var recognitionCard: some View {
+    card {
+      groupLabel("Recognition behavior")
+
+      Text("Match strictness")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+      Picker("Match strictness", selection: strictnessBinding) {
+        Text("Loose").tag(MatchStrictness.loose)
+        Text("Default").tag(MatchStrictness.standard)
+        Text("Strict").tag(MatchStrictness.strict)
+      }
+      .labelsHidden()
+      .pickerStyle(.segmented)
+
+      Toggle("Always replace, even when the original might be right", isOn: $word.forceReplace)
+        .toggleStyle(BrandedToggleStyle())
+        .font(.stHelper)
+    }
+  }
+
   // MARK: - Suggestion status
 
   /// One row, two states, one shape — so the hidden layout copies that reserve

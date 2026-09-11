@@ -1682,6 +1682,10 @@ struct TranscribeFileView: View {
     case .polisherNotReady:
       return "The cleanup engine didn't start. Your words are here. Clean it again to retry."
     case .engineBusy(.fileImport): return "Another file is being transcribed right now."
+    // #2787: a dictation ended but its transcription never returned; the engine
+    // is not free until the app restarts.
+    case .engineBusy(.abandonedDecode):
+      return "The last dictation is still transcribing. Restart the app, then try again."
     case .failed: return "Something went wrong reading that file. Try a different one."
     }
   }

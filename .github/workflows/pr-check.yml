@@ -623,6 +623,15 @@ jobs:
           python3 Tests/RuntimeUAT/ptt_binding.py --self-test
           python3 Tests/RuntimeUAT/faultInjection.py --self-test
           python3 Tests/RuntimeUAT/instance_guard.py --self-test
+          # #2775 UAT front door. These three are PyObjC-free by design (like the
+          # instance guard, #2426) so they run on the hosted runner. uat_catalog's
+          # self-test fails if a public wispr_eyes function has no trust-status row.
+          python3 Tests/RuntimeUAT/uat_catalog.py --self-test
+          python3 Tests/RuntimeUAT/log_verdict.py --self-test
+          python3 Tests/RuntimeUAT/preflight.py --self-test
+          # uat.py imports no PyObjC at module level, so its verdict-classifier
+          # self-test (the contract Codex diff review hammered) runs here too.
+          python3 Tests/RuntimeUAT/uat.py --self-test
 
       - name: Judge receipt + billing contracts (#2007/#2008)
         run: |

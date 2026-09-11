@@ -1998,6 +1998,63 @@ public final class TelemetryService {
       "recovery.press_blocked", properties: ["asr_backend": asrBackend])
   }
 
+  /// #2787 — a dictation session ended while its vendor decode was still
+  /// running, so the shared engine stays claimed as `abandonedDecode` until
+  /// that call returns. One event per hold. Pairs with
+  /// `abandonedDecodeHoldSettled`; a hold with no settle is a decode that
+  /// never returned before the app quit — the fleet-level count of the #2787
+  /// hang. `in_flight` is how many vendor calls were running at the time.
+  public func abandonedDecodeHoldStarted(inFlight: Int) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.abandoned_decode_hold_started", stringProps: [:],
+          intProps: ["in_flight": inFlight]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.abandoned_decode_hold_started", properties: ["in_flight": inFlight])
+  }
+
+  /// #2787 — the previous process died between "stop" and "text in hand".
+  /// One event per orphaned checkpoint, on the launch that found it; the
+  /// Sentry twin (`transcription_interrupted`) carries the same stage. `stage`
+  /// is the bounded `TranscriptionStage` raw value; `stage_age_ms` is
+  /// wall-clock elapsed from the last checkpoint to this launch, including
+  /// downtime. It is not a measured hang duration.
+  public func transcriptionInterruptedAtQuit(
+    stage: String, backend: String, chunksScheduled: Int, stageAgeMs: Int, checkpointAppVersion: String
+  ) {
+    let props: [String: Any] = [
+      "stage": stage, "asr_backend": backend, "chunks_scheduled": chunksScheduled,
+      "stage_age_ms": stageAgeMs, "checkpoint_app_version": checkpointAppVersion,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "transcription.interrupted_at_quit",
+          stringProps: [
+            "stage": stage, "asr_backend": backend, "checkpoint_app_version": checkpointAppVersion,
+          ],
+          intProps: ["chunks_scheduled": chunksScheduled, "stage_age_ms": stageAgeMs]))
+    #endif
+    PostHogSDK.shared.capture("transcription.interrupted_at_quit", properties: props)
+  }
+
+  /// #2787 — the abandoned decode returned and the engine was released.
+  /// `seconds` is how long it stayed held past the session's end; `$value`
+  /// mirrors it in seconds (RULE: value-slot-carries-seconds-for-durations).
+  public func abandonedDecodeHoldSettled(seconds: Double) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "engine.abandoned_decode_hold_settled", stringProps: [:], intProps: [:],
+          doubleProps: ["held_seconds": seconds]))
+    #endif
+    PostHogSDK.shared.capture(
+      "engine.abandoned_decode_hold_settled",
+      properties: ["held_seconds": seconds, "$value": seconds])
+  }
+
   /// #1707 Phase 3 — pairs with `recoveryPressBlocked`: a press that was
   /// previously blocked went on to mint an active session. `waitSeconds` is
   /// the measured gap between the block and this later successful start,
@@ -3518,9 +3575,19 @@ public final class TelemetryService {
   public struct FlushContext: Sendable {
     public let activeRecording: Bool
     public let appPhase: String
-    public init(activeRecording: Bool, appPhase: String) {
+    /// #2787: the last transcription stage the take in flight reached, and how
+    /// long ago (ms). Nil when no take is between stop and text. A graceful quit
+    /// during `transcribing` then says WHICH step it was on; a force-quit cannot
+    /// reach here at all, which is what the persisted checkpoint is for.
+    public let lastStage: String?
+    public let stageAgeMs: Int?
+    public init(
+      activeRecording: Bool, appPhase: String, lastStage: String? = nil, stageAgeMs: Int? = nil
+    ) {
       self.activeRecording = activeRecording
       self.appPhase = appPhase
+      self.lastStage = lastStage
+      self.stageAgeMs = stageAgeMs
     }
   }
 
@@ -3570,20 +3637,30 @@ public final class TelemetryService {
       #endif
     }
 
+    var properties: [String: Any] = [
+      "reason": reason.rawValue,
+      "active_recording": context.activeRecording,
+      "app_phase": context.appPhase,
+    ]
+    var stringProps = ["reason": reason.rawValue, "app_phase": context.appPhase]
+    var intProps: [String: Int] = [:]
+    // #2787: omit-when-nil, so absence means "no take between stop and text".
+    if let lastStage = context.lastStage {
+      properties["last_stage"] = lastStage
+      stringProps["last_stage"] = lastStage
+    }
+    if let stageAgeMs = context.stageAgeMs {
+      properties["stage_age_ms"] = stageAgeMs
+      intProps["stage_age_ms"] = stageAgeMs
+    }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "telemetry.flush_requested",
-          stringProps: ["reason": reason.rawValue, "app_phase": context.appPhase],
+          stringProps: stringProps, intProps: intProps,
           boolProps: ["active_recording": context.activeRecording]))
     #endif
-    PostHogSDK.shared.capture(
-      "telemetry.flush_requested",
-      properties: [
-        "reason": reason.rawValue,
-        "active_recording": context.activeRecording,
-        "app_phase": context.appPhase,
-      ])
+    PostHogSDK.shared.capture("telemetry.flush_requested", properties: properties)
     PostHogSDK.shared.flush()
   }
 

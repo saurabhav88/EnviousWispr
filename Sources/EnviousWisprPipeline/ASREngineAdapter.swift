@@ -190,11 +190,25 @@ public struct ASRLoadProgressTick: Sendable {
 /// A wedge-detection progress tick emitted during `finalize()` (PR-1 §B.1.7,
 /// §B.2.1). Same cadence-watching semantics as `ASRLoadProgressTick`.
 public struct ASRFinalizeProgressTick: Sendable {
+  /// #2787: what a tick is allowed to DO in the kernel.
+  public enum Kind: Sendable, Equatable {
+    /// A liveness signal: the first arms `detectFinalizeWedge`, and a long
+    /// silence after it is a wedge the kernel tears down (PR-1 §B.1.7).
+    case progress
+    /// An observation only: recorded on the take's checkpoint
+    /// (`decode_chunk_scheduled`) and nothing else. Never arms the detector —
+    /// the vendor reports a chunk when it is SCHEDULED, not finished, so
+    /// silence between these is not evidence of anything.
+    case observation
+  }
+
   /// Monotonic progress marker.
   public let marker: UInt64
+  public let kind: Kind
 
-  public init(marker: UInt64) {
+  public init(marker: UInt64, kind: Kind = .progress) {
     self.marker = marker
+    self.kind = kind
   }
 }
 
@@ -356,6 +370,13 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// OPTIONAL `finalize()`-wedge signal (PR-1 §B.1.7). Same `nil` semantics as
   /// `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { get }
+
+  /// #2787: whether a vendor decode this adapter issued is still running,
+  /// whoever is waiting for it. Read by the driver at a `.cancelled` terminal
+  /// to decide whether the take's audio must survive for a launch replay
+  /// (`RecordingRecoveryEnding.stoppedWaitingForDecode`). Backed by the one
+  /// `VendorDecodeOccupancy` the composition root owns, never by session state.
+  var isVendorDecodeInFlight: Bool { get }
 
   /// #1707 Phase 2 — a second, bounded decode attempt over audio a PRIOR
   /// `finalize()` call already failed to decode. Distinct from calling

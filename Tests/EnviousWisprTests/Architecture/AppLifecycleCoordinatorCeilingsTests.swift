@@ -83,6 +83,7 @@ import Testing
     "applicationRelocationCoordinator",
     "bluetoothAwarenessPresenter",
     "batchDecodeFaultController",
+    "transcriptionCheckpointStore",  // #2787
     "accessibilityWarmupObserver",
   ]
 
@@ -125,10 +126,13 @@ import Testing
     // `RouterCeilingParser.imports` surfaces every anchored `import` line,
     // including inside `#if DEBUG` — so `EnviousWisprPipeline` (imported only
     // for `DebugFaultEndpoint` in debug builds) is on the allowlist.
+    // #2787: `EnviousWisprStorage` for `TranscriptionCheckpointStore` — the
+    // launch-time "the previous process died mid-transcription" report is a
+    // launch responsibility, and the store is the persisted record it reads.
     let allowed: Set<String> = [
       "AppKit", "EnviousWisprASR", "EnviousWisprAudio", "EnviousWisprCore",
       "EnviousWisprLLM", "EnviousWisprPipeline", "EnviousWisprServices",
-      "Foundation",
+      "EnviousWisprStorage", "Foundation",
     ]
     let extras = actual.subtracting(allowed)
     #expect(

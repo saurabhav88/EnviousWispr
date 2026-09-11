@@ -17,6 +17,12 @@ public actor ParakeetBackend: ASRBackend {
   public private(set) var isReady = false
 
   private var fluidAsrManager: AsrManager?
+  /// #2787: see `setDecodeChunkObserver`.
+  private var decodeChunkObserver: (@Sendable () -> Void)?
+
+  public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async {
+    decodeChunkObserver = observer
+  }
   private var fluidModels: AsrModels?
 
   // Streaming ASR state
@@ -230,7 +236,14 @@ public actor ParakeetBackend: ASRBackend {
       }
       self.fluidModels = loadedModels
 
-      let manager = AsrManager(config: .default)
+      // #2788: pin the mel-context long-form path explicitly. Upstream #869 flipped
+      // the v3 default (`melChunkContextOverride == nil` → no-mel, silence-aligned
+      // starts). On the 500-recording corpus that default changed 15 long recordings,
+      // about as many worse as better; `melChunkContext: true` is byte-identical to the
+      // previous pin on all 500. Evaluating the new path is #2769's harness work, not a
+      // silent default flip. The label is the supported initializer parameter; only
+      // the computed `melChunkContext` property is deprecated upstream.
+      let manager = AsrManager(config: ASRConfig(melChunkContext: true))
       // Vendor API: models load via loadModels(_:) after construction.
       try await manager.loadModels(loadedModels)
       self.fluidAsrManager = manager
@@ -293,6 +306,32 @@ public actor ParakeetBackend: ASRBackend {
     -> ASRResult
   {
     guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
+
+    // #2787: forward the fork's per-chunk progress to the observer for exactly
+    // this call. Observation only. Three facts from the pinned fork shape this:
+    // the array path emits only for audio longer than one model window
+    // (240,000 samples), so a shorter call must NOT touch the emitter — its
+    // session is never finished for short calls, and a cancelled consumer
+    // would poison the next long call's stream; the emitter yields synthetic
+    // 0.0 and 1.0 that are not chunk reports, so only 0 < p < 1 counts; and
+    // the stream is acquired BEFORE `transcribe` is awaited so a fast decode
+    // cannot finish the emitter before the subscription exists. The count is
+    // therefore "observed non-final chunk-scheduling reports", not chunks.
+    var chunkForwarder: Task<Void, Never>?
+    if audioSamples.count > 240_000, let observer = decodeChunkObserver {
+      let stream = await manager.transcriptionProgressStream
+      chunkForwarder = Task {
+        do {
+          for try await progress in stream {
+            guard !Task.isCancelled else { return }
+            if progress > 0, progress < 1 { observer() }
+          }
+        } catch {
+          // Observation failure does not change transcription.
+        }
+      }
+    }
+    defer { chunkForwarder?.cancel() }
 
     let startTime = CFAbsoluteTimeGetCurrent()
     // Vendor API: the caller owns decoder state (fresh per one-shot batch decode;

@@ -8,7 +8,7 @@ score we hold was therefore measured on an input form the shipped ASR does not
 produce. This rebuilds the inputs through the ASR we actually ship.
 
 Engine fidelity: drives `fluidaudiocli tts-asr-verify` from the PINNED FluidAudio
-checkout (`.build/checkouts/FluidAudio`, revision bf9fe27f per Package.resolved),
+checkout (`.build/checkouts/FluidAudio`, revision b29591ad per Package.resolved),
 NOT `~/Developer/EnviousLabs/FluidAudio*` — a local checkout's HEAD floats, so
 it can silently measure a different engine; the pinned checkout cannot.
 
@@ -40,11 +40,21 @@ import json
 import subprocess
 import sys
 import tempfile
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / ".build/checkouts/FluidAudio/.build/arm64-apple-macosx/release/fluidaudiocli"
-PIN = "bf9fe27f837c86ee786a3f0ddb9966eeeeb4915d"
+PIN = "b29591ada1f70510c12c13b50ffae02052ff75c3"
+
+# #2788: the app pins `ASRConfig(melChunkContext: true)`; `fluidaudiocli
+# tts-asr-verify` constructs `AsrManager()` with the vendor default, which on this
+# pin is the no-mel long-form path. The two agree on any clip the engine decodes
+# in ONE window (`transcribe` takes the single-window branch when the sample count
+# is at or below `ASRConstants.maxModelSamples`, 15 s at 16 kHz) and can differ
+# beyond it. A synthesized clip longer than this is REFUSED rather than
+# transcribed off the shipped path; teaching the CLI the setting is #2769 work.
+LONGFORM_SECONDS = 15.0
 
 
 def check_engine() -> None:
@@ -89,18 +99,22 @@ def wer(ref: str, hyp: str) -> float:
     return d[len(r)][len(h)] / len(r)
 
 
-def run_batch(texts: list[str], voice: str) -> list[str] | None:
-    """Synthesize+transcribe a batch. Returns hypotheses in order, or None if
-    the batch aborted (caller then retries line by line)."""
+def run_batch(texts: list[str], voice: str) -> list[tuple[str, float]] | None:
+    """Synthesize+transcribe a batch. Returns (hypothesis, audio seconds) in
+    order, or None if the batch aborted (caller then retries line by line).
+    Audio seconds come from the WAV the tool wrote (`phrase_%03d.wav`), never
+    from the tool's own report, so the long-form refusal reads the artifact."""
     with tempfile.TemporaryDirectory() as td:
         tf = Path(td) / "phrases.txt"
         of = Path(td) / "out.json"
+        ad = Path(td) / "audio"
+        ad.mkdir()
         # '#' starts a comment in the tool's phrases file; no corpus line begins
         # with one (checked at load), so nothing is silently dropped.
         tf.write_text("\n".join(texts) + "\n")
         proc = subprocess.run(
             [str(CLI), "tts-asr-verify", "--texts-file", str(tf),
-             "--voice", voice, "--output-json", str(of)],
+             "--voice", voice, "--output-json", str(of), "--audio-dir", str(ad)],
             capture_output=True, text=True,
         )
         if proc.returncode != 0 or not of.exists():
@@ -109,7 +123,15 @@ def run_batch(texts: list[str], voice: str) -> list[str] | None:
         phrases = sorted(data["phrases"], key=lambda p: p["index"])
         if len(phrases) != len(texts):
             return None
-        return [p["hypothesis"].strip() for p in phrases]
+        out = []
+        for p in phrases:
+            wav_path = ad / f"phrase_{p['index']:03d}.wav"
+            if not wav_path.exists():
+                return None  # the artifact the refusal reads is missing: abort loudly
+            with wave.open(str(wav_path)) as w:
+                seconds = w.getnframes() / w.getframerate()
+            out.append((p["hypothesis"].strip(), seconds))
+        return out
 
 
 def main() -> int:
@@ -144,6 +166,7 @@ def main() -> int:
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases), voice={args.voice}", file=sys.stderr)
 
     hyps: dict[str, str | None] = {}
+    refused_longform: list[tuple[str, float]] = []
     for start in range(0, len(cases), args.batch_size):
         chunk = cases[start : start + args.batch_size]
         got = run_batch([t for _, _, t in chunk], args.voice)
@@ -158,7 +181,17 @@ def main() -> int:
                     got.append(None)
                 else:
                     got.append(one[0])
-        for (d, _, _), h in zip(chunk, got):
+        for (d, _, _), item in zip(chunk, got):
+            if item is None:
+                hyps[d["id"]] = None
+                continue
+            h, seconds = item
+            if seconds > LONGFORM_SECONDS:
+                print(f"    REFUSED {d['id']}: {seconds:.1f}s > {LONGFORM_SECONDS:.0f}s, "
+                      f"long-form path differs from the app (#2788, #2769)", file=sys.stderr)
+                refused_longform.append((d["id"], round(seconds, 2)))
+                hyps[d["id"]] = None
+                continue
             hyps[d["id"]] = h
         print(f"  {min(start + args.batch_size, len(cases))}/{len(cases)}", file=sys.stderr)
 
@@ -186,16 +219,19 @@ def main() -> int:
     report = {
         "engine_pin": PIN, "voice": args.voice, "max_wer": args.max_wer,
         "total": len(cases), "kept": len(kept),
-        "rejected_wer": len(rejected), "tts_failed": len(failed),
+        "rejected_wer": len(rejected), "tts_failed": len(failed) - len(refused_longform),
+        "refused_longform": len(refused_longform),
         "rejected": [{"id": i, "orig": o, "parakeet": h, "wer": w} for i, o, h, w in rejected],
-        "tts_failed_ids": [i for i, _, _ in failed],
+        "tts_failed_ids": [i for i, _, _ in failed if i not in {r for r, _ in refused_longform}],
+        "refused_longform_ids": [{"id": i, "seconds": s} for i, s in refused_longform],
     }
     (args.out_dir / "roundtrip_report.json").write_text(json.dumps(report, indent=2))
 
     n = len(cases)
     print(f"\nkept (words identical)  : {len(kept)}/{n} ({100*len(kept)/n:.1f}%)", file=sys.stderr)
     print(f"rejected (words changed): {len(rejected)}/{n} ({100*len(rejected)/n:.1f}%)", file=sys.stderr)
-    print(f"TTS failed              : {len(failed)}/{n}", file=sys.stderr)
+    print(f"TTS failed              : {len(failed) - len(refused_longform)}/{n}", file=sys.stderr)
+    print(f"refused (>{LONGFORM_SECONDS:.0f}s long-form): {len(refused_longform)}/{n}", file=sys.stderr)
     print(f"\n-> {out_path}\n-> {args.out_dir / 'roundtrip_report.json'}", file=sys.stderr)
     return 0
 

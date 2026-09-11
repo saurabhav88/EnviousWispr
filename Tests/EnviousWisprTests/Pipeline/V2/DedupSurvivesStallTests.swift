@@ -230,6 +230,8 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded: Bool = false
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var isStreaming: Bool = false
   var downloadProgress: Double = 0
   var downloadPhase: String = "idle"

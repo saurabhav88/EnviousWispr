@@ -37,7 +37,8 @@ import Testing
       backend: WhisperKitBackend(admittedModelFolder: { nil }),
       languageDetector: LanguageDetector(),
       audioCaptureSessionIDSource: { 0 },
-      engineMutationScope: .alwaysAllowedForTesting)
+      engineMutationScope: .alwaysAllowedForTesting,
+      vendorDecodeOccupancy: VendorDecodeOccupancy())
     #expect(adapter.engineIdentity.backendType == .whisperKit)
   }
 }
@@ -54,6 +55,8 @@ private final class MinimalASRManager: ASRManagerInterface {
   var parakeetModelDirectory: URL?
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded = false
+  let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var isStreaming = false
   var downloadProgress: Double = 0
   var downloadPhase = ""

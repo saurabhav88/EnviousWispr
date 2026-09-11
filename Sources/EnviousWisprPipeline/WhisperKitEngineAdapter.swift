@@ -77,6 +77,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
   /// production/test path that doesn't explicitly construct one.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+  /// #2787: counts this adapter's vendor decode against the shared occupancy.
+  /// Production passes `ASRManager.vendorDecodeOccupancy` through the factory
+  /// (required there); the init default is a private counter nothing reads,
+  /// so the 77 test construction sites stay untouched and cannot affect a hold.
+  private let vendorDecodeOccupancy: VendorDecodeOccupancy
 
   // MARK: Engine-session bookkeeping (NOT FSM state — §3.11 adapter-shape check)
 
@@ -284,11 +289,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     languageDetector: LanguageDetector = LanguageDetector(),
     audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 },
     wedgeRecoveryUnloadDeadlineSec: Double = 2.0,
+    vendorDecodeOccupancy: VendorDecodeOccupancy = VendorDecodeOccupancy(),
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
     // so every existing test construction site is unaffected.
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.backend = backend
+    self.vendorDecodeOccupancy = vendorDecodeOccupancy
     self.engineMutationScope = engineMutationScope
     self.languageDetector = languageDetector
     self.audioCaptureSessionIDSource = audioCaptureSessionIDSource
@@ -505,7 +512,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// model-not-ready vend (`nil`) the adapter stays in batch mode — `finalize`
   /// then runs the clean batch fallback (fail-open, heart stays alive).
   private func startStreamingSession(_ id: SessionID, options: TranscriptionOptions) async {
-    guard let session = await backend.makeStreamingSession(options: options) else {
+    guard
+      let session = await backend.makeStreamingSession(
+        options: options, vendorDecodeOccupancy: vendorDecodeOccupancy)
+    else {
       // Stale guard (cloud r2): a cancel + beginSession(B) during the vend
       // await must not overwrite B's per-session telemetry state.
       if sessionID == id, !isCancelled {
@@ -718,12 +728,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let backendForObserver = backend
     let observerSamples = lidSamples
     let lidWindowCountForObserver = lidWindowCount
+    let occupancyForObserver = vendorDecodeOccupancy
     let lidResult = await languageDetector.detect(
       samples: lidSamples,
       voicedDuration: voicedDurationSec,
       observerFn: {
-        await backendForObserver.observeLID(
-          samples: observerSamples, maxWindows: lidWindowCountForObserver)
+        // #2787 (second-pass review): language detection is a real WhisperKit
+        // model call that runs BEFORE the decode, so it is counted too. Left
+        // uncounted, an Escape during it read the engine as idle, released
+        // the lease and deleted the spool while the model was still working,
+        // and the next record press could enter WhisperKit under it.
+        await occupancyForObserver.track {
+          await backendForObserver.observeLID(
+            samples: observerSamples, maxWindows: lidWindowCountForObserver)
+        }
       },
       mode: mode
     )
@@ -955,6 +973,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// WhisperKit's `transcribe(...)` is completion-only — no decoder-step
   /// progress signal. Same `nil` semantics as `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
+
+  /// #2787: the shared occupancy this adapter's batch decode and its streaming
+  /// session's decodes are counted against.
+  var isVendorDecodeInFlight: Bool { !vendorDecodeOccupancy.isIdle }
 
   /// Reset every per-session audio buffer at a terminal/cancel boundary. One
   /// place so a future buffer field added to the session lifecycle can't be
@@ -1420,8 +1442,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       return .failed(ASREngineError.decodeFailed)
     }
     do {
-      let result = try await backend.transcribe(
-        audioSamples: samples, options: decodeOptions)
+      // #2787: counted for the whole vendor call, so a session that stops
+      // waiting leaves the engine visibly busy until WhisperKit returns.
+      let result = try await vendorDecodeOccupancy.track {
+        // Twin of `ASRManager.transcribe`: never START a decode in a task the
+        // session terminal already cancelled (second-pass review, #2787).
+        try Task.checkCancellation()
+        return try await backend.transcribe(audioSamples: samples, options: decodeOptions)
+      }
       return .success(result)
     } catch is CancellationError {
       return .cancelled
@@ -1612,8 +1640,9 @@ package protocol WhisperKitBackendDriving: Actor {
   // #1276 Step 2 (PR-2): vend the authoritative streaming session
   // (locked-language Live-transcription path). Nil when the model is not
   // loaded (the adapter stays in batch mode, fail-open).
-  func makeStreamingSession(options: TranscriptionOptions) async
-    -> (any WhisperKitIncrementalSession)?
+  func makeStreamingSession(
+    options: TranscriptionOptions, vendorDecodeOccupancy: VendorDecodeOccupancy
+  ) async -> (any WhisperKitIncrementalSession)?
   func unload() async
 }
 
