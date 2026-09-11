@@ -781,7 +781,8 @@ final class FileImportCoordinator {
     // it made of `pendingPieces[i]`. A piece past the last finished part was never reached.
     // With no split in hand (nothing has run) the whole transcript is one untouched passage.
     guard !pendingPieces.isEmpty else {
-      return MarkedUpInput(passages: [.init(original: rawTranscript, cleaned: nil)])
+      return MarkedUpInput(
+        passages: [.init(original: rawTranscript, cleaned: nil)], language: engineReportedLanguage)
     }
     // Each passage's original is recovered FROM the transcript, not taken from the piece:
     // `TranscriptSplitter` slices from a word's start to a word's end and drops the
@@ -807,7 +808,7 @@ final class FileImportCoordinator {
       passages.append(.init(original: String(rawTranscript[cursor..<end]), cleaned: cleaned))
       cursor = end
     }
-    return MarkedUpInput(passages: passages)
+    return MarkedUpInput(passages: passages, language: engineReportedLanguage)
   }
 
   /// The passages, not a joined text: this is read on every redraw as the view's task id and
@@ -816,6 +817,9 @@ final class FileImportCoordinator {
   /// boundaries and could mark untouched waiting words as removed (second-pass review).
   struct MarkedUpInput: Equatable, Sendable {
     let passages: [WordDiff.Passage]
+    /// The engine's language code for the transcript, which decides the case fold (Turkish
+    /// has two I's). Part of the key so a re-transcription in another language recomputes.
+    let language: String?
   }
 
   /// The comparison, once `prepareMarkedUp` has run for the current input; nil while it is
@@ -852,7 +856,7 @@ final class FileImportCoordinator {
       task = inFlight.task
     } else {
       task = Task.detached(priority: .userInitiated) {
-        WordDiff.compare(passages: input.passages)
+        WordDiff.compare(passages: input.passages, language: input.language)
       }
       markedUpWorker = (input, task)
     }
@@ -890,7 +894,13 @@ final class FileImportCoordinator {
   /// hand over less than the screen shows. Found by the cloud review of PR #2799. On a
   /// finished run the two are the same text.
   var markedUpKeptText: String {
-    (parts.map(\.text) + Array(pendingPieces.dropFirst(parts.count))).joined(separator: "\n\n")
+    // The cleaned passages as `documentText` joins them, then the untouched passages as the
+    // TRANSCRIPT has them: each recovered original begins with the whitespace that preceded
+    // it, so nothing is invented between them. Joining the split's pieces with a blank line
+    // changed a single space or tab into a paragraph break. Found by the cloud review.
+    let cleaned = parts.map(\.text).joined(separator: "\n\n")
+    let untouched = markedUpInput.passages.dropFirst(parts.count).map(\.original).joined()
+    return cleaned + untouched
   }
 
   /// Whether Back is offered right now, so the button is absent rather than

@@ -61,9 +61,15 @@ struct WordDiffTests {
     // German sharp s against its capital spelling.
     let german = WordDiff.compare(original: "STRASSE", cleaned: "Straße")
     #expect(german.segments.map(\.kind) == [.same], "\(german.segments)")
-    // Turkish capital dotted I, whose case fold carries a combining dot no lowercase has.
+    // Turkish capital dotted I, whose neutral case fold carries a combining dot no lowercase
+    // has; collapsed even with no language.
     let turkish = WordDiff.compare(original: "İstanbul", cleaned: "istanbul")
     #expect(turkish.segments.map(\.kind) == [.same], "\(turkish.segments)")
+    // Turkish capital dotless I needs the transcript's language, which the engine reports.
+    let dotless = WordDiff.compare(original: "IŞIK", cleaned: "ışık", language: "tr")
+    #expect(dotless.segments.map(\.kind) == [.same], "\(dotless.segments)")
+    // And the stated limit: without the language it counts as a change.
+    #expect(WordDiff.compare(original: "IŞIK", cleaned: "ışık").changedWords == 1)
     // A diacritic is a different word, and a cleanup that adds one changed the word.
     for (a, b) in [("si", "sí"), ("ou", "où"), ("cafe", "café")] {
       let r = WordDiff.compare(original: a, cleaned: b)

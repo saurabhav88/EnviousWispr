@@ -346,6 +346,11 @@ struct FileImportHistoryTests {
     // cloud review of PR #2799.
     #expect(c.exportText.contains("four five six"), "the marked-up export dropped the visible tail")
     #expect(c.exportText.hasPrefix("Alpha."))
+    // The untouched part of the export is the transcript's own text from the first piece's
+    // end, whitespace included: nothing invented between the pieces. Found by the cloud review.
+    let firstPiece = c.pendingPieces[0]
+    let tailStart = raw.range(of: firstPiece)!.upperBound
+    #expect(c.exportText == "Alpha." + String(raw[tailStart...]))
     c.documentView = .cleaned
     #expect(!c.exportText.contains("four"))
   }

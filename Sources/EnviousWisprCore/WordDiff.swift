@@ -113,13 +113,13 @@ public enum WordDiff {
 
   /// Whitespace-separated runs, each carrying the whitespace that followed it, keyed by
   /// their letters for comparison.
-  static func tokenize(_ text: String) -> [Token] {
+  static func tokenize(_ text: String, locale: Locale? = nil) -> [Token] {
     var tokens: [Token] = []
     var word = ""
     var space = ""
     func flush() {
       guard !word.isEmpty else { return }
-      tokens.append(Token(text: word, trailing: space, key: key(for: word)))
+      tokens.append(Token(text: word, trailing: space, key: key(for: word, locale: locale)))
       word = ""
       space = ""
     }
@@ -147,7 +147,7 @@ public enum WordDiff {
     return tokens
   }
 
-  static func key(for word: String) -> String {
+  static func key(for word: String, locale: Locale?) -> String {
     let trimmed = word.trimmingCharacters(in: .punctuationCharacters.union(.symbols))
     // WHICH spelling differences are the same word, decided once (three cloud-review rounds
     // on PR #2799 each moved this a step; this is the closed rule, not the next step):
@@ -157,15 +157,18 @@ public enum WordDiff {
     // - A diacritic ALWAYS counts. "si" and "sí", "ou" and "où" are different words, and a
     //   cleanup that adds or drops an accent changed the word; folding marks away would
     //   report those as untouched.
-    // - The one artifact of case folding itself is undone: the fold of a Turkish capital
-    //   dotted I ("İstanbul") is "i" followed by a combining dot above (U+0307), a sequence no
-    //   lowercase spelling carries because a plain "i" already has its dot. That pair is
-    //   collapsed to "i". Nothing else is touched.
+    // - The fold is done in the TRANSCRIPT's language when the engine reported one, because
+    //   Turkish has two I's and no locale-neutral fold gets both: neutral folding maps
+    //   "IŞIK" to "işik" against the lowercase "ışık", and "İstanbul" to "i" plus a
+    //   combining dot against "istanbul". With the Turkish locale both pairs fold equal.
+    //   With no language, the locale-neutral fold applies and the one artifact it leaves,
+    //   "i" plus combining dot above (U+0307), which no lowercase spelling carries, is
+    //   collapsed to "i".
     //
-    // What would reopen this: a case-only pair the fold leaves unequal that is not the
-    // dotted-I artifact.
+    // The known limit, stated: a Turkish transcript whose language the engine did not report
+    // compares its capital dotless I as a change.
     return (trimmed.isEmpty ? word : trimmed)
-      .folding(options: .caseInsensitive, locale: nil)
+      .folding(options: .caseInsensitive, locale: locale)
       .replacingOccurrences(of: "i\u{0307}", with: "i")
   }
 
@@ -181,18 +184,29 @@ public enum WordDiff {
   /// gives each passage's original WITH the whitespace that followed it in the source
   /// transcript; the splitter's pieces alone do not carry inter-passage whitespace, and
   /// concatenating them rendered "alphaalpha" across a cut (Codex, confirming round).
-  public static func compare(passages: [Passage]) -> Result {
+  /// `language` is the engine's code for the transcript ("tr", "en"); it decides the case
+  /// fold, see `key(for:locale:)`. Nil folds locale-neutrally.
+  public static func compare(passages: [Passage], language: String? = nil) -> Result {
+    let locale = language.map { Locale(identifier: $0) }
     var result = Result(segments: [], removedWords: 0, changedWords: 0)
     for passage in passages {
       result = result.appending(
-        compare(original: passage.original, cleaned: passage.cleaned ?? passage.original))
+        compare(
+          original: passage.original, cleaned: passage.cleaned ?? passage.original,
+          locale: locale))
     }
     return result
   }
 
-  public static func compare(original: String, cleaned: String) -> Result {
-    let a = tokenize(original)
-    let b = tokenize(cleaned)
+  public static func compare(original: String, cleaned: String, language: String? = nil)
+    -> Result
+  {
+    compare(original: original, cleaned: cleaned, locale: language.map { Locale(identifier: $0) })
+  }
+
+  static func compare(original: String, cleaned: String, locale: Locale?) -> Result {
+    let a = tokenize(original, locale: locale)
+    let b = tokenize(cleaned, locale: locale)
     let ops = edits(a.map(\.key), b.map(\.key))
     let result = assemble(ops, original: a, cleaned: b)
     // The original's leading whitespace is layout, not a word: kept as an unmarked segment
