@@ -39,7 +39,7 @@ struct TranscribeFilePolishGridTests {
   /// wrap, so the badge is the one thing in a card that sets its floor.
   @Test("the minimum card width holds the Recommended badge inside the card's padding")
   func theMinimumHoldsTheBadge() {
-    let host = NSHostingView(rootView: TranscribeFileView.badge("Recommended"))
+    let host = NSHostingView(rootView: TranscribeFileView.wizardBadge("Recommended"))
     let badge = host.fittingSize.width
     #expect(badge > 0, "the harness returned nothing, which is not a pass")
     let padding: CGFloat = 12 * 2
