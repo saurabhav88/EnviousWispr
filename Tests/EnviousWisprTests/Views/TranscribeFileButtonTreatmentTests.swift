@@ -1,8 +1,6 @@
 import Foundation
 import Testing
 
-@testable import EnviousWispr
-
 /// #2772 finding 9 — "buttons need to look like this everywhere".
 ///
 /// The founder said that about the Transcribe a File wizard's Back / Continue pair, and the

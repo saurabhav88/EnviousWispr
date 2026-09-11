@@ -1,8 +1,6 @@
 import Foundation
 import Testing
 
-@testable import EnviousWispr
-
 /// #2772 chunk 1 — source-spelling tripwires for the provider setup extraction.
 ///
 /// These checks detect the listed markers appearing in another readable Swift source
