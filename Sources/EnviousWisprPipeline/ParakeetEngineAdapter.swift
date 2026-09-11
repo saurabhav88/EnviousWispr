@@ -793,11 +793,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     return outcome
   }
 
-  /// Parakeet/ASRManager expose completion-only `finalizeStreaming()` and
-  /// `transcribe(...)` calls. There is no decoder-step, partial-result, queue,
-  /// or file-mtime signal to feed the kernel's signal-based wedge detector.
-  // TODO(#NNN): finalize-wedge watchdog needs Parakeet progress signal.
+  /// No finalize progress stream for Parakeet in this revision. The fork does
+  /// expose per-chunk progress for audio longer than ~15 s, but it reports a
+  /// chunk when it is SCHEDULED, not finished, and the kernel's consumer of
+  /// this stream arms an automatic teardown on the first tick — connecting it
+  /// would auto-abort a slow long decode (#2787 plan, piece 3: observation
+  /// only, deferred until the customer's process sample locates the hang).
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
+
+  /// #2787: the manager's occupancy, which counts this adapter's own
+  /// `transcribe` / `finalizeStreaming` calls.
+  var isVendorDecodeInFlight: Bool { !asrManager.vendorDecodeOccupancy.isIdle }
 
   /// The cheap, model-preserving teardown shared by `cancel()` and
   /// `recoverFromWedge()`: cancel streaming, clear per-session state. Touches

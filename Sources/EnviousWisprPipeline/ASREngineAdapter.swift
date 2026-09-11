@@ -357,6 +357,13 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { get }
 
+  /// #2787: whether a vendor decode this adapter issued is still running,
+  /// whoever is waiting for it. Read by the driver at a `.cancelled` terminal
+  /// to decide whether the take's audio must survive for a launch replay
+  /// (`RecordingRecoveryEnding.stoppedWaitingForDecode`). Backed by the one
+  /// `VendorDecodeOccupancy` the composition root owns, never by session state.
+  var isVendorDecodeInFlight: Bool { get }
+
   /// #1707 Phase 2 — a second, bounded decode attempt over audio a PRIOR
   /// `finalize()` call already failed to decode. Distinct from calling
   /// `finalize()` again: both `ParakeetEngineAdapter` and

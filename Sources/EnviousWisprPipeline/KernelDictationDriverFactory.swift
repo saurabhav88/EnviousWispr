@@ -835,6 +835,10 @@ public enum KernelDictationDriverFactory {
     // own contract.
     telemetryRelay.sessionTerminal = { [lifecycleSink, weak driver] snapshot in
       lifecycleSink.emitTerminal(snapshot)
+      // #2787: the recovery ending BEFORE the engine claim is handed back, in
+      // the same synchronous turn, so a `.stoppedWaitingForDecode` retention is
+      // registered before `AbandonedDecodeHold` can exist to settle it.
+      driver?.fireSessionEndedWithoutSaveIfNeeded()
       driver?.onSessionTerminalAccepted?(snapshot.takeID)
     }
 

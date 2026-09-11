@@ -1164,6 +1164,9 @@ package final class WisprBootstrapper {
     // that deferred work while the engine was held — a pending engine switch
     // and a deferred crash-recovery pass.
     abandonedDecodeHold.onSettled = { [weak engineCoordinator, weak recoveryCoordinator] _ in
+      // Order matters: destroy the retained stop-waiting spool BEFORE the
+      // recovery recheck, or the recheck could replay it in this launch.
+      recoveryCoordinator?.handleAbandonedDecodeReturned()
       engineCoordinator?.poke(.driverStateChanged)
       recoveryCoordinator?.requestRecoveryRecheck()
     }

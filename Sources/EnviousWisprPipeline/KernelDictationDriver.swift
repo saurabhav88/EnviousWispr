@@ -1558,7 +1558,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// sessions ending at the same terminal still each fire (intervening states
   /// change the latch). `.completed` is never a signal here (its durable-save
   /// callback owns cleanup); `.idle` and the transient states map to nil.
-  private func fireSessionEndedWithoutSaveIfNeeded() {
+  /// `package`, not `private` (#2787): ALSO called from the factory's terminal
+  /// relay, synchronously on the accepted terminal and BEFORE
+  /// `onSessionTerminalAccepted` hands the engine claim to `AbandonedDecodeHold`,
+  /// so spool retention is registered before the hold exists and no suspension
+  /// sits between the two. The observer-Task call below stays; the session-ID
+  /// latch makes the second call a no-op.
+  package func fireSessionEndedWithoutSaveIfNeeded() {
     // A concluded session carries its ending on `recordingOutcome`; fire once
     // per concluded session, deduped by `currentSessionID` (NOT by state — two
     // sessions may publish an outcome with idle between them, r1 Q1.1). #1548 D1.
@@ -1581,7 +1587,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       //
       // Both origins delete under #1755 — the disposition decision lives solely
       // in the coordinator's predicate; the driver only projects the origin.
-      ending = .cancelled(kernel.lastCancelOrigin)
+      // #2787: EXCEPT when the vendor decode this session was awaiting was still
+      // running AT THE TERMINAL — the user stopped waiting, not the engine.
+      // Read from the kernel's terminal-time snapshot, never from the live
+      // occupancy: this fires from the observer Task, by which time another
+      // workload could have claimed the engine and made "busy" true for a
+      // decode that is not this session's.
+      ending =
+        kernel.lastTerminalStoppedWaitingForDecode
+        ? .stoppedWaitingForDecode : .cancelled(kernel.lastCancelOrigin)
     } else {
       ending = Self.recoveryEnding(for: outcome, retryOutcome: kernel.asrRetryOutcome)
     }

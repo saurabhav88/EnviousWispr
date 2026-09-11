@@ -367,9 +367,7 @@ final class DictationLifecycleCoordinator {
     // deferred-setting work — those are genuinely per-state and are not an
     // affordance question.
     hotkeyService.setCancelHotkeyEnabled(
-      CancelAffordancePolicy.isShortcutEnabled(
-        state: newState,
-        isEscapeRecoveryTranscribing: kernelDriver.isEscapeRecoveryTranscribing))
+      CancelAffordancePolicy.isShortcutEnabled(state: newState))
     switch newState {
     case .recording:
       // PR7 of #763 — clear the prior recording's polish error on every new
@@ -436,9 +434,7 @@ final class DictationLifecycleCoordinator {
       enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
     // #2087: see `handleParakeet` — one affordance decision, both backends.
     hotkeyService.setCancelHotkeyEnabled(
-      CancelAffordancePolicy.isShortcutEnabled(
-        state: newState,
-        isEscapeRecoveryTranscribing: whisperKitKernelDriver.isEscapeRecoveryTranscribing))
+      CancelAffordancePolicy.isShortcutEnabled(state: newState))
     switch newState {
     case .recording:
       lastRecordingResult.polishError = nil

@@ -369,6 +369,9 @@ final class RecoveryCoordinator {
     /// completed (crash, or the delete itself failed). No replay is ever
     /// attempted for this case; this is a cleanup retry, not a fresh decision.
     case markedForDiscard = "marked_for_discard"
+    /// #2787: a spool retained by `.stoppedWaitingForDecode` whose decode then
+    /// returned in this launch — the restart-and-replay rescue is moot.
+    case abandonedDecodeReturned = "abandoned_decode_returned"
   }
 
   /// #1755 chunk 4 test seams (internal; nil in production — the real spool
@@ -503,7 +506,8 @@ final class RecoveryCoordinator {
         TelemetryService.shared.recoveryCleanup(
           source: source.rawValue, component: component, succeeded: succeeded)
       }
-    case .durableSave, .liveEnding, .preStartAbort, .historyDedup, .userDiscard:
+    case .durableSave, .liveEnding, .preStartAbort, .historyDedup, .userDiscard,
+      .abandonedDecodeReturned:
       // Not a spent recovery attempt — no cleanup-coverage question to answer.
       break
     }
@@ -848,7 +852,51 @@ final class RecoveryCoordinator {
       // #1755: flipped — every producer is app-alive by construction (an
       // app-gone event cannot publish any ending; it leaves an orphan).
       return true
+    case .stoppedWaitingForDecode:
+      // #2787: the ONE live ending that retains. The user got no outcome —
+      // the decode they stopped waiting for is still inside the vendor and
+      // may never return — and the exit the app tells them to take is a
+      // restart, where the launch replay recovers this audio (measured on the
+      // customer's Mac Studio: three replays, all recovered). If the decode
+      // does return in this launch, `handleAbandonedDecodeReturned` destroys
+      // the spool then, so a normal cancel never produces a surprise replay.
+      return false
     }
+  }
+
+  /// #2787: the spools retained by `.stoppedWaitingForDecode` in this launch,
+  /// awaiting either a restart (launch replay) or the decode's late return.
+  private var stoppedWaitingSpoolIDs: Set<String> = []
+
+  /// #2787: the abandoned vendor decode returned in this launch. The user's
+  /// rescue is no longer a replay — they can simply dictate again — so every
+  /// spool retained by `.stoppedWaitingForDecode` is destroyed now, before the
+  /// next launch could replay it as a surprise.
+  /// Returns the per-spool destroy work so a test can await it; production
+  /// callers discard it.
+  @discardableResult
+  func handleAbandonedDecodeReturned() -> [Task<Void, Never>] {
+    let ids = stoppedWaitingSpoolIDs
+    stoppedWaitingSpoolIDs.removeAll()
+    var work: [Task<Void, Never>] = []
+    for id in ids {
+      RecoveryLog.line("abandoned decode returned — deleting the spool retained for it: \(id)")
+      // The vendor returning does not prove the WRITER has finished with the
+      // spool: the retain disposition settles only on writer quiescence, in its
+      // own Task. Join that settlement (an already-retired entry returns at
+      // once), start the durable discard marker now, and destroy only after.
+      let settled = requestDisposal(recoverySessionID: id, disposition: .retain)
+      let marker = beginDiscardMarkerPersistence(
+        recoverySessionID: id, source: .abandonedDecodeReturned)
+      work.append(
+        Task { @MainActor [self] in
+          await settled.value
+          await destroySpoolAndKey(
+            id: id, source: .abandonedDecodeReturned, markerPersistence: marker
+          ).value
+        })
+    }
+    return work
   }
 
   /// Delete-versus-retain after a launch replay attempt (#1464; #1740 cutover).
@@ -971,6 +1019,8 @@ final class RecoveryCoordinator {
         RecoveryLog.line("live ending (\(ending)) — keeping the spool for a future launch")
       }
       nextLaunchOnlyRecoveryIDs.insert(id)
+      // #2787: remember it, so the decode's late return can destroy it.
+      if case .stoppedWaitingForDecode = ending { stoppedWaitingSpoolIDs.insert(id) }
       // #1807 (§C): retain still joins the writer-quiescence contract — the
       // entry stays protected until the writer confirms it will never touch
       // this spool again, exactly like the delete branch below. Only then is

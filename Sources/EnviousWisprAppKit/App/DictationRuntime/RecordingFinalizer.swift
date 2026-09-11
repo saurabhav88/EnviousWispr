@@ -117,7 +117,12 @@ final class RecordingFinalizer {
       active.requestEscapeRecoveryAbandonment()
       return true
     }
-    guard active.state == .recording || active.state == .loadingModel else { return false }
+    // #2787: `.transcribing` admitted. The kernel concludes `.cancelled` from
+    // `.delivering(.transcribing)`; the decode keeps running, and the engine
+    // hold (`AbandonedDecodeHold`) keeps the engine claimed until it returns.
+    guard active.state == .recording || active.state == .loadingModel
+      || active.state == .transcribing
+    else { return false }
     languageSuggestionPresenter?.clearCurrentChip()
     languageSuggestionPresenter?.clearBuffer()
     recordingOverlay.dismissCurrent(.silent)

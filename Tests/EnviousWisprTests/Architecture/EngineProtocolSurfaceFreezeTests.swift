@@ -577,6 +577,8 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { get }"),
+        // #2787: read at a `.cancelled` terminal to decide spool retention.
+        MemberSignature(condition: nil, signature: "var isVendorDecodeInFlight: Bool { get }"),
         MemberSignature(
           condition: nil,
           signature: "func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome"),

@@ -966,6 +966,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// progress signal. Same `nil` semantics as `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
 
+  /// #2787: the shared occupancy this adapter's batch decode and its streaming
+  /// session's decodes are counted against.
+  var isVendorDecodeInFlight: Bool { !vendorDecodeOccupancy.isIdle }
+
   /// Reset every per-session audio buffer at a terminal/cancel boundary. One
   /// place so a future buffer field added to the session lifecycle can't be
   /// silently missed at a cleanup site (#827 — the bug that caused this fix

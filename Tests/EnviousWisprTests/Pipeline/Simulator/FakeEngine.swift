@@ -343,6 +343,10 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     finalizeProgressAbsent ? nil : finalizeStream
   }
 
+  /// #2787: settable so a scenario can end a session with the fake's decode
+  /// "still running" and assert the driver projects `.stoppedWaitingForDecode`.
+  var isVendorDecodeInFlight: Bool = false
+
   // MARK: Wedge continuations
 
   private var loadWedgeContinuation: CheckedContinuation<Void, Never>?

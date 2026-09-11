@@ -356,6 +356,14 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
   case asrInterrupted
   case noTransport
   case cancelled(RecordingCancelOrigin)
+  /// #2787: the user cancelled while the vendor decode was still running, and
+  /// it is STILL running at the terminal. Unlike every other live ending the
+  /// user did NOT witness an outcome — the decode may never return (the
+  /// customer's Mac Studio on macOS 27 RC) — and the prescribed exit is a
+  /// restart, at which the launch replay delivers the text. So this one
+  /// retains its spool, and the coordinator destroys it later if the decode
+  /// does return in this launch (`handleAbandonedDecodeReturned`).
+  case stoppedWaitingForDecode
   /// #1920: audio was arriving, the engine ran clean, and it produced no words.
   /// Kept distinct from `.noSpeech` because it asserts nothing about whether
   /// speech occurred. Deletes like every other concluded live ending (#1755) —

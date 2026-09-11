@@ -1174,6 +1174,15 @@ final class RecordingSessionKernel {
   private(set) var lastCancelOrigin: RecordingCancelOrigin = .systemOrFault
   private var cancelOriginLatched = false
 
+  /// #2787: frozen INSIDE `finishTerminal`, in the same synchronous turn as
+  /// `recordingOutcome`, so the recovery projection and the engine hold read
+  /// one terminal-time fact rather than two later reads of a shared counter
+  /// that another workload could have moved. True only for a `.cancelled`
+  /// accepted from `.delivering(.transcribing)` while THIS session's vendor
+  /// decode was still running — never for a cancel during recording, where a
+  /// live streaming decode is the normal state and the audio is discarded.
+  package private(set) var lastTerminalStoppedWaitingForDecode = false
+
   /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
   /// for why this is kernel-owned rather than read at delivery.
   ///
@@ -4257,6 +4266,11 @@ final class RecordingSessionKernel {
     }
     let terminal = outcome  // local alias for the existing telemetry logs below
     recordingOutcome = outcome
+    lastTerminalStoppedWaitingForDecode =
+      outcome == .cancelled
+      && state == .delivering
+      && deliveringPhase == .transcribing
+      && adapter.isVendorDecodeInFlight
     // #1846: stamp the concluded take INSIDE the set-once barrier, so it is
     // first-wins under the same condition as the outcome itself and can only ever
     // name the session this terminal actually accepted (`audit-all-terminal-paths-
@@ -4461,6 +4475,7 @@ final class RecordingSessionKernel {
     // must clear with it — otherwise the first session's provenance would win
     // forever and every later take would read as that one's cancel.
     lastCancelOrigin = .systemOrFault
+    lastTerminalStoppedWaitingForDecode = false
     cancelOriginLatched = false
     // #2087: the disposition describes THIS take. Leaking it forward would make
     // the next session inherit an abandonment the user never requested, and the
