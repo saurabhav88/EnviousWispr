@@ -783,10 +783,30 @@ final class FileImportCoordinator {
     guard !pendingPieces.isEmpty else {
       return MarkedUpInput(passages: [.init(original: rawTranscript, cleaned: nil)])
     }
-    return MarkedUpInput(
-      passages: pendingPieces.enumerated().map { index, original in
-        .init(original: original, cleaned: index < parts.count ? parts[index].text : nil)
-      })
+    // Each passage's original is recovered FROM the transcript, not taken from the piece:
+    // `TranscriptSplitter` slices from a word's start to a word's end and drops the
+    // whitespace between pieces, so the pieces concatenated rendered "alphaalpha" across a
+    // cut. Scanning forward for each piece and taking the text up to the next piece's start
+    // (the end of the transcript for the last) keeps every gap exactly as spoken. A piece
+    // the scan cannot place should not happen (the splitter yields ordered verbatim slices);
+    // if it did, the piece stands in for itself and the rendering loses that one gap rather
+    // than the app crashing. Codex, confirming round.
+    var cursor = rawTranscript.startIndex
+    var passages: [WordDiff.Passage] = []
+    for (index, piece) in pendingPieces.enumerated() {
+      let cleaned = index < parts.count ? parts[index].text : nil
+      guard
+        let found = rawTranscript.range(
+          of: piece, options: .literal, range: cursor..<rawTranscript.endIndex)
+      else {
+        passages.append(.init(original: piece, cleaned: cleaned))
+        continue
+      }
+      let end = index == pendingPieces.count - 1 ? rawTranscript.endIndex : found.upperBound
+      passages.append(.init(original: String(rawTranscript[cursor..<end]), cleaned: cleaned))
+      cursor = end
+    }
+    return MarkedUpInput(passages: passages)
   }
 
   /// The passages, not a joined text: this is read on every redraw as the view's task id and

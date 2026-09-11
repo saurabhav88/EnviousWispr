@@ -159,23 +159,16 @@ public enum WordDiff {
   /// alignment could match the finished part's few words against the START of the original
   /// and mark the untouched waiting passages as removed, and a passage the splitter cut
   /// inside a run with no spaces read as two words against one. Each passage is compared
-  /// with its own original; a passage the cleanup never reached is all `.same`. The
-  /// original's own whitespace carries the layout between passages; the raw transcript is
-  /// the concatenation of its pieces, so nothing is inserted between them.
+  /// with its own original; a passage the cleanup never reached compares against itself,
+  /// which yields only `.same` and keeps its leading whitespace like any other. The caller
+  /// gives each passage's original WITH the whitespace that followed it in the source
+  /// transcript; the splitter's pieces alone do not carry inter-passage whitespace, and
+  /// concatenating them rendered "alphaalpha" across a cut (Codex, confirming round).
   public static func compare(passages: [Passage]) -> Result {
     var result = Result(segments: [], removedWords: 0, changedWords: 0)
     for passage in passages {
-      let piece: Result
-      if let cleaned = passage.cleaned {
-        piece = compare(original: passage.original, cleaned: cleaned)
-      } else {
-        piece = Result(
-          segments: tokenize(passage.original).map {
-            Segment(kind: .same, text: $0.text, trailing: $0.trailing)
-          },
-          removedWords: 0, changedWords: 0)
-      }
-      result = result.appending(piece)
+      result = result.appending(
+        compare(original: passage.original, cleaned: passage.cleaned ?? passage.original))
     }
     return result
   }

@@ -337,6 +337,10 @@ struct FileImportHistoryTests {
     #expect(result.segments.suffix(waitingWords).allSatisfy { $0.kind == .same })
     let tail = try #require(result.segments.first { $0.text == "four" })
     #expect(tail.kind == .same, "an unfinished passage was marked \(tail.kind)")
+    // And the rendering rebuilds the transcript byte for byte across the passage cuts: the
+    // splitter drops the whitespace between its pieces, and a version that concatenated them
+    // rendered "alphaalpha" at every boundary. Codex, confirming round.
+    #expect(result.segments.map { $0.text + $0.trailing }.joined() == raw)
   }
 
   @MainActor
