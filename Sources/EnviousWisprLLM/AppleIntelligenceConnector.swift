@@ -274,19 +274,25 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     base: String, suffix: String, exampleTurns: [OnDeviceExampleTurn]
   )
 
-  private static func promptFor(suffix: String) -> PromptSelection {
+  private static func promptFor(suffix: String) throws -> PromptSelection {
     let env = ProcessInfo.processInfo.environment
     let overrideText = env["EW_AFM_PROMPT_FILE"].flatMap {
       try? String(contentsOfFile: $0, encoding: .utf8)
     }
     // DEV-ONLY bench seam, sibling of `EW_AFM_PROMPT_FILE`: a JSONL of
     // {"input","output"} pairs replaces the example turns. An EMPTY file means
-    // "no turns", which is how a bench measures instructions alone.
-    let exampleOverride: [OnDeviceExampleTurn]? = env["EW_AFM_EXAMPLES_FILE"].flatMap { path in
-      guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-      return text.split(separator: "\n").compactMap { line in
-        try? JSONDecoder().decode(OnDeviceExampleTurn.self, from: Data(line.utf8))
+    // "no turns", which is how a bench measures instructions alone. A file that
+    // does not parse THROWS rather than silently running with fewer or no turns
+    // (second-pass review, Q3): a bench that quietly measured the wrong
+    // assembly would publish a number about nothing.
+    let exampleOverride: [OnDeviceExampleTurn]?
+    if let path = env["EW_AFM_EXAMPLES_FILE"] {
+      let text = try String(contentsOfFile: path, encoding: .utf8)
+      exampleOverride = try text.split(separator: "\n").map {
+        try JSONDecoder().decode(OnDeviceExampleTurn.self, from: Data($0.utf8))
       }
+    } else {
+      exampleOverride = nil
     }
     return promptSelection(
       majorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
@@ -878,7 +884,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         )
         suffix = ""
       }
-      let selected = Self.promptFor(suffix: suffix)
+      let selected = try Self.promptFor(suffix: suffix)
       let unifiedPrompt = selected.base
       let basePrompt: String = {
         guard let base = detectedLanguage, base != "en" else {

@@ -75,14 +75,18 @@ extension String {
       let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
       // #2795: "here"/"below" alone also match a dictated list lead-in
       // ("Here are the things we should do before lunch:"), which the model
-      // correctly kept and this guard then deleted. A wrapper line names what
-      // it wraps, so require that vocabulary for the two bare openers.
-      let wrapperNouns = [
-        "transcript", "text", "version", "cleaned", "corrected", "polished", "rewritten", "edited",
-      ]
-      let namesWrappedThing = wrapperNouns.contains { trimmedFirst.contains($0) }
+      // correctly kept and this guard then deleted. A wrapper line has a CLOSED
+      // shape: "Here is / Here's / Below is", an optional "the/your", an optional
+      // editing adjective, then the thing it wraps. Anchored, so "conversion"
+      // and "textile" inside a dictated lead-in cannot match (second-pass
+      // review, Q7).
+      let wrapperShape =
+        #"^(?:here(?: is|'s|’s)|below is) (?:the |your )?"#
+        + #"(?:(?:cleaned|corrected|polished|rewritten|edited)(?: up)? )?(?:transcript|text|version):$"#
+      let namesWrappedThing =
+        trimmedFirst.range(of: wrapperShape, options: .regularExpression) != nil
       return
-        ((trimmedFirst.hasPrefix("here") || trimmedFirst.hasPrefix("below")) && namesWrappedThing)
+        namesWrappedThing
         || trimmedFirst.hasPrefix("the corrected")
         || trimmedFirst.hasPrefix("the cleaned")
         || trimmedFirst.hasPrefix("the polished")

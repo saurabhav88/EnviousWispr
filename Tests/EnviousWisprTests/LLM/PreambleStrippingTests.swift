@@ -66,6 +66,11 @@ struct PreambleStrippingTests {
         "Here are the things we should do before lunch:\n- Call."
       ),
       ("Below the fold, three items:\n- One.", "Below the fold, three items:\n- One."),
+      // #2795 second pass: a wrapper noun INSIDE another word is not a wrapper.
+      ("Here are the conversion steps:\n- Open Settings.", "Here are the conversion steps:\n- Open Settings."),
+      ("Here are the textile suppliers:\n- One.", "Here are the textile suppliers:\n- One."),
+      ("Here's the cleaned up text:\nCall.", "Call."),
+      ("Below is your transcript:\nCall.", "Call."),
     ])
   func preambleLinesStripped(input: String, expected: String) {
     #expect(input.strippingLLMPreamble() == expected)
