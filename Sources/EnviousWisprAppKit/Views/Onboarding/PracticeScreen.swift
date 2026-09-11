@@ -282,7 +282,7 @@ struct PracticeScreenV2: View {
         // is the founder's original defect once more. False is not a guess
         // here, it is the fact: the box could not have been the target.
         viewModel.practiceTakeStarted(
-          boxFocused: false, transcriptCount: transcripts.transcriptCount)
+          boxFocused: false, transcriptCount: transcripts.dictationCount)
       }
       refreshPosture()
     }
@@ -308,7 +308,7 @@ struct PracticeScreenV2: View {
         // heard nothing" from "we heard you and it went to the clipboard"; the
         // transcript count is the other half.
         viewModel.practiceTakeStarted(
-          boxFocused: boxFocused, transcriptCount: transcripts.transcriptCount)
+          boxFocused: boxFocused, transcriptCount: transcripts.dictationCount)
       } else {
         // A pipeline FAILURE outranks silence, and `PipelineState` already
         // separates our failure (`.error`) from "the microphone delivered
@@ -316,7 +316,7 @@ struct PracticeScreenV2: View {
         var failed = false
         if case .error = live.pipelineState { failed = true }
         viewModel.practiceTakeEnded(
-          transcriptCount: transcripts.transcriptCount, pipelineFailed: failed)
+          transcriptCount: transcripts.dictationCount, pipelineFailed: failed)
         // Put the cursor back, so the next attempt cannot repeat the miss for
         // the same reason. Founder-found in Live UAT: the advice is useless if
         // acting on it needs a click they were not told about.

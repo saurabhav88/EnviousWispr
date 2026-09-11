@@ -92,18 +92,27 @@ final class TranscriptCoordinator {
   /// user made — counting it would inflate the stat the moment they cancelled
   /// something, which is the opposite of what cancelling meant.
   ///
-  /// **An IMPORT is not a dictation either (#2772).** This is the sidebar's "how many have
-  /// I made" number AND onboarding's success detector, which reads it as `producedWords =
-  /// transcriptCount > transcriptCountAtTakeStart`: an import finishing during a practice
-  /// take would have marked that take successful for a user who said nothing.
+  /// **Two questions, two counts (#2772).** This one is the sidebar's, beside the search
+  /// field: how many rows History lists, so an import that appears in the list is counted
+  /// in it. `dictationCount` is onboarding's: how many DICTATIONS exist, read as
+  /// `producedWords = transcriptCount > transcriptCountAtTakeStart`, where an import
+  /// finishing during a practice take must not mark that take successful for a user who
+  /// said nothing. One count serving both was wrong for one of them whichever way it went:
+  /// first it counted imports and broke onboarding, then it excluded them and History
+  /// showed a row its own count did not have. Found by Codex, twice.
   ///
-  /// Found by Codex, against my written claim that no such aggregate existed. My sweep
-  /// covered the ACCESSORS (`visibleTranscripts`, `filteredTranscripts`, `loadAll`) and
-  /// missed a filter over the private array itself.
-  ///
-  /// `deletableCount` deliberately still counts imports: it answers "how many rows would
+  /// `deletableCount` deliberately counts imports too: it answers "how many rows would
   /// Delete All take", where an uncounted row is a row destroyed without warning.
   var transcriptCount: Int {
+    _ = expiryPulse
+    let now = Date()
+    return transcripts.filter { Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil }
+      .count
+  }
+
+  /// How many dictations exist: `transcriptCount` without the imports. Onboarding's success
+  /// detector reads this one.
+  var dictationCount: Int {
     _ = expiryPulse
     let now = Date()
     return transcripts.filter {

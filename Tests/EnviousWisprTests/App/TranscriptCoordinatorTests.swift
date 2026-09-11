@@ -52,6 +52,25 @@ struct TranscriptCoordinatorTests {
     }
   }
 
+  // MARK: - two counts (#2772)
+
+  /// The sidebar counts what History lists; onboarding counts dictations. An import is in
+  /// the first and not the second. Found by the cloud review of PR #2786, after the single
+  /// count had been wrong for each reader in turn.
+  @Test("an import counts as a History row and not as a dictation")
+  func anImportCountsAsARowNotADictation() throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    try coordinator.saveAndShow(Self.makeTranscript(text: "a dictation"))
+    try coordinator.saveAndShow(
+      Transcript(
+        text: "an import", language: "en", duration: 61, backendType: .parakeet,
+        importedFileName: "sync.m4a"))
+    #expect(coordinator.transcriptCount == 2, "History lists two rows")
+    #expect(coordinator.dictationCount == 1, "only one of them was dictated")
+  }
+
   // MARK: - search reaches the imported file name (#2772)
 
   /// The History row shows the imported file's name, and that name is what a person looking
