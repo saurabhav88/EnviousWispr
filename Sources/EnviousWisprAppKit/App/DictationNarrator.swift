@@ -207,8 +207,9 @@ enum DictationNarrator {
         // #2787: the decode the user stopped waiting for still owns the engine.
         // Say what will actually work, not "try again soon" — on the machine
         // this was written for, soon never came.
-        // 45 characters: the pill truncates at 46 (DictationNarratorTests).
-        return "Previous take still running. Restart the app."
+        // 33 characters. #2787 shipped this at 45 against a 46 "ceiling" that #2772
+        // photographed cutting a 41-character sentence short; the two met at the merge.
+        return "A take is stuck. Restart the app."
       }
     }
   }

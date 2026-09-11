@@ -182,7 +182,7 @@ import Testing
       .crashRecovery: "Finishing a take. Please wait.",
       .dictation: "Already recording.",
       // #2787: the decode the user stopped waiting for still owns the engine.
-      .abandonedDecode: "Previous take still running. Restart the app.",
+      .abandonedDecode: "A take is stuck. Restart the app.",
     ]
     let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
     #expect(sentence == expected[holder])
