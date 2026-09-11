@@ -10,7 +10,7 @@ import Foundation
 ///     the app's ModelDelivery path OWNS model setup and admission; this
 ///     benchmark only consumes the cache it populated, and must never mutate
 ///     the model bytes it measures (#1981)
-///   - `AsrManager(config: .default)` + `loadModels(_:)`
+///   - `AsrManager(config: ASRConfig(melChunkContext: true))` (#2788, matches the app) + `loadModels(_:)`
 ///   - a FRESH `TdtDecoderState` per file, sized by `manager.decoderLayerCount`
 ///     (the app makes one per one-shot batch decode; reusing state across files
 ///     would leak decoder context between unrelated utterances)
@@ -71,7 +71,9 @@ do {
 } catch {
   fail("Open EnviousWispr and complete Parakeet model setup once, then rerun.")
 }
-let manager = AsrManager(config: .default)
+// #2788: same explicit long-form path as the app (ParakeetBackend), so this measures
+// what ships rather than upstream's new v3 default.
+let manager = AsrManager(config: ASRConfig(melChunkContext: true))
 try await manager.loadModels(models)
 let layers = await manager.decoderLayerCount
 FileHandle.standardError.write(

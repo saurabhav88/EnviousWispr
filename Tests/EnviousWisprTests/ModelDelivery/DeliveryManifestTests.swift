@@ -432,7 +432,12 @@ enum ManifestFixture {
   // existing admission markers, so a clean writable install revalidates and re-admits
   // without downloading — re-admission still runs cleanup and rewrites the marker
   // (`CacheAdmission.promoteAndAdmit` 3 and 4), so a dirty or unwritable one can fetch.
-  static let goldenDigest = "bc1aae28fe94f2bff66b47f85a395188c88e01e4f59b23d9aaba92d6739217fb"
+  // Updated 2026-09-10 (#2788): `runtimeABI` advanced to fork pin b29591ad (upstream
+  // v0.15.7 + carries; the French-blocklist carry dropped for upstream's own, the
+  // chunk-text assembly half of the fresh-state carry retired). Identical model bytes
+  // (`identity.revision` unchanged) — the same re-admission-without-re-download case.
+  // Regenerated with `scripts/regen-delivery-manifest-digest.py --write`, control OK.
+  static let goldenDigest = "ed66a393964e8901e1502b5acde82033a5902b112db2b1057b1fbd1b10d69e23"
 
   @Test func shippedManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)

@@ -39,7 +39,7 @@ let package = Package(
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
-      revision: "bf9fe27f837c86ee786a3f0ddb9966eeeeb4915d"),
+      revision: "b29591ada1f70510c12c13b50ffae02052ff75c3"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
