@@ -878,7 +878,20 @@ final class FileImportCoordinator {
   var screenShowsRawWords: Bool { documentView == .original || parts.isEmpty }
 
   /// What Copy and Save hand over, which is always what the screen is showing.
-  var exportText: String { screenShowsRawWords ? rawTranscript : documentText }
+  var exportText: String {
+    if screenShowsRawWords { return rawTranscript }
+    if documentView == .markedUp { return markedUpKeptText }
+    return documentText
+  }
+
+  /// What the marked-up view presents as KEPT: the cleaned passages, then every passage the
+  /// cleanup never reached, unchanged. After a Stop that is more than `documentText`, which
+  /// holds only the finished passages, and an export that dropped the visible tail would
+  /// hand over less than the screen shows. Found by the cloud review of PR #2799. On a
+  /// finished run the two are the same text.
+  var markedUpKeptText: String {
+    (parts.map(\.text) + Array(pendingPieces.dropFirst(parts.count))).joined(separator: "\n\n")
+  }
 
   /// Whether Back is offered right now, so the button is absent rather than
   /// present and inert.

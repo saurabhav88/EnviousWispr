@@ -341,6 +341,13 @@ struct FileImportHistoryTests {
     // splitter drops the whitespace between its pieces, and a version that concatenated them
     // rendered "alphaalpha" at every boundary. Codex, confirming round.
     #expect(result.segments.map { $0.text + $0.trailing }.joined() == raw)
+    // Copy, Save and Share follow the screen: the untouched tail the view shows is in the
+    // export, and the Cleaned view's export stays the finished prefix alone. Found by the
+    // cloud review of PR #2799.
+    #expect(c.exportText.contains("four five six"), "the marked-up export dropped the visible tail")
+    #expect(c.exportText.hasPrefix("Alpha."))
+    c.documentView = .cleaned
+    #expect(!c.exportText.contains("four"))
   }
 
   @MainActor

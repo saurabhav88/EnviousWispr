@@ -149,7 +149,10 @@ public enum WordDiff {
 
   static func key(for word: String) -> String {
     let trimmed = word.trimmingCharacters(in: .punctuationCharacters.union(.symbols))
-    return (trimmed.isEmpty ? word : trimmed).lowercased()
+    // Unicode case FOLDING, not lowercasing: `lowercased()` leaves a Greek final sigma
+    // ("ΟΣ" → "οσ" against "ος") and a German "STRASSE" against "straße" unequal, and the
+    // transcripts are multilingual. Found by the cloud review of PR #2799.
+    return (trimmed.isEmpty ? word : trimmed).folding(options: .caseInsensitive, locale: nil)
   }
 
   // MARK: - The comparison

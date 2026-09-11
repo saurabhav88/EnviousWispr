@@ -53,6 +53,16 @@ struct WordDiffTests {
     #expect(r.changedWords == 0)
   }
 
+  @Test("case folds the Unicode way, not the ASCII way")
+  func caseFoldsUnicode() {
+    // A Greek word in capitals against its lowercase form with the final sigma.
+    let greek = WordDiff.compare(original: "ΟΣ", cleaned: "ος")
+    #expect(greek.segments.map(\.kind) == [.same], "\(greek.segments)")
+    // German sharp s against its capital spelling.
+    let german = WordDiff.compare(original: "STRASSE", cleaned: "Straße")
+    #expect(german.segments.map(\.kind) == [.same], "\(german.segments)")
+  }
+
   @Test("identical text is all the same, and an empty side is all one kind")
   func edges() {
     let same = WordDiff.compare(original: "one two three", cleaned: "one two three")
