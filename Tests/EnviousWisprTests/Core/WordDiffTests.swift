@@ -225,15 +225,20 @@ struct WordDiffTests {
     var rebuiltB: [String] = []
     rebuiltA.reserveCapacity(words.count)
     rebuiltB.reserveCapacity(cleaned.count)
+    var mismatchedEquals = 0
     for op in ops {
       switch op {
       case .equal(let i, let j):
+        // A pairing of two different words as equal would still rebuild both sides; the
+        // random cases check this too, and at this size it is the check that matters.
+        if words[i] != cleaned[j] { mismatchedEquals += 1 }
         rebuiltA.append(words[i])
         rebuiltB.append(cleaned[j])
       case .delete(let i): rebuiltA.append(words[i])
       case .insert(let j): rebuiltB.append(cleaned[j])
       }
     }
+    #expect(mismatchedEquals == 0)
     #expect(rebuiltA == words)
     #expect(rebuiltB == cleaned)
     let r = WordDiff.compare(
