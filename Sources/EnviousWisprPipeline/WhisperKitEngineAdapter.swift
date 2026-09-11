@@ -728,12 +728,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     let backendForObserver = backend
     let observerSamples = lidSamples
     let lidWindowCountForObserver = lidWindowCount
+    let occupancyForObserver = vendorDecodeOccupancy
     let lidResult = await languageDetector.detect(
       samples: lidSamples,
       voicedDuration: voicedDurationSec,
       observerFn: {
-        await backendForObserver.observeLID(
-          samples: observerSamples, maxWindows: lidWindowCountForObserver)
+        // #2787 (second-pass review): language detection is a real WhisperKit
+        // model call that runs BEFORE the decode, so it is counted too. Left
+        // uncounted, an Escape during it read the engine as idle, released
+        // the lease and deleted the spool while the model was still working,
+        // and the next record press could enter WhisperKit under it.
+        await occupancyForObserver.track {
+          await backendForObserver.observeLID(
+            samples: observerSamples, maxWindows: lidWindowCountForObserver)
+        }
       },
       mode: mode
     )
@@ -1437,7 +1445,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       // #2787: counted for the whole vendor call, so a session that stops
       // waiting leaves the engine visibly busy until WhisperKit returns.
       let result = try await vendorDecodeOccupancy.track {
-        try await backend.transcribe(audioSamples: samples, options: decodeOptions)
+        // Twin of `ASRManager.transcribe`: never START a decode in a task the
+        // session terminal already cancelled (second-pass review, #2787).
+        try Task.checkCancellation()
+        return try await backend.transcribe(audioSamples: samples, options: decodeOptions)
       }
       return .success(result)
     } catch is CancellationError {

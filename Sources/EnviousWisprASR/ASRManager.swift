@@ -468,9 +468,17 @@ public final class ASRManager: ASRManagerInterface {
     // idle engine and release the lease under a decode about to start. The
     // backend forwards reports only while its own `transcribe` runs, so the
     // observer needs no clearing here.
+    //
+    // A decode must not START in a task the kernel has already cancelled
+    // (second-pass review): the session terminal drains its task bag, so a
+    // finalize suspended before this call — the streaming batch rescue awaits
+    // a log line first — resumes cancelled AFTER the lease was released on an
+    // idle count, and its decode would then run under a new take's session.
+    try Task.checkCancellation()
     let chunkObserver = onVendorDecodeChunkScheduled
     return try await vendorDecodeOccupancy.track {
       await activeBackend.setDecodeChunkObserver { Task { @MainActor in chunkObserver?() } }
+      try Task.checkCancellation()
       return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
     }
   }

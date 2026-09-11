@@ -29,6 +29,6 @@ A pause shorter than your chosen duration is ignored. At the half-second setting
 
 When the app appears unresponsive after you stop speaking, the recording has already ended. EnviousWispr is turning your speech into text and applying any polish you have chosen. That takes a moment, especially on the first dictation after opening the app. Give it a few seconds before starting a new one.
 
-If the bar keeps spinning long after that, press **Escape**. The bar goes away and nothing is pasted. EnviousWispr stops waiting for that dictation but keeps the audio. If the engine does finish the take later, its text is dropped, because you asked to stop waiting.
+If the bar stays on **transcribing** long after that, press **Escape**. The bar goes away and nothing is pasted. EnviousWispr stops waiting for that dictation. If the engine does finish the take later, its text is dropped, because you asked to stop waiting. Escape does not interrupt AI polish; polish has its own time limit and finishes on its own.
 
-If your next press of the record key shows **Previous take still running. Restart the app.**, the engine never came back from that take. Quit EnviousWispr and open it again. On the next launch it transcribes the audio it kept and saves the text to your History, the same way it [recovers a recording after a crash](/help/app-crashes-or-asr-engine-crashes/).
+If your next press of the record key shows **Previous take still running. Restart the app.**, the engine never came back from that take. Quit EnviousWispr and open it again. With crash recovery on (the default), the next launch transcribes the audio it kept from that take and saves the text to your History, the same way it [recovers a recording after a crash](/help/app-crashes-or-asr-engine-crashes/).

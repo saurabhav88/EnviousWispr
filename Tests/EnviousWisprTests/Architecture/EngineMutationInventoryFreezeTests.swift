@@ -962,7 +962,7 @@ import Testing
     // unawaited cancellation races recovery's gate opening.
     CallSite(
       file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-      text: "try await backend.transcribe(audioSamples: samples, options: decodeOptions)",
+      text: "return try await backend.transcribe(audioSamples: samples, options: decodeOptions)",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -2117,7 +2117,7 @@ import Testing
         text: "let results = try await whisperKit.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/WhisperKitEngineAdapter.swift", matcher: "transcribe",
-        text: "try await backend.transcribe(audioSamples: samples, options: decodeOptions)"),
+        text: "return try await backend.transcribe(audioSamples: samples, options: decodeOptions)"),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift", matcher: "transcribe",
         text: "let result = try await asrManager.transcribe("),

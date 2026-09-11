@@ -105,7 +105,13 @@ struct TranscriptionCheckpointStagesTests {
         .engine(.setBehavior(.slowFinalize(ticksToFinal: 3, text: "long take"))),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
         .engine(.emitObservationTick), .engine(.emitObservationTick),
-        .advanceClock(ticks: 3),
+        // The wedge detector's stall window is 2 ticks (`wedgeStallTicks`);
+        // the decode dwells 3. Advancing 3 at once lets a wrongly armed
+        // detector and the decode race (second-pass review), so the window is
+        // supplied first and the session must STILL be transcribing.
+        .advanceClock(ticks: 2),
+        .expectState(.transcribing),
+        .advanceClock(ticks: 1),
         .expectState(.completed),
       ],
       expected: ExpectedOutcome(
