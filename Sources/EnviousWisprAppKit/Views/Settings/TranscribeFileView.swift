@@ -561,7 +561,7 @@ struct TranscribeFileView: View {
         HStack(spacing: 8) {
           Image(systemName: icon).foregroundStyle(Color.stAccent)
           Text(title).font(.stRowTitle)
-          if recommended { badge("Recommended") }
+          if recommended { Self.badge("Recommended") }
           Spacer(minLength: 8)
           Image(systemName: selected ? "checkmark.circle.fill" : "circle")
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
@@ -590,7 +590,9 @@ struct TranscribeFileView: View {
     .buttonStyle(.plain)
   }
 
-  private func badge(_ text: String) -> some View {
+  /// Static and internal so `TranscribeFilePolishGridTests` can measure the one badge that
+  /// sets the polish card's minimum width.
+  static func badge(_ text: String) -> some View {
     Text(text)
       .font(.system(size: 13, weight: .semibold))
       .padding(.horizontal, 9)
@@ -601,19 +603,55 @@ struct TranscribeFileView: View {
 
   // MARK: - 3. Polish
 
+  /// The grid's measured width. Zero before the first layout, which `polishColumns` reads
+  /// as the design width so the first frame is six across rather than a flash of two.
+  @State private var polishGridWidth: CGFloat = 0
+
+  static let polishGridSpacing: CGFloat = 9
+
+  /// The narrowest a polish card may be. Its title and subtitle wrap, so the one thing that
+  /// cannot is the Recommended badge, inside the card's 12-point padding on each side.
+  /// `TranscribeFilePolishGridTests` measures the real badge against this.
+  static let polishCardMinimumWidth: CGFloat = 140
+
+  /// How many cards fit across `width`. The design's steps are six, three, two; nothing in
+  /// between, because a row of four beside a row of two is a layout the design never shows.
+  static func polishColumns(fitting width: CGFloat) -> Int {
+    guard width > 0 else { return 6 }
+    for count in [6, 3] {
+      let cardWidth = (width - polishGridSpacing * CGFloat(count - 1)) / CGFloat(count)
+      if cardWidth >= polishCardMinimumWidth { return count }
+    }
+    return 2
+  }
+
   @ViewBuilder
   private var polishStep: some View {
     stepHeading("Select polishing engine")
-    // Six across, matching the design at the window's ordinary width. The
-    // prototype drops to three below 1000px and two below 640; the app's own
-    // minimum window is 750, so three is the narrow fallback.
+    // Six across at the design's width, three when six would squeeze a card under
+    // `polishCardMinimumWidth`, two below that. The prototype steps 6 → 3 → 2 at its own
+    // window breakpoints; the app's pane is narrower than its window by the sidebar, so the
+    // step is taken on the CARD's width, which is what those breakpoints were protecting.
+    // The count was a constant 6 while the comment above it promised the fallback; at the
+    // 750-point minimum window that clipped every title. Found by the cloud review of
+    // PR #2786. Width is read from a background `GeometryReader` because the grid must
+    // keep its own height; `onGeometryChange` would be neater and is macOS 15.
     LazyVGrid(
-      columns: Array(repeating: GridItem(.flexible(), spacing: 9), count: 6), spacing: 9
+      columns: Array(
+        repeating: GridItem(.flexible(), spacing: Self.polishGridSpacing),
+        count: Self.polishColumns(fitting: polishGridWidth)),
+      spacing: Self.polishGridSpacing
     ) {
       ForEach(Self.polishChoices, id: \.provider) { choice in
         polishCard(choice)
       }
     }
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { polishGridWidth = geo.size.width }
+          .onChange(of: geo.size.width) { _, width in polishGridWidth = width }
+      })
     polishLeadIn
     // #2772 chunk 3, findings 7b / 7c / 7f / 7h: the SAME setup editor the AI Polish page
     // renders, keyed to the import's choice. A key typed here is saved to the one Keychain
@@ -818,8 +856,12 @@ struct TranscribeFileView: View {
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
         }
         Text(choice.title).font(.stRowLabel).fixedSize(horizontal: false, vertical: true)
-        if choice.provider == .egOne { badge("Recommended") }
-        Text(cardSubtitle(for: choice.provider)).foregroundStyle(Color.stTextSecondary)
+        if choice.provider == .egOne { Self.badge("Recommended") }
+        // Wraps, like the title. A single-line subtitle truncated at three columns, and the
+        // words it lost were the ones saying whether the engine is ready.
+        Text(cardSubtitle(for: choice.provider))
+          .foregroundStyle(Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
       .padding(12)
       .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
