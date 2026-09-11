@@ -36,11 +36,15 @@ struct FileImportHistoryTests {
         throw Refused()
       }
       writes.append(transcript)
+      // A save puts the row in History, whatever happened to it before.
+      rowWasDeleted = false
     }
 
-    /// Whether the user removed this import from History while the cleanup ran. The real
-    /// coordinator answers by looking for the row and finding nothing.
+    /// Whether the user removed this import from History. The real coordinator answers by
+    /// looking for the row and finding nothing, which is what `exists` stands for.
     var rowWasDeleted = false
+
+    func exists(_ id: UUID) -> Bool { !rowWasDeleted }
 
     /// The cleaned write, which may only ever update. Returning false is a deletion, not a
     /// failure, so it records neither a write nor a refusal.
@@ -65,6 +69,7 @@ struct FileImportHistoryTests {
 
   private static func coordinator(
     spy: HistorySpy, raw: String = "um one two three", cleaned: String = "One two three.",
+    polisherStarts: Bool = true,
     onPart: (@MainActor () -> Void)? = nil
   ) -> FileImportCoordinator {
     FileImportCoordinator(
@@ -76,8 +81,10 @@ struct FileImportHistoryTests {
           polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
+      prepareLocalPolish: { _ in polisherStarts },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
+      historyRowExists: { spy.exists($0) },
       processPart: { _, _ in
         onPart?()
         return FileImportRunner.PartOutcome(
@@ -141,6 +148,16 @@ struct FileImportHistoryTests {
     #expect(!c.documentText.isEmpty)
     #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
 
+    // A deletion AFTER the run is the same fact, asked live: the badge must not keep
+    // reporting a write that once succeeded.
+    let late = HistorySpy()
+    let lateRun = Self.coordinator(spy: late)
+    await run(lateRun)
+    #expect(lateRun.isSavedToHistory)
+    late.rowWasDeleted = true
+    #expect(!lateRun.isSavedToHistory)
+    #expect(lateRun.historyRowWasDeleted)
+
     // The control: the same run with nothing deleted writes twice and says it saved.
     let kept = HistorySpy()
     let keptRun = Self.coordinator(spy: kept)
@@ -163,8 +180,7 @@ struct FileImportHistoryTests {
     await run(c)
     #expect(c.historyRowWasDeleted)
 
-    // The user restores the row by asking for the work again.
-    spy.rowWasDeleted = false
+    // The user restores the row by asking for the work again; the raw re-save recreates it.
     c.rePolish()
     await settleUntil { c.state == .finished }
 
@@ -201,6 +217,62 @@ struct FileImportHistoryTests {
 
     c.isShowingOriginal = false
     #expect(!c.isSavedToHistory)
+  }
+
+  /// A deletion followed by Stop never reaches the cleaned write, so a flag set there
+  /// missed it and the badge said "Saved to History" over a row that was gone. Found by the
+  /// cloud review of PR #2786. The badge now asks History itself.
+  @Test("a row deleted and then stopped before cleanup finishes is not reported saved")
+  func aDeletedThenStoppedImportIsNotReportedSaved() async {
+    let spy = HistorySpy()
+    let box = CoordinatorBox()
+    let c = Self.coordinator(
+      spy: spy,
+      onPart: {
+        spy.rowWasDeleted = true
+        box.coordinator?.stop()
+      })
+    box.coordinator = c
+    c.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = c.state { return true } else { return false } }
+    c.start()
+    await settleUntil { c.state == .stopped }
+
+    #expect(spy.writes.count == 1)
+    #expect(!c.isSavedToHistory, "the badge reports a row the user deleted")
+    #expect(c.historyRowWasDeleted)
+    #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
+    // With the original words showing, the answer is the same: those are gone too.
+    c.isShowingOriginal = true
+    #expect(!c.isSavedToHistory)
+  }
+
+  /// The Continue gate admits an installed bundled engine whatever its server is doing and
+  /// leaves health to the run. The run then discarded the answer, so an engine that failed
+  /// to start produced a whole document of raw words with no refusal anywhere. Found by the
+  /// cloud review of PR #2786.
+  @Test("a bundled polisher that does not start refuses the cleanup, after the words are safe")
+  func aPolisherThatDoesNotStartRefusesTheCleanup() async {
+    let spy = HistorySpy()
+    let c = Self.coordinator(spy: spy, polisherStarts: false)
+    c.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = c.state { return true } else { return false } }
+    c.start()
+    await settleUntil { if case .rejected = c.state { return true } else { return false } }
+
+    #expect(c.state == .rejected(.polisherNotReady))
+    #expect(c.step == .done, "the refusal renders beside the words, not on Upload")
+    #expect(spy.writes.count == 1, "the raw words were not made durable before the refusal")
+    #expect(c.parts.isEmpty, "the cleanup ran against an engine that never started")
+    #expect(c.hasDocument)
+    #expect(c.isSavedToHistory)
+    #expect(!c.canRetry, "Try again would re-transcribe; only the cleanup needs redoing")
+  }
+
+  /// Lets a hook fired from inside the run reach the coordinator that owns it.
+  @MainActor
+  private final class CoordinatorBox {
+    var coordinator: FileImportCoordinator?
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half
@@ -392,6 +464,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
+      historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.
       processPart: { part, _ in

@@ -1594,6 +1594,8 @@ struct TranscribeFileView: View {
     case .engineNotInstalled:
       return "That transcription engine isn't downloaded yet. Get it in Transcription settings."
     case .engineNotReady: return "The transcription engine didn't start. Try again."
+    case .polisherNotReady:
+      return "The cleanup engine didn't start. Your words are here. Clean it again to retry."
     case .engineBusy(.fileImport): return "Another file is being transcribed right now."
     case .failed: return "Something went wrong reading that file. Try a different one."
     }

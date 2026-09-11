@@ -600,6 +600,14 @@ final class TranscriptCoordinator {
     return true
   }
 
+  /// Whether a row is in History right now. The import's "Saved to History" badge asks this
+  /// live rather than remembering that a write once succeeded (#2772): a row can be deleted
+  /// at any moment after either of the import's writes, and a remembered success then
+  /// describes a file that is gone.
+  func hasRow(id: UUID) -> Bool {
+    transcripts.contains { $0.id == id }
+  }
+
   /// Counts writes, so a disk read that began earlier can be told it is stale.
   ///
   /// `load()` prefers the DISK row whenever an id already exists, which is right for a

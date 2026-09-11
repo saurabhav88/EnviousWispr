@@ -74,6 +74,7 @@ struct TranscriptCoordinatorTests {
       "One two three.", wasPolished: true, llmProvider: "egOne", llmModel: "eg-1")
 
     try coordinator.saveAndShow(row)
+    #expect(coordinator.hasRow(id: row.id))
     #expect(try coordinator.updateExistingRow(cleaned) == true)
     #expect(coordinator.visibleTranscripts.count == 1)
     #expect(coordinator.visibleTranscripts.first?.displayText == "One two three.")
@@ -81,6 +82,7 @@ struct TranscriptCoordinatorTests {
 
     coordinator.delete(row)
     #expect(coordinator.visibleTranscripts.isEmpty)
+    #expect(!coordinator.hasRow(id: row.id))
     #expect(!FileManager.default.fileExists(atPath: onDisk))
 
     #expect(try coordinator.updateExistingRow(cleaned) == false)

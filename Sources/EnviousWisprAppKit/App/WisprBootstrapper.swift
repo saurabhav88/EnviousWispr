@@ -1515,8 +1515,17 @@ package final class WisprBootstrapper {
       // the cloud providers have nothing on this Mac to start, which is the same set
       // `localPolishProvider` already names for the eviction pin.
       prepareLocalPolish: { [localPolishRuntimes] configuration in
-        guard let localPolish = configuration.localPolishProvider else { return }
-        await localPolishRuntimes.runtime(for: localPolish)?.activateAndProbe()?.value
+        guard let localPolish = configuration.localPolishProvider else { return true }
+        // A nil activation is a refusal before the server is even asked: another session
+        // pins the engine, or an activation blocker stands. Red after the probe is the server
+        // itself not coming up. Either way the cleanup is refused rather than run against a
+        // missing endpoint, which the polish step would read as a silent skip.
+        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+          let activation = runtime.activateAndProbe()
+        else { return false }
+        await activation.value
+        if case .red = runtime.health { return false }
+        return true
       },
       // #2772 finding 11: the third writer of History, beside dictation and crash replay.
       // Through the COORDINATOR rather than the store, so the row appears immediately —
@@ -1530,6 +1539,7 @@ package final class WisprBootstrapper {
       updateHistoryRow: { [transcriptCoordinator] transcript in
         try transcriptCoordinator.updateExistingRow(transcript)
       },
+      historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })

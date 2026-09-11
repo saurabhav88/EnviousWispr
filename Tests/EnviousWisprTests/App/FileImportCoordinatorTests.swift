@@ -113,6 +113,7 @@ struct FileImportCoordinatorTests {
       // success is the explicit statement of that, not a default.
       saveToHistory: { _ in },
       updateHistoryRow: { _ in true },
+      historyRowExists: { _ in true },
       processPart: { part, _ in try await processPart(part) })
   }
 
