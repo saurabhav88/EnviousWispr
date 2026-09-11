@@ -230,7 +230,14 @@ public actor ParakeetBackend: ASRBackend {
       }
       self.fluidModels = loadedModels
 
-      let manager = AsrManager(config: .default)
+      // #2788: pin the mel-context long-form path explicitly. Upstream #869 flipped
+      // the v3 default (`melChunkContextOverride == nil` → no-mel, silence-aligned
+      // starts). On the 500-recording corpus that default changed 15 long recordings,
+      // about as many worse as better; `melChunkContext: true` is byte-identical to the
+      // previous pin on all 500. Evaluating the new path is #2769's harness work, not a
+      // silent default flip. The label is the supported initializer parameter; only
+      // the computed `melChunkContext` property is deprecated upstream.
+      let manager = AsrManager(config: ASRConfig(melChunkContext: true))
       // Vendor API: models load via loadModels(_:) after construction.
       try await manager.loadModels(loadedModels)
       self.fluidAsrManager = manager
