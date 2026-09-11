@@ -210,12 +210,12 @@ struct FileImportHistoryTests {
     #expect(!c.isSavedToHistory, "the cleaned document was refused and still reads as saved")
     #expect(c.exportText == "One two three.")
 
-    c.isShowingOriginal = true
+    c.documentView = .original
     #expect(c.isSavedToHistory, "the raw words are on screen and in History")
     #expect(c.exportText == "um one two three")
     #expect(c.historySaveNotice == nil)
 
-    c.isShowingOriginal = false
+    c.documentView = .cleaned
     #expect(!c.isSavedToHistory)
   }
 
@@ -243,7 +243,7 @@ struct FileImportHistoryTests {
     #expect(c.historyRowWasDeleted)
     #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
     // With the original words showing, the answer is the same: those are gone too.
-    c.isShowingOriginal = true
+    c.documentView = .original
     #expect(!c.isSavedToHistory)
   }
 
@@ -273,6 +273,26 @@ struct FileImportHistoryTests {
   @MainActor
   private final class CoordinatorBox {
     var coordinator: FileImportCoordinator?
+  }
+
+  /// The marked-up view (#2773) exports the CLEANED text, because marks have no plain-text
+  /// form, and reports the cleanup's counts from the two texts the run holds.
+  @Test("the marked-up view exports cleaned words and counts what the cleanup did")
+  func theMarkedUpViewExportsCleanedAndCounts() async {
+    let spy = HistorySpy()
+    let c = Self.coordinator(spy: spy)
+    await run(c)
+    c.documentView = .markedUp
+    #expect(!c.screenShowsRawWords)
+    #expect(c.exportText == "One two three.")
+    #expect(c.isSavedToHistory, "the cleaned document is what is saved and what exports")
+    // "um one two three" → "One two three.": one word removed, nothing changed.
+    #expect(c.markedUp.removedWords == 1)
+    #expect(c.markedUp.changedWords == 0)
+    #expect(c.markedUp.segments.map(\.kind) == [.removed, .same, .same, .same])
+    // A new file starts on Cleaned again.
+    c.startOver()
+    #expect(c.documentView == .cleaned)
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half

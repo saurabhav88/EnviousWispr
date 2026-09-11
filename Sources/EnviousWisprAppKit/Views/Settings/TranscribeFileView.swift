@@ -1239,7 +1239,9 @@ struct TranscribeFileView: View {
       // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
       // and honouring it there hid the finished parts during a re-polish.
       ForEach(
-        coordinator.step == .done && coordinator.screenShowsRawWords ? [] : coordinator.parts
+        coordinator.step == .done
+          && (coordinator.screenShowsRawWords || coordinator.documentView == .markedUp)
+          ? [] : coordinator.parts
       ) { part in
         VStack(alignment: .leading, spacing: 4) {
           Text(part.text)
@@ -1255,8 +1257,25 @@ struct TranscribeFileView: View {
           }
         }
       }
-      // DONE only. This is the "Show original words" view and the empty-document floor, and
-      // both belong to the finished screen; on Working the queue shows the raw words.
+      // DONE only, the marked-up view (#2773): the original words with the cleanup on them,
+      // and the counts that are the point. The marks are one attributed text so selection
+      // and copy behave like the other two views.
+      if coordinator.step == .done, coordinator.documentView == .markedUp,
+        !coordinator.parts.isEmpty
+      {
+        let markedUp = coordinator.markedUp
+        VStack(alignment: .leading, spacing: 8) {
+          Text(markedUp.legend)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+            .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
+          Text(Self.markedUpText(markedUp.segments))
+            .lineSpacing(6)
+            .textSelection(.enabled)
+        }
+      }
+      // DONE only. This is the "Original" view and the empty-document floor, and both belong
+      // to the finished screen; on Working the queue shows the raw words.
       if coordinator.step == .done,
         coordinator.screenShowsRawWords,
         !coordinator.rawTranscript.isEmpty
@@ -1408,13 +1427,23 @@ struct TranscribeFileView: View {
       savedToHistoryChip
       polishedByChip
       // The page promises the untouched words are kept. This is where the user reads them,
-      // and Copy, Save and Share all follow whichever is on screen.
+      // and Copy, Save and Share follow Cleaned and Original; Marked up exports Cleaned.
+      // Three states want one picker rather than two links (#2773).
       if !coordinator.parts.isEmpty {
-        Button(coordinator.isShowingOriginal ? "Show cleaned words" : "Show original words") {
-          coordinator.isShowingOriginal.toggle()
+        Picker(
+          "View",
+          selection: Binding(
+            get: { coordinator.documentView }, set: { coordinator.documentView = $0 })
+        ) {
+          Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
+          Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
+          Text("Original").tag(FileImportCoordinator.DocumentView.original)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Color.stAccent)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .accessibilityLabel("Which words to show")
       }
     }
   }
@@ -1520,6 +1549,32 @@ struct TranscribeFileView: View {
     formatter.dateFormat = "d MMMM yyyy"
     return formatter
   }()
+
+  /// The founder's two treatments, and a third for what the cleanup added (#2773). A removed
+  /// word is struck through, which reads without colour; an altered or added word is
+  /// highlighted AND heavier, so colour is never the only carrier. Both tints are the
+  /// existing semantic tokens, so light and dark are handled by what handles every other
+  /// surface. Static so `TranscribeFileMarkedUpTests` can read the attributes it sets.
+  static func markedUpText(_ segments: [WordDiff.Segment]) -> AttributedString {
+    var out = AttributedString()
+    for segment in segments {
+      var run = AttributedString(segment.text)
+      switch segment.kind {
+      case .same:
+        run.foregroundColor = Color.stTextBody
+      case .removed:
+        run.foregroundColor = Color.stTextSecondary
+        run.strikethroughStyle = .single
+      case .changed, .added:
+        run.foregroundColor = Color.stTextBody
+        run.backgroundColor = Color.stAccentLight
+        run.font = .body.weight(.semibold)
+      }
+      out.append(run)
+      out.append(AttributedString(segment.trailing.isEmpty ? " " : segment.trailing))
+    }
+    return out
+  }
 
   private func chip(_ text: String) -> some View {
     Text(text)

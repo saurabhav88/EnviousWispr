@@ -615,6 +615,7 @@ final class FileImportCoordinator {
     forgetSaveOutcome()
     // Same rule as `startOver`: a different file is a different row (#2772).
     originalHistoryRow = nil
+    documentView = .cleaned
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -754,7 +755,32 @@ final class FileImportCoordinator {
   /// landed, the raw transcript was in memory and unreachable — no view rendered
   /// it, and Copy and Save exported only the cleaned passages. A promise with no
   /// way to check it is a promise the product does not keep. Found by Codex.
-  var isShowingOriginal = false
+  var documentView: DocumentView = .cleaned
+
+  /// Which words the Done screen shows (#2773). Copy, Save and Share follow Cleaned and
+  /// Original; the marked-up view has no plain-text form, so it exports the CLEANED text.
+  enum DocumentView: Equatable, Sendable {
+    case cleaned
+    /// The original words with the cleanup marked on them: removed struck through, altered
+    /// highlighted, and the counts above. The founder's request: "people can quickly see
+    /// that it worked" instead of reading two blobs of prose.
+    case markedUp
+    case original
+  }
+
+  /// The comparison behind the marked-up view, computed on the first switch to it and kept
+  /// while the two texts it was made from stand. A hundred milliseconds on a three-hour file
+  /// once, not on every redraw.
+  @ObservationIgnored private var markedUpCache:
+    (raw: String, cleaned: String, result: WordDiff.Result)?
+  var markedUp: WordDiff.Result {
+    if let c = markedUpCache, c.raw == rawTranscript, c.cleaned == documentText {
+      return c.result
+    }
+    let result = WordDiff.compare(original: rawTranscript, cleaned: documentText)
+    markedUpCache = (rawTranscript, documentText, result)
+    return result
+  }
 
   /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
   /// cleaned part to show instead.
@@ -766,7 +792,7 @@ final class FileImportCoordinator {
   /// the partial cleaned document and said it was not. Found by the cloud review of
   /// PR #2786, and the same shape as the credit it fixed earlier: a status about what was
   /// held rather than what was shown.
-  var screenShowsRawWords: Bool { isShowingOriginal || parts.isEmpty }
+  var screenShowsRawWords: Bool { documentView == .original || parts.isEmpty }
 
   /// What Copy and Save hand over, which is always what the screen is showing.
   var exportText: String { screenShowsRawWords ? rawTranscript : documentText }
@@ -877,6 +903,7 @@ final class FileImportCoordinator {
     // overwrite the last one's words, because the store names its file by id — which is the
     // same property that makes the raw-then-polished pair an update rather than a duplicate.
     originalHistoryRow = nil
+    documentView = .cleaned
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []

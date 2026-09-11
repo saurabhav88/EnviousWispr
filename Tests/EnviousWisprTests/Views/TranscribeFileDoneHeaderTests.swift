@@ -68,4 +68,26 @@ struct TranscribeFileDoneHeaderTests {
       #expect(!title.contains("\u{2014}") && !title.contains("\u{2013}"), "dash in \(title)")
     }
   }
+
+  /// The marks themselves (#2773): a removed word is struck through, which reads without
+  /// colour; an altered or added word carries a background AND weight. A version that used
+  /// colour alone would pass a "looks different" check and fail a colour-blind reader.
+  @Test("removed words are struck through; altered and added words are highlighted and heavier")
+  func markedUpTreatments() {
+    let text = TranscribeFileView.markedUpText([
+      .init(kind: .same, text: "the", trailing: " "),
+      .init(kind: .removed, text: "um", trailing: " "),
+      .init(kind: .changed, text: "gonna", trailing: " "),
+      .init(kind: .added, text: "morning.", trailing: ""),
+    ])
+    var runs: [(String, Bool, Bool)] = []
+    for run in text.runs {
+      let word = String(text[run.range].characters)
+      guard !word.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+      runs.append((word, run.strikethroughStyle != nil, run.backgroundColor != nil))
+    }
+    #expect(runs.map(\.0) == ["the", "um", "gonna", "morning."])
+    #expect(runs.map(\.1) == [false, true, false, false], "strikethrough marks exactly the removed word")
+    #expect(runs.map(\.2) == [false, false, true, true], "the highlight marks exactly the altered and added words")
+  }
 }
