@@ -300,25 +300,40 @@ struct FileImportHistoryTests {
   }
 
   /// After a Stop, the passages the cleanup never reached are not "removed" (#2773). The
-  /// comparison runs against the finished parts plus the untouched tail; found by Codex.
+  /// comparison runs against the finished parts plus the untouched tail. Found by Codex; the
+  /// first version of this test stopped from the FIRST part, which lands nothing, and
+  /// guarded itself out. It now stops during the second, so one part is finished and at
+  /// least one piece is still waiting.
   @Test("a stopped import compares against the untouched tail, not against nothing")
-  func aStoppedImportDoesNotMarkTheTailRemoved() async {
+  func aStoppedImportDoesNotMarkTheTailRemoved() async throws {
     let spy = HistorySpy()
     let box = CoordinatorBox()
-    let raw = "um one two three\n\nfour five six"
+    let raw = Array(repeating: "alpha", count: 600).joined(separator: " ") + " four five six"
+    let calls = CallCounter()
     let c = Self.coordinator(
-      spy: spy, raw: raw, cleaned: "One two three.",
-      onPart: { box.coordinator?.stop() })
+      spy: spy, raw: raw, cleaned: "Alpha.",
+      onPart: {
+        calls.count += 1
+        if calls.count == 2 { box.coordinator?.stop() }
+      })
     box.coordinator = c
     c.choose(url: Self.anyURL)
-    await settleUntil { if case .ready = c.state { return true } else { return false } }
+    #expect(await settleUntil { if case .ready = c.state { return true } else { return false } })
     c.start()
-    await settleUntil { c.state == .stopped }
-    guard !c.parts.isEmpty else { return }
+    #expect(await settleUntil { c.state == .stopped })
+    try #require(c.parts.count == 1)
+    try #require(c.pendingPieces.count > 1)
+
     c.documentView = .markedUp
     await c.prepareMarkedUp()
-    let removed = c.markedUp?.segments.filter { $0.kind == .removed }.map(\.text) ?? []
-    #expect(!removed.contains("four"), "an unfinished passage was marked as removed: \(removed)")
+    let result = try #require(c.markedUp)
+    let tail = try #require(result.segments.first { $0.text == "four" })
+    #expect(tail.kind == .same, "an unfinished passage was marked \(tail.kind)")
+  }
+
+  @MainActor
+  private final class CallCounter {
+    var count = 0
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half

@@ -775,24 +775,31 @@ final class FileImportCoordinator {
   /// passage as REMOVED by a cleanup that never touched it. Found by Codex (chunk review).
   /// Comparison only; Copy, Save and Share still export `documentText`.
   var markedUpInput: MarkedUpInput {
-    let cleaned: String
-    if parts.isEmpty {
-      cleaned = rawTranscript
-    } else {
-      cleaned = (parts.map(\.text) + Array(pendingPieces.dropFirst(parts.count)))
-        .joined(separator: "\n\n")
-    }
-    return MarkedUpInput(raw: rawTranscript, cleaned: cleaned)
+    MarkedUpInput(
+      raw: rawTranscript, cleanedParts: parts.map(\.text),
+      untouched: Array(pendingPieces.dropFirst(parts.count)))
   }
 
+  /// The pieces, not the joined text: this is read on every redraw as the view's task id and
+  /// as the cache key, and joining a three-hour transcript on each read is an allocation
+  /// nobody asked for. The join happens once, inside `prepareMarkedUp`. Codex, round 2.
   struct MarkedUpInput: Equatable, Sendable {
     let raw: String
-    let cleaned: String
+    let cleanedParts: [String]
+    let untouched: [String]
+
+    var cleaned: String {
+      cleanedParts.isEmpty ? raw : (cleanedParts + untouched).joined(separator: "\n\n")
+    }
   }
 
   /// The comparison, once `prepareMarkedUp` has run for the current input; nil while it is
   /// still being made or the input moved. Kept while the two texts it was made from stand.
-  @ObservationIgnored private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result)?
+  /// OBSERVED, deliberately: the write lands from `prepareMarkedUp` after an await, never
+  /// during a body evaluation, and it is the mutation that replaces the placeholder with the
+  /// result. Ignoring it left the view on "Comparing words" until an unrelated redraw. Codex,
+  /// round 2.
+  private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result)?
   var markedUp: WordDiff.Result? {
     guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
     return cached.result
