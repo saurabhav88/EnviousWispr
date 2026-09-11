@@ -536,14 +536,14 @@ struct ProviderSetupSection: View {
       {
         detailCard(label: S1ControlCopy.cardLabel) {
           s1ControlRows
-          FrozenPerRecordingFootnote()
+          FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
         }
       }
 
       if showModelSection {
         detailCard(label: "Model") {
           modelSelectorRow
-          FrozenPerRecordingFootnote()
+          FrozenPerRecordingFootnote(text: frozenSettingsFootnote)
         }
       }
 
@@ -705,7 +705,7 @@ struct ProviderSetupSection: View {
   private var s1ControlRows: some View {
     @Bindable var settings = settings
     VStack(alignment: .leading, spacing: 14) {
-      Text(S1ControlCopy.intro)
+      Text(S1ControlCopy.intro(for: surface))
         .settingsReadingCopy()
 
       VStack(alignment: .leading, spacing: 6) {
@@ -857,6 +857,15 @@ struct ProviderSetupSection: View {
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return APIKeyDescriptor(
         label: "", placeholder: "", keychainId: "", accessibilityLabel: "", privacySentence: "")
+    }
+  }
+
+  /// Which run freezes this editor's settings, in the host's words: a recording on the AI
+  /// Polish page, a cleanup on Transcribe a File. The sentence said "recording" on both.
+  private var frozenSettingsFootnote: String {
+    switch surface {
+    case .dictation: return SettingsCopy.frozenPerRecording
+    case .fileImport: return SettingsCopy.frozenPerImport
     }
   }
 

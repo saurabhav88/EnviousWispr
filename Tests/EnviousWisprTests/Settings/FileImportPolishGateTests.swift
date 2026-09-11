@@ -332,4 +332,17 @@ struct FileImportPolishGateTests {
     fresh.geminiKey = "AIza"
     #expect(fresh.geminiKeyEdited)
   }
+
+  /// The shared editor's "which run will use this change" sentences name the host's run
+  /// (#2772). On the import page they said "recording" and "dictation" for changes that
+  /// reach the next file. Found by the cloud review of PR #2786.
+  @Test("frozen-setting copy names the file on the import page and the recording on dictation")
+  func frozenCopyNamesTheHostsRun() {
+    #expect(SettingsCopy.frozenPerImport.contains("next file"))
+    #expect(!SettingsCopy.frozenPerImport.contains("recording"))
+    #expect(SettingsCopy.frozenPerRecording.contains("next recording"))
+    #expect(S1ControlCopy.intro(for: .fileImport).contains("next file"))
+    #expect(S1ControlCopy.intro(for: .fileImport).contains("shared with dictation"))
+    #expect(S1ControlCopy.intro(for: .dictation) == S1ControlCopy.intro)
+  }
 }

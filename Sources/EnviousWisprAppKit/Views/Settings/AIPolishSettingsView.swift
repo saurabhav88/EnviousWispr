@@ -412,6 +412,17 @@ enum S1ControlCopy {
   static let cardLabel = "Writing style"
   static let intro =
     "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation."
+  /// The three dials are ONE shared setting. On the Transcribe a File page a change reaches
+  /// the next file and, because it is shared, the next dictation too; the dictation sentence
+  /// named only the dictation (#2772). Found by the cloud review of PR #2786.
+  static func intro(for surface: ProviderSetupSurface) -> String {
+    switch surface {
+    case .dictation: return intro
+    case .fileImport:
+      return
+        "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. They are shared with dictation. Change them any time; a new pick applies to your next file and your next dictation."
+    }
+  }
 
   static let stylingLabel = "Tone"
   static let stylingHint =

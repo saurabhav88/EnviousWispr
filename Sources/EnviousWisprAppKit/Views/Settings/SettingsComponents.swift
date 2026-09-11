@@ -314,6 +314,10 @@ struct InsetNotice: View {
 enum SettingsCopy {
   static let frozenPerRecording =
     "Changes made during a recording apply to the next recording."
+  /// The same rule on the Transcribe a File page, where the run that freezes settings is a
+  /// cleanup, not a recording (#2772). Found by the cloud review of PR #2786.
+  static let frozenPerImport =
+    "Changes made during a cleanup apply to the next file."
 }
 
 /// Page-level banner stating that this page's settings freeze at recording start.
@@ -378,8 +382,11 @@ struct BrandedRow<Content: View>: View {
 /// start via `DictationSessionConfig`. Placed in a `BrandedSection`'s footer
 /// slot or inline under affected controls.
 struct FrozenPerRecordingFootnote: View {
+  /// The dictation sentence unless the host says otherwise; the shared provider editor passes
+  /// `SettingsCopy.frozenPerImport` when hosted on the Transcribe a File page.
+  var text: String = SettingsCopy.frozenPerRecording
   var body: some View {
-    Text(SettingsCopy.frozenPerRecording)
+    Text(text)
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
   }
