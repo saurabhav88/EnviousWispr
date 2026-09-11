@@ -151,8 +151,13 @@ public enum WordDiff {
     let trimmed = word.trimmingCharacters(in: .punctuationCharacters.union(.symbols))
     // Unicode case FOLDING, not lowercasing: `lowercased()` leaves a Greek final sigma
     // ("ΟΣ" → "οσ" against "ος") and a German "STRASSE" against "straße" unequal, and the
-    // transcripts are multilingual. Found by the cloud review of PR #2799.
-    return (trimmed.isEmpty ? word : trimmed).folding(options: .caseInsensitive, locale: nil)
+    // transcripts are multilingual. Diacritic-insensitive as well, because the case fold of a
+    // Turkish capital dotted I ("İstanbul") is "i" plus a combining dot, which no lowercase
+    // spelling carries; folding the marks away makes it "istanbul", and it also means an
+    // accent the cleanup added or dropped ("cafe" → "café") is spelling, not a changed word,
+    // which is the count's meaning. Found by the cloud review of PR #2799, in two rounds.
+    return (trimmed.isEmpty ? word : trimmed)
+      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
   }
 
   // MARK: - The comparison

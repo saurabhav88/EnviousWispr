@@ -61,6 +61,12 @@ struct WordDiffTests {
     // German sharp s against its capital spelling.
     let german = WordDiff.compare(original: "STRASSE", cleaned: "Straße")
     #expect(german.segments.map(\.kind) == [.same], "\(german.segments)")
+    // Turkish capital dotted I, whose case fold carries a combining dot no lowercase has.
+    let turkish = WordDiff.compare(original: "İstanbul", cleaned: "istanbul")
+    #expect(turkish.segments.map(\.kind) == [.same], "\(turkish.segments)")
+    // An accent is spelling, not a changed word.
+    let accent = WordDiff.compare(original: "cafe", cleaned: "café")
+    #expect(accent.segments.map(\.kind) == [.same], "\(accent.segments)")
   }
 
   @Test("identical text is all the same, and an empty side is all one kind")
