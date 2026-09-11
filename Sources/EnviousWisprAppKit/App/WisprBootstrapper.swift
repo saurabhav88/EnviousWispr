@@ -1524,8 +1524,11 @@ package final class WisprBootstrapper {
           let activation = runtime.activateAndProbe()
         else { return false }
         await activation.value
-        if case .red = runtime.health { return false }
-        return true
+        // The ENDPOINT, not `health`. The import already holds the engine lease here, so the
+        // activation's probe sees the engine busy and skips on purpose, leaving `health` at
+        // whatever the last probe said; a server that just came up after an earlier red
+        // verdict would be refused on stale advice. The endpoint is what the run will use.
+        return await runtime.activeEndpoint() != nil
       },
       // #2772 finding 11: the third writer of History, beside dictation and crash replay.
       // Through the COORDINATOR rather than the store, so the row appears immediately —

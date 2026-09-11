@@ -94,6 +94,53 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     return recorder
   }
 
+  // MARK: - The import's own model (#2772)
+
+  /// With dictation elsewhere, the import's Ollama model was never tracked, so walking
+  /// away from it left it resident for the whole keep-alive window. Found by the cloud
+  /// review of PR #2786.
+  @Test("an import-only Ollama model is evicted when the import switches away from it")
+  func importOnlyModelIsEvicted() {
+    let (sync, settings, recorder) = makeSync(
+      catalog: [catalogRow("mistral", isRemote: false), catalogRow("llama3", isRemote: false)])
+    settings.llmProvider = .appleIntelligence
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+    #expect(recorder.scheduled.isEmpty, "seeding must never evict")
+
+    settings.fileImportOllamaModel = "llama3"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  /// The other way round is the reason this is two trackers and not one: a model the import
+  /// leaves is not idle while dictation still selects it.
+  @Test("the import's previous model is kept while dictation still selects it")
+  func importPreviousModelStaysWhileDictationWantsIt() {
+    let (sync, settings, recorder) = makeSync(
+      catalog: [catalogRow("mistral", isRemote: false), catalogRow("llama3", isRemote: false)])
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    settings.fileImportOllamaModel = "llama3"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "evicted the model dictation is about to use")
+  }
+
+  /// An import that FOLLOWS dictation moves with it, and the shared previous model is
+  /// evicted once, not once per tracker.
+  @Test("a following import evicts the shared previous model exactly once")
+  func followingImportEvictsOnce() {
+    let recorder = swap(
+      from: "mistral", to: "llama3",
+      catalog: [catalogRow("mistral", isRemote: false), catalogRow("llama3", isRemote: false)])
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
   // MARK: - Suppression
 
   @Test("switching away from a PROVEN REMOTE model schedules zero evictions")
