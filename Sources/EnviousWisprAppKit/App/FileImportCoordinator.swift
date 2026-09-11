@@ -615,6 +615,10 @@ final class FileImportCoordinator {
     forgetSaveOutcome()
     // Same rule as `startOver`: a different file is a different row (#2772).
     originalHistoryRow = nil
+    documentView = .cleaned
+    markedUpCache = nil
+    markedUpWorker?.task.cancel()
+    markedUpWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -754,7 +758,116 @@ final class FileImportCoordinator {
   /// landed, the raw transcript was in memory and unreachable — no view rendered
   /// it, and Copy and Save exported only the cleaned passages. A promise with no
   /// way to check it is a promise the product does not keep. Found by Codex.
-  var isShowingOriginal = false
+  var documentView: DocumentView = .cleaned
+
+  /// Which words the Done screen shows (#2773). Copy, Save and Share follow Cleaned and
+  /// Original; the marked-up view has no plain-text form, so it exports the CLEANED text.
+  enum DocumentView: Equatable, Sendable {
+    case cleaned
+    /// The original words with the cleanup marked on them: removed struck through, altered
+    /// highlighted, and the counts above. The founder's request: "people can quickly see
+    /// that it worked" instead of reading two blobs of prose.
+    case markedUp
+    case original
+  }
+
+  /// What the marked-up view compares the original against: the cleaned parts, then any
+  /// passage the cleanup never reached, unchanged. After a Stop, `documentText` holds only
+  /// the finished parts, and comparing the whole original against that marked every waiting
+  /// passage as REMOVED by a cleanup that never touched it. Found by Codex (chunk review).
+  /// Comparison only; Copy, Save and Share still export `documentText`.
+  var markedUpInput: MarkedUpInput {
+    // The split's pieces are the passages the cleanup ran on, in order; `parts[i]` is what
+    // it made of `pendingPieces[i]`. A piece past the last finished part was never reached.
+    // With no split in hand (nothing has run) the whole transcript is one untouched passage.
+    guard !pendingPieces.isEmpty else {
+      return MarkedUpInput(
+        passages: [.init(original: rawTranscript, cleaned: nil)], language: engineReportedLanguage)
+    }
+    // Each passage's original is recovered FROM the transcript, not taken from the piece:
+    // `TranscriptSplitter` slices from a word's start to a word's end and drops the
+    // whitespace between pieces, so the pieces concatenated rendered "alphaalpha" across a
+    // cut. Each piece is found by scanning forward, and the passage is the text from the
+    // cursor to the piece's end, so the gap BEFORE a piece rides with it; the last passage
+    // runs to the transcript's end. Every gap renders exactly as spoken. A piece the scan
+    // cannot place should not happen (the splitter yields ordered verbatim slices); if it
+    // did, that piece is compared directly and exact reconstruction is not guaranteed on
+    // that path, which is preferred to crashing on a data invariant. Codex, confirming round.
+    var cursor = rawTranscript.startIndex
+    var passages: [WordDiff.Passage] = []
+    for (index, piece) in pendingPieces.enumerated() {
+      let cleaned = index < parts.count ? parts[index].text : nil
+      guard
+        let found = rawTranscript.range(
+          of: piece, options: .literal, range: cursor..<rawTranscript.endIndex)
+      else {
+        passages.append(.init(original: piece, cleaned: cleaned))
+        continue
+      }
+      let end = index == pendingPieces.count - 1 ? rawTranscript.endIndex : found.upperBound
+      passages.append(.init(original: String(rawTranscript[cursor..<end]), cleaned: cleaned))
+      cursor = end
+    }
+    return MarkedUpInput(passages: passages, language: engineReportedLanguage)
+  }
+
+  /// The passages, not a joined text: this is read on every redraw as the view's task id and
+  /// as the cache key, and the strings inside are the coordinator's own, shared not copied.
+  /// Passage by passage because that is how the cleanup ran; one joined block lost the
+  /// boundaries and could mark untouched waiting words as removed (second-pass review).
+  struct MarkedUpInput: Equatable, Sendable {
+    let passages: [WordDiff.Passage]
+    /// The engine's language code for the transcript, which decides the case fold (Turkish
+    /// has two I's). Part of the key so a re-transcription in another language recomputes.
+    let language: String?
+  }
+
+  /// The comparison, once `prepareMarkedUp` has run for the current input; nil while it is
+  /// still being made or the input moved. Kept while the two texts it was made from stand.
+  /// OBSERVED, deliberately: the write lands from `prepareMarkedUp` after an await, never
+  /// during a body evaluation, and it is the mutation that replaces the placeholder with the
+  /// result. Ignoring it left the view on "Comparing words" until an unrelated redraw. Codex,
+  /// round 2.
+  private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result)?
+  var markedUp: WordDiff.Result? {
+    guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
+    return cached.result
+  }
+
+  /// Runs the comparison OFF the main actor. Cleanup-shaped inputs take milliseconds, but the
+  /// algorithm is linear in the edit distance too, and two transcripts with nothing in common
+  /// took three seconds at the three-hour size; done in a getter that froze the window.
+  /// Found by Codex (chunk review). A result for an input that moved while it ran is dropped.
+  func prepareMarkedUp() async {
+    let input = markedUpInput
+    guard markedUp == nil else { return }
+    // ONE comparison per input. Leaving the view cancels its task but not the detached work,
+    // and coming back before it finished used to start a second; switching back and forth on
+    // a large, heavily rewritten transcript piled them up. A worker for a different input is
+    // cancelled (its result is dropped; the algorithm itself runs to its end, bounded by the
+    // worst case noted on `WordDiff`), and a worker for THIS input is awaited, not repeated.
+    // Second-pass review.
+    if let inFlight = markedUpWorker, inFlight.input != input {
+      inFlight.task.cancel()
+      markedUpWorker = nil
+    }
+    let task: Task<WordDiff.Result, Never>
+    if let inFlight = markedUpWorker {
+      task = inFlight.task
+    } else {
+      task = Task.detached(priority: .userInitiated) {
+        WordDiff.compare(passages: input.passages, language: input.language)
+      }
+      markedUpWorker = (input, task)
+    }
+    let result = await task.value
+    guard markedUpInput == input else { return }
+    if markedUpWorker?.input == input { markedUpWorker = nil }
+    markedUpCache = (input, result)
+  }
+
+  @ObservationIgnored private var markedUpWorker:
+    (input: MarkedUpInput, task: Task<WordDiff.Result, Never>)?
 
   /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
   /// cleaned part to show instead.
@@ -766,10 +879,29 @@ final class FileImportCoordinator {
   /// the partial cleaned document and said it was not. Found by the cloud review of
   /// PR #2786, and the same shape as the credit it fixed earlier: a status about what was
   /// held rather than what was shown.
-  var screenShowsRawWords: Bool { isShowingOriginal || parts.isEmpty }
+  var screenShowsRawWords: Bool { documentView == .original || parts.isEmpty }
 
   /// What Copy and Save hand over, which is always what the screen is showing.
-  var exportText: String { screenShowsRawWords ? rawTranscript : documentText }
+  var exportText: String {
+    if screenShowsRawWords { return rawTranscript }
+    if documentView == .markedUp { return markedUpKeptText }
+    return documentText
+  }
+
+  /// What the marked-up view presents as KEPT: the cleaned passages, then every passage the
+  /// cleanup never reached, unchanged. After a Stop that is more than `documentText`, which
+  /// holds only the finished passages, and an export that dropped the visible tail would
+  /// hand over less than the screen shows. Found by the cloud review of PR #2799. On a
+  /// finished run the two are the same text.
+  var markedUpKeptText: String {
+    // The cleaned passages as `documentText` joins them, then the untouched passages as the
+    // TRANSCRIPT has them: each recovered original begins with the whitespace that preceded
+    // it, so nothing is invented between them. Joining the split's pieces with a blank line
+    // changed a single space or tab into a paragraph break. Found by the cloud review.
+    let cleaned = parts.map(\.text).joined(separator: "\n\n")
+    let untouched = markedUpInput.passages.dropFirst(parts.count).map(\.original).joined()
+    return cleaned + untouched
+  }
 
   /// Whether Back is offered right now, so the button is absent rather than
   /// present and inert.
@@ -877,6 +1009,10 @@ final class FileImportCoordinator {
     // overwrite the last one's words, because the store names its file by id — which is the
     // same property that makes the raw-then-polished pair an update rather than a duplicate.
     originalHistoryRow = nil
+    documentView = .cleaned
+    markedUpCache = nil
+    markedUpWorker?.task.cancel()
+    markedUpWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []

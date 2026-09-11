@@ -210,12 +210,12 @@ struct FileImportHistoryTests {
     #expect(!c.isSavedToHistory, "the cleaned document was refused and still reads as saved")
     #expect(c.exportText == "One two three.")
 
-    c.isShowingOriginal = true
+    c.documentView = .original
     #expect(c.isSavedToHistory, "the raw words are on screen and in History")
     #expect(c.exportText == "um one two three")
     #expect(c.historySaveNotice == nil)
 
-    c.isShowingOriginal = false
+    c.documentView = .cleaned
     #expect(!c.isSavedToHistory)
   }
 
@@ -243,7 +243,7 @@ struct FileImportHistoryTests {
     #expect(c.historyRowWasDeleted)
     #expect(c.historySaveNotice?.contains("You deleted this from History") == true)
     // With the original words showing, the answer is the same: those are gone too.
-    c.isShowingOriginal = true
+    c.documentView = .original
     #expect(!c.isSavedToHistory)
   }
 
@@ -273,6 +273,91 @@ struct FileImportHistoryTests {
   @MainActor
   private final class CoordinatorBox {
     var coordinator: FileImportCoordinator?
+  }
+
+  /// The marked-up view (#2773) exports the CLEANED text, because marks have no plain-text
+  /// form, and reports the cleanup's counts from the two texts the run holds.
+  @Test("the marked-up view exports cleaned words and counts what the cleanup did")
+  func theMarkedUpViewExportsCleanedAndCounts() async {
+    let spy = HistorySpy()
+    let c = Self.coordinator(spy: spy)
+    await run(c)
+    c.documentView = .markedUp
+    #expect(!c.screenShowsRawWords)
+    #expect(c.exportText == "One two three.")
+    #expect(c.isSavedToHistory, "the cleaned document is what is saved and what exports")
+    // Nothing until the comparison has been made off the main actor.
+    #expect(c.markedUp == nil)
+    await c.prepareMarkedUp()
+    // "um one two three" → "One two three.": one word removed, nothing changed.
+    #expect(c.markedUp?.removedWords == 1)
+    #expect(c.markedUp?.changedWords == 0)
+    #expect(c.markedUp?.segments.map(\.kind) == [.removed, .same, .same, .same])
+    // A new file starts on Cleaned again, with no comparison carried over.
+    c.startOver()
+    #expect(c.documentView == .cleaned)
+    #expect(c.markedUp == nil)
+  }
+
+  /// After a Stop, the passages the cleanup never reached are not "removed" (#2773). The
+  /// comparison runs against the finished parts plus the untouched tail. Found by Codex; the
+  /// first version of this test stopped from the FIRST part, which lands nothing, and
+  /// guarded itself out. It now stops during the second, so one part is finished and at
+  /// least one piece is still waiting.
+  @Test("a stopped import compares against the untouched tail, not against nothing")
+  func aStoppedImportDoesNotMarkTheTailRemoved() async throws {
+    let spy = HistorySpy()
+    let box = CoordinatorBox()
+    let raw = Array(repeating: "alpha", count: 600).joined(separator: " ") + " four five six"
+    let calls = CallCounter()
+    let c = Self.coordinator(
+      spy: spy, raw: raw, cleaned: "Alpha.",
+      onPart: {
+        calls.count += 1
+        if calls.count == 2 { box.coordinator?.stop() }
+      })
+    box.coordinator = c
+    c.choose(url: Self.anyURL)
+    #expect(await settleUntil { if case .ready = c.state { return true } else { return false } })
+    c.start()
+    #expect(await settleUntil { c.state == .stopped })
+    try #require(c.parts.count == 1)
+    try #require(c.pendingPieces.count > 1)
+
+    c.documentView = .markedUp
+    await c.prepareMarkedUp()
+    let result = try #require(c.markedUp)
+    // EVERY word of every waiting passage is untouched, not only the distinctive one: the
+    // first passage's alphas may be removed, the waiting passages' alphas may not.
+    let firstPassageWords = c.pendingPieces[0].split(whereSeparator: \.isWhitespace).count
+    #expect(result.removedWords == firstPassageWords - 1, "\(result.removedWords) removed")
+    #expect(result.changedWords == 0)
+    let waitingWords = c.pendingPieces.dropFirst().joined(separator: " ")
+      .split(whereSeparator: \.isWhitespace).count
+    #expect(result.segments.suffix(waitingWords).allSatisfy { $0.kind == .same })
+    let tail = try #require(result.segments.first { $0.text == "four" })
+    #expect(tail.kind == .same, "an unfinished passage was marked \(tail.kind)")
+    // And the rendering rebuilds the transcript byte for byte across the passage cuts: the
+    // splitter drops the whitespace between its pieces, and a version that concatenated them
+    // rendered "alphaalpha" at every boundary. Codex, confirming round.
+    #expect(result.segments.map { $0.text + $0.trailing }.joined() == raw)
+    // Copy, Save and Share follow the screen: the untouched tail the view shows is in the
+    // export, and the Cleaned view's export stays the finished prefix alone. Found by the
+    // cloud review of PR #2799.
+    #expect(c.exportText.contains("four five six"), "the marked-up export dropped the visible tail")
+    #expect(c.exportText.hasPrefix("Alpha."))
+    // The untouched part of the export is the transcript's own text from the first piece's
+    // end, whitespace included: nothing invented between the pieces. Found by the cloud review.
+    let firstPiece = c.pendingPieces[0]
+    let tailStart = raw.range(of: firstPiece)!.upperBound
+    #expect(c.exportText == "Alpha." + String(raw[tailStart...]))
+    c.documentView = .cleaned
+    #expect(!c.exportText.contains("four"))
+  }
+
+  @MainActor
+  private final class CallCounter {
+    var count = 0
   }
 
   /// **The ordering IS the feature.** The raw words must be durable before the slow half
