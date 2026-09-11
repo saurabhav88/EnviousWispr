@@ -1305,6 +1305,10 @@ package final class WisprBootstrapper {
           navigationCoordinator.request(.speechEngine)
           appWindowCoordinator.showWindow()
         },
+        openTranscribeFile: {
+          navigationCoordinator.request(.transcribeFile)
+          appWindowCoordinator.showWindow()
+        },
         openPermissions: {
           navigationCoordinator.request(.permissions)
           appWindowCoordinator.showWindow()

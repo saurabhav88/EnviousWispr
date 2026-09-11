@@ -447,6 +447,15 @@ final class MenuBarController: NSObject {
 
     menu.addItem(.separator())
 
+    // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
+    // import wizard. Opens the unified window on that page; the page itself does the rest.
+    let transcribeFileItem = NSMenuItem(
+      title: "Transcribe a File...", action: #selector(openTranscribeFileAction), keyEquivalent: "")
+    transcribeFileItem.image = NSImage(
+      systemSymbolName: "doc.badge.plus", accessibilityDescription: "Transcribe a File")
+    transcribeFileItem.target = self
+    menu.addItem(transcribeFileItem)
+
     // Settings (opens unified window to Speech Engine tab)
     let settingsItem = NSMenuItem(
       title: "Settings...", action: #selector(openSettingsAction), keyEquivalent: ",")
@@ -599,6 +608,10 @@ final class MenuBarController: NSObject {
     actions.openSettings()
   }
 
+  @objc private func openTranscribeFileAction() {
+    actions.openTranscribeFile()
+  }
+
   /// #1047: set the window-appearance preference from the Appearance submenu.
   /// The `didSet` persists it and the bootstrapper applies it to `NSApp`.
   @objc private func setAppearanceAction(_ sender: NSMenuItem) {
@@ -709,6 +722,8 @@ struct MenuBarActions: Sendable {
       Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
+  /// Open the unified window on the Transcribe a File page (#2772).
+  let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
