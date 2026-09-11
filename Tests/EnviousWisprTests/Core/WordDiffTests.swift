@@ -197,10 +197,13 @@ struct WordDiffTests {
     }
   }
 
-  /// A three-hour transcript's worth of words, with a fifth of them touched, in well under
-  /// a second on any supported Mac. The bound is loose on purpose: this is a smoke test for
-  /// the linear-space claim, not a benchmark, and the measured figure lives on #2773.
-  @Test("27,000 words with a fifth touched completes in bounded time")
+  /// A three-hour transcript's worth of words, with a fifth of them touched. What this binds
+  /// is that the middle-snake recursion COMPLETES on a transcript this size and still reports
+  /// the changes; the linear-space claim is about memory, and time is O(N·D) by construction,
+  /// so a wall-clock bound is a measurement of the host, not of the code. The 5-second bound
+  /// this test used to carry passed everywhere until the hosted Debug runner took 5.2 s on an
+  /// unrelated PR (#2803, 2026-09-11). The measured figures live on #2773.
+  @Test("27,000 words with a fifth touched completes and reports the changes")
   func scale() {
     var rng = SeededGenerator(seed: 27)
     let words = (0..<27_000).map { _ in "w\(Int.random(in: 0...3000, using: &rng))" }
@@ -214,12 +217,33 @@ struct WordDiffTests {
       }
       cleaned.append(w)
     }
-    let start = ContinuousClock.now
+    // The edit script must rebuild both sides exactly at this size, the same property the
+    // 300 random cases check; minimality is not checked here because the quadratic reference
+    // is what this size is too big for.
+    let ops = WordDiff.edits(words, cleaned)
+    var rebuiltA: [String] = []
+    var rebuiltB: [String] = []
+    rebuiltA.reserveCapacity(words.count)
+    rebuiltB.reserveCapacity(cleaned.count)
+    var mismatchedEquals = 0
+    for op in ops {
+      switch op {
+      case .equal(let i, let j):
+        // A pairing of two different words as equal would still rebuild both sides; the
+        // random cases check this too, and at this size it is the check that matters.
+        if words[i] != cleaned[j] { mismatchedEquals += 1 }
+        rebuiltA.append(words[i])
+        rebuiltB.append(cleaned[j])
+      case .delete(let i): rebuiltA.append(words[i])
+      case .insert(let j): rebuiltB.append(cleaned[j])
+      }
+    }
+    #expect(mismatchedEquals == 0)
+    #expect(rebuiltA == words)
+    #expect(rebuiltB == cleaned)
     let r = WordDiff.compare(
       original: words.joined(separator: " "), cleaned: cleaned.joined(separator: " "))
-    let elapsed = ContinuousClock.now - start
     #expect(r.removedWords + r.changedWords > 0)
-    #expect(elapsed < .seconds(5), "\(elapsed)")
   }
 
   private static func lcs(_ a: [String], _ b: [String]) -> Int {
