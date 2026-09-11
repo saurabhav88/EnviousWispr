@@ -64,9 +64,12 @@ struct WordDiffTests {
     // Turkish capital dotted I, whose case fold carries a combining dot no lowercase has.
     let turkish = WordDiff.compare(original: "İstanbul", cleaned: "istanbul")
     #expect(turkish.segments.map(\.kind) == [.same], "\(turkish.segments)")
-    // An accent is spelling, not a changed word.
-    let accent = WordDiff.compare(original: "cafe", cleaned: "café")
-    #expect(accent.segments.map(\.kind) == [.same], "\(accent.segments)")
+    // A diacritic is a different word, and a cleanup that adds one changed the word.
+    for (a, b) in [("si", "sí"), ("ou", "où"), ("cafe", "café")] {
+      let r = WordDiff.compare(original: a, cleaned: b)
+      #expect(r.segments.map(\.kind) == [.changed], "\(a) → \(b): \(r.segments)")
+      #expect(r.changedWords == 1)
+    }
   }
 
   @Test("identical text is all the same, and an empty side is all one kind")

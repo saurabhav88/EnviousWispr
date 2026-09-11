@@ -149,15 +149,24 @@ public enum WordDiff {
 
   static func key(for word: String) -> String {
     let trimmed = word.trimmingCharacters(in: .punctuationCharacters.union(.symbols))
-    // Unicode case FOLDING, not lowercasing: `lowercased()` leaves a Greek final sigma
-    // ("ΟΣ" → "οσ" against "ος") and a German "STRASSE" against "straße" unequal, and the
-    // transcripts are multilingual. Diacritic-insensitive as well, because the case fold of a
-    // Turkish capital dotted I ("İstanbul") is "i" plus a combining dot, which no lowercase
-    // spelling carries; folding the marks away makes it "istanbul", and it also means an
-    // accent the cleanup added or dropped ("cafe" → "café") is spelling, not a changed word,
-    // which is the count's meaning. Found by the cloud review of PR #2799, in two rounds.
+    // WHICH spelling differences are the same word, decided once (three cloud-review rounds
+    // on PR #2799 each moved this a step; this is the closed rule, not the next step):
+    //
+    // - Case never counts, folded the Unicode way rather than with `lowercased()`, which
+    //   leaves a Greek final sigma ("ΟΣ" against "ος") and "STRASSE" against "straße" unequal.
+    // - A diacritic ALWAYS counts. "si" and "sí", "ou" and "où" are different words, and a
+    //   cleanup that adds or drops an accent changed the word; folding marks away would
+    //   report those as untouched.
+    // - The one artifact of case folding itself is undone: the fold of a Turkish capital
+    //   dotted I ("İstanbul") is "i" followed by a combining dot above (U+0307), a sequence no
+    //   lowercase spelling carries because a plain "i" already has its dot. That pair is
+    //   collapsed to "i". Nothing else is touched.
+    //
+    // What would reopen this: a case-only pair the fold leaves unequal that is not the
+    // dotted-I artifact.
     return (trimmed.isEmpty ? word : trimmed)
-      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+      .folding(options: .caseInsensitive, locale: nil)
+      .replacingOccurrences(of: "i\u{0307}", with: "i")
   }
 
   // MARK: - The comparison
