@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -111,22 +112,33 @@ struct OnDeviceInstructionsV39MirrorTests {
     #expect(fromFile == AppleIntelligenceConnector.onDeviceExampleTurnsV39ForTests)
   }
 
+  /// The sealed corpus itself is gitignored (it stays on the dev machine so it remains a
+  /// verdict), but `scripts/eval/corpus/sealed_v1_input_hashes.txt` is TRACKED: one SHA-256
+  /// per exam input, lowercased and trimmed. That lets this row run on every checkout
+  /// and in CI without the exam text leaving this machine (Codex diff review r1, P1).
   @Test("no example input is a sealed-exam input (the exam stays a verdict, never a tuning set)")
   func exampleInputsAreNotSealedCases() throws {
-    let testFile = URL(fileURLWithPath: #filePath)
-    let repoRoot =
-      testFile
+    let hashesFile =
+      URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
-    let sealed = repoRoot.appendingPathComponent("scripts/eval/corpus/sealed_v1.jsonl")
-    #expect(FileManager.default.fileExists(atPath: sealed.path))
-    struct Row: Decodable { let asr_input: String }
-    let inputs = try String(contentsOf: sealed, encoding: .utf8).split(separator: "\n").map {
-      try JSONDecoder().decode(Row.self, from: Data($0.utf8)).asr_input.lowercased()
+      .appendingPathComponent("scripts/eval/corpus/sealed_v1_input_hashes.txt")
+    #expect(
+      FileManager.default.fileExists(atPath: hashesFile.path),
+      "tracked hash list missing at \(hashesFile.path)")
+    let sealedHashes = Set(
+      try String(contentsOf: hashesFile, encoding: .utf8).split(separator: "\n").map(String.init))
+    #expect(sealedHashes.count > 1000, "hash list looks truncated: \(sealedHashes.count) entries")
+    func digest(_ text: String) -> String {
+      let data = Data(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().utf8)
+      return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
-    let sealedSet = Set(inputs)
     for turn in AppleIntelligenceConnector.onDeviceExampleTurnsV39ForTests {
-      #expect(!sealedSet.contains(turn.input.lowercased()), "example is a sealed input: \(turn.input)")
+      #expect(!sealedHashes.contains(digest(turn.input)), "example is a sealed input: \(turn.input)")
     }
+    // Two-way control: a real exam input's digest IS in the list, so an empty or wrong
+    // list cannot pass this row vacuously. The control string is the digest of one sealed
+    // input, not the input itself.
+    #expect(sealedHashes.contains("0010411ac09a6341a6eb8faba629efd01b8e15e89372e2e689f22dff2e6d8cd0"))
   }
 }
