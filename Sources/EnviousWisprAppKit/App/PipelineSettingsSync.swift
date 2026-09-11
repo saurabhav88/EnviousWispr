@@ -545,7 +545,11 @@ final class PipelineSettingsSync {
       provider: settings.effectiveFileImportLLMProvider,
       model: settings.effectiveFileImportLLMModel
     )
-    let stillWanted = Set([dictation, fileImport].compactMap { $0 })
+    // Canonical, like every other Ollama-name comparison in this file: `llama3.2` and
+    // `llama3.2:latest` are one model, and the two surfaces can hold either spelling. An
+    // exact set let an import walk away from `:latest` and evict the model dictation still
+    // selected under the bare name. Found by the cloud review of PR #2786.
+    let stillWanted = Set([dictation, fileImport].compactMap { $0 }.map(Self.canonical))
     var scheduledThisPass = Set<String>()
     reconcileEvictableModel(
       \.lastEvictableOllamaModel, new: dictation, stillWanted: stillWanted,
@@ -562,11 +566,11 @@ final class PipelineSettingsSync {
     stillWanted: Set<String>, scheduled: inout Set<String>
   ) {
     let pre = self[keyPath: tracker]
-    guard let pre, pre != new else {
+    guard let pre, Self.canonical(pre) != new.map(Self.canonical) else {
       self[keyPath: tracker] = new
       return
     }
-    if stillWanted.contains(pre) || scheduled.contains(pre) {
+    if stillWanted.contains(Self.canonical(pre)) || scheduled.contains(Self.canonical(pre)) {
       self[keyPath: tracker] = new
       return
     }
@@ -604,8 +608,14 @@ final class PipelineSettingsSync {
     // `pre`; the next setting change re-evaluates.
     if isOllamaModelPinnedInFlight(pre) { return }
     self[keyPath: tracker] = new
-    scheduled.insert(pre)
+    scheduled.insert(Self.canonical(pre))
     scheduleOllamaEviction(pre)
+  }
+
+  /// The repository's one Ollama-name identity rule, so a tag-less spelling and its
+  /// `:latest` twin compare equal everywhere this file asks whether two names are one model.
+  private static func canonical(_ model: String) -> String {
+    OllamaSetupService.canonicalModelName(model)
   }
 
   /// #1106: eviction is a stateless server-unload by model NAME
@@ -682,10 +692,11 @@ final class PipelineSettingsSync {
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
     // #2648: a file import is the THIRD workload that can have this model
     // frozen, and it is the one with no `DictationSessionConfig` to read.
-    if importPinnedOllamaModel() == model { return true }
+    let target = Self.canonical(model)
+    if importPinnedOllamaModel().map(Self.canonical) == target { return true }
     for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
-      if cfg.llmProvider == .ollama && cfg.llmModel == model {
+      if cfg.llmProvider == .ollama && Self.canonical(cfg.llmModel) == target {
         return true
       }
     }

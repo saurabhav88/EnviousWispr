@@ -674,8 +674,14 @@ struct ProviderSetupSection: View {
         // while dictation still selected it left dictation pointing at nothing, and
         // `EGOneRuntime.removeModel` then refused the file removal because its
         // `isActiveProvider` still reported dictation's selection. Found by Codex.
+        // EVERY surface that selects the removed engine moves, whichever page the removal
+        // ran from; a following import follows dictation's move. The first version moved
+        // dictation only when run from the import page, which left an import OVERRIDE on
+        // the engine when the removal ran from AI Polish. Found by the cloud review.
         if settings.llmProvider == .egOne { settings.llmProvider = .appleIntelligence }
-        setProvider(.appleIntelligence)
+        if settings.fileImportLLMProvider == .egOne {
+          settings.fileImportLLMProvider = .appleIntelligence
+        }
       }
     }
     if provider == .s1Mini {
@@ -685,7 +691,9 @@ struct ProviderSetupSection: View {
       ) {
         localPolishRuntimes.s1Mini.removeModel()
         if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
-        setProvider(.appleIntelligence)
+        if settings.fileImportLLMProvider == .s1Mini {
+          settings.fileImportLLMProvider = .appleIntelligence
+        }
       }
     }
   }

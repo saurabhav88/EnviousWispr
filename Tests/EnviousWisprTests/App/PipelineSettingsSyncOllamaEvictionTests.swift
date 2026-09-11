@@ -131,6 +131,23 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     #expect(recorder.scheduled.isEmpty, "evicted the model dictation is about to use")
   }
 
+  /// The two surfaces can hold the same model under different spellings, and the model is
+  /// still wanted. Found by the cloud review of PR #2786.
+  @Test("a model dictation selects under its bare name is kept when the import leaves its :latest twin")
+  func spellingsAreOneModelForStillWanted() {
+    let (sync, settings, recorder) = makeSync(
+      catalog: [catalogRow("llama3.2:latest", isRemote: false), catalogRow("mistral", isRemote: false)])
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "llama3.2"
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "llama3.2:latest"
+    sync.applyInitialSettings(settings)
+
+    settings.fileImportOllamaModel = "mistral"
+    sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "evicted the model dictation still selects")
+  }
+
   /// An import that FOLLOWS dictation moves with it, and the shared previous model is
   /// evicted once, not once per tracker.
   @Test("a following import evicts the shared previous model exactly once")
