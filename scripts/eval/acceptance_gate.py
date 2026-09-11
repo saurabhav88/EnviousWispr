@@ -1848,8 +1848,17 @@ OUTPUT: a JSON array ONLY, one object per case, no markdown, no prose:
 
 
 _PREAMBLE_PREFIXES = (
-    "here", "below", "the corrected", "the cleaned", "the polished",
+    "the corrected", "the cleaned", "the polished",
     "the rewritten", "corrected version", "cleaned", "polished",
+)
+# #2795: mirror of Swift `wrapperShape`. "here"/"below" alone also matched a dictated
+# lead-in ("Here are the conversion steps:"), so those two openers now need the closed
+# wrapper shape: Here is / Here's / Below is, optional the/your, optional editing
+# adjective, then transcript/text/version, then the colon. Anchored, so a wrapper noun
+# inside another word ("conVERSION", "TEXTile") cannot match.
+_PREAMBLE_WRAPPER_SHAPE = re.compile(
+    r"^(?:here(?: is|'s|\u2019s)|below is) (?:the |your )?"
+    r"(?:(?:cleaned|corrected|polished|rewritten|edited|revised|updated|fixed|formatted|improved|final|new)(?: up)? )?(?:transcript|text|version):$"
 )
 _PREAMBLE_ACKS = (
     "Certainly!", "Sure!", "Sure,", "Of course!", "Got it.", "Got it!",
@@ -1866,7 +1875,7 @@ def _first_line_looks_like_preamble(t: str) -> bool:
     if not first or len(first) >= 100 or not first.endswith(":"):
         return False
     tf = first.strip().lower()
-    return any(tf.startswith(p) for p in _PREAMBLE_PREFIXES)
+    return bool(_PREAMBLE_WRAPPER_SHAPE.match(tf)) or any(tf.startswith(p) for p in _PREAMBLE_PREFIXES)
 
 
 def _first_sentence_is_standalone_reply(t: str) -> bool:
@@ -1933,10 +1942,13 @@ def judge_tier_chunk(judge_model: str, cases: list) -> list:
 
 
 def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
-                     detected_language: str, candidate_prompt: Path | None) -> dict:
+                     detected_language: str, candidate_prompt: Path | None,
+                     candidate_examples: Path | None = None) -> dict:
     """Run the AFM runner for tier-bench. detected_language='' => nil (default
     Parakeet fidelity). candidate_prompt set => EW_AFM_PROMPT_FILE override +
-    zeroed suffix. Returns {id: latency_ms}."""
+    zeroed suffix. candidate_examples set => EW_AFM_EXAMPLES_FILE override (a JSONL
+    of {"input","output"} example turns; an EMPTY file means "no turns", #2795).
+    Returns {id: latency_ms}."""
     if not APPLE_RUNNER_BIN.exists():
         print(f"INFRA-ERROR: AFM runner not built at {APPLE_RUNNER_BIN}. "
               "Build: cd scripts/eval/apple_runner && swift build -c release", file=sys.stderr)
@@ -1949,6 +1961,18 @@ def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
     # would silently make it use the candidate prompt — an invalid A/B (Codex r3).
     # Each arm sets the override explicitly below.
     env.pop("EW_AFM_PROMPT_FILE", None)
+    # Same for the example-turns seam (#2795, cloud review on PR #2796): an inherited
+    # EW_AFM_EXAMPLES_FILE would silently swap the shipping six turns for another set,
+    # or for none, on BOTH arms. Only the candidate arm may set it, explicitly.
+    env.pop("EW_AFM_EXAMPLES_FILE", None)
+    if candidate_examples is not None:
+        if candidate_prompt is None:
+            print("INFRA-ERROR: --afm-candidate-examples needs the apple-candidate provider.", file=sys.stderr)
+            raise SystemExit(2)
+        if not candidate_examples.is_file():
+            print(f"INFRA-ERROR: candidate examples {candidate_examples} is not a file.", file=sys.stderr)
+            raise SystemExit(2)
+        env["EW_AFM_EXAMPLES_FILE"] = str(candidate_examples)
     if candidate_prompt is not None:
         # Fail fast (Codex PR1 review): the Swift connector silently falls back to
         # its built-in prompt when EW_AFM_PROMPT_FILE is unreadable/empty, so a
@@ -1983,7 +2007,8 @@ def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
 
 
 def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | None,
-                    afm_candidate_prompt: str | None, afm_detected_language: str) -> int:
+                    afm_candidate_prompt: str | None, afm_detected_language: str,
+                    afm_candidate_examples: str | None = None) -> int:
     """Multi-provider, absolute, tier-grouped LLM-judged benchmark. The decision
     instrument (not the cheap per-PR gate). Reuses generation + validator plumbing."""
     corpus = corpus_path or CORPUS
@@ -2017,7 +2042,10 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
                 print("INFRA-ERROR: apple-candidate needs --afm-candidate-prompt", file=sys.stderr)
                 return 2
             cand_prompt = Path(afm_candidate_prompt) if prov == "apple-candidate" else None
-            lat = _afm_tier_polish(corpus, out_file, prompt_path, afm_detected_language, cand_prompt)
+            cand_examples = (Path(afm_candidate_examples)
+                             if prov == "apple-candidate" and afm_candidate_examples else None)
+            lat = _afm_tier_polish(corpus, out_file, prompt_path, afm_detected_language, cand_prompt,
+                                   cand_examples)
             latency[prov] = lat
             cands, rel = _load_candidates_jsonl(out_file, cases=cases)
             reliability[prov] = {"cases_errored": rel.get("cases_errored", 0),
@@ -2181,6 +2209,9 @@ def main():
                         help="(tier-bench) comma-separated provider list; add apple-candidate for a candidate prompt")
     parser.add_argument("--afm-candidate-prompt", default=None,
                         help="(tier-bench) prompt file for the apple-candidate provider (EW_AFM_PROMPT_FILE)")
+    parser.add_argument("--afm-candidate-examples", default=None,
+                        help="(tier-bench) example-turns JSONL for the apple-candidate provider "
+                             "(EW_AFM_EXAMPLES_FILE, #2795); an empty file means no turns")
     parser.add_argument("--afm-detected-language", default="",
                         help="(tier-bench) AFM language; '' (default) => nil, mirrors default Parakeet path")
     args = parser.parse_args()
@@ -2215,7 +2246,8 @@ def main():
         corpus_path = Path(args.corpus).resolve() if args.corpus else None
         provs = [p.strip() for p in args.providers.split(",") if p.strip()]
         sys.exit(mode_tier_bench(provs, corpus_path, args.out_name,
-                                 args.afm_candidate_prompt, args.afm_detected_language))
+                                 args.afm_candidate_prompt, args.afm_detected_language,
+                                 args.afm_candidate_examples))
     else:
         sys.exit(mode_run(args.polish_model, args.out_name))
 

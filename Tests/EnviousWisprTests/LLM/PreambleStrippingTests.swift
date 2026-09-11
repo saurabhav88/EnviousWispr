@@ -56,6 +56,25 @@ struct PreambleStrippingTests {
       ("Corrected version:\nFixed.", "Fixed."),
       ("Cleaned transcript:\nClean.", "Clean."),
       ("Polished version:\nShiny.", "Shiny."),
+      // #2795: a wrapper line still strips, with and without an acknowledgment.
+      ("Here is the cleaned transcript:\nCall.", "Call."),
+      ("Sure! Here is the cleaned transcript:\nCall.", "Call."),
+      // #2795: a dictated list lead-in that happens to start with "here" and end
+      // with ":" is content, not a wrapper, and survives.
+      (
+        "Here are the things we should do before lunch:\n- Call.",
+        "Here are the things we should do before lunch:\n- Call."
+      ),
+      ("Below the fold, three items:\n- One.", "Below the fold, three items:\n- One."),
+      // #2795 second pass: a wrapper noun INSIDE another word is not a wrapper.
+      ("Here are the conversion steps:\n- Open Settings.", "Here are the conversion steps:\n- Open Settings."),
+      ("Here are the textile suppliers:\n- One.", "Here are the textile suppliers:\n- One."),
+      ("Here's the cleaned up text:\nCall.", "Call."),
+      ("Below is your transcript:\nCall.", "Call."),
+      // #2795 cloud review r2: the adjective set covers what models actually emit.
+      ("Here is the revised transcript:\nHello.", "Hello."),
+      ("Here is the updated text:\nHello.", "Hello."),
+      ("Here is the final version:\nHello.", "Hello."),
     ])
   func preambleLinesStripped(input: String, expected: String) {
     #expect(input.strippingLLMPreamble() == expected)

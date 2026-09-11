@@ -248,6 +248,9 @@ scripts/eval/*
 !scripts/eval/corpus/
 scripts/eval/corpus/*
 !scripts/eval/corpus/ci_corpus.jsonl
+# #2795: SHA-256 of every sealed_v1 INPUT (lowercased, trimmed), so a tracked test can prove no
+# shipped prompt example is an exam case without the exam itself leaving this machine.
+!scripts/eval/corpus/sealed_v1_input_hashes.txt
 !scripts/eval/baselines/
 !scripts/eval/baselines/*.json
 !scripts/eval/apple_runner/
