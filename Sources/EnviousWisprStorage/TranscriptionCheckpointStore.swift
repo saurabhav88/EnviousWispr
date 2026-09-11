@@ -16,19 +16,33 @@ import Foundation
 public final class TranscriptionCheckpointStore: @unchecked Sendable {
   public static let fileName = "transcription_checkpoint.json"
 
+  /// The production file name is scoped by bundle id, because
+  /// `AppConstants.appSupportURL` is ONE directory shared by the shipped app
+  /// and the dev build (measured: `custom-words.json` and `audio_recovery/`
+  /// already live there for both). An unscoped file would let a dev take's
+  /// checkpoint be reported as an interruption by the shipped app's next
+  /// launch, and vice versa. Spools avoid this by carrying a session id per
+  /// file; this single file carries the bundle id in its name instead.
+  public static func fileName(forBundleID bundleID: String?) -> String {
+    guard let bundleID, !bundleID.isEmpty else { return fileName }
+    return "transcription_checkpoint.\(bundleID).json"
+  }
+
   private let fileURL: URL
   private let lock = NSLock()
   private var mirror: TranscriptionCheckpoint?
 
-  /// The production store, in the app's support directory.
+  /// The production store, in the app's support directory, scoped to this bundle.
   public convenience init() {
-    self.init(directory: AppConstants.appSupportURL)
+    self.init(
+      directory: AppConstants.appSupportURL,
+      fileName: Self.fileName(forBundleID: Bundle.main.bundleIdentifier))
   }
 
-  /// Tests inject a private directory.
-  public init(directory: URL) {
+  /// Tests inject a private directory (and may keep the unscoped name).
+  public init(directory: URL, fileName: String = TranscriptionCheckpointStore.fileName) {
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    fileURL = directory.appendingPathComponent(Self.fileName)
+    fileURL = directory.appendingPathComponent(fileName)
   }
 
   /// The checkpoint most recently written in THIS process, or nil.

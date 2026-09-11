@@ -58,6 +58,25 @@ struct TranscriptionCheckpointStoreTests {
     #expect(TranscriptionCheckpointStore(directory: dir).takeOrphan() == nil)
   }
 
+  /// The production file is scoped by bundle id because the support directory
+  /// is shared by the shipped app and the dev build; a dev take must never be
+  /// reported by the shipped app's next launch.
+  @Test("two bundles in one support directory never see each other's checkpoint")
+  func bundleScopedFileNames() throws {
+    let dir = Self.tempDir()
+    let dev = TranscriptionCheckpointStore(
+      directory: dir, fileName: TranscriptionCheckpointStore.fileName(forBundleID: "com.x.dev"))
+    let prod = TranscriptionCheckpointStore(
+      directory: dir, fileName: TranscriptionCheckpointStore.fileName(forBundleID: "com.x"))
+    dev.apply(
+      .mark(takeID: Self.takeID, backend: "parakeet", stage: .decodeStarted, chunksScheduled: 0))
+    #expect(prod.takeOrphan() == nil, "the shipped app must not consume the dev build's checkpoint")
+    #expect(dev.takeOrphan()?.stage == .decodeStarted)
+    #expect(
+      TranscriptionCheckpointStore.fileName(forBundleID: nil)
+        == TranscriptionCheckpointStore.fileName, "no bundle id falls back to the plain name")
+  }
+
   @Test("a corrupt checkpoint file is consumed silently, never reported")
   func corruptFileIsConsumed() throws {
     let dir = Self.tempDir()
