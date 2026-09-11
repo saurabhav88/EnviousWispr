@@ -194,4 +194,26 @@ struct FileImportDiscoveryRepairTests {
       fresh.llmModel == "claude-haiku-4-5",
       "the default family lost to whatever sorted first")
   }
+
+  /// Switching to Ollama after a cloud provider left the cloud provider's id in the model
+  /// field, and the settings sync mirrored it over the armed Ollama model. Found by the
+  /// cloud review of PR #2786. One policy for both surfaces, so one test.
+  @Test("switching to Ollama sweeps a leftover model id instead of letting it mirror")
+  func aLeftoverIdIsSweptWhenSwitchingToOllama() {
+    // The previous provider's id: swept, so the mirror sees empty and `llama3` survives.
+    #expect(
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "gpt-5", ollamaModel: "llama3")
+        == "")
+    // An Ollama name discovery has since replaced: also a leftover.
+    #expect(
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama2", ollamaModel: "llama3")
+        == "")
+    // In agreement with the armed model: kept.
+    #expect(
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama3", ollamaModel: "llama3")
+        == "llama3")
+    // #1305 stands: empty stays empty, never refilled from the armed model.
+    #expect(
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "", ollamaModel: "llama3") == "")
+  }
 }

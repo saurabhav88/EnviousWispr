@@ -262,8 +262,18 @@ public final class SettingsManager {
       // here silently re-armed the phantom picker selection at every launch
       // after discovery had cleared it. Only discovery and an explicit user
       // pick may arm an Ollama model; fixed literals still get swept.
-      return fixedLiterals.contains(cloudModel)
-        ? LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel) : cloudModel
+      if fixedLiterals.contains(cloudModel) {
+        return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+      }
+      // #2772: and a value that is not the armed model is a LEFTOVER, swept to empty. The
+      // picker writes this field and the settings sync mirrors it into `ollamaModel`, so at
+      // a provider change the two either agree or this one is stale: the previous cloud
+      // provider's id, or an Ollama name discovery has since replaced. Left in place, the
+      // mirror copied it over the armed model ("gpt-5" became the import's Ollama model),
+      // and the readiness gate then blocked on a model the daemon does not have. Empty
+      // does not mirror, so the armed model survives. Found by the cloud review of
+      // PR #2786; the same line serves dictation, whose provider change runs this too.
+      return cloudModel == ollamaModel ? cloudModel : ""
     case .openAI, .gemini, .claude, .none:
       // #1770: a WITHDRAWN id is well-formed, so the prefix check waves it
       // through and the user 404s on every dictation, forever. Discovery would
