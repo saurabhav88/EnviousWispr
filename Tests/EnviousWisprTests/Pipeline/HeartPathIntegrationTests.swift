@@ -686,6 +686,7 @@ internal final class MockASRManager: ASRManagerInterface {
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded: Bool = true
   let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var isStreaming: Bool = false
   var downloadProgress: Double = 1
   var downloadPhase: String = "ready"

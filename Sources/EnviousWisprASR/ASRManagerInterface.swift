@@ -175,6 +175,9 @@ public protocol ASRManagerInterface: AnyObject {
   /// that never returned, which is the exact state this exists to expose.
   var vendorDecodeOccupancy: VendorDecodeOccupancy { get }
 
+  /// #2787: observation only — see `ASRManager.onVendorDecodeChunkScheduled`.
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)? { get set }
+
   // Streaming transcription
   /// Create a fresh `attemptID` before scheduling the call and its deadline —
   /// `cancelInFlightStreamingStart(attemptID:)` needs it to name exactly

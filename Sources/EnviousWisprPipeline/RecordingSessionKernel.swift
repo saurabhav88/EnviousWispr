@@ -2964,7 +2964,10 @@ final class RecordingSessionKernel {
         // `retryDecode` is already `@MainActor`, so this removes a hop rather
         // than adding an actor requirement.
         operation: { @MainActor [adapter] in
-          let decoded = await adapter.retryDecode(inputSamples: retryInput)
+          // #2787: the retry is a decode attempt with its own progress identity.
+          let decoded = await self.withDecodeProgress(sid) {
+            await adapter.retryDecode(inputSamples: retryInput)
+          }
           retryOperationReturn.withLock { $0 = ContinuousClock.now - retryEntry }
           return decoded
         },
@@ -3466,15 +3469,35 @@ final class RecordingSessionKernel {
 
   // MARK: Finalize + wedge detection
 
-  private func finalize(_ sid: SessionID, batchSamples: [Float]?) async -> ASREngineOutcome {
-    finalizeWedgeDetected = false
-    finalizeCompleted = false
-    finalizeTickCount = 0
+  /// #2787: identity of the decode attempt whose progress ticks are live.
+  /// The primary finalize, the salvage re-finalize and the Phase-2 retry each
+  /// read a fresh stream; a tick buffered on an OLDER stream for the SAME
+  /// session must not be counted against a later attempt, and `isCurrent`
+  /// cannot tell them apart. Nil outside a decode.
+  private var observedDecodeID: UUID?
+
+  /// #2787: runs one decode attempt with its progress stream consumed for
+  /// exactly that attempt. `.observation` ticks record vendor chunk scheduling
+  /// on the checkpoint and nothing else; `.progress` ticks arm the wedge
+  /// detector as before (PR-1 §B.1.7).
+  private func withDecodeProgress(
+    _ sid: SessionID, operation: @MainActor () async -> ASREngineOutcome
+  ) async -> ASREngineOutcome {
+    let id = UUID()
+    observedDecodeID = id
+    defer { if observedDecodeID == id { observedDecodeID = nil } }
 
     if let stream = adapter.finalizeProgress {
       spawn(sid) { [weak self] in
-        for await _ in stream {
-          guard let self, self.isCurrent(sid) else { return }
+        for await tick in stream {
+          guard let self, self.isCurrent(sid), self.observedDecodeID == id,
+            self.recordingOutcome == nil
+          else { return }
+          if tick.kind == .observation {
+            self.decodeChunksScheduled += 1
+            self.markStage(.decodeChunkScheduled)
+            continue
+          }
           self.finalizeTickCount += 1
           self.lastFinalizeTickAt = self.currentTick()
           self.bump()
@@ -3486,13 +3509,22 @@ final class RecordingSessionKernel {
         }
       }
     }
+    return await operation()
+  }
+
+  private func finalize(_ sid: SessionID, batchSamples: [Float]?) async -> ASREngineOutcome {
+    finalizeWedgeDetected = false
+    finalizeCompleted = false
+    finalizeTickCount = 0
 
     // #2787: marked HERE, in the shared helper, so the salvage re-finalize is
     // covered as well as the primary decode — a hang in either reads as
     // `decode_started`, never as a stale `decode_returned` from the first.
     guard isCurrent(sid), recordingOutcome == nil else { return .cancelled }
     markStage(.decodeStarted)
-    let outcome = await adapter.finalize(batchSamples: batchSamples)
+    let outcome = await withDecodeProgress(sid) {
+      await adapter.finalize(batchSamples: batchSamples)
+    }
     // Guard BEFORE touching kernel state — a `finalize()` unblocked after a
     // cancel, with a new session already started, must not clear the new
     // session's flags (Codex P2-round4 stale-completion guard).

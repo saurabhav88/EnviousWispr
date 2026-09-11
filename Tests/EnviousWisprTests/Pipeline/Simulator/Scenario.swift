@@ -28,6 +28,11 @@ enum EngineDirective: Sendable {
   case emitLoadTick
   /// Emit one finalize-progress tick (when the engine exposes a finalize stream).
   case emitFinalizeTick
+  /// #2787: emit one OBSERVATION tick on the finalize stream — recorded on the
+  /// checkpoint, never arms the wedge detector.
+  case emitObservationTick
+  /// #2787: a late observation tick on the PREVIOUS decode attempt's stream.
+  case emitObservationTickOnPreviousStream
   /// Model the engine exposing NO load-progress stream — `loadProgress` becomes
   /// `nil` (the documented signal-free warm-up path, PR-1 §B.2.2; A19).
   case setLoadProgressAbsent(Bool)

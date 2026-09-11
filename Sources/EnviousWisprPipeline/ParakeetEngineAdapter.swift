@@ -793,13 +793,41 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     return outcome
   }
 
-  /// No finalize progress stream for Parakeet in this revision. The fork does
-  /// expose per-chunk progress for audio longer than ~15 s, but it reports a
-  /// chunk when it is SCHEDULED, not finished, and the kernel's consumer of
-  /// this stream arms an automatic teardown on the first tick — connecting it
-  /// would auto-abort a slow long decode (#2787 plan, piece 3: observation
-  /// only, deferred until the customer's process sample locates the hang).
-  var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
+  /// #2787: OBSERVATION-only finalize ticks. The fork reports a chunk when
+  /// it is SCHEDULED (not finished) for audio longer than one model window;
+  /// each report becomes an `.observation` tick, which the kernel records on
+  /// the take's checkpoint (`decode_chunk_scheduled`) and never uses to arm
+  /// the finalize-wedge detector — a `.progress` tick would auto-abort a slow
+  /// long decode, which is exactly what the founder ruled out. A fresh stream
+  /// per read, so each `finalize` consumes only the ticks of its own decode.
+  var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? {
+    let (stream, continuation) = AsyncStream.makeStream(of: ASRFinalizeProgressTick.self)
+    observationContinuation?.finish()
+    observationContinuation = continuation
+    // The callback captures THIS stream's continuation: a report that arrives
+    // late, after a later read replaced the stream, lands on the finished old
+    // one (dropped) rather than on whichever stream is current by then.
+    let marker = ObservationMarker()
+    asrManager.onVendorDecodeChunkScheduled = {
+      continuation.yield(
+        ASRFinalizeProgressTick(marker: marker.next(), kind: .observation))
+    }
+    return stream
+  }
+  private var observationContinuation: AsyncStream<ASRFinalizeProgressTick>.Continuation?
+
+  /// Monotonic per-stream marker; a class so the `@Sendable` callback can
+  /// advance it without capturing the adapter.
+  private final class ObservationMarker: @unchecked Sendable {
+    private var value: UInt64 = 0
+    private let lock = NSLock()
+    func next() -> UInt64 {
+      lock.withLock {
+        value &+= 1
+        return value
+      }
+    }
+  }
 
   /// #2787: the manager's occupancy, which counts this adapter's own
   /// `transcribe` / `finalizeStreaming` calls.

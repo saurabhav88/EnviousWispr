@@ -56,6 +56,7 @@ private final class MinimalASRManager: ASRManagerInterface {
   var activeBackendType: ASRBackendType = .parakeet
   var isModelLoaded = false
   let vendorDecodeOccupancy = VendorDecodeOccupancy()
+  var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var isStreaming = false
   var downloadProgress: Double = 0
   var downloadPhase = ""

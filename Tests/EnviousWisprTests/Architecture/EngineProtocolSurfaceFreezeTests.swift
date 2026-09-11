@@ -428,6 +428,10 @@ import Testing
         ),
         MemberSignature(condition: nil, signature: "func unload() async"),
         MemberSignature(condition: nil, signature: "var supportsStreaming: Bool { get }"),
+        // #2787: a requirement, so the existential call reaches Parakeet's implementation.
+        MemberSignature(
+          condition: nil,
+          signature: "func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async"),
         MemberSignature(
           condition: nil,
           signature: "func startStreaming(options: TranscriptionOptions) async throws"
@@ -440,6 +444,10 @@ import Testing
         // Extension defaults (`extension ASRBackend { ... }`) — part of what
         // the protocol actually promises to a non-overriding conformer.
         MemberSignature(condition: nil, signature: "public var supportsStreaming: Bool { false }"),
+        // #2787: observation-only chunk reports; default is no signal.
+        MemberSignature(
+          condition: nil,
+          signature: "public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async"),
         MemberSignature(
           condition: nil,
           signature: "public func startStreaming(options _: TranscriptionOptions) async throws"),
@@ -483,6 +491,10 @@ import Testing
         // #2787: the engine-busy authority a record press, replay and unload consult.
         MemberSignature(
           condition: nil, signature: "var vendorDecodeOccupancy: VendorDecodeOccupancy { get }"),
+        // #2787: observation-only chunk reports from the active backend.
+        MemberSignature(
+          condition: nil,
+          signature: "var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)? { get set }"),
         MemberSignature(
           condition: nil,
           signature:

@@ -90,6 +90,80 @@ struct TranscriptionCheckpointStagesTests {
     #expect(events.last == .clear, "the app lived to see the cancel; nothing to report later")
   }
 
+  /// #2787 chunk 4: an OBSERVATION tick lands on the checkpoint as
+  /// `decode_chunk_scheduled` with a running count, and does NOT arm the
+  /// finalize-wedge detector. The discriminator: the kernel's test wedge window
+  /// is 2 ticks and `slowFinalize` dwells 3, so an armed detector would tear the
+  /// decode down (`.failed(.wedged)`) before it returned. `.completed` proves
+  /// the tick was observed and nothing more.
+  @Test("observation ticks are recorded with a count and never arm the wedge detector")
+  func observationTicksAreRecordedAndNeverArmTheDetector() async {
+    let (context, wrapper) = makeContext()
+    let scenario = Scenario(
+      id: "CK5", name: "observation ticks during a dwelling decode",
+      steps: [
+        .engine(.setBehavior(.slowFinalize(ticksToFinal: 3, text: "long take"))),
+        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
+        .engine(.emitObservationTick), .engine(.emitObservationTick),
+        .advanceClock(ticks: 3),
+        .expectState(.completed),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .exact("long take")))
+    let result = await ScenarioRunner().run(scenario, context: context)
+    #expect(result.passed, "\(result.failures)")
+    let events = wrapper.transcriptionCheckpointEvents
+    let chunkMarks = events.compactMap { event -> Int? in
+      if case .mark(_, _, .decodeChunkScheduled, let chunks) = event { return chunks }
+      return nil
+    }
+    #expect(chunkMarks == [1, 2], "each observation tick carries the running chunk count")
+    #expect(stages(events).last == .decodeReturned)
+    #expect(events.last == .clear)
+  }
+
+  /// #2787 chunk 4 (Codex P1): a tick that arrives on a PREVIOUS decode
+  /// attempt's stream — the failed first decode, after the retry has started
+  /// — must not count against the retry. `crashOnFinalize` fails the first
+  /// decode synchronously and the retry (`slow` is not needed: the fake's
+  /// retry returns immediately) reads a fresh stream; the late tick is yielded
+  /// on the OLD stream after that, and the count must stay at zero.
+  @Test("a late tick from a previous decode attempt is not counted against the retry")
+  func lateTickFromPreviousAttemptIsRejected() async throws {
+    let (context, wrapper) = makeContext()
+    context.engine.behavior = .crashOnFinalize
+    // The retry must be ACTIVE when the stale tick lands, or `recordingOutcome`
+    // rejects it on its own and the attempt-identity guard is untested.
+    context.engine.retryDecodeDelayTicks = 3
+
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+    context.capture.deliverBuffer(frameCount: 16_000, amplitude: 0.5)
+    await wrapper.apply(.stop)
+    await wrapper.drainReadyWork()
+
+    try #require(context.engine.retryDecodeCallCount == 1, "the retry must be in flight")
+    try #require(wrapper.testKernel.recordingOutcome == nil)
+
+    // Stale tick on the failed first attempt's stream, then a genuine one on
+    // the retry's stream: the positive control. Removing the identity guard
+    // would admit both.
+    context.engine.emitObservationTickOnPreviousStream()
+    context.engine.emitObservationTick()
+    await wrapper.drainReadyWork()
+
+    let counts = wrapper.transcriptionCheckpointEvents.compactMap { event -> Int? in
+      if case .mark(_, _, .decodeChunkScheduled, let count) = event { return count }
+      return nil
+    }
+    #expect(counts == [1], "only the current attempt's tick may count: \(counts)")
+
+    context.clock.advance(by: 3)
+    await wrapper.drainUntilConcluded()
+    #expect(wrapper.testKernel.recordingOutcome == .completed)
+  }
+
   /// Codex chunk-3 P1: the Phase-2 retry is a decode too. A hang INSIDE the
   /// retry must read `decode_started`, never a stale `decode_returned` left by
   /// the first (failed) decode — so the marks go started/returned/started/returned.

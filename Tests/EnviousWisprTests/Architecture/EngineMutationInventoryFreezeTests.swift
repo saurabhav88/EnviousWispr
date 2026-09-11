@@ -811,7 +811,7 @@ import Testing
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "retryDecode",
       // #1946 chunk 2 re-spelled the operation closure so it can stamp the
       // decode's own return time. Same call, same session-scoped safety.
-      text: "let decoded = await adapter.retryDecode(inputSamples: retryInput)",
+      text: "await adapter.retryDecode(inputSamples: retryInput)",
       classification: .structurallySafe),
     // Row 22 — "confirmed already safe, no code change" per this file's own
     // doc comment at the site.
@@ -978,7 +978,7 @@ import Testing
     // review named, not cascaded through every deeper forwarding layer.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "transcribe",
-      text: "try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
+      text: "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "feedAudio",
@@ -1105,7 +1105,7 @@ import Testing
     // The real adapter-facing finalize call.
     CallSite(
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "finalize",
-      text: "let outcome = await adapter.finalize(batchSamples: batchSamples)",
+      text: "await adapter.finalize(batchSamples: batchSamples)",
       classification: .structurallySafe),
     // The kernel's own private `finalize(sid:batchSamples:)` called
     // recursively during ASR-interruption salvage and the empty-result retry
