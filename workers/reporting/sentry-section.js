@@ -120,6 +120,14 @@ export const ERROR_CATEGORIES = Object.freeze({
   // marker is an unindexed EXTRA, so no aggregate field can split them.
   model_load_wedged: { group: LOST, deliveryProven: false, emitted: true, label: "speech model load got stuck" },
 
+  // #2787: reported on the NEXT launch from a persisted per-take checkpoint —
+  // the previous process left an unfinished one. It may have exited during
+  // processing OR during delivery (the checkpoint is cleared only at the
+  // terminal, after paste), so delivery is not proven either way. Not proof of
+  // a hang: a user quitting two seconds into a healthy long decode leaves the
+  // same record.
+  transcription_interrupted: { group: LOST, deliveryProven: false, emitted: true, label: "app exited before a dictation's completion was recorded" },
+
   // Conservative: covers both a failed dispatch and a nil collaborator, and
   // delivery is not decidable from the category alone.
   pipeline_dispatch_failed: { group: LOST, deliveryProven: false, emitted: true, label: "dictation could not start processing" },

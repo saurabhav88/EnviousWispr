@@ -5,6 +5,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
 import EnviousWisprServices
+import EnviousWisprStorage
 import Foundation
 
 // Issue #574: `EnviousWisprAudio` and `EnviousWisprASR` are needed in release
@@ -76,6 +77,10 @@ final class AppLifecycleCoordinator {
   /// growth, and this is one genuinely new capability adding exactly one
   /// dependency.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+  /// #2787: the persisted stage checkpoint. Read once at launch for the
+  /// previous process's interrupted take, and mirrored into every telemetry
+  /// flush as `last_stage` / `stage_age_ms`.
+  private let transcriptionCheckpointStore: TranscriptionCheckpointStore
 
   /// #2455 C3: required and non-defaulted. The one call this type makes moves the
   /// app to accessory at launch, which a unit test must never do to the real app.
@@ -105,6 +110,7 @@ final class AppLifecycleCoordinator {
     // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
     // this coordinator's stored-property ceiling clean).
     onboardingProgress: OnboardingProgress,
+    transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
     self.application = application
@@ -128,6 +134,7 @@ final class AppLifecycleCoordinator {
     self.applicationRelocationCoordinator = applicationRelocationCoordinator
     self.bluetoothAwarenessPresenter = bluetoothAwarenessPresenter
     self.batchDecodeFaultController = batchDecodeFaultController
+    self.transcriptionCheckpointStore = transcriptionCheckpointStore
     // Icon-refresh seam: the window coordinator's two onboarding-dismiss
     // callsites route through this closure. Was wired in `AppDelegate.attach`
     // before PR-B.4.
@@ -220,9 +227,19 @@ final class AppLifecycleCoordinator {
     // any flush path can fire, so the provider is never nil in production.
     TelemetryService.shared.flushContextProvider = { [weak self] in
       let phase = self?.liveRecordingState.pipelineState ?? .idle
+      // #2787: the stage the take in flight last reached, if any, so a graceful
+      // quit during `transcribing` names the step and not just the phase.
+      let checkpoint = self?.transcriptionCheckpointStore.current
       return TelemetryService.FlushContext(
-        activeRecording: phase.isActive, appPhase: phase.telemetryLabel)
+        activeRecording: phase.isActive, appPhase: phase.telemetryLabel,
+        lastStage: checkpoint?.stage.rawValue,
+        stageAgeMs: checkpoint.map { max(0, Int(Date().timeIntervalSince($0.stageEnteredAt) * 1000)) })
     }
+
+    // #2787: report the take the PREVIOUS process died in the middle of, once.
+    // Before the recovery scan can replay its audio, so the two signals — "it
+    // stuck at stage X" and "its audio replayed fine" — arrive in that order.
+    TranscriptionInterruptionReporter.reportOrphanIfAny(from: transcriptionCheckpointStore)
 
     // Run Apple Intelligence diagnostics via coordinator.
     // Handles: Sentry context, PostHog event, persistence, first-launch re-check.

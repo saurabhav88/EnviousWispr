@@ -166,6 +166,11 @@ public enum KernelDictationDriverFactory {
     /// than a spool with no provenance.
     package let escapeRecovery: PrepareEscapeRecovery
 
+    /// #2787: the persisted stage checkpoint sink. Defaulted to a no-op so
+    /// every test construction site is untouched; the composition root wires
+    /// the real `TranscriptionCheckpointStore`.
+    package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
+
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
     /// because `captureErrorSink`'s default is a main-actor-isolated value;
@@ -189,7 +194,8 @@ public enum KernelDictationDriverFactory {
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -208,6 +214,7 @@ public enum KernelDictationDriverFactory {
       self.parakeetDelivery = parakeetDelivery
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
+      self.transcriptionCheckpoint = transcriptionCheckpoint
     }
   }
 
@@ -261,6 +268,11 @@ public enum KernelDictationDriverFactory {
     /// than a spool with no provenance.
     package let escapeRecovery: PrepareEscapeRecovery
 
+    /// #2787: the persisted stage checkpoint sink. Defaulted to a no-op so
+    /// every test construction site is untouched; the composition root wires
+    /// the real `TranscriptionCheckpointStore`.
+    package let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void
+
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
     /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
@@ -287,7 +299,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+      transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -307,6 +320,7 @@ public enum KernelDictationDriverFactory {
       self.s1MiniRuntime = s1MiniRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
+      self.transcriptionCheckpoint = transcriptionCheckpoint
     }
   }
 
@@ -395,7 +409,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: inputs.egOneRuntime,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      escapeRecovery: inputs.escapeRecovery)
+      escapeRecovery: inputs.escapeRecovery,
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -444,7 +459,8 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: inputs.egOneRuntime,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
-      escapeRecovery: inputs.escapeRecovery)
+      escapeRecovery: inputs.escapeRecovery,
+      transcriptionCheckpoint: inputs.transcriptionCheckpoint)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -468,7 +484,8 @@ public enum KernelDictationDriverFactory {
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
-    escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
+    escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+    transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme
@@ -664,6 +681,7 @@ public enum KernelDictationDriverFactory {
           callerResumeMs: callerResumeMs, acceptedAfterCutoff: acceptedAfterCutoff)
       },
       engineMutationScope: engineMutationScope,
+      transcriptionCheckpoint: transcriptionCheckpoint,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock
       // that would cancel cold model loads after ~200ms instead of the

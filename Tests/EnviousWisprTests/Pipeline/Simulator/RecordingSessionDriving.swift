@@ -175,6 +175,13 @@ final class StopTimeZeroSignalTelemetryLog {
   var fired: [CaptureStallContext] = []
 }
 
+/// #2787: records every `TranscriptionCheckpointEvent` the kernel emits, in
+/// order, so a scenario can assert the stop→decode stage sequence and the
+/// terminal clear without a real store. Same pre-`self` capture shape as above.
+final class TranscriptionCheckpointLog {
+  var events: [TranscriptionCheckpointEvent] = []
+}
+
 /// Heartpath 5b (#1520): records the kernel's dead-mic telemetry closures so a
 /// test can assert what fired without a real emitter. Reference type for the
 /// same pre-`self` capture constraint as `StopTimeZeroSignalTelemetryLog`.
@@ -223,6 +230,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
   var asrTimingEndCount: Int { asrTimingLog.count }
 
   private let stopTimeTelemetryLog = StopTimeZeroSignalTelemetryLog()
+  private let transcriptionCheckpointLog = TranscriptionCheckpointLog()
+  /// #2787: the kernel's checkpoint events, in fire order.
+  var transcriptionCheckpointEvents: [TranscriptionCheckpointEvent] {
+    transcriptionCheckpointLog.events
+  }
   /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
   /// submitted via `stopTimeZeroSignalTelemetry`, in fire order. Lets a test
   /// assert exactly one classified event fired (dedup) without a real
@@ -292,6 +304,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     let limb = self.limb
     let telemetryState = self.telemetryState
     let stopTimeTelemetryLog = self.stopTimeTelemetryLog
+    let transcriptionCheckpointLog = self.transcriptionCheckpointLog
     let storeLog = self.storeLog
     let captureTelemetry = self.captureTelemetry
     let deadMicLog = self.deadMicLog
@@ -344,6 +357,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
       asrRetryDeadlineStartedTelemetry: onRetryDeadlineStarted,
       asrRetryDeadlineResolvedTelemetry: onRetryDeadlineResolved,
       engineMutationScope: .alwaysAllowedForTesting,
+      transcriptionCheckpoint: { [transcriptionCheckpointLog] event in
+        transcriptionCheckpointLog.events.append(event)
+      },
       minimumRecordingTicks: minimumRecordingTicks,
       captureTelemetry: captureTelemetry,
       deadMicRetireAttemptTelemetry: { [deadMicLog] ctx in

@@ -280,6 +280,11 @@ package final class WisprBootstrapper {
     // #2787: owns the engine AFTER a session ends with its decode still running.
     let abandonedDecodeHold = AbandonedDecodeHold(
       lease: engineLease, occupancy: asrManager.vendorDecodeOccupancy)
+    // #2787: the persisted per-take stage checkpoint (see `TranscriptionCheckpointStore`).
+    let transcriptionCheckpointStore = TranscriptionCheckpointStore()
+    let transcriptionCheckpoint: @MainActor (TranscriptionCheckpointEvent) -> Void = {
+      [transcriptionCheckpointStore] event in transcriptionCheckpointStore.apply(event)
+    }
 
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
@@ -496,7 +501,8 @@ package final class WisprBootstrapper {
         s1MiniRuntime: s1MiniRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
-        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
+        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
+        transcriptionCheckpoint: transcriptionCheckpoint
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -550,7 +556,8 @@ package final class WisprBootstrapper {
         egOneRuntime: egOneRuntime,
         s1MiniRuntime: s1MiniRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
-        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
+        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
+        transcriptionCheckpoint: transcriptionCheckpoint
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -1347,6 +1354,7 @@ package final class WisprBootstrapper {
       applicationRelocationCoordinator: applicationRelocationCoordinator,
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
       onboardingProgress: onboardingProgress,
+      transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController
     )
 
