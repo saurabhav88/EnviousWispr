@@ -132,6 +132,7 @@ struct MenuBarControllerTests {
         "Start Recording",
         "Add Selected Word  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
         "",  // separator
+        "Transcribe a File...",  // #2772, opens the window on that page
         "Settings...",
         "Appearance",  // #1047 submenu parent
         "",  // separator
@@ -145,7 +146,7 @@ struct MenuBarControllerTests {
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
     #expect(menu.items[5].isSeparatorItem)
-    #expect(menu.items[8].isSeparatorItem)
+    #expect(menu.items[9].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
     #expect(item(menu, "Settings...")?.keyEquivalent == ",")
     #expect(item(menu, "Quit \(AppConstants.appName)")?.keyEquivalent == "q")
@@ -597,8 +598,12 @@ struct MenuBarControllerTests {
     perform(item(menu, "Settings..."))
     #expect(spy.fired == ["continueOnboarding", "openSettings"])
 
+    // #2772: the drop-down entry opens the window on the Transcribe a File page.
+    perform(item(menu, "Transcribe a File..."))
+    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile"])
+
     perform(item(menu, "Quit \(AppConstants.appName)"))
-    #expect(spy.fired == ["continueOnboarding", "openSettings", "quit"])
+    #expect(spy.fired == ["continueOnboarding", "openSettings", "openTranscribeFile", "quit"])
 
     // toggleRecording dispatches through an async Task — yield so it runs.
     perform(item(menu, "Start Recording"))
@@ -720,6 +725,7 @@ struct MenuBarControllerTests {
         },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openSettings: { spy.fired.append("openSettings") },
+        openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         toggleRecording: { spy.fired.append("toggleRecording") },
         quit: { spy.fired.append("quit") }
