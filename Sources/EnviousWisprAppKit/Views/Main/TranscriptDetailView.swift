@@ -38,6 +38,12 @@ struct TranscriptDetailView: View {
       for: transcript, now: Date(), dictationInFlight: isDictationInFlight)
   }
 
+  /// #2807: what this row IS, by name. A Dictation was made with the keybind; a Transcript
+  /// came from Transcribe a File. Read from `isImported`, the row's only kind.
+  private var kindWord: String {
+    transcript.isImported ? "Transcript" : "Dictation"
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       actionBar
@@ -51,9 +57,11 @@ struct TranscriptDetailView: View {
           // still has a derived document worth showing — numbers formatted, saved words
           // corrected — and it must not be labelled as AI-polished. Falling back to the raw
           // words instead would silently discard that work.
+          // #2807: the section names say what the TEXT is (polished, processed, original);
+          // the title above says what the row is (a dictation or a transcript).
           if let output = transcript.polishedText ?? transcript.processedText {
             transcriptSection(
-              transcript.polishedText == nil ? "Processed Transcript" : "Polished Transcript",
+              transcript.polishedText == nil ? "Processed" : "Polished",
               icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
             ) {
               Text(output)
@@ -62,7 +70,7 @@ struct TranscriptDetailView: View {
                 .foregroundStyle(.stTextPrimary)
                 .textSelection(.enabled)
             }
-            transcriptSection("Original Transcript", icon: "doc.text") {
+            transcriptSection("Original", icon: "doc.text") {
               Text(transcript.text)
                 .font(.system(size: 15))
                 .lineSpacing(3)
@@ -70,7 +78,7 @@ struct TranscriptDetailView: View {
                 .textSelection(.enabled)
             }
           } else {
-            transcriptSection("Transcript", icon: "doc.text") {
+            transcriptSection(kindWord, icon: "doc.text") {
               Text(transcript.text)
                 .font(.system(size: 16))
                 .lineSpacing(3)
@@ -156,7 +164,7 @@ struct TranscriptDetailView: View {
       }
       .buttonStyle(.borderless)
       .foregroundStyle(.stTextSecondary)
-      .accessibilityLabel("Delete transcript")
+      .accessibilityLabel("Delete \(kindWord.lowercased())")
     }
     .buttonStyle(.bordered)
     .controlSize(.large)
@@ -169,7 +177,7 @@ struct TranscriptDetailView: View {
 
   private var header: some View {
     HStack(alignment: .top, spacing: 14) {
-      Image(systemName: "doc.text")
+      Image(systemName: transcript.isImported ? "doc.text" : "mic")
         .font(.system(size: 20, weight: .medium))
         .foregroundStyle(.stAccent)
         .frame(width: 46, height: 46)
@@ -181,7 +189,7 @@ struct TranscriptDetailView: View {
         .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 6) {
-        Text("Transcript")
+        Text(kindWord)
           .font(.system(size: 22, weight: .semibold))
           .foregroundStyle(.stTextPrimary)
 

@@ -19,8 +19,54 @@ final class TranscriptCoordinator {
   /// and misses a bare access from an extension. The compiler makes the mistake
   /// unavailable instead. Read `visibleTranscripts` or `filteredTranscripts`.
   private var transcripts: [Transcript] = []
-  var searchQuery: String = ""
-  var selectedTranscriptID: UUID?
+  var searchQuery: String = "" {
+    didSet { reconcileSelectionWithDisplayedSet() }
+  }
+
+  /// The row the list has selected.
+  ///
+  /// #2807: the detail pane resolves from what is DISPLAYED, and this setter is the one
+  /// door every selection change goes through: the list's binding, the filter, a search, a
+  /// deletion. A selection that resolves inside the displayed set lifts the live-transcript
+  /// suppression; a selection going away, whoever cleared it, arms it. The coordinator cannot
+  /// tell a user's deselect from a row vanishing under the list's binding, so both arm it —
+  /// the cost is a status view where the live transcript used to be, which is the same thing
+  /// the user sees after deleting a row.
+  var selectedTranscriptID: UUID? {
+    didSet {
+      if let selected = selectedTranscriptID {
+        if filteredTranscripts.contains(where: { $0.id == selected }) {
+          liveFallbackSuppressed = false
+        }
+      } else if oldValue != nil {
+        liveFallbackSuppressed = true
+      }
+    }
+  }
+
+  /// Which kind of History row is listed (#2807). View state: never persisted, so a relaunch
+  /// starts at All.
+  var historyFilter: HistoryFilter = .all {
+    didSet { reconcileSelectionWithDisplayedSet() }
+  }
+
+  /// #2807: whether the detail pane may show the live transcript when nothing is selected.
+  ///
+  /// The live fallback exists for one moment: a dictation just finished and History is open
+  /// with nothing selected, so the pane shows what was just said. It is UNRELATED to anything
+  /// the user did in the list. So when a selection is cleared because a filter, a search or a
+  /// deletion took the row away, the pane must show nothing rather than a transcript from
+  /// another time. Lifted only by a selection that resolves inside the displayed set, or by a
+  /// completed dictation landing in it (`append`), which is the moment the fallback is for.
+  private var liveFallbackSuppressed = false
+
+  /// The completed dictation the live fallback is showing, if this object saw it land (#2807).
+  ///
+  /// The fallback is the live pipeline's transcript, which this object cannot see; what it
+  /// CAN see is the row `append` inserted for it. Kept so a filter or a search that stops
+  /// listing that row also stops the pane showing its text: the pane must follow the list.
+  /// Nil until a dictation completes in this session, or after Delete All removes the row.
+  private var liveFallbackRowID: UUID?
 
   /// Re-render pulse for pending Escape Recovery rows (#2087).
   ///
@@ -71,13 +117,25 @@ final class TranscriptCoordinator {
     return transcripts.filter { Self.isVisible($0, at: now) }
   }
 
+  /// The rows History lists: visible rows, inside the kind filter, then inside the search.
+  ///
+  /// #2807: the kind filter runs FIRST and reads `isImported`, which is the row's only kind.
+  /// A pending Escape-recovery row is a dictation that was cancelled, so it stays under All
+  /// and Dictations exactly as it did before the filter existed, and is absent under
+  /// Transcripts. The search then keeps its own rule below.
   var filteredTranscripts: [Transcript] {
     let visible = visibleTranscripts
-    guard !searchQuery.isEmpty else { return visible }
+    let listed: [Transcript]
+    switch historyFilter {
+    case .all: listed = visible
+    case .dictations: listed = visible.filter { !$0.isImported }
+    case .transcripts: listed = visible.filter { $0.isImported }
+    }
+    guard !searchQuery.isEmpty else { return listed }
     // Pending rows are excluded from search DELIBERATELY: an accidental Escape
     // would otherwise pollute results for 24 hours, and the row is reachable
     // the whole time by scrolling History, which is where the user left it.
-    return visible.filter {
+    return listed.filter {
       // #2772: the imported file's name is on the row, and it is the thing a person looking
       // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
       // `marketing_sync.wav` removed the row while its badge said the word. Found by the
@@ -88,7 +146,7 @@ final class TranscriptCoordinator {
     }
   }
 
-  /// Completed dictations. A held recovery is an OFFER, not a dictation the
+  /// Completed rows. A held recovery is an OFFER, not a dictation the
   /// user made — counting it would inflate the stat the moment they cancelled
   /// something, which is the opposite of what cancelling meant.
   ///
@@ -103,15 +161,17 @@ final class TranscriptCoordinator {
   ///
   /// `deletableCount` deliberately counts imports too: it answers "how many rows would
   /// Delete All take", where an uncounted row is a row destroyed without warning.
-  var transcriptCount: Int {
-    _ = expiryPulse
-    let now = Date()
-    return transcripts.filter { Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil }
-      .count
+  ///
+  /// #2807: counts inside the filter and the search, because the number sits beside the list
+  /// it describes. Under All with an empty search it is exactly the pre-filter count. Renamed
+  /// from `transcriptCount`, because a Transcript is now a file import and this counts every
+  /// kind.
+  var listedCount: Int {
+    filteredTranscripts.filter { $0.escapeRecoveredAt == nil }.count
   }
 
-  /// How many dictations exist: `transcriptCount` without the imports. Onboarding's success
-  /// detector reads this one.
+  /// How many dictations exist: every completed row that is not an import, whatever the
+  /// filter shows. Onboarding's success detector reads this one.
   var dictationCount: Int {
     _ = expiryPulse
     let now = Date()
@@ -123,8 +183,8 @@ final class TranscriptCoordinator {
   /// How many rows a Delete All would actually take, from the user's point of
   /// view (#2087).
   ///
-  /// Deliberately NOT `transcriptCount`. That one answers "how many dictations
-  /// have I made" and excludes held recoveries, which is right for a statistic
+  /// Deliberately NOT `listedCount`. That one answers "how many rows does the
+  /// list show" and excludes held recoveries, which is right for a statistic
   /// and wrong for a destructive confirmation: with only held rows on screen it
   /// reads zero, so the dialog would offer to delete "all 0 transcripts" and
   /// then delete them. A confirmation must count what it is about to destroy.
@@ -143,8 +203,88 @@ final class TranscriptCoordinator {
     // "all 1 transcripts" is what centralising the sentence without reading it
     // produced, and a test then pinned it. One row is not a plural, and "all"
     // reads as boilerplate when there is nothing to be exhaustive about.
-    let subject = count == 1 ? "1 transcript" : "all \(count) transcripts"
+    //
+    // #2807: Delete All is GLOBAL while the list can be filtered or searched, so the
+    // sentence says that a hidden row goes too. The count is the global one for the same
+    // reason: a confirmation must count what it is about to destroy, not what is on screen.
+    let subject =
+      count == 1
+      ? "the only item in History, even if a filter or search is hiding it"
+      : "all \(count) items in History, including any hidden by a filter or search"
     return "This will permanently delete \(subject). This action cannot be undone."
+  }
+
+  /// What the list shows when it has no rows (#2807), or nil while it has some.
+  ///
+  /// Four different absences, because the fix for each is different: nothing has ever been
+  /// recorded; nothing of the chosen kind; nothing matches the search. Answered here so the
+  /// view cannot pick the global "nothing yet" for a list that a filter emptied.
+  var emptyState: HistoryEmptyState? {
+    guard !visibleTranscripts.isEmpty else { return .nothingYet }
+    guard filteredTranscripts.isEmpty else { return nil }
+    guard searchQuery.isEmpty else { return .noMatches }
+    switch historyFilter {
+    // Unreachable: with no search, All lists every visible row, and there is at least one.
+    case .all: return .nothingYet
+    case .dictations: return .noDictations
+    case .transcripts: return .noTranscripts
+    }
+  }
+
+  /// What the detail pane shows (#2807), resolved from the DISPLAYED set.
+  ///
+  /// A selected row that the filter or the search does not list, or that expired since it was
+  /// picked, is `.empty` rather than the live fallback: the pane must never answer a narrowing
+  /// of the list with a transcript from another time. With nothing selected the live fallback
+  /// stands unless something cleared a selection out from under the user.
+  var detail: HistoryDetail {
+    guard let selected = selectedTranscriptID else {
+      // ONE source for the just-finished dictation: its History row, never the live
+      // pipeline's copy beside it. The row is what the list shows, so the pane cannot
+      // show a text the list does not; a row this object has not seen yet, or that
+      // the list stopped showing, is nothing rather than the live transcript.
+      if let fallbackRow = liveFallbackRowID {
+        guard !liveFallbackSuppressed,
+          let row = filteredTranscripts.first(where: { $0.id == fallbackRow })
+        else { return .empty }
+        return .row(row)
+      }
+      return liveFallbackSuppressed ? .empty : .liveFallback
+    }
+    if let match = filteredTranscripts.first(where: { $0.id == selected }) {
+      return .row(match)
+    }
+    return .empty
+  }
+
+  /// The detail pane follows the list (#2807). Called when the filter or the search changes,
+  /// and after any write that replaces rows, because a cleanup can change the text a search
+  /// matched on.
+  ///
+  /// A selection that the displayed set no longer lists is cleared, and the live fallback is
+  /// suppressed by the setter, so a filter or a search never reveals it. With nothing selected
+  /// the same question is asked of the fallback's own row: if the list stops showing the
+  /// dictation the pane is showing, the pane goes empty. Where that row is unknown, any
+  /// narrowing of the list suppresses the fallback, because nothing can prove the pane's text
+  /// is among the rows on screen. Widening the list later does not bring either back; only a
+  /// selection, or the next completed dictation, does.
+  private func reconcileSelectionWithDisplayedSet() {
+    let displayed = filteredTranscripts
+    if let selected = selectedTranscriptID {
+      guard !displayed.contains(where: { $0.id == selected }) else { return }
+      selectedTranscriptID = nil
+      return
+    }
+    guard !liveFallbackSuppressed else { return }
+    let fallbackRowIsListed: Bool
+    if let fallbackRow = liveFallbackRowID {
+      fallbackRowIsListed = displayed.contains(where: { $0.id == fallbackRow })
+    } else {
+      fallbackRowIsListed = historyFilter == .all && searchQuery.isEmpty
+    }
+    if !fallbackRowIsListed {
+      liveFallbackSuppressed = true
+    }
   }
 
   /// Held rows IN MEMORY whose window has elapsed.
@@ -431,6 +571,10 @@ final class TranscriptCoordinator {
       if swept.walkComplete, swept.unremovable == 0 {
         transcripts.removeAll { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }
       }
+      // #2807: an evicted row may have been the selected one. Clearing it here, where the
+      // expiry is detected, is what lets the next completed dictation show in the pane
+      // instead of hiding behind an id that resolves to nothing. Cloud review of PR #2815.
+      reconcileSelectionWithDisplayedSet()
       for row in swept.expired {
         guard let takeID = row.takeID else { continue }
         // The row's REAL age, not the retention constant. A Mac left off for
@@ -521,7 +665,8 @@ final class TranscriptCoordinator {
         // start of a load replaces the cleaned version saved a moment later, and History
         // shows unpolished words until something else refreshes it. Found by Codex.
         let newerRows = Dictionary(
-          uniqueKeysWithValues: transcripts
+          uniqueKeysWithValues:
+            transcripts
             .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
             .map { ($0.id, $0) })
         diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
@@ -535,6 +680,7 @@ final class TranscriptCoordinator {
         // unchanged, so History is byte-identical for anyone who never turns
         // Escape Recovery on.
         transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+        reconcileSelectionWithDisplayedSet()
         startPulseIfNeeded()
       } catch {
         await AppLogger.shared.log(
@@ -558,6 +704,27 @@ final class TranscriptCoordinator {
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {
     transcripts.insert(transcript, at: 0)
+    // #2807: a COMPLETED dictation landing in the displayed set with nothing selected is the
+    // one moment the live fallback exists for, so it may show again. A held recovery is a
+    // cancellation, not a completion, and an import never comes through here; neither lifts
+    // the suppression, and nor does a row the current filter does not list.
+    if transcript.escapeRecoveredAt == nil {
+      liveFallbackRowID = transcript.id
+      // A selection that no longer resolves is no selection: the row expired between
+      // renders or was swept, and read-time expiry hides it without a state change. Left
+      // in place it would hide this completion behind an empty pane. Cloud review of PR #2815.
+      if let selected = selectedTranscriptID,
+        !filteredTranscripts.contains(where: { $0.id == selected })
+      {
+        selectedTranscriptID = nil
+      }
+      if selectedTranscriptID == nil {
+        // The pane follows the list in BOTH directions: a completion the list shows lets
+        // the fallback show again, and one the list does not show (a search or a filter
+        // that excludes it) suppresses a fallback that was showing the previous dictation.
+        liveFallbackSuppressed = !filteredTranscripts.contains(where: { $0.id == transcript.id })
+      }
+    }
     // A held row appended at runtime is the production route once the feature
     // is activated, and it arrives with a countdown already running. Without
     // this the pulse would only ever start at launch, so a recovery held during
@@ -586,6 +753,7 @@ final class TranscriptCoordinator {
     } else {
       transcripts.insert(transcript, at: 0)
     }
+    reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
   }
 
@@ -611,6 +779,8 @@ final class TranscriptCoordinator {
     historyWriteRevision += 1
     writtenAtRevision[transcript.id] = historyWriteRevision
     transcripts[existing] = transcript
+    // #2807: the cleaned text can stop matching the search the row was selected under.
+    reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
     return true
   }
@@ -634,11 +804,20 @@ final class TranscriptCoordinator {
 
   func delete(_ transcript: Transcript) {
     do {
+      // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
+      // saw beside the one they deleted.
+      let displayed = filteredTranscripts
       try store.delete(id: transcript.id)
       transcripts.removeAll { $0.id == transcript.id }
       if selectedTranscriptID == transcript.id {
-        selectedTranscriptID = nil
+        // The next row in the same filter, else the previous one, else nothing — and
+        // nothing means the status view, never the live fallback (the setter arms that).
+        selectedTranscriptID = Self.neighbour(of: transcript.id, in: displayed)
+      } else if selectedTranscriptID == nil, transcript.id == liveFallbackRowID {
+        // The pane was showing this row's text through the fallback; the row is gone.
+        liveFallbackSuppressed = true
       }
+      if transcript.id == liveFallbackRowID { liveFallbackRowID = nil }
       refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
@@ -765,6 +944,9 @@ final class TranscriptCoordinator {
       try store.deleteAll()
       transcripts.removeAll()
       selectedTranscriptID = nil
+      // #2807: an empty History shows nothing, whatever the live pipeline last produced.
+      liveFallbackSuppressed = true
+      liveFallbackRowID = nil
       refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
@@ -774,6 +956,15 @@ final class TranscriptCoordinator {
         )
       }
     }
+  }
+
+  /// The row to select after `id` is deleted from `displayed`: the one after it, else the one
+  /// before it, else nil (#2807). Pure, so the choice is unit-drivable.
+  private static func neighbour(of id: UUID, in displayed: [Transcript]) -> UUID? {
+    guard let index = displayed.firstIndex(where: { $0.id == id }) else { return nil }
+    if index + 1 < displayed.count { return displayed[index + 1].id }
+    if index > 0 { return displayed[index - 1].id }
+    return nil
   }
 
   // MARK: - Escape Recovery expiry pulse (#2087)
@@ -1017,4 +1208,48 @@ final class TranscriptCoordinator {
       startPulseIfNeeded()
     }
   #endif
+}
+
+/// Which kind of History row the list shows (#2807).
+///
+/// Two words, by meaning: a **Dictation** is a take made with the hotkey, a **Transcript** is
+/// a file put through Transcribe a File, and History is the collection of both. The kind is
+/// read from `Transcript.isImported`; nothing stores a second flag.
+enum HistoryFilter: String, CaseIterable, Sendable {
+  case all
+  case dictations
+  case transcripts
+
+  /// The word on the control.
+  var title: String {
+    switch self {
+    case .all: return "All"
+    case .dictations: return "Dictations"
+    case .transcripts: return "Transcripts"
+    }
+  }
+}
+
+/// Why the History list is empty (#2807). Each case has a different fix, so each gets its own
+/// sentence.
+enum HistoryEmptyState: Equatable, Sendable {
+  /// Nothing has ever been recorded or imported.
+  case nothingYet
+  /// Rows exist, none of them a dictation.
+  case noDictations
+  /// Rows exist, none of them a transcript.
+  case noTranscripts
+  /// Rows exist, none matching the search.
+  case noMatches
+}
+
+/// What the History detail pane shows (#2807).
+enum HistoryDetail {
+  /// A row the list displays: the selected one, or the just-finished dictation's own row.
+  case row(Transcript)
+  /// Nothing is selected, no completed dictation has landed in this session, and nothing has
+  /// narrowed the list: the live pipeline's transcript, if any.
+  case liveFallback
+  /// Nothing to show, and the live transcript must not stand in.
+  case empty
 }

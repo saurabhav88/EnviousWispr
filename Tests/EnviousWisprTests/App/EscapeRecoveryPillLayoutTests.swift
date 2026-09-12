@@ -31,7 +31,7 @@ struct EscapeRecoveryPillLayoutTests {
       PillMetrics.leadInset + sentence + PillMetrics.midGap
       + PillMetrics.actionWidth + PillMetrics.trailInset
 
-    // Failing this renders "Transcript cance…", which the earlier fixed-width
+    // Failing this renders "Dictation cance…", which the earlier fixed-width
     // pill did when the copy was revised.
     #expect(PillMetrics.pillWidth >= claimed)
   }

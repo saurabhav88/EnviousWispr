@@ -311,7 +311,7 @@ import Testing
       ),
       (
         .escapeRecovery(transcriptID: UUID()),
-        "Transcript cancelled. Press Undo to get it back, or find it in History."
+        "Dictation cancelled. Press Undo to get it back, or find it in History."
       ),
     ]
     for (intent, want) in cases {

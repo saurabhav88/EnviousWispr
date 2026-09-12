@@ -79,6 +79,19 @@ enum WhatsNewContent {
       version: "2.4.9"
     ),
 
+    // #2808, phase 1 of #2807. The founder's vocabulary decision of 2026-09-11: a keybind
+    // take is a Dictation, a file import is a Transcript, History holds both. The cancel
+    // pill's noun changed with it ("Dictation cancelled"); that is the same vocabulary, not
+    // a repair, so it is not narrated separately.
+    Entry(
+      id: "history-dictations-and-transcripts",
+      icon: "line.3.horizontal.decrease.circle",
+      title: "History tells a dictation from a transcript",
+      description:
+        "Everything you say with your keybind is a Dictation. Every file you put through Transcribe a File is a Transcript. History now labels each row, and a new All, Dictations, Transcripts switch above the list shows just the kind you want.",
+      version: "2.4.9"
+    ),
+
     // MARK: - v2.4.8
 
     // #2483, #2691 and #2697, merged fe044f6e / 85ddc26e / d49494f3. ONE user

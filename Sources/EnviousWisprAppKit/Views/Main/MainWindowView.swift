@@ -166,7 +166,8 @@ struct StatusView: View {
           ContentUnavailableView {
             Label("Transcription Complete", systemImage: "checkmark.circle")
           } description: {
-            Text("Select a transcript from the sidebar to view it.")
+            // #2807: History lists dictations and transcripts, so "item".
+            Text("Select an item from the sidebar to view it.")
           }
 
           if let polishError = lastRecordingResult.polishError {

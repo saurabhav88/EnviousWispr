@@ -271,7 +271,8 @@ struct EscapeRecoveryPillTests {
   /// refused it.
   @Test("the pill's copy and its spoken announcement agree")
   func copyAgreesWithTheAnnouncement() {
-    #expect(DictationNarrator.escapeRecoveryPillTitle == "Transcript cancelled")
+    // #2807: "Dictation", the founder's word for a keybind take, since 2026-09-11.
+    #expect(DictationNarrator.escapeRecoveryPillTitle == "Dictation cancelled")
     #expect(DictationNarrator.escapeRecoveryPillAction == "Undo")
 
     let spoken = DictationNarrator.announcement(

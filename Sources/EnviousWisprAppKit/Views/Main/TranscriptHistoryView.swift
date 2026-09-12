@@ -39,12 +39,10 @@ struct TranscriptHistoryView: View {
       .opacity(isRecording ? 0.4 : 1.0)
       .animation(.easeInOut(duration: 0.3), value: isRecording)
       .overlay {
-        if transcriptCoordinator.visibleTranscripts.isEmpty {
-          ContentUnavailableView(
-            "No Transcripts Yet",
-            systemImage: "doc.text",
-            description: Text("Your transcription history will appear here.")
-          )
+        // #2807: the coordinator decides WHICH absence this is, so a list a filter emptied
+        // cannot show the global "nothing yet" over rows that exist.
+        if let emptyState = transcriptCoordinator.emptyState {
+          HistoryEmptyView(state: emptyState)
         }
       }
 
@@ -53,7 +51,9 @@ struct TranscriptHistoryView: View {
         Button(role: .destructive) {
           showDeleteAllConfirmation = true
         } label: {
-          Label("Delete All", systemImage: "trash")
+          // #2807: "history", because the button is GLOBAL while the list can be filtered
+          // or searched; the confirmation sentence says so too.
+          Label("Delete all history", systemImage: "trash")
             .font(.caption)
             .settingsHoverQuiet(tint: .stError)
         }
@@ -63,9 +63,9 @@ struct TranscriptHistoryView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
       }
     }
-    .alert("Delete All Transcripts?", isPresented: $showDeleteAllConfirmation) {
+    .alert("Delete all history?", isPresented: $showDeleteAllConfirmation) {
       Button("Cancel", role: .cancel) {}
-      Button("Delete All", role: .destructive) {
+      Button("Delete all", role: .destructive) {
         transcriptCoordinator.deleteAll()
       }
     } message: {
@@ -73,6 +73,42 @@ struct TranscriptHistoryView: View {
       // meant the right one and the dictation statistic were both in scope and
       // equally easy to type, with nothing testable observing the choice.
       Text(transcriptCoordinator.deleteAllConfirmationMessage)
+    }
+  }
+}
+
+/// What the History list shows when it lists nothing (#2807). One sentence per reason, because
+/// the fix for each is different: record something, import something, change the filter, or
+/// change the search.
+struct HistoryEmptyView: View {
+  let state: HistoryEmptyState
+
+  var body: some View {
+    switch state {
+    case .nothingYet:
+      ContentUnavailableView(
+        "Nothing here yet",
+        systemImage: "doc.text",
+        description: Text("Your dictations and transcripts will appear here.")
+      )
+    case .noDictations:
+      ContentUnavailableView(
+        "No dictations yet",
+        systemImage: "mic",
+        description: Text("Press your keybind and start talking.")
+      )
+    case .noTranscripts:
+      ContentUnavailableView(
+        "No transcripts yet",
+        systemImage: "doc.text",
+        description: Text("Use Transcribe a File to add one.")
+      )
+    case .noMatches:
+      ContentUnavailableView(
+        "No matching history.",
+        systemImage: "magnifyingglass",
+        description: Text("Try a different search, or another filter.")
+      )
     }
   }
 }
@@ -116,7 +152,11 @@ struct TranscriptRowView: View {
         .font(.body)
         .foregroundStyle(.stTextPrimary)
 
-      HStack(spacing: 6) {
+      // #2807: the chips WRAP. With the kind chip added, an import row carries five chips
+      // (kind, file name, polish, engine, and any recovery badge), which is wider than the
+      // list at its narrowest; a plain HStack then squeezed every chip and broke "Transcript"
+      // across three lines. Seen in the phase-1 Live UAT screenshot.
+      WrappingHStack(spacing: 6) {
         // #2087. Deliberately NOT the "Recovered" capsule below: that one means
         // crash rescue, and a held recovery is an ordinary cancel the user can
         // still change their mind about. The decision and the wording both come
@@ -154,6 +194,19 @@ struct TranscriptRowView: View {
         case nil:
           EmptyView()
         }
+
+        // #2807: the row's kind, by name. A Dictation was made with the keybind; a Transcript
+        // came from Transcribe a File. Read from `isImported`, the row's only kind. Icon plus
+        // text, never colour alone, like every other badge in this row.
+        HStack(spacing: 2) {
+          Image(systemName: transcript.isImported ? "doc.text" : "mic")
+          Text(transcript.isImported ? "Transcript" : "Dictation")
+        }
+        .font(.caption2)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(Color.stTextSecondary.opacity(0.14), in: Capsule())
+        .foregroundStyle(.stTextSecondary)
 
         if let importedFileName = transcript.importedFileName {
           // #2772 finding 11 — this row came from Transcribe a File, not from the keybind.
