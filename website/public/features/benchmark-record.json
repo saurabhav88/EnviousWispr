@@ -541,7 +541,7 @@
   },
   "limitations": [
     "English only. Nothing here describes behaviour in other languages.",
-    "The exam is the publisher's own and reflects its idea of what dictation looks like. Blind keys and hidden-source grading address the scoring, not the case selection.",
+    "The exam is the publisher's own and reflects its idea of what dictation looks like. Independent answer-key authors and a shared grading rubric address scoring consistency, not case selection. Model-identity masking is unverified.",
     "Fluid-1 was tested with substituted instructions because its production instructions were unavailable. The effect is unknown; these results do not establish its performance in the official app.",
     "Grading is by model judgement, which disagrees with itself by up to 3.1 points on this corpus. Gaps smaller than that are not readable.",
     "Latency includes each vendor's runtime, and one vendor's production decoder is not replicated. Read speed as indicative, not as a controlled measurement of the weights alone.",

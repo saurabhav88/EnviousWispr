@@ -28,6 +28,8 @@ export const cases = records.map((record) => {
   return { ...record, transcript, id: record.transcript.match(/transcripts\/(.+)\.json$/)[1] };
 });
 
+if (String(firstCard.id) !== cases[0].id) throw new Error('cases: first-card evidence does not match the first recording');
+
 export const stamp = (seconds) => {
   const s = Math.floor(seconds);
   return (s >= 3600 ? Math.floor(s / 3600) + ':' : '') + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');

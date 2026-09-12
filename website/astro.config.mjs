@@ -4,6 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { catalog } from './src/data/site-navigation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'https://enviouswispr.com';
@@ -72,18 +73,11 @@ const HELP_DATES = (() => {
 })();
 
 // Feature-launch dates (#2816): the nine catalog URLs carry an explicit
-// `updated` date in src/data/site-navigation.js, the same discipline as help
-// articles. They never fall through to mtime: a fresh checkout or the daily
+// `updated` date in src/data/site-navigation.js (imported, never parsed as
+// text), the same discipline as help articles. They never fall through to mtime: a fresh checkout or the daily
 // rebuild would otherwise publish today's date for pages nobody touched.
-const FEATURE_DATES = (() => {
-  const src = fs.readFileSync(path.join(__dirname, 'src/data/site-navigation.js'), 'utf8');
-  const map = {};
-  for (const m of src.matchAll(/path:\s*'([^']+)',[\s\S]*?updated:\s*'(\d{4}-\d{2}-\d{2})'/g)) {
-    map[`${SITE}${m[1]}`] = m[2];
-  }
-  if (Object.keys(map).length === 0) throw new Error('sitemap: no feature dates parsed from site-navigation.js');
-  return map;
-})();
+const FEATURE_DATES = Object.fromEntries(catalog.map((entry) => [`${SITE}${entry.path}`, entry.updated]));
+if (Object.keys(FEATURE_DATES).length === 0) throw new Error('sitemap: no feature dates in site-navigation.js');
 const isFeatureUrl = (url) =>
   url === `${SITE}/features/` ||
   url.startsWith(`${SITE}/features/`) ||

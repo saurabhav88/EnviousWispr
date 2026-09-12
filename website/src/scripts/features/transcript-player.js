@@ -14,19 +14,27 @@
 //     policy; load and error outcomes are announced through one live region.
 import { guarded, keepRoot, enableControls, on } from './guard.js';
 
+const READY_DEADLINE_MS = 15000;
 let apiPromise;
 function youtubeAPI() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   if (apiPromise) return apiPromise;
   apiPromise = new Promise((resolve, reject) => {
     const prior = window.onYouTubeIframeAPIReady;
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    const deadline = setTimeout(() => {
+      apiPromise = null;
+      script.remove();
+      reject(Error('YouTube did not become ready'));
+    }, READY_DEADLINE_MS);
     window.onYouTubeIframeAPIReady = () => {
+      clearTimeout(deadline);
       prior?.();
       resolve(window.YT);
     };
-    const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api';
     script.onerror = () => {
+      clearTimeout(deadline);
       apiPromise = null;
       reject(Error('YouTube unavailable'));
     };
@@ -88,9 +96,17 @@ export function init(host, motion, scope) {
   let firstFetchArmed = true;
   let flip = null;
   let hoverClose = null;
+  let transcriptStatus = '';
+  let videoStatus = '';
+  let playerDeadline = null;
+  const announce = () => {
+    note.textContent = [transcriptStatus, videoStatus].filter(Boolean).join(' ');
+  };
 
   function stop() {
     playerGeneration++;
+    clearTimeout(playerDeadline);
+    playerDeadline = null;
     clearInterval(timer);
     timer = null;
     try {
@@ -160,6 +176,8 @@ export function init(host, motion, scope) {
               e.target.destroy();
               return;
             }
+            clearTimeout(playerDeadline);
+            playerDeadline = null;
             loading = false;
             e.target.seekTo(seekTo, true);
             e.target.playVideo();
@@ -168,24 +186,63 @@ export function init(host, motion, scope) {
           onStateChange: guarded(scope, follow),
           onError: guarded(scope, () => {
             if (ticket !== playerGeneration) return;
+            clearTimeout(playerDeadline);
+            playerDeadline = null;
             loading = false;
-            note.textContent = 'YouTube cannot play this video here. Use the Watch on YouTube link; the transcript is still available.';
+            videoStatus = 'YouTube cannot play this video here. Use the Watch on YouTube link.';
+            announce();
             clearInterval(timer);
             timer = null;
           }),
         },
       });
+      // A player that never reports ready or error is torn down and the load button returns.
+      playerDeadline = setTimeout(
+        guarded(scope, () => {
+          if (ticket !== playerGeneration || signal.aborted) return;
+          stop();
+          renderLoadButton(item);
+          videoStatus = 'The video did not start. Use the Watch on YouTube link.';
+          announce();
+        }),
+        READY_DEADLINE_MS,
+      );
     } catch (error) {
       if (ticket !== playerGeneration || signal.aborted) return;
       if (apiLoaded) throw error;
       loading = false;
-      note.textContent = 'The video could not load. Use the Watch on YouTube link.';
+      videoStatus = 'The video could not load. Use the Watch on YouTube link.';
+      announce();
     }
   };
+  function renderLoadButton(item) {
+    videoHost.replaceChildren();
+    if (!item.video) {
+      const p = document.createElement('div');
+      p.className = 'case-source-pending';
+      p.textContent = 'Local recording confirmed. Matching source video link pending.';
+      videoHost.append(p);
+      return;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'case-load';
+    button.setAttribute('aria-label', 'Play ' + item.name + ' source video');
+    button.innerHTML = '<span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>';
+    const img = document.createElement('img');
+    img.className = 'case-thumbnail';
+    img.src = 'https://i.ytimg.com/vi/' + item.video + '/hqdefault.jpg';
+    img.alt = '';
+    img.loading = 'lazy';
+    button.prepend(img);
+    on(scope, button, 'click', () => play());
+    videoHost.append(button);
+  }
 
   function passageRow(p, i, playable) {
     const row = document.createElement('div');
     row.className = 'transcript-passage' + (i === current ? ' current' : '');
+    row.setAttribute('aria-current', String(i === current));
     const time = document.createElement('span');
     time.className = 'transcript-time';
     time.textContent = playable ? '▶ Play from ' + stamp(p.start) : stamp(p.start);
@@ -250,7 +307,8 @@ export function init(host, motion, scope) {
     const p = document.createElement('p');
     p.textContent = message;
     body.replaceChildren(p);
-    note.textContent = message;
+    transcriptStatus = message;
+    announce();
     setModes(false);
   }
   let load = async function load(item, ticket, keepEvidenceOnFailure) {
@@ -268,7 +326,8 @@ export function init(host, motion, scope) {
       metrics[1].textContent = data.umUhRemoved.toLocaleString();
       metrics[2].textContent = stamp(Math.round(data.polishMs / 1000));
       provenance.textContent = data.provenance;
-      note.textContent = item.video ? 'Transcript loaded.' : 'Transcript loaded. Timestamps refer to the local recording; synchronized playback is unavailable.';
+      transcriptStatus = item.video ? 'Transcript loaded.' : 'Transcript loaded. Timestamps refer to the local recording; synchronized playback is unavailable.';
+      announce();
       setModes(true);
     } catch (error) {
       if (ticket !== revision || signal.aborted) return;
@@ -276,7 +335,8 @@ export function init(host, motion, scope) {
       if (keepEvidenceOnFailure) {
         // Card 0's page evidence stays; a later interaction retries the fetch.
         firstFetchArmed = true;
-        note.textContent = 'The full transcript could not load. The opening passages above are from this recording. Select a view or scroll to retry.';
+        transcriptStatus = 'The full transcript could not load. The opening passages above are from this recording. Select a view or scroll to retry.';
+        announce();
       } else {
         unavailable('Transcript unavailable for this recording. Use the source link to watch it.');
       }
@@ -309,27 +369,7 @@ export function init(host, motion, scope) {
     if (item.video) link.href = 'https://www.youtube.com/watch?v=' + item.video;
     else if (item.sourceUrl) link.href = item.sourceUrl;
     else link.removeAttribute('href');
-    videoHost.replaceChildren();
-    if (item.video) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'case-load';
-      button.setAttribute('aria-label', 'Play ' + item.name + ' source video');
-      button.innerHTML = '<span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>';
-      const img = document.createElement('img');
-      img.className = 'case-thumbnail';
-      img.src = 'https://i.ytimg.com/vi/' + item.video + '/hqdefault.jpg';
-      img.alt = '';
-      img.loading = 'lazy';
-      button.prepend(img);
-      on(scope, button, 'click', () => play());
-      videoHost.append(button);
-    } else {
-      const p = document.createElement('div');
-      p.className = 'case-source-pending';
-      p.textContent = 'Local recording confirmed. Matching source video link pending.';
-      videoHost.append(p);
-    }
+    renderLoadButton(item);
     host.querySelector('.measurement-info').open = false;
     // Every selection, including a return to card 0, shows its own pending
     // state; the page's build-time evidence belongs to the initial view only.
@@ -338,7 +378,9 @@ export function init(host, motion, scope) {
     const p = document.createElement('p');
     p.textContent = 'Loading the transcript for this recording.';
     body.replaceChildren(p);
-    note.textContent = 'Loading the transcript for ' + item.name + '.';
+    transcriptStatus = 'Loading the transcript for ' + item.name + '.';
+    videoStatus = '';
+    announce();
     setModes(false);
     load(item, ticket, false);
   }

@@ -9,6 +9,7 @@
 // measured after entity decoding.
 import fs from 'node:fs';
 import path from 'node:path';
+import { catalog } from '../src/data/site-navigation.js';
 
 const root = process.cwd();
 const SITE = 'https://enviouswispr.com';
@@ -20,17 +21,13 @@ if (!fs.existsSync(dist)) {
   process.exit(1);
 }
 
-// ── Expected, from the source catalog ──────────────────────────────────────
-const catalogSource = fs.readFileSync(path.join(root, 'src/data/site-navigation.js'), 'utf8');
-const expected = new Map();
-for (const m of catalogSource.matchAll(/path:\s*'([^']+)',[\s\S]*?updated:\s*'(\d{4}-\d{2}-\d{2})'/g)) {
-  expected.set(m[1], m[2]);
-}
-if (expected.size === 0) {
-  console.error('FAIL: parsed 0 catalog entries from site-navigation.js; the source parse is broken, not the build.');
+// ── Expected, from the source catalog (the real module, never a text pattern) ─
+const expected = new Map(catalog.map((e) => [e.path, e.updated]));
+if (expected.size === 0 || [...expected.values()].some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d ?? ''))) {
+  console.error('FAIL: the catalog has no entries or an entry without a YYYY-MM-DD updated date.');
   process.exit(1);
 }
-const isLaunchRoute = (route) => route.startsWith('/features/') || route === '/why-offline/' || route === '/customization/';
+const isLaunchRoute = (route) => /^\/features(?:\/|\.html$|$)/.test(route) || /^\/(?:why-offline|customization)(?:\/|\.html$|$)/.test(route);
 
 // ── Built pages: every HTML file, including 404.html ───────────────────────
 const pages = new Map(); // route or file path → html
@@ -82,7 +79,13 @@ function resolve(href, baseRoute) {
     return { invalid: true };
   }
   const external = url.origin !== SITE;
-  return { url, external, pathname: url.pathname, hash: url.hash ? decodeURIComponent(url.hash.slice(1)) : '' };
+  let hash = url.hash.slice(1);
+  try {
+    hash = decodeURIComponent(hash);
+  } catch {
+    /* keep the literal fragment */
+  }
+  return { url, external, pathname: url.pathname, hash };
 }
 /** Built HTML for a pathname, whether a route (dir index) or a file. */
 function pageFor(pathname) {
@@ -126,6 +129,7 @@ for (const route of [...expected.keys()].filter((r) => builtLaunch.has(r))) {
   const canonical = tags(html).find((t) => t.name === 'link' && t.attrs.rel === 'canonical')?.attrs.href;
   const h1s = (html.match(/<h1[\s>]/g) ?? []).length;
   const types = [];
+  const modified = [];
   for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
     try {
       const parsed = JSON.parse(m[1]);
@@ -133,6 +137,7 @@ for (const route of [...expected.keys()].filter((r) => builtLaunch.has(r))) {
         if (Array.isArray(node)) return node.forEach(walkTypes);
         if (node && typeof node === 'object') {
           if (typeof node['@type'] === 'string') types.push(node['@type']);
+          if (typeof node.dateModified === 'string') modified.push(node.dateModified);
           for (const v of Object.values(node)) walkTypes(v);
         }
       };
@@ -149,6 +154,7 @@ for (const route of [...expected.keys()].filter((r) => builtLaunch.has(r))) {
   if (h1s !== 1) problems.push(`${route}: ${h1s} <h1> elements`);
   if (!types.includes('WebPage') && !types.includes('CollectionPage')) problems.push(`${route}: no WebPage or CollectionPage JSON-LD`);
   if (!types.includes('BreadcrumbList')) problems.push(`${route}: no BreadcrumbList JSON-LD`);
+  if (!modified.includes(expected.get(route))) problems.push(`${route}: JSON-LD dateModified ${modified.join(',') || 'missing'} is not the catalog date ${expected.get(route)}`);
   if (/noindex/.test(metaContent(html, 'robots'))) problems.push(`${route}: noindex`);
   if (/>Loading\b|Loading transcript|Loading…/.test(html)) problems.push(`${route}: a "Loading" placeholder survives in the built HTML`);
   const dashes = [...html.matchAll(/[^<>]{0,40}[—–][^<>]{0,40}/g)].map((m) => m[0].trim());
@@ -290,6 +296,10 @@ else {
   linksChecked += checkLinks('/', home, 'homepage');
 }
 
+for (const [route, html] of pages) {
+  if (!tags(html).some((t) => t.name === 'header' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-header'))) problems.push(`${route}: shared header missing`);
+  if (!tags(html).some((t) => t.name === 'footer' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-footer'))) problems.push(`${route}: shared footer missing`);
+}
 if (missing.length) problems.push(`launch routes missing from the build: ${missing.join(', ')}`);
 if (unexpected.length) problems.push(`launch routes built but not in the catalog: ${unexpected.join(', ')}`);
 
