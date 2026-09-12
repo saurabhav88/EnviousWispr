@@ -22,25 +22,8 @@ html[data-theme=dark] .products-landing{--landing-tint:#22192f;--landing-card:#1
 :is(.landing-product-card,.loop-feature-card) h3{font-size:18px;font-weight:600;letter-spacing:-.025em;line-height:1.4;color:var(--ink)}
 :is(.landing-product-card,.loop-feature-card) p{font-size:15px;line-height:1.6;color:var(--body);margin-top:8px;max-width:235px;padding-right:15px}
 .landing-card-arrow .icon{width:19px;height:19px}
-.landing-art-dark{display:none}
-html[data-theme=dark] .landing-art-dark{display:block}
-html[data-theme=dark] .landing-art-light{display:none}
-.landing-kicker{display:block;font-size:11px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;margin-bottom:16px;color:#d4c0e4}
-.landing-closing{position:relative;isolation:isolate;overflow:hidden;text-align:center;background:#0d0b1c;color:#fff;padding:70px 0 65px;min-height:340px}
-.landing-closing>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 64%;z-index:-2}
-.landing-closing:after{content:'';position:absolute;inset:0;background:linear-gradient(#0d0b1c80,#0d0b1c22 60%,#0d0b1c55);z-index:-1}
-.landing-closing h2{font-size:clamp(34px,3.4vw,50px);font-weight:600;line-height:1.15;letter-spacing:-.045em;color:#fff}
-.landing-closing p{color:#e1d5ed;font-size:16px;margin-top:17px;margin-bottom:25px}
-.landing-closing .button{background:#c49af7;color:#231032;display:inline-flex}
-.landing-closing small{display:block;width:fit-content;margin:15px auto 0;padding:4px 10px;border-radius:99px;background:#14101be8;color:#e1d5ed;font-size:11px}
-html:not([data-theme=dark]) .landing-closing{background:#eee6f7;color:#20152c}
-html:not([data-theme=dark]) .landing-closing:after{background:linear-gradient(#f8f3fc70,#f8f3fc10 70%,#eee6f720)}
-html:not([data-theme=dark]) .landing-closing h2{color:#20152c}
-html:not([data-theme=dark]) .landing-closing p,html:not([data-theme=dark]) .landing-closing .landing-kicker{color:#57425f}
-html:not([data-theme=dark]) .landing-closing .button{background:var(--accent);color:white}
-html:not([data-theme=dark]) .landing-closing small{background:#fbf9fff0;color:#57425f}
 @media(max-width:850px){.landing-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.landing-benefits>div{padding-inline:12px}}
-@media(max-width:600px){.landing-benefits{grid-template-columns:1fr 1fr;row-gap:25px;padding-block:30px 35px}.landing-benefits>div:nth-child(2){border-right:0}.landing-benefits strong{font-size:14px}.landing-benefits p{font-size:12px}.landing-benefits .icon{width:25px;height:25px;margin-bottom:10px}.landing-products{padding-block:32px 40px}.landing-section-heading h2{font-size:29px}.landing-section-heading>p{font-size:14px}.mobile-break{display:initial}.landing-product-grid{grid-template-columns:1fr;gap:12px}:is(.landing-product-card,.loop-feature-card){min-height:0;padding:22px 22px 22px 81px;border-radius:15px}.landing-card-icon{position:absolute;left:21px;top:24px;width:40px;height:40px;margin:0}:is(.landing-product-card,.loop-feature-card) h3{font-size:17px}:is(.landing-product-card,.loop-feature-card) p{font-size:14px;margin-top:5px;padding-right:19px;max-width:none}.landing-card-arrow .icon{width:16px;height:16px}.landing-closing{padding-block:57px 50px}.landing-closing>img{object-position:50% 65%}.landing-closing h2{font-size:36px}.landing-closing p{font-size:15px;line-height:1.7;max-width:320px;margin-inline:auto}.landing-closing .landing-kicker{font-size:9px}}
+@media(max-width:600px){.landing-benefits{grid-template-columns:1fr 1fr;row-gap:25px;padding-block:30px 35px}.landing-benefits>div:nth-child(2){border-right:0}.landing-benefits strong{font-size:14px}.landing-benefits p{font-size:12px}.landing-benefits .icon{width:25px;height:25px;margin-bottom:10px}.landing-products{padding-block:32px 40px}.landing-section-heading h2{font-size:29px}.landing-section-heading>p{font-size:14px}.mobile-break{display:initial}.landing-product-grid{grid-template-columns:1fr;gap:12px}:is(.landing-product-card,.loop-feature-card){min-height:0;padding:22px 22px 22px 81px;border-radius:15px}.landing-card-icon{position:absolute;left:21px;top:24px;width:40px;height:40px;margin:0}:is(.landing-product-card,.loop-feature-card) h3{font-size:17px}:is(.landing-product-card,.loop-feature-card) p{font-size:14px;margin-top:5px;padding-right:19px;max-width:none}.landing-card-arrow .icon{width:16px;height:16px}}
 @media(max-width:360px){:is(.landing-product-card,.loop-feature-card){padding-left:72px}.landing-card-icon{left:17px;width:37px;height:37px}:is(.landing-product-card,.loop-feature-card) h3{font-size:16px}}
 @media(prefers-reduced-motion:reduce){:is(.landing-product-card,.loop-feature-card){transition:none}:is(.landing-product-card,.loop-feature-card):hover{transform:none}}
 .landing-section-heading{text-align:center;margin-bottom:35px}
@@ -110,10 +93,3 @@ html[data-motion=paused] :is(.landing-product-card,.loop-feature-card) *{animati
 @media(max-width:850px){.directory-hero{grid-template-columns:1fr;padding-block:52px 25px;gap:35px}.directory-intro{max-width:600px}.directory-intro h1{font-size:62px}.directory-intro h1 br:first-child{display:none}}
 @media(max-width:600px){.directory-hero{padding-block:41px 15px;gap:29px}.directory-intro h1{font-size:46px;line-height:1.08}.directory-intro h1 br:first-child{display:initial}.directory-label{font-size:12px;margin-bottom:19px}.directory-intro>p{font-size:17px;line-height:1.7;margin-top:21px}.directory-jump{font-size:13px;margin-top:13px}.landing-products{padding-top:38px}}
 @media(max-width:360px){.directory-intro h1{font-size:40px}}
-.landing-closing,html:not([data-theme=dark]) .landing-closing{background:var(--bg);padding-top:95px;padding-bottom:95px}
-.landing-closing>img{mask-image:linear-gradient(to bottom,transparent 0%,#000 24%,#000 72%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0%,#000 24%,#000 72%,transparent 100%)}
-.landing-closing:after{background:linear-gradient(to bottom,var(--bg) 0%,#0d0b1c40 27%,#0d0b1c22 68%,var(--bg) 100%)}
-html:not([data-theme=dark]) .landing-closing:after{background:linear-gradient(to bottom,var(--bg) 0%,#f8f3fc30 27%,#f8f3fc10 68%,var(--bg) 100%)}
-@media(max-width:600px){.landing-closing,html:not([data-theme=dark]) .landing-closing{padding-top:78px;padding-bottom:78px}}
-/* Before theme.js stamps data-theme (or with scripts off) follow the OS. */
-@media (prefers-color-scheme: dark){html:not([data-theme]) .landing-art-dark{display:block}html:not([data-theme]) .landing-art-light{display:none}}

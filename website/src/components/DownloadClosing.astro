@@ -1,0 +1,42 @@
+---
+// Shared closing: the approved dawn and twilight landscapes from #2816.
+// Images remain lazy and theme-hidden; with scripts off, browsers may fetch both.
+import { getImage } from 'astro:assets';
+import dawn from '../assets/features/dawn-landscape.png';
+import twilight from '../assets/features/twilight-landscape.png';
+import DownloadButton from './features/DownloadButton.astro';
+import '../styles/download-closing.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  source?: string;
+  id?: string;
+}
+const {
+  title = 'Put your voice to work.',
+  description = 'Free, private dictation for Mac. No account. No subscription.',
+  source = 'features-closing',
+  id,
+} = Astro.props;
+const widths = [1086, 2172];
+async function sources(src) {
+  const variants = await Promise.all(widths.map((width) => getImage({ src, width, format: 'webp', quality: 82 })));
+  return { srcset: variants.map((v, i) => `${v.src} ${widths[i]}w`).join(', '), src: variants[0].src };
+}
+const light = await sources(dawn);
+const dark = await sources(twilight);
+---
+
+<section class="download-closing" id={id} aria-labelledby="download-closing-title">
+  <img class="download-closing-dark" src={dark.src} srcset={dark.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
+  <img class="download-closing-light" src={light.src} srcset={light.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
+  <div class="download-closing-content">
+    <span class="download-closing-kicker">A little more room for your ideas.</span>
+    <h2 id="download-closing-title">{title}</h2>
+    <p class="download-closing-description">{description}</p>
+    <DownloadButton source={source} class="download-closing-button" />
+    <small class="download-closing-compatibility">macOS 14+ · Apple Silicon</small>
+    <slot />
+  </div>
+</section>
