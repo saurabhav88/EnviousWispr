@@ -571,6 +571,10 @@ final class TranscriptCoordinator {
       if swept.walkComplete, swept.unremovable == 0 {
         transcripts.removeAll { $0.escapeRecoveredAt != nil && !Self.isVisible($0, at: now) }
       }
+      // #2807: an evicted row may have been the selected one. Clearing it here, where the
+      // expiry is detected, is what lets the next completed dictation show in the pane
+      // instead of hiding behind an id that resolves to nothing. Cloud review of PR #2815.
+      reconcileSelectionWithDisplayedSet()
       for row in swept.expired {
         guard let takeID = row.takeID else { continue }
         // The row's REAL age, not the retention constant. A Mac left off for
@@ -706,6 +710,14 @@ final class TranscriptCoordinator {
     // the suppression, and nor does a row the current filter does not list.
     if transcript.escapeRecoveredAt == nil {
       liveFallbackRowID = transcript.id
+      // A selection that no longer resolves is no selection: the row expired between
+      // renders or was swept, and read-time expiry hides it without a state change. Left
+      // in place it would hide this completion behind an empty pane. Cloud review of PR #2815.
+      if let selected = selectedTranscriptID,
+        !filteredTranscripts.contains(where: { $0.id == selected })
+      {
+        selectedTranscriptID = nil
+      }
       if selectedTranscriptID == nil {
         // The pane follows the list in BOTH directions: a completion the list shows lets
         // the fallback show again, and one the list does not show (a search or a filter

@@ -565,5 +565,50 @@ struct TranscriptCoordinatorFilterTests {
       coordinator.setTranscriptsForTesting([expired])
       #expect(isEmpty(coordinator.detail))
     }
+
+    /// Cloud review of PR #2815: the stale id must not hide the NEXT dictation. Two doors
+    /// close it: the sweep that evicts the expired row clears the selection where the expiry
+    /// is detected, and `append` treats a selection that resolves to nothing as none.
+    @Test("a selected recovery that expired does not hide the next completed dictation")
+    func expiredSelectionDoesNotHideTheNextDictation() async {
+      let (coordinator, _) = makeCoordinator()
+      let live = held("cancelled", age: 60)
+      coordinator.setTranscriptsForTesting([live])
+      coordinator.selectedTranscriptID = live.id
+
+      let expired = Transcript(
+        id: live.id, text: live.text, createdAt: live.createdAt,
+        escapeRecoveredAt: Date().addingTimeInterval(-AppConstants.pendingTranscriptRetention - 60),
+        escapeRecoveryTakeID: live.escapeRecoveryTakeID)
+      coordinator.setTranscriptsForTesting([expired])
+
+      // Door one: the sweep evicts the lapsed row and clears the selection with it.
+      await coordinator.sweepExpiredPending()
+      #expect(coordinator.selectedTranscriptID == nil, "the expiry cleared the selection")
+      #expect(isEmpty(coordinator.detail))
+
+      let finished = dictation("just finished")
+      coordinator.append(finished)
+      #expect(isRow(coordinator.detail, finished.id), "the new dictation shows")
+    }
+
+    @Test("a stale selection at the moment a dictation completes is treated as no selection")
+    func staleSelectionAtAppendIsTreatedAsNone() {
+      let (coordinator, _) = makeCoordinator()
+      let live = held("cancelled", age: 60)
+      coordinator.setTranscriptsForTesting([live])
+      coordinator.selectedTranscriptID = live.id
+      let expired = Transcript(
+        id: live.id, text: live.text, createdAt: live.createdAt,
+        escapeRecoveredAt: Date().addingTimeInterval(-AppConstants.pendingTranscriptRetention - 60),
+        escapeRecoveryTakeID: live.escapeRecoveryTakeID)
+      // No sweep has run: door two alone must open.
+      coordinator.setTranscriptsForTesting([expired])
+
+      let finished = dictation("just finished")
+      coordinator.append(finished)
+      #expect(coordinator.selectedTranscriptID == nil)
+      #expect(isRow(coordinator.detail, finished.id))
+    }
   #endif
 }
