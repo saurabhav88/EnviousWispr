@@ -1543,6 +1543,19 @@ final class FileImportCoordinator {
       let saved = try mergeSpeakerFields(historyID, analysis, turns)
       saveFailed = false
       rowDeleted = !saved
+      // Keeps this coordinator's OWN in-memory snapshot in step with what was just
+      // persisted. `withImportResult` (used by a later "Clean it again" / `rePolish`'s
+      // `savePolishedToHistory`) never touches the speaker fields, so it PRESERVES
+      // whatever `originalHistoryRow` already carries — but only if this write updates
+      // that carried value first. Without this, a re-polish after turn storage silently
+      // overwrote the just-saved speaker analysis, names and turns back to nil, because
+      // `originalHistoryRow` never learned about this write (found by whole-diff review).
+      // Guarded by id: `originalHistoryRow` can be nil, or belong to a DIFFERENT file
+      // chosen while this background pass was still running.
+      if saved, originalHistoryRow?.id == historyID {
+        originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
+          analysis: analysis, turns: turns)
+      }
     } catch {
       saveFailed = true
       rowDeleted = false

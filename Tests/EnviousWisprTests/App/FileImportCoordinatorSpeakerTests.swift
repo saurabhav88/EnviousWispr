@@ -109,6 +109,7 @@ struct FileImportCoordinatorSpeakerTests {
     wordTimingCoverage: ASRWordTimingCoverage? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
+    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
     mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws ->
       Bool = { _, _, _ in true },
     emitSpeakerTelemetry: @escaping @MainActor (
@@ -145,7 +146,7 @@ struct FileImportCoordinatorSpeakerTests {
       },
       prepareLocalPolish: prepareLocalPolish,
       saveToHistory: saveToHistory,
-      updateHistoryRow: { _ in true },
+      updateHistoryRow: updateHistoryRow,
       mergeSpeakerFields: mergeSpeakerFields,
       historyRowExists: { _ in true },
       processPart: processPart)
@@ -865,5 +866,56 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(
       mergeRecorder.callCount == 0,
       "a write must never happen once the background pass's own preparation fails")
+  }
+
+  @Test(
+    "re-polishing (Clean it again) after turn storage has already run preserves the persisted speaker fields, never resetting them to nil"
+  )
+  func rePolishPreservesAlreadyPersistedSpeakerFields() async {
+    @MainActor final class UpdateRecorder {
+      private(set) var rows: [Transcript] = []
+      func record(_ row: Transcript) { rows.append(row) }
+    }
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let recorder = UpdateRecorder()
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      updateHistoryRow: { row in
+        recorder.record(row)
+        return true
+      },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    // Wait for the BACKGROUND turn-storage pass to actually REPORT a stored write, not
+    // just for `isEngineHeld` to read false — that flag starts false too, so checking it
+    // right after the visible run finishes can observe "not yet started" and "already
+    // finished" as the exact same value (a race this test itself had before this fix).
+    let stored = await settleUntil { telemetry.outcomes.contains(.stored) }
+    #expect(stored, "the background turn-storage pass never reported a stored outcome")
+
+    coordinator.rePolish()
+    let rePolishFinished = await settleUntil { coordinator.state == .finished }
+    #expect(rePolishFinished)
+
+    // The LAST row `rePolish`'s own `savePolishedToHistory` wrote must still carry the
+    // speaker fields the background pass persisted earlier. `withImportResult` never
+    // touches them — this only holds if `originalHistoryRow` learned about that earlier
+    // write, which is exactly what the whole-diff review found missing.
+    let lastRow = recorder.rows.last
+    #expect(lastRow?.speakerAnalysis != nil, "re-polish reset the speaker analysis back to nil")
+    #expect(lastRow?.turns?.isEmpty == false, "re-polish reset the turns back to nil")
   }
 }
