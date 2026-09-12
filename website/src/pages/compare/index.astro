@@ -29,7 +29,7 @@ const itemList = {
 
 <ThemedLayout
   title="Compare Mac Dictation Apps: Price, Privacy & AI Cleanup | EnviousWispr"
-  description="Compare EnviousWispr, Wispr Flow, Superwhisper, MacWhisper and Apple Dictation side by side. See price, offline use and AI cleanup, plus 17 detailed comparisons."
+  description="Compare EnviousWispr, Wispr Flow, Superwhisper, FluidVoice and Spokenly side by side. See price, offline use and AI cleanup, plus 17 detailed comparisons."
   activePage="compare" canonicalPath="/compare/"
 >
   <Fragment slot="head">
@@ -65,7 +65,7 @@ const itemList = {
             {products.map(product => (
               <th scope="col" class:list={['compare-product', { 'compare-own': product.own }]}>
                 <div class="compare-product-mark" aria-hidden="true">
-                  {product.mark ? <img src={product.mark} alt="" width="36" height="36" /> : <span class="compare-monogram">MW</span>}
+                  <img src={product.mark} alt="" width="36" height="36" />
                 </div>
                 <span class="compare-product-name">{product.name}</span>
                 <span class="compare-product-note">{product.note}</span>
@@ -116,8 +116,8 @@ const itemList = {
         <dl>
           <div><dt>Across devices and teams</dt><dd><a href="/compare/wisprflow/">Wispr Flow</a> offers a broader cloud service with cross-platform dictation and team features.</dd></div>
           <div><dt>More model and mode control</dt><dd><a href="/compare/superwhisper/">Superwhisper</a> offers configurable voice models, prompts and writing modes.</dd></div>
-          <div><dt>Subtitles and batch workflows</dt><dd><a href="/compare/macwhisper/">MacWhisper</a> combines files, meetings and dictation with export and automation tools.</dd></div>
-          <div><dt>Start with what you already have</dt><dd><a href="/compare/apple-dictation/">Apple Dictation</a> is built into macOS. It is a useful first option to try.</dd></div>
+          <div><dt>Free dictation with voice actions</dt><dd><a href="/compare/fluidvoice/">FluidVoice</a> combines local AI cleanup with configurable speech models, Write Mode and Command Mode.</dd></div>
+          <div><dt>Local and cloud across devices</dt><dd><a href="/compare/spokenly/">Spokenly</a> offers free local transcription, your own provider keys and a paid cloud plan, with configurable dictation modes.</dd></div>
         </dl>
       </article>
     </div>
