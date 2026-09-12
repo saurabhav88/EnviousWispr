@@ -64,8 +64,8 @@ const itemList = {
             <th scope="col" class="compare-corner"><span>Find what<br />matters to you.</span></th>
             {products.map(product => (
               <th scope="col" class:list={['compare-product', { 'compare-own': product.own }]}>
-                <div class="compare-product-mark" aria-hidden="true">
-                  <img src={product.mark} alt="" width="36" height="36" />
+                <div class="compare-product-mark" data-product={product.id} aria-hidden="true">
+                  <img src={product.mark} alt="" width="40" height="40" />
                 </div>
                 <span class="compare-product-name">{product.name}</span>
                 <span class="compare-product-note">{product.note}</span>

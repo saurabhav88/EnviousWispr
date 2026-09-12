@@ -20,8 +20,10 @@
 .compare-matrix thead th:first-child { border-radius:20px 0 0 0; }
 .compare-matrix thead th:last-child { border-radius:0 20px 0 0; }
 .compare-corner>span { display:block; color:var(--body); font-size:12px; font-weight:500; padding-top:55px; }
-.compare-product-mark { display:flex; align-items:center; height:36px; margin-bottom:12px; }
-.compare-product-mark img { width:36px; height:36px; object-fit:contain; }
+.compare-product-mark { display:grid; place-items:center; width:40px; height:40px; margin-bottom:12px; border-radius:10px; overflow:hidden; background:var(--card); box-shadow:0 0 0 1px var(--line); }
+.compare-product-mark img { display:block; width:40px; height:40px; object-fit:contain; }
+/* FluidVoice's 128px asset has a 104px visible icon inside transparent padding. */
+.compare-product-mark[data-product='fluid'] img { transform:scale(calc(128 / 104)); }
 .compare-product-name { display:block; font-size:16px; letter-spacing:-.03em; font-weight:700; }
 .compare-product-note { display:block; font-size:12px; color:var(--body); font-weight:400; margin-top:4px; }
 .compare-matrix .compare-own { background:var(--soft); }
