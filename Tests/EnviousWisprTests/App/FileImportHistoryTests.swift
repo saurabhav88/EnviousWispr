@@ -86,6 +86,7 @@ struct FileImportHistoryTests {
       prepareLocalPolish: { _ in polisherStarts },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
+      mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { spy.exists($0) },
       processPart: { _, _ in
         onPart?()
@@ -555,6 +556,7 @@ struct FileImportHistoryTests {
       },
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
+      mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.

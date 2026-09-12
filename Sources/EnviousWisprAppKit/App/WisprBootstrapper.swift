@@ -1438,6 +1438,10 @@ package final class WisprBootstrapper {
           outcome: outcome, durationSeconds: durationSeconds, analysisMs: analysisMs,
           wordTimingCoverage: wordTimingCoverage)
       },
+      emitTurnTelemetry: { outcome, turnCount, fallbackTurnCount in
+        TelemetryService.shared.trackFileImportTurns(
+          outcome: outcome, turnCount: turnCount, fallbackTurnCount: fallbackTurnCount)
+      },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
       engineAdmission: .live(lease: engineLease, as: .fileImport),
@@ -1591,6 +1595,11 @@ package final class WisprBootstrapper {
       // reachable throughout a cleanup, so a deletion between the two writes has to stand.
       updateHistoryRow: { [transcriptCoordinator] transcript in
         try transcriptCoordinator.updateExistingRow(transcript)
+      },
+      // The turn-cleanup write (#2810 addendum §3 E) — reads the row's CURRENT state at
+      // call time, so it can never clobber a rename that landed while cleanup was running.
+      mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
+        try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
       historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processPart: { [fileImportRunner] part, language in

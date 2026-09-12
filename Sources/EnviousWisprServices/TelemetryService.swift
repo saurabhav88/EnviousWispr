@@ -3164,6 +3164,48 @@ public final class TelemetryService {
     return "partial"
   }
 
+  // MARK: - File import turn storage (#2810, phase 3 of #2807)
+
+  /// Shape-only telemetry for the background, dormant turn-safe cleanup pass. `turnCount` is
+  /// present only when `outcome == .stored` — every other outcome has no valid count.
+  /// `fallbackTurnCount` counts turns with AT LEAST ONE unpolished part (never only "every
+  /// part failed"), matching `Turn.wasPolished`'s own "true if ANY part polished" semantics.
+  public enum FileImportTurnsOutcome: String {
+    case stored
+    case saveFailed = "save_failed"
+    case rowDeleted = "row_deleted"
+    case
+      noWordTimings = "no_word_timings"
+    case singleNoTurns = "single_no_turns"
+    case
+      admissionRefused = "admission_refused"
+    /// The background hold's own polisher failed to come up under its separate claim —
+    /// distinct from `saveFailed`, which means a WRITE was attempted and threw. Nothing was
+    /// ever written here (found by chunk review round 2: reusing `saveFailed` for this case
+    /// misclassified "never attempted a save" as "attempted and failed").
+    case polisherNotReady = "polisher_not_ready"
+  }
+
+  public func trackFileImportTurns(
+    outcome: FileImportTurnsOutcome, turnCount: Int?, fallbackTurnCount: Int
+  ) {
+    var props: [String: Any] = ["outcome": outcome.rawValue]
+    if outcome == .stored, let turnCount {
+      props["turn_count"] = Self.fileImportTurnCountBucket(turnCount)
+      props["fallback_turn_count"] = fallbackTurnCount
+    }
+    PostHogSDK.shared.capture("file_import_turns", properties: props)
+  }
+
+  static func fileImportTurnCountBucket(_ count: Int) -> String {
+    switch count {
+    case ...1: return "1"
+    case 2...5: return "2-5"
+    case 6...20: return "6-20"
+    default: return "21+"
+    }
+  }
+
   // MARK: - Update banner (issue #343)
 
   public func updateBannerShown(
