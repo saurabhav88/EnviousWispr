@@ -303,33 +303,40 @@ import Testing
     #expect(s.lastRun == nil)
   }
 
-  /// The cap must NOT apply to Apple Intelligence (cloud review r8). AFM restored emoji for
-  /// every successful polish before #1948, bounded only by Apple's own 4096-token preflight
-  /// (~3,000 words). Capping it here would silently withdraw restoration from long AFM
-  /// dictations — a behaviour change on a path this change is not about.
-  @Test("a long Apple Intelligence dictation still restores, uncapped (#1948 r8)")
-  func longAppleIntelligenceStillRestores() async throws {
+  /// The cap now applies to Apple Intelligence TOO (#2834; retires cloud review r8's
+  /// Ollama-only scoping). r8 declined to cap AFM because it was bounded INCIDENTALLY by
+  /// Apple's own FIXED 4096-token preflight, so a real dictation could never reach the
+  /// lengths that make this quadratic cost matter. #2834 made that preflight window LIVE
+  /// (4,096 on macOS 26, 8,192 on macOS 27, more on a future OS), which is exactly the
+  /// premise r8's scoping rested on — so a long AFM dictation can now reach this step the
+  /// same way a long Ollama one always could, and needs the same guard.
+  @Test("a long Apple Intelligence dictation is capped too, leaving the polish untouched (#2834)")
+  func longAppleIntelligenceSkipsRestorationToo() async throws {
     let long = (0..<(EmojiRestoreStep.maxAlignmentTokens + 200))
       .map { "word\($0 % 97)" }.joined(separator: " ")
-    var c = TextProcessingContext(text: long + " 🙏", language: nil)
-    c.llmProvider = LLMProvider.appleIntelligence.rawValue
-    c.promptFamily = nil
-    c.polishedText = long + "."
     let s = step()
-    let out = try await s.process(c)
-    #expect(out.polishedText?.contains("🙏") == true, "AFM restoration must not be capped")
-    #expect(s.lastRun?.restored == 1)
+    let out = try await s.process(afmContext(pre: long + " 🙏", polished: long + "."))
+    #expect(out.polishedText == long + ".")
+    #expect(out.polishedText?.contains("🙏") == false)
+    // No restore happened, so no telemetry may claim one.
+    #expect(s.lastRun == nil)
   }
 
   /// Two-way control at the boundary: just UNDER the cap must still restore, so the guard
-  /// cannot be satisfied by disabling restoration outright.
-  @Test("a dictation just under the cap still restores")
-  func justUnderCapStillRestores() async throws {
+  /// cannot be satisfied by disabling restoration outright. Both restoring providers, since
+  /// #2834 made both subject to the same cap.
+  @Test("a dictation just under the cap still restores", arguments: [LLMProvider.ollama, .appleIntelligence])
+  func justUnderCapStillRestores(provider: LLMProvider) async throws {
     let body = (0..<(EmojiRestoreStep.maxAlignmentTokens - 5))
       .map { "word\($0 % 97)" }.joined(separator: " ")
     let s = step()
-    let out = try await s.process(
-      ollamaContext(pre: body + " 🙏", polished: body + "."))
+    let out: TextProcessingContext
+    switch provider {
+    case .ollama:
+      out = try await s.process(ollamaContext(pre: body + " 🙏", polished: body + "."))
+    default:
+      out = try await s.process(afmContext(pre: body + " 🙏", polished: body + "."))
+    }
     #expect(out.polishedText?.contains("🙏") == true)
     #expect(s.lastRun?.restored == 1)
   }
