@@ -398,6 +398,19 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// always been carried by the pipeline rather than persisted separately.
   public private(set) var processedText: String? = nil
 
+  /// Speaker-analysis outcome for an imported transcript (#2810, phase 3 of #2807). `nil` on
+  /// any pre-#2810 row (synthesized `Codable`, no custom decode) — treated as `.unanalyzed`.
+  /// Non-`.labeled` values keep `turns`/`speakerNames` empty; only `mergeSpeakerFields` writes
+  /// these three fields together, so a hand-crafted or corrupted row that violates that
+  /// invariant should be read as `.unanalyzed` rather than trusted.
+  public private(set) var speakerAnalysis: TranscriptSpeakerAnalysis?
+  /// `speakerId -> display name`, keys equal to the non-`"unknown"` speakerIds appearing in
+  /// `turns`. Defaulted to `"Speaker N"` by `TurnAssembler.defaultSpeakerNames`, overwritten
+  /// only by an explicit rename (phase 4).
+  public private(set) var speakerNames: [String: String]?
+  /// Non-nil only when `speakerAnalysis == .labeled`.
+  public private(set) var turns: [Turn]?
+
   /// Whether this row came from Transcribe a File. Derived, never stored twice.
   public var isImported: Bool { importedFileName != nil }
 
@@ -419,7 +432,10 @@ public struct Transcript: Codable, Identifiable, Sendable {
     escapeRecoveredAt: Date? = nil,
     escapeRecoveryTakeID: String? = nil,
     importedFileName: String? = nil,
-    processedText: String? = nil
+    processedText: String? = nil,
+    speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
+    speakerNames: [String: String]? = nil,
+    turns: [Turn]? = nil
   ) {
     self.id = id
     self.text = text
@@ -439,6 +455,9 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.escapeRecoveryTakeID = escapeRecoveryTakeID
     self.importedFileName = importedFileName
     self.processedText = processedText
+    self.speakerAnalysis = speakerAnalysis
+    self.speakerNames = speakerNames
+    self.turns = turns
   }
 
   /// A copy promoted to permanent History: the clock is cleared, everything else is
@@ -485,5 +504,55 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// polish still has formatting and saved-word corrections worth showing.
   public var displayText: String {
     polishedText ?? processedText ?? text
+  }
+
+  /// The same row with a fresh speaker-analysis result merged in (#2810, phase 3 of #2807).
+  ///
+  /// TWO CALLERS, one shared invariant enforcement. The turn-cleanup write (`explicitRename:
+  /// nil`) PRESERVES an existing name for any speakerId still present in `newTurns`, REMOVES a
+  /// name whose speakerId no longer appears (a retired id from a prior pass), and FILLS a
+  /// newly-appearing speakerId from `TurnAssembler.defaultSpeakerNames(for: newTurns)` —
+  /// computed HERE, never taken as a caller-supplied dictionary, so a caller cannot pass an
+  /// incomplete map and silently drop a surviving speakerId's name (found by chunk review).
+  /// A future phase-4 rename write (`explicitRename: (id, name)`) applies the same
+  /// preserve/retire/fill pass first, then OVERWRITES exactly the named speakerId's entry —
+  /// the one deliberate exception to "never overwrite," scoped to a single id an explicit
+  /// user action named.
+  ///
+  /// A non-`.labeled` analysis clears both `turns` and `speakerNames`, matching the invariant
+  /// that `turns` is non-nil only when `speakerAnalysis == .labeled`.
+  public func mergingSpeakerFields(
+    analysis: TranscriptSpeakerAnalysis, turns newTurns: [Turn]?,
+    explicitRename: (speakerId: String, name: String)? = nil
+  ) -> Transcript {
+    var copy = self
+    copy.speakerAnalysis = analysis
+    guard case .labeled = analysis, let newTurns else {
+      copy.turns = nil
+      copy.speakerNames = nil
+      return copy
+    }
+    copy.turns = newTurns
+
+    let survivingSpeakerIDs = Set(newTurns.map(\.speakerId)).subtracting([
+      TurnAssembler.unknownSpeakerID
+    ])
+    // Only the names that will actually remain ON SCREEN after this merge — a RETIRED
+    // speakerId's old number is free to reuse, but a SURVIVING one's number must never be
+    // handed to a different, newly-appearing speaker (found by cloud review).
+    let preservedNames = survivingSpeakerIDs.reduce(into: [String: String]()) { result, id in
+      if let existing = speakerNames?[id] { result[id] = existing }
+    }
+    let defaultNames = TurnAssembler.defaultSpeakerNames(
+      for: newTurns, existingNames: preservedNames)
+    var mergedNames: [String: String] = [:]
+    for speakerID in survivingSpeakerIDs {
+      mergedNames[speakerID] = preservedNames[speakerID] ?? defaultNames[speakerID]
+    }
+    if let explicitRename, survivingSpeakerIDs.contains(explicitRename.speakerId) {
+      mergedNames[explicitRename.speakerId] = explicitRename.name
+    }
+    copy.speakerNames = mergedNames
+    return copy
   }
 }

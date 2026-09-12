@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -32,6 +33,40 @@ struct FileImportCoordinatorSpeakerTests {
     func waitUntilEntered() async {
       if entered { return }
       await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+  }
+
+  /// A gate a test controls from outside: a call can wait to be told to proceed, and the
+  /// test can wait to know a call has arrived. Used to prove ORDERING (turn-cleanup's own
+  /// calls never arrive before the visible document's cleanup has actually returned).
+  private actor ManualGate {
+    private var openWaiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasArrived = false
+
+    func markArrived() {
+      hasArrived = true
+      for waiter in arrivalWaiters { waiter.resume() }
+      arrivalWaiters = []
+    }
+
+    func waitUntilArrived() async {
+      if hasArrived { return }
+      await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func arrivedSoFar() -> Bool { hasArrived }
+
+    func open() {
+      isOpen = true
+      for waiter in openWaiters { waiter.resume() }
+      openWaiters = []
+    }
+
+    func waitUntilOpen() async {
+      if isOpen { return }
+      await withCheckedContinuation { openWaiters.append($0) }
     }
   }
 
@@ -69,12 +104,23 @@ struct FileImportCoordinatorSpeakerTests {
   private func makeCoordinator(
     lease: EngineLease,
     seconds: Double = 1.0,
+    transcribedText: String = "one two three",
+    wordTimings: [ASRWordTiming]? = nil,
     wordTimingCoverage: ASRWordTimingCoverage? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
+    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
+    mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws ->
+      Bool = { _, _, _ in true },
     emitSpeakerTelemetry: @escaping @MainActor (
       SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?
     ) -> Void = { _, _, _, _ in },
+    emitTurnTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportTurnsOutcome, Int?, Int
+    ) -> Void = { _, _, _ in },
+    onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
+    prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
+      Bool = { _ in true },
     processPart: @escaping @MainActor (String, String?) async throws ->
       FileImportRunner
       .PartOutcome = { part, _ in
@@ -85,19 +131,23 @@ struct FileImportCoordinatorSpeakerTests {
       decode: { _ in Self.decoded(seconds: seconds) },
       transcribe: { _ in
         ASRResult(
-          text: "one two three", language: "en", duration: 0, processingTime: 0,
-          backendType: .parakeet, wordTimings: nil, wordTimingCoverage: wordTimingCoverage)
+          text: transcribedText, language: "en", duration: 0, processingTime: 0,
+          backendType: .parakeet, wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage)
       },
       speakerLabeler: speakerLabeler,
       emitSpeakerTelemetry: emitSpeakerTelemetry,
+      emitTurnTelemetry: emitTurnTelemetry,
+      onVisibleCleanupWaitResolved: onVisibleCleanupWaitResolved,
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
+      prepareLocalPolish: prepareLocalPolish,
       saveToHistory: saveToHistory,
-      updateHistoryRow: { _ in true },
+      updateHistoryRow: updateHistoryRow,
+      mergeSpeakerFields: mergeSpeakerFields,
       historyRowExists: { _ in true },
       processPart: processPart)
   }
@@ -333,5 +383,577 @@ struct FileImportCoordinatorSpeakerTests {
   @Test("an empty buffer still produces a stable digest, not a crash")
   func pcmDigestHandlesEmptyBuffer() {
     #expect(FileImportCoordinator.pcmDigestHex([]) == FileImportCoordinator.pcmDigestHex([]))
+  }
+
+  // MARK: - Turn storage (#2810 phase 3)
+
+  private static func twoSpeakerWordTimings() -> [ASRWordTiming] {
+    // "hello there friend": "hello" (0..<5) speaker A; "there friend" (6..<18) speaker B.
+    [
+      ASRWordTiming(word: "hello", range: 0..<5, startMs: 0, endMs: 200),
+      ASRWordTiming(word: "there", range: 6..<11, startMs: 5000, endMs: 5200),
+      ASRWordTiming(word: "friend", range: 12..<18, startMs: 5200, endMs: 5400),
+    ]
+  }
+
+  private static let twoSpeakerSegments = [
+    SpeakerSegment(speakerId: "A", startMs: 0, endMs: 200, quality: 1),
+    SpeakerSegment(speakerId: "B", startMs: 5000, endMs: 5400, quality: 1),
+  ]
+
+  @Test(
+    "turn-safe cleanup's own processPart calls never arrive before the visible document's cleanup has returned"
+  )
+  func turnCleanupWaitsForVisibleCleanupToFinish() async {
+    let documentGate = ManualGate()
+    let turnGate = ManualGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if part == "hello there friend" {
+          // The visible document's own single piece — hold it open until the test says go.
+          await documentGate.markArrived()
+          await documentGate.waitUntilOpen()
+        } else {
+          // A turn's own sliced text ("hello", or "there friend") — must never arrive
+          // before the document gate above has been explicitly opened.
+          await turnGate.markArrived()
+        }
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await documentGate.waitUntilArrived()
+
+    // The visible pass's own call is in flight and held open; turn-cleanup must not have
+    // started yet, because it has not even been signaled that the visible pass finished.
+    #expect(await turnGate.arrivedSoFar() == false)
+
+    await documentGate.open()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished, "the visible run should finish once its own held part is released")
+
+    // NOW turn-cleanup's calls are free to arrive — a BOUNDED wait, never an unconditional
+    // await of the very signal under test: if the gate had a bug and never resolved, this
+    // fails with a clear message instead of hanging the suite forever.
+    let turnCleanupArrived = await settleUntil { await turnGate.arrivedSoFar() }
+    #expect(turnCleanupArrived, "turn-cleanup should have started once the visible pass finished")
+  }
+
+  @Test("a labeled outcome with real word timings persists turns via mergeSpeakerFields")
+  func labeledOutcomeWithWordTimingsPersistsTurns() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analysis: TranscriptSpeakerAnalysis?
+      private(set) var turns: [Turn]?
+      func record(_ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?) {
+        self.analysis = analysis
+        self.turns = turns
+      }
+    }
+    let recorder = MergeRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, analysis, turns in
+        recorder.record(analysis, turns)
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let mergedTurns = await settleUntil { recorder.turns != nil }
+    #expect(mergedTurns, "mergeSpeakerFields should have been called with a non-nil turns array")
+    #expect(recorder.analysis == .labeled(count: 2))
+    let turns = recorder.turns
+    #expect(turns?.count == 2)
+    #expect(turns?.map(\.speakerId) == ["A", "B"])
+  }
+
+  @Test(
+    "nil word timings on a labeled outcome merge as a noWordTimings failure, never assembling turns"
+  )
+  func nilWordTimingsMergeAsFailure() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analysis: TranscriptSpeakerAnalysis?
+      func record(_ analysis: TranscriptSpeakerAnalysis) { self.analysis = analysis }
+    }
+    let recorder = MergeRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      wordTimings: nil,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, analysis, turns in
+        recorder.record(analysis)
+        #expect(turns == nil)
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let recorded = await settleUntil { recorder.analysis != nil }
+    #expect(recorded)
+    #expect(recorder.analysis == .failed(.noWordTimings))
+  }
+
+  @Test(
+    "word timings that never bind to any segment (a space-free script) merge as a failure, never a self-contradictory labeled-but-all-unknown row"
+  )
+  func allUnknownTurnsMergeAsFailureNotContradictoryLabeled() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analysis: TranscriptSpeakerAnalysis?
+      func record(_ analysis: TranscriptSpeakerAnalysis) { self.analysis = analysis }
+    }
+    let recorder = MergeRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      // Mimics exactly what `WordTimingRangeMapper` produces for a space-free script: one
+      // untimed entry spanning the whole transcript, since there is no whitespace to
+      // tokenize on and no engine word can bind to the single resulting text run.
+      wordTimings: [
+        ASRWordTiming(word: "hello there friend", range: 0..<19, startMs: nil, endMs: nil)
+      ],
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, analysis, turns in
+        recorder.record(analysis)
+        #expect(
+          turns == nil, "a contradictory labeled-with-all-unknown-turns row must never be stored")
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let recorded = await settleUntil { recorder.analysis != nil }
+    #expect(recorded)
+    #expect(recorder.analysis == .failed(.noWordTimings))
+  }
+
+  @Test(
+    "a write failure on the silent (already-reported) path still reports saveFailed, never disappearing"
+  )
+  func silentPathReportsSaveFailedWhenMergeThrows() async {
+    struct WriteError: Error {}
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      // A non-.single, non-.labeled outcome: `emitSpeakerTelemetry` already reports it, so
+      // `runTurnStorage` passes `outcome: nil` into `mergeAndReport` — the branch found by
+      // chunk review round 2 to have silently dropped a write failure.
+      speakerLabeler: { _, _ in .failed(.modelsUnavailable) },
+      mergeSpeakerFields: { _, _, _ in throw WriteError() },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let reported = await settleUntil { telemetry.outcomes.contains(.saveFailed) }
+    #expect(reported, "a thrown merge on the silent path must still report saveFailed")
+  }
+
+  @Test(
+    "a row deleted before the write on the silent (already-reported) path still reports rowDeleted"
+  )
+  func silentPathReportsRowDeletedWhenMergeReturnsFalse() async {
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      speakerLabeler: { _, _ in .failed(.modelsUnavailable) },
+      mergeSpeakerFields: { _, _, _ in false },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let reported = await settleUntil { telemetry.outcomes.contains(.rowDeleted) }
+    #expect(reported, "a merge returning false on the silent path must still report rowDeleted")
+  }
+
+  @Test("a refused engine admission skips the turn-cleanup pass entirely, with no merge call")
+  func refusedAdmissionSkipsCleanupEntirely() async {
+    @MainActor final class MergeRecorder {
+      private(set) var callCount = 0
+      func record() { callCount += 1 }
+    }
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let recorder = MergeRecorder()
+    let telemetry = TelemetryRecorder()
+    let speakerGate = ManualGate()
+    let lease = EngineLease()
+    let coordinator = makeCoordinator(
+      lease: lease,
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Blocks AFTER the main run's own claim has already been granted and released
+        // (the main run does not depend on this returning), so the test can claim the
+        // SAME lease itself in the exact window before turn-cleanup tries to.
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      mergeSpeakerFields: { _, _, _ in
+        recorder.record()
+        return true
+      },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+
+    // The main run finishes on its own (processPart is the fast default fake) while the
+    // speaker step sits blocked before returning its outcome.
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    await speakerGate.waitUntilArrived()
+    #expect(coordinator.isEngineHeld == false, "the main run's own claim must already be released")
+
+    // Claim the lease from OUTSIDE, simulating a competing workload — a new dictation, or
+    // another import — taking it in the narrow window before turn-cleanup asks.
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("test setup: could not claim the lease to simulate contention")
+      return
+    }
+
+    // Let the speaker step return its outcome; turn-cleanup's own claim attempt is now
+    // refused, and the pass must skip entirely — no merge call at all. Wait for the actual
+    // refusal EVENT (found by chunk review round 2: 200 unconditional yields only hopes
+    // enough scheduler turns passed, and never proves the refusal branch itself ran) —
+    // a bounded wait on the real telemetry seam the production code already emits through.
+    await speakerGate.open()
+    let refused = await settleUntil { telemetry.outcomes.contains(.admissionRefused) }
+    #expect(refused, "the admission-refused outcome was never observed")
+    #expect(recorder.callCount == 0)
+  }
+
+  @Test(
+    "a superseded generation's own waiter is directly proven to register and then resolve"
+  )
+  func supersededGenerationWaiterObservablyResolves() async {
+    let documentGate = ManualGate()
+    @MainActor final class ResolvedRecorder {
+      private(set) var generations: [Int] = []
+      func record(_ generation: Int) { generations.append(generation) }
+    }
+    let resolvedRecorder = ResolvedRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      onVisibleCleanupWaitResolved: { generation in resolvedRecorder.record(generation) },
+      processPart: { part, _ in
+        await documentGate.markArrived()
+        await documentGate.waitUntilOpen()
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let firstGeneration = coordinator.generation
+    await documentGate.waitUntilArrived()
+
+    // REGISTRATION: the speaker step's own labeler returns immediately (no gate), so by
+    // the time the visible pass's own part call has arrived, its background turn-cleanup
+    // continuation should already be enqueued as a waiter on THIS generation — a bounded
+    // wait on the actual internal state, never inferred from a later run's success.
+    let registered = await settleUntil {
+      coordinator.visibleCleanupWaiters[firstGeneration]?.isEmpty == false
+    }
+    #expect(
+      registered, "generation \(firstGeneration)'s turn-cleanup pass never registered as a waiter")
+    #expect(coordinator.visibleCleanupFinished.contains(firstGeneration) == false)
+    #expect(resolvedRecorder.generations.isEmpty, "the wait resolved before the gate opened")
+
+    // Stop while the visible pass's own part call is still held open. `stop()` cancels the
+    // run task and bumps `generation`, but the blocked `processPart` call itself does not
+    // return until the gate opens.
+    coordinator.stop()
+    let stopped = await settleUntil { coordinator.state == .stopped }
+    #expect(stopped)
+
+    // COMPLETION: let the stale call return, so `polishAll`'s own `defer` settles THIS
+    // generation's gate. `onVisibleCleanupWaitResolved` fires from INSIDE the previously
+    // suspended background task, the instant its `await` actually returns — proof the
+    // continuation was truly resumed, not just that bookkeeping dictionaries were updated
+    // (which would stay consistent even if `waiter.resume()` were deleted; found by chunk
+    // review round 3). A bounded wait, since a broken resume would otherwise hang forever.
+    await documentGate.open()
+    let resolved = await settleUntil { resolvedRecorder.generations.contains(firstGeneration) }
+    #expect(resolved, "generation \(firstGeneration)'s waiter was never resumed")
+    #expect(coordinator.visibleCleanupFinished.contains(firstGeneration))
+    #expect(coordinator.visibleCleanupWaiters[firstGeneration] == nil)
+  }
+
+  @Test(
+    "Stop pressed AFTER Done cancels an in-flight background cleanup without persisting a partial pass, releasing only once the in-flight call returns"
+  )
+  func stopAfterDoneNeverPersistsAPartialPass() async {
+    @MainActor final class MergeRecorder {
+      private(set) var callCount = 0
+      func record() { callCount += 1 }
+    }
+    let recorder = MergeRecorder()
+    let turnGate = ManualGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, _, _ in
+        recorder.record()
+        return true
+      },
+      processPart: { part, _ in
+        if part == "hello there friend" {
+          // The visible pass's own single piece returns immediately — the visible run
+          // reaches Done well before the background pass below is even asked to clean
+          // anything up, which is the exact "Stop after Done" case #2810's addendum
+          // names: `stop()`'s `isRunning` guard makes this an EARLY RETURN before
+          // `generation` is bumped, so cancellation is the only signal left.
+          return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        }
+        await turnGate.markArrived()
+        await turnGate.waitUntilOpen()
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let visibleRunDone = await settleUntil { coordinator.state == .finished }
+    #expect(
+      visibleRunDone, "the visible run should reach Done before the background pass is exercised")
+
+    // Bounded, never an unconditional await of the very signal under test — a regression
+    // that stopped the background pass from ever starting must fail cleanly here instead
+    // of hanging the suite (found by chunk review round 3).
+    let backgroundInFlight = await settleUntil { await turnGate.arrivedSoFar() }
+    #expect(backgroundInFlight, "the background pass never started its per-turn cleanup")
+    #expect(coordinator.isEngineHeld, "the background pass's own claim must be genuinely held")
+
+    coordinator.stop()
+
+    // The claim must not be released until the in-flight call ACTUALLY returns —
+    // `Task.cancel()` alone cannot interrupt an `await` with no cooperative check inside it.
+    #expect(coordinator.isEngineHeld, "the claim was released before the in-flight call returned")
+
+    await turnGate.open()
+    let released = await settleUntil { coordinator.isEngineHeld == false }
+    #expect(released, "the claim was never released once the in-flight call returned")
+    #expect(recorder.callCount == 0, "a partial pass was persisted after Stop")
+  }
+
+  @Test(
+    "the background hold re-prepares the frozen import polisher under its own claim, and reacts to its OWN readiness result even when it differs from the visible run's"
+  )
+  func backgroundHoldRePreparesAndReactsToItsOwnReadiness() async {
+    @MainActor final class PrepareRecorder {
+      private(set) var callCount = 0
+      func record() { callCount += 1 }
+    }
+    @MainActor final class MergeRecorder {
+      private(set) var callCount = 0
+      func record() { callCount += 1 }
+    }
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let prepareRecorder = PrepareRecorder()
+    let mergeRecorder = MergeRecorder()
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, _, _ in
+        mergeRecorder.record()
+        return true
+      },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) },
+      prepareLocalPolish: { _ in
+        prepareRecorder.record()
+        // First call: the visible run's own `start()`. Every call after that is the
+        // background hold's SEPARATE claim — simulating the shared engine's provider
+        // having moved on in between, exactly the case #2810's addendum names.
+        return prepareRecorder.callCount == 1
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(
+      finished,
+      "the visible run must succeed on the FIRST preparation, independent of what the background pass later sees"
+    )
+
+    let reactedToItsOwnFailure = await settleUntil {
+      telemetry.outcomes.contains(.polisherNotReady)
+    }
+    #expect(
+      reactedToItsOwnFailure, "the background pass never reported its own re-preparation failure")
+    #expect(
+      prepareRecorder.callCount >= 2,
+      "the background pass must re-prepare under its own claim rather than reusing the visible run's readiness"
+    )
+    #expect(
+      mergeRecorder.callCount == 0,
+      "a write must never happen once the background pass's own preparation fails")
+  }
+
+  @Test(
+    "re-polishing (Clean it again) after turn storage has already run preserves the persisted speaker fields, never resetting them to nil"
+  )
+  func rePolishPreservesAlreadyPersistedSpeakerFields() async {
+    @MainActor final class UpdateRecorder {
+      private(set) var rows: [Transcript] = []
+      func record(_ row: Transcript) { rows.append(row) }
+    }
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportTurnsOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportTurnsOutcome) { outcomes.append(outcome) }
+    }
+    let recorder = UpdateRecorder()
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      updateHistoryRow: { row in
+        recorder.record(row)
+        return true
+      },
+      emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    // Wait for the BACKGROUND turn-storage pass to actually REPORT a stored write, not
+    // just for `isEngineHeld` to read false — that flag starts false too, so checking it
+    // right after the visible run finishes can observe "not yet started" and "already
+    // finished" as the exact same value (a race this test itself had before this fix).
+    let stored = await settleUntil { telemetry.outcomes.contains(.stored) }
+    #expect(stored, "the background turn-storage pass never reported a stored outcome")
+
+    coordinator.rePolish()
+    let rePolishFinished = await settleUntil { coordinator.state == .finished }
+    #expect(rePolishFinished)
+
+    // The LAST row `rePolish`'s own `savePolishedToHistory` wrote must still carry the
+    // speaker fields the background pass persisted earlier. `withImportResult` never
+    // touches them — this only holds if `originalHistoryRow` learned about that earlier
+    // write, which is exactly what the whole-diff review found missing.
+    let lastRow = recorder.rows.last
+    #expect(lastRow?.speakerAnalysis != nil, "re-polish reset the speaker analysis back to nil")
+    #expect(lastRow?.turns?.isEmpty == false, "re-polish reset the turns back to nil")
+  }
+
+  @Test(
+    "pressing Clean it again WHILE the background speaker pass is still in flight does not discard that pass's only analysis"
+  )
+  func rePolishDuringInFlightSpeakerAnalysisStillPersists() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analyses: [TranscriptSpeakerAnalysis] = []
+      func record(_ analysis: TranscriptSpeakerAnalysis) { analyses.append(analysis) }
+    }
+    let recorder = MergeRecorder()
+    let speakerGate = ManualGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Blocks BEFORE `runSpeakerStep` ever reaches its own document-identity guard — the
+        // exact window `rePolish()` can land in (found by cloud review).
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      mergeSpeakerFields: { _, analysis, _ in
+        recorder.record(analysis)
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let visibleRunDone = await settleUntil { coordinator.state == .finished }
+    #expect(visibleRunDone)
+    await speakerGate.waitUntilArrived()
+
+    // "Clean it again" — bumps `generation` for the SAME document WITHOUT cancelling or
+    // restarting the still-blocked speaker pass above.
+    coordinator.rePolish()
+    let rePolishFinished = await settleUntil { coordinator.state == .finished }
+    #expect(rePolishFinished, "the re-polish itself must still complete normally")
+
+    // NOW let the original, still-in-flight speaker pass return its outcome.
+    await speakerGate.open()
+    let persisted = await settleUntil { recorder.analyses.contains(.labeled(count: 2)) }
+    #expect(
+      persisted,
+      "a re-polish of the SAME document must never discard the only speaker analysis this document will ever get"
+    )
   }
 }

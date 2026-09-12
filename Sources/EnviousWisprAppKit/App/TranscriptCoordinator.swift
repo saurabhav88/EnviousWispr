@@ -785,6 +785,23 @@ final class TranscriptCoordinator {
     return true
   }
 
+  /// The turn-cleanup write (#2810 addendum §3 E), and the one future rename write (phase
+  /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
+  /// captured earlier — so "merge into the latest existing row, never overwrite newer
+  /// names" holds structurally: whichever call runs second reads what the first one left.
+  /// Goes through `updateExistingRow`, inheriting its "never resurrect a deleted row" guard
+  /// for free.
+  @discardableResult
+  func mergeSpeakerFields(
+    id: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
+    explicitRename: (speakerId: String, name: String)? = nil
+  ) throws -> Bool {
+    guard let existing = transcripts.first(where: { $0.id == id }) else { return false }
+    let merged = existing.mergingSpeakerFields(
+      analysis: analysis, turns: turns, explicitRename: explicitRename)
+    return try updateExistingRow(merged)
+  }
+
   /// Whether a row is in History right now. The import's "Saved to History" badge asks this
   /// live rather than remembering that a write once succeeded (#2772): a row can be deleted
   /// at any moment after either of the import's writes, and a remembered success then

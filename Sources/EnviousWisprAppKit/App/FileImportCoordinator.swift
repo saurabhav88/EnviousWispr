@@ -2,6 +2,7 @@ import CryptoKit
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
+import EnviousWisprServices
 import Foundation
 import Observation
 
@@ -337,6 +338,20 @@ final class FileImportCoordinator {
   /// telemetry-shaped closure in this app.
   private let emitSpeakerTelemetry:
     @MainActor (SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?) -> Void
+
+  /// Shape-only telemetry for the background turn-cleanup pass (#2810 addendum §3a):
+  /// outcome, the turn count (only meaningful on a successful store), and how many turns
+  /// carried at least one unpolished part. No-op default, same as every other
+  /// telemetry-shaped closure in this app.
+  private let emitTurnTelemetry:
+    @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) -> Void
+
+  /// Fires the instant `waitForVisibleCleanup(generation:)` actually returns for that
+  /// generation — never on a timeout, never on a guess. No-op default. Exists purely so a
+  /// test can prove the underlying `CheckedContinuation` was genuinely resumed rather than
+  /// asserting bookkeeping state that stays consistent even if `finishVisibleCleanup`'s own
+  /// `waiter.resume()` call were deleted (found by chunk review round 3).
+  private let onVisibleCleanupWaitResolved: @MainActor (Int) -> Void
   private let engineAdmission: EngineAdmissionAccess
 
   /// Stops both engines' pending model-unload timers, and puts the user's
@@ -503,6 +518,13 @@ final class FileImportCoordinator {
   /// with a flag: the first CREATES and must be allowed to, the second may not.
   private let updateHistoryRow: @MainActor (Transcript) throws -> Bool
 
+  /// The turn-cleanup write (#2810 addendum §3 E), separate from `updateHistoryRow` because
+  /// it merges speaker fields against the row's CURRENT state at call time — never a value
+  /// captured earlier — which is what makes it safe against a rename racing this write.
+  /// Returns false when the row is no longer in History, same meaning as `updateHistoryRow`.
+  private let mergeSpeakerFields:
+    @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws -> Bool
+
   /// Whether the import's row is in History RIGHT NOW. Every "saved" answer on this page
   /// goes through it, because a remembered write is not a row: the user can delete the row
   /// from History at any moment after either write, including after a Stop that ends the
@@ -558,7 +580,7 @@ final class FileImportCoordinator {
   /// changes what the user sees at once and bumps this, so a late part cannot
   /// write into a run the user has already ended — while the claim is released
   /// only from the run task's own `defer`, after the physical work has exited.
-  private var generation = 0
+  private(set) var generation = 0
   private var runTask: Task<Void, Never>?
 
   init(
@@ -570,6 +592,9 @@ final class FileImportCoordinator {
     emitSpeakerTelemetry: @escaping @MainActor (
       SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?
     ) -> Void = { _, _, _, _ in },
+    emitTurnTelemetry: @escaping @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) ->
+      Void = { _, _, _ in },
+    onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
@@ -586,6 +611,8 @@ final class FileImportCoordinator {
     // simulate History says so at the call site.
     saveToHistory: @escaping @MainActor (Transcript) throws -> Void,
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool,
+    mergeSpeakerFields:
+      @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws -> Bool,
     historyRowExists: @escaping @MainActor (UUID) -> Bool,
     processPart:
       @escaping @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
@@ -601,11 +628,14 @@ final class FileImportCoordinator {
     self.transcribe = transcribe
     self.speakerLabeler = speakerLabeler
     self.emitSpeakerTelemetry = emitSpeakerTelemetry
+    self.emitTurnTelemetry = emitTurnTelemetry
+    self.onVisibleCleanupWaitResolved = onVisibleCleanupWaitResolved
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
     self.saveToHistory = saveToHistory
     self.updateHistoryRow = updateHistoryRow
+    self.mergeSpeakerFields = mergeSpeakerFields
     self.historyRowExists = historyRowExists
     self.processPart = processPart
   }
@@ -1065,6 +1095,34 @@ final class FileImportCoordinator {
   /// Cancelled by `stop()`/a new `choose()`/`startOver()`, same as `decodeTask`.
   private var speakerStepTask: Task<Void, Never>?
 
+  /// Which generations' `polishAll` has already finished, and everyone still waiting for a
+  /// generation that has not (#2810 addendum §2.5 item 4). The turn-cleanup background pass
+  /// awaits this BEFORE its first call into `FileImportRunner.process`, so it never competes
+  /// with the visible document's own cleanup for EG-1's one inference slot. `polishAll`
+  /// settles its own generation in a `defer` at the top of its body, covering every exit path
+  /// exactly once; `finishVisibleCleanup` is idempotent and removes each generation's waiters
+  /// before resuming them, so a continuation can never be resumed twice.
+  private(set) var visibleCleanupFinished: Set<Int> = []
+  private(set) var visibleCleanupWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+
+  /// Suspends until `polishAll` for `generation` has returned, however it exited — including
+  /// via cancellation, whose `defer` still runs when the function body actually exits
+  /// (`Task.cancel()` only sets a flag; it does not force an early return on its own).
+  /// Returns immediately if that generation already finished.
+  private func waitForVisibleCleanup(generation: Int) async {
+    guard !visibleCleanupFinished.contains(generation) else { return }
+    await withCheckedContinuation { continuation in
+      visibleCleanupWaiters[generation, default: []].append(continuation)
+    }
+  }
+
+  private func finishVisibleCleanup(generation: Int) {
+    guard !visibleCleanupFinished.contains(generation) else { return }
+    visibleCleanupFinished.insert(generation)
+    let waiters = visibleCleanupWaiters.removeValue(forKey: generation) ?? []
+    for waiter in waiters { waiter.resume() }
+  }
+
   /// SHA-256 over the raw Float32 bytes of the PCM ASR consumed, so a retry can compare a
   /// re-decoded source against what actually ran without re-reading the whole buffer.
   /// #2809 addendum §2.5 "Retry identity" — a method with a unit test and no caller in
@@ -1180,6 +1238,13 @@ final class FileImportCoordinator {
   /// Stop changes what the user sees at once and keeps whatever is finished.
   /// The claim is not released here — see `start`.
   func stop() {
+    // Unconditional, BEFORE the `isRunning` guard (#2810 addendum §2.5 item 4): the
+    // background turn-cleanup pass can still be running after the visible screen already
+    // shows Done, and `choose(url:)`/`startOver()` already cancel it unconditionally in
+    // exactly that situation. A direct Stop press must behave the same way, or it becomes
+    // the one "user moves on" path that leaves a background engine hold with no way to end
+    // it. Cancelling a nil or already-finished task is a documented no-op.
+    speakerStepTask?.cancel()
     guard isRunning else { return }
     generation += 1
     state = .stopped
@@ -1204,10 +1269,7 @@ final class FileImportCoordinator {
     // ENGINE, and a re-polish reads `rawTranscript`. Nothing left can want it.
     releaseDecodedAudio()
     runTask?.cancel()
-    // Detached from `runTask` (see `run()`): Stop must cancel it explicitly, or a
-    // background speaker analysis keeps running for up to its own deadline after the
-    // user has already moved on.
-    speakerStepTask?.cancel()
+    // speakerStepTask is already cancelled unconditionally above, before this guard.
   }
 
   /// Re-runs the cleanup under the current settings, from the transcript already
@@ -1308,10 +1370,18 @@ final class FileImportCoordinator {
       // superseded run's own generation guards inside `runSpeakerStep` discard its result
       // either way.
       speakerStepTask?.cancel()
+      // Captured HERE, not re-read later: identifies which DOCUMENT this background pass is
+      // for, independent of `generation` — `rePolish()` ("Clean it again") bumps `generation`
+      // for the SAME document without restarting speaker analysis, and the OLD generation
+      // check alone used to make this pass discard the only analysis this document will ever
+      // get (found by cloud review). `choose`/`startOver` still invalidate this correctly:
+      // both reset `originalHistoryRow` before any later save gives it a new id.
+      let historyIDAtStart = historyID
       speakerStepTask = Task { [weak self] in
         await self?.runSpeakerStep(
           analysisSamples: analysisSamples, generationAtStart: generationAtStart,
-          wordTimingCoverage: result.wordTimingCoverage)
+          historyIDAtStart: historyIDAtStart, rawText: result.text,
+          wordTimings: result.wordTimings, wordTimingCoverage: result.wordTimingCoverage)
       }
       phase = "Dividing it up to clean"
       await polishAll(
@@ -1327,30 +1397,239 @@ final class FileImportCoordinator {
     }
   }
 
-  /// The dormant, phase-2 speaker step (#2809 addendum §3 B). Runs the bounded, cancellable
-  /// analysis on the captured PCM, guards generation once more before recording anything
-  /// (a Stop during analysis must not attribute telemetry or a log line to a run nobody is
-  /// watching), and never surfaces a UI signal on any outcome — `speakerAnalysis` is read
-  /// only by telemetry and the log in this phase.
+  /// The phase-2 speaker step, now feeding phase-3 turn assembly and storage (#2810
+  /// addendum §3 C-E). Runs the bounded, cancellable analysis on the captured PCM, guards
+  /// on DOCUMENT IDENTITY once more before recording anything, and never surfaces a UI
+  /// signal on any outcome — `speakerAnalysis` is read only by telemetry and the log.
   private func runSpeakerStep(
-    analysisSamples: [Float], generationAtStart: Int, wordTimingCoverage: ASRWordTimingCoverage?
+    analysisSamples: [Float], generationAtStart: Int, historyIDAtStart: UUID?, rawText: String,
+    wordTimings: [ASRWordTiming]?, wordTimingCoverage: ASRWordTimingCoverage?
   ) async {
     let durationSeconds = file?.seconds ?? 0
     let analysisStart = CFAbsoluteTimeGetCurrent()
     let outcome = await speakerLabeler(analysisSamples, durationSeconds)
     let analysisMs = Int(((CFAbsoluteTimeGetCurrent() - analysisStart) * 1000).rounded())
-    // A Stop landing during analysis already released the resources it owns (`stop()`
-    // clears `decodedSamples` and bumps `generation`); nothing here should attribute
-    // telemetry or a log line to a run nobody is watching.
-    guard generationAtStart == generation else { return }
+    // Gates on the DOCUMENT this pass is for, not on `generation`: `rePolish()` ("Clean it
+    // again") bumps `generation` for the SAME document without restarting speaker analysis,
+    // and gating on generation alone made a re-polish right after import discard the only
+    // analysis this document will ever get (found by cloud review). `choose`/`startOver`
+    // still invalidate this correctly — both reset `originalHistoryRow` before any later
+    // save gives it a new id. A genuine Stop is caught by `!Task.isCancelled`, since `stop()`
+    // does not always bump `generation` either (a direct Stop press after the visible run
+    // already finished leaves it untouched).
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     speakerAnalysis = outcome
     await AppLogger.shared.log(
       "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs)",
       level: .info, category: "FileImportCoordinator")
     // The log line above is itself a suspension point; re-check rather than assume the
     // first guard still holds by the time telemetry fires. Found by Codex.
-    guard generationAtStart == generation else { return }
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
+
+    await runTurnStorage(
+      outcome: outcome, wordTimings: wordTimings, rawText: rawText,
+      generationAtStart: generationAtStart, historyIDAtStart: historyIDAtStart)
+  }
+
+  /// Phase 3: turn assembly, background turn-safe cleanup, and storage (#2810 addendum §3
+  /// C-E, §2.5 item 4). Never awaited by `run()` — reached only from `runSpeakerStep`, itself
+  /// already fully detached. Sequenced strictly after the visible document's own cleanup
+  /// finishes, and claims the same engine admission the visible run does for its own
+  /// duration, exactly as round 2 of the addendum's review settled.
+  private func runTurnStorage(
+    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, rawText: String,
+    generationAtStart: Int, historyIDAtStart: UUID?
+  ) async {
+    guard let historyID else { return }
+    let passStart = CFAbsoluteTimeGetCurrent()
+
+    // Waits for the visible document's own cleanup FIRST, uniformly for EVERY branch below
+    // — an early write here would race `savePolishedToHistory`'s own stale-captured-row
+    // overwrite (found by chunk review: two early-return branches used to write before this
+    // wait existed, so their result could be silently erased once the visible run's own
+    // save landed). `generationAtStart` is still needed here purely to INDEX the right
+    // generation's completion gate — `waitForVisibleCleanup`/`finishVisibleCleanup` are
+    // keyed by `polishAll`'s own generation number, which a re-polish genuinely does start
+    // fresh. Every STALENESS check below gates on document identity instead (see
+    // `runSpeakerStep`'s comment): `rePolish()` bumps `generation` for the SAME document
+    // without restarting this pass, and gating on generation alone discarded the only
+    // analysis a document would ever get (found by cloud review). A genuine Stop is still
+    // caught by `!Task.isCancelled`, which `stop()`'s unconditional cancel sets regardless
+    // of whether it also bumped `generation`.
+    await waitForVisibleCleanup(generation: generationAtStart)
+    onVisibleCleanupWaitResolved(generationAtStart)
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+
+    // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
+    // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
+    // actually needed — checking it before the outcome type would let a merge-input gap
+    // silently override a perfectly good `.single`/`.failed`/`.timedOut` result that has
+    // nothing to do with timings (found by chunk review).
+    guard case .labeled(let labeledCount, let segments) = outcome else {
+      // `.single` is the one non-labeled outcome worth a turn-storage telemetry event of
+      // its own (there is genuinely nothing to store, by design). `.failed`/`.timedOut`/
+      // `.cancelled` are ANALYZER outcomes `emitSpeakerTelemetry` already reported moments
+      // earlier — `nil` here means "write silently, do not double-report."
+      let turnsOutcome: TelemetryService.FileImportTurnsOutcome? =
+        if case .single = outcome { .singleNoTurns } else { nil }
+      await mergeAndReport(
+        historyID: historyID, analysis: outcome.asStorageAnalysis, turns: nil,
+        outcome: turnsOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      return
+    }
+    guard let wordTimings else {
+      await mergeAndReport(
+        historyID: historyID, analysis: .failed(.noWordTimings), turns: nil,
+        outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      return
+    }
+
+    // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
+    // scan would otherwise run synchronously on this MainActor-isolated method and freeze
+    // the UI before the background cleanup even claims the engine (found by cloud review).
+    // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
+    // computation to a detached task changes nothing about its result.
+    //
+    // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
+    // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
+    // to run the full scan to completion and this task waiting on it the whole time
+    // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
+    // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
+    // per entry so the propagated cancellation actually shortens the scan.
+    let assemblyTask = Task.detached(priority: .utility) {
+      TurnAssembler.assemble(entries: wordTimings, segments: segments)
+    }
+    let assembledTurns = await withTaskCancellationHandler(
+      operation: { await assemblyTask.value },
+      onCancel: { assemblyTask.cancel() }
+    )
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+
+    // A space-free script (Chinese, Japanese, ...) makes the production word-timing mapper
+    // (`WordTimingRangeMapper`, #2809) return exactly one untimed entry for the whole
+    // transcript — there is no whitespace to tokenize on, so no engine word can bind to any
+    // text run. Every entry then resolves to "unknown" here, and persisting `.labeled(count:)`
+    // alongside turns that are ALL "unknown" would store a self-contradictory row: the
+    // analysis claims real speakers while the turns say none were ever found (found by cloud
+    // review). Treated the same as `noWordTimings` — from turn assembly's own perspective,
+    // timings that never bind to anything are exactly "nothing to merge against," matching
+    // that reason's own documented scope. The real fix (a mapper that can tokenize a
+    // space-free script) belongs to `WordTimingRangeMapper` itself, out of this phase's scope.
+    guard assembledTurns.contains(where: { $0.speakerId != TurnAssembler.unknownSpeakerID })
+    else {
+      await mergeAndReport(
+        historyID: historyID, analysis: .failed(.noWordTimings), turns: nil,
+        outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      return
+    }
+
+    let token: EngineLease.Token
+    switch engineAdmission.claim() {
+    case .granted(let granted): token = granted
+    case .refused:
+      // A refusal lock, not a queue (`EngineLease` header): skip this pass entirely, no
+      // wait, no retry inline. The row stays `.unanalyzed` for turns.
+      await AppLogger.shared.log(
+        "[TurnCleanup] outcome=admission_refused ms=\(Self.elapsedMs(since: passStart))",
+        level: .info, category: "FileImportCoordinator")
+      emitTurnTelemetry(.admissionRefused, nil, 0)
+      return
+    }
+    isEngineHeld = true
+    let configuration = runConfiguration
+    heldLocalPolishProvider = configuration?.localPolishProvider
+    heldOllamaModel = configuration?.ollamaModel
+    defer {
+      engineAdmission.release(token)
+      finishEngineHold()
+    }
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+
+    // Mirrors `start()`/`rePolish()`: the visible run's own claim already warmed this
+    // provider, but that hold has since been released (and its own `onEngineReleased` may
+    // have reconciled a DIFFERENT workload's provider in between) — re-preparing under this
+    // SEPARATE claim is what proves the right server is actually up before spending
+    // anything on it (found by chunk review).
+    let polisherReady =
+      if let configuration { await prepareLocalPolish(configuration) } else { true }
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+    guard polisherReady else {
+      await AppLogger.shared.log(
+        "[TurnCleanup] outcome=polisher_not_ready ms=\(Self.elapsedMs(since: passStart))",
+        level: .info, category: "FileImportCoordinator")
+      emitTurnTelemetry(.polisherNotReady, nil, 0)
+      return
+    }
+
+    let (cleanedTurns, fallbackTurnCount) = await TurnCleanupRunner(processPart: processPart)
+      .run(turns: assembledTurns, rawText: rawText, engineLanguage: engineReportedLanguage)
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+
+    await mergeAndReport(
+      historyID: historyID, analysis: .labeled(count: labeledCount), turns: cleanedTurns,
+      outcome: .stored, turnCount: cleanedTurns.count, fallbackTurnCount: fallbackTurnCount,
+      passStart: passStart)
+  }
+
+  private static func elapsedMs(since start: CFAbsoluteTime) -> Int {
+    Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
+  }
+
+  /// The one place `runTurnStorage` writes and reports telemetry, so every branch — success,
+  /// a deleted row, or a save failure — is classified consistently (#2810 addendum §3a: the
+  /// metric must never claim persistence that did not happen).
+  /// `outcome: nil` means "write silently ON SUCCESS" — used only for `.failed`/`.timedOut`/
+  /// `.cancelled` analyzer outcomes, which `emitSpeakerTelemetry` already reported; a
+  /// successful write here has nothing new to say. A FAILED write is always new information
+  /// (the analyzer's own event says nothing about whether persisting that failure reason
+  /// succeeded), so `saveFailed`/`rowDeleted` are reported even when `outcome` is nil —
+  /// found by chunk review round 2.
+  private func mergeAndReport(
+    historyID: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
+    outcome: TelemetryService.FileImportTurnsOutcome?, turnCount: Int?, fallbackTurnCount: Int,
+    passStart: CFAbsoluteTime
+  ) async {
+    let saveFailed: Bool
+    let rowDeleted: Bool
+    do {
+      let saved = try mergeSpeakerFields(historyID, analysis, turns)
+      saveFailed = false
+      rowDeleted = !saved
+      // Keeps this coordinator's OWN in-memory snapshot in step with what was just
+      // persisted. `withImportResult` (used by a later "Clean it again" / `rePolish`'s
+      // `savePolishedToHistory`) never touches the speaker fields, so it PRESERVES
+      // whatever `originalHistoryRow` already carries — but only if this write updates
+      // that carried value first. Without this, a re-polish after turn storage silently
+      // overwrote the just-saved speaker analysis, names and turns back to nil, because
+      // `originalHistoryRow` never learned about this write (found by whole-diff review).
+      // Guarded by id: `originalHistoryRow` can be nil, or belong to a DIFFERENT file
+      // chosen while this background pass was still running.
+      //
+      // KNOWN LIMIT for phase 4 (second-pass review): this closes the loop for writes THIS
+      // coordinator makes, but `originalHistoryRow` is still a private snapshot — an
+      // explicit rename (`mergeSpeakerFields`'s `explicitRename:` parameter) applied from
+      // anywhere else against the SAME row would not update it, and a later re-polish here
+      // would silently revert that rename via `withImportResult`. Not reachable today: no
+      // UI calls `explicitRename` yet (phase 4 ships that). Phase 4's rename design should
+      // either read the row fresh from History at write time or push its own update through
+      // this same path rather than assuming this cache is authoritative.
+      if saved, originalHistoryRow?.id == historyID {
+        originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
+          analysis: analysis, turns: turns)
+      }
+    } catch {
+      saveFailed = true
+      rowDeleted = false
+    }
+    let reportedOutcome: TelemetryService.FileImportTurnsOutcome? =
+      saveFailed ? .saveFailed : (rowDeleted ? .rowDeleted : outcome)
+    guard let reportedOutcome else { return }
+    await AppLogger.shared.log(
+      "[TurnCleanup] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) ms=\(Self.elapsedMs(since: passStart))",
+      level: .info, category: "FileImportCoordinator")
+    emitTurnTelemetry(
+      reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
   }
 
   private static func speakerLogOutcome(_ analysis: SpeakerAnalysis) -> String {
@@ -1407,6 +1686,11 @@ final class FileImportCoordinator {
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
   private func polishAll(_ pieces: [String], generationAtStart: Int) async {
+    // #2810 addendum §2.5 item 4: settles the turn-cleanup completion gate on EVERY exit
+    // path of this function, exactly once, so the background turn-cleanup pass (which waits
+    // on this signal before its own first EG-1 call) never starts while this function is
+    // still competing for the same one inference slot.
+    defer { finishVisibleCleanup(generation: generationAtStart) }
     // #2772 finding 14: the queue the Working step renders. Published here, at the one place
     // the split exists, so the rows on screen are the pieces that will actually be cleaned.
     pendingPieces = pieces
