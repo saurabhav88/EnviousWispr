@@ -8,16 +8,16 @@ import Foundation
 /// Owns nothing about deadline, cancellation forwarding, or outcome shape: `SpeakerLabeler`
 /// (Pipeline) is the one owner of that lifecycle (#2809 addendum §3 B3). This type's only
 /// job is to run the vendor manager and translate its result.
-struct OfflineSpeakerAnalyzer {
+package struct OfflineSpeakerAnalyzer {
   private let manager: OfflineDiarizerManager
 
-  init(config: OfflineDiarizerConfig = .default) {
+  package init(config: OfflineDiarizerConfig = .default) {
     manager = OfflineDiarizerManager(config: config)
   }
 
   /// `models` must come from `BundledSpeakerModelLoader.load(in:)` — never
   /// `OfflineDiarizerManager.prepareModels()`, which would download.
-  func initialize(models: OfflineDiarizerModels) {
+  package func initialize(models: OfflineDiarizerModels) {
     manager.initialize(models: models)
   }
 
@@ -26,7 +26,7 @@ struct OfflineSpeakerAnalyzer {
   /// no fork edit required at the pinned revision). `sampleRate` is asserted rather than
   /// used to resample: every caller in this app already resamples to the pipeline's own
   /// rate before this point, so a mismatch here is a caller defect, not a runtime path.
-  func analyze(
+  package func analyze(
     samples: [Float], sampleRate: Int, onWindow: @escaping @Sendable (Int, Int) -> Void
   ) async throws -> [SpeakerSegment] {
     precondition(

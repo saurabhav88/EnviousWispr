@@ -1,3 +1,4 @@
+import CryptoKit
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -323,9 +324,19 @@ final class FileImportCoordinator {
   /// cleanup chain's language ladder prefers the engine's own answer over
   /// identifying one from the text. Reducing this to a bare `String` discarded
   /// the better source at the only place it existed.
-  private let transcribe: @MainActor ([Float]) async throws -> (
-    text: String, language: String?
-  )
+  private let transcribe: @MainActor ([Float]) async throws -> ASRResult
+  /// The dormant, phase-2 speaker step (#2809). Runs after ASR on the same PCM, bounded
+  /// and cancellable — see `run(generationAtStart:)`. Defaults to reporting the models as
+  /// unavailable rather than silently doing nothing, so a coordinator built without this
+  /// closure fails the same way a real one would if the bundled models were missing.
+  private let speakerLabeler: @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis
+  /// Shape-only telemetry for the dormant speaker step (#2809): the outcome, the file's
+  /// own duration, how long analysis took, and the word-timing coverage ASR reported for
+  /// the SAME run — never text, never a file name. No-op default so a coordinator built
+  /// without this closure (most tests) simply emits nothing, same as every other
+  /// telemetry-shaped closure in this app.
+  private let emitSpeakerTelemetry:
+    @MainActor (SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?) -> Void
   private let engineAdmission: EngineAdmissionAccess
 
   /// Stops both engines' pending model-unload timers, and puts the user's
@@ -466,8 +477,7 @@ final class FileImportCoordinator {
   /// that Stop changes the screen at once while the claim waits for the work to
   /// exit — cannot be tested at all unless a test can make a part take as long
   /// as it likes.
-  private let processPart:
-    @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
+  private let processPart: @MainActor (String, String?) async throws -> FileImportRunner.PartOutcome
 
   /// Writes this import to History, or throws.
   ///
@@ -553,9 +563,13 @@ final class FileImportCoordinator {
 
   init(
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
-    transcribe: @escaping @MainActor ([Float]) async throws -> (
-      text: String, language: String?
-    ),
+    transcribe: @escaping @MainActor ([Float]) async throws -> ASRResult,
+    speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis = {
+      _, _ in .failed(.modelsUnavailable)
+    },
+    emitSpeakerTelemetry: @escaping @MainActor (
+      SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?
+    ) -> Void = { _, _, _, _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
@@ -585,6 +599,8 @@ final class FileImportCoordinator {
     self.onEngineReleased = onEngineReleased
     self.decode = decode
     self.transcribe = transcribe
+    self.speakerLabeler = speakerLabeler
+    self.emitSpeakerTelemetry = emitSpeakerTelemetry
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
@@ -1027,6 +1043,21 @@ final class FileImportCoordinator {
   /// The in-flight read, so replacing or clearing the file can stop it.
   private var decodeTask: Task<Void, Never>?
 
+  /// The dormant speaker step's outcome, held in memory for telemetry and the log only
+  /// (#2809 addendum §3 B3). Not persisted, not read by any view in phase 2.
+  private(set) var speakerAnalysis: SpeakerAnalysis?
+
+  /// SHA-256 over the raw Float32 bytes of the PCM ASR consumed, so a retry can compare a
+  /// re-decoded source against what actually ran without re-reading the whole buffer.
+  /// #2809 addendum §2.5 "Retry identity" — a method with a unit test and no caller in
+  /// phase 2; phase 4's retry-after-failure UI is the first caller.
+  static func pcmDigestHex(_ samples: [Float]) -> String {
+    samples.withUnsafeBufferPointer { buffer in
+      let digest = SHA256.hash(data: Data(buffer: buffer))
+      return digest.map { String(format: "%02x", $0) }.joined()
+    }
+  }
+
   /// What the engine said this recording's language was, kept so a re-polish
   /// uses the same evidence the first run did rather than falling back to
   /// guessing from the text.
@@ -1058,8 +1089,12 @@ final class FileImportCoordinator {
       let readiness = await ensureEngineReady()
       guard generationAtStart == generation else { return }
       switch readiness {
-      case .notInstalled: showRejection(.engineNotInstalled); return
-      case .notReady: showRejection(.engineNotReady); return
+      case .notInstalled:
+        showRejection(.engineNotInstalled)
+        return
+      case .notReady:
+        showRejection(.engineNotReady)
+        return
       case .ready: break
       }
 
@@ -1068,7 +1103,9 @@ final class FileImportCoordinator {
       let token: EngineLease.Token
       switch engineAdmission.claim() {
       case .granted(let granted): token = granted
-      case .refused(let holder): showRejection(.engineBusy(holder)); return
+      case .refused(let holder):
+        showRejection(.engineBusy(holder))
+        return
       }
       isEngineHeld = true
       // **The unload-timer bracket lives INSIDE the claim, and that placement is
@@ -1209,8 +1246,13 @@ final class FileImportCoordinator {
   // MARK: - The run
 
   private func run(generationAtStart: Int) async {
+    // Captured BEFORE the first await (#2809 addendum §3 B4): the success-path release
+    // below (`releaseDecodedAudio()`) clears the coordinator's OWN `decodedSamples`, so the
+    // speaker step — which runs after that release — must work from its own array, not the
+    // coordinator's variable, or it would receive an empty buffer.
+    let analysisSamples = decodedSamples
     do {
-      let (transcript, language) = try await transcribe(decodedSamples)
+      let result = try await transcribe(decodedSamples)
       // **The generation guard comes FIRST, before any shared write.** A slow
       // transcription that returns after the user stopped and chose another file
       // belongs to a run nobody is watching; clearing `decodedSamples` on the way
@@ -1221,15 +1263,30 @@ final class FileImportCoordinator {
       // matter while nothing persisted it. History does now, so a superseded run could
       // stamp its language onto a row belonging to the file the user replaced. Found by
       // Codex.
-      engineReportedLanguage = language
+      engineReportedLanguage = result.language
       releaseDecodedAudio()
-      guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         showRejection(.noSpeechFound)
         return
       }
-      rawTranscript = transcript
+      rawTranscript = result.text
+      // ADDED earlier gate (#2809 addendum §3 B4): the speaker step only ever runs on words
+      // already durable. `polishAll`'s own gate at its entry stays — it also protects the
+      // re-polish path, which never reaches here.
+      guard rawIsSavedToHistory || saveRawToHistory() else {
+        finishRun(savingDocument: false)
+        return
+      }
+      await runSpeakerStep(
+        analysisSamples: analysisSamples, generationAtStart: generationAtStart,
+        wordTimingCoverage: result.wordTimingCoverage)
+      // The speaker step's own await is a suspension point a Stop can land in; without
+      // this guard a stopped run still advanced into cleanup, writing `.polishing` state
+      // and starting `polishAll` for a run nobody is watching. Found by Codex.
+      guard generationAtStart == generation else { return }
       phase = "Dividing it up to clean"
-      await polishAll(TranscriptSplitter.split(transcript), generationAtStart: generationAtStart)
+      await polishAll(
+        TranscriptSplitter.split(result.text), generationAtStart: generationAtStart)
     } catch is CancellationError {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
@@ -1238,6 +1295,54 @@ final class FileImportCoordinator {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
       showRejection(Self.rejection(for: error))
+    }
+  }
+
+  /// The dormant, phase-2 speaker step (#2809 addendum §3 B). Runs the bounded, cancellable
+  /// analysis on the captured PCM, guards generation once more before recording anything
+  /// (a Stop during analysis must not attribute telemetry or a log line to a run nobody is
+  /// watching), and never surfaces a UI signal on any outcome — `speakerAnalysis` is read
+  /// only by telemetry and the log in this phase.
+  private func runSpeakerStep(
+    analysisSamples: [Float], generationAtStart: Int, wordTimingCoverage: ASRWordTimingCoverage?
+  ) async {
+    let durationSeconds = file?.seconds ?? 0
+    let analysisStart = CFAbsoluteTimeGetCurrent()
+    let outcome = await speakerLabeler(analysisSamples, durationSeconds)
+    let analysisMs = Int(((CFAbsoluteTimeGetCurrent() - analysisStart) * 1000).rounded())
+    // A Stop landing during analysis already released the resources it owns (`stop()`
+    // clears `decodedSamples` and bumps `generation`); nothing here should attribute
+    // telemetry or a log line to a run nobody is watching.
+    guard generationAtStart == generation else { return }
+    speakerAnalysis = outcome
+    await AppLogger.shared.log(
+      "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs)",
+      level: .info, category: "FileImportCoordinator")
+    // The log line above is itself a suspension point; re-check rather than assume the
+    // first guard still holds by the time telemetry fires. Found by Codex.
+    guard generationAtStart == generation else { return }
+    emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
+  }
+
+  private static func speakerLogOutcome(_ analysis: SpeakerAnalysis) -> String {
+    switch analysis {
+    case .single: return "single"
+    case .labeled: return "labeled"
+    case .failed(let failure):
+      switch failure {
+      case .modelsUnavailable: return "failed_models_unavailable"
+      case .analyzerThrew: return "failed_analyzer_threw"
+      case .cancelled: return "cancelled"
+      }
+    case .timedOut: return "timed_out"
+    }
+  }
+
+  private static func speakerLogCount(_ analysis: SpeakerAnalysis) -> String {
+    switch analysis {
+    case .single: return "1"
+    case .labeled(let count, _): return "\(count)"
+    case .failed, .timedOut: return "n/a"
     }
   }
 
@@ -1448,7 +1553,8 @@ final class FileImportCoordinator {
     // user just took it out. Repeating "your original words are saved" over a row they
     // deleted would be the page describing what was CONFIGURED rather than what happened.
     if historyRowWasDeleted {
-      return "You deleted this from History, so it is not saved there. Copy or save it before you leave."
+      return
+        "You deleted this from History, so it is not saved there. Copy or save it before you leave."
     }
     if rawIsSavedToHistory {
       return """

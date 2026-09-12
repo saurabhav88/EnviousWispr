@@ -36,8 +36,13 @@ private enum SpeakerAnalyzerFixture {
 ///
 /// Structural network-off evidence, not a process-level firewall: `BundledSpeakerModelLoader`
 /// never calls `ModelHub` or any networked API (`BundledSpeakerModelLoaderTests` greps for
-/// it), and `ModelHub.offlineMode` is asserted unchanged before and after this run — the
-/// speaker path is independent of that flag by construction (#1908/#1981).
+/// it). This test does NOT also assert `ModelHub.offlineMode` is unchanged across the run —
+/// that flag is process-global and shared with `EnviousWisprASRTests`' own Parakeet suites,
+/// whose cross-suite exclusion actor (`withParakeetOfflineModeExclusion`) lives in a
+/// different test target and is not reachable here; asserting against a global another
+/// target can concurrently mutate produced a real flake under the full test suite
+/// (measured, not hypothetical) with no correctness signal the grep test above doesn't
+/// already give more reliably.
 @Suite("OfflineSpeakerAnalyzer (real models, real audio)", .serialized, .tags(.productOutcome))
 struct OfflineSpeakerAnalyzerRealBoundaryTests {
 
@@ -46,9 +51,6 @@ struct OfflineSpeakerAnalyzerRealBoundaryTests {
     .tags(.realBoundary)
   )
   func distinguishesTwoRealSpeakers() async throws {
-    let offlineModeBefore = ModelHub.offlineMode
-    defer { #expect(ModelHub.offlineMode == offlineModeBefore) }
-
     let bundle = try SpeakerAnalyzerFixture.makeBundle()
     defer { try? FileManager.default.removeItem(at: URL(fileURLWithPath: bundle.bundlePath)) }
 

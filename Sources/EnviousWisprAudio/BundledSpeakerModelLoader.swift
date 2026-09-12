@@ -11,8 +11,8 @@ import Foundation
 /// Same shape as `BundledVADModelLoader`: takes the caller's `Bundle` explicitly (this
 /// framework links into more than one process), no `subdirectory:` lookup because Tuist's
 /// `.folderReference` embeds each `.mlmodelc` at the top level of `Contents/Resources`.
-enum BundledSpeakerModelLoader {
-  enum LoadError: Error {
+package enum BundledSpeakerModelLoader {
+  package enum LoadError: Error {
     case resourceNotFound(String)
     case loadFailed(String, Error)
     case pldaMalformed
@@ -22,7 +22,7 @@ enum BundledSpeakerModelLoader {
   /// `plda-parameters.json` so nothing generic sits at the bundle root (#2809).
   static let pldaResourceName = "speaker-plda-parameters"
 
-  static func load(in bundle: Bundle) throws -> OfflineDiarizerModels {
+  package static func load(in bundle: Bundle) throws -> OfflineDiarizerModels {
     let start = CFAbsoluteTimeGetCurrent()
 
     // FBank runs faster on CPU (the vendor's own default loader policy,

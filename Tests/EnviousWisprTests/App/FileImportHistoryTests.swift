@@ -74,7 +74,9 @@ struct FileImportHistoryTests {
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded() },
-      transcribe: { _ in (text: raw, language: "en") },
+      transcribe: { _ in
+        ASRResult(text: raw, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+      },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
@@ -540,7 +542,11 @@ struct FileImportHistoryTests {
     let spy = HistorySpy()
     let c = FileImportCoordinator(
       decode: { _ in Self.decoded() },
-      transcribe: { _ in (text: "um one two three", language: "en") },
+      transcribe: { _ in
+        ASRResult(
+          text: "um one two three", language: "en", duration: 0, processingTime: 0,
+          backendType: .parakeet)
+      },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
