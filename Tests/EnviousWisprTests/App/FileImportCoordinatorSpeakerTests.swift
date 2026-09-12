@@ -159,6 +159,26 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(await recorder.lastDurationSeconds == 2.0)
   }
 
+  @Test("choosing a new file clears the previous file's speaker analysis")
+  func choosingANewFileClearsThePreviousSpeakerAnalysis() async {
+    let coordinator = makeCoordinator(
+      lease: EngineLease(), seconds: 2.0,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: []) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.speakerAnalysis == .labeled(count: 2, segments: []))
+
+    // A second file must not read as though the first file's speaker analysis was
+    // about it — found by second-pass review.
+    coordinator.choose(url: Self.anyURL)
+    #expect(coordinator.speakerAnalysis == nil)
+  }
+
   @Test("Stop exits the speaker worker before the engine claim is released")
   func stopJoinsTheSpeakerWorkerBeforeReleasingTheEngine() async {
     let gate = Gate()

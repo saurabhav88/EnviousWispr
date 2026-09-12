@@ -3098,9 +3098,11 @@ public final class TelemetryService {
 
   /// Shape-only telemetry for the dormant, phase-2 speaker step: never text, never a file
   /// name. `speaker_bucket` is present only on `single`/`labeled` — there is no valid count
-  /// on `failed`/`timed_out`. `word_timing_coverage_bucket` is `none` when the coordinator
-  /// received no coverage at all (an engine that gave no timing data), distinct from a real
-  /// `.none` bucket the mapper itself can report.
+  /// on `failed`/`timed_out`. `word_timing_coverage_bucket` is `none` for BOTH "the
+  /// coordinator received no coverage at all" (an engine that gave no timing data) and "the
+  /// mapper reported a real, empty coverage" — this bucket does not distinguish the two, on
+  /// purpose: a dashboard reading it only needs "were there usable word timings", not why
+  /// not (found by second-pass review, which read the two as distinguished; they are not).
   public func trackFileImportSpeakers(
     outcome: SpeakerAnalysis, durationSeconds: TimeInterval, analysisMs: Int,
     wordTimingCoverage: ASRWordTimingCoverage?

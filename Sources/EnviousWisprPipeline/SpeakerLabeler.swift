@@ -33,6 +33,10 @@ public struct SpeakerLabeler: Sendable {
     deadlineSecondsOverride = nil
     makeAnalysisTask = { samples in
       Task<[SpeakerSegment], Error> {
+        // A Stop landing in the gap between `run()` creating this task and its
+        // first line running would otherwise still pay for a full model load
+        // (tens of ms) before anything notices. Second-pass review.
+        try Task.checkCancellation()
         let models = try BundledSpeakerModelLoader.load(in: .main)
         let analyzer = OfflineSpeakerAnalyzer()
         analyzer.initialize(models: models)
@@ -53,6 +57,11 @@ public struct SpeakerLabeler: Sendable {
   }
 
   public func run(samples: [Float], durationSeconds: Double) async -> SpeakerAnalysis {
+    // A caller that was already cancelled before reaching this call has no
+    // reason to pay for a model load it will immediately throw away. Second-
+    // pass review.
+    guard !Task.isCancelled else { return .failed(.cancelled) }
+
     let deadlineSeconds =
       deadlineSecondsOverride ?? Self.deadlineSeconds(forDurationSeconds: durationSeconds)
 
@@ -71,8 +80,10 @@ public struct SpeakerLabeler: Sendable {
         guard !segments.isEmpty else {
           // Zero segments is not "one speaker" — it is the analyzer finding nothing to
           // attribute, and reporting it as `.single` would corrupt `speaker_bucket`
-          // telemetry with a count that never happened.
-          return .failed(.analyzerThrew("no speaker segments"))
+          // telemetry with a count that never happened. A distinct case, not
+          // `.analyzerThrew`: nothing threw, so that label would be a false cause
+          // (found by second-pass review).
+          return .failed(.noSpeakerSegments)
         }
         let distinctSpeakers = Set(segments.map(\.speakerId))
         if distinctSpeakers.count <= 1 {

@@ -619,6 +619,9 @@ final class FileImportCoordinator {
     parts = []
     rawTranscript = ""
     decodedSamples = []
+    // Same reason as `startOver`: a different file must not read as though the LAST
+    // file's speaker analysis was about this one (found by second-pass review).
+    speakerAnalysis = nil
     let name = url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
@@ -1020,6 +1023,9 @@ final class FileImportCoordinator {
     rawTranscript = ""
     decodedSamples = []
     runConfiguration = nil
+    // A different file is a different speaker analysis — the prior file's outcome must
+    // not survive to be read against this one (found by second-pass review).
+    speakerAnalysis = nil
     forgetSaveOutcome()
     // A new file is a NEW History row. Carrying the id forward would make the next import
     // overwrite the last one's words, because the store names its file by id — which is the
@@ -1332,6 +1338,7 @@ final class FileImportCoordinator {
       switch failure {
       case .modelsUnavailable: return "failed_models_unavailable"
       case .analyzerThrew: return "failed_analyzer_threw"
+      case .noSpeakerSegments: return "failed_no_speaker_segments"
       case .cancelled: return "cancelled"
       }
     case .timedOut: return "timed_out"

@@ -166,6 +166,20 @@ struct SpeakerLabelerTests {
     }
   }
 
+  @Test(
+    "an analyzer that finishes with zero segments reports .failed(.noSpeakerSegments), not .analyzerThrew"
+  )
+  func zeroSegmentsReportsNoSpeakerSegments() async {
+    let labeler = SpeakerLabeler(
+      deadlineSecondsOverride: 5,
+      analysisTask: { _ in Task<[SpeakerSegment], Error> { [] } })
+    let outcome = await labeler.run(samples: [], durationSeconds: 0)
+    guard case .failed(.noSpeakerSegments) = outcome else {
+      Issue.record("expected .failed(.noSpeakerSegments), got \(outcome)")
+      return
+    }
+  }
+
   @Test("a single detected speaker reports .single, not .labeled(count: 1)")
   func singleSpeakerReportsSingle() async {
     let segment = SpeakerSegment(speakerId: "0", startMs: 0, endMs: 1000, quality: 1)

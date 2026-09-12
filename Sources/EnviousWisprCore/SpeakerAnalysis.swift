@@ -25,6 +25,10 @@ public enum SpeakerFailure: Sendable, Equatable {
   case modelsUnavailable
   /// The analyzer threw; the message is diagnostic only, never shown to the user.
   case analyzerThrew(String)
+  /// The analyzer finished without throwing but attributed nothing — a real, distinct
+  /// outcome from `analyzerThrew`, which would otherwise misreport a clean run that found
+  /// no speech as an error the analyzer raised (found by second-pass review).
+  case noSpeakerSegments
   /// Stop, or the coordinator's own generation check, ended the run before it finished.
   case cancelled
 }
