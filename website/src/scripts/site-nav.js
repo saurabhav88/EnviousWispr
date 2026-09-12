@@ -3,42 +3,47 @@
 // the link-click close and desktop-breakpoint reset the homepage shell had.
 //
 // The header is server-rendered as plain links and visible panels. This
-// module upgrades each trigger link to a button, collapses the panels, and
-// stamps data-nav-ready only after every binding succeeded, so a failure at
-// any step leaves the no-script header exactly as it was delivered.
+// module validates every node it needs BEFORE touching the DOM, builds the
+// replacement buttons detached, applies the swap in one pass, and stamps
+// data-nav-ready only after every binding succeeded. If anything throws the
+// mutations are rolled back, so a failure leaves the no-script header exactly
+// as it was delivered.
 function install() {
-  const header = document.querySelector('.site-header');
+  const header = document.querySelector('.chrome-header');
   if (!header || header.dataset.navReady) return;
+
+  // 1. Query and validate. Nothing is mutated in this phase.
   const nav = header.querySelector('.main-nav');
   const mobileLink = header.querySelector('[data-nav-mobile-trigger]');
   const parents = [...header.querySelectorAll('[data-nav-parent]')];
-  if (!nav || !mobileLink || parents.length !== 2) return;
-
-  // Trigger links become buttons; the panel keeps its id and content.
+  if (!nav || !nav.id || !mobileLink || parents.length !== 2) return;
   const groups = parents.map((parent) => {
     const link = parent.querySelector('[data-nav-trigger]');
     const panel = parent.querySelector('[data-nav-panel]');
+    if (!link || !panel || !panel.id || !link.id) throw new Error('site-nav: incomplete menu group');
+    return { parent, link, panel };
+  });
+
+  // 2. Build replacements detached.
+  const makeButton = (source, label) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = link.className;
-    button.id = link.id;
-    button.setAttribute('aria-controls', panel.id);
+    button.className = source.className;
+    if (source.id) button.id = source.id;
+    if (label) button.setAttribute('aria-label', label);
     button.setAttribute('aria-expanded', 'false');
-    button.replaceChildren(...link.childNodes);
-    link.replaceWith(button);
-    panel.hidden = true;
-    return { parent, button, panel };
-  });
-  const [products, resources] = groups;
-
-  const mobile = document.createElement('button');
-  mobile.type = 'button';
-  mobile.className = mobileLink.className;
-  mobile.setAttribute('aria-label', 'Open navigation');
-  mobile.setAttribute('aria-expanded', 'false');
+    button.append(...[...source.childNodes].map((node) => node.cloneNode(true)));
+    return button;
+  };
+  for (const group of groups) {
+    group.button = makeButton(group.link);
+    group.button.setAttribute('aria-controls', group.panel.id);
+  }
+  const mobile = makeButton(mobileLink, 'Open navigation');
   mobile.setAttribute('aria-controls', nav.id);
-  mobile.replaceChildren(...mobileLink.childNodes);
-  mobileLink.replaceWith(mobile);
+  const [products, resources] = groups;
+  const controller = new AbortController();
+  const { signal } = controller;
 
   function setPanel(group, open) {
     group.button.setAttribute('aria-expanded', String(open));
@@ -52,46 +57,89 @@ function install() {
     if (returnFocus) mobile.focus();
   }
 
-  products.button.addEventListener('click', () => {
-    setPanel(products, products.panel.hidden);
-    setPanel(resources, false);
-  });
-  resources.button.addEventListener('click', () => {
-    setPanel(resources, resources.panel.hidden);
-    setPanel(products, false);
-  });
-  mobile.addEventListener('click', () => setMobile(!nav.classList.contains('open')));
-
-  // A chosen destination closes whatever was open.
-  nav.addEventListener('click', (event) => {
-    if (event.target.closest('a[href]')) {
-      for (const group of groups) setPanel(group, false);
-      setMobile(false);
+  // 3. Apply. Any throw from here rolls every mutation back.
+  const applied = [];
+  try {
+    for (const group of groups) {
+      group.link.replaceWith(group.button);
+      applied.push(() => group.button.replaceWith(group.link));
+      group.panel.hidden = true;
+      applied.push(() => {
+        group.panel.hidden = false;
+      });
     }
-  });
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('[data-nav-parent]')) for (const group of groups) setPanel(group, false);
-    if (nav.classList.contains('open') && !header.contains(event.target)) setMobile(false);
-  });
-  // Escape closes the innermost thing first: Features, then Resources, then the phone menu.
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (!products.panel.hidden) {
-      setPanel(products, false);
-      products.button.focus();
-    } else if (!resources.panel.hidden) {
-      setPanel(resources, false);
-      resources.button.focus();
-    } else if (nav.classList.contains('open')) {
-      setMobile(false, true);
-    }
-  });
-  const desktop = matchMedia('(min-width: 1000px)');
-  desktop.addEventListener('change', () => {
-    if (desktop.matches) setMobile(false);
-  });
+    mobileLink.replaceWith(mobile);
+    applied.push(() => mobile.replaceWith(mobileLink));
 
-  header.dataset.navReady = 'true';
+    products.button.addEventListener(
+      'click',
+      () => {
+        setPanel(products, products.panel.hidden);
+        setPanel(resources, false);
+      },
+      { signal },
+    );
+    resources.button.addEventListener(
+      'click',
+      () => {
+        setPanel(resources, resources.panel.hidden);
+        setPanel(products, false);
+      },
+      { signal },
+    );
+    mobile.addEventListener('click', () => setMobile(!nav.classList.contains('open')), { signal });
+    // A chosen destination closes whatever was open.
+    nav.addEventListener(
+      'click',
+      (event) => {
+        if (event.target.closest('a[href]')) {
+          for (const group of groups) setPanel(group, false);
+          setMobile(false);
+        }
+      },
+      { signal },
+    );
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (!event.target.closest('[data-nav-parent]')) for (const group of groups) setPanel(group, false);
+        if (nav.classList.contains('open') && !header.contains(event.target)) setMobile(false);
+      },
+      { signal },
+    );
+    // Escape closes the innermost thing first: Features, then Resources, then the phone menu.
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape') return;
+        if (!products.panel.hidden) {
+          setPanel(products, false);
+          products.button.focus();
+        } else if (!resources.panel.hidden) {
+          setPanel(resources, false);
+          resources.button.focus();
+        } else if (nav.classList.contains('open')) {
+          setMobile(false, true);
+        }
+      },
+      { signal },
+    );
+    const desktop = matchMedia('(min-width: 1000px)');
+    desktop.addEventListener(
+      'change',
+      () => {
+        if (desktop.matches) setMobile(false);
+      },
+      { signal },
+    );
+    header.dataset.navReady = 'true';
+  } catch (error) {
+    controller.abort();
+    for (const undo of applied.reverse()) undo();
+    nav.classList.remove('open');
+    delete header.dataset.navReady;
+    throw error;
+  }
 }
 
 try {

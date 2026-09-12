@@ -13,22 +13,22 @@ const { motionControl = false } = Astro.props;
 const year = new Date().getFullYear();
 ---
 
-<footer class="site-chrome site-footer">
-  <div class="footer-inner">
-    <div class="footer-brand">
-      <a class="brand" href="/" aria-label="EnviousWispr home"><Logo /><span>EnviousWispr</span></a>
+<footer class="site-chrome chrome-footer">
+  <div class="chrome-footer-inner">
+    <div class="chrome-footer-brand">
+      <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><Logo /><span>EnviousWispr</span></a>
       <p>One free Mac app. More ways to work with your voice.</p>
     </div>
-    <nav class="footer-links" aria-label="Footer">
+    <nav class="chrome-footer-links" aria-label="Footer">
       {footerLinks.map(([label, href]) => <a href={href}>{label}</a>)}
       <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
-    <span class="footer-legal"
+    <span class="chrome-footer-legal"
       >© {year} Envious Labs · GPLv3 app <a href="/privacy-policy/">Privacy</a>
       <a href="/terms-of-service/">Terms</a>
       {
         motionControl && (
-          <button class="text-button" id="motion-toggle" data-motion-control data-enhancement-control hidden>
+          <button class="chrome-text-button" id="motion-toggle" data-motion-control data-enhancement-control hidden>
             Pause motion
           </button>
         )

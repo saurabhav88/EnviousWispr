@@ -85,7 +85,7 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
     .help-rail {
       position: sticky;
       top: calc(var(--site-header-offset, 96px) + 22px);
-      max-height: calc(100vh - 108px);
+      max-height: calc(100vh - var(--site-header-offset, 96px) - 42px);
       display: flex;
       flex-direction: column;
     }

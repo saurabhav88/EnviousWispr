@@ -106,11 +106,9 @@ export const resources = [
   ['Contact', '/contact/'],
 ];
 
-export const footerLinks = [
-  ['Features', '/features/'],
-  ['Why Offline?', '/why-offline/'],
-  ['Make it yours', '/customization/'],
-];
+export const footerLinks = catalog
+  .filter((entry) => entry.slug === 'features' || entry.headerLink || entry.slug === 'customization')
+  .map((entry) => [entry.name, entry.path]);
 
 export function byPath(pathname) {
   return catalog.find((entry) => entry.path === pathname);

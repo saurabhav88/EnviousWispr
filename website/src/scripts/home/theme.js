@@ -20,7 +20,7 @@ export function installTheme() {
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', theme === 'dark' ? '#14101b' : '#fbf9ff');
-    const button = document.querySelector('.theme-toggle');
+    const button = document.querySelector('[data-theme-toggle]');
     if (button) {
       button.textContent = theme === 'dark' ? '☀' : '☾';
       button.setAttribute(
@@ -39,7 +39,7 @@ export function installTheme() {
     }
   });
   function bind() {
-    const button = document.querySelector('.theme-toggle');
+    const button = document.querySelector('[data-theme-toggle]');
     if (!button) return;
     button.addEventListener('click', () => {
       override = root.dataset.theme === 'dark' ? 'light' : 'dark';
