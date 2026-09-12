@@ -1,19 +1,10 @@
 ---
-import { getImage } from 'astro:assets';
-import light from '../../assets/home/hero-light.png';
-import dark from '../../assets/home/hero-dark.png';
 import examples from '../../data/home/hero.json';
 import { downloadUrl } from '../../data/home/site.js';
+import { heroArt } from '../../utils/home/hero-art.js';
 import AppDemo from './AppDemo.astro';
-const widths = [720, 1440, 2160];
-const sources = await Promise.all(
-  [light, dark].map((src) =>
-    Promise.all(widths.map((width) => getImage({ src, width, format: 'webp', quality: 85 }))),
-  ),
-);
-const sets = sources.map((group) =>
-  group.map((image, i) => image.src + ' ' + widths[i] + 'w').join(', '),
-);
+const art = await heroArt();
+const sources = [art.light, art.dark];
 ---
 
 <section class="screen-hero" id="opening" data-phase="finished" aria-labelledby="hero-title">

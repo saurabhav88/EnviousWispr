@@ -8,15 +8,20 @@
 // data-nav-ready only after every binding succeeded. If anything throws the
 // mutations are rolled back, so a failure leaves the no-script header exactly
 // as it was delivered.
+//
+// An inline script in SiteHead.astro stamps html[data-nav-js] before first
+// paint so the stylesheet draws the collapsed header from the first frame.
+// Every path that does not end in data-nav-ready removes that flag, which
+// returns the header to its visible-lists layout.
 function install() {
   const header = document.querySelector('.chrome-header');
-  if (!header || header.dataset.navReady) return;
+  if (!header || header.dataset.navReady) return Boolean(header);
 
   // 1. Query and validate. Nothing is mutated in this phase.
   const nav = header.querySelector('.main-nav');
   const mobileLink = header.querySelector('[data-nav-mobile-trigger]');
   const parents = [...header.querySelectorAll('[data-nav-parent]')];
-  if (!nav || !nav.id || !mobileLink || parents.length !== 2) return;
+  if (!nav || !nav.id || !mobileLink || parents.length !== 2) return false;
   const groups = parents.map((parent) => {
     const link = parent.querySelector('[data-nav-trigger]');
     const panel = parent.querySelector('[data-nav-panel]');
@@ -133,6 +138,7 @@ function install() {
       { signal },
     );
     header.dataset.navReady = 'true';
+    return true;
   } catch (error) {
     controller.abort();
     for (const undo of applied.reverse()) undo();
@@ -142,8 +148,10 @@ function install() {
   }
 }
 
+let installed = false;
 try {
-  install();
+  installed = install();
 } catch (error) {
   console.error('Site navigation enhancement unavailable; plain links remain.', error);
 }
+if (!installed) delete document.documentElement.dataset.navJs;

@@ -227,7 +227,6 @@ export function init(host, motion, scope) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'case-load';
-    button.setAttribute('aria-label', 'Play ' + item.name + ' source video');
     button.innerHTML = '<span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>';
     const img = document.createElement('img');
     img.className = 'case-thumbnail';

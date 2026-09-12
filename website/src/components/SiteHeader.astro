@@ -5,6 +5,8 @@
 // lists and the two triggers are ordinary links. site-nav.js upgrades the
 // triggers to buttons, collapses the panels, and only then stamps
 // data-nav-ready on the header. A failed script leaves working links.
+// SiteHead.astro stamps html[data-nav-js] before first paint so the visible
+// lists never flash on a browser that is about to collapse them.
 import Logo from './home/Logo.astro';
 import SiteIcon from './SiteIcon.astro';
 import { menuProducts, menuFoot, headerLinks, resources, downloadUrl } from '../data/site-navigation.js';

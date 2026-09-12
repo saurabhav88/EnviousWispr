@@ -7,7 +7,7 @@
 .privacy-cloud-story{position:absolute;inset:0;padding:20px 25px;display:flex;align-items:center;justify-content:center;flex-direction:column;opacity:0;visibility:hidden;transition:opacity .5s,transform .5s;transform:translateY(10px);text-align:center}
 .privacy-film[data-scene="0"] .privacy-cloud-story,.privacy-film[data-scene="1"] .privacy-cloud-story,.privacy-film[data-scene="2"] .privacy-introduce{opacity:1;visibility:visible;transform:none}
 .privacy-scene-art{width:100%;max-width:330px;height:310px;overflow:visible}
-.privacy-cloud-story h3{font-size:27px;letter-spacing:-.8px;line-height:1.2;margin:10px 0;color:var(--ink)}
+.privacy-cloud-story .scene-title{font-size:27px;font-weight:500;letter-spacing:-.8px;line-height:1.2;margin:10px 0;color:var(--ink)}
 .cloud-exec{animation:privacy-laugh .65s var(--delay) ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 .privacy-cloud{transition:opacity .5s,transform .7s}
 .privacy-introduce .loop-lips{width:210px;height:210px;margin-bottom:6px}
@@ -26,7 +26,7 @@
 .offline-choice small{display:block;color:var(--muted);font-size:12px;line-height:1.7;margin-top:20px}
 @keyframes privacy-words{0%{opacity:0;transform:translateY(35px)}20%,70%{opacity:1}100%{opacity:0;transform:translateY(-30px)}}
 @keyframes privacy-laugh{50%{translate:0 -3px}}
-@media(max-width:750px){.offline-simple{grid-template-columns:1fr;gap:35px;padding-top:45px;padding-bottom:45px}.offline-simple>div{border-top:1px solid var(--line);padding-top:25px}.offline-simple h2{font-size:27px}.offline-simple p,.offline-choice>p{font-size:16px}.privacy-stage{height:455px}.privacy-cloud-story{padding:20px}.privacy-scene-art{height:285px}.privacy-cloud-story h3{font-size:25px}.offline-choice{padding-top:40px;padding-bottom:40px}}
+@media(max-width:750px){.offline-simple{grid-template-columns:1fr;gap:35px;padding-top:45px;padding-bottom:45px}.offline-simple>div{border-top:1px solid var(--line);padding-top:25px}.offline-simple h2{font-size:27px}.offline-simple p,.offline-choice>p{font-size:16px}.privacy-stage{height:455px}.privacy-cloud-story{padding:20px}.privacy-scene-art{height:285px}.privacy-cloud-story .scene-title{font-size:25px}.offline-choice{padding-top:40px;padding-bottom:40px}}
 @media(prefers-reduced-motion:reduce){.privacy-film *{animation:none!important;transition:none!important}}
 .word-packet{opacity:0;will-change:transform,opacity}
 .word-packet rect{fill:var(--surface);stroke:var(--line)}
@@ -74,4 +74,4 @@
 .privacy-final-name{color:var(--ink);font-size:clamp(29px,7cqw,37px);letter-spacing:-1.3px;line-height:1.2}
 .privacy-final-promise{display:inline-block;color:var(--accent);font-size:26px;margin-top:8px;letter-spacing:-.7px}
 @media(max-width:750px){.privacy-local-mark{top:32px;width:150px;height:150px}.privacy-final-name{font-size:30px}.privacy-final-promise{font-size:24px}}
-.privacy-cloud-story h3{height:84px;min-height:84px;width:100%}
+.privacy-cloud-story .scene-title{height:84px;min-height:84px;width:100%}

@@ -13,6 +13,7 @@ import Comparisons from '../components/home/Comparisons.astro';
 import Founder from '../components/home/Founder.astro';
 import Download from '../components/home/Download.astro';
 import StructuredData from '../components/home/StructuredData.astro';
+import HeroArtPreload from '../components/home/HeroArtPreload.astro';
 ---
 
 <ThemedLayout
@@ -22,6 +23,7 @@ import StructuredData from '../components/home/StructuredData.astro';
   canonicalPath="/"
 >
   <StructuredData slot="head" />
+  <HeroArtPreload slot="head" />
   <Hero />
   <CompatibleApps />
   <Workflow />
