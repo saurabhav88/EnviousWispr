@@ -24,18 +24,19 @@ struct HistoryContentView: View {
   /// PR7 of #763: compose the displayed transcript inline. History selection
   /// from `TranscriptCoordinator` wins over the in-flight live fallback —
   /// same priority the pre-PR7 root-state getter delivered.
+  ///
+  /// #2807: the coordinator resolves the row from the DISPLAYED set and says whether the live
+  /// fallback may stand in. That set is built on `visibleTranscripts`, which keeps #2087's
+  /// rule: a row selected before it expired does not stay open in the detail pane after it
+  /// stopped being offered, which is the one thing the 24-hour promise says will not happen.
+  /// And a selection a filter, a search or a deletion cleared shows nothing, never a transcript
+  /// from another time.
   private var displayedTranscript: Transcript? {
-    let tc = transcriptCoordinator
-    // #2087: `visibleTranscripts`, not `transcripts`. A row selected before it
-    // expired would otherwise stay open in the detail pane after it stopped
-    // being offered — still readable, still restorable — which is the one thing
-    // the 24-hour promise says will not happen.
-    if let selected = tc.selectedTranscriptID,
-      let match = tc.visibleTranscripts.first(where: { $0.id == selected })
-    {
-      return match
+    switch transcriptCoordinator.detail {
+    case .row(let row): return row
+    case .liveFallback: return liveRecordingState.currentTranscript
+    case .empty: return nil
     }
-    return liveRecordingState.currentTranscript
   }
 
   var body: some View {

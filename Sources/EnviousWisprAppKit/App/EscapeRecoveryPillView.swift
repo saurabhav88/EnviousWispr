@@ -240,7 +240,7 @@ enum PillMetrics {
   ///
   /// A hand-tuned constant here is a latent truncation bug: the copy is
   /// founder-owned and has already been revised once (#2087, 2026-08-18), and a
-  /// pill too narrow by two points silently renders "Transcript cance…". The
+  /// pill too narrow by two points silently renders "Dictation cance…". The
   /// two points of slack absorb rounding between this measurement and the
   /// renderer's own layout.
   static let pillWidth: CGFloat = {

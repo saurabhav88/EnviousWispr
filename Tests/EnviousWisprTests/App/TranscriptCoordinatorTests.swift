@@ -67,7 +67,7 @@ struct TranscriptCoordinatorTests {
       Transcript(
         text: "an import", language: "en", duration: 61, backendType: .parakeet,
         importedFileName: "sync.m4a"))
-    #expect(coordinator.transcriptCount == 2, "History lists two rows")
+    #expect(coordinator.listedCount == 2, "History lists two rows")
     #expect(coordinator.dictationCount == 1, "only one of them was dictated")
   }
 

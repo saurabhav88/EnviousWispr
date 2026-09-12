@@ -26,7 +26,8 @@ struct SidebarStatsHeader: View {
         HStack(spacing: 4) {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.stTextTertiary)
-          TextField("Search transcripts", text: $tc.searchQuery)
+          // #2807: History holds dictations AND transcripts, so the box searches "history".
+          TextField("Search history", text: $tc.searchQuery)
             .textFieldStyle(.plain)
             .font(.caption)
         }
@@ -34,11 +35,25 @@ struct SidebarStatsHeader: View {
         .padding(.vertical, 5)
         .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 6))
 
-        Text("\(transcriptCoordinator.transcriptCount)")
+        // The rows the list shows right now, inside the filter and the search (#2807).
+        Text("\(transcriptCoordinator.listedCount)")
           .font(.caption.bold())
           .foregroundStyle(.stTextSecondary)
           .monospacedDigit()
       }
+      .opacity(isRecording ? 0.4 : 1.0)
+
+      // #2807: which kind of row the list shows. A segmented control rather than chips: three
+      // short words fit the sidebar at its narrowest, and it reads to VoiceOver as one choice.
+      Picker("Show", selection: $tc.historyFilter) {
+        ForEach(HistoryFilter.allCases, id: \.self) { filter in
+          Text(filter.title).tag(filter)
+        }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .controlSize(.small)
+      .accessibilityLabel("Show")
       .opacity(isRecording ? 0.4 : 1.0)
 
       // Model status bar

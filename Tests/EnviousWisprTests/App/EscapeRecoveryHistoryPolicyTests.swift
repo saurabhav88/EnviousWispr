@@ -254,9 +254,9 @@ struct EscapeRecoveryHistoryPolicyTests {
 
   /// A destructive confirmation must count what it will destroy.
   ///
-  /// `transcriptCount` is the DICTATION statistic and excludes held recoveries,
+  /// `listedCount` is the sidebar statistic and excludes held recoveries,
   /// which is right for a sidebar and wrong for a Delete All dialog: a history
-  /// showing only held rows would offer to delete "all 0 transcripts" and then
+  /// showing only held rows would offer to delete "all 0 items" and then
   /// delete them. The two counts are different questions, so they are different
   /// properties.
   @Test("the delete confirmation counts held rows; the dictation stat does not")
@@ -267,18 +267,21 @@ struct EscapeRecoveryHistoryPolicyTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    #expect(coordinator.transcriptCount == 0, "a held row is not a dictation")
+    #expect(coordinator.listedCount == 0, "a held row is not a dictation")
     #expect(
       coordinator.deletableCount == 1,
       "but Delete All would take it, so the confirmation must say so")
     // The SENTENCE, not just the count. While the view interpolated a count of
     // its own choosing, swapping it for the dictation statistic survived the
     // entire suite — nothing testable observed which one the dialog used.
+    // #2807: History holds dictations AND transcripts, so the sentence says "item", and it
+    // says a hidden row goes too, because Delete All is global while the list can be filtered.
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains("delete 1 transcript."),
-      "the dialog must not offer to delete 'all 0 transcripts' and then delete one")
+      coordinator.deleteAllConfirmationMessage.contains(
+        "delete the only item in History, even if a filter or search is hiding it."),
+      "the dialog must not offer to delete 'all 0 items' and then delete one")
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains("transcripts") == false,
+      coordinator.deleteAllConfirmationMessage.contains("items") == false,
       "one row is not a plural — an earlier version of this test PINNED 'all 1 transcripts'")
   }
 
@@ -291,7 +294,9 @@ struct EscapeRecoveryHistoryPolicyTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    #expect(coordinator.deleteAllConfirmationMessage.contains("all 2 transcripts"))
+    #expect(
+      coordinator.deleteAllConfirmationMessage.contains(
+        "all 2 items in History, including any hidden by a filter or search."))
   }
 
   @Test("the delete confirmation counts nothing when there is nothing")
@@ -300,7 +305,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let coordinator = TranscriptCoordinator(store: store)
 
     #expect(
-      coordinator.deleteAllConfirmationMessage.contains("all 0 transcripts"),
+      coordinator.deleteAllConfirmationMessage.contains("all 0 items in History"),
       "zero is plural, and the button is hidden at zero anyway")
   }
 
@@ -356,7 +361,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     #expect(
       coordinator.visibleTranscripts.first?.escapeRecoveredAt == nil,
       "the in-memory row stops being pending")
-    #expect(coordinator.transcriptCount == 1, "and starts counting as a dictation")
+    #expect(coordinator.listedCount == 1, "and starts counting as a dictation")
     #expect(
       try await store.loadPending().isEmpty,
       "the pending file is gone, so a relaunch cannot resume the countdown")
@@ -388,7 +393,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    #expect(coordinator.transcriptCount == 1, "a held row is an offer, not a dictation")
+    #expect(coordinator.listedCount == 1, "a held row is an offer, not a dictation")
 
     coordinator.searchQuery = "quarterly"
     #expect(
@@ -469,7 +474,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([skewed])
 
       #expect(coordinator.visibleTranscripts.isEmpty, "beyond tolerance is corrupt, not fresh")
-      #expect(coordinator.transcriptCount == 0)
+      #expect(coordinator.listedCount == 0)
       #expect(
         coordinator.hasPendingPulseForTesting == false,
         "and nothing counts down toward a deadline that has not begun")
@@ -502,7 +507,7 @@ struct EscapeRecoveryHistoryPolicyTests {
         permanent("kept"),
       ])
 
-      #expect(coordinator.transcriptCount == 1)
+      #expect(coordinator.listedCount == 1)
     }
 
     /// Inert on BOTH sides. An earlier version of this test checked only the
@@ -533,7 +538,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       #expect(
         coordinator.visibleTranscripts.isEmpty,
         "so it stays invisible, which is what the user was promised")
-      #expect(coordinator.transcriptCount == 0, "and is still not a dictation")
+      #expect(coordinator.listedCount == 0, "and is still not a dictation")
     }
 
     @Test("a held row appended mid-session starts its countdown")

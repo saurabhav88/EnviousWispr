@@ -290,12 +290,15 @@ enum FrozenPillParity {
           "Bluetooth microphone detected. Wait a moment before speaking on a cold start.",
         isHighPriority: false)),
 
+    // Announcement text re-frozen 2026-09-11 (#2807): the founder renamed the cancelled
+    // thing from "Transcript" to "Dictation", a deliberate copy change, so the oracle
+    // carries the new sentence. Every other value in this row is the `da103706` capture.
     FrozenRow(
       label: "escapeRecovery", hasDefinition: true, contentTag: "escapeRecovery", notice: nil,
       width: .measured, fixedHeight: nil,
       expiry: .after(seconds: 3, pausesOnHover: true),
       announcement: FrozenAnnouncement(
-        text: "Transcript cancelled. Press Undo to get it back, or find it in History.",
+        text: "Dictation cancelled. Press Undo to get it back, or find it in History.",
         isHighPriority: false)),
 
     // The one presentation with no matching intent, so the shipped announcement

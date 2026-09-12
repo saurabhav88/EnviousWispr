@@ -260,17 +260,18 @@ enum DictationNarrator {
       return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
     // #2087: no "Warning: " or "Error: " prefix — nothing went wrong. The
     // sentence names what happened and the one action, matching the pill's
-    // founder-locked copy (`Transcript cancelled` · Undo). History is named
-    // because a VoiceOver user who misses a 3-second dwell needs the unhurried
-    // door, and the pill must never be the only way back to the text.
+    // copy (`Dictation cancelled` · Undo, see `escapeRecoveryPillTitle`). History
+    // is named because a VoiceOver user who misses a 3-second dwell needs the
+    // unhurried door, and the pill must never be the only way back to the text.
     case .escapeRecovery:
-      return "Transcript cancelled. Press Undo to get it back, or find it in History."
+      return "Dictation cancelled. Press Undo to get it back, or find it in History."
     }
   }
 
   // MARK: - Fixed status-pill + window/badge/sidebar copy (E4, #1569). Byte-identical.
 
-  /// #2087, founder-locked (revised 2026-08-18 after hand-testing the build).
+  /// #2087, founder-locked (revised 2026-08-18 after hand-testing the build); noun revised
+  /// again by the founder's vocabulary decision of 2026-09-11 (#2807).
   ///
   /// Names the EVENT the user just caused, then offers the reversal. The earlier
   /// pair — "Recording kept" · Paste — announced our internal outcome and named
@@ -278,7 +279,12 @@ enum DictationNarrator {
   /// taking that back. It also stops the button reading as a second, competing
   /// paste beside History's, which does something different: History pastes
   /// wherever you are NOW, this returns the text to where you were dictating.
-  static let escapeRecoveryPillTitle = "Transcript cancelled"
+  ///
+  /// #2807: a take made with the keybind is a Dictation and a file put through Transcribe
+  /// a File is a Transcript, everywhere the app speaks. What was cancelled here is a
+  /// dictation, so the pill says so. The verb, the Undo action and the announcement's
+  /// shape are the 2026-08-18 lock, unchanged.
+  static let escapeRecoveryPillTitle = "Dictation cancelled"
   static let escapeRecoveryPillAction = "Undo"
 
   static let coldStartTitle = "Getting dictation ready…"
