@@ -414,23 +414,58 @@ html[data-theme='dark'] .site-chrome {
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (min-width: 1000px) {
+  .chrome-header {
+    background: var(--nav-card);
+    box-shadow: 0 8px 28px #2714380a;
+  }
   .chrome-header[data-nav-ready] .main-nav {
     flex: 1;
-    justify-content: space-evenly;
-    gap: clamp(24px, 3.2vw, 48px);
+    justify-content: center;
+    gap: 36px;
     margin-left: 0;
     font-size: 16px;
   }
   .chrome-header[data-nav-ready] .nav-trigger,
   .chrome-header[data-nav-ready] .nav-link {
-    font-size: inherit;
-    font-weight: 500;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--nav-ink);
     white-space: nowrap;
+    position: relative;
+  }
+  .chrome-header[data-nav-ready] .nav-link.active,
+  .chrome-header[data-nav-ready] .nav-link:hover,
+  .chrome-header[data-nav-ready] .nav-trigger.active,
+  .chrome-header[data-nav-ready] .nav-trigger:hover,
+  .chrome-header[data-nav-ready] .nav-trigger[aria-expanded='true'] {
+    color: var(--nav-accent);
+  }
+  .chrome-header[data-nav-ready] .nav-link.active::after,
+  .chrome-header[data-nav-ready] .nav-trigger.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 2px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--nav-accent);
+  }
+  .chrome-header .chrome-download {
+    font-size: 16px;
+    min-height: 48px;
+  }
+  .chrome-header .chrome-brand {
+    font-size: 26px;
   }
 }
 @media (min-width: 1000px) and (max-width: 1190px) {
   .chrome-header[data-nav-ready] .main-nav {
     gap: 22px;
+  }
+  .chrome-header[data-nav-ready] .nav-trigger,
+  .chrome-header[data-nav-ready] .nav-link {
+    font-size: 16px;
   }
 }
 @media (max-width: 1190px) {
