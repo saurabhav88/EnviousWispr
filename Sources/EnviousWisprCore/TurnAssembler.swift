@@ -21,7 +21,7 @@ public enum TurnAssembler {
   /// has one place to update.
   static let nearestSegmentToleranceMs = 250
 
-  static let unknownSpeakerID = "unknown"
+  public static let unknownSpeakerID = "unknown"
 
   public static func assemble(entries: [ASRWordTiming], segments: [SpeakerSegment]) -> [Turn] {
     guard !entries.isEmpty else { return [] }

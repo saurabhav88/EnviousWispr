@@ -83,6 +83,15 @@ public struct TurnCleanupRunner: Sendable {
     var anyPartPolished = false
     var anyPartFellBack = false
     for (index, part) in parts.enumerated() {
+      // `run()`'s own caller checks cancellation BETWEEN turns, not between the several
+      // parts one oversized turn can split into — so without this, a cancelled pass kept
+      // invoking every remaining part of the CURRENT turn (`FileImportRunner.process`
+      // throws `CancellationError` after an interrupted run, and `try?` below silently
+      // converted that into an ordinary fallback), continuing to hold engine admission and
+      // spend the polisher after Stop or a new file choice (found by cloud review). The
+      // resulting turn/count are discarded anyway by `runTurnStorage`'s own post-`run()`
+      // generation guard, so stopping here costs nothing real.
+      guard !Task.isCancelled else { break }
       guard let outcome = try? await processPart(part, engineLanguage) else {
         // A polish failure that also throws (rather than returning a raw-floor outcome) is
         // not expected from `FileImportRunner.process`, whose whole contract is to return a

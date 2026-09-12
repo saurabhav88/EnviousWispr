@@ -172,6 +172,62 @@ struct TurnCleanupRunnerTests {
   }
 
   @Test(
+    "cancellation during a multi-part turn stops the remaining parts of THAT turn too, not only between turns"
+  )
+  func cancellationDuringMultiPartTurnStopsRemainingParts() async {
+    actor Gate {
+      private(set) var calls: [String] = []
+      private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+      private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+      private var isReleased = false
+
+      func recordAndWaitForRelease(_ part: String) async {
+        calls.append(part)
+        for waiter in arrivalWaiters { waiter.resume() }
+        arrivalWaiters = []
+        if isReleased { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+      }
+
+      func waitForFirstArrival() async {
+        if !calls.isEmpty { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+      }
+
+      func release() {
+        isReleased = true
+        for waiter in releaseWaiters { waiter.resume() }
+        releaseWaiters = []
+      }
+    }
+    let gate = Gate()
+    let runner = TurnCleanupRunner(
+      processPart: { part, _ in
+        await gate.recordAndWaitForRelease(part)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      },
+      split: { text in text.split(separator: " ").map(String.init) })
+
+    let task = Task { @MainActor in
+      await runner.run(
+        turns: [turn("0-11", "A", 0..<11)], rawText: "hello world", engineLanguage: nil)
+    }
+    // The turn's FIRST part is confirmed in flight and blocked before its second part can
+    // possibly start.
+    await gate.waitForFirstArrival()
+    task.cancel()
+    // `cleaned()`'s own cancellation check happens at the top of the NEXT part iteration,
+    // after this call completes, so cancelling first guarantees "world" is never reached.
+    await gate.release()
+    _ = await task.value
+
+    let calls = await gate.calls
+    #expect(
+      calls == ["hello"],
+      "only the first part of the turn should have run before cancellation stopped the rest")
+  }
+
+  @Test(
     "a range mismatch against the supplied rawText leaves the turn untouched rather than crashing")
   func rangeMismatchLeavesTurnUntouched() async {
     let runner = TurnCleanupRunner(processPart: { part, _ in

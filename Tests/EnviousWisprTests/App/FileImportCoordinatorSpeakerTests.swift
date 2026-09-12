@@ -515,6 +515,44 @@ struct FileImportCoordinatorSpeakerTests {
   }
 
   @Test(
+    "word timings that never bind to any segment (a space-free script) merge as a failure, never a self-contradictory labeled-but-all-unknown row"
+  )
+  func allUnknownTurnsMergeAsFailureNotContradictoryLabeled() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analysis: TranscriptSpeakerAnalysis?
+      func record(_ analysis: TranscriptSpeakerAnalysis) { self.analysis = analysis }
+    }
+    let recorder = MergeRecorder()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      // Mimics exactly what `WordTimingRangeMapper` produces for a space-free script: one
+      // untimed entry spanning the whole transcript, since there is no whitespace to
+      // tokenize on and no engine word can bind to the single resulting text run.
+      wordTimings: [
+        ASRWordTiming(word: "hello there friend", range: 0..<19, startMs: nil, endMs: nil)
+      ],
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      mergeSpeakerFields: { _, analysis, turns in
+        recorder.record(analysis)
+        #expect(
+          turns == nil, "a contradictory labeled-with-all-unknown-turns row must never be stored")
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let recorded = await settleUntil { recorder.analysis != nil }
+    #expect(recorded)
+    #expect(recorder.analysis == .failed(.noWordTimings))
+  }
+
+  @Test(
     "a write failure on the silent (already-reported) path still reports saveFailed, never disappearing"
   )
   func silentPathReportsSaveFailedWhenMergeThrows() async {
@@ -867,5 +905,55 @@ struct FileImportCoordinatorSpeakerTests {
     let lastRow = recorder.rows.last
     #expect(lastRow?.speakerAnalysis != nil, "re-polish reset the speaker analysis back to nil")
     #expect(lastRow?.turns?.isEmpty == false, "re-polish reset the turns back to nil")
+  }
+
+  @Test(
+    "pressing Clean it again WHILE the background speaker pass is still in flight does not discard that pass's only analysis"
+  )
+  func rePolishDuringInFlightSpeakerAnalysisStillPersists() async {
+    @MainActor final class MergeRecorder {
+      private(set) var analyses: [TranscriptSpeakerAnalysis] = []
+      func record(_ analysis: TranscriptSpeakerAnalysis) { analyses.append(analysis) }
+    }
+    let recorder = MergeRecorder()
+    let speakerGate = ManualGate()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Blocks BEFORE `runSpeakerStep` ever reaches its own document-identity guard — the
+        // exact window `rePolish()` can land in (found by cloud review).
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      mergeSpeakerFields: { _, analysis, _ in
+        recorder.record(analysis)
+        return true
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let visibleRunDone = await settleUntil { coordinator.state == .finished }
+    #expect(visibleRunDone)
+    await speakerGate.waitUntilArrived()
+
+    // "Clean it again" — bumps `generation` for the SAME document WITHOUT cancelling or
+    // restarting the still-blocked speaker pass above.
+    coordinator.rePolish()
+    let rePolishFinished = await settleUntil { coordinator.state == .finished }
+    #expect(rePolishFinished, "the re-polish itself must still complete normally")
+
+    // NOW let the original, still-in-flight speaker pass return its outcome.
+    await speakerGate.open()
+    let persisted = await settleUntil { recorder.analyses.contains(.labeled(count: 2)) }
+    #expect(
+      persisted,
+      "a re-polish of the SAME document must never discard the only speaker analysis this document will ever get"
+    )
   }
 }
