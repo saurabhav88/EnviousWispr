@@ -334,6 +334,20 @@ html[data-theme='dark'] .hero-screen-frame {
     display: none;
   }
 }
+@media (min-width: 1200px) {
+  .hero-product-demo {
+    /* Short desktop screens need clearance above the backdrop laptop. */
+    top: 110px;
+    transform: scale(0.73);
+  }
+}
+@media (min-width: 1200px) and (min-height: 900px) {
+  .hero-product-demo {
+    /* Grow upward and leave a little more room above the laptop. */
+    top: 210px;
+    transform: translateY(-15%) scale(0.8);
+  }
+}
 @media (max-width: 999px) {
   .screen-hero {
     margin-top: -84px;
