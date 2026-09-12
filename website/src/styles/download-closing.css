@@ -1,0 +1,137 @@
+/* The approved directory closing, shared independently of each page's CSS. */
+.download-closing {
+  --closing-ink: #20152c;
+  --closing-body: #57425f;
+  --closing-kicker: #57425f;
+  --closing-button: var(--accent);
+  --closing-button-ink: #fff;
+  --closing-badge: #fbf9fff0;
+  --closing-overlay: linear-gradient(to bottom, var(--bg) 0%, #f8f3fc30 27%, #f8f3fc10 68%, var(--bg) 100%);
+  --closing-dark-display: none;
+  --closing-light-display: block;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--closing-ink);
+  padding: 95px 0;
+  min-height: 340px;
+  text-align: center;
+  font: 17px/1.65 Jakarta, -apple-system, BlinkMacSystemFont, sans-serif;
+  scroll-margin-top: 110px;
+}
+html[data-theme='dark'] .download-closing {
+  --closing-ink: #fff;
+  --closing-body: #e1d5ed;
+  --closing-kicker: #d4c0e4;
+  --closing-button: #bf93fa;
+  --closing-button-ink: #24132f;
+  --closing-badge: #14101be8;
+  --closing-overlay: linear-gradient(to bottom, var(--bg) 0%, #0d0b1c40 27%, #0d0b1c22 68%, var(--bg) 100%);
+  --closing-dark-display: block;
+  --closing-light-display: none;
+}
+/* Before theme.js stamps data-theme (or with scripts off) follow the OS. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .download-closing {
+    --closing-ink: #fff;
+    --closing-body: #e1d5ed;
+    --closing-kicker: #d4c0e4;
+    --closing-button: #bf93fa;
+    --closing-button-ink: #24132f;
+    --closing-badge: #14101be8;
+    --closing-overlay: linear-gradient(to bottom, var(--bg) 0%, #0d0b1c40 27%, #0d0b1c22 68%, var(--bg) 100%);
+    --closing-dark-display: block;
+    --closing-light-display: none;
+  }
+}
+.download-closing > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 64%;
+  z-index: -2;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 72%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 24%, #000 72%, transparent 100%);
+}
+.download-closing-dark { display: var(--closing-dark-display); }
+.download-closing-light { display: var(--closing-light-display); }
+.download-closing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--closing-overlay);
+  z-index: -1;
+  pointer-events: none;
+}
+.download-closing-content {
+  width: min(1320px, calc(100% - 96px));
+  margin: 0 auto;
+}
+.download-closing-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  color: var(--closing-kicker);
+}
+.download-closing h2 {
+  margin: 0;
+  font-size: clamp(34px, 3.4vw, 50px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -.045em;
+  color: var(--closing-ink);
+}
+.download-closing-description {
+  color: var(--closing-body);
+  font-size: 16px;
+  margin: 17px 0 25px;
+}
+.download-closing-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 56px;
+  padding: 14px 25px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  gap: 22px;
+  background: var(--closing-button);
+  color: var(--closing-button-ink);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  box-shadow: 0 4px 18px #6f26b914;
+  transition: box-shadow .18s;
+}
+.download-closing-button:hover { box-shadow: 0 7px 28px #8c48cb28; }
+.download-closing-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.download-closing-button .download-apple { display: block; width: 23px; height: 23px; flex-shrink: 0; }
+.download-closing-compatibility {
+  display: block;
+  width: fit-content;
+  margin: 15px auto 0;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--closing-badge);
+  color: var(--closing-body);
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .download-closing { padding: 78px 0; }
+  .download-closing-content { width: calc(100% - 32px); }
+  .download-closing > img { object-position: 50% 65%; }
+  .download-closing h2 { font-size: 36px; }
+  .download-closing-description { font-size: 15px; line-height: 1.7; max-width: 320px; margin-inline: auto; }
+  .download-closing-kicker { font-size: 9px; }
+  .download-closing-button { min-height: 54px; padding: 13px 21px; font-size: 16px; gap: 20px; border-radius: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .download-closing-button { transition: none; }
+}
