@@ -430,11 +430,18 @@ import Testing
       // Reshaped to carry the engine's reported language alongside the words:
       // reducing the result to `.text` discarded the better half of the language
       // evidence. Same call, same claim covering it.
-      text: "let result = try await activeEngine.transcribe(samples, options)",
+      // #2809: widened again to the full `ASRResult` (word timings/coverage for
+      // the speaker step) and the intermediate `let result` binding dropped —
+      // the closure now returns the call's value directly. Same call site.
+      text: "return try await activeEngine.transcribe(samples, options)",
       classification: .structurallySafe),
+    // #2809: `transcribe` now hands back the full `ASRResult` (word timings and
+    // coverage ride alongside the text) rather than a `(text, language)` tuple,
+    // so this call site no longer destructures. Same call, same claim covering
+    // it — only the local binding shape changed.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
-      text: "let (transcript, language) = try await transcribe(decodedSamples)",
+      text: "let result = try await transcribe(decodedSamples)",
       classification: .structurallySafe),
     // Not a call at all: the initializer storing the injected closure. Matched
     // because the scanner reads NAMES, which is the right trade — a scanner that
@@ -978,7 +985,8 @@ import Testing
     // review named, not cascaded through every deeper forwarding layer.
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "transcribe",
-      text: "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
+      text:
+        "return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprASR/ASRManager.swift", matcher: "feedAudio",
