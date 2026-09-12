@@ -413,6 +413,26 @@ html[data-theme='dark'] .site-chrome {
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (min-width: 1000px) {
+  .chrome-header[data-nav-ready] .main-nav {
+    flex: 1;
+    justify-content: space-evenly;
+    gap: clamp(24px, 3.2vw, 48px);
+    margin-left: 0;
+    font-size: 16px;
+  }
+  .chrome-header[data-nav-ready] .nav-trigger,
+  .chrome-header[data-nav-ready] .nav-link {
+    font-size: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+}
+@media (min-width: 1000px) and (max-width: 1190px) {
+  .chrome-header[data-nav-ready] .main-nav {
+    gap: 22px;
+  }
+}
 @media (max-width: 1190px) {
   .chrome-header,
   .chrome-footer {
