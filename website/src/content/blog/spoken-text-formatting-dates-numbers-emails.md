@@ -1,6 +1,7 @@
 ---
 title: "Say It, Get It Formatted: Dates, Numbers, Emails, and More"
-description: "EnviousWispr formats spoken numbers, dates, times, money, phone numbers, emails, and web addresses the way you would actually type them, right on your Mac."
+description: "Turn spoken dates, numbers, and addresses into readable text."
+topic: behind-enviouswispr
 pubDate: 2026-06-08
 tags: ["dictation", "macos", "productivity", "ai-polish"]
 draft: false

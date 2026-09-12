@@ -1,6 +1,7 @@
 ---
 title: "Voice Coding on macOS Without Cloud APIs"
-description: "How to use on-device voice dictation for developer coding workflows on macOS. No cloud APIs, no uploaded audio, no subscriptions, code stays private."
+description: "A practical look at voice input in a developer’s Mac workflow."
+topic: writing-productivity
 pubDate: 2026-03-16
 updatedDate: 2026-04-04
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]

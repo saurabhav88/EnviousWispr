@@ -1,6 +1,7 @@
 ---
 title: "I Fine-Tuned Apple's On-Device Model to Fix Spoken Self-Corrections. It Worked, Then Apple Closed the Door."
-description: "A LoRA adapter on Apple's macOS 26 Foundation Model took spoken self-correction accuracy from 13% to 86% on held-out cases. Here is the full measurement, the latency cost, and the entitlement wall that ended the experiment."
+description: "An experiment in teaching a small model to understand spoken corrections."
+topic: behind-enviouswispr
 pubDate: 2026-06-25
 tags: ["engineering", "macos", "apple-silicon", "on-device-ai", "fine-tuning", "foundation-models"]
 draft: false

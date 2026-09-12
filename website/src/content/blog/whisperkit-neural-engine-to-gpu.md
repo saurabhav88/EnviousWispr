@@ -1,6 +1,7 @@
 ---
 title: "Moving Whisper Off the Neural Engine: What We Found"
-description: "We moved our Whisper-based engine from the Neural Engine to the GPU and watched a 109-second cold start fall to about 13, with no hit to transcription speed."
+description: "The measurements and decisions behind a change to our speech engine."
+topic: behind-enviouswispr
 pubDate: 2026-06-09
 tags: ["engineering", "macos", "apple-silicon", "performance", "whisper"]
 draft: false

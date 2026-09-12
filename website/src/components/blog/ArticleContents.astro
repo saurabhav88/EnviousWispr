@@ -1,0 +1,49 @@
+---
+import BlogIcon from "./BlogIcon.astro";
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  headings: Heading[];
+  mobile?: boolean;
+}
+const { headings, mobile = false } = Astro.props;
+const sections = headings.filter(
+  (heading) => heading.depth === 2 || heading.depth === 3,
+);
+---
+
+{sections.length >= 3 &&
+  (mobile ? (
+    <details class="mobile-contents">
+      <summary>
+        In this article <BlogIcon name="chevron" />
+      </summary>
+      <nav aria-label="In this article">
+        {sections.map((heading) => (
+          <a
+            href={`#${heading.slug}`}
+            data-toc-target={heading.slug}
+            class:list={{ "toc-subheading": heading.depth === 3 }}
+          >
+            {heading.text}
+          </a>
+        ))}
+      </nav>
+    </details>
+  ) : (
+    <nav aria-label="In this article">
+      <span class="rail-label">In this article</span>
+      {sections.map((heading) => (
+        <a
+          href={`#${heading.slug}`}
+          data-toc-target={heading.slug}
+          class:list={{ "toc-subheading": heading.depth === 3 }}
+        >
+          {heading.text}
+        </a>
+      ))}
+    </nav>
+  ))}

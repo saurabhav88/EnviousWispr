@@ -16,3 +16,7 @@
 /appcast.xml
   Cache-Control: public, max-age=60
   X-Robots-Tag: noindex
+
+/blog-search.json
+  X-Robots-Tag: noindex
+  Cache-Control: public, max-age=0, must-revalidate

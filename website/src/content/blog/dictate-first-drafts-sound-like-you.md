@@ -1,6 +1,7 @@
 ---
 title: "Dictate First Drafts That Sound Like You"
-description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact with on-device polish built to preserve how you actually write."
+description: "Keep your own phrasing and rhythm as you edit a dictated draft."
+topic: writing-productivity
 pubDate: 2026-03-14
 updatedDate: 2026-04-04
 tags: ["writing", "dictation", "workflow", "writing-style"]

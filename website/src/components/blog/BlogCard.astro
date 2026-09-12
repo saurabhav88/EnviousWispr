@@ -1,0 +1,45 @@
+---
+import BlogIcon from "./BlogIcon.astro";
+import type { BlogCardData } from "../../utils/blog-presentation";
+interface Props {
+  post: BlogCardData;
+  heading?: "h2" | "h3";
+  eager?: boolean;
+}
+const { post, heading: Heading = "h2", eager = false } = Astro.props;
+---
+
+<article class="article-card">
+  <a class="card-cover" href={post.url} tabindex="-1" aria-hidden="true">
+    {post.artwork ? (
+      <img
+        class="artwork-image"
+        src={post.artwork.src}
+        srcset={post.artwork.srcset}
+        sizes="(min-width: 1400px) 424px, (min-width: 851px) calc((100vw - 96px) / 3), (min-width: 601px) calc((100vw - 64px) / 2), calc(100vw - 32px)"
+        width={post.artwork.width}
+        height={post.artwork.height}
+        alt=""
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+      />
+    ) : (
+      <div class="artwork-fallback">
+        <img src="/favicon.svg" width="60" height="60" alt="" />
+      </div>
+    )}
+  </a>
+  <div class="card-info">
+    <span class="topic">{post.topicLabel}</span>
+    <Heading>
+      <a href={post.url}>{post.title}</a>
+    </Heading>
+    <p>{post.description}</p>
+    <div class="card-bottom">
+      <span>{post.minutes} min read</span>
+      <a href={post.url} aria-label={`Read ${post.title}`}>
+        <BlogIcon />
+      </a>
+    </div>
+  </div>
+</article>

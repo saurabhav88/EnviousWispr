@@ -1,6 +1,7 @@
 ---
 title: "macOS Dictation for Parents Who Type One-Handed"
-description: "Voice typing for parents who can't sit at a keyboard. EnviousWispr turns speech into polished text on your Mac, privately, with no cloud uploads."
+description: "Make room for everyday writing when you have only one hand free."
+topic: writing-productivity
 pubDate: 2026-03-15
 updatedDate: 2026-04-04
 tags: ["parents", "dictation", "hands-free", "privacy"]

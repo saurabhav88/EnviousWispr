@@ -1,6 +1,7 @@
 ---
 title: "Why Mac Dictation Keeps Stopping (and How to Fix It)"
-description: "Mac dictation that stops after about 30 seconds, or the moment you pause, has two specific causes. Here is why it happens and how to dictate without the cutoff."
+description: "Understand interruptions and find a way to keep your thoughts flowing."
+topic: tips-troubleshooting
 pubDate: 2026-06-06
 tags: ["dictation", "productivity", "macos", "troubleshooting"]
 draft: false

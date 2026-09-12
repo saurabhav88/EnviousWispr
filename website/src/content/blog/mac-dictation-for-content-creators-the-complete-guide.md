@@ -1,6 +1,7 @@
 ---
 title: "Mac Dictation for Content Creators: The Complete Guide (2026)"
-description: "How writers, podcasters, YouTubers, and bloggers use Mac dictation to draft faster, repurpose audio into text, and keep the voice that makes their work theirs."
+description: "From a first idea to a finished draft: finding a place for dictation in your creative work."
+topic: writing-productivity
 pubDate: 2026-05-15
 updatedDate: 2026-05-15
 tags: ["writing", "podcasting", "content-creation", "workflow", "creators"]

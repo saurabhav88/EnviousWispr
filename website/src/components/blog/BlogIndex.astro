@@ -1,0 +1,151 @@
+---
+import ThemedLayout from "../../layouts/ThemedLayout.astro";
+import DownloadClosing from "../DownloadClosing.astro";
+import BlogCard from "./BlogCard.astro";
+import BlogIcon from "./BlogIcon.astro";
+import BlogPagination from "./BlogPagination.astro";
+import { getPublishedPosts } from "../../utils/posts";
+import { presentPost } from "../../utils/blog-presentation";
+import { archivePath, blogPage } from "../../utils/blog-core.js";
+import { BLOG_TOPICS } from "../../data/blog-topics.js";
+import "../../styles/themed-base.css";
+import "../../styles/blog.css";
+const { page: requestedPage = 1 } = Astro.props;
+const published = await getPublishedPosts();
+const { page, totalPages, posts } = blogPage(published, requestedPage);
+const cards = await Promise.all(posts.map(presentPost));
+const path = archivePath(page);
+const title =
+  page === 1
+    ? "EnviousWispr Blog: Mac Dictation Guides and How-Tos"
+    : `Mac Dictation Guides: Page ${page} | EnviousWispr Blog`;
+const description =
+  "Guides to writing by voice, working offline, and getting more from dictation on your Mac. Explore practical workflows and stories behind EnviousWispr.";
+const structured = JSON.stringify([
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: title,
+    description,
+    url: `https://enviouswispr.com${path}`,
+    isPartOf: {
+      "@type": "WebSite",
+      url: "https://enviouswispr.com",
+      name: "EnviousWispr",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: "https://enviouswispr.com/",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: "https://enviouswispr.com/blog/",
+      },
+      ...(page > 1
+        ? [
+            {
+              "@type": "ListItem",
+              position: 3,
+              name: `Page ${page}`,
+              item: `https://enviouswispr.com${path}`,
+            },
+          ]
+        : []),
+    ],
+  },
+]).replace(/</g, "\\u003c");
+---
+
+<ThemedLayout
+  title={title}
+  description={description}
+  activePage="blog"
+  canonicalPath={path}
+>
+  <script slot="head" type="application/ld+json" set:html={structured}></script>
+  <div class="wrap blog-index" data-blog-page={page}>
+    <section
+      class="article-library"
+      id="articles"
+      aria-labelledby="articles-title"
+    >
+      <div class="library-head">
+        <div>
+          <h1 id="articles-title">Explore the articles</h1>
+          <p>Find a new way to put your voice to work.</p>
+        </div>
+        <form class="search-tools ph-no-capture" role="search">
+          <label class="search-field">
+            <BlogIcon name="search" />
+            <span class="visually-hidden">Search articles</span>
+            <input
+              type="search"
+              id="article-search"
+              class="ph-no-capture ph-mask"
+              placeholder="Search articles"
+              autocomplete="off"
+              maxlength="200"
+              disabled
+            />
+          </label>
+          <label class="topic-select">
+            <span class="visually-hidden">Filter by topic</span>
+            <select id="topic-select" disabled>
+              <option value="">All topics</option>
+              {BLOG_TOPICS.map((topic) => (
+                <option value={topic.id}>{topic.label}</option>
+              ))}
+            </select>
+            <BlogIcon name="chevron" />
+          </label>
+        </form>
+      </div>
+      <noscript>
+        <p class="search-note">
+          Browse the articles below. Search and topic filtering need JavaScript.
+        </p>
+      </noscript>
+      <div class="results-line">
+        <span id="result-count" role="status" aria-live="polite">
+          {published.length} articles
+        </span>
+        <button id="clear-filters" hidden>
+          Clear filters
+        </button>
+      </div>
+      <div id="search-error" class="search-note" role="status" hidden>
+        Search could not load. You can still browse the articles below.{" "}
+        <button id="retry-search">Try again</button>
+      </div>
+      <div class="article-grid" id="article-grid">
+        {cards.map((post, index) => (
+          <BlogCard post={post} eager={index < 3} />
+        ))}
+      </div>
+      <div id="empty-state" class="empty-state" hidden>
+        <BlogIcon name="search" />
+        <h2>No articles found</h2>
+        <p>Try a different search, or browse all topics.</p>
+        <button class="button" id="empty-reset">
+          Show all articles
+        </button>
+      </div>
+      <div id="pagination-wrap">
+        <BlogPagination page={page} totalPages={totalPages} />
+      </div>
+    </section>
+  </div>
+  <DownloadClosing source="blog-index-closing" />
+</ThemedLayout>
+<script>
+  import "../../scripts/blog-library.js";
+</script>

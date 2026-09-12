@@ -1,6 +1,7 @@
 ---
 title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
-description: "Repurpose podcast episodes into show notes and blog posts using on-device dictation. Speak your recap, and polished text lands in your CMS in seconds on macOS."
+description: "Find a reusable writing workflow around the ideas in your episodes."
+topic: writing-productivity
 pubDate: 2026-03-22
 updatedDate: 2026-04-04
 tags: ["podcasting", "workflow", "dictation", "content-creation"]

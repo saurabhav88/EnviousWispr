@@ -1,6 +1,7 @@
 ---
 title: "macOS Dictation for Remote Workers Tired of Typing"
-description: "Remote work means typing all day: Slack, email, docs, tickets. Dictation with on-device transcription cuts the load without sending words to the cloud."
+description: "A place for dictation in messages, notes, and the writing between meetings."
+topic: writing-productivity
 pubDate: 2026-03-17
 updatedDate: 2026-04-04
 tags: ["dictation", "remote-work", "productivity", "voice-typing", "privacy"]

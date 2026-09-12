@@ -55,9 +55,8 @@ const { articles, currentArticle, currentCategory } = Astro.props;
 </aside>
 
 <style>
-  /* Mirrors the blog's two-column numbers so the two page types feel like one
-     site: BlogPost.astro turns its rail on at 1080px and BlogSidebar pins it
-     with the same sticky offsets. */
+  /* The help navigation switches to a two-column layout at 1080px.
+     Its sticky container and offsets are owned by HelpLayout. */
   .help-sidebar { display: none; }
 
   @media (min-width: 1080px) {

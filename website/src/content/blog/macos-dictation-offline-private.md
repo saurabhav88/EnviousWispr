@@ -1,6 +1,7 @@
 ---
 title: "How Offline Dictation Works on Mac and What Stays On Device"
-description: "Fully private, on-device dictation for macOS that never sends your voice to the cloud. How EnviousWispr delivers offline speech-to-text you can trust."
+description: "Understand on-device dictation and the choices that keep your audio on your Mac."
+topic: privacy-offline
 pubDate: 2026-03-11
 updatedDate: 2026-08-22
 tags: ["accessibility", "privacy", "dictation", "offline"]

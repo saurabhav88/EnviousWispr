@@ -1,6 +1,7 @@
 ---
 title: "Async Communication Is Better When You Speak It"
-description: "Why dictating Slack messages, emails, and async updates beats typing. Speak faster, include more context, hit a better tone, all processed on-device."
+description: "Add context to a message without losing the thread of your thought."
+topic: writing-productivity
 pubDate: 2026-03-17
 updatedDate: 2026-04-04
 tags: ["remote-work", "async-communication", "dictation", "productivity", "slack"]

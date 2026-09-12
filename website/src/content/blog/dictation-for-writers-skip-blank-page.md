@@ -1,6 +1,7 @@
 ---
 title: "How to Dictate a First Draft on Mac Without Losing Your Voice"
-description: "Voice writing bypasses the blank page entirely. Learn how dictation fits a writer's workflow and why speaking your first draft changes everything."
+description: "Find a starting point by speaking the idea before editing the sentences."
+topic: writing-productivity
 pubDate: 2026-03-14
 updatedDate: 2026-08-22
 tags: ["writing", "dictation", "workflow", "creativity"]
