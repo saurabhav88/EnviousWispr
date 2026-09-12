@@ -1,6 +1,9 @@
 // History page film (#2816): the accidental-Escape and relief story in five
 // scenes. Ported from the mock's history-demo.js.
+import { keepRoot, enableControls, on } from './guard.js';
+
 export function init(root, motion, scope) {
+  keepRoot(root, scope);
   const scenes = [...root.querySelectorAll('.hs')];
   const play = root.querySelector('[data-history-play]');
   const words = root.querySelector('[data-history-words]');
@@ -57,18 +60,15 @@ export function init(root, motion, scope) {
       controls();
     },
   );
-  play.addEventListener(
-    'click',
-    () => {
-      if (motion.reduced.matches) return;
-      const shouldPlay = paused || !motion.allowed();
-      if (shouldPlay && motion.paused) motion.setPaused(false);
-      paused = !shouldPlay;
-      controls();
-      clock.wake({ allowFocused: true });
-    },
-    { signal: scope.signal },
-  );
-  document.addEventListener('home:motion', controls, { signal: scope.signal });
+  on(scope, play, 'click', () => {
+    if (motion.reduced.matches) return;
+    const shouldPlay = paused || !motion.allowed();
+    if (shouldPlay && motion.paused) motion.setPaused(false);
+    paused = !shouldPlay;
+    controls();
+    clock.wake({ allowFocused: true });
+  });
+  on(scope, document, 'home:motion', controls);
   render();
+  enableControls(root);
 }

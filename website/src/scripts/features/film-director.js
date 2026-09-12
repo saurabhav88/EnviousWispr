@@ -2,8 +2,10 @@
 // writing, result) for the dictionary, snippets, quick-add, correction and
 // live-preview shells. Ported from the mock's film-director.js; scene data
 // comes from the node's data-scenes attribute, rendered by FeatureFilm.astro.
-import { createNativePreview } from '../home/native-preview.js';
+// The live-preview renderer is imported only by the preview film, so pages
+// without it never load native-preview.js.
 import { DURATIONS, STATUS_WORDS } from '../../data/features/films.js';
+import { guarded, keepRoot, enableControls, on } from './guard.js';
 
 const pauseSvg =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>';
@@ -42,15 +44,8 @@ export function init(node, motion, scope) {
   if (!duration) throw new Error('film: unknown kind ' + kind);
   const scenes = JSON.parse(node.dataset.scenes);
   const total = duration.reduce((a, b) => a + b, 0);
-  // The live-preview film owns the nested preview node: the real well replaces the snapshot.
-  const native = kind === 'preview' ? createNativePreview() : null;
-  if (native) {
-    native.well.querySelector('.hero-native-words').setAttribute('data-film-out', '');
-    node.querySelector('[data-native-preview]').replaceChildren(native.well);
-    native.well.hidden = false;
-  }
+  keepRoot(node, scope);
   const raw = node.querySelector('[data-film-raw]');
-  const out = node.querySelector('[data-film-out]');
   const play = node.querySelector('[data-film-play]');
   const title = node.querySelector('[data-film-title]');
   const where = node.querySelector('[data-film-where]');
@@ -58,6 +53,8 @@ export function init(node, motion, scope) {
   const count = node.querySelector('[data-film-count]');
   const saved = node.querySelector('[data-film-saved]');
   const choices = [...node.querySelectorAll('[data-film-choice]')];
+  let out = node.querySelector('[data-film-out]');
+  let native = null;
   let index = 0;
   let elapsed = 0;
   let stopped = false;
@@ -102,7 +99,8 @@ export function init(node, motion, scope) {
     } else if (kind === 'preview') {
       const chars = Array.from(sample.raw);
       const draft = phase === 0 ? chars.slice(0, Math.max(1, Math.floor(chars.length * progress))).join('') : sample.raw;
-      native.set('listening', draft, Math.min(elapsed, duration[0]));
+      if (native) native.set('listening', draft, Math.min(elapsed, duration[0]));
+      else if (out) out.textContent = draft;
     } else {
       text(
         raw,
@@ -156,48 +154,62 @@ export function init(node, motion, scope) {
       controls();
     },
   );
-  const { signal } = scope;
-  play.addEventListener(
-    'click',
-    () => {
-      if (motion.reduced.matches) {
-        stopped = true;
-        settle();
-        return;
-      }
-      if (!stopped && motion.allowed()) {
-        stopped = true;
-        render();
-        clock.wake({ allowFocused: true });
-        return;
-      }
-      if (motion.paused) motion.setPaused(false);
-      if (elapsed >= total) elapsed = 0;
-      stopped = false;
-      pinned = true;
+  on(scope, play, 'click', () => {
+    if (motion.reduced.matches) {
+      stopped = true;
+      settle();
+      return;
+    }
+    if (!stopped && motion.allowed()) {
+      stopped = true;
       render();
       clock.wake({ allowFocused: true });
-    },
-    { signal },
-  );
-  node.querySelector('[data-film-prev]')?.addEventListener('click', () => select(index - 1), { signal });
-  node.querySelector('[data-film-next]')?.addEventListener('click', () => select(index + 1), { signal });
-  choices.forEach((button, i) => button.addEventListener('click', () => select(i), { signal }));
-  node.addEventListener(
-    'keydown',
-    (event) => {
-      if (!event.target.matches('[data-film-choice]')) return;
-      const shift = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      if (shift) {
-        event.preventDefault();
-        select(index + shift);
-        choices[index].focus();
-      }
-    },
-    { signal },
-  );
-  document.addEventListener('home:motion', controls, { signal });
-  window.addEventListener('pagehide', () => (node.dataset.animate = 'paused'), { signal });
+      return;
+    }
+    if (motion.paused) motion.setPaused(false);
+    if (elapsed >= total) elapsed = 0;
+    stopped = false;
+    pinned = true;
+    render();
+    clock.wake({ allowFocused: true });
+  });
+  const prev = node.querySelector('[data-film-prev]');
+  const next = node.querySelector('[data-film-next]');
+  if (prev) on(scope, prev, 'click', () => select(index - 1));
+  if (next) on(scope, next, 'click', () => select(index + 1));
+  choices.forEach((button, i) => on(scope, button, 'click', () => select(i)));
+  on(scope, node, 'keydown', (event) => {
+    if (!event.target.matches('[data-film-choice]')) return;
+    const shift = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (shift) {
+      event.preventDefault();
+      select(index + shift);
+      choices[index].focus();
+    }
+  });
+  on(scope, document, 'home:motion', controls);
+  on(scope, window, 'pagehide', () => (node.dataset.animate = 'paused'));
+
+  // The live-preview film owns its nested preview node; the real well replaces
+  // the build-time snapshot once its module arrives. Until then the snapshot's
+  // words element takes the draft text.
+  if (kind === 'preview') {
+    import('../home/native-preview.js')
+      .then(
+        guarded(scope, (module) => {
+          native = module.createNativePreview();
+          native.well.querySelector('.hero-native-words').setAttribute('data-film-out', '');
+          node.querySelector('[data-native-preview]').replaceChildren(native.well);
+          native.well.hidden = false;
+          out = native.well.querySelector('.hero-native-words');
+          render(stopped);
+        }),
+      )
+      .catch((error) => {
+        if (!scope.signal.aborted) scope.fallback(error);
+      });
+  }
   if (motion.reduced.matches || motion.paused) settle();
   else render();
+  enableControls(node);
 }

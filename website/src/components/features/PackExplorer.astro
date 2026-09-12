@@ -6,7 +6,7 @@ const first = packs[0];
 ---
 
 <div class="pack-explorer" data-picker="packs">
-  <div class="pack-choices" aria-label="Explore vocabulary packs">
+  <div class="pack-choices" aria-label="Explore vocabulary packs" data-choice-group data-kind="packs">
     {
       packs.map((pack, i) => (
         <button
@@ -16,6 +16,8 @@ const first = packs[0];
           data-words={JSON.stringify(pack.words)}
           data-description={pack.description}
           aria-pressed={i === 0 ? 'true' : 'false'}
+          disabled
+          data-enables
         >
           {pack.name}
           <small>{pack.count} words</small>

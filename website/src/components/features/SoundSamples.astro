@@ -7,7 +7,7 @@ import { sounds } from '../../data/features/customization.js';
 <div class="sound-samples" data-sound-group>
   {
     sounds.map((s) => (
-      <button type="button" data-sound={s.key} data-start={s.start} data-stop={s.stop}>
+      <button type="button" data-sound={s.key} data-start={s.start} data-stop={s.stop} disabled data-enables>
         ♫ <span>{s.name}</span>
         <small>Play pair</small>
       </button>

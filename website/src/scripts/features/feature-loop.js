@@ -1,6 +1,9 @@
 // Directory page loop (#2816): cross-fades the lips, the "So many features"
 // message and the six feature cards. Ported from the mock's feature-loop.js.
+import { keepRoot } from './guard.js';
+
 export function init(root, motion, scope) {
+  keepRoot(root, scope);
   const views = [...root.querySelectorAll('[data-loop-view]')];
   const durations = [2700, 1500, 1450, 1450, 1450, 1450, 1450, 1450];
   const total = durations.reduce((a, b) => a + b, 0);

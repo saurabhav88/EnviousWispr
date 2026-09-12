@@ -1,6 +1,9 @@
 // Why Offline film (#2816): cloud boardroom, scissors cut, the lips replace
 // the cloud. Ported from the mock's privacy-demo.js.
+import { keepRoot, enableControls, on } from './guard.js';
+
 export function init(root, motion, scope) {
+  keepRoot(root, scope);
   const durations = [5700, 3200, 5000];
   const titles = ['When dictation uses the cloud', 'Choose a local alternative', 'All on your Mac'];
   const captions = ['Your words are sent to a server.', 'Cut the connection. Use your Mac.', 'No account. No subscription.'];
@@ -84,18 +87,15 @@ export function init(root, motion, scope) {
       controls();
     },
   );
-  play.addEventListener(
-    'click',
-    () => {
-      if (motion.reduced.matches) return;
-      const shouldPlay = paused || !motion.allowed();
-      if (shouldPlay && motion.paused) motion.setPaused(false);
-      paused = !shouldPlay;
-      controls();
-      clock.wake({ allowFocused: true });
-    },
-    { signal: scope.signal },
-  );
-  document.addEventListener('home:motion', controls, { signal: scope.signal });
+  on(scope, play, 'click', () => {
+    if (motion.reduced.matches) return;
+    const shouldPlay = paused || !motion.allowed();
+    if (shouldPlay && motion.paused) motion.setPaused(false);
+    paused = !shouldPlay;
+    controls();
+    clock.wake({ allowFocused: true });
+  });
+  on(scope, document, 'home:motion', controls);
   draw();
+  enableControls(root);
 }

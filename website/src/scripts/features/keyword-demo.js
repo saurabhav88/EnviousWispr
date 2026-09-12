@@ -1,6 +1,9 @@
 // Snippets page keyword demo (#2816): the trigger word cycles backslash,
 // shortcut, insert with a typewriter. Ported from the mock's film-director.js.
+import { keepRoot } from './guard.js';
+
 export function init(root, motion, scope) {
+  keepRoot(root, scope);
   const words = ['backslash', 'shortcut', 'insert'];
   const field = root.querySelector('[data-keyword-text]');
   const example = root.querySelector('[data-keyword-example]');

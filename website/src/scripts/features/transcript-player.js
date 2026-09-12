@@ -1,12 +1,19 @@
 // Recording deck (#2816): five real recordings, click-to-load YouTube player,
 // timestamped transcript in three views, prev/next with a card flip, swipe.
-// Ported from the mock's transcript-player.js with three changes:
+// Ported from the mock's transcript-player.js with these changes:
 //   - the transcript JSON is fetched when the deck first comes into view or
-//     on the first interaction, never on page load;
-//   - the first card's build-time evidence stays until a payload whose id
-//     matches the selected case has parsed; a later card that fails shows its
-//     own unavailable state, never another recording's numbers;
-//   - the card flip runs through the shared motion controller's policy.
+//     on the first interaction, never on page load; a failed first fetch
+//     re-arms so the next interaction retries;
+//   - the page's build-time evidence for card 0 stays until a payload whose
+//     id matches the selected case has fully validated and rendered off-DOM;
+//     any card that fails afterwards shows its own unavailable state, never
+//     another recording's numbers, including card 0 when revisited;
+//   - every fetch carries the island's abort signal; player creation has its
+//     own generation invalidated on disposal and pagehide; timers and the
+//     card flip are cancelled on disposal; the flip obeys the shared motion
+//     policy; load and error outcomes are announced through one live region.
+import { guarded, keepRoot, enableControls, on } from './guard.js';
+
 let apiPromise;
 function youtubeAPI() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -31,36 +38,78 @@ const stamp = (seconds) => {
   const s = Math.floor(seconds);
   return (s >= 3600 ? Math.floor(s / 3600) + ':' : '') + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 };
+const isPassage = (p) =>
+  p &&
+  typeof p === 'object' &&
+  Number.isFinite(p.start) &&
+  Number.isFinite(p.end) &&
+  typeof p.raw === 'string' &&
+  typeof p.polished === 'string' &&
+  typeof p.polishSucceeded === 'boolean' &&
+  Array.isArray(p.diff) &&
+  p.diff.every((d) => d && typeof d.text === 'string' && ['equal', 'delete', 'insert'].includes(d.type));
+function validPayload(loaded, item) {
+  return (
+    loaded &&
+    typeof loaded === 'object' &&
+    String(loaded.id) === item.id &&
+    Number.isFinite(loaded.wordCount) &&
+    Number.isFinite(loaded.umUhRemoved) &&
+    Number.isFinite(loaded.polishMs) &&
+    typeof loaded.provenance === 'string' &&
+    Array.isArray(loaded.passages) &&
+    loaded.passages.length > 0 &&
+    loaded.passages.every(isPassage)
+  );
+}
 
 export function init(host, motion, scope) {
+  keepRoot(host, scope);
   const { signal } = scope;
   const cases = JSON.parse(host.dataset.recordingCases);
+  if (!Array.isArray(cases) || !cases.length) throw new Error('deck: no cases');
   const body = host.querySelector('#case-transcript-body');
   const note = host.querySelector('#case-excerpt-note');
   const videoHost = host.querySelector('#case-video');
   const metrics = host.querySelectorAll('.recording-metrics dd');
   const provenance = host.querySelector('#measurement-provenance');
   const hint = host.querySelector('.transcript-hint');
-  const initialId = host.dataset.initialCase;
+  const modeButtons = [...host.querySelectorAll('[data-transcript-mode]')];
   let selected = 0;
   let mode = 'changes';
   let data = null;
   let player = null;
   let revision = 0;
+  let playerGeneration = 0;
   let timer = null;
   let current = -1;
   let loading = false;
   let seekTo = 0;
   let firstFetchArmed = true;
+  let flip = null;
+  let hoverClose = null;
 
   function stop() {
+    playerGeneration++;
     clearInterval(timer);
     timer = null;
-    player?.destroy?.();
+    try {
+      player?.destroy?.();
+    } catch {
+      /* a disposer never throws */
+    }
     player = null;
     loading = false;
   }
-  scope.defer(stop);
+  scope.defer(() => {
+    stop();
+    clearTimeout(hoverClose);
+    try {
+      flip?.cancel();
+    } catch {
+      /* a disposer never throws */
+    }
+  });
 
   function follow() {
     if (!player?.getCurrentTime || !data) return;
@@ -78,7 +127,7 @@ export function init(host, motion, scope) {
   function polling() {
     clearInterval(timer);
     timer = null;
-    if (player && !document.hidden) timer = setInterval(follow, 400);
+    if (player && !document.hidden) timer = setInterval(guarded(scope, follow), 400);
   }
   async function play(at = 0) {
     seekTo = at;
@@ -90,12 +139,12 @@ export function init(host, motion, scope) {
     }
     if (loading) return;
     const item = cases[selected];
-    const ticket = revision;
+    const ticket = ++playerGeneration;
     if (!item.video) return;
     loading = true;
     try {
       const YT = await youtubeAPI();
-      if (ticket !== revision || signal.aborted) return;
+      if (ticket !== playerGeneration || signal.aborted) return;
       videoHost.replaceChildren();
       const mount = document.createElement('div');
       videoHost.append(mount);
@@ -104,8 +153,8 @@ export function init(host, motion, scope) {
         videoId: item.video,
         playerVars: { playsinline: 1, origin: location.origin },
         events: {
-          onReady: (e) => {
-            if (ticket !== revision || signal.aborted) {
+          onReady: guarded(scope, (e) => {
+            if (ticket !== playerGeneration || signal.aborted) {
               e.target.destroy();
               return;
             }
@@ -113,19 +162,19 @@ export function init(host, motion, scope) {
             e.target.seekTo(seekTo, true);
             e.target.playVideo();
             polling();
-          },
-          onStateChange: follow,
-          onError: () => {
-            if (ticket !== revision) return;
+          }),
+          onStateChange: guarded(scope, follow),
+          onError: guarded(scope, () => {
+            if (ticket !== playerGeneration) return;
             loading = false;
             note.textContent = 'YouTube cannot play this video here. Use the Watch on YouTube link; the transcript is still available.';
             clearInterval(timer);
             timer = null;
-          },
+          }),
         },
       });
     } catch {
-      if (ticket !== revision) return;
+      if (ticket !== playerGeneration || signal.aborted) return;
       loading = false;
       note.textContent = 'The video could not load. Use the Watch on YouTube link.';
     }
@@ -150,10 +199,10 @@ export function init(host, motion, scope) {
           el.setAttribute('aria-current', String(n === i));
         });
       };
-      row.addEventListener('click', () => {
+      on(scope, row, 'click', () => {
         if (!window.getSelection()?.toString()) seek();
       });
-      row.addEventListener('keydown', (e) => {
+      on(scope, row, 'keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           seek();
@@ -178,38 +227,32 @@ export function init(host, motion, scope) {
     }
     return row;
   }
+  /** Build every row off-DOM first; only then replace the transcript. */
   function renderTranscript() {
+    if (!data) return;
     const previous = body.scrollTop;
-    if (!data) return; // the build-time or unavailable state stays as rendered
-    body.replaceChildren();
     const playable = Boolean(cases[selected].video);
-    data.passages.forEach((p, i) => body.append(passageRow(p, i, playable)));
+    const fragment = document.createDocumentFragment();
+    data.passages.forEach((p, i) => fragment.append(passageRow(p, i, playable)));
+    body.replaceChildren(fragment);
     body.scrollTop = current >= 0 && body.children[current] ? body.children[current].offsetTop - 12 : previous;
+  }
+  function setModes(enabled) {
+    for (const b of modeButtons) b.setAttribute('aria-disabled', String(!enabled));
   }
   function unavailable(message) {
     data = null;
     metrics.forEach((e) => (e.textContent = 'Unavailable'));
     provenance.textContent = 'Recording details could not load.';
-    body.replaceChildren();
     const p = document.createElement('p');
     p.textContent = message;
-    body.append(p);
+    body.replaceChildren(p);
+    note.textContent = message;
+    setModes(false);
   }
-  function validPayload(loaded, item) {
-    return (
-      loaded &&
-      typeof loaded === 'object' &&
-      String(loaded.id) === item.id &&
-      Array.isArray(loaded.passages) &&
-      Number.isFinite(loaded.wordCount) &&
-      Number.isFinite(loaded.umUhRemoved) &&
-      Number.isFinite(loaded.polishMs) &&
-      typeof loaded.provenance === 'string'
-    );
-  }
-  async function load(item, ticket, initial) {
+  async function load(item, ticket, keepEvidenceOnFailure) {
     try {
-      const result = await fetch(item.transcript);
+      const result = await fetch(item.transcript, { signal });
       if (!result.ok) throw Error('missing');
       const loaded = await result.json();
       if (ticket !== revision || signal.aborted) return;
@@ -220,26 +263,28 @@ export function init(host, motion, scope) {
       metrics[1].textContent = data.umUhRemoved.toLocaleString();
       metrics[2].textContent = stamp(Math.round(data.polishMs / 1000));
       provenance.textContent = data.provenance;
-      note.textContent = item.video ? '' : 'Timestamps refer to the local recording; synchronized playback is unavailable.';
+      note.textContent = item.video ? 'Transcript loaded.' : 'Transcript loaded. Timestamps refer to the local recording; synchronized playback is unavailable.';
+      setModes(true);
     } catch (error) {
-      if (ticket !== revision) return;
-      if (initial) {
-        // Card 0 keeps its build-time evidence; only say the full transcript is not loading.
-        note.textContent = 'The full transcript could not load. The opening passages above are from the same recording.';
+      if (ticket !== revision || signal.aborted) return;
+      if (keepEvidenceOnFailure) {
+        // Card 0's page evidence stays; a later interaction retries the fetch.
+        firstFetchArmed = true;
+        note.textContent = 'The full transcript could not load. The opening passages above are from this recording. Select a view or scroll to retry.';
       } else {
         unavailable('Transcript unavailable for this recording. Use the source link to watch it.');
       }
     }
   }
-  function select(i, { fetchNow = true } = {}) {
+  function select(i) {
     stop();
     const ticket = ++revision;
     selected = i;
     current = -1;
     data = null;
     seekTo = 0;
+    firstFetchArmed = false;
     const item = cases[i];
-    const initial = item.id === initialId;
     host.querySelector('#recording-position').textContent = i + 1 + ' of ' + cases.length + ' recordings';
     hint.textContent = item.video
       ? 'Play the video to follow along. Click anywhere on a passage to play from that moment.'
@@ -268,7 +313,7 @@ export function init(host, motion, scope) {
       img.alt = '';
       img.loading = 'lazy';
       button.prepend(img);
-      button.addEventListener('click', () => play());
+      on(scope, button, 'click', () => play());
       videoHost.append(button);
     } else {
       const p = document.createElement('div');
@@ -276,82 +321,66 @@ export function init(host, motion, scope) {
       p.textContent = 'Local recording confirmed. Matching source video link pending.';
       videoHost.append(p);
     }
-    note.textContent = '';
     host.querySelector('.measurement-info').open = false;
-    if (!initial) {
-      // A newly selected recording shows its own pending state, never the previous one's numbers.
-      metrics.forEach((e) => (e.textContent = 'Pending'));
-      provenance.textContent = 'Loading recording details.';
-      body.replaceChildren();
-      const p = document.createElement('p');
-      p.textContent = 'Loading the transcript for this recording.';
-      body.append(p);
-    }
-    if (fetchNow) load(item, ticket, initial);
-    return ticket;
+    // Every selection, including a return to card 0, shows its own pending
+    // state; the page's build-time evidence belongs to the initial view only.
+    metrics.forEach((e) => (e.textContent = 'Pending'));
+    provenance.textContent = 'Loading recording details.';
+    const p = document.createElement('p');
+    p.textContent = 'Loading the transcript for this recording.';
+    body.replaceChildren(p);
+    note.textContent = 'Loading the transcript for ' + item.name + '.';
+    setModes(false);
+    load(item, ticket, false);
   }
 
-  // First card: the page already carries its evidence. Fetch the full transcript
-  // when the deck is in view or on the first interaction, whichever comes first.
-  function armFirstFetch() {
-    const fire = () => {
-      if (!firstFetchArmed) return;
-      firstFetchArmed = false;
-      observer.disconnect();
-      load(cases[selected], revision, true);
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) fire();
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(host);
-    scope.defer(() => observer.disconnect());
-    host.addEventListener('pointerdown', fire, { once: true, signal });
-    host.addEventListener('focusin', fire, { once: true, signal });
-    return fire;
-  }
-  const fireFirst = armFirstFetch();
+  // First card: the page already carries its evidence. Fetch the full
+  // transcript when the deck is in view or on the first interaction.
+  const fireFirst = guarded(scope, () => {
+    if (!firstFetchArmed) return;
+    firstFetchArmed = false;
+    load(cases[selected], revision, true);
+  });
+  const observer = new IntersectionObserver(
+    guarded(scope, (entries) => {
+      if (entries.some((e) => e.isIntersecting)) fireFirst();
+    }),
+    { threshold: 0.1 },
+  );
+  observer.observe(host);
+  scope.defer(() => observer.disconnect());
+  on(scope, host, 'pointerdown', fireFirst);
+  on(scope, host, 'focusin', fireFirst);
 
   const info = host.querySelector('.measurement-info');
-  let hoverClose;
-  info.addEventListener(
-    'pointerenter',
-    (e) => {
-      if (e.pointerType === 'mouse') {
-        clearTimeout(hoverClose);
-        info.open = true;
-      }
-    },
-    { signal },
-  );
-  info.addEventListener(
-    'pointerleave',
-    (e) => {
-      if (e.pointerType === 'mouse')
-        hoverClose = setTimeout(() => {
+  on(scope, info, 'pointerenter', (e) => {
+    if (e.pointerType === 'mouse') {
+      clearTimeout(hoverClose);
+      info.open = true;
+    }
+  });
+  on(scope, info, 'pointerleave', (e) => {
+    if (e.pointerType === 'mouse') {
+      clearTimeout(hoverClose);
+      hoverClose = setTimeout(
+        guarded(scope, () => {
           if (!info.contains(document.activeElement)) info.open = false;
-        }, 180);
-    },
-    { signal },
-  );
-  info.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.key === 'Escape') {
-        info.open = false;
-        info.querySelector('summary').focus();
-      }
-    },
-    { signal },
-  );
+        }),
+        180,
+      );
+    }
+  });
+  on(scope, info, 'keydown', (e) => {
+    if (e.key === 'Escape') {
+      info.open = false;
+      info.querySelector('summary').focus();
+    }
+  });
 
   const card = host.querySelector('.recording-case');
-  let flip;
   function turn(direction) {
     flip?.cancel();
-    firstFetchArmed = false;
+    flip = null;
     select((selected + direction + cases.length) % cases.length);
     if (motion.allowed() && !motion.reduced.matches)
       flip = card.animate(
@@ -359,41 +388,39 @@ export function init(host, motion, scope) {
         { duration: 380, easing: 'cubic-bezier(.2,.7,.2,1)' },
       );
   }
-  host.querySelector('[data-recording-prev]').addEventListener('click', () => turn(-1), { signal });
-  host.querySelector('[data-recording-next]').addEventListener('click', () => turn(1), { signal });
+  on(scope, host.querySelector('[data-recording-prev]'), 'click', () => turn(-1));
+  on(scope, host.querySelector('[data-recording-next]'), 'click', () => turn(1));
+  on(scope, motion.reduced, 'change', () => {
+    if (motion.reduced.matches) {
+      flip?.cancel();
+      flip = null;
+    }
+  });
   const swipe = host.querySelector('.recording-heading');
   let start = null;
-  swipe.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (e.pointerType === 'touch') start = { x: e.clientX, y: e.clientY };
-    },
-    { signal },
-  );
-  swipe.addEventListener('pointercancel', () => (start = null), { signal });
-  swipe.addEventListener(
-    'pointerup',
-    (e) => {
-      if (!start) return;
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      start = null;
-      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1);
-    },
-    { signal },
-  );
-  host.querySelectorAll('[data-transcript-mode]').forEach((b) =>
-    b.addEventListener(
-      'click',
-      () => {
-        mode = b.dataset.transcriptMode;
-        host.querySelectorAll('[data-transcript-mode]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        if (!data) fireFirst();
-        renderTranscript();
-      },
-      { signal },
-    ),
-  );
+  on(scope, swipe, 'pointerdown', (e) => {
+    if (e.pointerType === 'touch') start = { x: e.clientX, y: e.clientY };
+  });
+  on(scope, swipe, 'pointercancel', () => (start = null));
+  on(scope, swipe, 'pointerup', (e) => {
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    start = null;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1);
+  });
+  for (const b of modeButtons)
+    on(scope, b, 'click', () => {
+      if (!data) {
+        // No payload yet: retry the fetch, keep the view as it is.
+        fireFirst();
+        return;
+      }
+      mode = b.dataset.transcriptMode;
+      modeButtons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      renderTranscript();
+    });
+  setModes(false);
   // The build-time passage rows on card 0 become seekable once the script is up.
   if (cases[selected].video) {
     host.querySelectorAll('#case-transcript-body .transcript-passage[data-start]').forEach((row) => {
@@ -405,22 +432,20 @@ export function init(host, motion, scope) {
         fireFirst();
         play(at);
       };
-      row.addEventListener('click', () => {
+      on(scope, row, 'click', () => {
         if (!window.getSelection()?.toString()) seek();
-      }, { signal });
-      row.addEventListener(
-        'keydown',
-        (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            seek();
-          }
-        },
-        { signal },
-      );
+      });
+      on(scope, row, 'keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          seek();
+        }
+      });
     });
-    host.querySelector('[data-load-video]')?.addEventListener('click', () => play(), { signal });
+    const loadButton = host.querySelector('[data-load-video]');
+    if (loadButton) on(scope, loadButton, 'click', () => play());
   }
-  document.addEventListener('visibilitychange', polling, { signal });
-  window.addEventListener('pagehide', stop, { signal });
+  on(scope, document, 'visibilitychange', polling);
+  on(scope, window, 'pagehide', stop);
+  enableControls(host);
 }

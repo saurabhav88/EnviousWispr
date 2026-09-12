@@ -15,9 +15,9 @@ const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, 
     <p>Five recordings, from a 48-minute interview to three hours of testimony. Explore the source, the recording details, and the words that come out.</p>
   </div>
   <div class="recording-deck-nav">
-    <button type="button" data-recording-prev aria-label="Previous recording">← <span>Previous</span></button>
+    <button type="button" data-recording-prev aria-label="Previous recording" disabled data-enables>← <span>Previous</span></button>
     <span id="recording-position" aria-live="polite">1 of {cases.length} recordings</span>
-    <button type="button" data-recording-next aria-label="Next recording"><span>Next</span> →</button>
+    <button type="button" data-recording-next aria-label="Next recording" disabled data-enables><span>Next</span> →</button>
   </div>
   <div class="recording-deck">
     <article class="recording-case">
@@ -43,7 +43,7 @@ const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, 
       <div class="recording-body">
         <div>
           <div id="case-video" class="case-video">
-            <button type="button" class="case-load" data-load-video aria-label={`Play ${first.name} source video`}>
+            <button type="button" class="case-load" data-load-video aria-label={`Play ${first.name} source video`} disabled data-enables>
               <img class="case-thumbnail" src={`https://i.ytimg.com/vi/${first.video}/hqdefault.jpg`} alt="" loading="lazy" width="480" height="360" />
               <span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>
             </button>
@@ -58,9 +58,9 @@ const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, 
         <div class="case-transcript-head">
           <h4>Follow the conversation.</h4>
           <div class="transcript-modes" aria-label="Transcript version">
-            <button type="button" data-transcript-mode="changes" aria-pressed="true">Show changes</button>
-            <button type="button" data-transcript-mode="raw" aria-pressed="false">Raw</button>
-            <button type="button" data-transcript-mode="polished" aria-pressed="false">Polished</button>
+            <button type="button" data-transcript-mode="changes" aria-pressed="true" disabled data-enables>Show changes</button>
+            <button type="button" data-transcript-mode="raw" aria-pressed="false" disabled data-enables>Raw</button>
+            <button type="button" data-transcript-mode="polished" aria-pressed="false" disabled data-enables>Polished</button>
           </div>
         </div>
         <p class="transcript-hint">Play the video to follow along. Click a passage time to jump there.</p>
@@ -82,7 +82,7 @@ const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, 
             Opening passages shown. The full transcript ({firstCardEvidence.passageCount} passages) loads when you scroll here or play the video.
           </p>
         </div>
-        <p id="case-excerpt-note" class="case-excerpt-note"></p>
+        <p id="case-excerpt-note" class="case-excerpt-note" aria-live="polite"></p>
       </section>
     </article>
   </div>

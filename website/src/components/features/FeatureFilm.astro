@@ -32,7 +32,7 @@ const encoded = JSON.stringify(scenes);
     scenes.length > 1 && (
       <div class="film-choices" aria-label="Choose an example">
         {scenes.map((x, i) => (
-          <button type="button" data-film-choice={i} class:list={{ selected: i === 0 }} aria-pressed={i === 0 ? 'true' : 'false'}>
+          <button type="button" data-film-choice={i} class:list={{ selected: i === 0 }} aria-pressed={i === 0 ? 'true' : 'false'} disabled data-enables>
             {x.label}
           </button>
         ))}
@@ -199,15 +199,15 @@ const encoded = JSON.stringify(scenes);
       <span data-film-count>1 of {scenes.length}</span>
       {
         scenes.length > 1 && (
-          <button type="button" class="film-control" data-film-prev aria-label="Previous example">
+          <button type="button" class="film-control" data-film-prev aria-label="Previous example" disabled data-enables>
             <DemoIcon name="prev" />
           </button>
         )
       }
-      <button type="button" class="film-control" data-film-play aria-label="Pause animation"><DemoIcon name="pause" /></button>
+      <button type="button" class="film-control" data-film-play aria-label="Pause animation" disabled data-enables><DemoIcon name="pause" /></button>
       {
         scenes.length > 1 && (
-          <button type="button" class="film-control" data-film-next aria-label="Next example">
+          <button type="button" class="film-control" data-film-next aria-label="Next example" disabled data-enables>
             <DemoIcon name="next" />
           </button>
         )

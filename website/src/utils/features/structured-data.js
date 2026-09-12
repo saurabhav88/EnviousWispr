@@ -2,7 +2,7 @@
 // BreadcrumbList on every page, ItemList on the directory. Same convention as
 // speech-to-text-mac.astro and compare/index.astro: built in frontmatter,
 // injected through the head slot.
-import { catalog, itemList } from '../../data/site-navigation.js';
+import { catalog } from '../../data/site-navigation.js';
 
 const SITE = 'https://enviouswispr.com';
 
@@ -33,7 +33,7 @@ export function featureItemList() {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name: 'EnviousWispr features',
-    itemListElement: itemList.map((entry, i) => ({ '@type': 'ListItem', position: i + 1, name: entry.name, url: `${SITE}${entry.path}` })),
+    itemListElement: catalog.map((entry, i) => ({ '@type': 'ListItem', position: i + 1, name: entry.name, url: `${SITE}${entry.path}` })),
   };
 }
 

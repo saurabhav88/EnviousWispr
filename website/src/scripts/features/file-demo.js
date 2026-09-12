@@ -1,7 +1,10 @@
 // File Transcription demo (#2816): five scenes, drop a file, choose engines,
 // transcribe/chunk/polish, results, brand outro. Ported from the mock's
 // file-demo.js onto the shared motion controller and enhance() scope.
+import { keepRoot, enableControls, on } from './guard.js';
+
 export function init(root, motion, scope) {
+  keepRoot(root, scope);
   const scenes = [...root.querySelectorAll('.fd-scene')];
   const bars = [...root.querySelectorAll('.fd-progress i')];
   const toggle = root.querySelector('[data-fd-toggle]');
@@ -83,18 +86,15 @@ export function init(root, motion, scope) {
       controls();
     },
   );
-  toggle.addEventListener(
-    'click',
-    () => {
-      if (motion.reduced.matches) return;
-      const shouldPlay = paused || !motion.allowed();
-      if (shouldPlay && motion.paused) motion.setPaused(false);
-      paused = !shouldPlay;
-      controls();
-      timeline.wake({ allowFocused: true });
-    },
-    { signal: scope.signal },
-  );
-  document.addEventListener('home:motion', controls, { signal: scope.signal });
+  on(scope, toggle, 'click', () => {
+    if (motion.reduced.matches) return;
+    const shouldPlay = paused || !motion.allowed();
+    if (shouldPlay && motion.paused) motion.setPaused(false);
+    paused = !shouldPlay;
+    controls();
+    timeline.wake({ allowFocused: true });
+  });
+  on(scope, document, 'home:motion', controls);
   draw();
+  enableControls(root);
 }

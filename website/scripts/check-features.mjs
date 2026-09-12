@@ -192,6 +192,22 @@ function checkAsset(pathname, from) {
 }
 for (const route of builtLaunch) {
   const html = pages.get(route);
+  // The deck serialises its five transcript URLs into one attribute; walk them too.
+  for (const serialized of attrValues(html, null, 'data-recording-cases')) {
+    let list;
+    try {
+      list = JSON.parse(serialized);
+    } catch {
+      problems.push(`${route}: data-recording-cases does not parse`);
+      continue;
+    }
+    if (!Array.isArray(list) || list.length === 0) problems.push(`${route}: data-recording-cases is empty`);
+    for (const item of list) {
+      const r = resolve(String(item.transcript ?? ''), route);
+      if (r.invalid || r.external) problems.push(`${route}: recording ${item.id} has no same-site transcript URL`);
+      else checkAsset(r.pathname, `${route} data-recording-cases`);
+    }
+  }
   for (const t of tags(html)) {
     for (const attr of ['href', 'src', 'srcset', 'data-src', 'data-transcript', 'data-start', 'data-stop']) {
       const value = t.attrs[attr];

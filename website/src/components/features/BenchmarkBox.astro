@@ -11,10 +11,10 @@ const rows = benchmark.rows.map((row) => {
 const fmt = (n) => n.toLocaleString('en-US');
 ---
 
-<div class="benchmark-box">
-  <div class="benchmark-tabs" aria-label="Benchmark view" data-picker="panels">
-    <button type="button" class="selected" data-choice="quality" data-panel="quality-results" aria-pressed="true">AI polish quality</button>
-    <button type="button" data-choice="speed" data-panel="speed-results" aria-pressed="false">Polish speed</button>
+<div class="benchmark-box" data-picker="benchmark">
+  <div class="benchmark-tabs" aria-label="Benchmark view" data-choice-group data-kind="panels">
+    <button type="button" class="selected" data-choice="quality" data-panel="quality-results" aria-pressed="true" disabled data-enables>AI polish quality</button>
+    <button type="button" data-choice="speed" data-panel="speed-results" aria-pressed="false" disabled data-enables>Polish speed</button>
     <span>{runDate}</span>
   </div>
   <div id="quality-results">
