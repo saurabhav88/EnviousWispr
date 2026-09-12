@@ -152,7 +152,11 @@ struct TranscriptRowView: View {
         .font(.body)
         .foregroundStyle(.stTextPrimary)
 
-      HStack(spacing: 6) {
+      // #2807: the chips WRAP. With the kind chip added, an import row carries five chips
+      // (kind, file name, polish, engine, and any recovery badge), which is wider than the
+      // list at its narrowest; a plain HStack then squeezed every chip and broke "Transcript"
+      // across three lines. Seen in the phase-1 Live UAT screenshot.
+      WrappingHStack(spacing: 6) {
         // #2087. Deliberately NOT the "Recovered" capsule below: that one means
         // crash rescue, and a held recovery is an ordinary cancel the user can
         // still change their mind about. The decision and the wording both come
