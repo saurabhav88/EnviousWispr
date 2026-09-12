@@ -1,5 +1,6 @@
 ---
-import HomeLayout from '../layouts/HomeLayout.astro';
+import ThemedLayout from '../layouts/ThemedLayout.astro';
+import '../styles/home/index.css';
 import Hero from '../components/home/Hero.astro';
 import CompatibleApps from '../components/home/CompatibleApps.astro';
 import Workflow from '../components/home/Workflow.astro';
@@ -14,7 +15,8 @@ import Download from '../components/home/Download.astro';
 import StructuredData from '../components/home/StructuredData.astro';
 ---
 
-<HomeLayout
+<ThemedLayout
+  motionControl
   title="EnviousWispr: Free Private AI Dictation for macOS"
   description="Free, private AI dictation for macOS. Speak naturally and get polished text in the apps you use, with on-device transcription and offline AI polish."
   canonicalPath="/"
@@ -31,4 +33,8 @@ import StructuredData from '../components/home/StructuredData.astro';
   <Comparisons />
   <Founder />
   <Download />
-</HomeLayout>
+</ThemedLayout>
+
+<script>
+  import '../scripts/home/index.js';
+</script>

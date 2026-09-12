@@ -48,7 +48,7 @@ Here's what the pipeline looks like in practice:
 3. **Post-process.** Deterministic cleanup runs locally. Optional AI polish can use EG-1, supported Apple Intelligence, or a downloaded Ollama model locally, or OpenAI, Gemini, Claude, and Ollama-hosted models over the network.
 4. **Deliver.** The polished text pastes directly into the app you're using. Your previous clipboard contents are preserved.
 
-With a local route, there is no network round-trip or server response to wait for. Cloud polish adds a network step after local transcription. For a deeper look at the transcription pipeline, see [how it works](/how-it-works/).
+With a local route, there is no network round-trip or server response to wait for. Cloud polish adds a network step after local transcription. For a deeper look at the transcription pipeline, see [how it works](/features/).
 
 Audio and transcription remain on your Mac in both cases. When you select cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to that provider.
 

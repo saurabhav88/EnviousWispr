@@ -1,0 +1,40 @@
+---
+// Line icons from the approved features mock (build_mock.py ICONS), used by the
+// shared header and footer, the features directory and the feature pages.
+interface Props {
+  name: keyof typeof ICONS;
+  class?: string;
+}
+const ICONS = {
+  dictation:
+    '<path d="M9 4a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0z"/><path d="M5 9v2a7 7 0 0 0 14 0V9M12 18v4M8 22h8"/>',
+  'file-transcription':
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 14v3M12 11v8M16 14v3"/>',
+  dictionary: '<path d="M4 3h14a2 2 0 0 1 2 2v17H6a3 3 0 0 1 0-6h14M4 3v16M8 12l3-6 3 6M9 10h4"/>',
+  snippets: '<path d="m7 4-4 8 4 8M17 4l4 8-4 8M14 3l-4 18"/>',
+  'live-preview': '<rect x="2" y="4" width="20" height="14" rx="3"/><path d="M6 9h8M6 13h11M9 22h6M12 18v4"/>',
+  history: '<path d="M3 11a9 9 0 1 1 3 8M3 4v7h7M12 7v5l3 2"/>',
+  privacy: '<path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6zM8 12l3 3 5-6"/>',
+  customization: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/>',
+  arrow: '<path d="M7 17 17 7M7 7h10v10"/>',
+  play: '<path d="m8 4 12 8-12 8z"/>',
+  chevron: '<path d="m7 10 5 5 5-5"/>',
+  close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  menu: '<path d="M5 7h14M5 12h14M5 17h14"/>',
+};
+const { name, class: className } = Astro.props;
+const paths = ICONS[name];
+if (!paths) throw new Error(`SiteIcon: unknown icon "${name}"`);
+---
+
+<svg
+  class:list={['icon', className]}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.7"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  set:html={paths}
+/>

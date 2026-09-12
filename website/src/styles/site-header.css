@@ -1,0 +1,609 @@
+/* Shared header and footer (#2816), ported from the approved features mock.
+ *
+ * One owner for the site chrome on every page. It is imported by both
+ * layouts, so it must not lean on either global stylesheet: every rule is
+ * namespaced under .site-chrome, typography and dimensions are set here, and
+ * the palette is a literal-backed --nav-* token set with a dark block keyed
+ * on the same data-theme attribute theme.js stamps. BaseLayout pages never
+ * stamp data-theme, so they render the light chrome. */
+
+.site-chrome {
+  --nav-bg: #fffefbea;
+  --nav-ink: #181122;
+  --nav-body: #60566d;
+  --nav-muted: #80758b;
+  --nav-accent: #793bd4;
+  --nav-soft: #eee5fc;
+  --nav-line: #e3d8ed;
+  --nav-card: #fff;
+  --nav-surface: #f3eef9;
+  --nav-shadow: 0 18px 55px #27143809;
+  --nav-menu-shadow: 0 18px 55px #27143812;
+  --nav-button-bg: #793bd4;
+  --nav-button-ink: #fff;
+  --nav-button-shadow: 0 4px 18px #6f26b914;
+  --nav-button-shadow-hover: 0 7px 28px #8c48cb28;
+  box-sizing: border-box;
+  color: var(--nav-ink);
+  font-family: 'Plus Jakarta Sans', Jakarta, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-theme='dark'] .site-chrome {
+  --nav-bg: #211a2bef;
+  --nav-ink: #f4eff9;
+  --nav-body: #c4bad3;
+  --nav-muted: #ac9fbb;
+  --nav-accent: #bd91ff;
+  --nav-soft: #30203f;
+  --nav-line: #41324f;
+  --nav-card: #241c31;
+  --nav-surface: #1b1525;
+  --nav-shadow: 0 18px 55px #05030722;
+  --nav-menu-shadow: 0 18px 55px #05030722;
+  --nav-button-bg: #bf93fa;
+  --nav-button-ink: #24132f;
+}
+.site-chrome *,
+.site-chrome *::before,
+.site-chrome *::after {
+  box-sizing: border-box;
+}
+.site-chrome a {
+  color: inherit;
+  text-decoration: none;
+}
+.site-chrome p {
+  margin: 0;
+}
+.site-chrome .icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* Sticky offset for anything else that pins below the header
+ * (the compare tables read it). Header top + header height + a little air. */
+:root {
+  --site-header-offset: 96px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.site-header {
+  position: sticky;
+  top: 14px;
+  z-index: 60;
+  width: min(1320px, calc(100% - 96px));
+  margin: 18px auto 0;
+  border: 1px solid var(--nav-line);
+  border-radius: 20px;
+  background: var(--nav-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.site-header .header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: 80px;
+  padding: 0 22px;
+}
+.site-chrome .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  white-space: nowrap;
+  color: var(--nav-ink);
+}
+.site-chrome .brand svg {
+  display: block;
+  width: 38px;
+  height: 38px;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+/* Header lips: the mock's scaleY(1 + 0.24·sin(t/190 + i·0.7)) as a keyframe
+ * with a per-bar negative delay set by Logo.astro. */
+.header-lips rect {
+  transform-box: fill-box;
+}
+.header-lips .lip-upper {
+  transform-origin: center bottom;
+}
+.header-lips .lip-lower {
+  transform-origin: center top;
+}
+.header-lips .lip-upper,
+.header-lips .lip-lower {
+  animation: site-lip 1194ms ease-in-out infinite;
+  animation-delay: var(--lip-delay, 0ms);
+}
+@keyframes site-lip {
+  0%,
+  50%,
+  100% {
+    transform: scaleY(1);
+  }
+  25% {
+    transform: scaleY(1.24);
+  }
+  75% {
+    transform: scaleY(0.76);
+  }
+}
+
+.site-header .main-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: auto;
+  font-size: 14px;
+}
+.site-header .nav-trigger,
+.site-header .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--nav-body);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.site-header .nav-trigger .icon {
+  width: 14px;
+  height: 14px;
+}
+.site-header .nav-trigger[aria-expanded='true'],
+.site-header .nav-trigger.active,
+.site-header .nav-link.active,
+.site-header .nav-link:hover,
+.site-header .nav-trigger:hover {
+  color: var(--nav-accent);
+}
+.site-header .menu-parent,
+.site-header .resource-parent {
+  position: relative;
+}
+.site-header .mega-menu {
+  position: absolute;
+  top: calc(100% + 22px);
+  left: -130px;
+  z-index: 5;
+  width: 650px;
+  overflow: hidden;
+  border: 1px solid var(--nav-line);
+  border-radius: 18px;
+  background: var(--nav-card);
+  box-shadow: var(--nav-menu-shadow);
+}
+.site-header .menu-heading {
+  padding: 20px 24px 15px;
+  border-bottom: 1px solid var(--nav-line);
+  color: var(--nav-muted);
+  font-size: 13px;
+}
+.site-header .menu-products {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 12px;
+}
+.site-header .menu-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  transition: background 0.18s, border-color 0.18s;
+}
+.site-header .menu-product:hover {
+  background: var(--nav-soft);
+  border-color: var(--nav-line);
+}
+.site-header .menu-product strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.site-header .menu-product small {
+  display: block;
+  margin-top: 3px;
+  color: var(--nav-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.site-chrome .product-icon {
+  display: grid;
+  place-items: center;
+  width: 43px;
+  height: 43px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--nav-accent) 12%, transparent);
+  border-radius: 12px;
+  background: var(--nav-soft);
+  color: var(--nav-accent);
+}
+.site-header .menu-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 25px;
+  background: var(--nav-surface);
+  color: var(--nav-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.site-header .resources-menu {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  z-index: 5;
+  width: 170px;
+  padding: 9px;
+  border: 1px solid var(--nav-line);
+  border-radius: 12px;
+  background: var(--nav-card);
+  box-shadow: var(--nav-shadow);
+}
+.site-header .resources-menu a {
+  display: block;
+  padding: 10px;
+  border-radius: 7px;
+}
+.site-header .resources-menu a:hover,
+.site-header .resources-menu a.active {
+  background: var(--nav-surface);
+}
+.site-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.site-chrome .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--nav-button-bg);
+  color: var(--nav-button-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  box-shadow: var(--nav-button-shadow);
+  transition: background 0.18s, box-shadow 0.18s;
+}
+.site-chrome .button:hover {
+  box-shadow: var(--nav-button-shadow-hover);
+}
+.site-chrome .button .download-apple {
+  display: block;
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+}
+.site-chrome .icon-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--nav-line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--nav-accent);
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.site-header .theme-toggle {
+  color: var(--nav-body);
+  font-size: 21px;
+}
+.site-header .mobile-trigger {
+  display: none;
+}
+.site-header .mobile-trigger .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* No script yet (or none at all): the panels are plain visible lists and the
+ * triggers are links. Nothing here floats. */
+.site-header:not([data-nav-ready]) .main-nav {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+  position: static;
+  align-items: stretch;
+  gap: 4px;
+  margin-left: 0;
+  padding-bottom: 8px;
+}
+.site-header:not([data-nav-ready]) .mega-menu,
+.site-header:not([data-nav-ready]) .resources-menu {
+  position: static;
+  width: 100%;
+  margin: 4px 0 10px;
+  box-shadow: none;
+}
+.site-header:not([data-nav-ready]) .nav-trigger,
+.site-header:not([data-nav-ready]) .nav-link {
+  font-size: 16px;
+  padding: 10px 5px;
+}
+.site-header:not([data-nav-ready]) .header-inner {
+  height: auto;
+  min-height: 80px;
+  flex-wrap: wrap;
+  padding-block: 14px;
+}
+.site-header:not([data-nav-ready]) .mobile-trigger {
+  display: none;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.site-footer {
+  width: min(1320px, calc(100% - 96px));
+  margin: 0 auto;
+  padding: 32px 0 26px;
+  border-top: 1px solid var(--nav-line);
+}
+.site-footer .footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+}
+.site-footer .brand {
+  font-size: 20px;
+}
+.site-footer .footer-brand p {
+  margin-top: 8px;
+  color: var(--nav-muted);
+  font-size: 12px;
+}
+.site-footer .footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 23px;
+  font-size: 14px;
+}
+.site-footer .footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+}
+.site-footer a:hover {
+  color: var(--nav-accent);
+}
+.site-footer .footer-legal {
+  flex-basis: 100%;
+  color: var(--nav-muted);
+  font-size: 12px;
+}
+.site-footer .footer-legal > a {
+  margin-left: 12px;
+}
+.site-footer .text-button {
+  margin-left: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--nav-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 1190px) {
+  .site-header,
+  .site-footer {
+    width: calc(100% - 64px);
+  }
+  .site-header .header-inner {
+    gap: 17px;
+    padding: 0 18px;
+  }
+  .site-chrome .brand {
+    font-size: 21px;
+  }
+  .site-chrome .brand svg {
+    width: 32px;
+    height: 32px;
+  }
+  .site-header .main-nav {
+    gap: 16px;
+  }
+  .site-header .header-actions {
+    gap: 8px;
+  }
+  .site-header .header-actions .button {
+    padding: 10px 13px;
+    font-size: 13px;
+  }
+}
+@media (max-width: 999px) {
+  .site-header .header-inner {
+    position: relative;
+  }
+  .site-header[data-nav-ready] .main-nav {
+    display: none;
+    position: absolute;
+    top: 88px;
+    left: 0;
+    right: 0;
+    z-index: 65;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    max-height: calc(100dvh - 112px);
+    margin-left: 0;
+    padding: 18px;
+    overflow: auto;
+    border: 1px solid var(--nav-line);
+    border-radius: 18px;
+    background: var(--nav-card);
+    box-shadow: var(--nav-shadow);
+  }
+  .site-header[data-nav-ready] .main-nav.open {
+    display: flex;
+  }
+  .site-header .menu-parent,
+  .site-header .resource-parent {
+    position: static;
+  }
+  .site-header .mega-menu {
+    position: static;
+    width: 100%;
+    margin: 7px 0;
+    border-radius: 13px;
+    box-shadow: none;
+  }
+  .site-header .menu-products {
+    grid-template-columns: 1fr 1fr;
+  }
+  .site-header .nav-trigger {
+    width: 100%;
+    justify-content: space-between;
+    padding: 11px 5px;
+    font-size: 16px;
+  }
+  .site-header .nav-link {
+    padding: 10px 5px;
+    font-size: 16px;
+  }
+  .site-header .resources-menu {
+    position: static;
+    width: 100%;
+    box-shadow: none;
+  }
+  .site-header .header-actions .button {
+    display: none;
+  }
+  .site-header .header-actions {
+    order: 2;
+    margin-left: auto;
+  }
+  .site-header[data-nav-ready] .mobile-trigger {
+    display: grid;
+    order: 3;
+    margin: 0;
+    font-size: 0;
+  }
+}
+@media (max-width: 600px) {
+  :root {
+    --site-header-offset: 80px;
+  }
+  .site-header,
+  .site-footer {
+    width: calc(100% - 32px);
+  }
+  .site-header {
+    top: 10px;
+    margin-top: 10px;
+    border-radius: 17px;
+  }
+  .site-header .header-inner {
+    gap: 8px;
+    height: 68px;
+    padding: 0 13px;
+  }
+  .site-chrome .brand {
+    gap: 7px;
+    font-size: 21px;
+    letter-spacing: -0.8px;
+  }
+  .site-chrome .brand svg {
+    width: 28px;
+    height: 28px;
+  }
+  .site-header .header-actions {
+    gap: 7px;
+  }
+  .site-chrome .icon-button,
+  .site-header .mobile-trigger {
+    width: 40px;
+    min-width: 40px;
+    height: 44px;
+  }
+  .site-header .theme-toggle {
+    font-size: 20px;
+  }
+  .site-header .mobile-trigger .icon {
+    width: 18px;
+    height: 18px;
+  }
+  .site-header[data-nav-ready] .main-nav {
+    top: 78px;
+    gap: 3px;
+    max-height: calc(100dvh - 105px);
+    padding: 14px;
+  }
+  .site-header .menu-products {
+    grid-template-columns: 1fr;
+  }
+  .site-header .menu-heading {
+    font-size: 12px;
+  }
+  .site-header .menu-foot {
+    gap: 12px;
+    font-size: 13px;
+  }
+  .site-footer {
+    padding: 28px 0 22px;
+  }
+  .site-footer .footer-inner {
+    gap: 20px;
+  }
+  .site-footer .footer-links {
+    gap: 8px 18px;
+    font-size: 13px;
+  }
+  .site-footer .footer-links a {
+    min-height: 36px;
+  }
+}
+@media (max-width: 360px) {
+  .site-header .header-inner {
+    gap: 7px;
+    padding-inline: 11px;
+  }
+  .site-chrome .brand {
+    gap: 6px;
+    font-size: 20px;
+  }
+  .site-chrome .brand svg {
+    width: 27px;
+    height: 27px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .header-lips .lip-upper,
+  .header-lips .lip-lower {
+    animation: none;
+    transform: none;
+  }
+  .site-chrome .button,
+  .site-header .menu-product {
+    transition: none;
+  }
+}

@@ -80,7 +80,7 @@ Taking lecture notes by speaking instead of typing keeps your attention where it
 And unlike cloud-based dictation tools, EnviousWispr processes everything on-device. Your recordings never leave your Mac. For students, this matters in two concrete ways:
 
 - **No data concerns.** Your academic work, study notes, and spoken thoughts don't get uploaded to anyone's servers. Transcription runs locally via Core ML on your Mac's Neural Engine.
-- **No recurring cost.** Most cloud speech-to-text services charge per minute of audio or require a monthly subscription. EnviousWispr is free. You can learn more about [how the transcription pipeline works](/how-it-works/) if you're curious about the technical details.
+- **No recurring cost.** Most cloud speech-to-text services charge per minute of audio or require a monthly subscription. EnviousWispr is free. You can learn more about [how the transcription pipeline works](/features/) if you're curious about the technical details.
 
 ## Getting started
 

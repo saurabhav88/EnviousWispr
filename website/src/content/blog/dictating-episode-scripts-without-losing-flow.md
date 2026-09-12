@@ -49,7 +49,7 @@ That's a usable cold open. It sounds like you because it literally is you, just 
 
 By how you speak, you can shape output for different show formats. With Ollama, OpenAI, or Gemini polish on, run through your interview questions or show notes as a list and they come back as bullet points. On the Apple Intelligence default, you get the same words cleaned up as prose, and cold opens stay short and punchy on any engine.
 
-Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture on how transcription and post-processing fit together.
+Check [how EnviousWispr's pipeline works](/features/) for the full picture on how transcription and post-processing fit together.
 
 ## Hands-Free Mode for Extended Sessions
 

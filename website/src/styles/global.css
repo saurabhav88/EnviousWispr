@@ -87,50 +87,18 @@ body::after {
 }
 .container { max-width: var(--max-width); margin: 0 auto; padding: 0 32px; position: relative; z-index: 1; }
 
+/* The shared header (#2816) sits in the flow, 98px tall with its top margin.
+   Every page on this layout still carries the top padding it needed under the
+   old 64px fixed bar, so main pulls up by that much and the visual gap under
+   the header stays what it was. */
+.base-shell main { margin-top: -64px; position: relative; }
+
 /* Scroll reveal */
 .reveal {
   opacity: 0; transform: translateY(12px);
   transition: opacity 0.4s ease-out, transform 0.4s ease-out;
 }
 .reveal.visible { opacity: 1; transform: none; }
-
-/* ── Navigation ── */
-.nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-  background: rgba(248,245,255,0.88);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-  transition: background 0.3s, box-shadow 0.3s;
-}
-.nav.scrolled { background: rgba(248,245,255,0.96); box-shadow: 0 1px 24px rgba(124,58,237,0.07); }
-.nav-inner {
-  max-width: var(--max-width); margin: 0 auto; padding: 0 32px;
-  height: 64px; display: flex; align-items: center; justify-content: space-between;
-}
-.nav-logo {
-  font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
-  color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px;
-}
-.nav-links { display: flex; align-items: center; gap: 28px; list-style: none; }
-.nav-links a { font-size: 14px; font-weight: 500; color: var(--text-2); text-decoration: none; transition: color 0.2s; min-height: 44px; display: inline-flex; align-items: center; padding: 8px 2px; }
-.nav-links a:hover { color: var(--text); }
-.nav-links a.active { color: var(--accent); font-weight: 600; }
-.nav-cta-group { display: flex; align-items: center; gap: 14px; }
-.nav-gh {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 500; color: var(--text-3);
-  text-decoration: none; transition: color 0.2s;
-  min-height: 44px; padding: 8px 4px;
-}
-.nav-gh:hover { color: var(--text-2); }
-.nav-cta {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 12px 20px; min-height: 44px; background: var(--text); color: #fff;
-  font-size: 14px; font-weight: 600; border-radius: var(--radius-btn);
-  text-decoration: none; transition: background 0.2s, transform 0.2s;
-}
-.nav-cta:hover { background: #2a2035; transform: translateY(-1px); }
-.nav-toggle { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 11px; min-width: 44px; min-height: 44px; }
 
 /* ── Shared Section Styles ── */
 .section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
@@ -178,40 +146,14 @@ body::after {
 }
 .btn-secondary:hover { background: rgba(124,58,237,0.05); border-color: rgba(124,58,237,0.2); transform: translateY(-2px); }
 
-/* ── Footer ── */
-.footer { padding: 48px 0 28px; border-top: 1px solid var(--border); position: relative; z-index: 1; }
-.footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; margin-bottom: 32px; }
-.footer-logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); text-decoration: none; }
-.footer-tagline { font-size: 13px; color: var(--text-3); margin-top: 6px; }
-.footer-links { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
-.footer-links a { font-size: 14px; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
-.footer-links a:hover { color: var(--text-2); }
-.footer-right { display: flex; flex-direction: column; align-items: flex-end; gap: 16px; }
-.footer-social { display: flex; align-items: center; gap: 16px; }
-.footer-social a { color: var(--text-3); text-decoration: none; transition: color 0.2s; display: inline-flex; }
-.footer-social a:hover { color: var(--text); }
-.footer-bottom { padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); text-align: center; }
-
 /* ── Responsive (shared) ── */
-.nav-gh-mobile { display: none; }
 @media(max-width:1024px) {
   :root { --section-pad: 64px; }
   .section-title,.section-title-left { font-size: 42px; }
-  .nav-links { display: none; }
-  .nav-toggle { display: block; }
-  .nav-gh-mobile { display: list-item; }
-  .nav-gh-mobile a { display: inline-flex; align-items: center; gap: 6px; }
 }
 @media(max-width:600px) {
   .container { padding: 0 20px; }
   .section-title,.section-title-left { font-size: 32px; letter-spacing: -1px; }
-  .footer-links { flex-direction: column; gap: 14px; }
-  .nav-cta-group { display: none; }
-}
-@media(max-width:900px) {
-  .footer-inner { flex-direction: column; }
-  .footer-right { align-items: flex-start; }
-  .footer-links { flex-direction: column; gap: 14px; }
 }
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -299,7 +241,8 @@ body::after {
   .compare-table.compare-table--duo { min-width: 0; display: block; }
   .compare-table.compare-table--duo tbody { display: block; }
 
-  /* Product names, pinned. 64px is .nav-inner's height.
+  /* Product names, pinned below the shared header (site-header.css owns
+     --site-header-offset).
      The sticky element must be the THEAD, not the header row: a sticky box
      cannot leave its containing block, and the row's containing block is the
      thead, which is exactly one row tall — so sticking the row pins it to a
@@ -308,7 +251,7 @@ body::after {
   .compare-table.compare-table--duo thead {
     display: block;
     position: sticky;
-    top: 64px;
+    top: var(--site-header-offset, 96px);
     z-index: 2;
     background: #fff;
   }

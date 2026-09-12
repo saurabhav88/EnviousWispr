@@ -84,7 +84,7 @@ const { title, description, canonicalPath, articles, currentArticle, currentCate
   @media (min-width: 1080px) {
     .help-rail {
       position: sticky;
-      top: 88px;
+      top: calc(var(--site-header-offset, 96px) + 22px);
       max-height: calc(100vh - 108px);
       display: flex;
       flex-direction: column;

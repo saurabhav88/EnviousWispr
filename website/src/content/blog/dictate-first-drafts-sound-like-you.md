@@ -35,7 +35,7 @@ Here's what makes the difference for writers:
 
 It also adapts to length: a quick aside stays a clean line, while a longer piece comes back as clean, readable prose. You don't switch anything between drafting and client-facing work; the polish keeps your voice either way.
 
-For a deeper look at how the transcription and post-processing pipeline connects, see the [How It Works](/how-it-works/) page.
+For a deeper look at how the transcription and post-processing pipeline connects, see the [How It Works](/features/) page.
 
 ## Step-by-Step: Setting Up a Dictation Writing Workflow
 

@@ -11,7 +11,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "prebuild": "node scripts/check-help-content.mjs && node scripts/check-language-count.mjs && npm run test:home",
-    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs",
+    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs && node scripts/check-features.mjs",
     "test:home": "node --test tests/home/*.test.mjs"
   },
   "overrides": {

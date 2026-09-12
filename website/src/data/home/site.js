@@ -1,9 +1,3 @@
-export const downloadUrl =
-  'https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg';
-export const navigation = [
-  ['Under the hood', '/how-it-works/'],
-  ['Compare', '/compare/'],
-  ['Blog', '/blog/'],
-  ['Help', '/help/'],
-  ['Contact', '/contact/'],
-];
+// The download URL now lives with the site catalog (#2816); this re-export
+// keeps the homepage data modules' import path stable.
+export { downloadUrl } from '../site-navigation.js';

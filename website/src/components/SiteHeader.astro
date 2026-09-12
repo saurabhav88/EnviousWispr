@@ -1,0 +1,118 @@
+---
+// The one site header (#2816): approved features-mock chrome on every page.
+//
+// Server-rendered so it works with no script: both panels are visible link
+// lists and the two triggers are ordinary links. site-nav.js upgrades the
+// triggers to buttons, collapses the panels, and only then stamps
+// data-nav-ready on the header. A failed script leaves working links.
+import Logo from './home/Logo.astro';
+import SiteIcon from './SiteIcon.astro';
+import { menuProducts, menuFoot, headerLinks, resources, downloadUrl } from '../data/site-navigation.js';
+
+interface Props {
+  activePage?: string;
+  /** The themed shell (homepage, feature pages) renders the theme toggle. */
+  themed?: boolean;
+}
+const { activePage = 'home', themed = false } = Astro.props;
+---
+
+<header class="site-chrome site-header" data-active={activePage}>
+  <div class="header-inner">
+    <a class="brand" href="/" aria-label="EnviousWispr home"><Logo animate /><span>EnviousWispr</span></a>
+    <a
+      class="mobile-trigger icon-button"
+      href="#site-navigation"
+      aria-label="Open navigation"
+      aria-expanded="false"
+      aria-controls="site-navigation"
+      data-nav-mobile-trigger><SiteIcon name="menu" /></a
+    >
+    <nav class="main-nav" id="site-navigation" aria-label="Main navigation">
+      <div class="menu-parent" data-nav-parent>
+        <a
+          href="/features/"
+          id="products-trigger"
+          aria-controls="products-menu"
+          data-nav-trigger
+          class:list={['nav-trigger', { active: activePage === 'features' }]}
+          >Features <SiteIcon name="chevron" /></a
+        >
+        <div class="mega-menu" id="products-menu" data-nav-panel>
+          <div class="menu-heading">Everything starts with one free Mac app.</div>
+          <div class="menu-products">
+            {
+              menuProducts.map((entry) => (
+                <a class="menu-product" href={entry.path}>
+                  <span class:list={['product-icon', entry.slug]}>
+                    <SiteIcon name={entry.slug} />
+                  </span>
+                  <span>
+                    <strong>{entry.name}</strong>
+                    <small>{entry.menuTagline}</small>
+                  </span>
+                </a>
+              ))
+            }
+          </div>
+          <div class="menu-foot">
+            {
+              menuFoot.map((entry) => (
+                <a href={entry.path}>
+                  {entry.menuFoot} <span aria-hidden="true">→</span>
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+      {
+        headerLinks.map((entry) => (
+          <a class:list={['nav-link', { active: activePage === entry.slug }]} href={entry.path}>
+            {entry.name}
+          </a>
+        ))
+      }
+      <a class:list={['nav-link', { active: activePage === 'compare' }]} href="/compare/">Compare</a>
+      <div class="resource-parent" data-nav-parent>
+        <a
+          class="nav-trigger"
+          href="/blog/"
+          id="resources-trigger"
+          aria-controls="resources-menu"
+          data-nav-trigger
+          >Resources <SiteIcon name="chevron" /></a
+        >
+        <div class="resources-menu" id="resources-menu" data-nav-panel>
+          {
+            resources.map(([label, href]) => (
+              <a href={href} class:list={{ active: activePage === label.toLowerCase() }}>
+                {label}
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </nav>
+    <div class="header-actions">
+      {
+        themed && (
+          <button class="theme-toggle icon-button" aria-label="Switch theme" data-enhancement-control hidden>
+            ☾
+          </button>
+        )
+      }
+      <a class="button nav-download" href={downloadUrl} data-download-source="nav"
+        ><svg class="download-apple" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"
+          ><path
+            d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.23 3.39 7.54 8.94 7.26c1.35.07 2.29.76 3.08.82 1.18-.24 2.31-.94 3.57-.85 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.43 4.13l.01-.01ZM12.03 7.2c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"
+          /></svg
+        >Download for Mac</a
+      >
+    </div>
+  </div>
+</header>
+
+<script>
+  import '../scripts/site-nav.js';
+</script>

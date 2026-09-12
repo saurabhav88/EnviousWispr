@@ -74,7 +74,7 @@ When you want an emoji, you say it, and it appears where you said it. When you d
 
 ## Related posts
 
-- [How EnviousWispr works, end to end](/how-it-works/). The on-device pipeline that runs this step.
+- [How EnviousWispr works, end to end](/features/). The on-device pipeline that runs this step.
 - [Say it, get it formatted: dates, numbers, emails, and more](/blog/spoken-text-formatting-dates-numbers-emails/). The other on-device formatting that happens before polish.
 - [Getting started with EnviousWispr in under 2 minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 

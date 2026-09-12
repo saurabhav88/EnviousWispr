@@ -61,7 +61,7 @@ So the answer to "how do I turn on quiet capture" is simple: you do not. Hold yo
 - **On a quiet train or in a waiting room.** Speak at the volume the space expects rather than the volume the software used to demand.
 - **When you simply do not feel like projecting.** Some days you do not want to talk loudly. Now you do not have to.
 
-Because all of this runs [on-device on your Mac](/how-it-works/), the quiet stays quiet in the other sense too. Your audio is captured, analyzed, and transcribed locally. Whispering at midnight does not send anything to a server.
+Because all of this runs [on-device on your Mac](/why-offline/), the quiet stays quiet in the other sense too. Your audio is captured, analyzed, and transcribed locally. Whispering at midnight does not send anything to a server.
 
 ## A note on honesty
 
@@ -75,7 +75,7 @@ Nothing in the steps. Hold the keybind, speak, release, and the polished text la
 
 ## Related posts
 
-- [How EnviousWispr works, end to end](/how-it-works/). Where your audio goes, and why it never leaves your Mac.
+- [How EnviousWispr works, end to end](/features/). Where your audio goes, and why it never leaves your Mac.
 - [Why Mac dictation keeps stopping, and how to fix it](/blog/mac-dictation-keeps-stopping/). The other reason dictation cuts out, and what to do about it.
 - [macOS dictation that works offline and stays private](/blog/macos-dictation-offline-private/). The fully-local setup.
 

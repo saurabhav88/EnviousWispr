@@ -65,7 +65,7 @@ The pipeline has four steps, and they run in parallel on Apple Silicon, which is
 3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to match how you speak.
 4. **Paste.** The polished text pastes directly into whatever app has keyboard focus. Your previous clipboard contents are preserved and restored automatically.
 
-See [how the transcription pipeline works in detail](/how-it-works/) if you want to go deeper on any of these steps.
+See [how the transcription pipeline works in detail](/features/) if you want to go deeper on any of these steps.
 
 ## Who it's for
 

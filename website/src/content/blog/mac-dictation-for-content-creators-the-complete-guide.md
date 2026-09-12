@@ -75,7 +75,7 @@ The basics are the same as any dictation setup: Apple Silicon Mac, macOS 14 or l
 
 If you write about sensitive topics (memoir, journalism with sources, fiction that draws on real events), cloud dictation is risky. The transcribed text leaves your machine. On-device dictation keeps the audio and the text on your Mac. AI polish can also run on-device (Apple Intelligence on supported Macs), so the entire pipeline can be local if your work demands it.
 
-[EnviousWispr](/how-it-works/) defaults to on-device for both transcription and polish. Cloud polish is optional and requires you to add your own API key.
+[EnviousWispr](/features/) defaults to on-device for both transcription and polish. Cloud polish is optional and requires you to add your own API key.
 
 For the deeper explainer: [On-device vs cloud dictation: which is actually private on Mac?](/blog/on-device-vs-cloud-dictation-privacy/).
 

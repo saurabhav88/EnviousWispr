@@ -1,4 +1,16 @@
 ---
+// The lips mark. Geometry and palette are the same eighteen rectangles the
+// approved features mock reads from data/lips-mascot.json (#2816).
+//
+// `animate` adds the header-lips classes and a per-rectangle delay so the
+// shared header can move the bars with a CSS keyframe (site-header.css) that
+// reproduces the mock's scaleY(1 + 0.24·sin(t/190 + i·0.7)) at a 1194 ms
+// period. Default rendering stays static.
+interface Props {
+  animate?: boolean;
+  class?: string;
+}
+const { animate = false, class: className } = Astro.props;
 const geometry = [
   [16, 84.2, 14, 20, 0],
   [40, 65.75, 14, 32, 1],
@@ -30,13 +42,28 @@ const colors = [
   '#4169e1',
   '#8a2be2',
 ];
+// 0.7 rad of a 2π·190 ms period is 133 ms per bar.
+const delayMs = 133;
 ---
 
-<svg viewBox="0 0 256 256" aria-hidden="true"
+<svg
+  viewBox="0 0 256 256"
+  aria-hidden="true"
+  focusable="false"
+  class:list={[className, { 'header-lips': animate }]}
   ><g transform="translate(8,13)"
     >{
-      geometry.map((v) => (
-        <rect x={v[0]} y={v[1]} width={v[2]} height={v[3]} rx="5" fill={colors[v[4]]} />
+      geometry.map((v, i) => (
+        <rect
+          x={v[0]}
+          y={v[1]}
+          width={v[2]}
+          height={v[3]}
+          rx="5"
+          fill={colors[v[4]]}
+          class={animate ? (i < 9 ? 'lip-upper' : 'lip-lower') : undefined}
+          style={animate ? `--lip-delay:-${i * delayMs}ms` : undefined}
+        />
       ))
     }</g
   ></svg

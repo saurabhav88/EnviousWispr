@@ -129,4 +129,4 @@ The honest part is that growing it also means pruning it. I dropped a tracker, a
 
 I would genuinely love to hear what is working for you. We are all still figuring this out together.
 
-*Curious about EnviousWispr, the free, private, on-device dictation app that Claude and I build together? See [how it works](/how-it-works/) or [browse comparisons](/compare/) against other Mac dictation tools.*
+*Curious about EnviousWispr, the free, private, on-device dictation app that Claude and I build together? See [how it works](/features/) or [browse comparisons](/compare/) against other Mac dictation tools.*

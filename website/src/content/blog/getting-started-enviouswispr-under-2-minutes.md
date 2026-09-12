@@ -73,7 +73,7 @@ That's the before and after. You spoke naturally, with filler words and run-on p
 
 ### What the post-processing does
 
-By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. You can run this on-device with Apple Intelligence, EG-1, or Ollama, or use a cloud provider like OpenAI or Gemini. If you want to understand [how the full pipeline works](/how-it-works/), we've documented each stage in detail.
+By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. You can run this on-device with Apple Intelligence, EG-1, or Ollama, or use a cloud provider like OpenAI or Gemini. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
 

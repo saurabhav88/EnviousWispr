@@ -33,7 +33,7 @@ Here's what that means in practice: your audio goes from your microphone to a lo
 
 Post-processing works similarly. After transcription, the raw text passes through an LLM that cleans up filler words, fixes punctuation, and shapes the formatting to match what you said. Post-processing can run on-device (Apple Intelligence, EG-1, Ollama) or via cloud providers (OpenAI, Gemini), depending on your preference.
 
-For a deeper look at the full pipeline, from microphone input through transcription to polished output, see the [How It Works](/how-it-works/) page.
+For a deeper look at the full pipeline, from microphone input through transcription to polished output, see the [How It Works](/features/) page.
 
 ## Setting up EnviousWispr for a dev workflow
 
@@ -105,7 +105,7 @@ We cover this comparison in much more depth in [On-Device vs Cloud Dictation: Wh
 
 EnviousWispr is free and takes a few minutes to set up. [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). The speech model downloads automatically on first launch. Set your keybind and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
 
-If you want to understand the full transcription and post-processing pipeline before diving in, start with [How It Works](/how-it-works/).
+If you want to understand the full transcription and post-processing pipeline before diving in, start with [How It Works](/features/).
 
 ## Related Posts
 

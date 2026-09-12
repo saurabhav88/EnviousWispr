@@ -45,7 +45,7 @@ This used to mean serious compromises on accuracy. The models that could run on 
 
 In 2022, OpenAI released Whisper, an open-source automatic speech recognition model trained on 680,000 hours of multilingual data. Since then, the landscape has moved fast. Multiple on-device models now achieve word error rates under 2% on standard benchmarks, competitive with leading cloud services. The accuracy gap that once justified cloud-only workflows has largely closed.
 
-On Apple Silicon, Apple's Core ML framework compiles neural networks to run natively on the Mac's Neural Engine, GPU, and CPU. Modern on-device speech engines take full advantage of this, delivering fast and accurate transcription entirely on your Mac with no server required. You can see [how the on-device pipeline works end-to-end](/how-it-works/) if you want to understand where each step happens.
+On Apple Silicon, Apple's Core ML framework compiles neural networks to run natively on the Mac's Neural Engine, GPU, and CPU. Modern on-device speech engines take full advantage of this, delivering fast and accurate transcription entirely on your Mac with no server required. You can see [how the on-device pipeline works end-to-end](/why-offline/) if you want to understand where each step happens.
 
 The practical experience: on an M-series Mac, from a MacBook Air to a Mac Studio, a typical dictation segment transcribes in one to two seconds. That's end-to-end, from the moment you stop speaking to the moment text appears.
 

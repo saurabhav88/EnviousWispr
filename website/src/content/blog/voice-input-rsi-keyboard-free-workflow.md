@@ -88,7 +88,7 @@ People dealing with RSI often dictate content that's more personal than the aver
 
 This is exactly the kind of content you don't want leaving your machine. EnviousWispr processes everything locally. Your recordings never leave your Mac unless you explicitly configure an external API. No cloud upload, no third-party server handling your audio, no data leaving your device.
 
-For health-related dictation specifically, on-device processing isn't a nice-to-have; it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed via Core ML on the Neural Engine built into every Apple Silicon chip and never transmitted anywhere. You can read exactly how this works on the [how it works page](/how-it-works/).
+For health-related dictation specifically, on-device processing isn't a nice-to-have; it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed via Core ML on the Neural Engine built into every Apple Silicon chip and never transmitted anywhere. You can read exactly how this works on the [how it works page](/features/).
 
 Dictation is also entirely on-demand; it only records when you actively initiate it. If you're in a conversation you'd rather not capture (a medical appointment over speakerphone, a sensitive personal call) simply don't start a dictation session. Nothing is listening in the background.
 

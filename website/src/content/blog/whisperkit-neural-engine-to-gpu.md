@@ -78,7 +78,7 @@ If you use the Whisper-based engine, the long wait after a fresh install or a ma
 
 ## Related posts
 
-- [How EnviousWispr works, end to end](/how-it-works/). The full on-device pipeline.
+- [How EnviousWispr works, end to end](/features/). The full on-device pipeline.
 - [Building commercial software solo with Claude Code](/blog/building-commercial-software-solo-with-claude-code/). More notes from the build.
 - [macOS dictation that works offline and stays private](/blog/macos-dictation-offline-private/). Why on-device matters in the first place.
 
