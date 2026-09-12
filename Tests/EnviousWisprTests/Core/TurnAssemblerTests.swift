@@ -310,4 +310,22 @@ struct TurnAssemblerTests {
     #expect(first.map(\.id) == second.map(\.id))
     #expect(first.first?.id == "0-11")
   }
+
+  @Test(
+    "assemble stops at the first entry when its own Task is already cancelled, never fabricating a result for cancelled work"
+  )
+  func assembleStopsWhenCancelled() async {
+    let entries = [
+      entry("hello", 0, 5, 0, 200), entry("there", 6, 11, 200, 500),
+    ]
+    let segments = [SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1)]
+    let task = Task {
+      TurnAssembler.assemble(entries: entries, segments: segments)
+    }
+    // Cancelled BEFORE the task's body has a chance to run — cancellation is a monotonic
+    // flag, so this is deterministic, never a race against the task's own scheduling.
+    task.cancel()
+    let turns = await task.value
+    #expect(turns.isEmpty, "a cancelled task must not process any entries")
+  }
 }

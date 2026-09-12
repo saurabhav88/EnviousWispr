@@ -3,10 +3,16 @@ import Foundation
 /// Partitions a transcript's full, ordered `ASRWordTiming` array into speaker turns by
 /// temporal overlap against a diarizer's `SpeakerSegment`s (#2810, phase 3 of #2807).
 ///
-/// Pure and stateless — every original entry is classified into exactly one turn, never
-/// dropped or duplicated, so "every original word preserved" holds by construction: the
-/// classification loop below consumes `entries` once, in order, and every entry is appended to
-/// the turn being built before the loop advances.
+/// Deterministic over its inputs, and reads no state of its own — every original entry is
+/// classified into exactly one turn, never dropped or duplicated, so "every original word
+/// preserved" holds by construction, UNLESS the calling Task is cancelled (see below), in
+/// which case the return is a partial result the caller must treat as unusable.
+///
+/// **Checks `Task.isCancelled` once per entry.** A long, highly segmented recording makes
+/// this an O(words × segments) synchronous scan; called from a detached task (found by
+/// cloud review) specifically so it can be interrupted rather than run to completion after
+/// the user has moved on. The classification loop below consumes `entries` once, in order,
+/// and every entry is appended to the turn being built before the loop advances.
 public enum TurnAssembler {
 
   /// How close an untimed-by-overlap entry's own boundary must be to a segment's boundary to
@@ -31,6 +37,7 @@ public enum TurnAssembler {
     }
 
     for entry in entries {
+      guard !Task.isCancelled else { break }
       let speaker = resolveSpeaker(for: entry, segments: segments)
       if speaker != groupSpeaker {
         flushGroup()

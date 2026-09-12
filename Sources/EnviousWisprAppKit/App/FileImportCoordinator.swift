@@ -1474,9 +1474,21 @@ final class FileImportCoordinator {
     // the UI before the background cleanup even claims the engine (found by cloud review).
     // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
     // computation to a detached task changes nothing about its result.
-    let assembledTurns = await Task.detached(priority: .utility) {
+    //
+    // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
+    // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
+    // to run the full scan to completion and this task waiting on it the whole time
+    // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
+    // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
+    // per entry so the propagated cancellation actually shortens the scan.
+    let assemblyTask = Task.detached(priority: .utility) {
       TurnAssembler.assemble(entries: wordTimings, segments: segments)
-    }.value
+    }
+    let assembledTurns = await withTaskCancellationHandler(
+      operation: { await assemblyTask.value },
+      onCancel: { assemblyTask.cancel() }
+    )
+    guard generationAtStart == generation, !Task.isCancelled else { return }
 
     let token: EngineLease.Token
     switch engineAdmission.claim() {
