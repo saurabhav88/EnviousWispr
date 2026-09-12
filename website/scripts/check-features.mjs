@@ -301,7 +301,10 @@ else {
 // header stylesheet must key its enhanced layout on that flag, never on the
 // data-nav-ready the module stamps later. Either regression paints the open
 // link lists and then jumps the whole page when the module collapses them.
-const navFlag = /<script>document\.documentElement\.dataset\.navJs\s*=\s*''[;\s]*<\/script>/;
+// The same inline script must also clear the flag on load when the header
+// never became ready, or a nav module that failed to load would leave the
+// phone navigation hidden with nothing able to open it.
+const navFlag = /<script>\s*document\.documentElement\.dataset\.navJs\s*=\s*'';\s*addEventListener\('load',[\s\S]*?data-nav-ready[\s\S]*?delete document\.documentElement\.dataset\.navJs[\s\S]*?<\/script>/;
 for (const [route, html] of pages) {
   if (!tags(html).some((t) => t.name === 'header' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-header'))) problems.push(`${route}: shared header missing`);
   if (!tags(html).some((t) => t.name === 'footer' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-footer'))) problems.push(`${route}: shared footer missing`);
