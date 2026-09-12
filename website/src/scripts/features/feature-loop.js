@@ -44,5 +44,6 @@ export function init(root, motion, scope) {
     },
     render,
   );
+  if (scope.signal.aborted) return;
   render();
 }

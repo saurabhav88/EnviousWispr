@@ -2,7 +2,7 @@
 // marketing.js; each button carries the emitted asset URLs in data-start and
 // data-stop. Disposal invalidates the generation, silences the current audio
 // and clears the pending completion, so nothing plays after fallback.
-import { keepRoot, enableControls, on, timer } from './guard.js';
+import { guarded, keepRoot, enableControls, on, timer } from './guard.js';
 
 export function init(root, motion, scope) {
   keepRoot(root, scope);
@@ -32,7 +32,7 @@ export function init(root, motion, scope) {
       const name = button.querySelector('span').textContent;
       playing = new Audio(button.dataset.start);
       status.textContent = 'Playing ' + name + ' start sound…';
-      playing.onended = () => {
+      playing.onended = guarded(scope, () => {
         if (mine !== generation) return;
         timer(
           scope,
@@ -40,19 +40,23 @@ export function init(root, motion, scope) {
             if (mine !== generation) return;
             playing = new Audio(button.dataset.stop);
             status.textContent = 'Playing stop sound…';
-            playing.onended = () => {
+            playing.onended = guarded(scope, () => {
               if (mine === generation) status.textContent = 'Start-and-stop pair finished.';
-            };
-            playing.play().catch(() => {
-              if (mine === generation) status.textContent = 'Sound playback is unavailable.';
             });
+            playing.play().catch(
+              guarded(scope, () => {
+                if (mine === generation) status.textContent = 'Sound playback is unavailable.';
+              }),
+            );
           },
           450,
         );
-      };
-      playing.play().catch(() => {
-        if (mine === generation) status.textContent = 'Sound playback is unavailable.';
       });
+      playing.play().catch(
+        guarded(scope, () => {
+          if (mine === generation) status.textContent = 'Sound playback is unavailable.';
+        }),
+      );
     });
   }
   enableControls(root);

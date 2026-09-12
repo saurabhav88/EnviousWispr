@@ -86,6 +86,7 @@ export function init(root, motion, scope) {
       controls();
     },
   );
+  if (scope.signal.aborted) return;
   on(scope, toggle, 'click', () => {
     if (motion.reduced.matches) return;
     const shouldPlay = paused || !motion.allowed();
@@ -97,4 +98,5 @@ export function init(root, motion, scope) {
   on(scope, document, 'home:motion', controls);
   draw();
   enableControls(root);
+  controls();
 }

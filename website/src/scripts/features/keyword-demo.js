@@ -39,5 +39,6 @@ export function init(root, motion, scope) {
       if (motion.reduced.matches || motion.paused) settle();
     },
   );
+  if (scope.signal.aborted) return;
   settle();
 }

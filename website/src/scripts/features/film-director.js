@@ -154,6 +154,7 @@ export function init(node, motion, scope) {
       controls();
     },
   );
+  if (scope.signal.aborted) return;
   on(scope, play, 'click', () => {
     if (motion.reduced.matches) {
       stopped = true;

@@ -201,11 +201,21 @@ for (const route of builtLaunch) {
       problems.push(`${route}: data-recording-cases does not parse`);
       continue;
     }
-    if (!Array.isArray(list) || list.length === 0) problems.push(`${route}: data-recording-cases is empty`);
+    if (!Array.isArray(list) || list.length === 0) {
+      problems.push(`${route}: data-recording-cases is empty or invalid`);
+      continue;
+    }
     for (const item of list) {
-      const r = resolve(String(item.transcript ?? ''), route);
-      if (r.invalid || r.external) problems.push(`${route}: recording ${item.id} has no same-site transcript URL`);
-      else checkAsset(r.pathname, `${route} data-recording-cases`);
+      if (!item || typeof item.transcript !== 'string' || !item.transcript.trim()) {
+        problems.push(`${route}: recording has no transcript URL`);
+        continue;
+      }
+      const r = resolve(item.transcript, route);
+      if (r.invalid || r.external || !r.pathname.startsWith('/_astro/') || !r.pathname.endsWith('.json')) {
+        problems.push(`${route}: recording ${item.id} has an invalid transcript URL`);
+        continue;
+      }
+      checkAsset(r.pathname, `${route} data-recording-cases`);
     }
   }
   for (const t of tags(html)) {

@@ -129,7 +129,7 @@ export function init(host, motion, scope) {
     timer = null;
     if (player && !document.hidden) timer = setInterval(guarded(scope, follow), 400);
   }
-  async function play(at = 0) {
+  let play = async function play(at = 0) {
     seekTo = at;
     if (player?.seekTo) {
       player.seekTo(at, true);
@@ -142,8 +142,10 @@ export function init(host, motion, scope) {
     const ticket = ++playerGeneration;
     if (!item.video) return;
     loading = true;
+    let apiLoaded = false;
     try {
       const YT = await youtubeAPI();
+      apiLoaded = true;
       if (ticket !== playerGeneration || signal.aborted) return;
       videoHost.replaceChildren();
       const mount = document.createElement('div');
@@ -173,12 +175,13 @@ export function init(host, motion, scope) {
           }),
         },
       });
-    } catch {
+    } catch (error) {
       if (ticket !== playerGeneration || signal.aborted) return;
+      if (apiLoaded) throw error;
       loading = false;
       note.textContent = 'The video could not load. Use the Watch on YouTube link.';
     }
-  }
+  };
 
   function passageRow(p, i, playable) {
     const row = document.createElement('div');
@@ -250,13 +253,15 @@ export function init(host, motion, scope) {
     note.textContent = message;
     setModes(false);
   }
-  async function load(item, ticket, keepEvidenceOnFailure) {
+  let load = async function load(item, ticket, keepEvidenceOnFailure) {
+    let validated = false;
     try {
       const result = await fetch(item.transcript, { signal });
       if (!result.ok) throw Error('missing');
       const loaded = await result.json();
       if (ticket !== revision || signal.aborted) return;
       if (!validPayload(loaded, item)) throw Error('mismatch');
+      validated = true;
       data = loaded;
       renderTranscript();
       metrics[0].textContent = data.wordCount.toLocaleString();
@@ -267,6 +272,7 @@ export function init(host, motion, scope) {
       setModes(true);
     } catch (error) {
       if (ticket !== revision || signal.aborted) return;
+      if (validated) throw error;
       if (keepEvidenceOnFailure) {
         // Card 0's page evidence stays; a later interaction retries the fetch.
         firstFetchArmed = true;
@@ -275,7 +281,10 @@ export function init(host, motion, scope) {
         unavailable('Transcript unavailable for this recording. Use the source link to watch it.');
       }
     }
-  }
+  };
+  // Programming errors inside these async paths route to the island's fallback.
+  play = guarded(scope, play);
+  load = guarded(scope, load);
   function select(i) {
     stop();
     const ticket = ++revision;
