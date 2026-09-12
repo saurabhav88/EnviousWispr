@@ -8,8 +8,9 @@ import Testing
 
 /// #2809 — the dormant, phase-2 speaker step wired into the file-import coordinator.
 ///
-/// **When this fails, a stopped import holds the shared engine for as long as the speaker
-/// worker takes to finish on its own, or a refused raw save still runs an analysis on words
+/// **When this fails, every successful import waits on this invisible step before its
+/// words can be cleaned up, or a stopped speaker worker keeps running in the background
+/// after the user has moved on, or a refused raw save still runs an analysis on words
 /// nobody kept, or the speaker step silently analyzes an empty buffer because the
 /// coordinator's own array was already released.** Product coverage.
 @Suite(.tags(.productOutcome))
@@ -150,6 +151,10 @@ struct FileImportCoordinatorSpeakerTests {
     }
     coordinator.start()
     _ = await settleUntil { coordinator.state == .finished }
+    // The speaker step runs detached from polish (#2809, cloud review) — `.finished`
+    // means polish is done, not that this ALSO fast-but-still-concurrent step has
+    // run yet. Wait on the step's own completion signal, not the run's.
+    _ = await settleUntil { await recorder.callCount == 1 }
 
     #expect(await recorder.callCount == 1)
     // 2.0s at 16kHz = 32,000 samples. Zero would mean the coordinator's OWN
@@ -171,6 +176,10 @@ struct FileImportCoordinatorSpeakerTests {
     }
     coordinator.start()
     _ = await settleUntil { coordinator.state == .finished }
+    // The speaker step runs detached from polish (#2809, cloud review) — `.finished`
+    // means polish is done, not that this ALSO fast-but-still-concurrent step has
+    // written `speakerAnalysis` yet.
+    _ = await settleUntil { coordinator.speakerAnalysis != nil }
     #expect(coordinator.speakerAnalysis == .labeled(count: 2, segments: []))
 
     // A second file must not read as though the first file's speaker analysis was
@@ -179,20 +188,17 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.speakerAnalysis == nil)
   }
 
-  @Test("Stop exits the speaker worker before the engine claim is released")
-  func stopJoinsTheSpeakerWorkerBeforeReleasingTheEngine() async {
+  @Test("polish finishes without waiting for the speaker step to finish first")
+  func polishDoesNotWaitOnTheSpeakerStep() async {
     let gate = Gate()
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       speakerLabeler: { _, _ in
         await gate.markEntered()
-        do {
-          // settle: cancelled by Stop long before this would ever elapse.
-          try await Task.sleep(nanoseconds: 30_000_000_000)
-          return .single(segments: [])
-        } catch {
-          return .failed(.cancelled)
-        }
+        // Outlives the assertion window below by a wide margin; this test's whole
+        // point is that nothing here waits for it.
+        try? await Task.sleep(nanoseconds: 30_000_000_000)  // settle: never reached in-window
+        return .single(segments: [])
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -202,13 +208,62 @@ struct FileImportCoordinatorSpeakerTests {
     coordinator.start()
     await gate.waitUntilEntered()
 
-    // The speaker worker is genuinely in flight: the claim must still be held.
+    // The speaker worker is confirmed in flight (sleeping 30s), and polish still
+    // reaches `.finished` almost immediately — the exact defect the cloud review
+    // found: awaiting the speaker step inline before polish added its own 20s+
+    // deadline to every import's cleanup for a dormant, invisible limb.
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished, "polish waited on the speaker step instead of running concurrently")
+  }
+
+  @Test("Stop cancels the speaker worker directly, without the engine claim waiting on it")
+  func stopCancelsTheSpeakerWorkerWithoutWaitingForIt() async {
+    let speakerGate = Gate()
+    let polishGate = Gate()
+    final class ExitFlag: @unchecked Sendable { var exited = false }
+    let speakerExited = ExitFlag()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markEntered()
+        defer { speakerExited.exited = true }
+        do {
+          try await Task.sleep(nanoseconds: 30_000_000_000)  // settle: cancelled by Stop first
+          return .single(segments: [])
+        } catch {
+          return .failed(.cancelled)
+        }
+      },
+      processPart: { part, _ in
+        await polishGate.markEntered()
+        // Keeps the MAIN run genuinely in flight so `isEngineHeld` means something
+        // real here, independent of the (also in-flight) speaker worker above.
+        try await Task.sleep(nanoseconds: 30_000_000_000)  // settle: cancelled by Stop first
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await speakerGate.waitUntilEntered()
+    await polishGate.waitUntilEntered()
+
+    // Both the speaker worker AND the main run are genuinely in flight: the claim
+    // must still be held.
     #expect(coordinator.isEngineHeld)
 
     coordinator.stop()
 
     let released = await settleUntil { coordinator.isEngineHeld == false }
     #expect(released, "the engine claim was never released after Stop")
+    // Detached from the main run (found by cloud review: awaiting the speaker
+    // worker inline before polish blocked every successful import's cleanup on
+    // this dormant, invisible step) — `stop()` must cancel it directly, or it
+    // keeps running for its own deadline after the user has moved on.
+    let workerExited = await settleUntil { speakerExited.exited }
+    #expect(workerExited, "the speaker worker kept running after Stop")
     // Stop bumped `generation` before the worker unwound, so the outcome is guarded away —
     // exactly like `engineReportedLanguage`/`rawTranscript` elsewhere in this run: nothing
     // is attributed to a run nobody is watching, even though the worker itself did return

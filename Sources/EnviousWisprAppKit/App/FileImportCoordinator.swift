@@ -622,6 +622,10 @@ final class FileImportCoordinator {
     // Same reason as `startOver`: a different file must not read as though the LAST
     // file's speaker analysis was about this one (found by second-pass review).
     speakerAnalysis = nil
+    // Detached from `runTask` (see `run()`), so choosing a new file while a PRIOR
+    // file's speaker step is still quietly running in the background must stop it
+    // itself, not rely on Stop having already done so.
+    speakerStepTask?.cancel()
     let name = url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
@@ -1026,6 +1030,7 @@ final class FileImportCoordinator {
     // A different file is a different speaker analysis — the prior file's outcome must
     // not survive to be read against this one (found by second-pass review).
     speakerAnalysis = nil
+    speakerStepTask?.cancel()
     forgetSaveOutcome()
     // A new file is a NEW History row. Carrying the id forward would make the next import
     // overwrite the last one's words, because the store names its file by id — which is the
@@ -1052,6 +1057,13 @@ final class FileImportCoordinator {
   /// The dormant speaker step's outcome, held in memory for telemetry and the log only
   /// (#2809 addendum §3 B3). Not persisted, not read by any view in phase 2.
   private(set) var speakerAnalysis: SpeakerAnalysis?
+
+  /// The in-flight speaker step, run detached from `run()`'s own completion — it touches
+  /// no ASR engine and must never add its own deadline (20s minimum) to the user-visible
+  /// polish latency every import already pays (found by cloud review: awaiting it inline
+  /// before polish blocked every successful import on this dormant, invisible limb).
+  /// Cancelled by `stop()`/a new `choose()`/`startOver()`, same as `decodeTask`.
+  private var speakerStepTask: Task<Void, Never>?
 
   /// SHA-256 over the raw Float32 bytes of the PCM ASR consumed, so a retry can compare a
   /// re-decoded source against what actually ran without re-reading the whole buffer.
@@ -1192,6 +1204,10 @@ final class FileImportCoordinator {
     // ENGINE, and a re-polish reads `rawTranscript`. Nothing left can want it.
     releaseDecodedAudio()
     runTask?.cancel()
+    // Detached from `runTask` (see `run()`): Stop must cancel it explicitly, or a
+    // background speaker analysis keeps running for up to its own deadline after the
+    // user has already moved on.
+    speakerStepTask?.cancel()
   }
 
   /// Re-runs the cleanup under the current settings, from the transcript already
@@ -1283,13 +1299,20 @@ final class FileImportCoordinator {
         finishRun(savingDocument: false)
         return
       }
-      await runSpeakerStep(
-        analysisSamples: analysisSamples, generationAtStart: generationAtStart,
-        wordTimingCoverage: result.wordTimingCoverage)
-      // The speaker step's own await is a suspension point a Stop can land in; without
-      // this guard a stopped run still advanced into cleanup, writing `.polishing` state
-      // and starting `polishAll` for a run nobody is watching. Found by Codex.
-      guard generationAtStart == generation else { return }
+      // Launched, never awaited here: the speaker step must not add its own deadline
+      // (20s minimum, scaling with file length) to every import's polish latency for a
+      // dormant limb nothing shows yet — awaiting it before `polishAll` did exactly that
+      // (found by cloud review). It runs fully detached from this function and from the
+      // engine claim `start()` holds: the step touches no ASR engine, so there is nothing
+      // for holding the claim through it to protect. `stop()` cancels it directly; a
+      // superseded run's own generation guards inside `runSpeakerStep` discard its result
+      // either way.
+      speakerStepTask?.cancel()
+      speakerStepTask = Task { [weak self] in
+        await self?.runSpeakerStep(
+          analysisSamples: analysisSamples, generationAtStart: generationAtStart,
+          wordTimingCoverage: result.wordTimingCoverage)
+      }
       phase = "Dividing it up to clean"
       await polishAll(
         TranscriptSplitter.split(result.text), generationAtStart: generationAtStart)
