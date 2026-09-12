@@ -1,6 +1,9 @@
 // Dated primary-source facts for the compare hub. Sources are rendered beside
 // the table so qualifications and provenance travel with the comparison.
-export const checked = '12 September 2026';
+export const updated = '2026-09-12';
+export const checked = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(updated + 'T00:00:00Z'));
 
 export const products = [
   { id: 'ew', name: 'EnviousWispr', note: 'Free, private dictation', mark: '/favicon.svg', own: true, url: '/features/', sources: [['Features', '/features/'], ['Privacy', '/why-offline/'], ['Languages', '/help/multi-language-dictation/'], ['Requirements', '/help/system-requirements/']] },

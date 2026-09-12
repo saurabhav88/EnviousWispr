@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { macWhisperProducts as comparedProducts, groups, checked } from '../../data/compare.js';
+import { macWhisperProducts as comparedProducts, groups, checked, updated } from '../../data/compare.js';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -10,9 +10,9 @@ const articleJsonLd = JSON.stringify({
   "headline": "EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup",
   "description": "Compare EnviousWispr and MacWhisper for dictation, file transcription, local AI cleanup, pricing and export workflows.",
   "url": `${siteUrl}/compare/macwhisper/`,
-  "image": `${siteUrl}/images/og/macwhisper.png`,
+  "image": `${siteUrl}/images/og/compare.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-09-12T00:00:00Z",
+  "dateModified": updated + 'T00:00:00Z',
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -78,7 +78,8 @@ const faqJsonLd = JSON.stringify({
   title="EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup"
   description="Compare EnviousWispr and MacWhisper for dictation, file transcription, local AI cleanup, pricing and export workflows."
   activePage="compare"
-  ogImage="/images/og/macwhisper.png"
+  ogImage="/images/og/compare.png"
+  ogImageAlt="Compare dictation apps with EnviousWispr by price, privacy and AI cleanup"
   ogType="article"
   canonicalPath="/compare/macwhisper/"
 >

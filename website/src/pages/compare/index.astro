@@ -5,11 +5,13 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
 import { Image } from 'astro:assets';
 import reviewFrame from '../../assets/home/review-frame.webp';
 import proof from '../../data/home/proof.json';
-import { checked, products, groups, directory } from '../../data/compare.js';
-import '../../styles/home/foundation.css';
+import { checked, updated, products, groups, directory } from '../../data/compare.js';
+import '../../styles/themed-base.css';
 import '../../styles/compare.css';
 
 const siteUrl = 'https://enviouswispr.com';
+const title = 'Compare Mac Dictation Apps | EnviousWispr';
+const description = 'Compare EnviousWispr, Wispr Flow, Superwhisper, FluidVoice and Spokenly on price, privacy and AI cleanup. Explore 17 detailed comparisons.';
 const breadcrumb = {
   '@context': 'https://schema.org', '@type': 'BreadcrumbList',
   itemListElement: [
@@ -19,21 +21,32 @@ const breadcrumb = {
 };
 const itemList = {
   '@context': 'https://schema.org', '@type': 'ItemList',
+  '@id': `${siteUrl}/compare/#comparisons`,
   name: `Compare ${directory.length} dictation tools with EnviousWispr`,
   itemListElement: directory.map(([name, slug], index) => ({
     '@type': 'ListItem', position: index + 1,
     url: `${siteUrl}/compare/${slug}/`, name: `EnviousWispr vs ${name}`,
   })),
 };
+const collection = {
+  '@context': 'https://schema.org', '@type': 'CollectionPage',
+  '@id': `${siteUrl}/compare/#webpage`,
+  url: `${siteUrl}/compare/`, name: title, description, dateModified: updated,
+  inLanguage: 'en', mainEntity: { '@id': itemList['@id'] },
+  isPartOf: { '@type': 'WebSite', name: 'EnviousWispr', url: `${siteUrl}/` },
+  publisher: { '@type': 'Organization', name: 'Envious Labs', url: siteUrl },
+};
 ---
 
 <ThemedLayout
-  title="Compare Mac Dictation Apps: Price, Privacy & AI Cleanup | EnviousWispr"
-  description="Compare EnviousWispr, Wispr Flow, Superwhisper, FluidVoice and Spokenly side by side. See price, offline use and AI cleanup, plus 17 detailed comparisons."
+  title={title}
+  description={description}
+  ogImage="/images/og/compare.png"
+  ogImageAlt="Compare dictation apps with EnviousWispr by price, privacy and AI cleanup"
   activePage="compare" canonicalPath="/compare/"
 >
   <Fragment slot="head">
-    {[breadcrumb, itemList].map(data => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
+    {[collection, breadcrumb, itemList].map(data => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
   </Fragment>
 
   <div class="compare-page">
@@ -177,11 +190,12 @@ const itemList = {
   const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-comparison-name]')];
   if (form && input && status) {
     const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    const entries = links.map(link => ({ link, name: normalize(link.dataset.comparisonName ?? '') }));
     const filter = (query: string) => {
       const search = normalize(query);
       let count = 0;
-      for (const link of links) {
-        link.hidden = !normalize(link.dataset.comparisonName ?? '').includes(search);
+      for (const { link, name } of entries) {
+        link.hidden = !name.includes(search);
         if (!link.hidden) count++;
       }
       status.hidden = !search;
