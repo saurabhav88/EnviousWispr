@@ -74,6 +74,14 @@ COMPONENTS=(
   # (a committed data asset, same shape as llama.cpp/Silero VAD above) —
   # Apache-2.0, vendored license text lives beside the tokenizer files.
   "OpenAI Whisper large-v3 tokenizer|06f233fe06e710322aca913c1bc4249a0d71fce1|Apache-2.0|repo:Sources/EnviousWisprASR/Resources/WhisperTokenizer/LICENSE|https://huggingface.co/openai/whisper-large-v3|"
+  # #2809: the four bundled offline speaker-diarization CoreML models
+  # (Segmentation/FBank/Embedding/PldaRho) plus their PLDA parameters JSON.
+  # Not a SwiftPM dep — a committed data asset, same shape as the Silero VAD
+  # and WhisperKit tokenizer entries above. The parent models (pyannote,
+  # WeSpeaker) are CC-BY-4.0, distinct from every other entry here (which are
+  # all MIT/Apache-2.0), so the vendored file carries the CC-BY-4.0 text and
+  # the required source/citation attribution, not just a bare license file.
+  "Speaker diarization models (bundled CoreML, converted by FluidInference)|1ed7a662|CC-BY-4.0|repo:Sources/EnviousWispr/Resources/speaker-models-LICENSE.txt|https://huggingface.co/FluidInference/speaker-diarization-coreml|"
 )
 
 # --- Cross-check the DIRECT-dep coverage against Package.resolved (Codex #2) ---
