@@ -135,13 +135,9 @@ final class EmojiRestoreStep: TextProcessingStep {
       return context
     }
 
-    // LENGTH CAP (#1948, cloud review r7). `EmojiRestorer.alignWords` allocates an
-    // (n+1)x(m+1) `[[Int]]` LCS table and runs synchronously on the main actor, so its cost
-    // is quadratic in dictation length. The AFM path was bounded incidentally by Apple's
-    // 4096-token context (polish is skipped above it, so `polishedText` is nil and this step
-    // no-ops). Local Ollama has no such ceiling and its output cap SCALES with input
-    // (`LLMPolishStep` `outputTokenPolicy`), so widening the gate exposed lengths the
-    // algorithm was never asked to handle.
+    // LENGTH CAP (#1948, cloud review r7; widened to AFM #2834 PR review). `EmojiRestorer
+    // .alignWords` allocates an (n+1)x(m+1) `[[Int]]` LCS table and runs synchronously on
+    // the main actor, so its cost is quadratic in dictation length.
     //
     // Measured against the real restorer on this machine: 200 words 3.6 ms / <1 MB;
     // 1,000 words 54 ms / 8 MB; 3,000 words 484 ms / 69 MB; 6,000 words 1.9 s / 275 MB;
@@ -162,17 +158,17 @@ final class EmojiRestoreStep: TextProcessingStep {
     // precisely the pathological inputs it exists to reject. The unit has to match the
     // quantity being bounded.
     //
-    // SCOPED TO THE NEWLY WIDENED PATH (cloud review r8). Apple Intelligence restored emoji
-    // for EVERY successful polish before #1948, bounded incidentally by Apple's own
-    // 4096-token preflight — roughly 3,000 words, ~484 ms by the table above. Applying this
-    // cap to AFM as well would silently withdraw restoration from long AFM dictations, which
-    // is a behaviour change on a path this change is not about. Ollama has no equivalent
-    // ceiling and its output cap SCALES with input, which is the exposure being bounded.
-    if isLocalOllama {
-      let preTokens = EmojiRestorer.alignmentTokenCount(context.text)
-      let postTokens = EmojiRestorer.alignmentTokenCount(polished)
-      guard max(preTokens, postTokens) <= Self.maxAlignmentTokens else { return context }
-    }
+    // APPLIES TO BOTH RESTORING PATHS (#2834; retires cloud review r8's Ollama-only scoping).
+    // r8 scoped this cap to Ollama because AFM was bounded INCIDENTALLY by Apple's own FIXED
+    // 4,096-token preflight — an AFM dictation could never reach the lengths that make this
+    // quadratic cost matter. #2834 makes that same preflight window LIVE (4,096 on macOS 26,
+    // 8,192 on macOS 27, and whatever a future OS reports), which is exactly the premise r8's
+    // scoping rested on, so its reasoning no longer holds and AFM needs the same guard Ollama
+    // already has for the same reason: an output cap that scales with input rather than a
+    // fixed ceiling below this step's danger zone.
+    let preTokens = EmojiRestorer.alignmentTokenCount(context.text)
+    let postTokens = EmojiRestorer.alignmentTokenCount(polished)
+    guard max(preTokens, postTokens) <= Self.maxAlignmentTokens else { return context }
 
     let start = CFAbsoluteTimeGetCurrent()
     let result = restorer.restore(polished: polished, prePolish: context.text)
