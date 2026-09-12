@@ -1,390 +1,195 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import ThemedLayout from '../../layouts/ThemedLayout.astro';
+import DownloadButton from '../../components/features/DownloadButton.astro';
+import DownloadClosing from '../../components/DownloadClosing.astro';
+import { Image } from 'astro:assets';
+import reviewFrame from '../../assets/home/review-frame.webp';
+import proof from '../../data/home/proof.json';
+import { checked, products, groups, directory } from '../../data/compare.js';
+import '../../styles/home/foundation.css';
+import '../../styles/compare.css';
 
 const siteUrl = 'https://enviouswispr.com';
-
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
+const breadcrumb = {
+  '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+    { '@type': 'ListItem', position: 2, name: 'Comparisons', item: `${siteUrl}/compare/` },
   ],
-});
-
-const cloudTools = [
-  { name: "WisprFlow", slug: "wisprflow", angle: "Cloud subscription vs free on-device dictation" },
-  { name: "Otter.ai", slug: "otter-ai", angle: "Meeting transcription vs real-time dictation" },
-  { name: "Notta", slug: "notta", angle: "Cloud transcription vs private on-device speech-to-text" },
-  { name: "Google Docs Voice Typing", slug: "google-docs-voice-typing", angle: "Browser-only dictation vs system-wide on any Mac app" },
-];
-
-const onDeviceApps = [
-  { name: "Superwhisper", slug: "superwhisper", angle: "Local or cloud model choice vs two curated on-device engines" },
-  { name: "MacWhisper", slug: "macwhisper", angle: "File transcription app vs live dictation tool" },
-  { name: "VoiceInk", slug: "voiceink", angle: "Two whisper-based Mac apps, head to head on features" },
-  { name: "Willow Voice", slug: "willow-voice", angle: "Cloud-first subscription vs free on-device alternative" },
-  { name: "Handy", slug: "handy", angle: "Both free and open source; curated defaults vs broad model choice" },
-  { name: "FluidVoice", slug: "fluidvoice", angle: "Both GPLv3 with a tuned AI model; different macOS support" },
-  { name: "Juno", slug: "juno", angle: "Free and open source; ours runs on older, lighter Macs" },
-  { name: "TypeWhisper", slug: "typewhisper", angle: "Both GPLv3; theirs is a toolkit, ours works with no setup" },
-  { name: "Spokenly", slug: "spokenly", angle: "Open-source simplicity vs flexible modes and providers" },
-  { name: "Vox", slug: "vox", angle: "Two local apps; simple polish vs editable modes and VoxNotch" },
-];
-
-const legacyDev = [
-  { name: "Dragon", slug: "dragon", angle: "Legacy enterprise dictation vs modern Apple Silicon native" },
-  { name: "Apple Dictation", slug: "apple-dictation", angle: "Built-in macOS dictation vs dedicated dictation app" },
-  { name: "whisper.cpp", slug: "whisper-cpp", angle: "Developer CLI vs ready-to-use Mac dictation app" },
-];
-
-const allComparisons = [...cloudTools, ...onDeviceApps, ...legacyDev];
-const itemListJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  "name": "Compare 17 Mac Dictation Apps with Free EnviousWispr",
-  "description": "Side-by-side comparisons of EnviousWispr against the major Mac dictation apps.",
-  "itemListElement": allComparisons.map((tool, idx) => ({
-    "@type": "ListItem",
-    "position": idx + 1,
-    "url": `${siteUrl}/compare/${tool.slug}/`,
-    "name": `EnviousWispr vs ${tool.name}`,
+};
+const itemList = {
+  '@context': 'https://schema.org', '@type': 'ItemList',
+  name: `Compare ${directory.length} dictation tools with EnviousWispr`,
+  itemListElement: directory.map(([name, slug], index) => ({
+    '@type': 'ListItem', position: index + 1,
+    url: `${siteUrl}/compare/${slug}/`, name: `EnviousWispr vs ${name}`,
   })),
-});
+};
 ---
 
-<BaseLayout
-  title="EnviousWispr Comparisons: Pick a Mac Dictation App"
-  description="Choose which Mac dictation app to compare against free EnviousWispr. Seventeen head-to-head breakdowns. For a recommendation, read our picks by use case."
-  activePage="compare"
-  canonicalPath="/compare/"
+<ThemedLayout
+  title="Compare Mac Dictation Apps: Price, Privacy & AI Cleanup | EnviousWispr"
+  description="Compare EnviousWispr, Wispr Flow, Superwhisper, MacWhisper and Apple Dictation side by side. See price, offline use and AI cleanup, plus 17 detailed comparisons."
+  activePage="compare" canonicalPath="/compare/"
 >
   <Fragment slot="head">
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={itemListJsonLd}></script>
+    {[breadcrumb, itemList].map(data => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
   </Fragment>
 
-<style>
-.compare-hero { padding: 100px 0 48px; text-align: center; }
-.compare-hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; }
-.compare-hero p { font-size: 18px; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
-.compare-hero .compare-intro { font-size: 16px; max-width: 720px; margin-top: 24px; text-align: left; }
-.compare-hero-cta {
-  display: inline-flex; align-items: center; gap: 8px;
-  margin-top: 20px; padding: 12px 24px; border-radius: 100px;
-  font-size: 15px; font-weight: 700;
-  background: var(--accent); color: #fff; text-decoration: none;
-  transition: background 0.15s;
-}
-.compare-hero-cta:hover { background: var(--accent-hover); }
-.compare-hero-cta-sub {
-  display: block; margin-top: 10px;
-  font-size: 13px; color: var(--text-3);
-}
-
-.compare-group { margin-bottom: 48px; }
-.compare-group-label {
-  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
-  color: var(--text-3); margin-bottom: 16px;
-}
-.compare-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
-}
-.compare-card {
-  display: block; padding: 24px; border-radius: var(--radius-card);
-  border: 1px solid var(--border-hover); background: #fff;
-  text-decoration: none; transition: border-color 0.15s, box-shadow 0.15s;
-  min-height: 158px; /* reserve height to prevent CLS as cards lazy-render */
-  contain: layout style;
-}
-.compare-card:hover {
-  border-color: var(--accent); box-shadow: 0 2px 12px rgba(124,58,237,0.08);
-}
-.compare-card-name {
-  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px;
-}
-.compare-card-angle {
-  font-size: 14px; color: var(--text-2); line-height: 1.5;
-}
-.compare-card-arrow {
-  display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent);
-}
-
-/* Feature comparison table */
-.compare-table-section { padding: 24px 0 56px; }
-.compare-table-section h2 {
-  font-size: 28px; font-weight: 800; letter-spacing: -1px;
-  color: var(--text); margin-bottom: 10px; text-align: center;
-}
-.compare-table-section .compare-table-intro {
-  font-size: 15px; color: var(--text-2); margin-bottom: 24px;
-  text-align: center; max-width: 720px; margin-left: auto; margin-right: auto;
-}
-.compare-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.compare-table {
-  width: 100%; border-collapse: collapse;
-  background: #fff; border-radius: var(--radius-card);
-  border: 1px solid var(--border-hover); overflow: hidden;
-  font-size: 14px;
-}
-.compare-table th, .compare-table td {
-  padding: 12px 14px; text-align: left;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-.compare-table thead th {
-  background: rgba(124,58,237,0.04);
-  font-size: 13px; font-weight: 700; color: var(--text);
-  position: sticky; top: 0;
-}
-.compare-table thead th.tool-ew {
-  background: rgba(124,58,237,0.12);
-  color: var(--accent);
-}
-.compare-table tbody tr:last-child td { border-bottom: none; }
-.compare-table tbody td:first-child {
-  font-weight: 600; color: var(--text);
-  background: rgba(0,0,0,0.015);
-  min-width: 130px;
-}
-.compare-table td.col-ew { background: rgba(124,58,237,0.05); font-weight: 500; }
-.compare-table td .yes { color: #00804a; font-weight: 700; }
-.compare-table td .no { color: #c0222e; font-weight: 600; }
-.compare-table td .partial { color: #b87a00; font-weight: 600; }
-.compare-table-foot {
-  font-size: 12px; color: var(--text-3); margin-top: 12px;
-  text-align: center;
-}
-@media (max-width: 760px) {
-  .compare-table { min-width: 720px; }
-  .compare-table-wrap::after {
-    content: '← scroll →';
-    display: block; text-align: center;
-    font-size: 11px; color: var(--text-3); padding: 6px 0;
-  }
-}
-
-.compare-cta { text-align: center; padding: 48px 0 80px; }
-.compare-cta p { font-size: 16px; color: var(--text-2); margin-bottom: 20px; }
-.compare-cta .btn-primary {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 14px 28px; border-radius: 100px; font-size: 15px; font-weight: 700;
-  background: var(--accent); color: #fff; text-decoration: none;
-  transition: background 0.15s;
-}
-.compare-cta .btn-primary:hover { background: var(--accent-hover); }
-
-  /* Signpost to the recommendation page (#2340). The index is a directory; this is the
-     visible route to the page that answers "which one should I use". */
-  .compare-signpost { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-top: 22px; }
-  .compare-signpost a {
-    display: flex; flex-direction: column; gap: 6px; padding: 20px 22px;
-    border: 1px solid var(--border-hover); border-radius: var(--radius-card);
-    background: rgba(255,255,255,.72); text-decoration: none;
-    transition: transform .2s, border-color .2s, box-shadow .2s;
-  }
-  .compare-signpost a:hover {
-    transform: translateY(-2px); border-color: rgba(124,58,237,.26);
-    box-shadow: 0 14px 34px rgba(62,34,107,.08);
-  }
-  .compare-signpost-label {
-    color: var(--text-3); font-family: var(--font-mono); font-size: 10.5px;
-    letter-spacing: .06em; text-transform: uppercase;
-  }
-  .compare-signpost-title { color: var(--text); font-size: 16px; font-weight: 700; letter-spacing: -.4px; }
-  .compare-signpost-primary { background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(240,236,249,.7)); }
-  .compare-signpost-primary .compare-signpost-title { color: var(--accent); }
-  @media (max-width: 760px) { .compare-signpost { grid-template-columns: 1fr; } }
-</style>
-
-<div class="compare-hero">
-  <div class="container">
-    <h1>Compare free EnviousWispr with 17 Mac dictation apps</h1>
-    <p>Honest, side-by-side breakdowns of EnviousWispr against 17 Mac dictation apps people actually use.</p>
-    <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="compare-hero-cta" data-download-source="compare-hero">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download EnviousWispr Free
-    </a>
-    <span class="compare-hero-cta-sub">macOS 14+, Apple Silicon. No account. Works offline.</span>
-    <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (<a href="/compare/wisprflow/">WisprFlow</a>, <a href="/compare/otter-ai/">Otter.ai</a>, <a href="/compare/notta/">Notta</a>, <a href="/compare/google-docs-voice-typing/">Google Docs Voice Typing</a>), apps that offer local or mixed processing (<a href="/compare/superwhisper/">Superwhisper</a>, <a href="/compare/macwhisper/">MacWhisper</a>, <a href="/compare/voiceink/">VoiceInk</a>, <a href="/compare/willow-voice/">Willow Voice</a>, <a href="/compare/handy/">Handy</a>, <a href="/compare/fluidvoice/">FluidVoice</a>, <a href="/compare/juno/">Juno</a>, <a href="/compare/typewhisper/">TypeWhisper</a>, <a href="/compare/spokenly/">Spokenly</a>, <a href="/compare/vox/">Vox</a>), and legacy or developer-focused tools (<a href="/compare/dragon/">Dragon</a>, <a href="/compare/apple-dictation/">Apple Dictation</a>, <a href="/compare/whisper-cpp/">whisper.cpp</a>). Each comparison covers price, privacy, offline use, language support, and the workflow each tool fits best, so you can narrow the list without installing all 17.</p>
-    <div class="compare-signpost">
-      <a href="/compare/best-dictation-apps-for-mac/" class="compare-signpost-primary">
-        <span class="compare-signpost-label">Want a recommendation, not a directory?</span>
-        <span class="compare-signpost-title">Best dictation apps for Mac, picked by use case &rarr;</span>
-      </a>
-      <a href="/compare/wisprflow-alternatives/" class="compare-signpost-secondary">
-        <span class="compare-signpost-label">Replacing WisprFlow?</span>
-        <span class="compare-signpost-title">Free WisprFlow alternatives for Mac &rarr;</span>
-      </a>
+  <div class="compare-page">
+  <header class="compare-intro wrap">
+    <div>
+      <p class="eyebrow">Compare Mac dictation apps</p>
+      <h1>Compare the apps.<br /><span>Find your fit.</span></h1>
     </div>
-  </div>
-</div>
+    <div class="compare-intro-copy">
+      <p>Where your voice goes. How your words are cleaned up. What you pay. See the differences before you choose.</p>
+      <DownloadButton source="compare-hero" label="Try EnviousWispr free" />
+      <small>macOS 14+ · Apple Silicon · No account</small>
+    </div>
+  </header>
 
-<section class="compare-table-section" aria-label="Feature comparison table">
-  <div class="container">
-    <h2>Mac dictation apps at a glance</h2>
-    <p class="compare-table-intro">Side-by-side on the criteria that actually matter: price, where audio is processed, offline support, and language coverage. Sources verified from each tool's official site.</p>
-    <div class="compare-table-wrap">
-      <table class="compare-table">
+  <section class="compare-overview wrap" aria-labelledby="overview-title">
+    <div class="compare-section-top">
+      <h2 id="overview-title">The essentials.</h2>
+      <a href="#all-comparisons">All {directory.length} comparisons <span aria-hidden="true">↗</span></a>
+    </div>
+    <p class="compare-scroll-hint" id="table-help">Swipe across for apps and scroll down for features. Names stay in view.</p>
+    <div class="compare-table-region" tabindex="0" role="region" aria-label="Dictation app comparison" aria-describedby="table-help">
+      <table class="compare-matrix">
+        <caption class="compare-sr-only">Five Mac dictation options compared by cost, privacy, setup and everyday use. Details checked {checked}.</caption>
+        <colgroup><col class="compare-label-column" />{products.map(() => <col />)}</colgroup>
         <thead>
           <tr>
-            <th scope="col">Feature</th>
-            <th scope="col" class="tool-ew">EnviousWispr</th>
-            <th scope="col">WisprFlow</th>
-            <th scope="col">Superwhisper</th>
-            <th scope="col">MacWhisper</th>
-            <th scope="col">Apple Dictation</th>
-            <th scope="col">Dragon</th>
+            <th scope="col" class="compare-corner"><span>Find what<br />matters to you.</span></th>
+            {products.map(product => (
+              <th scope="col" class:list={['compare-product', { 'compare-own': product.own }]}>
+                <div class="compare-product-mark" aria-hidden="true">
+                  {product.mark ? <img src={product.mark} alt="" width="36" height="36" /> : <span class="compare-monogram">MW</span>}
+                </div>
+                <span class="compare-product-name">{product.name}</span>
+                <span class="compare-product-note">{product.note}</span>
+              </th>
+            ))}
           </tr>
         </thead>
-        <tbody>
-          <tr>
-            <td>Price</td>
-            <td class="col-ew"><span class="yes">Free</span></td>
-            <td>Free 2k words/wk; <strong>$12-15/mo</strong> Pro</td>
-            <td>Unlimited free tier; <strong>$8.49/mo</strong> Pro</td>
-            <td>Free; <strong>~$69</strong> one-time Pro</td>
-            <td>Free (built-in)</td>
-            <td>Discontinued for Mac</td>
-          </tr>
-          <tr>
-            <td>Audio stays on Mac</td>
-            <td class="col-ew"><span class="yes">Yes, fully on-device</span></td>
-            <td><span class="no">No, cloud transcription</span></td>
-            <td><span class="partial">With local speech models; cloud speech models send audio to the provider</span></td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="partial">Mostly (enhanced uses cloud)</span></td>
-            <td><span class="yes">Yes</span></td>
-          </tr>
-          <tr>
-            <td>Works offline</td>
-            <td class="col-ew"><span class="yes">Yes</span></td>
-            <td><span class="no">No</span></td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="partial">Enhanced needs internet</span></td>
-            <td><span class="yes">Yes</span></td>
-          </tr>
-          <tr>
-            <td>Account required</td>
-            <td class="col-ew"><span class="yes">No</span></td>
-            <td><span class="no">Yes, email signup</span></td>
-            <td><span class="yes">No</span></td>
-            <td><span class="yes">No</span></td>
-            <td><span class="yes">No</span></td>
-            <td><span class="yes">No</span></td>
-          </tr>
-          <tr>
-            <td>Languages</td>
-            <td class="col-ew">25 European (Parakeet) + 99+ via WhisperKit</td>
-            <td>100+ languages</td>
-            <td>100+ via Whisper</td>
-            <td>100+ via Whisper</td>
-            <td>~60</td>
-            <td>~6</td>
-          </tr>
-          <tr>
-            <td>Use case</td>
-            <td class="col-ew">Real-time push-to-talk dictation anywhere on macOS</td>
-            <td>Real-time PTT dictation, cross-platform</td>
-            <td>PTT dictation; configurable models</td>
-            <td>Audio file transcription, not live PTT</td>
-            <td>Built-in OS dictation</td>
-            <td>Long-form professional dictation (Mac version discontinued)</td>
-          </tr>
-          <tr>
-            <td>AI polish (cleanup)</td>
-            <td class="col-ew"><span class="yes">Yes, on-device EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence (macOS 26+); BYOK cloud optional</span></td>
-            <td><span class="yes">Yes, cloud</span></td>
-            <td><span class="partial">S1-mini for local basic cleanup; Pro cloud writing modes also available</span></td>
-            <td><span class="no">No</span></td>
-            <td><span class="no">No</span></td>
-            <td><span class="no">No</span></td>
-          </tr>
-          <tr>
-            <td>Open source</td>
-            <td class="col-ew"><span class="yes">Yes, GPLv3 on GitHub</span></td>
-            <td><span class="no">No, closed</span></td>
-            <td><span class="no">No, closed</span></td>
-            <td><span class="no">No, closed</span></td>
-            <td><span class="no">No, closed</span></td>
-            <td><span class="no">No, closed</span></td>
-          </tr>
-          <tr>
-            <td>Apple Silicon optimized</td>
-            <td class="col-ew"><span class="yes">Yes, Neural Engine</span></td>
-            <td>n/a (cloud)</td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="yes">Yes</span></td>
-            <td><span class="no">No, Intel-era</span></td>
-          </tr>
-        </tbody>
+        {groups.map((group, index) => (
+          <tbody aria-label={group.title}>
+            <tr class="compare-group-heading"><th colSpan={products.length + 1} scope="rowgroup"><span><b aria-hidden="true">0{index + 1}</b>{group.title}</span></th></tr>
+            {group.rows.map(row => (
+              <tr class="compare-feature-row">
+                <th scope="row">{row.label}</th>
+                {products.map(product => (
+                  <td class:list={{ 'compare-own': product.own }}>
+                    <strong>{row.cells[product.id].title}</strong>
+                    {row.cells[product.id].note && <span>{row.cells[product.id].note}</span>}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        ))}
+        <tfoot><tr><th scope="row">Explore further</th>{products.map(product => <td class:list={{ 'compare-own': product.own }}><a href={product.url} aria-label={product.own ? 'Explore EnviousWispr features' : `Full comparison with ${product.name}`}>{product.own ? 'Our features' : 'Full comparison'} <span aria-hidden="true">↗</span></a></td>)}</tr></tfoot>
       </table>
     </div>
-    <p class="compare-table-foot">Detailed breakdowns of each comparison live below. Core table sources re-checked August 2026.</p>
-  </div>
-</section>
-
-<div class="container">
-  <div class="compare-group">
-    <div class="compare-group-label">Cloud dictation</div>
-    <div class="compare-grid">
-      {cloudTools.map(tool => (
-        <a href={`/compare/${tool.slug}/`} class="compare-card">
-          <div class="compare-card-name">vs {tool.name}</div>
-          <div class="compare-card-angle">{tool.angle}</div>
-          <span class="compare-card-arrow">Read comparison &rarr;</span>
-        </a>
-      ))}
+    <div class="compare-table-notes">
+      <p><strong>¹ Local or cloud, your choice.</strong> EnviousWispr keeps audio on your Mac. If you choose cloud polish, selected text and cleanup context go directly to your provider. Providers may charge for usage. Apple Intelligence polish requires macOS 26+ and availability.</p>
+      <p>Checked {checked}. Prices are in the currencies shown; taxes and regional pricing may vary. Features can depend on your plan, model and setup. <a href="#comparison-sources">See primary sources ↓</a></p>
     </div>
-  </div>
+  </section>
 
-  <div class="compare-group">
-    <div class="compare-group-label">Local and mixed processing</div>
-    <div class="compare-grid">
-      {onDeviceApps.map(tool => (
-        <a href={`/compare/${tool.slug}/`} class="compare-card">
-          <div class="compare-card-name">vs {tool.name}</div>
-          <div class="compare-card-angle">{tool.angle}</div>
-          <span class="compare-card-arrow">Read comparison &rarr;</span>
-        </a>
-      ))}
+  <section class="compare-decisions wrap" aria-labelledby="tradeoffs-title">
+    <div class="compare-section-heading">
+      <p class="eyebrow">The trade-offs</p>
+      <h2 id="tradeoffs-title">A good fit beats<br /><span>the longest feature list.</span></h2>
     </div>
-  </div>
-
-  <div class="compare-group">
-    <div class="compare-group-label">Legacy & developer tools</div>
-    <div class="compare-grid">
-      {legacyDev.map(tool => (
-        <a href={`/compare/${tool.slug}/`} class="compare-card">
-          <div class="compare-card-name">vs {tool.name}</div>
-          <div class="compare-card-angle">{tool.angle}</div>
-          <span class="compare-card-arrow">Read comparison &rarr;</span>
-        </a>
-      ))}
+    <div class="compare-fit-grid">
+      <article class="compare-fit-own">
+        <img src="/favicon.svg" alt="" width="42" height="42" loading="lazy" />
+        <h3>Choose EnviousWispr for free, private dictation.</h3>
+        <p>Dictate into your apps, transcribe a recording, and clean up the text with local AI. No account or subscription. Your audio stays on your Mac.</p>
+        <p class="compare-fit-limit"><strong>The trade-off:</strong> you need Apple Silicon and macOS 14+. If cross-platform access or a broader team workflow matters more, look at those capabilities first.</p>
+        <a href="/why-offline/" class="text-link">See how offline works <span aria-hidden="true">↗</span></a>
+      </article>
+      <article class="compare-fit-alternatives">
+        <h3>Another app may fit you better.</h3>
+        <dl>
+          <div><dt>Across devices and teams</dt><dd><a href="/compare/wisprflow/">Wispr Flow</a> offers a broader cloud service with cross-platform dictation and team features.</dd></div>
+          <div><dt>More model and mode control</dt><dd><a href="/compare/superwhisper/">Superwhisper</a> offers configurable voice models, prompts and writing modes.</dd></div>
+          <div><dt>Subtitles and batch workflows</dt><dd><a href="/compare/macwhisper/">MacWhisper</a> combines files, meetings and dictation with export and automation tools.</dd></div>
+          <div><dt>Start with what you already have</dt><dd><a href="/compare/apple-dictation/">Apple Dictation</a> is built into macOS. It is a useful first option to try.</dd></div>
+        </dl>
+      </article>
     </div>
-  </div>
-</div>
+  </section>
 
-<div class="compare-cta">
-  <div class="container">
-    <p>Ready to try the fastest free, private dictation on Mac?</p>
-    <a href="/#download" class="btn-primary">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download Free
+  <section class="compare-evidence wrap" aria-labelledby="evidence-title">
+    <div>
+      <p class="eyebrow">See the results</p>
+      <h2 id="evidence-title">A feature list is<br />half the story.</h2>
+      <p>How does the text actually turn out? Mostly Mac compared seven dictation apps using the same passages. Watch the examples and the reviewer’s conclusions.</p>
+      <a class="text-link" href={proof[0].url} target="_blank" rel="noopener">Watch the independent comparison <span aria-hidden="true">↗</span></a>
+      <small>This is one reviewer’s test, not a guarantee for every voice, language or Mac.</small>
+    </div>
+    <a class="compare-review-image" href={proof[0].url} target="_blank" rel="noopener" aria-label="Watch Mostly Mac’s EnviousWispr review from 6 minutes 25 seconds">
+      <Image src={reviewFrame} alt="Mostly Mac demonstrating EnviousWispr in a comparison of dictation apps" widths={[480, 800]} sizes="(max-width: 760px) 90vw, 42vw" width={800} format="webp" loading="lazy" />
+      <span class="compare-play" aria-hidden="true">▶</span>
+      <span class="compare-review-caption">Mostly Mac <span>EnviousWispr segment · 6:25 ↗</span></span>
     </a>
-  </div>
-</div>
+  </section>
 
-</BaseLayout>
+  <section class="compare-directory wrap" id="all-comparisons" aria-labelledby="directory-title">
+    <div class="compare-directory-heading">
+      <div><p class="eyebrow">Take a closer look</p><h2 id="directory-title">Your shortlist.<br /><span>The full picture.</span></h2><p>EnviousWispr alongside {directory.length} dictation, transcription and developer tools.</p></div>
+      <form class="compare-search" role="search" hidden>
+        <label for="compare-search">Find a comparison</label>
+        <div><input id="compare-search" type="search" placeholder="Search by app name" autocomplete="off" /><button type="reset">Clear</button></div>
+      </form>
+    </div>
+    <p class="compare-search-status" role="status" aria-live="polite" hidden></p>
+    <nav class="compare-directory-links" aria-label="All detailed comparisons">
+      {directory.map(([name, slug]) => <a href={`/compare/${slug}/`} data-comparison-name={name}><span><small>EnviousWispr vs</small><strong>{name}</strong></span><span aria-hidden="true">↗</span></a>)}
+    </nav>
+    <!-- Signpost to the recommendation page (#2340). The index is a directory; this is the
+         visible route to the page that answers "which one should I use". -->
+    <div class="compare-guides">
+      <a href="/compare/best-dictation-apps-for-mac/"><span>Need help narrowing it down?<strong>Best dictation apps by use case</strong></span><span aria-hidden="true">↗</span></a>
+      <a href="/compare/wisprflow-alternatives/"><span>Considering a switch?<strong>Free Wispr Flow alternatives</strong></span><span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+  <section class="compare-sources wrap" id="comparison-sources" aria-labelledby="sources-title">
+    <div class="compare-section-top"><h2 id="sources-title">Check the sources.</h2><span>Table checked {checked}</span></div>
+    <p>This comparison is published by Envious Labs, the maker of EnviousWispr. Product facts come from the sources below. Our fit recommendations are editorial judgments.</p>
+    <div class="compare-source-grid">
+      {products.map(product => <div><h3>{product.name}</h3>{product.sources.map(([label, url]) => <a href={url} target={url.startsWith('https:') ? '_blank' : undefined} rel={url.startsWith('https:') ? 'noopener' : undefined}>{label} <span aria-hidden="true">↗</span></a>)}</div>)}
+    </div>
+  </section>
+
+  <DownloadClosing title="Make room for your words." source="compare-closing" />
+  </div>
+</ThemedLayout>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('.compare-search');
+  const input = document.querySelector<HTMLInputElement>('#compare-search');
+  const status = document.querySelector<HTMLElement>('.compare-search-status');
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-comparison-name]')];
+  if (form && input && status) {
+    const filter = (query: string) => {
+      const search = query.trim().toLocaleLowerCase().replace(/\s+/g, '');
+      let count = 0;
+      for (const link of links) {
+        link.hidden = !link.dataset.comparisonName.toLocaleLowerCase().replace(/\s+/g, '').includes(search);
+        if (!link.hidden) count++;
+      }
+      status.hidden = !search;
+      status.textContent = count ? `${count} comparison${count === 1 ? '' : 's'} found.` : 'No matching app. Clear your search to see every comparison.';
+    };
+    form.addEventListener('submit', event => event.preventDefault());
+    input.addEventListener('input', () => filter(input.value));
+    form.addEventListener('reset', () => { filter(''); input.focus(); });
+    input.value = '';
+    form.hidden = false;
+  }
+</script>
