@@ -239,6 +239,16 @@ final class TranscriptCoordinator {
   /// stands unless something cleared a selection out from under the user.
   var detail: HistoryDetail {
     guard let selected = selectedTranscriptID else {
+      // ONE source for the just-finished dictation: its History row, never the live
+      // pipeline's copy beside it. The row is what the list shows, so the pane cannot
+      // show a text the list does not; a row this object has not seen yet, or that
+      // the list stopped showing, is nothing rather than the live transcript.
+      if let fallbackRow = liveFallbackRowID {
+        guard !liveFallbackSuppressed,
+          let row = filteredTranscripts.first(where: { $0.id == fallbackRow })
+        else { return .empty }
+        return .row(row)
+      }
       return liveFallbackSuppressed ? .empty : .liveFallback
     }
     if let match = filteredTranscripts.first(where: { $0.id == selected }) {
@@ -247,7 +257,9 @@ final class TranscriptCoordinator {
     return .empty
   }
 
-  /// The detail pane follows the list (#2807). Called when the filter or the search changes.
+  /// The detail pane follows the list (#2807). Called when the filter or the search changes,
+  /// and after any write that replaces rows, because a cleanup can change the text a search
+  /// matched on.
   ///
   /// A selection that the displayed set no longer lists is cleared, and the live fallback is
   /// suppressed by the setter, so a filter or a search never reveals it. With nothing selected
@@ -664,6 +676,7 @@ final class TranscriptCoordinator {
         // unchanged, so History is byte-identical for anyone who never turns
         // Escape Recovery on.
         transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+        reconcileSelectionWithDisplayedSet()
         startPulseIfNeeded()
       } catch {
         await AppLogger.shared.log(
@@ -728,6 +741,7 @@ final class TranscriptCoordinator {
     } else {
       transcripts.insert(transcript, at: 0)
     }
+    reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
   }
 
@@ -753,6 +767,8 @@ final class TranscriptCoordinator {
     historyWriteRevision += 1
     writtenAtRevision[transcript.id] = historyWriteRevision
     transcripts[existing] = transcript
+    // #2807: the cleaned text can stop matching the search the row was selected under.
+    reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
     return true
   }
@@ -1217,9 +1233,10 @@ enum HistoryEmptyState: Equatable, Sendable {
 
 /// What the History detail pane shows (#2807).
 enum HistoryDetail {
-  /// A row the list displays.
+  /// A row the list displays: the selected one, or the just-finished dictation's own row.
   case row(Transcript)
-  /// Nothing is selected and nothing cleared a selection away: the live transcript, if any.
+  /// Nothing is selected, no completed dictation has landed in this session, and nothing has
+  /// narrowed the list: the live pipeline's transcript, if any.
   case liveFallback
   /// Nothing to show, and the live transcript must not stand in.
   case empty

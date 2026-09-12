@@ -331,18 +331,20 @@ struct TranscriptCoordinatorFilterTests {
     coordinator.delete(d)
     #expect(isEmpty(coordinator.detail), "the deletion suppressed the fallback")
 
-    coordinator.append(dictation("just finished"))
-    #expect(isLiveFallback(coordinator.detail), "this is the moment the fallback exists for")
+    let finished = dictation("just finished")
+    coordinator.append(finished)
+    #expect(isRow(coordinator.detail, finished.id), "the pane shows the dictation's own row")
   }
 
   @Test("narrowing the list away from the dictation the pane is showing empties the pane")
   func narrowingAwayFromTheFallbackRowEmptiesThePane() {
     let (coordinator, _) = makeCoordinator()
-    coordinator.append(dictation("just finished"))
-    #expect(isLiveFallback(coordinator.detail))
+    let finished = dictation("just finished")
+    coordinator.append(finished)
+    #expect(isRow(coordinator.detail, finished.id))
 
     coordinator.historyFilter = .dictations
-    #expect(isLiveFallback(coordinator.detail), "the dictation is still listed")
+    #expect(isRow(coordinator.detail, finished.id), "the dictation is still listed")
 
     coordinator.historyFilter = .transcripts
     #expect(isEmpty(coordinator.detail), "the list no longer shows what the pane shows")
@@ -354,10 +356,11 @@ struct TranscriptCoordinatorFilterTests {
   @Test("a search that hides the dictation the pane is showing empties the pane")
   func searchAwayFromTheFallbackRowEmptiesThePane() {
     let (coordinator, _) = makeCoordinator()
-    coordinator.append(dictation("just finished"))
+    let finished = dictation("just finished")
+    coordinator.append(finished)
 
     coordinator.searchQuery = "finished"
-    #expect(isLiveFallback(coordinator.detail), "the dictation matches, so it is still listed")
+    #expect(isRow(coordinator.detail, finished.id), "the dictation matches, so it is still listed")
 
     coordinator.searchQuery = "nothing like this"
     #expect(isEmpty(coordinator.detail))
@@ -370,8 +373,9 @@ struct TranscriptCoordinatorFilterTests {
   func aCompletionOutsideTheSearchSuppressesAnActiveFallback() {
     let (coordinator, _) = makeCoordinator()
     coordinator.searchQuery = "apples"
-    coordinator.append(dictation("apples", ageSeconds: 10))
-    #expect(isLiveFallback(coordinator.detail), "the completion matches the search")
+    let apples = dictation("apples", ageSeconds: 10)
+    coordinator.append(apples)
+    #expect(isRow(coordinator.detail, apples.id), "the completion matches the search")
 
     coordinator.append(dictation("pears"))
     #expect(isEmpty(coordinator.detail), "the pane would otherwise show pears beside apples")
@@ -398,13 +402,44 @@ struct TranscriptCoordinatorFilterTests {
     coordinator.append(dictation("older, but appended second", ageSeconds: 10))
     let shown = dictation("shown")
     coordinator.append(shown)
-    #expect(isLiveFallback(coordinator.detail))
+    #expect(isRow(coordinator.detail, shown.id))
 
     coordinator.delete(d)
-    #expect(isLiveFallback(coordinator.detail), "another row went, the pane's row is still here")
+    #expect(isRow(coordinator.detail, shown.id), "another row went, the pane's row is still here")
 
     coordinator.delete(shown)
     #expect(isEmpty(coordinator.detail))
+  }
+
+  @Test("the pane shows the just-finished dictation from History, not a second copy of it")
+  func thePaneShowsTheFinishedDictationsOwnRow() throws {
+    let (coordinator, _) = makeCoordinator()
+    let finished = dictation("just finished")
+    coordinator.append(finished)
+    #expect(isRow(coordinator.detail, finished.id))
+    #expect(
+      isLiveFallback(coordinator.detail) == false,
+      "once History has the row, the live pipeline's copy is never the source")
+  }
+
+  @Test("a cleanup that stops a selected import matching the search clears the selection")
+  func aRowUpdateThatLeavesTheSearchClearsTheSelection() throws {
+    let (coordinator, _) = makeCoordinator()
+    let raw = transcript("um so the plan is", file: "plan.m4a")
+    try coordinator.saveAndShow(raw)
+    coordinator.searchQuery = "um"
+    coordinator.selectedTranscriptID = raw.id
+    #expect(isRow(coordinator.detail, raw.id))
+
+    let cleaned = Transcript(
+      id: raw.id, text: raw.text, polishedText: "So the plan is.", language: "en", duration: 61,
+      backendType: .parakeet, createdAt: raw.createdAt, importedFileName: "plan.m4a")
+    try coordinator.updateExistingRow(cleaned)
+    #expect(coordinator.selectedTranscriptID == nil, "the row left the displayed set")
+    #expect(isEmpty(coordinator.detail))
+
+    coordinator.searchQuery = ""
+    #expect(isEmpty(coordinator.detail), "clearing the search does not bring it back")
   }
 
   @Test("a held recovery arriving does not bring the live transcript back")
