@@ -539,8 +539,16 @@ public actor WhisperKitBackend: ASRBackend {
       throw ASRError.transcriptionFailed(error.localizedDescription)
     }
     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+    // The UNPADDED input, never a segment's own reported end: WhisperKit decodes
+    // `paddedSamples` (500ms of trailing silence added above), so a segment can report an
+    // end time inside that padding — a word timed there is not on audio the caller ever
+    // gave us (#2809).
+    let audioDurationMs = Int(
+      (Double(audioSamples.count) / Double(WhisperKit.sampleRate) * 1000).rounded())
 
-    return mapResults(results, processingTime: elapsed)
+    return Self.mapResults(
+      results, processingTime: elapsed, enableTimestamps: options.enableTimestamps,
+      audioDurationMs: audioDurationMs)
   }
 
   public func unload() async {
@@ -762,7 +770,10 @@ public actor WhisperKitBackend: ASRBackend {
     return padded
   }
 
-  private func mapResults(_ results: [TranscriptionResult], processingTime: TimeInterval)
+  static func mapResults(
+    _ results: [TranscriptionResult], processingTime: TimeInterval, enableTimestamps: Bool,
+    audioDurationMs: Int
+  )
     -> ASRResult
   {
     let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
@@ -775,12 +786,38 @@ public actor WhisperKitBackend: ASRBackend {
         0
       }
 
+    // `nil` exactly when timestamps were never requested (Bypass, not Failure). Otherwise
+    // always run the mapper, even when no segment carries a `words` array — an engine that
+    // stops returning usable timings on an otherwise healthy run must show up as
+    // `word_timing_coverage_bucket=none`, not silently collapse to `nil` (#2809).
+    var wordTimings: [ASRWordTiming]?
+    var wordTimingCoverage: ASRWordTimingCoverage?
+    if enableTimestamps {
+      let segments: [TranscriptionSegment] = results.flatMap(\.segments)
+      let rawWords: [WordTiming] = segments.flatMap { $0.words ?? [] }
+      var words: [(word: String, startMs: Int?, endMs: Int?)] = []
+      words.reserveCapacity(rawWords.count)
+      for rawWord in rawWords {
+        // `Int(exactly:)`, never the trapping `Int(_:)`: a non-finite or out-of-range
+        // engine time (seen from a vendor edge case, never assumed impossible) becomes
+        // `nil` here, which the mapper already treats as an untimed span — never a crash.
+        let startMs = Int(exactly: (rawWord.start * 1000).rounded())
+        let endMs = Int(exactly: (rawWord.end * 1000).rounded())
+        words.append((word: rawWord.word, startMs: startMs, endMs: endMs))
+      }
+      let mapped = WordTimingRangeMapper.map(
+        text: text, audioDurationMs: audioDurationMs, words: words)
+      wordTimings = mapped.words
+      wordTimingCoverage = mapped.coverage
+    }
+
     return ASRResult(
       text: text,
       language: language,
       duration: duration,
       processingTime: processingTime,
-      backendType: .whisperKit
+      backendType: .whisperKit,
+      wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage
     )
   }
 
