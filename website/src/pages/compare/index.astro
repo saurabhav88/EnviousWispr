@@ -176,11 +176,12 @@ const itemList = {
   const status = document.querySelector<HTMLElement>('.compare-search-status');
   const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-comparison-name]')];
   if (form && input && status) {
+    const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
     const filter = (query: string) => {
-      const search = query.trim().toLocaleLowerCase().replace(/\s+/g, '');
+      const search = normalize(query);
       let count = 0;
       for (const link of links) {
-        link.hidden = !link.dataset.comparisonName.toLocaleLowerCase().replace(/\s+/g, '').includes(search);
+        link.hidden = !normalize(link.dataset.comparisonName ?? '').includes(search);
         if (!link.hidden) count++;
       }
       status.hidden = !search;
