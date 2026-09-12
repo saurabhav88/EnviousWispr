@@ -66,14 +66,18 @@ export function createMotionController(env = globalThis) {
           ? 'Play motion'
           : 'Pause motion';
       button.setAttribute('aria-pressed', String(paused || reduced.matches));
-      button.setAttribute(
-        'aria-label',
-        reduced.matches
-          ? 'Reduced motion enabled'
-          : paused
-            ? 'Play page animations'
-            : 'Pause page animations',
-      );
+      // Only the icon buttons need a spoken name; a text button's own label is
+      // its name, and a differing aria-label would hide that text from speech users.
+      if (button.classList.contains('icon-button'))
+        button.setAttribute(
+          'aria-label',
+          reduced.matches
+            ? 'Reduced motion enabled'
+            : paused
+              ? 'Play page animations'
+              : 'Pause page animations',
+        );
+      else button.removeAttribute('aria-label');
     }
     for (const task of tasks) {
       if (task.failed) continue;

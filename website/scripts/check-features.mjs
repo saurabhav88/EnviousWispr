@@ -296,9 +296,26 @@ else {
   linksChecked += checkLinks('/', home, 'homepage');
 }
 
+// The header must be laid out collapsed from the FIRST frame: the inline
+// pre-paint flag (SiteHead.astro) has to precede the first stylesheet, and the
+// header stylesheet must key its enhanced layout on that flag, never on the
+// data-nav-ready the module stamps later. Either regression paints the open
+// link lists and then jumps the whole page when the module collapses them.
+const navFlag = /<script>document\.documentElement\.dataset\.navJs\s*=\s*''[;\s]*<\/script>/;
 for (const [route, html] of pages) {
   if (!tags(html).some((t) => t.name === 'header' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-header'))) problems.push(`${route}: shared header missing`);
   if (!tags(html).some((t) => t.name === 'footer' && (t.attrs.class ?? '').split(/\s+/).includes('chrome-footer'))) problems.push(`${route}: shared footer missing`);
+  const flagAt = html.search(navFlag);
+  const firstStylesheet = html.search(/<link[^>]*rel=["']?stylesheet/i);
+  if (flagAt < 0) problems.push(`${route}: nav pre-paint flag script missing from <head>`);
+  else if (firstStylesheet >= 0 && firstStylesheet < flagAt) problems.push(`${route}: a stylesheet precedes the nav pre-paint flag`);
+}
+const headerSheets = fs.readdirSync(path.join(dist, '_astro')).filter((f) => f.endsWith('.css') && fs.readFileSync(path.join(dist, '_astro', f), 'utf8').includes('.chrome-header'));
+if (headerSheets.length === 0) problems.push('no built stylesheet styles .chrome-header');
+for (const f of headerSheets) {
+  const css = fs.readFileSync(path.join(dist, '_astro', f), 'utf8');
+  if (/\.chrome-header\[data-nav-ready\]/.test(css)) problems.push(`_astro/${f}: header layout keyed on data-nav-ready instead of html[data-nav-js]`);
+  if (!css.includes('html[data-nav-js] .chrome-header')) problems.push(`_astro/${f}: no html[data-nav-js] header layout rules`);
 }
 if (missing.length) problems.push(`launch routes missing from the build: ${missing.join(', ')}`);
 if (unexpected.length) problems.push(`launch routes built but not in the catalog: ${unexpected.join(', ')}`);

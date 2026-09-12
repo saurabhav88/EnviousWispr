@@ -323,9 +323,16 @@ html[data-theme='dark'] .site-chrome {
   height: 20px;
 }
 
-/* No script yet (or none at all): the panels are plain visible lists and the
- * triggers are links. Nothing here floats. */
-.chrome-header:not([data-nav-ready]) .main-nav {
+/* Scripts off (or the nav module failed): the panels are plain visible lists
+ * and the triggers are links. Nothing here floats.
+ *
+ * `html[data-nav-js]` is stamped by an inline script in the document head
+ * BEFORE first paint (SiteHead.astro), so a browser that will run site-nav.js
+ * lays the header out in its collapsed shape from the first frame instead of
+ * painting the open lists and jumping ~1000px when the module collapses them.
+ * site-nav.js removes the flag if it cannot install, which restores this
+ * layout. */
+html:not([data-nav-js]) .chrome-header .main-nav {
   display: flex;
   flex-direction: column;
   flex-basis: 100%;
@@ -335,25 +342,28 @@ html[data-theme='dark'] .site-chrome {
   margin-left: 0;
   padding-bottom: 8px;
 }
-.chrome-header:not([data-nav-ready]) .mega-menu,
-.chrome-header:not([data-nav-ready]) .resources-menu {
+html:not([data-nav-js]) .chrome-header .mega-menu,
+html:not([data-nav-js]) .chrome-header .resources-menu {
   position: static;
   width: 100%;
   margin: 4px 0 10px;
   box-shadow: none;
 }
-.chrome-header:not([data-nav-ready]) .nav-trigger,
-.chrome-header:not([data-nav-ready]) .nav-link {
+html:not([data-nav-js]) .chrome-header .nav-trigger,
+html:not([data-nav-js]) .chrome-header .nav-link {
   font-size: 16px;
   padding: 10px 5px;
 }
-.chrome-header:not([data-nav-ready]) .chrome-inner {
+html:not([data-nav-js]) .chrome-header .chrome-inner {
   height: auto;
   min-height: 80px;
   flex-wrap: wrap;
   padding-block: 14px;
 }
-.chrome-header:not([data-nav-ready]) .chrome-mobile-trigger {
+html:not([data-nav-js]) .chrome-header .chrome-mobile-trigger {
+  display: none;
+}
+html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
   display: none;
 }
 
@@ -418,30 +428,30 @@ html[data-theme='dark'] .site-chrome {
     background: var(--nav-card);
     box-shadow: 0 8px 28px #2714380a;
   }
-  .chrome-header[data-nav-ready] .main-nav {
+  html[data-nav-js] .chrome-header .main-nav {
     flex: 1;
     justify-content: center;
     gap: 36px;
     margin-left: 0;
     font-size: 16px;
   }
-  .chrome-header[data-nav-ready] .nav-trigger,
-  .chrome-header[data-nav-ready] .nav-link {
+  html[data-nav-js] .chrome-header .nav-trigger,
+  html[data-nav-js] .chrome-header .nav-link {
     font-size: 18px;
     font-weight: 600;
     color: var(--nav-ink);
     white-space: nowrap;
     position: relative;
   }
-  .chrome-header[data-nav-ready] .nav-link.active,
-  .chrome-header[data-nav-ready] .nav-link:hover,
-  .chrome-header[data-nav-ready] .nav-trigger.active,
-  .chrome-header[data-nav-ready] .nav-trigger:hover,
-  .chrome-header[data-nav-ready] .nav-trigger[aria-expanded='true'] {
+  html[data-nav-js] .chrome-header .nav-link.active,
+  html[data-nav-js] .chrome-header .nav-link:hover,
+  html[data-nav-js] .chrome-header .nav-trigger.active,
+  html[data-nav-js] .chrome-header .nav-trigger:hover,
+  html[data-nav-js] .chrome-header .nav-trigger[aria-expanded='true'] {
     color: var(--nav-accent);
   }
-  .chrome-header[data-nav-ready] .nav-link.active::after,
-  .chrome-header[data-nav-ready] .nav-trigger.active::after {
+  html[data-nav-js] .chrome-header .nav-link.active::after,
+  html[data-nav-js] .chrome-header .nav-trigger.active::after {
     content: '';
     position: absolute;
     left: 0;
@@ -460,11 +470,11 @@ html[data-theme='dark'] .site-chrome {
   }
 }
 @media (min-width: 1000px) and (max-width: 1190px) {
-  .chrome-header[data-nav-ready] .main-nav {
+  html[data-nav-js] .chrome-header .main-nav {
     gap: 22px;
   }
-  .chrome-header[data-nav-ready] .nav-trigger,
-  .chrome-header[data-nav-ready] .nav-link {
+  html[data-nav-js] .chrome-header .nav-trigger,
+  html[data-nav-js] .chrome-header .nav-link {
     font-size: 16px;
   }
 }
@@ -499,7 +509,7 @@ html[data-theme='dark'] .site-chrome {
   .chrome-header .chrome-inner {
     position: relative;
   }
-  .chrome-header[data-nav-ready] .main-nav {
+  html[data-nav-js] .chrome-header .main-nav {
     display: none;
     position: absolute;
     top: 88px;
@@ -518,7 +528,7 @@ html[data-theme='dark'] .site-chrome {
     background: var(--nav-card);
     box-shadow: var(--nav-shadow);
   }
-  .chrome-header[data-nav-ready] .main-nav.open {
+  html[data-nav-js] .chrome-header .main-nav.open {
     display: flex;
   }
   .chrome-header .menu-parent,
@@ -550,14 +560,14 @@ html[data-theme='dark'] .site-chrome {
     width: 100%;
     box-shadow: none;
   }
-  .chrome-header[data-nav-ready] .chrome-actions .chrome-button {
+  html[data-nav-js] .chrome-header .chrome-actions .chrome-button {
     display: none;
   }
   .chrome-header .chrome-actions {
     order: 2;
     margin-left: auto;
   }
-  .chrome-header[data-nav-ready] .chrome-mobile-trigger {
+  html[data-nav-js] .chrome-header .chrome-mobile-trigger {
     display: grid;
     order: 3;
     margin: 0;
@@ -607,7 +617,7 @@ html[data-theme='dark'] .site-chrome {
     width: 18px;
     height: 18px;
   }
-  .chrome-header[data-nav-ready] .main-nav {
+  html[data-nav-js] .chrome-header .main-nav {
     top: 78px;
     gap: 3px;
     max-height: calc(100dvh - 105px);

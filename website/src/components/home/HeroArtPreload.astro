@@ -1,0 +1,19 @@
+---
+// Preload the hero background (#2816 follow-up): it is the homepage's largest
+// paint, but as a CSS background the browser cannot request it until the
+// stylesheet has been fetched and parsed. These links let it start with the
+// HTML. The media attributes mirror hero.css so only one file is fetched;
+// a stored theme override (rare) preloads the system-theme variant instead.
+import { heroArt, variantMedia } from '../../utils/home/hero-art.js';
+const art = await heroArt();
+const links = [];
+for (const [theme, set] of Object.entries(art)) {
+  set.forEach((image, index) => {
+    for (const media of variantMedia[index]) {
+      links.push({ href: image.src, media: `${media} and (prefers-color-scheme: ${theme})` });
+    }
+  });
+}
+---
+
+{links.map((link) => <link rel="preload" as="image" href={link.href} media={link.media} fetchpriority="high" />)}

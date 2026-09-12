@@ -9,7 +9,7 @@ const bars = Array.from({ length: 23 }, (_, i) => ({ h: 15 + ((i * 13) % 36), d:
   <div class="history-film-stage" aria-hidden="true">
     <section class="hs hs-speaking active">
       <span class="history-kicker">You have the perfect wording.</span>
-      <h3>The thought is flowing.</h3>
+      <div class="scene-title">The thought is flowing.</div>
       <div class="history-voice">
         <div class="history-wave">{bars.map((b) => <i style={`--h:${b.h}px;--d:${b.d}s`} />)}</div>
         <p data-history-words>Let’s move the meeting to Friday.</p>
@@ -19,7 +19,7 @@ const bars = Array.from({ length: 23 }, (_, i) => ({ h: 15 + ((i * 13) % 36), d:
     <section class="hs hs-oops">
       <span class="history-kicker">Then, one wrong key.</span>
       <div class="history-key">esc</div>
-      <h3>Wait.<br />Did I just lose that?</h3>
+      <div class="scene-title">Wait.<br />Did I just lose that?</div>
       <span class="history-key-note">Recording cancelled with Escape</span>
     </section>
     <section class="hs hs-panic">
@@ -41,12 +41,12 @@ const bars = Array.from({ length: 23 }, (_, i) => ({ h: 15 + ((i * 13) % 36), d:
           stroke="#39303d"
           stroke-width="2"></ellipse></svg
       >
-      <h3>…</h3>
+      <div class="scene-title">…</div>
       <p>That split-second panic.</p>
     </section>
     <section class="hs hs-history">
       <span class="history-kicker">Open History.</span>
-      <h3>There are your words.</h3>
+      <div class="scene-title">There are your words.</div>
       <div class="history-rescued">
         <div><b>Just now</b><span>Kept</span></div>
         <p>Let’s move the meeting to Friday.</p>
@@ -56,7 +56,7 @@ const bars = Array.from({ length: 23 }, (_, i) => ({ h: 15 + ((i * 13) % 36), d:
     </section>
     <section class="hs hs-relief">
       <div class="relief-face">😮‍💨</div>
-      <h3>A breath of relief.</h3>
+      <div class="scene-title">A breath of relief.</div>
       <p>Your thought is saved.<br />Get back to what you were doing.</p>
       <span class="history-copy-result">✓ Text copied</span>
     </section>

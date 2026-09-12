@@ -43,7 +43,7 @@ const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, 
       <div class="recording-body">
         <div>
           <div id="case-video" class="case-video">
-            <button type="button" class="case-load" data-load-video aria-label={`Play ${first.name} source video`} disabled data-enables>
+            <button type="button" class="case-load" data-load-video disabled data-enables>
               <img class="case-thumbnail" src={`https://i.ytimg.com/vi/${first.video}/hqdefault.jpg`} alt="" loading="lazy" width="480" height="360" />
               <span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>
             </button>

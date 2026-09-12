@@ -21,6 +21,9 @@ const {
   noindex = false,
 } = Astro.props;
 
+// The inline script below runs before first paint and tells site-header.css
+// that site-nav.js will run, so the header is laid out collapsed from the
+// first frame instead of flashing its open link lists (see that stylesheet).
 const siteUrl = 'https://enviouswispr.com';
 const canonical = canonicalPath ? `${siteUrl}${canonicalPath}` : Astro.url.href;
 const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`;
@@ -28,6 +31,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
 
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script is:inline>document.documentElement.dataset.navJs = '';</script>
 <title>{title}</title>
 <meta name="description" content={description} />
 <meta name="robots" content={noindex ? 'noindex, nofollow' : 'index, follow'} />

@@ -20,7 +20,7 @@ const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
   </div>
   <div class="fd-stage" aria-hidden="true">
     <section class="fd-scene fd-upload is-active">
-      <h3>Your recording.<br />Drop it right in.</h3>
+      <div class="scene-title">Your recording.<br />Drop it right in.</div>
       <div class="fd-drop">
         <span class="fd-drop-icon"><DemoIcon name="document" strokeWidth="1.6" /></span><strong>Audio or video</strong><span class="fd-drop-hint">Drag a recording here</span>
         <div class="fd-file">
@@ -30,7 +30,7 @@ const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
       <div class="fd-formats">{formats.map((f) => <span>{f}</span>)}</div>
     </section>
     <section class="fd-scene fd-engines">
-      <h3>Your engines.<br />Your choice.</h3>
+      <div class="scene-title">Your engines.<br />Your choice.</div>
       <span class="fd-label">Transcription</span>
       <div class="fd-options fd-asr">
         <div class="fd-choice fd-parakeet"><span class="fd-engine-glyph">≋</span><span><b>Parakeet</b><small>Speech to text</small></span><i><DemoIcon name="check" strokeWidth="1.6" /></i></div>
@@ -44,7 +44,7 @@ const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
       <div class="fd-ready"><DemoIcon name="lock" strokeWidth="1.6" /><span>Parakeet + EG-1. Entirely on your Mac.</span></div>
     </section>
     <section class="fd-scene fd-process">
-      <div class="fd-process-heading"><span class="fd-label">JRE #1470.m4a</span><h3 data-fd-process>Transcribing your recording.</h3></div>
+      <div class="fd-process-heading"><span class="fd-label">JRE #1470.m4a</span><div class="scene-title" data-fd-process>Transcribing your recording.</div></div>
       <div class="fd-workspace">
         <div class="fd-wave">{waveform.map((w) => <i style={`--bar:${w.bar}px;--delay:${w.delay}s`} />)}</div>
         <div class="fd-passage-grid">
@@ -70,7 +70,7 @@ const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
     <section class="fd-scene fd-done">
       <div class="fd-check"><DemoIcon name="check" strokeWidth="1.6" /></div>
       <span class="fd-label">Your transcript is ready</span>
-      <h3>Hours of audio.<br />Polished in minutes.</h3>
+      <div class="scene-title">Hours of audio.<br />Polished in minutes.</div>
       <div class="fd-result-document"><span><DemoIcon name="document" strokeWidth="1.6" /><b>JRE #1470</b><small>Polished with EG-1</small></span><i></i><i></i><i></i></div>
       <div class="fd-stats">
         <div><strong>{words}</strong><small>Words transcribed</small></div>
@@ -82,7 +82,7 @@ const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
     <section class="fd-scene fd-brand">
       <LoopLips glowId="file-lip-glow" />
       <span class="fd-label">Powered by</span>
-      <h3>EnviousWispr</h3>
+      <div class="scene-title">EnviousWispr</div>
       <p>Your voice.<br />A clearer read.</p>
     </section>
   </div>

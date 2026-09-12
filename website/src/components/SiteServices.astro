@@ -1,4 +1,4 @@
-<!-- PostHog Analytics (deferred until after LCP to avoid contention) -->
+<!-- PostHog Analytics and Crisp chat (both deferred until after LCP to avoid contention) -->
 <script>
   let postHogLoaded = false;
   function loadPostHog() {
@@ -54,16 +54,35 @@
       autocapture: true,
     });
   }
+  // Crisp chat: its loader pulls ~400 KB of script and opens a socket, so it
+  // waits for the same trigger as PostHog instead of competing with the page's
+  // own stylesheet, fonts and hero image on a cold visit. The queue and site id
+  // are set up front so nothing that pushes to $crisp before load is lost.
+  window.$crisp = [];
+  window.CRISP_WEBSITE_ID = '6cfca684-ab92-4927-a1a3-6bf97eac13f9';
+  let crispLoaded = false;
+  function loadCrisp() {
+    if (crispLoaded) return;
+    crispLoaded = true;
+    const s = document.createElement('script');
+    s.src = 'https://client.crisp.chat/l.js';
+    s.async = true;
+    document.head.appendChild(s);
+  }
+  function loadServices() {
+    loadPostHog();
+    loadCrisp();
+  }
   // Wait for first user interaction OR a 5-second backstop, whichever comes first.
-  // This guarantees PostHog initialization happens AFTER LCP on cold visits while
-  // still firing reliably on visitors who never scroll or move (e.g. bounce).
+  // This guarantees third-party initialization happens AFTER LCP on cold visits
+  // while still firing reliably on visitors who never scroll or move (e.g. bounce).
   const events = ['pointermove', 'scroll', 'touchstart', 'keydown'];
   function trigger() {
     events.forEach((e) => window.removeEventListener(e, trigger));
-    loadPostHog();
+    loadServices();
   }
   events.forEach((e) => window.addEventListener(e, trigger, { once: true, passive: true }));
-  setTimeout(loadPostHog, 5000);
+  setTimeout(loadServices, 5000);
 </script>
 <!-- Download click tracking with source attribution -->
 <script>
@@ -83,16 +102,4 @@
       page: window.location.pathname,
     });
   });
-</script>
-<!-- Crisp Chat Widget -->
-<script>
-  window.$crisp = [];
-  window.CRISP_WEBSITE_ID = '6cfca684-ab92-4927-a1a3-6bf97eac13f9';
-  (function () {
-    var d = document,
-      s = d.createElement('script');
-    s.src = 'https://client.crisp.chat/l.js';
-    s.async = 1;
-    d.getElementsByTagName('head')[0].appendChild(s);
-  })();
 </script>
