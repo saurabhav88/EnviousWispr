@@ -116,15 +116,32 @@ public enum TurnAssembler {
   }
 
   /// Default `"Speaker N"` names in first-appearance order among the turns, excluding
-  /// `"unknown"` — a classification outcome, never a named speaker.
-  public static func defaultSpeakerNames(for turns: [Turn]) -> [String: String] {
+  /// `"unknown"` — a classification outcome, never a named speaker — and excluding any
+  /// speakerId that is a key in `existingNames` (already named, so it needs no default).
+  ///
+  /// Numbering CONTINUES past the highest number already used by an `"Speaker N"`-shaped
+  /// value in `existingNames`, so a newly appearing speaker never gets the SAME generated
+  /// label as a currently-surviving one that kept its number from an earlier pass — a
+  /// retry that turns A/B ("Speaker 1"/"Speaker 2") into B/C would otherwise renumber this
+  /// pass's turns from 1, handing C "Speaker 2" while B still holds it too (found by cloud
+  /// review). Never reuses a number a RETIRED speaker held; simplicity over density.
+  public static func defaultSpeakerNames(
+    for turns: [Turn], existingNames: [String: String] = [:]
+  ) -> [String: String] {
+    let usedNumbers = Set(existingNames.values.compactMap(speakerNumber(in:)))
+    var nextNumber = (usedNumbers.max() ?? 0) + 1
     var names: [String: String] = [:]
-    var nextNumber = 1
     for turn in turns where turn.speakerId != unknownSpeakerID {
-      guard names[turn.speakerId] == nil else { continue }
+      guard names[turn.speakerId] == nil, existingNames[turn.speakerId] == nil else { continue }
       names[turn.speakerId] = "Speaker \(nextNumber)"
       nextNumber += 1
     }
     return names
+  }
+
+  private static func speakerNumber(in name: String) -> Int? {
+    let prefix = "Speaker "
+    guard name.hasPrefix(prefix) else { return nil }
+    return Int(name.dropFirst(prefix.count))
   }
 }

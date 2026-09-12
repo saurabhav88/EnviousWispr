@@ -86,6 +86,35 @@ struct TranscriptSpeakerFieldsTests {
     #expect(second.speakerNames == ["B": "Speaker 1"])
   }
 
+  @Test(
+    "a retry that keeps one speaker and adds another never hands the new one a number the surviving one already holds"
+  )
+  func retryNeverCollidesADefaultWithASurvivingName() {
+    // First pass: A and B, named "Speaker 1" and "Speaker 2".
+    let firstTurns = [
+      Turn(id: "0-1", speakerId: "A", startMs: 0, endMs: 100, originalTextRange: 0..<1),
+      Turn(id: "2-3", speakerId: "B", startMs: 200, endMs: 300, originalTextRange: 2..<3),
+    ]
+    let first = Transcript(text: "x").mergingSpeakerFields(
+      analysis: .labeled(count: 2), turns: firstTurns)
+    #expect(first.speakerNames == ["A": "Speaker 1", "B": "Speaker 2"])
+
+    // A retry: "A" retires, "B" survives (keeping its "Speaker 2"), "C" is newly appearing.
+    // A naive re-numbering by first-appearance order in THIS pass alone would call B
+    // "Speaker 1" and C "Speaker 2" — colliding with B's own preserved name (found by
+    // cloud review). C must get a number nobody currently visible already holds.
+    let secondTurns = [
+      Turn(id: "0-1", speakerId: "B", startMs: 0, endMs: 100, originalTextRange: 0..<1),
+      Turn(id: "2-3", speakerId: "C", startMs: 200, endMs: 300, originalTextRange: 2..<3),
+    ]
+    let second = first.mergingSpeakerFields(analysis: .labeled(count: 2), turns: secondTurns)
+    #expect(second.speakerNames?["B"] == "Speaker 2", "B's preserved name must survive untouched")
+    #expect(
+      second.speakerNames?["C"] != "Speaker 2",
+      "C must never collide with B's preserved name")
+    #expect(second.speakerNames?["C"] != nil, "C still needs a name of its own")
+  }
+
   @Test("an explicit rename overwrites exactly the named speakerId, preserving the rest")
   func explicitRenameOverwritesOneID() {
     let turns = [

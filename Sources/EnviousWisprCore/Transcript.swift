@@ -537,10 +537,17 @@ public struct Transcript: Codable, Identifiable, Sendable {
     let survivingSpeakerIDs = Set(newTurns.map(\.speakerId)).subtracting([
       TurnAssembler.unknownSpeakerID
     ])
-    let defaultNames = TurnAssembler.defaultSpeakerNames(for: newTurns)
+    // Only the names that will actually remain ON SCREEN after this merge — a RETIRED
+    // speakerId's old number is free to reuse, but a SURVIVING one's number must never be
+    // handed to a different, newly-appearing speaker (found by cloud review).
+    let preservedNames = survivingSpeakerIDs.reduce(into: [String: String]()) { result, id in
+      if let existing = speakerNames?[id] { result[id] = existing }
+    }
+    let defaultNames = TurnAssembler.defaultSpeakerNames(
+      for: newTurns, existingNames: preservedNames)
     var mergedNames: [String: String] = [:]
     for speakerID in survivingSpeakerIDs {
-      mergedNames[speakerID] = speakerNames?[speakerID] ?? defaultNames[speakerID]
+      mergedNames[speakerID] = preservedNames[speakerID] ?? defaultNames[speakerID]
     }
     if let explicitRename, survivingSpeakerIDs.contains(explicitRename.speakerId) {
       mergedNames[explicitRename.speakerId] = explicitRename.name

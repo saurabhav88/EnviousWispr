@@ -1469,7 +1469,14 @@ final class FileImportCoordinator {
       return
     }
 
-    let assembledTurns = TurnAssembler.assemble(entries: wordTimings, segments: segments)
+    // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
+    // scan would otherwise run synchronously on this MainActor-isolated method and freeze
+    // the UI before the background cleanup even claims the engine (found by cloud review).
+    // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
+    // computation to a detached task changes nothing about its result.
+    let assembledTurns = await Task.detached(priority: .utility) {
+      TurnAssembler.assemble(entries: wordTimings, segments: segments)
+    }.value
 
     let token: EngineLease.Token
     switch engineAdmission.claim() {
