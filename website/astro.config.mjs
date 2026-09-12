@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catalog } from './src/data/site-navigation.js';
+import { updated as comparisonUpdated } from './src/data/compare.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'https://enviouswispr.com';
@@ -163,6 +164,11 @@ export default defineConfig({
   integrations: [
     sitemap({
       serialize(item) {
+        // A checkout or daily build must not turn mtime into a content update.
+        if ([`${SITE}/compare/`, `${SITE}/compare/macwhisper/`].includes(item.url)) {
+          item.lastmod = comparisonUpdated;
+          return item;
+        }
         // Help: every help URL has a derived date. THROW rather than fall
         // through — a help URL reaching the today's-date fallback would
         // publish a false freshness signal on every daily rebuild, silently.

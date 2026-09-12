@@ -57,7 +57,7 @@ const SITES = [
   ['website/src/pages/compare/google-docs-voice-typing.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
   ['website/src/pages/compare/google-docs-voice-typing.astro', 'WhisperKit supports 99+ but with varying accuracy'],
   ['website/src/pages/compare/handy.astro', '<td>25 European (Parakeet), 99+ via WhisperKit</td>'],
-  ['website/src/pages/compare/index.astro', '25 European (Parakeet) + 99+ via WhisperKit'],
+  ['website/src/data/compare.js', "ew: cell('99+ with WhisperKit'"],
   ['website/src/pages/compare/notta.astro', '<td>25 European (Parakeet), 99+ languages via WhisperKit</td>'],
   ['website/src/pages/compare/superwhisper.astro', '"text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+."'],
   ['website/src/pages/compare/superwhisper.astro', 'language count (99+ via WhisperKit) re-measured 2026-08-21'],

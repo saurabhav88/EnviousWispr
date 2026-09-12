@@ -12,7 +12,7 @@ Last-updated: 2026-09-12
 - [Features](https://enviouswispr.com/features/): Every feature of the free Mac app, each on its own page: AI polished dictation, file transcription, dictionary, snippets, live preview, history, why offline, and customization.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to seven Mac dictation options, with honest picks by workflow.
-- [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
+- [Compare to alternatives](https://enviouswispr.com/compare/): Side-by-side price, privacy and AI cleanup comparisons with Wispr Flow, Superwhisper, FluidVoice and Spokenly, plus the full comparison directory.
 
 ## Help
 
@@ -35,7 +35,7 @@ Last-updated: 2026-09-12
 - [vs WisprFlow](https://enviouswispr.com/compare/wisprflow/): Free and on-device vs paid cloud subscription.
 - [vs Superwhisper](https://enviouswispr.com/compare/superwhisper/): Both on-device, different defaults and model coverage.
 - [vs Apple Dictation](https://enviouswispr.com/compare/apple-dictation/): How EnviousWispr extends what Apple ships built-in.
-- [vs MacWhisper](https://enviouswispr.com/compare/macwhisper/): Real-time keybind dictation vs file-based transcription.
+- [vs MacWhisper](https://enviouswispr.com/compare/macwhisper/): Dictation and file transcription, with differences in AI cleanup, pricing and export workflows.
 - [vs Otter.ai](https://enviouswispr.com/compare/otter-ai/): Personal dictation vs meeting transcription.
 - [vs Dragon](https://enviouswispr.com/compare/dragon/): Modern on-device alternative to legacy desktop dictation.
 - [vs Google Docs voice typing](https://enviouswispr.com/compare/google-docs-voice-typing/): System-wide vs Docs-only.
