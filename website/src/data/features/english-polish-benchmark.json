@@ -1,0 +1,240 @@
+{
+  "title": "Complete English results by category",
+  "language": "English",
+  "provenance": "Matched to the August 26, 2026 three-way local-polish benchmark summaries and benchmark-record.json in the EnviousWispr evaluation archive.",
+  "models": [
+    {
+      "name": "EG-1",
+      "key": "eg1"
+    },
+    {
+      "name": "S1-mini",
+      "key": "s1"
+    },
+    {
+      "name": "Fluid-1",
+      "key": "fluid"
+    }
+  ],
+  "rows": [
+    {
+      "category": "Overall",
+      "cases": 1462,
+      "values": [
+        [
+          90.3,
+          66
+        ],
+        [
+          86.5,
+          64
+        ],
+        [
+          82.9,
+          81
+        ]
+      ]
+    },
+    {
+      "category": "Clean speech",
+      "cases": 309,
+      "values": [
+        [
+          96.1,
+          8
+        ],
+        [
+          93.9,
+          14
+        ],
+        [
+          93.5,
+          14
+        ]
+      ]
+    },
+    {
+      "category": "Self-correction",
+      "cases": 219,
+      "values": [
+        [
+          77.6,
+          22
+        ],
+        [
+          59.8,
+          24
+        ],
+        [
+          51.1,
+          21
+        ]
+      ]
+    },
+    {
+      "category": "Fillers only",
+      "cases": 200,
+      "values": [
+        [
+          91.0,
+          9
+        ],
+        [
+          95.0,
+          3
+        ],
+        [
+          94.0,
+          8
+        ]
+      ]
+    },
+    {
+      "category": "Voice at risk",
+      "cases": 134,
+      "values": [
+        [
+          91.8,
+          6
+        ],
+        [
+          92.5,
+          6
+        ],
+        [
+          86.6,
+          9
+        ]
+      ]
+    },
+    {
+      "category": "Unfinished thought",
+      "cases": 120,
+      "values": [
+        [
+          91.7,
+          3
+        ],
+        [
+          91.7,
+          3
+        ],
+        [
+          93.3,
+          1
+        ]
+      ]
+    },
+    {
+      "category": "Spoken list",
+      "cases": 114,
+      "values": [
+        [
+          85.1,
+          7
+        ],
+        [
+          82.5,
+          9
+        ],
+        [
+          54.4,
+          4
+        ]
+      ]
+    },
+    {
+      "category": "Topic shift",
+      "cases": 102,
+      "values": [
+        [
+          94.1,
+          5
+        ],
+        [
+          93.1,
+          2
+        ],
+        [
+          94.1,
+          2
+        ]
+      ]
+    },
+    {
+      "category": "Inline enumeration",
+      "cases": 87,
+      "values": [
+        [
+          92.0,
+          0
+        ],
+        [
+          72.4,
+          1
+        ],
+        [
+          97.7,
+          1
+        ]
+      ]
+    },
+    {
+      "category": "Connected prose",
+      "cases": 74,
+      "values": [
+        [
+          94.6,
+          3
+        ],
+        [
+          98.6,
+          0
+        ],
+        [
+          95.9,
+          2
+        ]
+      ]
+    },
+    {
+      "category": "Numbers and dates",
+      "cases": 73,
+      "values": [
+        [
+          97.3,
+          2
+        ],
+        [
+          100.0,
+          0
+        ],
+        [
+          93.2,
+          5
+        ]
+      ]
+    },
+    {
+      "category": "Quoted instruction",
+      "cases": 30,
+      "values": [
+        [
+          80.0,
+          1
+        ],
+        [
+          70.0,
+          2
+        ],
+        [
+          43.3,
+          14
+        ]
+      ]
+    }
+  ],
+  "run_date": "2026-08-26",
+  "hardware": "Apple M5 Max, 64 GB, macOS 26",
+  "scope": "Archived English text-polish models, not current end-to-end app performance."
+}

@@ -1,9 +1,10 @@
 ---
-import Nav from '../components/Nav.astro';
-import Footer from '../components/Footer.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
 import ScrollReveal from '../components/ScrollReveal.astro';
 import CompareTableMobile from '../components/CompareTableMobile.astro';
 import '../styles/global.css';
+import '../styles/site-header.css';
 
 import SiteHead from '../components/SiteHead.astro';
 import SiteServices from '../components/SiteServices.astro';
@@ -18,14 +19,14 @@ const { activePage = 'home' } = Astro.props;
     <SiteHead {...Astro.props} />
     <slot name="head" />
   </head>
-  <body>
+  <body class="base-shell">
     <a href="#main-content" class="skip-link">Skip to content</a>
     <div class="dot-grid" aria-hidden="true"></div>
-    <Nav activePage={activePage} />
+    <SiteHeader activePage={activePage} />
     <main id="main-content" tabindex="-1">
       <slot />
     </main>
-    <Footer />
+    <SiteFooter />
     <ScrollReveal />
     <CompareTableMobile />
     <SiteServices />

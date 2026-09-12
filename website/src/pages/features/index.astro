@@ -1,0 +1,77 @@
+---
+// Features directory (#2816), the mock's landing_page.py: loop hero, six
+// cards, benefits strip after the cards, then the landscape closing.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/lips-mascot.css';
+import '../../styles/features/landing.css';
+import '../../styles/features/feature-loop.css';
+import SiteIcon from '../../components/SiteIcon.astro';
+import FeatureLoop from '../../components/features/FeatureLoop.astro';
+import CardPreview from '../../components/features/CardPreview.astro';
+import LandscapeClosing from '../../components/features/LandscapeClosing.astro';
+import { menuProducts } from '../../data/site-navigation.js';
+const benefits = [
+  ['customization', 'Free to use', 'No account. No subscription.'],
+  ['privacy', 'Local transcription', 'Your audio stays on your Mac.'],
+  ['dictation', 'AI polished', 'Clearer writing, in your voice.'],
+  ['live-preview', 'Made for Mac', 'Native to Apple Silicon.'],
+];
+---
+
+<FeatureShell
+  path="/features/"
+  title="Features of EnviousWispr, the free Mac dictation app"
+  description="Dictation, file transcription, dictionary, snippets, live preview and history. One free Mac app that transcribes on your Mac. See each feature in motion."
+>
+  <div class="products-landing">
+    <section class="directory-hero wrap" aria-labelledby="directory-title">
+      <div class="directory-intro">
+        <span class="directory-label"><SiteIcon name="dictation" /> Feature Directory</span>
+        <h1 id="directory-title">Everything <br />EnviousWispr<br /><span>can do.</span></h1>
+        <p>Explore dictation, file transcription, and the tools that make EnviousWispr work your way.</p>
+        <a class="directory-jump" href="#products">Explore the features <span aria-hidden="true">↓</span></a>
+      </div>
+      <FeatureLoop />
+    </section>
+    <section class="landing-products wrap" id="products">
+      <div class="landing-section-heading">
+        <h2>Find your next<br class="mobile-break" /> <span>favorite feature.</span></h2>
+        <p>One app. Built around the way you work.</p>
+      </div>
+      <div class="landing-product-grid">
+        {
+          menuProducts.map((entry) => (
+            <a class="landing-product-card" href={entry.path}>
+              <div class="feature-card-top">
+                <span class="landing-card-icon">
+                  <SiteIcon name={entry.slug} />
+                </span>
+                <span class="feature-explore">
+                  Explore{' '}
+                  <span>
+                    <SiteIcon name="chevron" />
+                  </span>
+                </span>
+              </div>
+              <h3>{entry.name}</h3>
+              <p>{entry.cardBenefit}</p>
+              <CardPreview kind={entry.slug} />
+            </a>
+          ))
+        }
+      </div>
+    </section>
+    <section class="landing-benefits wrap" aria-label="Why EnviousWispr">
+      {
+        benefits.map(([symbol, name, copy]) => (
+          <div>
+            <SiteIcon name={symbol} />
+            <strong>{name}</strong>
+            <p>{copy}</p>
+          </div>
+        ))
+      }
+    </section>
+    <LandscapeClosing />
+  </div>
+</FeatureShell>

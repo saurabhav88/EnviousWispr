@@ -1,0 +1,15 @@
+---
+// Closing call to action on every feature page (#2816), the mock's cta().
+import DownloadButton from './DownloadButton.astro';
+interface Props {
+  title?: string;
+}
+const { title = 'Try it with your own words.' } = Astro.props;
+---
+
+<section class="closing wrap">
+  <h2>{title}</h2>
+  <p>Free, private dictation for Mac. No account. No subscription.</p>
+  <DownloadButton source="features-closing" />
+  <small>macOS 14 or later · Apple Silicon</small>
+</section>

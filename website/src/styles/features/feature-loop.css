@@ -1,0 +1,20 @@
+/* Ported from the approved features mock (feature-loop.css), #2816. Dead selectors, chrome,
+   fonts and shared tokens removed; kill-switch !important kept, cosmetic ones dropped. */
+@import url('./lips-mascot.css');
+.feature-loop{position:relative;min-width:0;height:490px;isolation:isolate;overflow:hidden;border-radius:25px}
+.feature-loop:before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,#a270df20,transparent 65%);z-index:-1}
+html[data-theme=dark] .feature-loop:before{background:radial-gradient(ellipse at 50% 50%,#a45ce627,transparent 65%)}
+.loop-view{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;will-change:transform,opacity}
+.loop-lips{width:min(340px,78%);height:auto;overflow:visible}
+.loop-message strong{font-size:clamp(42px,4.2vw,64px);font-weight:600;line-height:1.1;letter-spacing:-.05em;text-align:center;color:var(--ink)}
+.loop-message span{color:var(--accent);font-weight:700}
+.feature-loop .loop-feature-card{width:calc(100% - 48px);max-width:425px;min-height:390px;box-shadow:0 12px 30px #23112d15;margin:0;transform:none}
+.feature-loop .loop-feature-card>p{font-size:14px;min-height:0;margin-bottom:20px}
+.feature-loop .card-preview{min-height:200px}
+.feature-loop[data-animate=paused] .loop-lips *,.feature-loop:not([data-lips-visible=true]) .loop-lips *{animation-play-state:paused!important}
+.directory-hero{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:55px;align-items:center;padding-bottom:25px}
+@media(max-width:1100px){.directory-hero{gap:25px}.feature-loop{height:485px}.feature-loop .loop-feature-card{width:calc(100% - 20px);padding:20px}.feature-loop .loop-feature-card h3{font-size:21px}.feature-loop .preview-live-preview .hero-native-header{padding-inline:10px;gap:7px}}
+@media(max-width:850px){.directory-hero{grid-template-columns:1fr;gap:15px}.feature-loop{width:min(580px,100%);justify-self:center;height:470px}.loop-lips{width:310px}.loop-message strong{font-size:57px}}
+@media(max-width:600px){.directory-hero{gap:10px;padding-bottom:10px}.feature-loop{height:455px}.feature-loop .loop-feature-card{width:calc(100% - 14px);padding:19px;min-height:390px}.feature-loop .loop-feature-card h3{font-size:21px}.feature-loop .loop-feature-card>p{font-size:14px}.feature-loop .card-preview{min-height:200px}.loop-lips{width:285px;max-width:85%}.loop-message strong{font-size:50px}}
+@media(max-width:360px){.feature-loop{height:455px}.feature-loop .loop-feature-card{padding:16px;width:calc(100% - 8px)}.feature-loop .loop-feature-card h3{font-size:20px}.feature-loop .mini-spelling{font-size:25px}.loop-message strong{font-size:44px}}
+@media(prefers-reduced-motion:reduce){.feature-loop .loop-lips *{animation:none!important}.loop-view{will-change:auto}}

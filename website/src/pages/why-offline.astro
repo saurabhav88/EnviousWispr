@@ -1,0 +1,52 @@
+---
+// Why Offline (#2816): the cloud scene, works offline, open source, free,
+// local or cloud polishing, what Envious Labs receives. The privacy sentences
+// are the approved copy and match the CLAUDE.md boundary: audio stays on the
+// Mac in either mode; only selected text goes to a chosen cloud provider.
+import FeatureShell from '../layouts/FeatureShell.astro';
+import '../styles/features/lips-mascot.css';
+import '../styles/features/privacy-demo.css';
+import FeatureHero from '../components/features/FeatureHero.astro';
+import PrivacyFilm from '../components/features/PrivacyFilm.astro';
+import DownloadCta from '../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/why-offline/"
+  activePage="privacy"
+  title="Why offline dictation: your audio stays on your Mac"
+  description="Your voice never leaves your Mac. See what cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you pick cloud text polish."
+>
+  <FeatureHero
+    kind="privacy"
+    label="Why Offline?"
+    title={'Dictate on your Mac.<br><span class="accent-ink">Keep your audio there.</span>'}
+    copy="EnviousWispr transcribes on your Mac. Choose local AI polishing to keep the text processing there too. No account or subscription."
+  >
+    <PrivacyFilm />
+  </FeatureHero>
+  <section class="offline-simple wrap">
+    <div><h2>Works offline.</h2><p>Download your models once. Then transcribe and polish without an internet connection.</p></div>
+    <div>
+      <h2>Open-source app.</h2>
+      <p>The app’s code is public under GPLv3. You can inspect it or contribute. AI models have their own licenses.</p>
+      <a href="https://github.com/saurabhav88/EnviousWispr">View the code ↗</a>
+    </div>
+    <div><h2>Free to use.</h2><p>Dictation, file transcription and local AI polishing are free. No account. No subscription.</p></div>
+  </section>
+  <section class="offline-choice wrap">
+    <h2>Local or cloud polishing.<br />You choose.</h2>
+    <p>Your audio stays on your Mac in either mode. The difference is where the text is polished.</p>
+    <div class="provider-options">
+      <div><h3>Local models</h3><p>Your Mac transcribes and polishes the text. After model setup, this works offline.</p></div>
+      <div><h3>Cloud models</h3><p>Your Mac transcribes the audio. Selected text and cleanup context go directly to the provider you choose, using your own key.</p></div>
+    </div>
+    <small>Cloud providers may charge for usage. Apple Intelligence polishing requires macOS 26+ and availability.</small>
+  </section>
+  <section class="offline-choice wrap">
+    <h2>What does Envious Labs receive?</h2>
+    <p>Basic usage information and error reports. We do not receive your audio, transcripts, polished text or prompts. Your History stays on your Mac.</p>
+    <a class="text-link" href="/privacy-policy/">Read the privacy policy ↗</a>
+  </section>
+  <DownloadCta title="Start using EnviousWispr." />
+</FeatureShell>

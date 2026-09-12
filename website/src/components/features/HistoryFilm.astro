@@ -1,0 +1,67 @@
+---
+// History page film (#2816), the mock's history_demo.py. Scene 0 carries
+// `active` so the first frame shows without scripts.
+const bars = Array.from({ length: 23 }, (_, i) => ({ h: 15 + ((i * 13) % 36), d: i * -0.09 }));
+---
+
+<div class="history-film" data-history-film data-scene="0">
+  <div class="history-film-top"><span>One very familiar moment.</span><button type="button" data-history-play aria-label="Pause history demo" disabled data-enables>Ⅱ</button></div>
+  <div class="history-film-stage" aria-hidden="true">
+    <section class="hs hs-speaking active">
+      <span class="history-kicker">You have the perfect wording.</span>
+      <h3>The thought is flowing.</h3>
+      <div class="history-voice">
+        <div class="history-wave">{bars.map((b) => <i style={`--h:${b.h}px;--d:${b.d}s`} />)}</div>
+        <p data-history-words>Let’s move the meeting to Friday.</p>
+        <span>Listening…</span>
+      </div>
+    </section>
+    <section class="hs hs-oops">
+      <span class="history-kicker">Then, one wrong key.</span>
+      <div class="history-key">esc</div>
+      <h3>Wait.<br />Did I just lose that?</h3>
+      <span class="history-key-note">Recording cancelled with Escape</span>
+    </section>
+    <section class="hs hs-panic">
+      <svg class="surprise-face" viewBox="0 0 240 220"
+        ><path d="M49 89 24 9 77 62M159 62 211 9 188 97" fill="#f5d45a" stroke="#39303d" stroke-width="3"></path><path d="M24 9 37 49 52 35zM211 9 187 34 199 50z" fill="#39303d"></path><path
+          d="M53 66Q117 35 184 68L204 152Q193 207 121 207Q44 207 33 154Z"
+          fill="#f5d45a"
+          stroke="#39303d"
+          stroke-width="3"></path><ellipse cx="75" cy="114" rx="10" ry="14" fill="#2b2530"></ellipse><ellipse cx="160" cy="114" rx="10" ry="14" fill="#2b2530"></ellipse><circle cx="77" cy="109" r="3" fill="white"></circle><circle
+          cx="162"
+          cy="109"
+          r="3"
+          fill="white"></circle><path d="m111 131 8 5 7-5" fill="#2b2530"></path><circle cx="54" cy="149" r="17" fill="#e9765e"></circle><circle cx="184" cy="149" r="17" fill="#e9765e"></circle><ellipse
+          cx="119"
+          cy="168"
+          rx="13"
+          ry="18"
+          fill="#633340"
+          stroke="#39303d"
+          stroke-width="2"></ellipse></svg
+      >
+      <h3>…</h3>
+      <p>That split-second panic.</p>
+    </section>
+    <section class="hs hs-history">
+      <span class="history-kicker">Open History.</span>
+      <h3>There are your words.</h3>
+      <div class="history-rescued">
+        <div><b>Just now</b><span>Kept</span></div>
+        <p>Let’s move the meeting to Friday.</p>
+        <small>Deleted in 23h</small>
+        <div class="history-actions"><span>Keep</span><span data-history-copy>Copy</span></div>
+      </div>
+    </section>
+    <section class="hs hs-relief">
+      <div class="relief-face">😮‍💨</div>
+      <h3>A breath of relief.</h3>
+      <p>Your thought is saved.<br />Get back to what you were doing.</p>
+      <span class="history-copy-result">✓ Text copied</span>
+    </section>
+  </div>
+  <div class="history-film-bottom"><span data-history-caption>Say what’s on your mind.</span><span data-history-count>1 / 5</span></div>
+  <span class="history-a11y">An accidental Escape press cancels a dictation. With Escape Recovery enabled, the text waits in History for 24 hours, where it can be copied or kept.</span>
+  <span class="history-demo-note">Illustrative example with Escape Recovery enabled.</span>
+</div>

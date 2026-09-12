@@ -1,0 +1,37 @@
+---
+// The one site footer (#2816), from the approved features mock: brand and
+// tagline, three catalog links plus GitHub, then the legal line. The mock's
+// footer has no download link. The homepage passes motionControl so its
+// existing "Pause motion" control keeps rendering there.
+import { footerLinks } from '../data/site-navigation.js';
+
+interface Props {
+  motionControl?: boolean;
+}
+const { motionControl = false } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="site-chrome chrome-footer">
+  <div class="chrome-footer-inner">
+    <div class="chrome-footer-brand">
+      <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><span>EnviousWispr</span></a>
+      <p>One free Mac app. More ways to work with your voice.</p>
+    </div>
+    <nav class="chrome-footer-links" aria-label="Footer">
+      {footerLinks.map(([label, href]) => <a href={href}>{label}</a>)}
+      <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+    <span class="chrome-footer-legal"
+      >© {year} Envious Labs · GPLv3 app <a href="/privacy-policy/">Privacy</a>
+      <a href="/terms-of-service/">Terms</a>
+      {
+        motionControl && (
+          <button class="chrome-text-button" id="motion-toggle" data-motion-control data-enhancement-control hidden>
+            Pause motion
+          </button>
+        )
+      }
+    </span>
+  </div>
+</footer>

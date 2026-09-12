@@ -1,0 +1,36 @@
+---
+// Live Preview (#2816): the homepage's live-preview well inside a film, then
+// the two engines. Copy from the mock's page_content.py.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FeatureFilm from '../../components/features/FeatureFilm.astro';
+import DownloadCta from '../../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/features/live-preview/"
+  title="Live preview: watch your words appear as you speak"
+  description="See your draft build on screen while you talk, then get the finished text when you stop. Works in English, German and Japanese with either engine. Free."
+>
+  <FeatureHero
+    kind="live-preview"
+    label="Live Preview"
+    title={'Keep your train<br><span class="accent-ink">of thought in view.</span>'}
+    copy="See words appear while you speak. A little feedback can help you stay with the thought, before the final transcription and polish are ready."
+  >
+    <FeatureFilm kind="preview" />
+  </FeatureHero>
+  <section class="language-section wrap">
+    <div class="section-top">
+      <div><span class="eyebrow">More room for your language</span><h2>Your words.<br />As they take shape.</h2></div>
+      <p>Choose between two local preview engines, with different language resources and Mac requirements.</p>
+    </div>
+    <div class="language-ribbon" aria-label="Illustrative language examples"><span>Hello</span><span>Hallo</span><span>こんにちは</span><span>Bonjour</span><span>Hola</span></div>
+    <div class="preview-options">
+      <div><h3>Apple</h3><p>Apple’s speech recognition and supported language packs.</p><small>macOS 26+ · Some languages need a download</small></div>
+      <div><h3>Universal</h3><p>An optional local model with broader language coverage.</p><small>macOS 14+ · About 217 MB download</small></div>
+    </div>
+    <p class="note">Preview is a live draft. Your transcription engine and cleanup produce the final text. Language support depends on the selected engine and installed resources.</p>
+  </section>
+  <DownloadCta title="Keep your thought in view." />
+</FeatureShell>

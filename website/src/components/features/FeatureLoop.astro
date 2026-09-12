@@ -1,0 +1,34 @@
+---
+// Directory hero loop (#2816): lips, "So many features!", then the six cards,
+// cross-faded by scripts/features/feature-loop.js. View 0 is visible without
+// scripts. The mock's feature_loop.py.
+import { menuProducts } from '../../data/site-navigation.js';
+import SiteIcon from '../SiteIcon.astro';
+import LoopLips from './LoopLips.astro';
+import CardPreview from './CardPreview.astro';
+---
+
+<div class="feature-loop" data-feature-loop role="img" aria-label="The animated EnviousWispr lips introduce the app’s features.">
+  <div class="loop-view loop-mascot" data-loop-view="0" data-loop-name="lips" aria-hidden="true"><LoopLips glowId="feature-lip-glow" /></div>
+  <div class="loop-view loop-message" data-loop-view="1" data-loop-name="message" aria-hidden="true" hidden>
+    <strong>So many<br /><span>features!</span></strong>
+  </div>
+  <div aria-hidden="true">
+    {
+      menuProducts.map((entry, i) => (
+        <div class="loop-view" data-loop-view={i + 2} data-loop-name={entry.slug} hidden>
+          <div class="loop-feature-card">
+            <div class="feature-card-top">
+              <span class="landing-card-icon">
+                <SiteIcon name={entry.slug} />
+              </span>
+            </div>
+            <h3>{entry.name}</h3>
+            <p>{entry.cardBenefit}</p>
+            <CardPreview kind={entry.slug} />
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</div>

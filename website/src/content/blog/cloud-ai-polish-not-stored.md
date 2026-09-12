@@ -51,7 +51,7 @@ EnviousWispr's side is straightforward and has been since launch. We don't have 
 
 The provider's side is what `store: false` addresses. Now their copy of the request and response, the part that would otherwise sit in your account's history, is opted out at the request level.
 
-For a deeper look at where the audio actually flows, see [the on-device pipeline](/how-it-works/) and our [on-device versus cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
+For a deeper look at where the audio actually flows, see [the on-device pipeline](/why-offline/) and our [on-device versus cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
 
 ## What this does not change
 

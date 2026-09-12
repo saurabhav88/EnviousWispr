@@ -1,0 +1,50 @@
+---
+// The large lips mascot used by the directory loop, the file demo outro and
+// the Why Offline reveal (#2816), the mock's feature_loop.py svg. Each
+// instance gets its own glow filter id so two on one page cannot collide.
+interface Props {
+  glowId: string;
+  /** Why Offline: no glow, flat opacity, a plain group class. */
+  plain?: boolean;
+}
+const { glowId, plain = false } = Astro.props;
+const palette = ['#ff2a40', '#ff8c00', '#ffd700', '#adff2f', '#00fa9a', '#00ffff', '#1e90ff', '#4169e1', '#8a2be2'];
+const geometry = [
+  [16, 84.2, 14, 20, 0], [40, 65.75, 14, 32, 1], [64, 43.36, 14, 48, 2], [88, 63.04, 14, 36, 3], [112, 81.43, 14, 24, 4],
+  [136, 63.04, 14, 36, 5], [160, 43.36, 14, 48, 6], [184, 65.75, 14, 32, 7], [208, 84.2, 14, 20, 8],
+  [16, 125.8, 14, 20, 7], [40, 119.35, 14, 36, 6], [64, 112.96, 14, 48, 5], [88, 120.64, 14, 60, 4], [112, 127.03, 14, 68, 3],
+  [136, 120.64, 14, 60, 2], [160, 112.96, 14, 48, 1], [184, 119.35, 14, 36, 0], [208, 125.8, 14, 20, 8],
+];
+---
+
+<svg class="loop-lips" viewBox="0 0 256 256" aria-hidden="true">
+  {
+    !plain && (
+      <defs>
+        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+    )
+  }
+  <g transform="translate(8,13)" filter={plain ? undefined : `url(#${glowId})`} class={plain ? 'privacy-lips-shape' : 'lip-glow-group'}>
+    {
+      geometry.map(([x, y, w, h, color], i) => (
+        <rect
+          class:list={[i < 9 ? 'upper-bar' : 'lower-bar', (i < 9 ? 'u' : 'l') + (i % 9)]}
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx="5"
+          fill={palette[color]}
+          opacity={plain ? '1' : i < 9 ? '.92' : '.88'}
+        />
+      ))
+    }
+  </g>
+</svg>

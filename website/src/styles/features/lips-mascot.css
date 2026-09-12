@@ -1,0 +1,33 @@
+/* Ported from the approved features mock (lips-mascot.css), #2816. Dead selectors, chrome,
+   fonts and shared tokens removed; kill-switch !important kept, cosmetic ones dropped. */
+.loop-lips .upper-bar{transform-box:fill-box;transform-origin:center bottom}
+.loop-lips .lower-bar{transform-box:fill-box;transform-origin:center top}
+.loop-lips .u0{animation:lip-bounce-0 .50s ease-in-out .00s infinite}
+.loop-lips .u1{animation:lip-bounce-1 .57s ease-in-out .06s infinite}
+.loop-lips .u2{animation:lip-bounce-2 .64s ease-in-out .12s infinite}
+.loop-lips .u3{animation:lip-bounce-3 .71s ease-in-out .18s infinite}
+.loop-lips .u4{animation:lip-bounce-4 .78s ease-in-out .24s infinite}
+.loop-lips .u5{animation:lip-bounce-5 .85s ease-in-out .30s infinite}
+.loop-lips .u6{animation:lip-bounce-6 .92s ease-in-out .36s infinite}
+.loop-lips .u7{animation:lip-bounce-7 .99s ease-in-out .42s infinite}
+.loop-lips .u8{animation:lip-bounce-8 1.06s ease-in-out .48s infinite}
+.loop-lips .l0{animation:lip-bounce-0 .550s ease-in-out .05s infinite}
+.loop-lips .l1{animation:lip-bounce-1 .615s ease-in-out .12s infinite}
+.loop-lips .l2{animation:lip-bounce-2 .680s ease-in-out .19s infinite}
+.loop-lips .l3{animation:lip-bounce-3 .745s ease-in-out .26s infinite}
+.loop-lips .l4{animation:lip-bounce-4 .810s ease-in-out .33s infinite}
+.loop-lips .l5{animation:lip-bounce-5 .875s ease-in-out .40s infinite}
+.loop-lips .l6{animation:lip-bounce-6 .940s ease-in-out .47s infinite}
+.loop-lips .l7{animation:lip-bounce-7 1.005s ease-in-out .54s infinite}
+.loop-lips .l8{animation:lip-bounce-8 1.070s ease-in-out .61s infinite}
+.loop-lips .lip-glow-group{animation:lip-glow-pulse 4s ease-in-out infinite}
+@keyframes lip-bounce-0{0%,100%{transform:scaleY(1)}30%{transform:scaleY(1.5)}60%{transform:scaleY(.7)}}
+@keyframes lip-bounce-1{0%,100%{transform:scaleY(1)}25%{transform:scaleY(1.6)}55%{transform:scaleY(.6)}}
+@keyframes lip-bounce-2{0%,100%{transform:scaleY(1)}35%{transform:scaleY(1.4)}65%{transform:scaleY(.75)}}
+@keyframes lip-bounce-3{0%,100%{transform:scaleY(1)}20%{transform:scaleY(1.55)}50%{transform:scaleY(.65)}}
+@keyframes lip-bounce-4{0%,100%{transform:scaleY(1)}40%{transform:scaleY(1.45)}70%{transform:scaleY(.7)}}
+@keyframes lip-bounce-5{0%,100%{transform:scaleY(1)}28%{transform:scaleY(1.5)}58%{transform:scaleY(.68)}}
+@keyframes lip-bounce-6{0%,100%{transform:scaleY(1)}33%{transform:scaleY(1.55)}63%{transform:scaleY(.72)}}
+@keyframes lip-bounce-7{0%,100%{transform:scaleY(1)}22%{transform:scaleY(1.45)}52%{transform:scaleY(.65)}}
+@keyframes lip-bounce-8{0%,100%{transform:scaleY(1)}38%{transform:scaleY(1.5)}68%{transform:scaleY(.7)}}
+@keyframes lip-glow-pulse{0%,100%{opacity:.88}50%{opacity:1}}

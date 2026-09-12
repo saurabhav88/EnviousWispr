@@ -4,6 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { catalog } from './src/data/site-navigation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'https://enviouswispr.com';
@@ -70,6 +71,18 @@ const HELP_DATES = (() => {
   if (latest) map[`${SITE}/help/`] = latest;
   return map;
 })();
+
+// Feature-launch dates (#2816): the nine catalog URLs carry an explicit
+// `updated` date in src/data/site-navigation.js (imported, never parsed as
+// text), the same discipline as help articles. They never fall through to mtime: a fresh checkout or the daily
+// rebuild would otherwise publish today's date for pages nobody touched.
+const FEATURE_DATES = Object.fromEntries(catalog.map((entry) => [`${SITE}${entry.path}`, entry.updated]));
+if (Object.keys(FEATURE_DATES).length === 0) throw new Error('sitemap: no feature dates in site-navigation.js');
+const isFeatureUrl = (url) =>
+  url === `${SITE}/features/` ||
+  url.startsWith(`${SITE}/features/`) ||
+  url === `${SITE}/why-offline/` ||
+  url === `${SITE}/customization/`;
 
 // File mtime → ISO date for any source path on disk.
 function mtimeIso(absPath) {
@@ -159,6 +172,15 @@ export default defineConfig({
             throw new Error(`sitemap: help URL has no mapped lastmod: ${item.url}`);
           }
           item.lastmod = helpDate;
+          return item;
+        }
+        // Features launch pages: explicit catalog dates, fail closed.
+        if (isFeatureUrl(item.url)) {
+          const featureDate = FEATURE_DATES[item.url];
+          if (!featureDate) {
+            throw new Error(`sitemap: feature URL has no mapped lastmod: ${item.url}`);
+          }
+          item.lastmod = featureDate;
           return item;
         }
         // Blog posts: use the frontmatter-driven date map.

@@ -1,0 +1,134 @@
+---
+// The small illustration inside each directory card (#2816), the mock's
+// card_previews.py card_preview(kind).
+import { SCENES, NATIVE_PREVIEW_SNAPSHOT_BARS } from '../../data/features/films.js';
+import DemoIcon from './DemoIcon.astro';
+interface Props {
+  kind: string;
+}
+const { kind } = Astro.props;
+const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function highlighted(text, marks = []) {
+  if (!marks.length) return escapeHtml(text);
+  const pattern = new RegExp('(' + marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')');
+  return text
+    .split(pattern)
+    .map((part) => (marks.includes(part) ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)))
+    .join('');
+}
+const correction = SCENES.correction[0];
+const dictionary = SCENES.dictionary[2];
+const snippet = SCENES.snippets[0];
+const audio = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC'];
+const video = ['MP4', 'MOV'];
+---
+
+<div class:list={['card-preview', `preview-${kind}`]} aria-hidden="true">
+  {
+    kind === 'dictation' && (
+      <>
+        <div class="mini-before">
+          <small>You say</small>
+          <p set:html={highlighted(correction.raw, correction.raw_marks)} />
+        </div>
+        <div class="mini-after">
+          <small>What you meant</small>
+          <p set:html={highlighted(correction.out, correction.out_marks)} />
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'file-transcription' && (
+      <>
+        <div class="mini-format-group">
+          <small>
+            <DemoIcon name="wave" /> Audio files
+          </small>
+          <div class="mini-format-grid">
+            {audio.map((name) => (
+              <span class="mini-format">{name}</span>
+            ))}
+          </div>
+        </div>
+        <div class="mini-format-group">
+          <small>Video files</small>
+          <div class="mini-format-grid video-formats">
+            {video.map((name) => (
+              <span class="mini-format">{name}</span>
+            ))}
+          </div>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'dictionary' && (
+      <>
+        <div class="mini-heard">
+          <small>Heard as</small>
+          <span>NVS Vispr</span>
+        </div>
+        <div class="mini-alias">
+          <DemoIcon name="check" />
+          <span>Saved spelling</span>
+        </div>
+        <div class="mini-spelling">{dictionary.saved}</div>
+      </>
+    )
+  }
+  {
+    kind === 'snippets' && (
+      <>
+        <div class="mini-trigger">
+          <DemoIcon name="wave" />
+          <span>
+            You say
+            <br />
+            <strong>“{snippet.raw}”</strong>
+          </span>
+        </div>
+        <div class="mini-reply mini-email">
+          <small>Your saved email address</small>
+          <span>{snippet.out}</span>
+        </div>
+      </>
+    )
+  }
+  {
+    kind === 'live-preview' && (
+      <>
+        <div class="hero-native-well" aria-label="EnviousWispr live transcription preview">
+          <div class="hero-native-header">
+            <span class="hero-native-clock">0:04</span>
+            <span class="hero-native-meter" aria-hidden="true">
+              {NATIVE_PREVIEW_SNAPSHOT_BARS.map(([color, height]) => (
+                <i style={`--bar-color: ${color}; --bar-height: ${height}px;`} />
+              ))}
+            </span>
+            <span class="hero-native-mode">HANDS-FREE</span>
+          </div>
+          <div class="hero-native-words" lang="en">
+            {SCENES.preview[0].raw}
+          </div>
+        </div>
+        <span class="mini-live-note">Your live draft, while you speak.</span>
+      </>
+    )
+  }
+  {
+    kind === 'history' && (
+      <>
+        <div class="mini-search">
+          <DemoIcon name="check" />
+          <span>Saved in History</span>
+        </div>
+        <div class="mini-found">
+          <small>Your words are still here.</small>
+          <p>Let’s move the meeting to Friday.</p>
+          <span>Ready to copy and use again.</span>
+        </div>
+      </>
+    )
+  }
+</div>

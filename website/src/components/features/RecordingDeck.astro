@@ -1,0 +1,90 @@
+---
+// Real-recordings deck (#2816), the mock's case section. Card 0 renders its
+// real numbers and opening passages at build time, so nothing reads "Loading"
+// without scripts; scripts/features/transcript-player.js fetches the full
+// transcript when the deck is in view and drives the other four cards.
+import { cases, firstCardEvidence, stamp } from '../../data/features/cases.js';
+const first = cases[0];
+const seconds = Math.round(firstCardEvidence.polishMs / 1000);
+const encoded = JSON.stringify(cases.map(({ name, title, duration, kind, video, source, sourceUrl, transcript, id }) => ({ name, title, duration, kind, video, source, sourceUrl, transcript, id })));
+---
+
+<section class="case-section wrap" data-recording-cases={encoded} data-initial-case={firstCardEvidence.id}>
+  <div class="section-top">
+    <div><span class="eyebrow">Real conversations</span><h2>Long recordings.<br />See what changes.</h2></div>
+    <p>Five recordings, from a 48-minute interview to three hours of testimony. Explore the source, the recording details, and the words that come out.</p>
+  </div>
+  <div class="recording-deck-nav">
+    <button type="button" data-recording-prev aria-label="Previous recording" disabled data-enables>← <span>Previous</span></button>
+    <span id="recording-position" aria-live="polite">1 of {cases.length} recordings</span>
+    <button type="button" data-recording-next aria-label="Next recording" disabled data-enables><span>Next</span> →</button>
+  </div>
+  <div class="recording-deck">
+    <article class="recording-case">
+      <header class="recording-heading">
+        <div><h3 id="case-title">{first.name}</h3><p id="case-subtitle">{first.title}</p></div>
+      </header>
+      <div class="recording-summary">
+        <div class="recording-length"><strong id="case-duration">{first.duration}</strong><span id="case-format">{first.kind}</span></div>
+        <dl class="recording-metrics">
+          <div><dt>Words transcribed</dt><dd>{firstCardEvidence.wordCount.toLocaleString('en-US')}</dd></div>
+          <div><dt>“Um” / “uh” removed</dt><dd>{firstCardEvidence.umUhRemoved.toLocaleString('en-US')}</dd></div>
+          <div><dt>Cleanup time</dt><dd>{stamp(seconds)}</dd></div>
+        </dl>
+        <details class="measurement-info">
+          <summary aria-label="About these results">?</summary>
+          <div class="measurement-popover">
+            <strong>About these results</strong>
+            <p id="measurement-provenance">{firstCardEvidence.provenance}</p>
+            <p>Removal counts cover “um” and “uh” in deleted text. Cleanup time excludes model startup and varies by Mac.</p>
+          </div>
+        </details>
+      </div>
+      <div class="recording-body">
+        <div>
+          <div id="case-video" class="case-video">
+            <button type="button" class="case-load" data-load-video aria-label={`Play ${first.name} source video`} disabled data-enables>
+              <img class="case-thumbnail" src={`https://i.ytimg.com/vi/${first.video}/hqdefault.jpg`} alt="" loading="lazy" width="480" height="360" />
+              <span class="case-play">▶</span><strong>Watch and follow the transcript</strong><small>Click to load YouTube</small>
+            </button>
+          </div>
+          <div class="case-source">
+            <span id="case-source">{first.source}</span>
+            <a id="case-source-link" href={`https://www.youtube.com/watch?v=${first.video}`} target="_blank" rel="noopener noreferrer">Watch on YouTube ↗</a>
+          </div>
+        </div>
+      </div>
+      <section class="case-transcript">
+        <div class="case-transcript-head">
+          <h4>Follow the conversation.</h4>
+          <div class="transcript-modes" aria-label="Transcript version">
+            <button type="button" data-transcript-mode="changes" aria-pressed="true" disabled data-enables>Show changes</button>
+            <button type="button" data-transcript-mode="raw" aria-pressed="false" disabled data-enables>Raw</button>
+            <button type="button" data-transcript-mode="polished" aria-pressed="false" disabled data-enables>Polished</button>
+          </div>
+        </div>
+        <p class="transcript-hint">Play the video to follow along. Click a passage time to jump there.</p>
+        <div id="case-transcript-body" class="transcript-scroll" tabindex="0" aria-label="Timestamped transcript">
+          {
+            firstCardEvidence.passages.map((p, i) => (
+              <div class="transcript-passage" data-start={p.start}>
+                <span class="transcript-time">▶ Play from {stamp(p.start)}</span>
+                <p id={`transcript-passage-text-${i}`}>
+                  {p.diff.map((part) =>
+                    part.type === 'delete' ? <del>{part.text}</del> : part.type === 'insert' ? <mark>{part.text}</mark> : <span>{part.text}</span>,
+                  )}
+                </p>
+                {!p.polishSucceeded && <small>Polish unavailable for this passage. Original cleanup output shown.</small>}
+              </div>
+            ))
+          }
+          <p class="transcript-more">
+            Opening passages shown. The full transcript ({firstCardEvidence.passageCount} passages) loads when you scroll here or play the video.
+          </p>
+        </div>
+        <p id="case-excerpt-note" class="case-excerpt-note" aria-live="polite"></p>
+      </section>
+    </article>
+  </div>
+  <p class="deck-hint">Flip through the recordings with the arrows, or swipe the card header on mobile.</p>
+</section>

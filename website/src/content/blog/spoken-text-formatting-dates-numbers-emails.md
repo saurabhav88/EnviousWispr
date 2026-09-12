@@ -117,7 +117,7 @@ You stop doing the second pass. Numbers, dates, prices, and addresses arrive alr
 
 ## Related posts
 
-- [How EnviousWispr works, end to end](/how-it-works/). The on-device pipeline, step by step.
+- [How EnviousWispr works, end to end](/features/). The on-device pipeline, step by step.
 - [Dictate emails at the speed of thought](/blog/dictate-emails-speed-of-thought/). Where formatted numbers and addresses earn their keep.
 - [On-device dictation and the small models that polish it](/blog/on-device-dictation-polishing-small-models/). What the AI step does after formatting.
 

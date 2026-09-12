@@ -1,0 +1,73 @@
+---
+// History (#2816): local transcripts to read and copy, the 24-hour recovery
+// of a cancelled recording, best-effort interruption recovery. Copy from the
+// mock's page_content.py.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/history-demo.css';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import HistoryFilm from '../../components/features/HistoryFilm.astro';
+import DownloadCta from '../../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/features/history/"
+  title="History: read, copy and recover recent dictations on Mac"
+  description="Every transcript stays on your Mac to read and copy. Cancelled by accident? The text can be kept for 24 hours. See how recovery works and where it stops."
+>
+  <FeatureHero
+    kind="history"
+    label="History"
+    title={'Your transcripts,<br><span class="accent-ink">saved on your Mac.</span>'}
+    copy="History saves the text from your dictations and file transcriptions. Find something you said earlier, copy it, and use it again."
+  >
+    <HistoryFilm />
+  </FeatureHero>
+  <section class="history-safety wrap">
+    <div>
+      <span class="eyebrow">Cancelled recordings</span>
+      <h2>Cancelled by mistake?</h2>
+      <p>With Escape Recovery enabled, cancelling with your keyboard shortcut keeps the transcript in History for 24 hours. Copy the text or select Keep to save it permanently.</p>
+      <small>Escape Recovery is on by default. Clicking the Cancel button discards the recording.</small>
+    </div>
+    <div class="history-clock-card">
+      <strong>24<span>hours</span></strong>
+      <p>To copy or keep<br />a cancelled transcript.</p>
+      <div><span>Kept</span><span>Copy or Keep</span></div>
+    </div>
+  </section>
+  <section class="history-library wrap">
+    <div class="section-top">
+      <div><span class="eyebrow">Saved transcripts</span><h2>Find and copy<br />your past transcripts.</h2></div>
+      <p>Open History to read a previous transcript. Search for a word or phrase, then copy the text you need.</p>
+    </div>
+    <div class="history-benefits">
+      <div>
+        <h3>Stored on your Mac.</h3>
+        <p>Your transcripts stay saved when you close the app or restart your Mac.</p>
+        <details>
+          <summary>What happens to the audio?</summary>
+          <p>History keeps transcripts. Dictation audio is normally cleared after processing; temporary audio can remain for recovery. Your original imported files are left alone.</p>
+        </details>
+      </div>
+      <div>
+        <h3>Copy or paste.</h3>
+        <p>Copy a transcript to your clipboard, or paste it directly into the app you are using.</p>
+      </div>
+    </div>
+  </section>
+  <section class="history-safety history-interruption wrap">
+    <div>
+      <span class="eyebrow">Interrupted recordings</span>
+      <h2>Recording interrupted?</h2>
+      <p>When you reopen EnviousWispr after a crash, it tries to recover the recording. Recovered text appears in History, where you can read and copy it.</p>
+      <small>Recovery depends on how much audio was saved before the interruption.</small>
+    </div>
+    <div class="history-rescued recovery-example">
+      <div><b>History</b><span>Recovered</span></div>
+      <p>Let’s move the meeting to Friday.</p>
+      <small>Recovered transcript</small>
+      <div class="history-actions"><span>Copy</span></div>
+    </div>
+  </section>
+  <DownloadCta title="Start using EnviousWispr." />
+</FeatureShell>

@@ -1,0 +1,29 @@
+---
+// Shell for the nine features launch pages (#2816): the themed layout, the
+// features stylesheet bundle, the page entry script, and the WebPage plus
+// BreadcrumbList JSON-LD derived from the catalog entry for this path.
+import ThemedLayout from './ThemedLayout.astro';
+import '../styles/features/index.css';
+import { entryFor, webPage, breadcrumbs, featureItemList } from '../utils/features/structured-data.js';
+interface Props {
+  path: string;
+  title: string;
+  description: string;
+  activePage?: string;
+}
+const { path, title, description, activePage = 'features' } = Astro.props;
+const entry = entryFor(path);
+const ld = [webPage({ path, name: entry.name, description, updated: entry.updated }), breadcrumbs(path, entry.name)];
+if (path === '/features/') ld.push(featureItemList());
+---
+
+<ThemedLayout title={title} description={description} canonicalPath={path} activePage={activePage}>
+  <Fragment slot="head">
+    {ld.map((block) => <script type="application/ld+json" set:html={JSON.stringify(block)} />)}
+  </Fragment>
+  <slot />
+</ThemedLayout>
+
+<script>
+  import '../scripts/features/index.js';
+</script>

@@ -1,0 +1,31 @@
+---
+// Dictionary word-pack explorer (#2816), the mock's pack_visual(). A picker
+// group for scripts/features/pickers.js; the first pack renders selected.
+import { packs } from '../../data/features/packs.js';
+const first = packs[0];
+---
+
+<div class="pack-explorer" data-picker="packs">
+  <div class="pack-choices" aria-label="Explore vocabulary packs" data-choice-group data-kind="packs">
+    {
+      packs.map((pack, i) => (
+        <button
+          type="button"
+          class:list={['pack-choice', { selected: i === 0 }]}
+          data-choice={i}
+          data-words={JSON.stringify(pack.words)}
+          data-description={pack.description}
+          aria-pressed={i === 0 ? 'true' : 'false'}
+          disabled
+          data-enables
+        >
+          {pack.name}
+          <small>{pack.count} words</small>
+        </button>
+      ))
+    }
+  </div>
+  <div class="pack-words" data-pack-words>{first.words.map((w) => <span>{w}</span>)}</div>
+  <div class="pack-outcome"><strong>A head start in your field.</strong><p data-pack-description>{first.description}</p></div>
+  <small>Pack counts from the bundled app. Edit aliases and choose which words to use.</small>
+</div>

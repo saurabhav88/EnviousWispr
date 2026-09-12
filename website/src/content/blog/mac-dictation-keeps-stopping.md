@@ -81,6 +81,6 @@ Here is what that looks like in practice, dictating a message in one take withou
 
 No restart, no lost train of thought, no reaching for the keyboard halfway through.
 
-To see how the on-device pipeline works end to end, read [how it works](/how-it-works/). If you want to try it, [download EnviousWispr](/#download). It is free and runs entirely on your Mac.
+To see how the on-device pipeline works end to end, read [how it works](/features/). If you want to try it, [download EnviousWispr](/#download). It is free and runs entirely on your Mac.
 
 *Choosing a dictation tool for your Mac? See how it stacks up against [the built-in option](/compare/apple-dictation/) and [a popular paid app](/compare/wisprflow/), or [browse all comparisons](/compare/).*

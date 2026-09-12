@@ -5,11 +5,11 @@
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
 Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
-Last-updated: 2026-08-22
+Last-updated: 2026-09-12
 
 ## Product
 
-- [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: keybind hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
+- [Features](https://enviouswispr.com/features/): Every feature of the free Mac app, each on its own page: AI polished dictation, file transcription, dictionary, snippets, live preview, history, why offline, and customization.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to seven Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
@@ -48,6 +48,15 @@ Last-updated: 2026-08-22
 
 ## Features
 
+- [Features directory](https://enviouswispr.com/features/): Every feature of the free Mac app on one page, with a card and a link for each.
+- [AI polished dictation](https://enviouswispr.com/features/dictation/): Speak naturally, paste finished text; benchmark results, what was tested and graded, and why the on-device polish reads well.
+- [File transcription](https://enviouswispr.com/features/file-transcription/): Drop an audio or video file, get readable text; supported formats, local or cloud cleanup, and measured results on real interviews.
+- [Dictionary](https://enviouswispr.com/features/dictionary/): Names and specialist words spelled your way; quick add from a transcript, word packs, contacts import, aliases and fuzzy matching.
+- [Snippets](https://enviouswispr.com/features/snippets/): Save an email, address or calendar link once, then say a keyword to paste the whole thing at once.
+- [Live preview](https://enviouswispr.com/features/live-preview/): Watch your draft build on screen while you talk; English, German and Japanese with either speech engine.
+- [History](https://enviouswispr.com/features/history/): Transcripts kept on your Mac to read and copy; a cancelled recording's text can be kept for 24 hours.
+- [Why offline](https://enviouswispr.com/why-offline/): What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish.
+- [Make it yours](https://enviouswispr.com/customization/): Record key, start and stop sounds, how text lands, and the overlay position.
 - [Dictate in a whisper: soft and quiet speech](https://enviouswispr.com/blog/dictate-in-a-whisper-soft-speech/): Capturing quiet, whispered, and far-from-the-mic speech so you can dictate at night or in a shared office without raising your voice.
 - [Say it, get it formatted: dates, numbers, emails](https://enviouswispr.com/blog/spoken-text-formatting-dates-numbers-emails/): On-device conversion of spoken numbers, dates, times, money, percentages, phone numbers, emails, and web addresses into typed form, before any AI step.
 - [Speaking emoji in your dictation](https://enviouswispr.com/blog/speak-emoji-dictation/): Say "thumbs up emoji" to get the glyph; trigger-word based, 1,500+ emoji, runs on-device, never converts a bare word by accident.

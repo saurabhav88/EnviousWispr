@@ -1,0 +1,33 @@
+---
+// The themed shell (#2816): head, early theme installer, shared header and
+// footer, services. Used by the homepage and the feature pages. Each page
+// imports its own stylesheet bundle and page script; this layout owns none.
+import SiteHead from '../components/SiteHead.astro';
+import SiteServices from '../components/SiteServices.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import '../styles/site-header.css';
+import { installTheme } from '../scripts/home/theme.js';
+import type { ComponentProps } from 'astro/types';
+type Props = ComponentProps<typeof SiteHead> & {
+  /** The homepage keeps its footer "Pause motion" control. */
+  motionControl?: boolean;
+};
+const { motionControl = false, activePage = 'home', ...head } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <SiteHead {...head} activePage={activePage} />
+    <script is:inline set:html={'(' + installTheme.toString() + ')();'} />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main-content">Skip to content</a>
+    <SiteHeader activePage={activePage} themed />
+    <main id="main-content" tabindex="-1"><slot /></main>
+    <SiteFooter motionControl={motionControl} />
+    <SiteServices />
+  </body>
+</html>

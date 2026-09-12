@@ -1,0 +1,37 @@
+---
+// File Transcription (#2816): drag and drop first, engines, real recordings,
+// three reassurances, closing. Copy from the mock's page_content.py.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import '../../styles/features/lips-mascot.css';
+import '../../styles/features/file-demo.css';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FileDemo from '../../components/features/FileDemo.astro';
+import RecordingDeck from '../../components/features/RecordingDeck.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import DownloadCta from '../../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/features/file-transcription/"
+  title="Transcribe audio and video files on your Mac for free"
+  description="Drop a long recording on EnviousWispr and get readable text back. See supported formats, local or cloud cleanup, and measured results on real interviews."
+>
+  <FeatureHero
+    kind="file-transcription"
+    label="File Transcription"
+    title={'A transcript is<br><span class="accent-ink">only the beginning.</span>'}
+    copy="Plenty of tools turn long recordings into text. The harder part is making that text readable. EnviousWispr brings AI polish to long recordings, fully offline and free."
+  >
+    <FileDemo />
+  </FeatureHero>
+  <p class="scope-note wrap">Offline cleanup uses an installed local model. Cloud polish is also available with your provider account.</p>
+  <RecordingDeck />
+  <ImportReassurance
+    items={[
+      { title: 'Stay close to the original.', copy: 'Compare the original transcript and cleaned words.' },
+      { title: 'Choose your cleanup.', copy: 'Use local AI or your preferred cloud provider. Provider charges may apply.' },
+      { title: 'Put it to work.', copy: 'Copy the result or save a text file for the work ahead.' },
+    ]}
+  />
+  <DownloadCta title="Make more of the recordings you keep." />
+</FeatureShell>

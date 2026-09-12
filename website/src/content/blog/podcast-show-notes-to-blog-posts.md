@@ -40,7 +40,7 @@ You can dictate show notes in the same conversational tone your audience already
 
 ## Post-Processing That Shapes Your Output
 
-This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/how-it-works/) cleans up your dictation and formats it into polished text. The polish keeps things conversational and scannable, which is what you want for show notes. When you talk through a longer, structured blog version, it comes back as tighter prose with proper paragraphs.
+This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/features/dictation/) cleans up your dictation and formats it into polished text. The polish keeps things conversational and scannable, which is what you want for show notes. When you talk through a longer, structured blog version, it comes back as tighter prose with proper paragraphs.
 
 You shape that by how you speak, and Ollama, OpenAI, or Gemini polish turns it into format: run through your show notes as a quick list and they land as clean bullet points. On the Apple Intelligence default, you get the same content as clean prose. For a blog version, speak the post in full (a longer take, in your own words); the polish cleans up what you said, but it never pads a short recap out into a long post, so say the post you want.
 

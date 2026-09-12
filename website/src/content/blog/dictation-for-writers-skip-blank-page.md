@@ -107,7 +107,7 @@ If you're dictating early drafts, unpublished ideas, or sensitive client work, w
 
 EnviousWispr always transcribes on your Mac. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can keep manuscript text there too. If you choose OpenAI, Gemini, Claude, or Ollama-hosted polish, the transcript and supporting context go to that provider. Audio remains local in either case.
 
-You can read more about [how the pipeline works](/how-it-works/), from microphone input through transcription and AI cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
+You can read more about [how the pipeline works](/features/), from microphone input through transcription and AI cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 
 ## Related Posts

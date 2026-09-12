@@ -1,0 +1,92 @@
+---
+// File Transcription hero demo (#2816), the mock's file_demo.py. Scene 0 is
+// rendered active so the frame shows without scripts; the numbers are the
+// measured values from the first recording's transcript.
+import { firstCardEvidence } from '../../data/features/cases.js';
+import Logo from '../home/Logo.astro';
+import DemoIcon from './DemoIcon.astro';
+import LoopLips from './LoopLips.astro';
+const words = firstCardEvidence.wordCount.toLocaleString('en-US');
+const seconds = Math.round(firstCardEvidence.polishMs / 1000);
+const timing = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+const removed = String(firstCardEvidence.umUhRemoved);
+const waveform = Array.from({ length: 29 }, (_, i) => ({ bar: 24 + ((i * 17) % 58), delay: i * -0.09 }));
+const formats = ['MP3', 'M4A', 'WAV', 'AIFF', 'CAF', 'FLAC', 'MP4', 'MOV'];
+---
+
+<div class="file-demo" data-file-demo data-scene="0">
+  <div class="fd-top">
+    <span><Logo class="fd-logo" /> EnviousWispr</span><span class="fd-local"><DemoIcon name="lock" strokeWidth="1.6" /> On your Mac</span>
+  </div>
+  <div class="fd-stage" aria-hidden="true">
+    <section class="fd-scene fd-upload is-active">
+      <h3>Your recording.<br />Drop it right in.</h3>
+      <div class="fd-drop">
+        <span class="fd-drop-icon"><DemoIcon name="document" strokeWidth="1.6" /></span><strong>Audio or video</strong><span class="fd-drop-hint">Drag a recording here</span>
+        <div class="fd-file">
+          <span class="fd-file-icon"><DemoIcon name="document" strokeWidth="1.6" /></span><span><b>JRE #1470.m4a</b><small>2 hr audio recording</small></span><span class="fd-file-check"><DemoIcon name="check" strokeWidth="1.6" /></span><span class="fd-cursor"><DemoIcon name="cursor" strokeWidth="1.6" /></span>
+        </div>
+      </div>
+      <div class="fd-formats">{formats.map((f) => <span>{f}</span>)}</div>
+    </section>
+    <section class="fd-scene fd-engines">
+      <h3>Your engines.<br />Your choice.</h3>
+      <span class="fd-label">Transcription</span>
+      <div class="fd-options fd-asr">
+        <div class="fd-choice fd-parakeet"><span class="fd-engine-glyph">≋</span><span><b>Parakeet</b><small>Speech to text</small></span><i><DemoIcon name="check" strokeWidth="1.6" /></i></div>
+        <div class="fd-choice"><span class="fd-engine-glyph">≈</span><span><b>WhisperKit</b><small>Speech to text</small></span><i></i></div>
+      </div>
+      <span class="fd-label">AI polishing</span>
+      <div class="fd-options fd-polish">
+        <div class="fd-choice fd-eg"><span><b>Local models</b><small>Polish on your Mac</small></span><i><DemoIcon name="check" strokeWidth="1.6" /></i></div>
+        <div class="fd-choice"><span><b>Cloud models</b><small>Your provider, your key</small></span><i></i></div>
+      </div>
+      <div class="fd-ready"><DemoIcon name="lock" strokeWidth="1.6" /><span>Parakeet + EG-1. Entirely on your Mac.</span></div>
+    </section>
+    <section class="fd-scene fd-process">
+      <div class="fd-process-heading"><span class="fd-label">JRE #1470.m4a</span><h3 data-fd-process>Transcribing your recording.</h3></div>
+      <div class="fd-workspace">
+        <div class="fd-wave">{waveform.map((w) => <i style={`--bar:${w.bar}px;--delay:${w.delay}s`} />)}</div>
+        <div class="fd-passage-grid">
+          {
+            [1, 2, 3, 4].map((n) => (
+              <div class="fd-passage">
+                <span>Passage {String(n).padStart(2, '0')}</span>
+                <i />
+                <i />
+                <i />
+                <b>
+                  <DemoIcon name="check" strokeWidth="1.6" />
+                </b>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+      <div class="fd-stages"><span>Transcribing</span><span>Chunking</span><span>Polishing</span></div>
+      <div class="fd-work-progress"><i></i></div>
+      <p class="fd-work-note" data-fd-work-note>Writing down every word.</p>
+    </section>
+    <section class="fd-scene fd-done">
+      <div class="fd-check"><DemoIcon name="check" strokeWidth="1.6" /></div>
+      <span class="fd-label">Your transcript is ready</span>
+      <h3>Hours of audio.<br />Polished in minutes.</h3>
+      <div class="fd-result-document"><span><DemoIcon name="document" strokeWidth="1.6" /><b>JRE #1470</b><small>Polished with EG-1</small></span><i></i><i></i><i></i></div>
+      <div class="fd-stats">
+        <div><strong>{words}</strong><small>Words transcribed</small></div>
+        <div><strong>{timing}</strong><small>Cleanup time</small></div>
+        <div><strong>{removed}</strong><small>Um / uh removed</small></div>
+      </div>
+      <small class="fd-pending">JRE #1470 · Parakeet + EG-1</small>
+    </section>
+    <section class="fd-scene fd-brand">
+      <LoopLips glowId="file-lip-glow" />
+      <span class="fd-label">Powered by</span>
+      <h3>EnviousWispr</h3>
+      <p>Your voice.<br />A clearer read.</p>
+    </section>
+  </div>
+  <div class="fd-bottom"><span data-fd-caption>Bring your audio or video</span><button type="button" data-fd-toggle aria-label="Pause demo" disabled data-enables>Ⅱ</button></div>
+  <div class="fd-progress"><i></i><i></i><i></i><i></i><i></i></div>
+  <span class="fd-accessible">Illustrated workflow: drop in a recording, choose Parakeet and EG-1, transcribe, split into passages and polish. Timing is accelerated. Statistics are from the JRE 1470 local harness run; cleanup time excludes model loading.</span>
+</div>

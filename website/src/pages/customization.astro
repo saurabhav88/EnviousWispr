@@ -1,0 +1,42 @@
+---
+// Make it yours (#2816): the recording pill, start and stop sounds, shortcuts.
+// Copy from the mock's page_content.py.
+import FeatureShell from '../layouts/FeatureShell.astro';
+import FeatureHero from '../components/features/FeatureHero.astro';
+import ComfortPreview from '../components/features/ComfortPreview.astro';
+import SoundSamples from '../components/features/SoundSamples.astro';
+import DownloadCta from '../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/customization/"
+  activePage="customization"
+  title="Make it yours: keybinds, sounds and paste behavior"
+  description="Pick your record key, choose start and stop sounds, decide how text lands, and set the overlay position. Small settings that make dictation feel yours."
+>
+  <FeatureHero
+    kind="customization"
+    label="Make it yours"
+    title={'Make dictation<br><span class="accent-ink">feel like yours.</span>'}
+    copy="Choose how dictation looks, sounds and fits into your habits. A small recording view. Familiar shortcuts. A chime that tells you it’s time to speak."
+  >
+    <ComfortPreview />
+  </FeatureHero>
+  <section class="sound-story wrap">
+    <div>
+      <span class="eyebrow">A little reassurance</span>
+      <h2>Hear when it starts.<br />Know when it’s done.</h2>
+      <p>Pick a start-and-stop sound pairing you enjoy, or keep it quiet.</p>
+    </div>
+    <SoundSamples />
+  </section>
+  <section class="shortcuts-story wrap">
+    <div class="shortcut-art"><span>⌥</span><span>⌘</span><span>⇧</span></div>
+    <div>
+      <h2>Make it<br />second nature.</h2>
+      <p>Hold to record or toggle for a longer thought. Choose recording, cancel and add-a-word shortcuts that fit your hands and habits.</p>
+      <small>Illustrative keys. Configure your own supported bindings in the app.</small>
+    </div>
+  </section>
+  <DownloadCta title="Make dictation feel like yours." />
+</FeatureShell>

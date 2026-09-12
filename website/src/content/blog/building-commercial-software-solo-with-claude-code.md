@@ -207,4 +207,4 @@ This is what's working for me. Your project is different, your stack is differen
 
 I'd love to hear what's working for you. If you're building something with Claude Code and have found patterns that help, I'm genuinely interested. We're all figuring this out together.
 
-*Curious about EnviousWispr the product Claude and I shipped together? See [how it works](/how-it-works/) or [browse comparisons](/compare/) against other Mac dictation tools.*
+*Curious about EnviousWispr the product Claude and I shipped together? See [how it works](/features/) or [browse comparisons](/compare/) against other Mac dictation tools.*

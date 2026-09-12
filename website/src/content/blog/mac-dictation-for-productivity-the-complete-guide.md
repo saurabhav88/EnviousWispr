@@ -78,7 +78,7 @@ The minimum kit is a recent Apple Silicon Mac (M1 or newer), macOS 14 Sonoma or 
 
 ## Privacy notes
 
-If your productivity work touches sensitive material (legal, medical, HR, client deals), cloud dictation is the wrong category. On-device dictation keeps the audio and the transcribed text on your Mac. AI polish can run on-device (Apple Intelligence) or in the cloud (with explicit consent). [EnviousWispr](/how-it-works/) defaults to on-device for both steps.
+If your productivity work touches sensitive material (legal, medical, HR, client deals), cloud dictation is the wrong category. On-device dictation keeps the audio and the transcribed text on your Mac. AI polish can run on-device (Apple Intelligence) or in the cloud (with explicit consent). [EnviousWispr](/features/) defaults to on-device for both steps.
 
 For the deeper explainer: [On-device vs cloud dictation: which is actually private on Mac?](/blog/on-device-vs-cloud-dictation-privacy/).
 
