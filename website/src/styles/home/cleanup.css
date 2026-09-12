@@ -737,6 +737,7 @@ main > #polish h2 {
   grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr);
 }
 #polish .polish-nav {
+  margin-top: 14px;
   justify-content: flex-end;
   min-height: 48px;
   padding-top: 10px;
@@ -819,7 +820,7 @@ html[data-theme='dark'] #polish .polish-raw.is-live .is-cut {
   #polish .polish-nav {
     flex-wrap: wrap;
   }
-  #polish[data-enhancement='ready'] .polish-hint {
+  #polish .polish-hint {
     display: flex;
     flex-basis: 100%;
     justify-content: center;

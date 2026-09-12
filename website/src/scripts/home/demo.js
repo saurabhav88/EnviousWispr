@@ -9,14 +9,31 @@ export function mountDemo(container, app, context = {}, { hero = false, lang = '
   const output = document.createElement('div');
   output.className = hero ? 'hero-draft' : 'illustrated-result';
   output.lang = lang;
+  host.querySelector('.host-draft-slot').append(output);
+  container.replaceChildren(host);
+  return attachDemo(container, host, output, lang);
+}
+
+/** Attach playback once without replacing the server-rendered app or draft. */
+export function hydrateDemo(container, finishedText, { lang = 'en' } = {}) {
+  return attachDemo(
+    container,
+    container.querySelector('.host-app'),
+    container.querySelector('.illustrated-result'),
+    lang,
+    finishedText,
+  );
+}
+
+function attachDemo(container, host, output, lang, lastText) {
   const caret = document.createElement('span');
   caret.className = 'hero-empty-caret';
   caret.setAttribute('aria-hidden', 'true');
-  host.querySelector('.host-draft-slot').append(caret, output);
+  caret.hidden = true;
+  output.before(caret);
   const native = createNativePreview();
   native.well.querySelector('.hero-native-words').lang = lang;
-  container.replaceChildren(host, native.well, native.processing);
-  let lastText;
+  container.append(native.well, native.processing);
   return {
     host,
     output,

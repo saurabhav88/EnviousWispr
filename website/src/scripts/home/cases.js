@@ -1,65 +1,42 @@
 import cases from '../../data/home/cases.json';
-import { mountDemo } from './demo.js';
-import { bindSwipe } from './swipe.js';
-const apps = ['vscode', 'clinical', 'keep', 'gmail', 'docs', 'slack', 'discord', 'notes', 'teams'];
+import { hydrateDemo } from './demo.js';
+import { createCarousel } from './carousel.js';
+
 export function init(root, motion, scope) {
-  const stage = root.querySelector('.case-stage'),
-    screen = root.querySelector('.case-screen'),
-    art = root.querySelector('.case-scene');
-  const assets = JSON.parse(stage.dataset.caseAssets),
+  const viewport = root.querySelector('.case-carousel'),
+    screens = [...root.querySelectorAll('.case-screen')],
     choices = root.querySelector('.audience-choices'),
-    buttons = [...choices.querySelectorAll('button')];
-  const tour = root.querySelector('#case-tour'),
+    buttons = [...choices.querySelectorAll('button')],
+    tour = root.querySelector('#case-tour'),
     prev = root.querySelector('#case-prev'),
     next = root.querySelector('#case-next');
-  let index = 0,
-    artIndex = 0,
-    elapsed = 0,
-    auto = true,
-    generation = 0,
-    demo,
-    clock,
-    hovered = false;
-  const phoneSizer = new ResizeObserver(() => {
-    const phone = screen.querySelector('.host-keep');
-    if (phone)
-      screen.style.setProperty('--phone-well', Math.max(120, phone.clientWidth - 22) + 'px');
+  // Each lazy image stays paired with its own text; playback never waits for decoding (#2765).
+  const demos = screens.map((screen, i) =>
+    hydrateDemo(screen, cases[i].final, { lang: cases[i].lang || 'en' }),
+  );
+  const phoneSizer = new ResizeObserver((entries) => {
+    for (const { target } of entries)
+      target
+        .closest('.case-screen')
+        .style.setProperty('--phone-well', Math.max(120, target.clientWidth - 22) + 'px');
   });
-  scope.defer(() => {
-    generation++;
-    phoneSizer.disconnect();
-  });
+  root.querySelectorAll('.host-keep').forEach((phone) => phoneSizer.observe(phone));
+  scope.defer(() => phoneSizer.disconnect());
   const announcement = document.createElement('span');
   announcement.className = 'visually-hidden';
   announcement.setAttribute('role', 'status');
   root.append(announcement);
-  function render() {
-    const item = cases[index],
-      speech = index === 1 ? 4800 : 2200,
-      phase =
-        motion.reduced.matches || motion.paused || elapsed >= speech + 500
-          ? 'finished'
-          : elapsed < speech
-            ? 'listening'
-            : 'processing';
-    const count = Math.min(
-      item.raw.length,
-      Math.max(2, Math.floor((elapsed / (speech * 0.96)) * item.raw.length)),
-    );
-    demo.set(phase, item.raw.slice(0, count), item.final, elapsed);
-    tour.disabled = motion.paused || motion.reduced.matches;
-    tour.title = motion.reduced.matches
-      ? 'Reduced motion is enabled'
-      : motion.paused
-        ? 'Page animations are paused'
-        : '';
+  let elapsed = 0,
+    auto = true,
+    direction = 1,
+    prepared,
+    clock,
+    hovered = false;
+  function finishExamples() {
+    demos.forEach((demo, i) => demo.set('finished', '', cases[i].final));
+    prepared = undefined;
   }
-  function choose(nextIndex, manual = false) {
-    index = nextIndex;
-    const item = cases[index],
-      current = ++generation;
-    if (manual) auto = false;
-    elapsed = manual || motion.reduced.matches || motion.paused ? 5400 : 0;
+  function sync(index) {
     buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
     const selected = buttons[index];
     if (choices.scrollWidth > choices.clientWidth) {
@@ -69,96 +46,90 @@ export function init(root, motion, scope) {
       else if (right > choices.scrollLeft + choices.clientWidth)
         choices.scrollLeft = right - choices.clientWidth;
     }
-    stage.dataset.case = String(index);
-    root.querySelector('.case-copy h3').textContent = item.title;
-    root.querySelector('.case-copy p').textContent = item.note;
-    root.querySelector('.case-status').textContent = item.upcoming
-      ? 'Android coming soon'
-      : item.sampleLabel || '';
-    screen.classList.toggle('is-phone', item.upcoming === true);
-    demo = mountDemo(
-      screen,
-      apps[index],
-      {
-        to: index === 3 ? 'Jordan' : undefined,
-        title:
-          index === 4 ? 'City life · Essay draft' : index === 7 ? 'Family message' : 'Story notes',
-        room: index === 6 ? 'episode-planning' : undefined,
-      },
-      { lang: item.lang || 'en' },
-    );
-    phoneSizer.disconnect();
-    if (item.upcoming) phoneSizer.observe(screen.querySelector('.host-keep'));
-    root.querySelector('#case-count').textContent = index + 1 + ' / ' + cases.length;
+    root.querySelector('#case-count').textContent = `${index + 1} / ${cases.length}`;
     prev.disabled = index === 0;
     next.disabled = index === cases.length - 1;
     tour.textContent = auto ? 'Pause tour' : 'Play tour';
-    render();
-    if (manual) announcement.textContent = item.name + '. ' + item.title;
-    // The initial picture is already lazy-loaded by the browser. Only subsequent
-    // selections need a new decode; text never waits for an illustration.
-    if (index !== artIndex) {
-      const desired = new Image();
-      const asset = assets[index];
-      desired.sizes = art.sizes;
-      desired.srcset = asset.srcset;
-      desired.src = asset.src;
-      desired
-        .decode()
-        .then(() => {
-          if (current !== generation || scope.signal.aborted) return;
-          art.srcset = asset.srcset;
-          art.src = asset.src;
-          art.width = asset.width;
-          art.height = asset.height;
-          artIndex = nextIndex;
-          art.alt =
-            'Illustrated ' +
-            item.name.toLowerCase() +
-            ' speaking toward a ' +
-            (item.upcoming ? 'phone' : 'computer');
-        })
-        .catch(() => {
-          /* Keep the previously loaded illustration and its accurate alt text. */
-        });
-    }
+    tour.disabled = motion.paused || motion.reduced.matches;
+    tour.title = motion.reduced.matches
+      ? 'Reduced motion is enabled'
+      : motion.paused
+        ? 'Page animations are paused'
+        : '';
+  }
+  const carousel = createCarousel(viewport, scope, motion, {
+    onManual() {
+      if (!auto) return;
+      auto = false;
+      elapsed = 5400;
+      finishExamples();
+      tour.textContent = 'Play tour';
+    },
+    onSettle(index, { manual, changed }) {
+      if (!changed && !manual && prepared === undefined) {
+        sync(index);
+        return;
+      }
+      const play = auto && prepared === index && !motion.paused && !motion.reduced.matches;
+      finishExamples();
+      elapsed = play ? 0 : 5400;
+      sync(index);
+      render();
+      if (manual) announcement.textContent = cases[index].name + '. ' + cases[index].title;
+      clock?.wake({ allowFocused: auto });
+    },
+  });
+  function render() {
+    const index = carousel.index,
+      item = cases[index],
+      speech = index === 1 ? 4800 : 2200;
+    const phase =
+      motion.reduced.matches || motion.paused || elapsed >= speech + 500
+        ? 'finished'
+        : elapsed < speech
+          ? 'listening'
+          : 'processing';
+    const count = Math.min(
+      item.raw.length,
+      Math.max(2, Math.floor((elapsed / (speech * 0.96)) * item.raw.length)),
+    );
+    demos[index].set(phase, item.raw.slice(0, count), item.final, elapsed);
   }
   buttons.forEach((button, i) => {
     button.disabled = false;
-    button.addEventListener('click', () => choose(i, true), { signal: scope.signal });
+    button.addEventListener('click', () => carousel.goTo(i, { user: true }), {
+      signal: scope.signal,
+    });
   });
-  choices.addEventListener(
-    'pointerdown',
-    () => {
-      auto = false;
-      tour.textContent = 'Play tour';
-    },
-    { signal: scope.signal, passive: true },
-  );
-  prev.addEventListener('click', () => choose(Math.max(0, index - 1), true), {
+  prev.addEventListener('click', () => carousel.step(-1, { user: true }), {
     signal: scope.signal,
   });
-  next.addEventListener('click', () => choose(Math.min(cases.length - 1, index + 1), true), {
+  next.addEventListener('click', () => carousel.step(1, { user: true }), {
     signal: scope.signal,
   });
-  tour.disabled = false;
   tour.addEventListener(
     'click',
     () => {
       auto = !auto;
-      tour.textContent = auto ? 'Pause tour' : 'Play tour';
+      if (!auto) {
+        elapsed = 5400;
+        finishExamples();
+        if (carousel.moving) carousel.stop();
+      } else elapsed = 0;
+      sync(carousel.index);
+      if (!carousel.moving) render();
       clock.wake({ allowFocused: auto });
     },
     { signal: scope.signal },
   );
-  stage.addEventListener(
+  viewport.addEventListener(
     'pointerenter',
     (event) => {
       if (event.pointerType === 'mouse') hovered = true;
     },
     { signal: scope.signal },
   );
-  stage.addEventListener(
+  viewport.addEventListener(
     'pointerleave',
     (event) => {
       if (event.pointerType !== 'mouse') return;
@@ -167,32 +138,33 @@ export function init(root, motion, scope) {
     },
     { signal: scope.signal },
   );
-  choose(0);
+  finishExamples();
   clock = scope.timeline(
     root,
     (delta) => {
+      if (carousel.moving || carousel.interacting) return true;
       elapsed += delta;
       render();
-      if (auto && elapsed > (index === 1 ? 8800 : 6200) && !hovered) {
-        choose((index + 1) % cases.length);
-        return true;
+      if (auto && !hovered && elapsed > (carousel.index === 1 ? 8800 : 6200)) {
+        if (carousel.index === cases.length - 1) direction = -1;
+        else if (carousel.index === 0) direction = 1;
+        prepared = carousel.index + direction;
+        demos[prepared].set(
+          'listening',
+          cases[prepared].raw.slice(0, 2),
+          cases[prepared].final,
+        );
+        carousel.goTo(prepared);
       }
-      return (auto && !hovered) || elapsed < (index === 1 ? 5300 : 2700);
+      return (auto && !hovered) || elapsed < (carousel.index === 1 ? 5300 : 2700);
     },
-    render,
-  );
-  bindSwipe(
-    stage,
-    scope,
-    (direction) => {
-      choose(Math.max(0, Math.min(cases.length - 1, index + direction)), true);
-    },
-    (event) => {
-      auto = false;
-      if (event.pointerType !== 'mouse') hovered = false;
-      elapsed = Math.max(elapsed, 5400);
-      tour.textContent = 'Play tour';
-      render();
+    () => {
+      if (motion.paused || motion.reduced.matches) {
+        elapsed = 5400;
+        finishExamples();
+      }
+      sync(carousel.index);
+      if (!carousel.moving) render();
     },
   );
 }
