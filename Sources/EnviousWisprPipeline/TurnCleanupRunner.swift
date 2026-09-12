@@ -95,7 +95,12 @@ public struct TurnCleanupRunner: Sendable {
       joined += index == 0 ? outcome.displayText : "\n\n" + outcome.displayText
       if !outcome.isUnpolished && outcome.wasPolishAttempted {
         anyPartPolished = true
-      } else {
+      } else if outcome.isUnpolished {
+        // `isUnpolished` already requires `wasPolishAttempted` (its own definition), so this
+        // is exactly "asked for polish, got the deterministic floor back" — a genuine
+        // failure. A part where NO polisher was ever asked for (the user picked none, or an
+        // intentional bypass for a short part) is neither a success nor a failure and must
+        // not inflate `fallback_turn_count` (found by cloud review).
         anyPartFellBack = true
       }
     }

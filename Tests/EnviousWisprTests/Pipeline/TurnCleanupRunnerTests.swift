@@ -22,7 +22,8 @@ struct TurnCleanupRunnerTests {
         FileImportRunner.PartOutcome(text: part, polishedText: "CLEANED: \(part)", polishError: nil)
       })
     let turns = [turn("0-5", "A", 0..<5)]
-    let (result, fallbackCount) = await runner.run(turns: turns, rawText: "hello", engineLanguage: nil)
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "hello", engineLanguage: nil)
     #expect(result.count == 1)
     #expect(fallbackCount == 0)
     #expect(result[0].processedText == "CLEANED: hello")
@@ -37,7 +38,8 @@ struct TurnCleanupRunnerTests {
       },
       split: { text in text.split(separator: " ").map(String.init) })
     let turns = [turn("0-11", "A", 0..<11)]
-    let (result, fallbackCount) = await runner.run(turns: turns, rawText: "hello world", engineLanguage: nil)
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "hello world", engineLanguage: nil)
     #expect(result[0].processedText == "[hello]\n\n[world]")
     #expect(result[0].wasPolished == true)
     #expect(fallbackCount == 0)
@@ -57,10 +59,13 @@ struct TurnCleanupRunnerTests {
       },
       split: { text in text.split(separator: " ").map(String.init) })
     let turns = [turn("0-8", "A", 0..<8)]
-    let (result, fallbackCount) = await runner.run(turns: turns, rawText: "good bad", engineLanguage: nil)
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "good bad", engineLanguage: nil)
     #expect(result[0].processedText == "GOOD\n\nbad")
     #expect(result[0].wasPolished == true, "any part polishing makes the whole turn wasPolished")
-    #expect(fallbackCount == 1, "a turn with any fallback part counts, even if it also has a polished part")
+    #expect(
+      fallbackCount == 1,
+      "a turn with any fallback part counts, even if it also has a polished part")
   }
 
   @Test("every part failing to polish leaves wasPolished false")
@@ -70,10 +75,30 @@ struct TurnCleanupRunnerTests {
         FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "boom")
       })
     let turns = [turn("0-5", "A", 0..<5)]
-    let (result, fallbackCount) = await runner.run(turns: turns, rawText: "hello", engineLanguage: nil)
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "hello", engineLanguage: nil)
     #expect(result[0].processedText == "hello")
     #expect(result[0].wasPolished == false)
     #expect(fallbackCount == 1)
+  }
+
+  @Test(
+    "a part where no polisher was ever asked for is neither polished nor a fallback"
+  )
+  func noPolishAttemptedIsNeitherPolishedNorFallback() async {
+    let runner = TurnCleanupRunner(
+      processPart: { part, _ in
+        // The user picked no polisher, or an intentional bypass for a short part — this is
+        // not a failure, so `fallback_turn_count` must never see it (found by cloud review).
+        FileImportRunner.PartOutcome(
+          text: part, polishedText: nil, polishError: nil, polishAttempted: false)
+      })
+    let turns = [turn("0-5", "A", 0..<5)]
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "hello", engineLanguage: nil)
+    #expect(result[0].processedText == "hello")
+    #expect(result[0].wasPolished == false)
+    #expect(fallbackCount == 0, "no polisher was ever asked for — this is not a fallback")
   }
 
   @Test("multiple turns are processed in order, each independently")
@@ -154,7 +179,8 @@ struct TurnCleanupRunnerTests {
     })
     // originalTextRange far beyond the supplied rawText's own length.
     let turns = [turn("100-200", "A", 100..<200)]
-    let (result, fallbackCount) = await runner.run(turns: turns, rawText: "short", engineLanguage: nil)
+    let (result, fallbackCount) = await runner.run(
+      turns: turns, rawText: "short", engineLanguage: nil)
     #expect(result == turns, "an out-of-bounds range must not crash or fabricate text")
     #expect(fallbackCount == 0)
   }
