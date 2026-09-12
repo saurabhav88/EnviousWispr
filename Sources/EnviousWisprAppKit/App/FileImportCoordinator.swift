@@ -1552,6 +1552,15 @@ final class FileImportCoordinator {
       // `originalHistoryRow` never learned about this write (found by whole-diff review).
       // Guarded by id: `originalHistoryRow` can be nil, or belong to a DIFFERENT file
       // chosen while this background pass was still running.
+      //
+      // KNOWN LIMIT for phase 4 (second-pass review): this closes the loop for writes THIS
+      // coordinator makes, but `originalHistoryRow` is still a private snapshot — an
+      // explicit rename (`mergeSpeakerFields`'s `explicitRename:` parameter) applied from
+      // anywhere else against the SAME row would not update it, and a later re-polish here
+      // would silently revert that rename via `withImportResult`. Not reachable today: no
+      // UI calls `explicitRename` yet (phase 4 ships that). Phase 4's rename design should
+      // either read the row fresh from History at write time or push its own update through
+      // this same path rather than assuming this cache is authoritative.
       if saved, originalHistoryRow?.id == historyID {
         originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
           analysis: analysis, turns: turns)

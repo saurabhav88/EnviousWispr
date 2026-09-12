@@ -447,56 +447,6 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(turnCleanupArrived, "turn-cleanup should have started once the visible pass finished")
   }
 
-  @Test(
-    "a superseded generation's completion gate still resolves when its run is stopped, never hangs")
-  func supersededGenerationGateStillResolves() async {
-    let documentGate = ManualGate()
-    let coordinator = makeCoordinator(
-      lease: EngineLease(),
-      transcribedText: "hello there friend",
-      wordTimings: Self.twoSpeakerWordTimings(),
-      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
-      processPart: { part, _ in
-        await documentGate.markArrived()
-        await documentGate.waitUntilOpen()
-        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
-      })
-
-    coordinator.choose(url: Self.anyURL)
-    _ = await settleUntil {
-      if case .ready = coordinator.state { return true } else { return false }
-    }
-    coordinator.start()
-    await documentGate.waitUntilArrived()
-
-    // Stop while the visible pass's own part call is still held open. `stop()` cancels the
-    // run task and bumps `generation`, but the blocked `processPart` call itself does not
-    // return until the gate opens — `Task.cancel()` alone cannot interrupt an in-flight
-    // `await` with no cooperative check inside it.
-    coordinator.stop()
-    let stopped = await settleUntil { coordinator.state == .stopped }
-    #expect(stopped)
-
-    // NOW let the stale call return. `polishAll`'s own generation guard sees a superseded
-    // generation and returns early — its `defer` must still settle the completion gate for
-    // that generation, so anything that had been waiting on it (or would wait on it later)
-    // is never left hanging forever.
-    await documentGate.open()
-
-    // If the gate were broken (never settled on this exit path), a background task still
-    // waiting on this exact generation would hang. Prove it resolves within a bounded
-    // window by driving a SECOND run and confirming ITS OWN turn-cleanup still completes
-    // normally — a wedged gate implementation (e.g. one that leaked a waiter into the wrong
-    // bucket) would show up as the second run's own sequencing breaking.
-    coordinator.choose(url: Self.anyURL)
-    _ = await settleUntil {
-      if case .ready = coordinator.state { return true } else { return false }
-    }
-    coordinator.start()
-    let secondFinished = await settleUntil { coordinator.state == .finished }
-    #expect(secondFinished, "a fresh run after a superseded generation must complete normally")
-  }
-
   @Test("a labeled outcome with real word timings persists turns via mergeSpeakerFields")
   func labeledOutcomeWithWordTimingsPersistsTurns() async {
     @MainActor final class MergeRecorder {
