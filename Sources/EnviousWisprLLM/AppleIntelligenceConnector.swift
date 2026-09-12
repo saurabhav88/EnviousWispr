@@ -120,10 +120,34 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
 
   // MARK: - AFM context-window preflight (#1055)
 
-  /// Apple Intelligence shares a 4,096-token context window across instructions
-  /// + prompt + generated output (Apple docs; measured 2026-06-17, see
-  /// `.claude/knowledge/llm-contract.md` FACT: afm-context-window-4096).
-  static let afmContextWindowTokens = 4096
+  /// The macOS 26 (AFM 2) on-device context window: instructions + prompt +
+  /// generated output share this many tokens total (Apple docs; measured
+  /// 2026-06-17, see `.claude/knowledge/llm-contract.md` FACT:
+  /// afm-context-window-4096). macOS 27 (AFM 3) doubles this to 8,192
+  /// (measured 2026-09-10, #2795 item 2) — `currentContextWindowTokens` below
+  /// reads the real value live; this constant is now ONLY the fallback floor
+  /// for when the live read is unavailable (pre-26.0, or FoundationModels not
+  /// compiled in). `package` so the settings UI can display it (#2834)
+  /// without duplicating the literal.
+  package static let afmContextWindowTokens = 4096
+
+  /// This Mac's LIVE on-device context budget: `SystemLanguageModel
+  /// .contextSize` where available (`@backDeployed` to macOS 26.0, so no
+  /// extra OS-version branch is needed — it works on 26.0-26.3 too, not only
+  /// 26.4+) — 4,096 on macOS 26 (AFM 2), 8,192 on macOS 27 (AFM 3, #2795 item
+  /// 2). Falls back to the static `afmContextWindowTokens` floor when
+  /// FoundationModels isn't compiled in or the OS predates 26.0, so this is
+  /// safe to call unconditionally. Settings-UI display (#2834); the #1055
+  /// preflight below reads `prepared.model.contextSize` directly off the live
+  /// session so the two never disagree.
+  package static var currentContextWindowTokens: Int {
+    #if canImport(FoundationModels)
+      if #available(macOS 26.0, *) {
+        return SystemLanguageModel.default.contextSize
+      }
+    #endif
+    return afmContextWindowTokens
+  }
   /// Headroom kept below the hard window. Tuned by on-device validation (#1055).
   static let afmContextSafetyMarginTokens = 128
   /// PREFLIGHT output reserve as a multiple of input tokens. A clean transcript
@@ -299,6 +323,18 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       overrideText: overrideText, exampleOverride: exampleOverride, suffix: suffix)
   }
 
+  /// OS major version at which prompt selection switches to v39 (see
+  /// `promptSelection` below). Named here so a display label never repeats
+  /// this literal on its own (#2834).
+  package static let modernPromptMajorVersionFloor = 27
+
+  /// Whether THIS Mac is on the macOS 27+ prompt generation `promptSelection`
+  /// would select — display only, never used to route polish behaviour.
+  /// (#2834, settings UI "which model" line.)
+  package static var isOnNewerPromptGeneration: Bool {
+    ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= modernPromptMajorVersionFloor
+  }
+
   /// The one owner of "which Apple prompt, which suffix and which example turns
   /// does this OS get" (#2795). Pure so the gate is testable without touching
   /// the OS:
@@ -314,7 +350,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     majorVersion: Int, overrideText: String?, exampleOverride: [OnDeviceExampleTurn]? = nil,
     suffix: String
   ) -> PromptSelection {
-    let modern = majorVersion >= 27
+    let modern = majorVersion >= modernPromptMajorVersionFloor
     var base = modern ? onDeviceInstructionsV39 : onDeviceInstructionsSingle
     if let text = overrideText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       base = text
@@ -753,7 +789,11 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let reservedOutputTokens = Int(
         (Double(inputTokens) * afmPreflightOutputReserveMultiplier).rounded(.up))
       let projected = promptTokens + inputTokens + reservedOutputTokens
-      let budget = afmContextWindowTokens - afmContextSafetyMarginTokens
+      // The live per-session window (#2795 item 2): macOS 26 (AFM 2) reports
+      // 4,096 here, macOS 27 (AFM 3) reports 8,192. Using the static
+      // `afmContextWindowTokens` floor instead would wrongly skip on-device
+      // polish on long AFM 3 dictations that actually fit.
+      let budget = prepared.model.contextSize - afmContextSafetyMarginTokens
       // Advisory response cap, CLAMPED to the room actually left in the window
       // after instructions + prompt. Empirically this SDK does not reject a call
       // whose `maximumResponseTokens` would overrun the window (measured

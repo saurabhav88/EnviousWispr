@@ -1503,6 +1503,23 @@ struct ProviderSetupSection: View {
       .accessibilityLabel("Check Apple Intelligence availability")
     }
 
+    // Which Apple on-device model is running, and its live shared capacity
+    // (#2834). Only meaningful once Apple Intelligence is actually usable.
+    // "AFM 2"/"AFM 3" naming and the live token count both from #2795 (see
+    // AppleIntelligenceConnector.isOnNewerPromptGeneration / .currentContextWindowTokens).
+    if let report = aiAvailability.latestReport, report.overallStatus == .available {
+      HStack {
+        Text(
+          "Model: \(AppleIntelligenceConnector.isOnNewerPromptGeneration ? "AFM 3" : "AFM 2") · Capacity: \(AppleIntelligenceConnector.currentContextWindowTokens.formatted()) tokens"
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        Spacer()
+      }
+      .help(
+        "Tokens are shared between the model's setup instructions, your dictation, and its answer.")
+    }
+
     // "Why?" detail text
     if let report = aiAvailability.latestReport,
       report.overallStatus != .available
