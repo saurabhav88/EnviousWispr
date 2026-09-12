@@ -137,6 +137,13 @@ EnviousWispr.app/
 !Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/
 !Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc/**
 
+# #2809: the four bundled offline speaker-diarization models are COMMITTED (embed, never
+# download — same rationale as the classifier and VAD model above). Re-include these four
+# .mlmodelc folders + their inner coremldata.bin / weights/weight.bin, overriding the broad
+# *.bin glob above. Combined ~20.7 MB.
+!Sources/EnviousWispr/Resources/SpeakerModels/
+!Sources/EnviousWispr/Resources/SpeakerModels/**
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db

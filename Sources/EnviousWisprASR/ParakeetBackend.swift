@@ -369,6 +369,9 @@ public actor ParakeetBackend: ASRBackend {
       let fluidResult = try await manager.transcribe(
         audioSamples, decoderState: &decoderState, language: languageHint)
       let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+      let (wordTimings, wordTimingCoverage) = Self.mapWordTimings(
+        from: fluidResult.tokenTimings, text: fluidResult.text,
+        audioDurationMs: Int((fluidResult.duration * 1000).rounded()))
 
       return ASRResult(
         text: fluidResult.text,
@@ -400,7 +403,8 @@ public actor ParakeetBackend: ASRBackend {
         duration: fluidResult.duration,
         processingTime: elapsed,
         backendType: .parakeet,
-        tokenTimingSummary: Self.tokenTimingSummary(from: fluidResult.tokenTimings)
+        tokenTimingSummary: Self.tokenTimingSummary(from: fluidResult.tokenTimings),
+        wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage
       )
     } catch is CancellationError {
       throw CancellationError()
@@ -467,6 +471,28 @@ public actor ParakeetBackend: ASRBackend {
     guard let timings else { return nil }
     let lastEndMs = timings.map(\.endTime).max().map { Int(($0 * 1000).rounded()) }
     return ASRTokenTimingSummary(tokenCount: timings.count, lastTokenEndMs: lastEndMs)
+  }
+
+  /// `nil` exactly when the engine gave no token timings at all (Bypass, not Failure).
+  /// Otherwise always runs the mapper, even when it binds nothing — an engine that stops
+  /// returning usable timings on an otherwise healthy run must show up as
+  /// `word_timing_coverage_bucket=none`, not silently collapse to `nil` (#2809).
+  static func mapWordTimings(
+    from timings: [TokenTiming]?, text: String, audioDurationMs: Int
+  ) -> ([ASRWordTiming]?, ASRWordTimingCoverage?) {
+    guard let timings else { return (nil, nil) }
+    // `Int(exactly:)`, never the trapping `Int(_:)`: a non-finite or out-of-range engine
+    // time becomes `nil` here, which the mapper already treats as an untimed span — never
+    // a crash.
+    let words = buildWordTimings(from: timings).map {
+      (
+        word: $0.word, startMs: Int(exactly: ($0.startTime * 1000).rounded()),
+        endMs: Int(exactly: ($0.endTime * 1000).rounded())
+      )
+    }
+    let mapped = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: audioDurationMs, words: words)
+    return (mapped.words, mapped.coverage)
   }
 
   // MARK: - Streaming ASR

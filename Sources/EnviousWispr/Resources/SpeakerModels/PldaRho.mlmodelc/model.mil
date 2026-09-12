@@ -1,0 +1,40 @@
+program(1.0)
+[buildInfo = dict<tensor<string, []>, tensor<string, []>>({{"coremlc-component-MIL", "3500.14.1"}, {"coremlc-version", "3500.32.1"}, {"coremltools-component-torch", "2.8.0"}, {"coremltools-source-dialect", "TorchScript"}, {"coremltools-version", "9.0b1"}})]
+{
+    func main<ios17>(tensor<fp32, [?, 256]> embeddings) [FlexibleShapeInformation = tuple<tuple<tensor<string, []>, dict<tensor<string, []>, tensor<int32, [?]>>>, tuple<tensor<string, []>, dict<tensor<string, []>, dict<tensor<string, []>, tensor<int32, [?]>>>>>((("DefaultShapes", {{"embeddings", [32, 256]}}), ("EnumeratedShapes", {{"embeddings_1_1_1_10_256_", {{"embeddings", [10, 256]}}}, {"embeddings_1_1_1_11_256_", {{"embeddings", [11, 256]}}}, {"embeddings_1_1_1_12_256_", {{"embeddings", [12, 256]}}}, {"embeddings_1_1_1_13_256_", {{"embeddings", [13, 256]}}}, {"embeddings_1_1_1_14_256_", {{"embeddings", [14, 256]}}}, {"embeddings_1_1_1_15_256_", {{"embeddings", [15, 256]}}}, {"embeddings_1_1_1_16_256_", {{"embeddings", [16, 256]}}}, {"embeddings_1_1_1_17_256_", {{"embeddings", [17, 256]}}}, {"embeddings_1_1_1_18_256_", {{"embeddings", [18, 256]}}}, {"embeddings_1_1_1_19_256_", {{"embeddings", [19, 256]}}}, {"embeddings_1_1_1_1_256_", {{"embeddings", [1, 256]}}}, {"embeddings_1_1_1_20_256_", {{"embeddings", [20, 256]}}}, {"embeddings_1_1_1_21_256_", {{"embeddings", [21, 256]}}}, {"embeddings_1_1_1_22_256_", {{"embeddings", [22, 256]}}}, {"embeddings_1_1_1_23_256_", {{"embeddings", [23, 256]}}}, {"embeddings_1_1_1_24_256_", {{"embeddings", [24, 256]}}}, {"embeddings_1_1_1_25_256_", {{"embeddings", [25, 256]}}}, {"embeddings_1_1_1_26_256_", {{"embeddings", [26, 256]}}}, {"embeddings_1_1_1_27_256_", {{"embeddings", [27, 256]}}}, {"embeddings_1_1_1_28_256_", {{"embeddings", [28, 256]}}}, {"embeddings_1_1_1_29_256_", {{"embeddings", [29, 256]}}}, {"embeddings_1_1_1_2_256_", {{"embeddings", [2, 256]}}}, {"embeddings_1_1_1_30_256_", {{"embeddings", [30, 256]}}}, {"embeddings_1_1_1_31_256_", {{"embeddings", [31, 256]}}}, {"embeddings_1_1_1_32_256_", {{"embeddings", [32, 256]}}}, {"embeddings_1_1_1_3_256_", {{"embeddings", [3, 256]}}}, {"embeddings_1_1_1_4_256_", {{"embeddings", [4, 256]}}}, {"embeddings_1_1_1_5_256_", {{"embeddings", [5, 256]}}}, {"embeddings_1_1_1_6_256_", {{"embeddings", [6, 256]}}}, {"embeddings_1_1_1_7_256_", {{"embeddings", [7, 256]}}}, {"embeddings_1_1_1_8_256_", {{"embeddings", [8, 256]}}}, {"embeddings_1_1_1_9_256_", {{"embeddings", [9, 256]}}}})))] {
+            tensor<fp32, [128]> sqrt_phi = const()[name = tensor<string, []>("sqrt_phi"), val = tensor<fp32, [128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(64)))];
+            tensor<fp32, [128, 128]> transform_plda_tr = const()[name = tensor<string, []>("transform_plda_tr"), val = tensor<fp32, [128, 128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(640)))];
+            tensor<fp32, [128]> transform_mu = const()[name = tensor<string, []>("transform_mu"), val = tensor<fp32, [128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(66240)))];
+            tensor<fp32, []> transform_lda_dim_scale = const()[name = tensor<string, []>("transform_lda_dim_scale"), val = tensor<fp32, []>(0x1.6a09e6p+3)];
+            tensor<fp32, [128]> transform_mean2 = const()[name = tensor<string, []>("transform_mean2"), val = tensor<fp32, [128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(66816)))];
+            tensor<fp32, []> transform_lda_scale = const()[name = tensor<string, []>("transform_lda_scale"), val = tensor<fp32, []>(0x1p+4)];
+            tensor<fp32, [256]> transform_mean1 = const()[name = tensor<string, []>("transform_mean1"), val = tensor<fp32, [256]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(67392)))];
+            tensor<fp32, []> var_4 = const()[name = tensor<string, []>("op_4"), val = tensor<fp32, []>(0x1.197998p-40)];
+            tensor<fp32, [?, 256]> x_1 = sub(x = embeddings, y = transform_mean1)[name = tensor<string, []>("x_1")];
+            tensor<fp32, [?, 256]> var_17 = mul(x = x_1, y = x_1)[name = tensor<string, []>("op_17")];
+            tensor<int32, [1]> var_19_axes_0 = const()[name = tensor<string, []>("op_19_axes_0"), val = tensor<int32, [1]>([-1])];
+            tensor<bool, []> var_19_keep_dims_0 = const()[name = tensor<string, []>("op_19_keep_dims_0"), val = tensor<bool, []>(true)];
+            tensor<fp32, [?, 1]> var_19 = reduce_sum(axes = var_19_axes_0, keep_dims = var_19_keep_dims_0, x = var_17)[name = tensor<string, []>("op_19")];
+            tensor<fp32, []> const_0 = const()[name = tensor<string, []>("const_0"), val = tensor<fp32, []>(0x1.fffffep+127)];
+            tensor<fp32, [?, 1]> clip_0 = clip(alpha = var_4, beta = const_0, x = var_19)[name = tensor<string, []>("clip_0")];
+            tensor<fp32, [?, 1]> norm_1 = sqrt(x = clip_0)[name = tensor<string, []>("norm_1")];
+            tensor<fp32, [?, 256]> normalized1 = real_div(x = x_1, y = norm_1)[name = tensor<string, []>("normalized1")];
+            tensor<fp32, [128, 256]> transpose_0 = const()[name = tensor<string, []>("transpose_0"), val = tensor<fp32, [128, 256]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(68480)))];
+            tensor<fp32, [128]> var_23_bias_0 = const()[name = tensor<string, []>("op_23_bias_0"), val = tensor<fp32, [128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(199616)))];
+            tensor<fp32, [?, 128]> var_23 = linear(bias = var_23_bias_0, weight = transpose_0, x = normalized1)[name = tensor<string, []>("op_23")];
+            tensor<fp32, [?, 128]> projected = mul(x = var_23, y = transform_lda_scale)[name = tensor<string, []>("projected")];
+            tensor<fp32, [?, 128]> x = sub(x = projected, y = transform_mean2)[name = tensor<string, []>("x")];
+            tensor<fp32, [?, 128]> var_26 = mul(x = x, y = x)[name = tensor<string, []>("op_26")];
+            tensor<int32, [1]> var_28_axes_0 = const()[name = tensor<string, []>("op_28_axes_0"), val = tensor<int32, [1]>([-1])];
+            tensor<bool, []> var_28_keep_dims_0 = const()[name = tensor<string, []>("op_28_keep_dims_0"), val = tensor<bool, []>(true)];
+            tensor<fp32, [?, 1]> var_28 = reduce_sum(axes = var_28_axes_0, keep_dims = var_28_keep_dims_0, x = var_26)[name = tensor<string, []>("op_28")];
+            tensor<fp32, []> const_1 = const()[name = tensor<string, []>("const_1"), val = tensor<fp32, []>(0x1.fffffep+127)];
+            tensor<fp32, [?, 1]> clip_1 = clip(alpha = var_4, beta = const_1, x = var_28)[name = tensor<string, []>("clip_1")];
+            tensor<fp32, [?, 1]> norm = sqrt(x = clip_1)[name = tensor<string, []>("norm")];
+            tensor<fp32, [?, 128]> var_31 = real_div(x = x, y = norm)[name = tensor<string, []>("op_31")];
+            tensor<fp32, [?, 128]> normalized2 = mul(x = var_31, y = transform_lda_dim_scale)[name = tensor<string, []>("normalized2")];
+            tensor<fp32, [?, 128]> plda_centered = sub(x = normalized2, y = transform_mu)[name = tensor<string, []>("plda_centered")];
+            tensor<fp32, [?, 128]> features = linear(bias = var_23_bias_0, weight = transform_plda_tr, x = plda_centered)[name = tensor<string, []>("features")];
+            tensor<fp32, [?, 128]> rho = mul(x = features, y = sqrt_phi)[name = tensor<string, []>("op_36")];
+        } -> (rho);
+}

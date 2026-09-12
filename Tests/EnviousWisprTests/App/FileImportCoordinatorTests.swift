@@ -104,7 +104,11 @@ struct FileImportCoordinatorTests {
       decode: decode,
       // The rows above pass a plain text closure; the language rides alongside
       // it so a row that does not care about language never mentions one.
-      transcribe: { samples in (text: try await transcribe(samples), language: engineLanguage) },
+      transcribe: { samples in
+        ASRResult(
+          text: try await transcribe(samples), language: engineLanguage, duration: 0,
+          processingTime: 0, backendType: .parakeet)
+      },
       engineAdmission: .live(lease: lease, as: .fileImport),
       ensureEngineReady: ensureEngineReady,
       beginRun: beginRun,
@@ -120,7 +124,8 @@ struct FileImportCoordinatorTests {
   /// Drives a coordinator to a finished document, so a test about what happens
   /// AFTER a run does not restate the run.
   private func finishedCoordinator(
-    lease: EngineLease, transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in
+    lease: EngineLease,
+    transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in
       "One. Two. Three."
     }
   ) async -> FileImportCoordinator {
@@ -145,8 +150,10 @@ struct FileImportCoordinatorTests {
   @Test(
     "an import refuses rather than running an engine the user did not pick",
     arguments: [
-      (FileImportCoordinator.EngineReadiness.notInstalled,
-       FileImportCoordinator.FileImportRejection.engineNotInstalled),
+      (
+        FileImportCoordinator.EngineReadiness.notInstalled,
+        FileImportCoordinator.FileImportRejection.engineNotInstalled
+      ),
       (.notReady, .engineNotReady),
     ])
   func refusesWhenTheChosenEngineIsNotReady(
@@ -518,9 +525,12 @@ struct FileImportCoordinatorTests {
     record(a)
     _ = await settleUntil { if case .ready = a.state { return true } else { return false } }
     record(a)
-    a.advance(); record(a)
-    a.advance(); record(a)
-    a.advance(); record(a)
+    a.advance()
+    record(a)
+    a.advance()
+    record(a)
+    a.advance()
+    record(a)
     a.advance()
     await settleUntil { a.state == .finished }
     await settleUntil { a.isEngineHeld == false }
@@ -530,8 +540,10 @@ struct FileImportCoordinatorTests {
       a.jump(to: target)
       record(a)
     }
-    a.jump(to: .done); record(a)
-    a.startOver(); record(a)
+    a.jump(to: .done)
+    record(a)
+    a.startOver()
+    record(a)
 
     // Path B: a file that cannot be read.
     let b = makeCoordinator(
@@ -545,7 +557,10 @@ struct FileImportCoordinatorTests {
     let c = makeCoordinator(lease: EngineLease(), ensureEngineReady: { .notInstalled })
     c.choose(url: Self.anyURL)
     _ = await settleUntil { if case .ready = c.state { return true } else { return false } }
-    c.advance(); c.advance(); c.advance(); c.advance()
+    c.advance()
+    c.advance()
+    c.advance()
+    c.advance()
     await settleUntil { c.state == .rejected(.engineNotInstalled) }
     record(c)
 
@@ -591,12 +606,18 @@ struct FileImportCoordinatorTests {
     let d2 = makeCoordinator(lease: EngineLease(), ensureEngineReady: { .notInstalled })
     d2.choose(url: Self.anyURL)
     _ = await settleUntil { if case .ready = d2.state { return true } else { return false } }
-    d2.advance(); d2.advance(); d2.advance(); d2.advance()
+    d2.advance()
+    d2.advance()
+    d2.advance()
+    d2.advance()
     await settleUntil { d2.state == .rejected(.engineNotInstalled) }
     record(d2)
-    d2.goBack(); record(d2)
-    d2.goBack(); record(d2)
-    d2.advance(); record(d2)
+    d2.goBack()
+    record(d2)
+    d2.goBack()
+    record(d2)
+    d2.advance()
+    record(d2)
     d2.advance()
     #expect(d2.step == .review, "the user could not get back to Start after changing the engine")
     record(d2)
@@ -1057,7 +1078,8 @@ struct FileImportCoordinatorTests {
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
-          polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+          polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil, polishModel: "eg-1",
+          backendType: .parakeet)
       })
     coordinator.choose(url: Self.anyURL)
     await settleUntil { if case .ready = coordinator.state { return true } else { return false } }

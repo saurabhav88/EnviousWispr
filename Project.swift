@@ -561,6 +561,25 @@ let project = Project(
           path:
             "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc"
         ),
+        // #2809 chunk 2: the four bundled offline speaker-diarization models,
+        // loaded by hand in `BundledSpeakerModelLoader` (never through
+        // `ModelHub`, which would download). Folder-referenced for the same
+        // reason as the VAD model above — Tuist embeds each `.mlmodelc`
+        // verbatim, flattened to the top level of `Contents/Resources`.
+        .folderReference(
+          path: "Sources/EnviousWispr/Resources/SpeakerModels/Segmentation.mlmodelc"
+        ),
+        .folderReference(
+          path: "Sources/EnviousWispr/Resources/SpeakerModels/FBank.mlmodelc"
+        ),
+        .folderReference(
+          path: "Sources/EnviousWispr/Resources/SpeakerModels/Embedding.mlmodelc"
+        ),
+        .folderReference(
+          path: "Sources/EnviousWispr/Resources/SpeakerModels/PldaRho.mlmodelc"
+        ),
+        "Sources/EnviousWispr/Resources/speaker-plda-parameters.json",
+        "Sources/EnviousWispr/Resources/speaker-models-LICENSE.txt",
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the

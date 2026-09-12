@@ -1423,8 +1423,20 @@ package final class WisprBootstrapper {
         // to `.text` threw away the better half: the cleanup chain's ladder
         // prefers what the engine heard over what a text identifier guesses from
         // the ASR output.
-        let result = try await activeEngine.transcribe(samples, options)
-        return (text: result.text, language: result.language)
+        // #2809: widened to the full ASRResult so `wordTimings`/`wordTimingCoverage` reach
+        // the coordinator — the only consumer today is the speaker step's telemetry.
+        return try await activeEngine.transcribe(samples, options)
+      },
+      // #2809: the dormant speaker step. Loads the bundled models fresh per call (see
+      // `SpeakerLabeler`) and never touches the network — a phase-2 limb that runs after
+      // ASR on the same PCM, bounded and cancellable, with no UI signal on any outcome.
+      speakerLabeler: { samples, durationSeconds in
+        await SpeakerLabeler().run(samples: samples, durationSeconds: durationSeconds)
+      },
+      emitSpeakerTelemetry: { outcome, durationSeconds, analysisMs, wordTimingCoverage in
+        TelemetryService.shared.trackFileImportSpeakers(
+          outcome: outcome, durationSeconds: durationSeconds, analysisMs: analysisMs,
+          wordTimingCoverage: wordTimingCoverage)
       },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.

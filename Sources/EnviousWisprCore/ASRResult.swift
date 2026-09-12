@@ -30,6 +30,44 @@ public struct ASRTokenTimingSummary: Sendable, Codable {
   }
 }
 
+/// One word from an `ASRResult.text`, with its position in that text and its
+/// time on the audio, when known.
+///
+/// `range` is always real text (UTF-16 offsets into `text`, never overlapping,
+/// ascending in `ASRResult.wordTimings`). `startMs`/`endMs` are `nil` when the
+/// engine gave no timing for this span, or when the timing it gave was invalid
+/// (end before start, negative, or beyond the audio) — see
+/// `WordTimingRangeMapper`, the sole producer of this type.
+public struct ASRWordTiming: Sendable, Codable, Equatable {
+  public let word: String
+  public let range: Range<Int>
+  public let startMs: Int?
+  public let endMs: Int?
+
+  public init(word: String, range: Range<Int>, startMs: Int?, endMs: Int?) {
+    self.word = word
+    self.range = range
+    self.startMs = startMs
+    self.endMs = endMs
+  }
+}
+
+/// How much of `ASRResult.text` carries a real word timing.
+///
+/// Both counts are non-whitespace UTF-16 units of `text`: `total` is every
+/// such unit, `timed` is the subset that fell inside a matched word with valid
+/// timing bounds. A healthy engine that stops returning timings shows up here
+/// as `timed == 0` before it shows up anywhere else.
+public struct ASRWordTimingCoverage: Sendable, Codable, Equatable {
+  public let timed: Int
+  public let total: Int
+
+  public init(timed: Int, total: Int) {
+    self.timed = timed
+    self.total = total
+  }
+}
+
 /// Result from an ASR transcription pass.
 public struct ASRResult: Sendable, Codable {
   public let text: String
@@ -40,10 +78,18 @@ public struct ASRResult: Sendable, Codable {
   /// Numbers-only token-timing summary, when the backend exposes it (Parakeet).
   /// Optional + defaulted so existing callers and old Codable payloads still decode.
   public let tokenTimingSummary: ASRTokenTimingSummary?
+  /// Per-word timing over `text`, when the engine was asked for timestamps.
+  /// `nil` means the engine gave no timing data at all (Bypass, not Failure) —
+  /// `text` is unaffected either way. Optional + defaulted so existing callers
+  /// and old Codable payloads still decode.
+  public let wordTimings: [ASRWordTiming]?
+  /// Paired with `wordTimings`: `nil` exactly when `wordTimings` is `nil`.
+  public let wordTimingCoverage: ASRWordTimingCoverage?
 
   public init(
     text: String, language: String?, duration: TimeInterval, processingTime: TimeInterval,
-    backendType: ASRBackendType, tokenTimingSummary: ASRTokenTimingSummary? = nil
+    backendType: ASRBackendType, tokenTimingSummary: ASRTokenTimingSummary? = nil,
+    wordTimings: [ASRWordTiming]? = nil, wordTimingCoverage: ASRWordTimingCoverage? = nil
   ) {
     self.text = text
     self.language = language
@@ -51,6 +97,8 @@ public struct ASRResult: Sendable, Codable {
     self.processingTime = processingTime
     self.backendType = backendType
     self.tokenTimingSummary = tokenTimingSummary
+    self.wordTimings = wordTimings
+    self.wordTimingCoverage = wordTimingCoverage
   }
 }
 

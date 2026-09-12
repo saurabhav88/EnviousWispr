@@ -2022,7 +2022,8 @@ public final class TelemetryService {
   /// wall-clock elapsed from the last checkpoint to this launch, including
   /// downtime. It is not a measured hang duration.
   public func transcriptionInterruptedAtQuit(
-    stage: String, backend: String, chunksScheduled: Int, stageAgeMs: Int, checkpointAppVersion: String
+    stage: String, backend: String, chunksScheduled: Int, stageAgeMs: Int,
+    checkpointAppVersion: String
   ) {
     let props: [String: Any] = [
       "stage": stage, "asr_backend": backend, "chunks_scheduled": chunksScheduled,
@@ -3091,6 +3092,76 @@ public final class TelemetryService {
     case ..<15.0: return "10-15s"
     default: return "15s+"
     }
+  }
+
+  // MARK: - File import speaker step (#2809)
+
+  /// Shape-only telemetry for the dormant, phase-2 speaker step: never text, never a file
+  /// name. `speaker_bucket` is present only on `single`/`labeled` — there is no valid count
+  /// on `failed`/`timed_out`. `word_timing_coverage_bucket` is `none` for BOTH "the
+  /// coordinator received no coverage at all" (an engine that gave no timing data) and "the
+  /// mapper reported a real, empty coverage" — this bucket does not distinguish the two, on
+  /// purpose: a dashboard reading it only needs "were there usable word timings", not why
+  /// not (found by second-pass review, which read the two as distinguished; they are not).
+  public func trackFileImportSpeakers(
+    outcome: SpeakerAnalysis, durationSeconds: TimeInterval, analysisMs: Int,
+    wordTimingCoverage: ASRWordTimingCoverage?
+  ) {
+    var props: [String: Any] = [
+      "outcome": Self.fileImportSpeakerOutcome(outcome),
+      "duration_bucket": Self.fileImportDurationBucket(durationSeconds),
+      "analysis_ms": analysisMs,
+      "word_timing_coverage_bucket": Self.wordTimingCoverageBucket(wordTimingCoverage),
+    ]
+    if let speakerBucket = Self.fileImportSpeakerBucket(outcome) {
+      props["speaker_bucket"] = speakerBucket
+    }
+    PostHogSDK.shared.capture("file_import_speakers", properties: props)
+  }
+
+  static func fileImportSpeakerOutcome(_ analysis: SpeakerAnalysis) -> String {
+    switch analysis {
+    case .single: return "single"
+    case .labeled: return "labeled"
+    case .failed: return "failed"
+    case .timedOut: return "timed_out"
+    }
+  }
+
+  /// `nil` on `failed`/`timed_out` — there is no valid count to report.
+  static func fileImportSpeakerBucket(_ analysis: SpeakerAnalysis) -> String? {
+    let count: Int
+    switch analysis {
+    case .single: count = 1
+    case .labeled(let labeledCount, _): count = labeledCount
+    case .failed, .timedOut: return nil
+    }
+    switch count {
+    case ...1: return "1"
+    case 2: return "2"
+    case 3...4: return "3-4"
+    default: return "5+"
+    }
+  }
+
+  /// File-import durations run from seconds to multiple hours, unlike the voiced-speech
+  /// buckets above — a separate scale, not a reuse of `durationBucket(_:)`.
+  static func fileImportDurationBucket(_ seconds: TimeInterval) -> String {
+    switch seconds {
+    case ..<60: return "<1min"
+    case ..<300: return "1-5min"
+    case ..<900: return "5-15min"
+    case ..<1800: return "15-30min"
+    case ..<3600: return "30-60min"
+    default: return "60min+"
+    }
+  }
+
+  static func wordTimingCoverageBucket(_ coverage: ASRWordTimingCoverage?) -> String {
+    guard let coverage, coverage.total > 0 else { return "none" }
+    if coverage.timed == 0 { return "none" }
+    if coverage.timed >= coverage.total { return "full" }
+    return "partial"
   }
 
   // MARK: - Update banner (issue #343)
