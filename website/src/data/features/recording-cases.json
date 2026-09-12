@@ -1,0 +1,55 @@
+[
+  {
+    "name": "Elon Musk",
+    "title": "The Joe Rogan Experience #1470",
+    "duration": "2:00:09",
+    "kind": "Audio \u00b7 M4A",
+    "file": "4-elon-musk-jre-1470.m4a",
+    "video": "RcYjXbSJBN8",
+    "source": "PowerfulJRE \u00b7 May 7, 2020",
+    "transcript": "transcripts/4-elon-musk-jre-1470.json"
+  },
+  {
+    "name": "Emma Chamberlain",
+    "title": "Anything Goes: are you living for you?",
+    "duration": "58:37",
+    "kind": "Video \u00b7 MP4",
+    "file": "1-emma-chamberlain-like-literally.mp4",
+    "video": "X2nfLCMyX9A",
+    "source": "Anything Goes with Emma Chamberlain \u00b7 Original downloaded video",
+    "sourceUrl": "https://podcasts.apple.com/au/podcast/are-you-living-for-you/id1458568923?i=1000615679181",
+    "transcript": "transcripts/1-emma-chamberlain-like-literally.json"
+  },
+  {
+    "name": "Ariana Grande",
+    "title": "Sweetener conversation with Zach Sang",
+    "duration": "48:22",
+    "kind": "Video \u00b7 MP4",
+    "file": "2-ariana-grande-zach-sang-2018.mp4",
+    "video": "PviZLT7HPys",
+    "source": "Zach Sang Show \u00b7 August 17, 2018",
+    "excerpt": "I think it\u2019s just where I\u2019m at. I think it\u2019s a combination of everything. I think it\u2019s personal growth.",
+    "transcript": "transcripts/2-ariana-grande-zach-sang-2018.json"
+  },
+  {
+    "name": "Kendall Jenner",
+    "title": "On Purpose with Jay Shetty",
+    "duration": "53:59",
+    "kind": "Video \u00b7 MP4",
+    "file": "3-kendall-jenner-jay-shetty.mp4",
+    "video": "ZjIRYn7x8sk",
+    "source": "Jay Shetty \u00b7 September 12, 2022",
+    "transcript": "transcripts/3-kendall-jenner-jay-shetty.json"
+  },
+  {
+    "name": "Mark Zuckerberg",
+    "title": "2018 House hearing (recorded excerpt)",
+    "duration": "3:07:20",
+    "kind": "Audio \u00b7 M4A",
+    "file": "5-zuckerberg-senate-testimony-3hr.m4a",
+    "video": "siBbC1zgFwc",
+    "source": "CBS News \u00b7 Original downloaded live-stream recording",
+    "sourceUrl": "https://docs.house.gov/meetings/IF/IF00/20180411/108090/HHRG-115-IF00-Transcript-20180411.pdf",
+    "transcript": "transcripts/5-zuckerberg-senate-testimony-3hr.json"
+  }
+]

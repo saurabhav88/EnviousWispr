@@ -1,0 +1,28 @@
+---
+// Directory closing section (#2816): the dawn and twilight landscapes as
+// responsive WebP, one per theme. Both are lazy; the theme-hidden one is
+// display:none, so it is not fetched (browser evidence in the validation run).
+import { getImage } from 'astro:assets';
+import dawn from '../../assets/features/dawn-landscape.png';
+import twilight from '../../assets/features/twilight-landscape.png';
+import DownloadButton from './DownloadButton.astro';
+const widths = [1086, 2172];
+async function sources(src) {
+  const variants = await Promise.all(widths.map((width) => getImage({ src, width, format: 'webp', quality: 82 })));
+  return { srcset: variants.map((v, i) => `${v.src} ${widths[i]}w`).join(', '), src: variants[0].src };
+}
+const light = await sources(dawn);
+const dark = await sources(twilight);
+---
+
+<section class="landing-closing">
+  <img class="landing-art-dark" src={dark.src} srcset={dark.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
+  <img class="landing-art-light" src={light.src} srcset={light.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
+  <div class="wrap">
+    <span class="landing-kicker">A little more room for your ideas.</span>
+    <h2>Put your voice to work.</h2>
+    <p>Free dictation for Mac. Made for the words you want to write.</p>
+    <DownloadButton source="features-closing" />
+    <small>macOS 14+ · Apple Silicon</small>
+  </div>
+</section>

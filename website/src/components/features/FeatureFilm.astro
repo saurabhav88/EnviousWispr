@@ -1,0 +1,218 @@
+---
+// A feature film shell (#2816), the mock's films.py film(kind): the finished
+// frame of scene 0 is rendered here at build time (data-phase="result"), and
+// the scenes ride in data-scenes for scripts/features/film-director.js.
+import { SCENES, NATIVE_PREVIEW_SNAPSHOT_BARS } from '../../data/features/films.js';
+import DemoIcon from './DemoIcon.astro';
+interface Props {
+  kind: 'dictionary' | 'snippets' | 'quickadd' | 'correction' | 'preview';
+}
+const { kind } = Astro.props;
+const scenes = SCENES[kind];
+if (!scenes) throw new Error(`FeatureFilm: unknown kind ${kind}`);
+const s = scenes[0];
+const escapeHtml = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** Fixed illustrative strings; every fragment is escaped, marks wrap in <mark>. */
+function highlighted(text, marks = []) {
+  if (!marks.length) return escapeHtml(text);
+  const pattern = new RegExp('(' + marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')');
+  return text
+    .split(pattern)
+    .map((part) => (marks.includes(part) ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)))
+    .join('');
+}
+const symbol = kind === 'dictionary' || kind === 'quickadd' ? 'word' : 'wave';
+const rawLabel = kind === 'quickadd' ? 'Your current draft' : kind === 'dictionary' ? 'Heard as' : 'You say';
+const outLabel = kind === 'quickadd' ? 'Your next dictation' : 'Your finished text';
+const encoded = JSON.stringify(scenes);
+---
+
+<div class:list={['feature-film', `film-${kind}`]} data-film={kind} data-scenes={encoded} data-phase="result" data-route="local">
+  {
+    scenes.length > 1 && (
+      <div class="film-choices" aria-label="Choose an example">
+        {scenes.map((x, i) => (
+          <button type="button" data-film-choice={i} class:list={{ selected: i === 0 }} aria-pressed={i === 0 ? 'true' : 'false'}>
+            {x.label}
+          </button>
+        ))}
+      </div>
+    )
+  }
+  <div class="film-surface">
+    <div class="film-heading">
+      <span class="film-symbol"><DemoIcon name={symbol} /></span>
+      <h3 data-film-title>{s.title}</h3>
+      <span class="film-badge" data-film-where>{s.where}</span>
+    </div>
+    <div class="film-stage">
+      {
+        (kind === 'dictionary' || kind === 'correction') && (
+          <>
+            <div class="heard-well">
+              <div class="well-label">
+                <DemoIcon name="wave" />
+                <span>{rawLabel}</span>
+              </div>
+              <p data-film-raw set:html={highlighted(s.raw, s.raw_marks)} />
+            </div>
+            <div class="match-bridge">
+              <span class="bridge-line" />
+              <span class="saved-word">
+                <DemoIcon name="check" />
+                <span data-film-saved>{s.saved}</span>
+              </span>
+              <span class="bridge-line" />
+            </div>
+            <div class="result-well">
+              <div class="well-label">
+                <span>{outLabel}</span>
+                <span class="result-check">
+                  <DemoIcon name="check" />
+                </span>
+              </div>
+              <p data-film-out set:html={highlighted(s.out, s.out_marks)} />
+              <span class="working-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          </>
+        )
+      }
+      {
+        kind === 'quickadd' && (
+          <>
+            <div class="qa-document">
+              <span>Your selected text</span>
+              <p data-film-raw set:html={highlighted(s.raw, s.raw_marks)} />
+            </div>
+            <div class="qa-stage">
+              <div class="qa-picker">
+                <div class="qa-search">
+                  <DemoIcon name="search" />
+                  <span>Search your words</span>
+                  <i />
+                </div>
+                <p class="qa-prompt">Add "NVS Vispr" to</p>
+                <div class="qa-candidates">
+                  <div class="qa-candidate chosen">
+                    <strong>EnviousWispr</strong>
+                    <span>2 spellings</span>
+                    <kbd>⏎</kbd>
+                  </div>
+                  <div class="qa-candidate">
+                    <strong>Claude</strong>
+                    <span>2 spellings</span>
+                  </div>
+                  <div class="qa-candidate">
+                    <strong>EG-1</strong>
+                    <span>5 spellings</span>
+                  </div>
+                </div>
+                <div class="qa-create">
+                  <b>＋</b> Create a new word
+                </div>
+                <div class="qa-keys">
+                  <span>
+                    <kbd>⏎</kbd> add spelling
+                  </span>
+                  <span>
+                    <kbd>↑↓</kbd> move
+                  </span>
+                  <span>
+                    <kbd>esc</kbd> close
+                  </span>
+                </div>
+              </div>
+              <div class="qa-notice">
+                <div>
+                  <DemoIcon name="check" />
+                  <span data-film-out>{s.out}</span>
+                </div>
+                <span>
+                  <kbd>esc</kbd> close
+                </span>
+              </div>
+            </div>
+          </>
+        )
+      }
+      {
+        kind === 'snippets' && (
+          <>
+            <div class="snippet-command">
+              <span class="well-label">
+                <DemoIcon name="wave" /> You say
+              </span>
+              <p data-film-raw set:html={highlighted(s.raw, s.raw_marks)} />
+              <span class="command-match" data-film-saved>
+                {s.saved}
+              </span>
+            </div>
+            <div class="signature-document">
+              <div class="document-rule">
+                <span>Your saved words</span>
+                <span class="result-check">
+                  <DemoIcon name="check" />
+                </span>
+              </div>
+              <p data-film-out set:html={highlighted(s.out, s.out_marks)} />
+              <span class="working-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          </>
+        )
+      }
+      {
+        kind === 'preview' && (
+          <>
+            <div class="homepage-native-stage" data-native-preview>
+              <div class="hero-native-well" aria-label="EnviousWispr live transcription preview">
+                <div class="hero-native-header">
+                  <span class="hero-native-clock">0:04</span>
+                  <span class="hero-native-meter" aria-hidden="true">
+                    {NATIVE_PREVIEW_SNAPSHOT_BARS.map(([color, height]) => (
+                      <i style={`--bar-color: ${color}; --bar-height: ${height}px;`} />
+                    ))}
+                  </span>
+                  <span class="hero-native-mode">HANDS-FREE</span>
+                </div>
+                <div class="hero-native-words" data-film-out lang="en">
+                  {s.raw}
+                </div>
+              </div>
+            </div>
+            <p class="native-preview-note">Live draft. Final transcription can change.</p>
+          </>
+        )
+      }
+    </div>
+  </div>
+  <div class="film-footer">
+    <div class="film-status"><i></i><span data-film-status>{s.explain}</span></div>
+    <div class="film-transport">
+      <span data-film-count>1 of {scenes.length}</span>
+      {
+        scenes.length > 1 && (
+          <button type="button" class="film-control" data-film-prev aria-label="Previous example">
+            <DemoIcon name="prev" />
+          </button>
+        )
+      }
+      <button type="button" class="film-control" data-film-play aria-label="Pause animation"><DemoIcon name="pause" /></button>
+      {
+        scenes.length > 1 && (
+          <button type="button" class="film-control" data-film-next aria-label="Next example">
+            <DemoIcon name="next" />
+          </button>
+        )
+      }
+    </div>
+  </div>
+  <span class="film-fineprint">Illustrative example</span>
+</div>

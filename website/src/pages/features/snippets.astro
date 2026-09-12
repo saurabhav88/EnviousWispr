@@ -1,0 +1,48 @@
+---
+// Snippets (#2816): email, address, calendar link; a spoken keyword plus the
+// snippet name pastes the whole saved value. Copy from the mock's page_content.py.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FeatureFilm from '../../components/features/FeatureFilm.astro';
+import KeywordDemo from '../../components/features/KeywordDemo.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import DownloadCta from '../../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/features/snippets/"
+  title="Snippets: speak a keyword, paste saved text instantly"
+  description="Save your email, address or calendar link once, then say a keyword to paste the whole thing at once. See how snippets work and how to set a trigger word."
+>
+  <FeatureHero
+    kind="snippets"
+    label="Snippets"
+    title={'Say a few words.<br><span class="accent-ink">Skip the repeated typing.</span>'}
+    copy="Your email. Your address. Your calendar link. Save the details you share again and again, then bring them back with a short spoken phrase."
+  >
+    <FeatureFilm kind="snippets" />
+  </FeatureHero>
+  <section class="snippet-examples wrap">
+    <div>
+      <span class="eyebrow">Make the shortcut yours</span>
+      <h2>Your phrase.<br /><span class="accent-ink">Your exact words.</span></h2>
+      <p>Start with the included snippets, then make them your own. Change the spoken keyword, give each snippet a memorable name, and save the wording you want to share.</p>
+      <p>From a one-line detail to your usual introduction, your saved text stays exactly as you wrote it.</p>
+    </div>
+    <KeywordDemo />
+  </section>
+  <section class="snippet-collection wrap">
+    <span class="eyebrow">Beyond your first shortcut</span>
+    <h2>A collection that grows with you.</h2>
+    <p>Keep the details and responses you reach for most, ready whenever you need them.</p>
+    <ImportReassurance
+      wrap={false}
+      items={[
+        { title: 'Find it quickly.', copy: 'Search your collection to find the snippet you need.' },
+        { title: 'Keep it current.', copy: 'Edit your saved wording as your details change.' },
+        { title: 'Take it with you.', copy: 'Export your snippets to keep a copy of your collection.' },
+      ]}
+    />
+  </section>
+  <DownloadCta title="Give repeated writing a shorter name." />
+</FeatureShell>

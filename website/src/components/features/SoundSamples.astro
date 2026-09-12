@@ -1,0 +1,17 @@
+---
+// Start/stop sound pairs (#2816). Each button carries the emitted asset URLs
+// for scripts/features/sounds.js.
+import { sounds } from '../../data/features/customization.js';
+---
+
+<div class="sound-samples" data-sound-group>
+  {
+    sounds.map((s) => (
+      <button type="button" data-sound={s.key} data-start={s.start} data-stop={s.stop}>
+        ♫ <span>{s.name}</span>
+        <small>Play pair</small>
+      </button>
+    ))
+  }
+  <p id="sound-status" data-sound-status aria-live="polite">Actual sounds from EnviousWispr. Tap to listen.</p>
+</div>

@@ -1,0 +1,55 @@
+---
+// Dictionary (#2816): NVS Vispr to EnviousWispr, packs, contacts, import,
+// Quick Add, aliases and fuzzy matching. Copy from the mock's page_content.py.
+import FeatureShell from '../../layouts/FeatureShell.astro';
+import FeatureHero from '../../components/features/FeatureHero.astro';
+import FeatureFilm from '../../components/features/FeatureFilm.astro';
+import PackExplorer from '../../components/features/PackExplorer.astro';
+import ImportReassurance from '../../components/features/ImportReassurance.astro';
+import DownloadCta from '../../components/features/DownloadCta.astro';
+---
+
+<FeatureShell
+  path="/features/dictionary/"
+  title="Dictionary: your names and terms, spelled your way"
+  description="Teach EnviousWispr the names, products and jargon you say every day. Quick add from a transcript, word packs, contacts import and aliases. Free on Mac."
+>
+  <FeatureHero
+    kind="dictionary"
+    label="Dictionary"
+    title={'Stop correcting<br><span class="accent-ink">the same names.</span>'}
+    copy="Your people, projects and specialist terms. Give EnviousWispr your vocabulary and spend more time on the thought, less on fixing the words."
+  >
+    <FeatureFilm kind="dictionary" />
+  </FeatureHero>
+  <section class="benefit wrap reverse">
+    <div class="benefit-copy">
+      <span class="eyebrow">Bring what you know</span>
+      <h2>Your vocabulary.<br /><span class="accent-ink">A head start built in.</span></h2>
+      <p>Bring your existing vocabulary directly from supported apps, import names from Contacts, or start with a pack for your field. You don’t have to build your dictionary from zero.</p>
+    </div>
+    <div class="benefit-visual"><PackExplorer /></div>
+  </section>
+  <ImportReassurance
+    items={[
+      { title: 'Your existing dictionary', copy: 'Direct import from supported apps on your Mac. No export step first.' },
+      { title: 'The people you know', copy: 'Contacts import with your permission, plus optional launch-time syncing.' },
+      { title: 'Room to make it yours', copy: 'Edit aliases, turn pack words on or off, and export your own vocabulary.' },
+    ]}
+  />
+  <section id="quick-add" class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">Quick Add</span>
+      <h2>Teach it once.<br /><span class="accent-ink">Get back to the thought.</span></h2>
+      <p>Select a misheard word and open Quick Add. Pick a suggested match, or search for the right word. Add the spelling to your dictionary and get back to what you were doing.</p>
+    </div>
+    <div class="benefit-visual"><FeatureFilm kind="quickadd" /></div>
+  </section>
+  <section class="matching-story wrap">
+    <h2>More ways to hear it.<br /><span class="accent-ink">One way to spell it.</span></h2>
+    <p>Multiple aliases and fuzzy matching help connect close variations to the word you saved. Apple Intelligence can suggest likely mishearings, too.</p>
+    <div class="simple-aliases"><span>Known aliases</span><b>+</b><span>Close variations</span><b>→</b><strong>Your preferred spelling</strong></div>
+    <small>AI suggestions require macOS 26+ with Apple Intelligence available. Correction results depend on the word and match.</small>
+  </section>
+  <DownloadCta title="Your words deserve the right spelling." />
+</FeatureShell>

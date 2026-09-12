@@ -1,0 +1,7 @@
+/* Tokens the features pages add on top of home/foundation.css (#2816). */
+:root{--muted:#80758b;--green:#287a63;--green-soft:#e8f6ef;--film-panel:#f7f3fd;--film-high:#eee5fc;--film-well:#ffffffda;--film-ink:#181122;--film-line:#d9c8f2;--rose:#b12755;--rose-soft:#fc56851c}
+html[data-theme=dark]{--muted:#ac9fbb;--green:#80d4b4;--green-soft:#1e3930;--film-panel:#1b1525;--film-high:#30213f;--film-well:#241c31;--film-ink:#f4eff9;--film-line:#57406e;--rose:#ffc1d0;--rose-soft:#fc568524}
+
+/* Inline logo marks inside the demos (#2816): the mock loaded app-logo.svg as a background. */
+.comfort-logo svg{width:100%;height:100%;display:block}
+.fd-top .fd-logo{width:20px;height:20px;vertical-align:middle}

@@ -1,0 +1,92 @@
+---
+// Dictation benchmark box (#2816): quality table (desktop) and stacked scores
+// (mobile) from english-polish-benchmark.json, plus the speed cards. The
+// mock's benchmark_markup(). Tabs are a picker group for scripts/features/pickers.js.
+import { benchmark, speedCards, runDate, provenanceLine } from '../../data/features/benchmark.js';
+const models = benchmark.models;
+const rows = benchmark.rows.map((row) => {
+  const high = Math.max(...row.values.map((v) => v[0]));
+  return { ...row, high, overall: row.category === 'Overall' };
+});
+const fmt = (n) => n.toLocaleString('en-US');
+---
+
+<div class="benchmark-box">
+  <div class="benchmark-tabs" aria-label="Benchmark view" data-picker="panels">
+    <button type="button" class="selected" data-choice="quality" data-panel="quality-results" aria-pressed="true">AI polish quality</button>
+    <button type="button" data-choice="speed" data-panel="speed-results" aria-pressed="false">Polish speed</button>
+    <span>{runDate}</span>
+  </div>
+  <div id="quality-results">
+    <div class="benchmark-intro">
+      <h3>Complete English results by category</h3>
+      <p>Pass rate includes pass + minor. Serious errors are in parentheses. Bold marks the highest pass rate, including ties.</p>
+    </div>
+    <div class="desktop-scores">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Category</th><th scope="col">Cases</th>
+            {models.map((m) => <th scope="col" class:list={['model-head', m.key]}>{m.name}<small>Pass (serious)</small></th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {
+            rows.map((row) => (
+              <tr class:list={{ overall: row.overall }}>
+                <th scope="row">{row.category}</th>
+                <td>{fmt(row.cases)}</td>
+                {models.map((m, i) => (
+                  <td class:list={{ best: row.values[i][0] === row.high, [m.key]: row.values[i][0] === row.high }}>
+                    {row.values[i][0].toFixed(1)}% <span>({row.values[i][1]})</span>
+                  </td>
+                ))}
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    <div class="mobile-scores">
+      {
+        rows.map((row) => (
+          <div class:list={['mobile-score', { overall: row.overall }]}>
+            <div>
+              <strong>{row.category}</strong>
+              <span>{fmt(row.cases)} cases</span>
+            </div>
+            <div class="mobile-models">
+              {models.map((m, i) => (
+                <div class:list={{ best: row.values[i][0] === row.high, [m.key]: row.values[i][0] === row.high }}>
+                  <small>{m.name}</small>
+                  <strong>{row.values[i][0].toFixed(1)}%</strong>
+                  <span>{row.values[i][1]} serious</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+    <p class="benchmark-foot">Serious errors changed meaning or dropped content. Lower is better. All models were scored on the same cases.</p>
+  </div>
+  <div id="speed-results" hidden>
+    <div class="benchmark-intro"><h3>One request at a time.</h3><p>Local text-polish timing, including the runtime. Lower is faster.</p></div>
+    <div class="speed-cards">
+      {
+        speedCards.map((card) => (
+          <div>
+            <h3>{card.name}</h3>
+            <strong>
+              {card.median} <small>ms</small>
+            </strong>
+            <span>Median</span>
+            <p>{card.p95}</p>
+          </div>
+        ))
+      }
+    </div>
+    <p class="benchmark-foot">200 cases per model. Text-polish time only, not recording-stop-to-paste latency. Runtime differences limit the comparison.</p>
+  </div>
+  <div class="benchmark-provenance">{provenanceLine[0]}<br />{provenanceLine[1]}</div>
+</div>

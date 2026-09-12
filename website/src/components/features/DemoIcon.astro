@@ -1,0 +1,37 @@
+---
+// Small line icons used inside the feature demos (mock films.py svg() and
+// file_demo.py), #2816.
+interface Props {
+  name: keyof typeof ICONS;
+  class?: string;
+  strokeWidth?: string;
+}
+const ICONS = {
+  play: '<path d="m9 5 11 7-11 7z"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>',
+  prev: '<path d="m14 6-6 6 6 6"/>',
+  next: '<path d="m10 6 6 6-6 6"/>',
+  wave: '<path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/>',
+  check: '<path d="m5 12 4 4L19 6"/>',
+  search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
+  word: '<path d="m4 18 5-12 5 12M6 14h6M16 9h4M16 13h4M16 17h4"/>',
+  document: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/>',
+  lock: '<rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>',
+  cursor: '<path d="m5 3 14 10-7 1-3 7z" fill="currentColor"/>',
+};
+const { name, class: className, strokeWidth = '1.7' } = Astro.props;
+const paths = ICONS[name];
+if (!paths) throw new Error(`DemoIcon: unknown icon "${name}"`);
+---
+
+<svg
+  class={className}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width={strokeWidth}
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  set:html={paths}
+/>

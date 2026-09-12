@@ -3,7 +3,6 @@
 // tagline, three catalog links plus GitHub, then the legal line. The mock's
 // footer has no download link. The homepage passes motionControl so its
 // existing "Pause motion" control keeps rendering there.
-import Logo from './home/Logo.astro';
 import { footerLinks } from '../data/site-navigation.js';
 
 interface Props {
@@ -16,7 +15,7 @@ const year = new Date().getFullYear();
 <footer class="site-chrome chrome-footer">
   <div class="chrome-footer-inner">
     <div class="chrome-footer-brand">
-      <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><Logo /><span>EnviousWispr</span></a>
+      <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><span>EnviousWispr</span></a>
       <p>One free Mac app. More ways to work with your voice.</p>
     </div>
     <nav class="chrome-footer-links" aria-label="Footer">

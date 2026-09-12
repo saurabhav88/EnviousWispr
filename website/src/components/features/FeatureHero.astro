@@ -1,0 +1,47 @@
+---
+// Feature page hero (#2816): the mock's product_hero() (label, title, copy,
+// download, visual) or its centred hero() when no visual is passed.
+import SiteIcon from '../SiteIcon.astro';
+import DownloadButton from './DownloadButton.astro';
+interface Props {
+  /** Catalog slug for the icon and label: dictation, dictionary, privacy, customization… */
+  kind: string;
+  label: string;
+  /** Title HTML (the mock's accent span and line breaks are part of the approved copy). */
+  title: string;
+  copy: string;
+  /** product hero (with a visual slot) or the centred hero used by the dictation page */
+  variant?: 'product' | 'centred';
+}
+const { kind, label, title, copy, variant = 'product' } = Astro.props;
+---
+
+{
+  variant === 'product' ? (
+    <section class="product-hero wrap">
+      <div class="hero-message">
+        <span class="page-label">{label}</span>
+        <h1 set:html={title} />
+        <p>{copy}</p>
+        <div class="hero-actions">
+          <DownloadButton source="features-hero" />
+          <small>Free for Mac · macOS 14+ · Apple Silicon</small>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <slot />
+      </div>
+    </section>
+  ) : (
+    <section class="hero wrap">
+      <div class="page-label">
+        <span class:list={['product-icon', kind]}>
+          <SiteIcon name={kind} />
+        </span>
+        {label}
+      </div>
+      <h1 set:html={title} />
+      <p>{copy}</p>
+    </section>
+  )
+}

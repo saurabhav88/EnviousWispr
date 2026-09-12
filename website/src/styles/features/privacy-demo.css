@@ -1,0 +1,77 @@
+/* Ported from the approved features mock (privacy-demo.css), #2816. Dead selectors, chrome,
+   fonts and shared tokens removed; kill-switch !important kept, cosmetic ones dropped. */
+.privacy-film{--person-skin:#e8b48d;border:1px solid var(--line);border-radius:25px;background:var(--surface);overflow:hidden;box-shadow:0 20px 55px #24103912}
+.privacy-film-head{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:17px 22px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.privacy-film-head button{width:33px;height:33px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent);cursor:pointer}
+.privacy-stage{height:465px;position:relative;background:radial-gradient(ellipse at 50% 15%,var(--soft),transparent 75%)}
+.privacy-cloud-story{position:absolute;inset:0;padding:20px 25px;display:flex;align-items:center;justify-content:center;flex-direction:column;opacity:0;visibility:hidden;transition:opacity .5s,transform .5s;transform:translateY(10px);text-align:center}
+.privacy-film[data-scene="0"] .privacy-cloud-story,.privacy-film[data-scene="1"] .privacy-cloud-story,.privacy-film[data-scene="2"] .privacy-introduce{opacity:1;visibility:visible;transform:none}
+.privacy-scene-art{width:100%;max-width:330px;height:310px;overflow:visible}
+.privacy-cloud-story h3{font-size:27px;letter-spacing:-.8px;line-height:1.2;margin:10px 0;color:var(--ink)}
+.cloud-exec{animation:privacy-laugh .65s var(--delay) ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.privacy-cloud{transition:opacity .5s,transform .7s}
+.privacy-introduce .loop-lips{width:210px;height:210px;margin-bottom:6px}
+.privacy-film-foot{padding:17px 22px 12px;border-top:1px solid var(--line);font-size:12px;line-height:1.6;color:var(--body)}
+.privacy-film-note{font-size:10px;color:var(--muted);display:block;padding:0 22px 17px;line-height:1.6}
+.privacy-film-description{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.privacy-film[data-playing=false] *,.privacy-film[data-animate=paused] *{animation-play-state:paused!important}
+.offline-simple{padding-top:65px;padding-bottom:65px;display:grid;grid-template-columns:repeat(3,1fr);gap:35px}
+.offline-simple h2{font-size:29px;letter-spacing:-1px;margin:0 0 20px}
+.offline-simple p{font-size:17px;color:var(--body);line-height:1.8}
+.offline-simple a{display:inline-block;color:var(--accent);font-size:14px;margin-top:14px}
+.offline-choice{padding-top:55px;padding-bottom:55px;border-top:1px solid var(--line)}
+.offline-choice h2{margin-bottom:24px}
+.offline-choice>p{max-width:760px;font-size:18px;line-height:1.8;color:var(--body)}
+.offline-choice .provider-options{margin-top:30px}
+.offline-choice small{display:block;color:var(--muted);font-size:12px;line-height:1.7;margin-top:20px}
+@keyframes privacy-words{0%{opacity:0;transform:translateY(35px)}20%,70%{opacity:1}100%{opacity:0;transform:translateY(-30px)}}
+@keyframes privacy-laugh{50%{translate:0 -3px}}
+@media(max-width:750px){.offline-simple{grid-template-columns:1fr;gap:35px;padding-top:45px;padding-bottom:45px}.offline-simple>div{border-top:1px solid var(--line);padding-top:25px}.offline-simple h2{font-size:27px}.offline-simple p,.offline-choice>p{font-size:16px}.privacy-stage{height:455px}.privacy-cloud-story{padding:20px}.privacy-scene-art{height:285px}.privacy-cloud-story h3{font-size:25px}.offline-choice{padding-top:40px;padding-bottom:40px}}
+@media(prefers-reduced-motion:reduce){.privacy-film *{animation:none!important;transition:none!important}}
+.word-packet{opacity:0;will-change:transform,opacity}
+.word-packet rect{fill:var(--surface);stroke:var(--line)}
+.word-packet text{font-size:11px;fill:var(--accent)}
+.privacy-cut-tool{opacity:0;pointer-events:none}
+.cut-upper,.cut-lower{transform-origin:0 0}
+.privacy-film[data-scene="1"] .privacy-cut-tool{opacity:calc(1 - var(--exit))}
+.privacy-film[data-scene="1"] .cut-entry{transform:translateX(calc((1 - var(--entry) + var(--exit))*100px)) scaleX(-1)}
+.privacy-film[data-scene="1"] .cut-upper{transform:rotate(calc(var(--jaw)*-20deg))}
+.privacy-film[data-scene="1"] .cut-lower{transform:rotate(calc(var(--jaw)*20deg))}
+.cut-spark{opacity:var(--snip)}
+.privacy-film[data-scene="1"] .privacy-packets{opacity:calc(1 - var(--severed))}
+.privacy-film[data-scene="1"] .privacy-cloud{opacity:calc(1 - var(--severed));transform:translateY(calc(var(--recoil)*-18px))}
+.privacy-film[data-scene="1"] .privacy-wire-upper{transform:translateY(calc(var(--recoil)*-18px));opacity:calc(1 - var(--severed))}
+.privacy-film[data-scene="1"] .privacy-wire-lower{transform:rotate(calc(var(--recoil)*18deg));transform-origin:224px 259px}
+.talking-mouth{animation:privacy-talk .45s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.cloud-server circle{animation:privacy-server 1s ease-in-out infinite}
+.cloud-server circle:nth-last-child(2){animation-delay:.3s}
+@keyframes privacy-packet{0%{opacity:0;transform:translate(13px,38px)}15%{opacity:1}75%{opacity:1}100%{opacity:0;transform:translate(-33px,-59px)}}
+@keyframes privacy-talk{50%{transform:scaleY(.4)}}
+@keyframes privacy-server{50%{opacity:.3}}
+.privacy-film[data-scene="1"] .privacy-wire-bridge{opacity:calc(1 - var(--severed))}
+.privacy-money{color:var(--accent);font-weight:750}
+.privacy-film{box-shadow:0 24px 65px #21103218,inset 0 1px 0 var(--line)}
+.privacy-scene-art{filter:drop-shadow(0 7px 10px #160b2012)}
+.word-packet rect{stroke:var(--accent);stroke-opacity:.24;filter:drop-shadow(0 2px 3px #160b2020)}
+.cloud-exec{animation-duration:1.1s}
+.privacy-cut-tool{filter:drop-shadow(0 3px 3px #150b2935)}
+.privacy-film[data-scene="1"] .privacy-packets{opacity:calc(1 - var(--close))}
+.privacy-film[data-scene="1"] .privacy-wire-bridge{opacity:calc(1 - var(--close))}
+.privacy-introduce .loop-lips{position:relative;opacity:var(--reveal);transform:translateY(calc((1 - var(--reveal))*16px)) scale(calc(.92 + var(--reveal)*.08))}
+.privacy-cloud-story{transition:opacity .55s ease,transform .65s cubic-bezier(.2,.7,.2,1)}
+.privacy-film{container-type:inline-size}
+.privacy-film[data-scene="2"] .privacy-stage{background:var(--surface)}
+.privacy-introduce .loop-lips{width:200px;height:200px;margin:0;filter:none}
+.privacy-lips-shape{filter:none}
+@media(max-width:750px){.privacy-introduce .loop-lips{width:190px;height:190px}}
+.privacy-introduce .loop-lips{opacity:1}
+.privacy-film[data-scene="2"] .privacy-cloud-story{opacity:1;visibility:visible;transform:none}
+.privacy-film[data-scene="2"] .privacy-cloud,.privacy-film[data-scene="2"] .privacy-packets,.privacy-film[data-scene="2"] .privacy-wire-upper,.privacy-film[data-scene="2"] .privacy-wire-lower,.privacy-film[data-scene="2"] .privacy-wire-bridge,.privacy-film[data-scene="2"] .privacy-cut-tool{opacity:0}
+.privacy-local-mark{position:absolute;top:28px;left:50%;width:160px;height:160px;transform:translateX(-50%) scale(.9);opacity:0;pointer-events:none}
+.privacy-local-mark .loop-lips{width:100%;height:100%;filter:none}
+.privacy-film[data-scene="2"] .privacy-local-mark{opacity:var(--reveal);transform:translateX(-50%) scale(calc(.9 + var(--reveal)*.1))}
+.privacy-film[data-scene="2"] .talking-mouth{animation:none}
+.privacy-final-name{color:var(--ink);font-size:clamp(29px,7cqw,37px);letter-spacing:-1.3px;line-height:1.2}
+.privacy-final-promise{display:inline-block;color:var(--accent);font-size:26px;margin-top:8px;letter-spacing:-.7px}
+@media(max-width:750px){.privacy-local-mark{top:32px;width:150px;height:150px}.privacy-final-name{font-size:30px}.privacy-final-promise{font-size:24px}}
+.privacy-cloud-story h3{height:84px;min-height:84px;width:100%}

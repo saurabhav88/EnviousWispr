@@ -46,24 +46,38 @@ const missing = [...expected.keys()].filter((u) => !builtLaunch.has(u)).sort();
 const unexpected = [...builtLaunch].filter((u) => !expected.has(u)).sort();
 
 // ── Resolution helpers ─────────────────────────────────────────────────────
+const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+// Single pass: `&amp;lt;` displays as `&lt;`, so it must not be decoded twice.
 const decode = (s) =>
-  s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)));
-const hasId = (html, id) => {
-  const needle = `id="${id.replace(/"/g, '&quot;')}"`;
-  return html.includes(needle) || html.includes(`id='${id}'`);
-};
+  s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (whole, entity) => {
+    if (!entity.startsWith('#')) return entities[entity.toLowerCase()] ?? whole;
+    const hex = /^#x/i.test(entity);
+    const n = parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? '\ufffd' : String.fromCodePoint(n);
+  });
+/** Every start tag as {name, attrs} with decoded attribute values, whatever the quoting or order. */
+function tags(html) {
+  const out = [];
+  for (const [tag, name] of html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
+    const attrs = {};
+    for (const m of tag.matchAll(/\s([a-z_:][-a-z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/gi)) {
+      attrs[m[1].toLowerCase()] = m[2] !== undefined ? decode(m[2]) : m[3] !== undefined ? decode(m[3]) : m[4] !== undefined ? decode(m[4]) : '';
+    }
+    out.push({ name: name.toLowerCase(), attrs });
+  }
+  return out;
+}
+const hasId = (html, id) => tags(html).some((t) => t.attrs.id === id);
+const attrValues = (html, tagName, attr) =>
+  tags(html)
+    .filter((t) => (tagName ? t.name === tagName : true) && t.attrs[attr] !== undefined)
+    .map((t) => t.attrs[attr]);
+const metaContent = (html, name) => tags(html).find((t) => t.name === 'meta' && t.attrs.name === name)?.attrs.content ?? '';
 /** Resolve an href against the page it sits on. Returns {pathname, hash, external} */
 function resolve(href, baseRoute) {
   let url;
   try {
-    url = new URL(decode(href), `${SITE}${baseRoute}`);
+    url = new URL(href, `${SITE}${baseRoute}`);
   } catch {
     return { invalid: true };
   }
@@ -82,9 +96,8 @@ function fileExists(pathname) {
 /** Validate every same-site link on a page; returns the count checked. */
 function checkLinks(route, html, label = route) {
   let checked = 0;
-  for (const m of html.matchAll(/href="([^"]+)"/g)) {
-    const href = m[1];
-    if (/^(mailto:|tel:|javascript:)/i.test(href)) continue;
+  for (const href of attrValues(html, null, 'href')) {
+    if (!href || /^(mailto:|tel:|javascript:)/i.test(href)) continue;
     const r = resolve(href, route);
     if (r.invalid) {
       problems.push(`${label}: unparseable href ${href}`);
@@ -109,8 +122,8 @@ let linksChecked = 0;
 for (const route of [...expected.keys()].filter((r) => builtLaunch.has(r))) {
   const html = pages.get(route);
   const title = decode(html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '');
-  const description = decode(html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '');
-  const canonical = html.match(/<link rel="canonical" href="([^"]*)"/)?.[1];
+  const description = metaContent(html, 'description');
+  const canonical = tags(html).find((t) => t.name === 'link' && t.attrs.rel === 'canonical')?.attrs.href;
   const h1s = (html.match(/<h1[\s>]/g) ?? []).length;
   const types = [];
   for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
@@ -136,7 +149,7 @@ for (const route of [...expected.keys()].filter((r) => builtLaunch.has(r))) {
   if (h1s !== 1) problems.push(`${route}: ${h1s} <h1> elements`);
   if (!types.includes('WebPage') && !types.includes('CollectionPage')) problems.push(`${route}: no WebPage or CollectionPage JSON-LD`);
   if (!types.includes('BreadcrumbList')) problems.push(`${route}: no BreadcrumbList JSON-LD`);
-  if (/<meta name="robots" content="[^"]*noindex/.test(html)) problems.push(`${route}: noindex`);
+  if (/noindex/.test(metaContent(html, 'robots'))) problems.push(`${route}: noindex`);
   if (/>Loading\b|Loading transcript|Loading…/.test(html)) problems.push(`${route}: a "Loading" placeholder survives in the built HTML`);
   const dashes = [...html.matchAll(/[^<>]{0,40}[—–][^<>]{0,40}/g)].map((m) => m[0].trim());
   if (dashes.length) problems.push(`${route}: em/en dash in built HTML: ${dashes.slice(0, 2).join(' | ')}`);
@@ -163,13 +176,15 @@ function checkAsset(pathname, from) {
   const text = fs.readFileSync(file, 'utf8');
   const refs = [
     ...[...text.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]),
+    ...[...text.matchAll(/\bimport\s*["']([^"']+)["']/g)].map((m) => m[1]),
     ...[...text.matchAll(/from\s*["']([^"']+)["']/g)].map((m) => m[1]),
+    ...[...text.matchAll(/["']((?:\.\/|\.\.\/)[^"'\s]+\.[a-z0-9]+(?:[?#][^"'\s]*)?)["']/gi)].map((m) => m[1]),
     ...[...text.matchAll(/new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/g)].map((m) => m[1]),
     ...[...text.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]),
     ...[...text.matchAll(/["'](\/_astro\/[^"']+)["']/g)].map((m) => m[1]),
   ];
   for (const ref of refs) {
-    if (/^(data:|https?:|\/\/|#)/.test(ref)) continue;
+    if (/^(data:|#)/i.test(ref)) continue;
     const r = resolve(ref, pathname);
     if (r.invalid || r.external) continue;
     checkAsset(r.pathname, pathname);
@@ -177,12 +192,19 @@ function checkAsset(pathname, from) {
 }
 for (const route of builtLaunch) {
   const html = pages.get(route);
-  for (const m of html.matchAll(/<(?:link|script)[^>]*\b(?:href|src)="([^"]+)"/g)) {
-    const r = resolve(m[1], route);
-    if (r.invalid || r.external) continue;
-    if (r.pathname.startsWith('/_astro/') || /\.(js|mjs|css|json|wav|mp3|webp|png|svg)$/.test(r.pathname)) checkAsset(r.pathname, route);
+  for (const t of tags(html)) {
+    for (const attr of ['href', 'src', 'srcset', 'data-src', 'data-transcript', 'data-start', 'data-stop']) {
+      const value = t.attrs[attr];
+      if (!value) continue;
+      const candidates = attr === 'srcset' ? value.split(',').map((part) => part.trim().split(/\s+/)[0]) : [value];
+      for (const candidate of candidates) {
+        const r = resolve(candidate, route);
+        if (r.invalid || r.external) continue;
+        const isAsset = r.pathname.startsWith('/_astro/') || (['link', 'script', 'img', 'source', 'audio', 'video'].includes(t.name) && /\.[a-z0-9]+$/i.test(r.pathname));
+        if (isAsset) checkAsset(r.pathname, route);
+      }
+    }
   }
-  for (const m of html.matchAll(/\b(?:src|href|data-src|data-transcript)="(\/_astro\/[^"]+)"/g)) checkAsset(m[1], route);
 }
 
 // ── Sitemap: every launch URL exactly once, with the catalog's date ────────
@@ -209,8 +231,9 @@ if (seen.has(`${SITE}/how-it-works/`) || seen.has(`${SITE}/how-it-works`)) probl
 if (pages.has('/how-it-works/')) problems.push('/how-it-works/ is still built');
 const linkers = [];
 for (const [route, html] of pages) {
-  for (const m of html.matchAll(/href="([^"]+)"/g)) {
-    const r = resolve(m[1], route.endsWith('.html') ? '/' : route);
+  for (const href of attrValues(html, null, 'href')) {
+    if (!href) continue;
+    const r = resolve(href, route);
     if (!r.invalid && !r.external && /^\/how-it-works\/?$/.test(r.pathname)) {
       linkers.push(route);
       break;

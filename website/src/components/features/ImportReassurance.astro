@@ -1,0 +1,20 @@
+---
+// Three short reassurance tiles (#2816), the mock's .import-reassurance block.
+interface Props {
+  items: { title: string; copy: string }[];
+  /** Wrap in the page column (the default) or let the parent section size it. */
+  wrap?: boolean;
+}
+const { items, wrap = true } = Astro.props;
+---
+
+<div class:list={['import-reassurance', { wrap }]}>
+  {
+    items.map((item) => (
+      <div>
+        <strong>{item.title}</strong>
+        <p>{item.copy}</p>
+      </div>
+    ))
+  }
+</div>

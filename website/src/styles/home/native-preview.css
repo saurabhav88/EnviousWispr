@@ -1,0 +1,198 @@
+/* The live-preview well (Reading Well): shared by the homepage hero and the
+   features pages (#2816). Moved out of demo.css so both bundles have one owner. */
+.hero-native-well {
+  backdrop-filter: blur(14px);
+  background: rgba(252, 250, 255, 0.94);
+  border: 0.5px solid #0f0a1a24;
+  border-radius: 16px;
+  bottom: 17px;
+  box-shadow: 0 9px 28px #0003;
+  color: #0f0a1a;
+  left: 50%;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 400px;
+  z-index: 5;
+}
+.hero-native-header {
+  align-items: center;
+  border-bottom: 0.5px solid #0f0a1a1a;
+  display: flex;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  gap: 12px;
+  height: 34px;
+  padding: 0 16px;
+}
+.hero-native-clock {
+  color: #221b33;
+  flex: none;
+  font:
+    600 13px ui-monospace,
+    SFMono-Regular,
+    monospace;
+}
+.hero-native-meter {
+  align-items: center;
+  display: flex;
+  flex: none;
+  gap: 1.5px;
+  height: 16px;
+  width: 82.5px;
+}
+.hero-native-meter i {
+  background: var(--bar-color);
+  border-radius: 1px;
+  display: block;
+  flex: none;
+  height: var(--bar-height, 2.24px);
+  min-height: 2.24px;
+  width: 2px;
+}
+.hero-native-mode {
+  align-items: center;
+  background: #0f0a1a17;
+  border-radius: 20px;
+  color: #0f0a1ab8;
+  display: flex;
+  font:
+    600 11px -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  gap: 6px;
+  line-height: 13px;
+  margin-left: auto;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.hero-native-mode:before {
+  background: currentColor;
+  border-radius: 50%;
+  content: '';
+  height: 5px;
+  width: 5px;
+}
+.hero-native-words {
+  font:
+    400 14px/21px -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  margin: 12px 0 15px;
+  max-height: 105px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  padding: 0 16px;
+  white-space: normal;
+}
+.hero-native-words:empty {
+  display: none;
+}
+.hero-native-processing:after,
+.hero-native-well:after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #ff2a40,
+    #ff8c00,
+    gold,
+    #adff2f,
+    #00fa9a,
+    #0ff,
+    #1e90ff,
+    #4169e1,
+    #8a2be2,
+    transparent
+  );
+  bottom: 1px;
+  content: '';
+  height: 1px;
+  left: 20px;
+  opacity: 0.5;
+  position: absolute;
+  right: 20px;
+}
+html[data-theme='dark'] .hero-native-well {
+  background: rgba(17, 15, 24, 0.9);
+  border-color: #ffffff21;
+  color: #fffffff7;
+}
+html[data-theme='dark'] .hero-native-header {
+  border-color: #ffffff17;
+}
+html[data-theme='dark'] .hero-native-clock {
+  color: #fffffff0;
+}
+html[data-theme='dark'] .hero-native-mode {
+  background: #ffffff21;
+  color: #ffffffe0;
+}
+.hero-native-processing {
+  align-items: center;
+  backdrop-filter: blur(14px);
+  background: rgba(20, 20, 28, 0.82);
+  border: 0.5px solid #ffffff1a;
+  border-radius: 50px;
+  bottom: 17px;
+  box-shadow: 0 7px 23px #0002;
+  color: #fff;
+  display: flex;
+  font:
+    500 13px -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  gap: 10px;
+  left: 50%;
+  line-height: 18px;
+  overflow: hidden;
+  padding: 10px 14px;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 5;
+}
+.hero-spectrum-wheel {
+  animation: hero-spectrum-spin 8s linear infinite;
+  flex: none;
+  height: 24px;
+  width: 24px;
+}
+@media (max-width: 600px) {
+.hero-native-well {
+    bottom: 16px;
+    max-width: calc(100% - 18px);
+  }
+}
+@media (max-width: 360px) {
+.hero-native-header {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+.hero-native-mode {
+    font-size: 10px;
+    gap: 4px;
+    padding-inline: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+.hero-spectrum-wheel {
+    animation: none;
+  }
+}
+@media (prefers-color-scheme: dark) {
+html:not([data-theme]) .hero-native-well {
+    background: rgba(17, 15, 24, 0.9);
+    border-color: #ffffff21;
+    color: #fffffff7;
+  }
+html:not([data-theme]) .hero-native-header {
+    border-color: #ffffff17;
+  }
+html:not([data-theme]) .hero-native-clock {
+    color: #fffffff0;
+  }
+html:not([data-theme]) .hero-native-mode {
+    background: #ffffff21;
+    color: #ffffffe0;
+  }
+}

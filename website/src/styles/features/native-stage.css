@@ -1,0 +1,35 @@
+/* Rules the mock adds around the shared live-preview well (from its home-native-preview.css), #2816.
+   The well itself is owned by home/native-preview.css. */
+.film-preview .film-surface {
+  border: 0;
+  background: transparent;
+  padding-inline: 0;
+}
+.homepage-native-stage {
+  position: relative;
+  min-height: 260px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 30px 0;
+}
+.homepage-native-stage .hero-native-well {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  width: min(400px, 100%);
+  min-width: 0;
+  max-width: 100%;
+}
+.native-preview-note {
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  margin: 0 0 5px;
+}
+@media (max-width: 600px) {.homepage-native-stage {
+    min-height: 225px;
+    padding: 20px 0;
+  }}
