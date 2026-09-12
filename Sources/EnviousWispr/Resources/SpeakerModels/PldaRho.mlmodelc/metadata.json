@@ -1,0 +1,73 @@
+[
+  {
+    "shortDescription" : "pyannote community-1 PLDA rho (features scaled by sqrt(phi) for VBx clustering, batch 1-32)",
+    "metadataOutputVersion" : "3.0",
+    "outputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32)",
+        "shortDescription" : "",
+        "shape" : "[]",
+        "name" : "rho",
+        "type" : "MultiArray"
+      }
+    ],
+    "version" : "pyannote-speaker-diarization-community-1",
+    "modelParameters" : [
+
+    ],
+    "author" : "Fluid Inference",
+    "specificationVersion" : 8,
+    "storagePrecision" : "Float32",
+    "license" : "CC-BY-4.0",
+    "mlProgramOperationTypeHistogram" : {
+      "Ios16.reduceSum" : 2,
+      "Ios17.clip" : 2,
+      "Ios17.sqrt" : 2,
+      "Ios17.linear" : 2,
+      "Ios17.realDiv" : 2,
+      "Ios17.mul" : 5,
+      "Ios17.sub" : 3
+    },
+    "computePrecision" : "Mixed (Float32, Int32)",
+    "stateSchema" : [
+
+    ],
+    "isUpdatable" : "0",
+    "availability" : {
+      "macOS" : "14.0",
+      "tvOS" : "17.0",
+      "visionOS" : "1.0",
+      "watchOS" : "10.0",
+      "iOS" : "17.0",
+      "macCatalyst" : "17.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_mlProgram"
+    },
+    "inputSchema" : [
+      {
+        "shortDescription" : "",
+        "dataType" : "Float32",
+        "hasShapeFlexibility" : "1",
+        "isOptional" : "0",
+        "shapeFlexibility" : "32 × 256 | 1 × 256 | 2 × 256 | 3 × 256 | 4 × 256 | 5 × 256 | 6 × 256 | 7 × 256 | 8 × 256 | 9 × 256 | 10 × 256 | 11 × 256 | 12 × 256 | 13 × 256 | 14 × 256 | 15 × 256 | 16 × 256 | 17 × 256 | 18 × 256 | 19 × 256 | 20 × 256 | 21 × 256 | 22 × 256 | 23 × 256 | 24 × 256 | 25 × 256 | 26 × 256 | 27 × 256 | 28 × 256 | 29 × 256 | 30 × 256 | 31 × 256",
+        "formattedType" : "MultiArray (Float32 32 × 256)",
+        "type" : "MultiArray",
+        "shape" : "[32, 256]",
+        "name" : "embeddings",
+        "enumeratedShapes" : "[[32, 256], [1, 256], [2, 256], [3, 256], [4, 256], [5, 256], [6, 256], [7, 256], [8, 256], [9, 256], [10, 256], [11, 256], [12, 256], [13, 256], [14, 256], [15, 256], [16, 256], [17, 256], [18, 256], [19, 256], [20, 256], [21, 256], [22, 256], [23, 256], [24, 256], [25, 256], [26, 256], [27, 256], [28, 256], [29, 256], [30, 256], [31, 256]]"
+      }
+    ],
+    "userDefinedMetadata" : {
+      "com.github.apple.coremltools.conversion_date" : "2025-10-04",
+      "com.github.apple.coremltools.source" : "torch==2.8.0",
+      "com.github.apple.coremltools.version" : "9.0b1",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript"
+    },
+    "generatedClassName" : "plda_rho_community_1",
+    "method" : "predict"
+  }
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "shortDescription" : "pyannote community-1 FBANK frontend (10 s audio preprocessing to 80×998 features, batch 1-32, CPU preferred)",
+    "metadataOutputVersion" : "3.0",
+    "outputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32)",
+        "shortDescription" : "",
+        "shape" : "[]",
+        "name" : "fbank_features",
+        "type" : "MultiArray"
+      }
+    ],
+    "version" : "pyannote-speaker-diarization-community-1",
+    "modelParameters" : [
+
+    ],
+    "author" : "Fluid Inference",
+    "specificationVersion" : 8,
+    "storagePrecision" : "Float32",
+    "license" : "CC-BY-4.0",
+    "mlProgramOperationTypeHistogram" : {
+      "Ios17.mul" : 3,
+      "Ios17.transpose" : 2,
+      "Ios17.sub" : 3,
+      "Ios17.conv" : 4,
+      "Ios17.log" : 1,
+      "Ios17.sliceByIndex" : 1,
+      "Ios16.reduceMean" : 2,
+      "Ios17.add" : 2,
+      "Ios17.clip" : 1,
+      "Ios17.pow" : 2,
+      "Ios17.expandDims" : 4,
+      "Ios17.squeeze" : 4,
+      "Ios17.reshape" : 2,
+      "Pad" : 2
+    },
+    "computePrecision" : "Mixed (Float32, Int32)",
+    "stateSchema" : [
+
+    ],
+    "isUpdatable" : "0",
+    "availability" : {
+      "macOS" : "14.0",
+      "tvOS" : "17.0",
+      "visionOS" : "1.0",
+      "watchOS" : "10.0",
+      "iOS" : "17.0",
+      "macCatalyst" : "17.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_mlProgram"
+    },
+    "inputSchema" : [
+      {
+        "shortDescription" : "",
+        "dataType" : "Float32",
+        "hasShapeFlexibility" : "1",
+        "isOptional" : "0",
+        "shapeFlexibility" : "1 × 1 × 160000 | 2 × 1 × 160000 | 3 × 1 × 160000 | 4 × 1 × 160000 | 5 × 1 × 160000 | 6 × 1 × 160000 | 7 × 1 × 160000 | 8 × 1 × 160000 | 9 × 1 × 160000 | 10 × 1 × 160000 | 11 × 1 × 160000 | 12 × 1 × 160000 | 13 × 1 × 160000 | 14 × 1 × 160000 | 15 × 1 × 160000 | 16 × 1 × 160000 | 17 × 1 × 160000 | 18 × 1 × 160000 | 19 × 1 × 160000 | 20 × 1 × 160000 | 21 × 1 × 160000 | 22 × 1 × 160000 | 23 × 1 × 160000 | 24 × 1 × 160000 | 25 × 1 × 160000 | 26 × 1 × 160000 | 27 × 1 × 160000 | 28 × 1 × 160000 | 29 × 1 × 160000 | 30 × 1 × 160000 | 31 × 1 × 160000 | 32 × 1 × 160000",
+        "formattedType" : "MultiArray (Float32 1 × 1 × 160000)",
+        "type" : "MultiArray",
+        "shape" : "[1, 1, 160000]",
+        "name" : "audio",
+        "enumeratedShapes" : "[[1, 1, 160000], [2, 1, 160000], [3, 1, 160000], [4, 1, 160000], [5, 1, 160000], [6, 1, 160000], [7, 1, 160000], [8, 1, 160000], [9, 1, 160000], [10, 1, 160000], [11, 1, 160000], [12, 1, 160000], [13, 1, 160000], [14, 1, 160000], [15, 1, 160000], [16, 1, 160000], [17, 1, 160000], [18, 1, 160000], [19, 1, 160000], [20, 1, 160000], [21, 1, 160000], [22, 1, 160000], [23, 1, 160000], [24, 1, 160000], [25, 1, 160000], [26, 1, 160000], [27, 1, 160000], [28, 1, 160000], [29, 1, 160000], [30, 1, 160000], [31, 1, 160000], [32, 1, 160000]]"
+      }
+    ],
+    "userDefinedMetadata" : {
+      "com.github.apple.coremltools.conversion_date" : "2025-10-15",
+      "com.github.apple.coremltools.source" : "torch==2.8.0",
+      "com.github.apple.coremltools.version" : "9.0b1",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript"
+    },
+    "generatedClassName" : "fbank_community_1",
+    "method" : "predict"
+  }
+]

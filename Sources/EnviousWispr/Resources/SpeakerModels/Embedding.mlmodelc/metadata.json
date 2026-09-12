@@ -1,0 +1,93 @@
+[
+  {
+    "shortDescription" : "pyannote community-1 speaker embedding backend (WeSpeaker ResNet34 consuming 80×998 FBANK features + 589-frame weights, interpolates weights to 125-frame pooling layer internally)",
+    "metadataOutputVersion" : "3.0",
+    "outputSchema" : [
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32)",
+        "shortDescription" : "",
+        "shape" : "[]",
+        "name" : "embedding",
+        "type" : "MultiArray"
+      }
+    ],
+    "version" : "pyannote-speaker-diarization-community-1",
+    "modelParameters" : [
+
+    ],
+    "author" : "Fluid Inference",
+    "specificationVersion" : 8,
+    "storagePrecision" : "Float16",
+    "license" : "CC-BY-4.0",
+    "mlProgramOperationTypeHistogram" : {
+      "Ios17.mul" : 4,
+      "Ios17.sqrt" : 1,
+      "Ios17.sub" : 2,
+      "Ios17.conv" : 38,
+      "Ios17.concat" : 1,
+      "Ios17.clip" : 2,
+      "Ios17.add" : 18,
+      "Ios17.realDiv" : 4,
+      "Ios16.relu" : 33,
+      "Ios17.expandDims" : 7,
+      "Ios16.reduceSum" : 4,
+      "Ios16.reduceL2Norm" : 1,
+      "Ios17.squeeze" : 2,
+      "Ios17.reshape" : 2,
+      "Ios17.cast" : 5
+    },
+    "computePrecision" : "Mixed (Float16, Float32, Int32)",
+    "stateSchema" : [
+
+    ],
+    "isUpdatable" : "0",
+    "availability" : {
+      "macOS" : "14.0",
+      "tvOS" : "17.0",
+      "visionOS" : "1.0",
+      "watchOS" : "10.0",
+      "iOS" : "17.0",
+      "macCatalyst" : "17.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_mlProgram"
+    },
+    "inputSchema" : [
+      {
+        "dataType" : "Float32",
+        "hasShapeFlexibility" : "1",
+        "isOptional" : "0",
+        "shapeFlexibility" : "1...32 × 1 × 80 × 998",
+        "shapeRange" : "[[1, 32], [1, 1], [80, 80], [998, 998]]",
+        "formattedType" : "MultiArray (Float32 1 × 1 × 80 × 998)",
+        "type" : "MultiArray",
+        "shape" : "[1, 1, 80, 998]",
+        "name" : "fbank_features",
+        "shortDescription" : ""
+      },
+      {
+        "dataType" : "Float32",
+        "hasShapeFlexibility" : "1",
+        "isOptional" : "0",
+        "shapeFlexibility" : "1...32 × 589",
+        "shapeRange" : "[[1, 32], [589, 589]]",
+        "formattedType" : "MultiArray (Float32 1 × 589)",
+        "type" : "MultiArray",
+        "shape" : "[1, 589]",
+        "name" : "weights",
+        "shortDescription" : ""
+      }
+    ],
+    "userDefinedMetadata" : {
+      "com.github.apple.coremltools.conversion_date" : "2025-10-16",
+      "com.github.apple.coremltools.source" : "torch==2.8.0",
+      "com.github.apple.coremltools.version" : "9.0b1",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript"
+    },
+    "generatedClassName" : "embedding_community_1",
+    "method" : "predict"
+  }
+]
