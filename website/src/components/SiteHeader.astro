@@ -76,7 +76,7 @@ const { activePage = 'home', themed = false } = Astro.props;
       <a class:list={['nav-link', { active: activePage === 'compare' }]} href="/compare/">Compare</a>
       <div class="resource-parent" data-nav-parent>
         <a
-          class="nav-trigger"
+          class:list={['nav-trigger', { active: resources.some(([label]) => activePage === label.toLowerCase()) }]}
           href="/blog/"
           id="resources-trigger"
           aria-controls="resources-menu"
