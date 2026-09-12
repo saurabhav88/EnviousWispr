@@ -19,6 +19,8 @@ let package = Package(
       dependencies: [
         .product(name: "EnviousWisprCore", package: "EnviousWispr"),
         .product(name: "EnviousWisprLLM", package: "EnviousWispr"),
+        .product(name: "EnviousWisprPipeline", package: "EnviousWispr"),
+        .product(name: "EnviousWisprPostProcessing", package: "EnviousWispr"),
       ],
       path: "Sources/AppleIntelligenceRunner"
     )

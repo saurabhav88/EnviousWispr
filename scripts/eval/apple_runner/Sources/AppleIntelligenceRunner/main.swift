@@ -4,6 +4,8 @@
 
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
+import EnviousWisprPostProcessing
 import Foundation
 
 // MARK: - IO shapes
@@ -18,6 +20,8 @@ struct OutRecord: Encodable {
   var candidate: String?
   var error: String?
   var latencyMs: Int?
+  /// The text the connector actually received when `--preclean` rewrote it.
+  var precleanedInput: String?
 }
 
 // MARK: - Arg parsing (hand-rolled; keeping the tool dependency-free)
@@ -29,6 +33,15 @@ struct Args {
   var systemPrompt: String?
   var systemPromptPath: String?
   var detectedLanguage: String = "en"
+  /// `--preclean`: run the production pre-polish chain (filler removal, then
+  /// inverse text normalization) on each input before the connector, so the
+  /// bench measures what production feeds the model. Word correction and the
+  /// emoji formatter are skipped: the bench has no personal vocabulary.
+  var preclean = false
+  /// `--preclean-only`: compute the same deterministic chain as `--preclean`
+  /// and write it out directly, never calling the connector/model at all.
+  /// For inspecting what the deterministic layer alone does to the exam.
+  var precleanOnly = false
 }
 
 func parseArgs() -> Args {
@@ -37,6 +50,8 @@ func parseArgs() -> Args {
   var sleepSeconds: Double = 0
   var systemPrompt: String?
   var systemPromptPath: String?
+  var preclean = false
+  var precleanOnly = false
   var detectedLanguage: String = "en"
   var argv = CommandLine.arguments.dropFirst().makeIterator()
   while let arg = argv.next() {
@@ -57,6 +72,10 @@ func parseArgs() -> Args {
       systemPromptPath = argv.next()
     case "--detected-language":
       if let code = argv.next() { detectedLanguage = code }
+    case "--preclean":
+      preclean = true
+    case "--preclean-only":
+      precleanOnly = true
     case "-h", "--help":
       printUsage()
       exit(0)
@@ -73,7 +92,9 @@ func parseArgs() -> Args {
     sleepSeconds: sleepSeconds,
     systemPrompt: systemPrompt,
     systemPromptPath: systemPromptPath,
-    detectedLanguage: detectedLanguage
+    detectedLanguage: detectedLanguage,
+    preclean: preclean,
+    precleanOnly: precleanOnly
   )
 }
 
@@ -114,6 +135,43 @@ struct RunnerMain {
   static func main() async {
     let args = parseArgs()
     let cases = loadCorpus(path: args.corpusPath)
+
+    if args.precleanOnly {
+      let sink: FileHandle
+      if let outPath = args.outPath {
+        try? FileManager.default.removeItem(atPath: outPath)
+        FileManager.default.createFile(atPath: outPath, contents: nil)
+        guard let handle = FileHandle(forWritingAtPath: outPath) else {
+          fail("could not open --out for writing: \(outPath)")
+        }
+        sink = handle
+      } else {
+        sink = FileHandle.standardOutput
+      }
+      let normalizer = InverseTextNormalizer()
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      struct PrecleanRecord: Encodable {
+        let id: String
+        let asr_input: String
+        let deterministic_output: String
+        let changed: Bool
+      }
+      for caseItem in cases {
+        let noFillers = FillerRemovalStep.removingFillers(
+          from: caseItem.asr_input, language: args.detectedLanguage, englishVetoed: false)
+        let cleaned = normalizer.normalize(noFillers)
+        let record = PrecleanRecord(
+          id: caseItem.id, asr_input: caseItem.asr_input, deterministic_output: cleaned,
+          changed: cleaned != caseItem.asr_input)
+        if let data = try? encoder.encode(record) {
+          sink.write(data)
+          sink.write(Data("\n".utf8))
+        }
+      }
+      if args.outPath != nil { try? sink.close() }
+      exit(0)
+    }
 
     // Enable file logging so [AIPolish] trace lines from AppleIntelligenceConnector
     // land in ~/Library/Logs/EnviousWispr/app.log. Required for bench-mode A/B
@@ -182,6 +240,7 @@ struct RunnerMain {
     // Stable key order helps humans diffing the JSONL files. Does not affect parse.
     encoder.outputFormatting = [.sortedKeys]
 
+    let normalizer = InverseTextNormalizer()
     let progressEvery = max(1, cases.count / 10)
     let startedAt = Date()
     var errorCount = 0
@@ -189,16 +248,25 @@ struct RunnerMain {
     for (index, caseItem) in cases.enumerated() {
       let record: OutRecord
       let caseStart = Date()
+      let inputText: String
+      if args.preclean {
+        let noFillers = FillerRemovalStep.removingFillers(
+          from: caseItem.asr_input, language: args.detectedLanguage, englishVetoed: false)
+        inputText = normalizer.normalize(noFillers)
+      } else {
+        inputText = caseItem.asr_input
+      }
       do {
         let result = try await connector.polish(
-          text: caseItem.asr_input,
+          text: inputText,
           instructions: instructions,
           config: config,
           onToken: nil
         )
         let ms = Int(Date().timeIntervalSince(caseStart) * 1000)
         record = OutRecord(
-          id: caseItem.id, candidate: result.polishedText, error: nil, latencyMs: ms)
+          id: caseItem.id, candidate: result.polishedText, error: nil, latencyMs: ms,
+          precleanedInput: args.preclean && inputText != caseItem.asr_input ? inputText : nil)
       } catch let err as LLMError {
         // frameworkUnavailable OR modelNotReady on the very first case means
         // Apple Intelligence is not usable on this machine right now (unsupported
