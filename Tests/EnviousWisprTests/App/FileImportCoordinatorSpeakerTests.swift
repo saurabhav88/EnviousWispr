@@ -1325,4 +1325,83 @@ struct FileImportCoordinatorSpeakerTests {
     let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
     #expect(failure != nil, "there is nothing to rename against a .single outcome")
   }
+
+  @Test("exportButtonLabels relabels for Marked up regardless of whether the document has turns")
+  func exportButtonLabelsRelabelForMarkedUpRegardlessOfTurns() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, speakerLabeler: { _, _ in .single(segments: []) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.turns == nil, "a .single outcome has no turns")
+
+    #expect(coordinator.exportButtonLabels.copy == "Copy everything")
+    coordinator.documentView = .markedUp
+    #expect(
+      coordinator.exportButtonLabels.copy == "Copy cleaned",
+      "the export-rule relabel is general, not scoped to turn-labeled documents")
+    #expect(coordinator.exportButtonLabels.save == "Save cleaned as…")
+    #expect(coordinator.exportButtonLabels.share == "Share cleaned…")
+  }
+
+  @Test("exportText for a turn-labeled document routes through the presenter, honoring timesOn")
+  func exportTextForTurnLabeledDocumentRoutesThroughPresenter() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: "hello there friend", wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil }
+    #expect(stored)
+
+    coordinator.timesOn = true
+    #expect(
+      coordinator.exportText.contains(":"),
+      "with times on, a turn-labeled export should carry a time label")
+    coordinator.timesOn = false
+    #expect(
+      !coordinator.exportText.contains(":"),
+      "with times off, the export should carry no time label")
+  }
+
+  @Test("prepareTurnDiffs populates one diff per turn, off the main actor, matching prepareMarkedUp's shape")
+  func prepareTurnDiffsPopulatesOneDiffPerTurn() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: "hello there friend", wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    let stored = await settleUntil { coordinator.turns != nil }
+    #expect(stored)
+    #expect(coordinator.turnDiffs == nil, "nothing has computed a diff yet")
+
+    await coordinator.prepareTurnDiffs()
+
+    let diffs = coordinator.turnDiffs
+    #expect(diffs?.count == coordinator.turns?.count)
+    for turn in coordinator.turns ?? [] {
+      #expect(diffs?[turn.id] != nil, "every turn should have its own diff entry")
+    }
+  }
 }
