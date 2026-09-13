@@ -74,6 +74,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/eval"))
 
+from section_envelope import (  # noqa: E402
+    accept_section, pack_addendum, unwrap_sections, wrap_sections,
+)
 from acceptance_gate import (  # noqa: E402
     _key,
     _selftest_mirrors,
@@ -639,6 +642,197 @@ def polish_case(
     }
 
 
+# --- #2851 phase 2: pack mode -------------------------------------------------------
+#
+# Several speaker sections in ONE call, wrapped by `section_envelope.wrap_sections`, the
+# v7 system prompt plus `pack_addendum`, and the answer cut back per section by
+# `unwrap_sections` with `accept_section` applied to each. The corpus is
+# `docs/feature-requests/2851-cloud-packing-corpus/` (sections.jsonl + packs-*.jsonl),
+# consumed unchanged. Output keeps one ROW PER SECTION (id = the section id) so
+# `behavior_judge.py` scores a packed arm exactly like an isolated one, plus a pack
+# summary file beside it. `--dry-run` writes the exact request bodies and calls nobody.
+
+
+def load_packs(path: Path) -> list[dict]:
+    packs = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if not d.get("section_ids"):
+                raise ValueError(f"pack {d.get('file')}:{d.get('pack_index')} has no section_ids")
+            packs.append(d)
+    if not packs:
+        raise ValueError(f"packs file {path} is empty")
+    return packs
+
+
+def build_pack_request(
+    provider: str, model: str, sections: list[str], prompt_body: str | None = None,
+    thinking: tuple[str, object] | None = None,
+) -> tuple[str, str, dict]:
+    """(system, user, body) for one pack: the v7 system prompt sized by the pack's word
+    count, the addendum, and the wrapped sections as the transcript. The body is the
+    provider's real request shape (`openai_body`/`gemini_body`/`claude_body`), which is
+    what `--dry-run` writes."""
+    word_count = sum(len(s.split()) for s in sections)
+    system = build_cloud_fixed_system(word_count, body=prompt_body) + pack_addendum(len(sections))
+    user = f"Transcript to clean:\n\n{wrap_sections(sections)}"
+    if provider in ("openai",):
+        body = openai_body(model, system, user)
+    elif provider == "gemini":
+        body = gemini_body(model, system, user, thinking)
+    elif provider in ("claude", "bedrock"):
+        body = claude_body(model, system, user)
+    else:
+        raise ValueError(f"unknown provider {provider}")
+    return system, user, body
+
+
+def polish_pack(
+    provider: str, model: str, api_key: str, pack: dict, texts: dict[str, str],
+    azure_endpoint: str = "", prompt_body: str | None = None,
+    thinking: tuple[str, object] | None = None,
+) -> tuple[dict, list[dict]]:
+    """One pack through the provider. Returns (pack summary, per-section rows). A pack that
+    the provider truncates (`call_once` raises on the provider's own finish reason) or that
+    comes back with the wrong tag count/order is `truncated` / `miscount`: every section in
+    it gets an empty candidate and that status, which is what the plan's split-in-half
+    would then retry; the measurement records the event rather than splitting."""
+    ids = pack["section_ids"]
+    sections = [texts[i] for i in ids]
+    system, user, _ = build_pack_request(provider, model, sections, prompt_body, thinking)
+    start = time.monotonic()
+    summary = {
+        "file": pack.get("file"), "pack_index": pack.get("pack_index"),
+        "sections": len(ids), "words": sum(len(s.split()) for s in sections),
+    }
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint, thinking)
+            break
+        except RuntimeError as e:
+            if "truncated" in str(e):
+                summary.update(outcome="truncated", error=str(e), attempts=attempt,
+                               latencyMs=int((time.monotonic() - start) * 1000))
+                rows = [{"id": i, "candidate": "", "section_status": "truncated",
+                         "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
+                        for i in ids]
+                return summary, rows
+            last_err, retryable = str(e), False
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"
+            retryable = e.code in RETRYABLE
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            last_err, retryable = f"{type(e).__name__}: {e}", True
+        except (KeyError, json.JSONDecodeError) as e:
+            last_err, retryable = str(e), False
+        if attempt < MAX_ATTEMPTS and retryable:
+            time.sleep(min(2 ** attempt, 16))
+            continue
+        summary.update(outcome="error", error=last_err, attempts=attempt,
+                       latencyMs=int((time.monotonic() - start) * 1000))
+        return summary, [{"id": i, "candidate": "", "section_status": "error",
+                          "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
+                         for i in ids]
+    summary.update(attempts=attempt, latencyMs=int((time.monotonic() - start) * 1000),
+                   **{k: v for k, v in meta.items() if v is not None})
+    parts = unwrap_sections(raw, len(ids))
+    if parts is None:
+        summary["outcome"] = "miscount"
+        rows = [{"id": i, "candidate": "", "section_status": "miscount",
+                 "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
+                for i in ids]
+        return summary, rows
+    rows = []
+    statuses: dict[str, int] = {}
+    for section_id, original, candidate in zip(ids, sections, parts):
+        verdict = accept_section(original, _strip_llm_preamble_python(candidate, strip_transcript_tags=False))
+        statuses[verdict.status] = statuses.get(verdict.status, 0) + 1
+        rows.append({
+            "id": section_id,
+            "candidate": verdict.candidate if verdict.status == "accepted" else "",
+            "section_status": verdict.status,
+            "pack_index": pack.get("pack_index"), "pack_file": pack.get("file"),
+        })
+    summary["outcome"] = "ok"
+    summary["section_statuses"] = statuses
+    return summary, rows
+
+
+def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | None,
+                  thinking: tuple[str, object] | None) -> int:
+    cases = load_corpus(args.corpus)
+    texts = {c["id"]: c["text"] for c in cases}
+    packs = load_packs(args.pack)
+    missing = [i for p in packs for i in p["section_ids"] if i not in texts]
+    if missing:
+        print(f"{len(missing)} section ids in {args.pack.name} are not in {args.corpus.name}: "
+              f"{missing[:5]}", file=sys.stderr)
+        return 2
+    if args.limit:
+        packs = packs[: args.limit]
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    print(f"packs    : {args.pack.name} ({len(packs)} packs, "
+          f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
+
+    if args.dry_run is not None:
+        with open(args.dry_run, "w") as f:
+            for p in packs:
+                sections = [texts[i] for i in p["section_ids"]]
+                system, user, body = build_pack_request(
+                    args.provider, args.model, sections, prompt_body, thinking)
+                f.write(json.dumps({
+                    "provider": args.provider, "model": args.model,
+                    "file": p.get("file"), "pack_index": p.get("pack_index"),
+                    "section_ids": p["section_ids"], "words": sum(len(s.split()) for s in sections),
+                    "system_chars": len(system), "user_chars": len(user), "body": body,
+                }) + "\n")
+        print(f"dry-run  : {len(packs)} request bodies written to {args.dry_run}; nothing called",
+              file=sys.stderr)
+        return 0
+
+    summaries: list[dict] = []
+    rows_by_id: dict[str, dict] = {}
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {
+            pool.submit(polish_pack, args.provider, args.model, api_key, p, texts,
+                        azure_endpoint, prompt_body, thinking): p
+            for p in packs
+        }
+        for n, fut in enumerate(as_completed(futures), start=1):
+            summary, rows = fut.result()
+            summaries.append(summary)
+            for r in rows:
+                rows_by_id[r["id"]] = r
+            if summary["outcome"] != "ok":
+                print(f"[{n}/{len(packs)}] {summary['outcome'].upper()} "
+                      f"{summary['file']}:{summary['pack_index']} {summary.get('error', '')}",
+                      file=sys.stderr)
+    with open(args.out, "w") as f:
+        for p in packs:
+            for i in p["section_ids"]:
+                f.write(json.dumps(rows_by_id[i]) + "\n")
+    packs_out = args.out.with_suffix(args.out.suffix + ".packs.jsonl")
+    with open(packs_out, "w") as f:
+        for s in sorted(summaries, key=lambda s: (str(s["file"]), s["pack_index"] or 0)):
+            f.write(json.dumps(s) + "\n")
+    outcomes: dict[str, int] = {}
+    for s in summaries:
+        outcomes[s["outcome"]] = outcomes.get(s["outcome"], 0) + 1
+    statuses: dict[str, int] = {}
+    for r in rows_by_id.values():
+        statuses[r["section_status"]] = statuses.get(r["section_status"], 0) + 1
+    print(f"packs    : {outcomes}  sections: {statuses}  {int(time.monotonic() - t0)}s",
+          file=sys.stderr)
+    print(f"wrote    : {args.out} and {packs_out}", file=sys.stderr)
+    return 0
+
+
 def load_corpus(path: Path) -> list[dict]:
     cases = []
     with open(path) as f:
@@ -665,6 +859,16 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--limit", type=int, default=0, help="first N cases only (smoke)")
+    ap.add_argument(
+        "--pack", type=Path, default=None,
+        help="#2851 phase 2: a packs-*.jsonl beside --corpus (sections.jsonl); several "
+             "sections per call, one output row per section, plus <out>.packs.jsonl",
+    )
+    ap.add_argument(
+        "--dry-run", type=Path, default=None,
+        help="with --pack: write every request body to this path and call no provider "
+             "(no key needed; GR-NO-CLOUD-SPEND)",
+    )
     ap.add_argument(
         "--system-prompt", choices=["production", "bare"], default="production",
         help="production = the full CloudFixedPromptBuilder composition the app "
@@ -729,6 +933,16 @@ def main() -> int:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
         return 2
 
+    if args.dry_run is not None and args.pack is None:
+        print("--dry-run needs --pack", file=sys.stderr)
+        return 2
+    if args.pack is not None and args.dry_run is not None:
+        # No key, no endpoint, no call: the bodies are written from the same builders the
+        # live path uses, so what the founder approves for a real run is exactly what is
+        # on disk (GR-NO-CLOUD-SPEND).
+        return run_pack_mode(args, api_key="", azure_endpoint="", prompt_body=prompt_body,
+                             thinking=thinking)
+
     azure_endpoint = ""
     if args.provider == "bedrock":
         if args.azure:
@@ -785,6 +999,9 @@ def main() -> int:
                 "claude": "anthropic-api-key",
             }[args.provider]
         )
+
+    if args.pack is not None:
+        return run_pack_mode(args, api_key, azure_endpoint, prompt_body, thinking)
 
     cases = load_corpus(args.corpus)
     corpus_total = len(cases)

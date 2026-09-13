@@ -286,6 +286,9 @@ scripts/eval/apple_runner/Package.resolved
 !scripts/eval/diff_replays.py
 !scripts/eval/classify_redundant.py
 !scripts/eval/run_cloud_type_b.py
+# #2851 phase 2: the pack-mode envelope the runner's --pack mode imports (mirror of the
+# planned Swift SectionEnvelope); its test is under scripts/eval/tests/ (already tracked).
+!scripts/eval/section_envelope.py
 !scripts/eval/tts_corpus.py
 !scripts/eval/build_parakeet_corpus.py
 !scripts/eval/build_refreshed_corpus.py

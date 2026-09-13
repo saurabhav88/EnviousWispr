@@ -720,6 +720,11 @@ jobs:
           # shape and exact-count assertion as the two above.
           python3 scripts/eval/tests/test_rebuild_model_registry.py
           python3 scripts/eval/tests/test_custom_vocab_mirror.py
+          # #2851 phase 2: the pack-mode section envelope (wrap/unwrap/accept mirror)
+          # and the runner's --pack/--dry-run plumbing, driven with a fake call_once.
+          # Same runner shape and exact-count assertion; imports nothing outside the
+          # stdlib and reads no key.
+          python3 scripts/eval/tests/test_section_envelope.py
 
       - name: Require every lane
         run: |
