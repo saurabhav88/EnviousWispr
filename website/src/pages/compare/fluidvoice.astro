@@ -72,7 +72,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from FluidVoice?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, file transcription, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident."
+        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident."
       }
     },
     {
@@ -355,7 +355,7 @@ const faqJsonLd = JSON.stringify({
 </header>
 
 <CompareDecisionSummary id="fluidvoice-vs-enviouswispr-answer" heading="FluidVoice or EnviousWispr: which should you choose?">
-  <p>Both apps are free, GPLv3, and can transcribe and polish speech on your Mac. Choose FluidVoice if you want fourteen speech-model choices, an Intel or Windows route, file transcription, or deeper prompt routing. Choose EnviousWispr if you want a smaller setup on macOS 14 or later, direct paste with Escape Recovery, and a built-in polish model whose base model and license are published. FluidVoice is the more configurable toolkit; EnviousWispr is the more guided default. Neither choice requires a subscription or account, so the practical decision is flexibility versus simplicity rather than price. If you dictate mainly on a newer Mac, both cover the core job well. The stronger reason to switch is a missing workflow or compatibility feature, not a basic difference in transcription privacy.</p>
+  <p>Both apps are free, GPLv3, and can transcribe and polish speech on your Mac. Choose FluidVoice if you want fourteen speech-model choices, an Intel or Windows route, or deeper prompt routing. Choose EnviousWispr if you want a smaller setup on macOS 14 or later, direct paste with Escape Recovery, and a built-in polish model whose base model and license are published. FluidVoice is the more configurable toolkit; EnviousWispr is the more guided default. Neither choice requires a subscription or account, so the practical decision is flexibility versus simplicity rather than price. If you dictate mainly on a newer Mac, both cover the core job well. The stronger reason to switch is a missing workflow or compatibility feature, not a basic difference in transcription privacy.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -392,7 +392,8 @@ const faqJsonLd = JSON.stringify({
                  the GPLv3-licensed app code and are not documented under a public license the way EG-1 is.
                - FluidVoice v1.6.9, opened directly on 2026-08-21: also has a File Transcription tab that
                  accepts a dragged-in audio or video file (WAV, MP3, M4A, OGG, MP4, and more) for meeting-style
-                 transcription; EnviousWispr has no equivalent, live dictation only. Its "Cohere" voice engine
+                 transcription; EnviousWispr's Transcribe a File does the same for audio and video files
+                 (updated 2026-09-13, see /features/file-transcription/). Its "Cohere" voice engine
                  downloads a real local model (~1.54GB, Apple Silicon tag, no API key) rather than calling a
                  cloud API, so the existing "on-device" claim for it holds.
              Confidence: source-verified from FluidVoice's own GitHub repo, prior internal teardown, and the
@@ -687,7 +688,7 @@ const faqJsonLd = JSON.stringify({
         <p class="advantage-desc">FluidVoice can transcribe an existing audio or video file you drag in, WAV, MP3, M4A, OGG, MP4, and more, useful for a meeting recording made elsewhere. EnviousWispr only transcribes what you dictate live; it has no file-upload transcription today.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want fourteen speech-model choices, deep prompt routing, an Intel Mac path, or file transcription, FluidVoice is a strong pick. If you want a smaller setup with a tuned default model on more macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want fourteen speech-model choices, deep prompt routing, or an Intel Mac path, FluidVoice is a strong pick. If you want a smaller setup with a tuned default model on more macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -705,7 +706,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from FluidVoice?</div>
-        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, file transcription, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident.</p>
+        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does FluidVoice have AI polish like EnviousWispr's EG-1?</div>
