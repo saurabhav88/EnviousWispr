@@ -129,13 +129,12 @@ final class FileImportCoordinator {
     case transcribing(fileName: String)
     /// `done` parts of `total` have finished.
     ///
-    /// **These numbers ARE user-facing now (#2772 finding 14).** The comment here used to
-    /// say the opposite — "the user never sees these numbers as chunks" — and the Working
-    /// step was built to that rule. The approved prototype contradicts it: its label reads
-    /// "Cleaning part 9 of 14 with EG-1". Founder, on the shipped version: "the clean up was
+    /// **These numbers ARE user-facing (#2772 finding 14, kept by #2817).** The comment here
+    /// used to say the opposite — "the user never sees these numbers as chunks" — and the
+    /// Working step was built to that rule. Founder, on that version: "the clean up was
     /// supposed to show # of chunks and it processing each chunk, not pasting the finished
-    /// polished work in real-time." Under his standing instruction the prototype is the
-    /// target, so the rule is retired and its reason is recorded in the PR that retired it.
+    /// polished work in real-time." The Working card reads them as "Cleaning section N of M"
+    /// (`WorkingStepModel`).
     case polishing(done: Int, total: Int)
     case finished
     case rejected(FileImportRejection)
@@ -219,36 +218,16 @@ final class FileImportCoordinator {
   /// the mechanism: the user is never told about parts or chunks.
   private(set) var phase: String = ""
 
-  /// How many words the transcript holds, shown live beside the progress bar.
-  /// The raw pieces this run will clean, in order, published so the Working step can show
-  /// the QUEUE rather than only the finished text (#2772 finding 14).
+  /// The raw pieces this run cleans, in order: what `placedPassages()` locates in the raw
+  /// text for the Marked up view. No longer a screen surface (#2817 replaced the Working
+  /// step's queue with one card); read by the tests through `@testable`, so `private(set)`.
   ///
   /// Empty until the split happens, and cleared by `startOver`/`choose` with everything else
-  /// belonging to a document. The view pairs it with `parts.count` to know which row is
-  /// being worked: the queue is fixed for a run and the finished count only grows.
+  /// belonging to a document.
   private(set) var pendingPieces: [String] = []
 
-  /// "Cleaning part 9 of 14 with EG-1", or "" when nothing is being cleaned.
-  ///
-  /// The engine is the one FROZEN with the run, never the live selection: a user who
-  /// changes their polisher while a run is going would otherwise watch the label credit an
-  /// engine that is not doing the work. Same rule the Done screen already follows.
-  var cleaningLabel: String {
-    guard case .polishing(let done, let total) = state, total > 0 else { return "" }
-    let engine = (runConfiguration?.polishProvider ?? .none).displayName
-    return "Cleaning part \(min(done + 1, total)) of \(total) with \(engine)"
-  }
-
+  /// How many words the transcript holds, shown on Done.
   var wordCount: Int { TranscriptSplitter.wordCount(in: rawTranscript) }
-
-  /// 0...1 for the progress bar.
-  var progress: Double {
-    if case .polishing(let done, let total) = state, total > 0 {
-      return Double(done) / Double(total)
-    }
-    if case .finished = state { return 1 }
-    return 0
-  }
 
   /// The whole raw transcript, kept so a re-polish never re-reads the file.
   private(set) var rawTranscript: String = ""
@@ -1821,8 +1800,8 @@ final class FileImportCoordinator {
     advanceGeneration()
     let generationAtStart = generation
     parts = []
-    // #2772 finding 14: the OLD queue must not be shown as the current one while this run
-    // is still preparing. Cleared here and republished by `polishAll` from the new split.
+    // The OLD cut must not place the new run's passages while this run is still preparing.
+    // Cleared here and set again by `polishAll` from the new split.
     pendingPieces = []
     // The saved words are about to be replaced by different ones.
     forgetSaveOutcome()
@@ -2423,8 +2402,8 @@ final class FileImportCoordinator {
   private func polishAll(
     _ pieces: [String], turnIDs: [String?] = [], gaps: [String] = [], generationAtStart: Int
   ) async {
-    // #2772 finding 14: the queue the Working step renders. Published here, at the one place
-    // the split exists, so the rows on screen are the pieces that will actually be cleaned.
+    // The pieces `placedPassages()` locates for the Marked up view, set at the one place the
+    // split exists so the placement and the cleanup work on the same cut.
     pendingPieces = pieces
     // #2772 finding 11: DURABLE BEFORE THE SLOW HALF, at the one entry both callers pass
     // through. Guarding inside `run` covered only the first transcription; a re-polish
