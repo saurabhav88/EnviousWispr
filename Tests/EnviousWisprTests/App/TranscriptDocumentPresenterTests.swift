@@ -11,6 +11,8 @@ import Testing
 struct TranscriptDocumentPresenterTests {
 
   private static let rawText = "hello there friend"
+  private static func noDiff(_ turn: Turn) -> WordDiff.Result? { nil }
+
   private static func turn(
     _ id: String, _ speaker: String, _ range: Range<Int>, startMs: Int? = 0,
     processedText: String? = nil
@@ -24,7 +26,7 @@ struct TranscriptDocumentPresenterTests {
   func nilTurnsRendersNil() {
     let result = TranscriptDocumentPresenter.render(
       turns: nil, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result == nil)
   }
 
@@ -32,7 +34,7 @@ struct TranscriptDocumentPresenterTests {
   func emptyTurnsRendersNilToo() {
     let result = TranscriptDocumentPresenter.render(
       turns: [], rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result == nil)
   }
 
@@ -44,7 +46,7 @@ struct TranscriptDocumentPresenterTests {
     ]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: ["A": "Zach"], mode: .cleaned,
-      timesOn: false, engineLanguage: nil)
+      timesOn: false, diffLookup: Self.noDiff)
     #expect(result?.count == 2)
     #expect(result?[0].content == .plain("Hello!"))
     #expect(
@@ -57,21 +59,31 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hello!")]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .original, timesOn: false,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result?[0].content == .plain("hello"))
   }
 
-  @Test("marked up mode produces a diff, not plain text")
-  func markedUpModeProducesADiff() {
+  @Test("marked up mode consumes the supplied diff, never computing its own")
+  func markedUpModeConsumesTheSuppliedDiff() {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hi!")]
+    let suppliedDiff = WordDiff.compare(original: "hello", cleaned: "Hi!", language: nil)
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false,
-      engineLanguage: nil)
+      diffLookup: { _ in suppliedDiff })
     guard case .markedUp(let diff) = result?[0].content else {
       Issue.record("expected a .markedUp content case")
       return
     }
-    #expect(!diff.segments.isEmpty)
+    #expect(diff == suppliedDiff)
+  }
+
+  @Test("marked up mode with no cached diff yet falls back to cleaned text, never blocking")
+  func markedUpModeWithNoDiffFallsBackToCleanedText() {
+    let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hi!")]
+    let result = TranscriptDocumentPresenter.render(
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false,
+      diffLookup: Self.noDiff)
+    #expect(result?[0].content == .plain("Hi!"))
   }
 
   @Test("unknown speaker never gets a name, regardless of what speakerNames carries")
@@ -79,7 +91,7 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "unknown", 0..<5)]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: ["unknown": "should never surface"],
-      mode: .cleaned, timesOn: false, engineLanguage: nil)
+      mode: .cleaned, timesOn: false, diffLookup: Self.noDiff)
     #expect(result?[0].speakerName == nil)
   }
 
@@ -88,7 +100,7 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "A", 0..<5)]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result?[0].speakerName == nil)
   }
 
@@ -97,10 +109,10 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "A", 0..<5, startMs: 65_000)]
     let on = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     let off = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(on?[0].timeLabel == "1:05")
     #expect(off?[0].timeLabel == nil)
   }
@@ -110,7 +122,7 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "A", 0..<5, startMs: nil)]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result?[0].timeLabel == nil)
   }
 
@@ -173,7 +185,7 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("100-200", "A", 100..<200)]
     let result = TranscriptDocumentPresenter.render(
       turns: turns, rawText: "short", speakerNames: [:], mode: .original, timesOn: false,
-      engineLanguage: nil)
+      diffLookup: Self.noDiff)
     #expect(result?[0].content == .plain(""))
   }
 }

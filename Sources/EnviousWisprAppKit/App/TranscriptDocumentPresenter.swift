@@ -11,36 +11,31 @@ import Foundation
 /// different inputs feeding the SAME turn-rendering/export decision once turns are in hand.
 /// Each caller keeps its OWN existing plain-text fallback for the `turns == nil` case; this
 /// type answers only "given real turns, what do they look like and what gets exported."
-public enum TranscriptDocumentPresenter {
+///
+/// Module-internal, matching `FileImportCoordinator`/`TranscriptDetailView`'s own convention
+/// — both this type's callers live in `EnviousWisprAppKit`, so nothing here needs to be
+/// `public`.
+enum TranscriptDocumentPresenter {
 
-  /// Mirrors `FileImportCoordinator.DocumentView` — the SAME three states, reused rather than
-  /// redeclared. History gets its own instance of this identical enum for its own
-  /// screen-local mode state; the two screens never share a mutable mode owner.
-  public enum ViewMode: Equatable, Sendable {
-    case cleaned, markedUp, original
-  }
+  /// Reuses `FileImportCoordinator.DocumentView` directly rather than redeclaring an
+  /// equivalent enum (found by chunk review) — History gets its own LOCAL `@State` of this
+  /// SAME type for its own screen-local mode; the two screens never share a mutable owner.
+  typealias ViewMode = FileImportCoordinator.DocumentView
 
   /// One turn ready to render. `content` carries either plain text or a diff — `.markedUp`
   /// needs styled segments (removed/changed/added), the other two modes do not.
-  public struct RenderedTurn: Equatable, Sendable {
-    public let speakerId: String
+  struct RenderedTurn: Equatable, Sendable {
+    let speakerId: String
     /// `nil` for `"unknown"` — a classification outcome, never a named speaker (#2810).
     /// Callers must never attach a rename control when this is `nil`.
-    public let speakerName: String?
+    let speakerName: String?
     /// `nil` when times are off, or the turn has no timing at all.
-    public let timeLabel: String?
-    public let content: Content
+    let timeLabel: String?
+    let content: Content
 
-    public enum Content: Equatable, Sendable {
+    enum Content: Equatable, Sendable {
       case plain(String)
       case markedUp(WordDiff.Result)
-    }
-
-    public init(speakerId: String, speakerName: String?, timeLabel: String?, content: Content) {
-      self.speakerId = speakerId
-      self.speakerName = speakerName
-      self.timeLabel = timeLabel
-      self.content = content
     }
   }
 
@@ -49,9 +44,17 @@ public enum TranscriptDocumentPresenter {
   /// — `nil` and `[]` collapse to the SAME "fall back to plain text" outcome, never
   /// distinguished by a caller). `rawText` is the SAME text `turn.originalTextRange` indexes
   /// into (`Transcript.text` for History, the wizard's own `rawTranscript` for a live run).
-  public static func render(
+  ///
+  /// `diffLookup` supplies an ALREADY-PREPARED `WordDiff.Result` for `.markedUp` mode — this
+  /// function never calls `WordDiff.compare` itself (found by chunk review: `WordDiff`'s own
+  /// doc comment measures up to ~3 seconds at pathological input sizes, so computing it
+  /// synchronously inside a rendering call would stall the caller; the plan's own corrected
+  /// §3 requires the SAME off-main, cached preparation `prepareMarkedUp` already uses). A
+  /// turn with no cached diff yet (still preparing) renders `nil` from the lookup and this
+  /// falls back to that turn's cleaned text rather than blocking.
+  static func render(
     turns: [Turn]?, rawText: String, speakerNames: [String: String], mode: ViewMode,
-    timesOn: Bool, engineLanguage: String?
+    timesOn: Bool, diffLookup: (Turn) -> WordDiff.Result?
   ) -> [RenderedTurn]? {
     guard let turns, !turns.isEmpty else { return nil }
     return turns.map { turn in
@@ -62,8 +65,11 @@ public enum TranscriptDocumentPresenter {
       case .cleaned: content = .plain(cleaned)
       case .original: content = .plain(original)
       case .markedUp:
-        content = .markedUp(
-          WordDiff.compare(original: original, cleaned: cleaned, language: engineLanguage))
+        if let diff = diffLookup(turn) {
+          content = .markedUp(diff)
+        } else {
+          content = .plain(cleaned)
+        }
       }
       return RenderedTurn(
         speakerId: turn.speakerId,
@@ -78,7 +84,7 @@ public enum TranscriptDocumentPresenter {
   /// callers use `isCleanedFallback` to relabel their buttons ("Copy cleaned", etc.).
   /// `nil` under the exact same condition as `render` — a caller with no turns to render
   /// has no turn-shaped text to export either, and falls back to its OWN existing export.
-  public static func exportText(
+  static func exportText(
     turns: [Turn]?, rawText: String, speakerNames: [String: String], timesOn: Bool, mode: ViewMode
   ) -> (text: String, isCleanedFallback: Bool)? {
     guard let turns, !turns.isEmpty else { return nil }
@@ -102,9 +108,7 @@ public enum TranscriptDocumentPresenter {
   /// Button titles for the three export actions. `.markedUp` relabels to disclose the
   /// substitution (founder's export rule, #2811 §2.1); the other two modes keep the
   /// wizard's own existing titles unchanged.
-  public static func exportButtonLabels(mode: ViewMode) -> (
-    copy: String, save: String, share: String
-  ) {
+  static func exportButtonLabels(mode: ViewMode) -> (copy: String, save: String, share: String) {
     mode == .markedUp
       ? ("Copy cleaned", "Save cleaned as…", "Share cleaned…")
       : ("Copy everything", "Save as…", "Share…")

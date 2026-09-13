@@ -11,10 +11,12 @@ import SwiftUI
 /// turn-labeled case.
 struct TurnDocumentView<Fallback: View>: View {
   let turns: [TranscriptDocumentPresenter.RenderedTurn]?
-  /// Called with a speaker id and its CURRENT name (or `nil`) when the user commits a rename
-  /// from the popover. The caller re-fetches current analysis/turns and writes through
+  /// Called with a speaker id and its new name when the user commits a rename. Returns `nil`
+  /// on success, or an error message to show inline without dismissing the popover (plan §7:
+  /// "Rename write fails ... Popover shows an inline error, does not silently claim success").
+  /// The caller re-fetches current analysis/turns and writes through
   /// `mergeSpeakerFields(explicitRename:)` — this view never persists anything itself.
-  let onRename: (String, String) -> Void
+  let onRename: (String, String) async -> String?
   @ViewBuilder let fallback: () -> Fallback
 
   var body: some View {
@@ -35,9 +37,15 @@ struct TurnDocumentView<Fallback: View>: View {
 
 private struct TurnRowView: View {
   let turn: TranscriptDocumentPresenter.RenderedTurn
-  let onRename: (String, String) -> Void
+  let onRename: (String, String) async -> String?
   @State private var isRenaming = false
   @State private var draftName = ""
+  @State private var renameError: String?
+  /// Captured when the popover opens, never read live off `turn` at commit time: `ForEach`
+  /// keys rows by POSITION (`\.offset`), so the same row identity can be reused for a
+  /// different turn while a popover is still open (found by chunk review). Committing must
+  /// target the speaker the user actually opened the popover on.
+  @State private var renamingSpeakerId: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -65,7 +73,9 @@ private struct TurnRowView: View {
         .foregroundStyle(.secondary)
     } else {
       Button {
+        renamingSpeakerId = turn.speakerId
         draftName = turn.speakerName ?? ""
+        renameError = nil
         isRenaming = true
       } label: {
         Text(displayName)
@@ -76,12 +86,31 @@ private struct TurnRowView: View {
       .accessibilityValue(displayName)
       .popover(isPresented: $isRenaming) {
         RenamePopoverView(
-          initialName: turn.speakerName ?? "",
-          onCommit: { name in
-            onRename(turn.speakerId, name)
+          initialName: draftName,
+          errorMessage: renameError,
+          onCommit: { name in commitRename(name) },
+          onCancel: {
+            renameError = nil
             isRenaming = false
-          },
-          onCancel: { isRenaming = false })
+          })
+      }
+    }
+  }
+
+  /// On failure, reopens the popover with the error message rather than letting the dismissal
+  /// already in flight (e.g. from an outside click) silently swallow the failed write.
+  private func commitRename(_ name: String) {
+    guard let id = renamingSpeakerId else {
+      isRenaming = false
+      return
+    }
+    Task {
+      if let error = await onRename(id, name) {
+        renameError = error
+        isRenaming = true
+      } else {
+        renameError = nil
+        isRenaming = false
       }
     }
   }
@@ -121,9 +150,12 @@ private struct MarkedUpTurnText: View {
 /// this distinguishes the two via a flag Escape sets before dismissal, and treats ANY OTHER
 /// disappearance (`.onDisappear`, which fires for outside-click dismissal too) as a commit
 /// attempt. Escape's own flag makes it read as a cancel instead, even though both paths
-/// dismiss through the same SwiftUI mechanism.
+/// dismiss through the same SwiftUI mechanism. `errorMessage` renders inline when the
+/// caller's last commit attempt failed (plan §7) — the popover is a fresh instance each time
+/// it reopens after a failure, so `hasCommitted`/`didCancelExplicitly` correctly reset.
 private struct RenamePopoverView: View {
   let initialName: String
+  let errorMessage: String?
   let onCommit: (String) -> Void
   let onCancel: () -> Void
   @State private var name: String
@@ -131,34 +163,41 @@ private struct RenamePopoverView: View {
   @State private var hasCommitted = false
   private static let maxLength = 60
 
-  init(initialName: String, onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+  init(
+    initialName: String, errorMessage: String?, onCommit: @escaping (String) -> Void,
+    onCancel: @escaping () -> Void
+  ) {
     self.initialName = initialName
+    self.errorMessage = errorMessage
     self.onCommit = onCommit
     self.onCancel = onCancel
     self._name = State(initialValue: initialName)
   }
 
   var body: some View {
-    TextField("Speaker name", text: $name)
-      .textFieldStyle(.roundedBorder)
-      .frame(width: 200)
-      .padding(8)
-      .onSubmit { commit() }
-      .onExitCommand {
-        didCancelExplicitly = true
-        onCancel()
+    VStack(alignment: .leading, spacing: 4) {
+      TextField("Speaker name", text: $name)
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 200)
+        .onSubmit { commit() }
+        .onExitCommand {
+          didCancelExplicitly = true
+          onCancel()
+        }
+        .onChange(of: name) { _, newValue in
+          if newValue.count > Self.maxLength { name = String(newValue.prefix(Self.maxLength)) }
+        }
+      if let errorMessage {
+        Text(errorMessage)
+          .font(.caption)
+          .foregroundStyle(.red)
       }
-      .onChange(of: name) { _, newValue in
-        if newValue.count > Self.maxLength { name = String(newValue.prefix(Self.maxLength)) }
-      }
-      .onDisappear {
-        // Enter already committed and dismissed the popover from the PARENT, which triggers
-        // THIS disappearance too — without the guard, a single Enter press would commit
-        // twice. Escape is excluded by `didCancelExplicitly`; only an outside-click dismissal
-        // (neither flag set) should still trigger a commit here.
-        guard !didCancelExplicitly, !hasCommitted else { return }
-        commit()
-      }
+    }
+    .padding(8)
+    .onDisappear {
+      guard !didCancelExplicitly, !hasCommitted else { return }
+      commit()
+    }
   }
 
   private func commit() {
