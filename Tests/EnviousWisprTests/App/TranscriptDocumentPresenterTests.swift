@@ -24,9 +24,11 @@ struct TranscriptDocumentPresenterTests {
 
   @Test("a finished document discloses a turn the cleanup did not polish, and only then (#2851)")
   func isUncleanedFollowsWasPolishedOnAFinishedDocument() {
+    // Both turns carry text; only the flag differs, so a presenter reading `processedText`
+    // instead of `wasPolished` cannot pass (second-pass review).
     let turns = [
       Self.turn("0-5", "A", 0..<5, processedText: "Hello!", wasPolished: true),
-      Self.turn("6-18", "B", 6..<18, processedText: nil, wasPolished: false),
+      Self.turn("6-18", "B", 6..<18, processedText: "There, friend.", wasPolished: false),
     ]
     let finished = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false,

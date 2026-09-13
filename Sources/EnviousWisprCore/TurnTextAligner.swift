@@ -5,9 +5,12 @@ import Foundation
 /// `WordDiff`'s tokens and edits, and the cleaned words are cut at the raw turn boundaries.
 /// No second cleanup, no model call, no speaker name near a prompt.
 ///
-/// The contract that matters: a word is NEVER moved between speakers. Wherever the alignment
-/// cannot say who a cleaned word belongs to, the turn keeps its raw words (`processedText`
-/// nil) and is disclosed, rather than guessed. The rules, from the plan's §2.5 P3, P5, P6:
+/// The contract that matters: a word is never shown under the wrong speaker where the
+/// alignment can see the move, which is every edit inside a turn and every edit between
+/// NEIGHBOURING turns; the one accepted blind spot is a word carried across two or more
+/// turns inside one passage (see the last rule). Wherever the alignment cannot say who a
+/// cleaned word belongs to, the turn keeps its raw words (`processedText` nil) and is
+/// disclosed, rather than guessed. The rules, from the plan's §2.5 P3, P5, P6:
 /// - An equal word belongs to the turn its raw range lies in; a raw word whose range
 ///   straddles two turns is unassignable and fails both.
 /// - A hunk (a maximal run of deletes and inserts between equals) whose deleted raw words
