@@ -432,14 +432,23 @@ struct TranscriptDetailView: View {
   private func prepareTurnDiffs() async {
     let input = turnDiffInput
     guard turnDiffs == nil, !input.pairs.isEmpty else { return }
-    let computed = await Task.detached(priority: .userInitiated) {
+    let worker = Task.detached(priority: .userInitiated) {
       var results: [String: WordDiff.Result] = [:]
       for pair in input.pairs {
+        // Between compares: selecting another row cancels this `.task(id:)` invocation, and
+        // the handler below forwards that to the worker, which stops at the next turn
+        // instead of diffing a long transcript nobody is looking at (found by cloud review,
+        // round 4). `Task.detached` does not inherit the caller's cancellation on its own.
+        guard !Task.isCancelled else { break }
         results[pair.id] = WordDiff.compare(
           original: pair.original, cleaned: pair.cleaned, language: input.language)
       }
       return results
-    }.value
+    }
+    let computed = await withTaskCancellationHandler(
+      operation: { await worker.value },
+      onCancel: { worker.cancel() }
+    )
     guard !Task.isCancelled, turnDiffInput == input else { return }
     turnDiffCache = (input, computed)
   }

@@ -1381,6 +1381,10 @@ final class FileImportCoordinator {
       task = Task.detached(priority: .userInitiated) {
         var results: [String: WordDiff.Result] = [:]
         for pair in input.pairs {
+          // Between compares, never mid-compare: an obsolete document's worker (file
+          // replaced, retry changed the turns, Start Over) stops at the next turn instead of
+          // diffing every remaining one (found by cloud review, round 4).
+          guard !Task.isCancelled else { break }
           results[pair.id] = WordDiff.compare(
             original: pair.original, cleaned: pair.cleaned, language: input.language)
         }
@@ -1388,8 +1392,15 @@ final class FileImportCoordinator {
       }
       turnDiffWorker = (input, task)
     }
-    let result = await task.value
-    guard turnDiffInput == input else { return }
+    // `Task.detached` is UNSTRUCTURED: cancelling THIS caller (`.task(id:)` on an input change)
+    // does not reach the worker by itself, same as `assembleTurnsOrPersistTerminal`'s own
+    // assembly task. The handler forwards it; the worker is single-flight per input, so the
+    // only caller awaiting it is the one whose input just went stale.
+    let result = await withTaskCancellationHandler(
+      operation: { await task.value },
+      onCancel: { task.cancel() }
+    )
+    guard !Task.isCancelled, turnDiffInput == input else { return }
     if turnDiffWorker?.input == input { turnDiffWorker = nil }
     turnDiffCache = (input, result)
   }
