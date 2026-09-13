@@ -41,7 +41,8 @@ struct TurnTextAlignerReplayTests {
     let cleaned = try #require(row.polishedText ?? row.processedText)
 
     let passage = TurnTextAligner.Passage(
-      placement: .placed(0..<row.text.utf16.count), cleaned: cleaned, wasPolished: true)
+      placement: .placed(rawRange: 0..<row.text.utf16.count, contentRange: 0..<row.text.utf16.count),
+      cleaned: cleaned, wasPolished: true)
     let started = Date()
     let outcome = TurnTextAligner.align(
       rawText: row.text, passages: [passage], turns: turns, language: row.language)

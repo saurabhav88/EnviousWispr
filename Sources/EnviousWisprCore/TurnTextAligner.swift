@@ -27,9 +27,12 @@ public enum TurnTextAligner {
 
   public struct Passage: Equatable, Sendable {
     public enum Placement: Equatable, Sendable {
-      /// UTF-16 range of the passage's ORIGINAL text in the raw transcript, from the
-      /// coordinator's own scan (never a cumulative length).
-      case placed(Range<Int>)
+      /// UTF-16 ranges in the raw transcript from the coordinator's own scan (never a
+      /// cumulative length): `rawRange` is the passage's ORIGINAL text including the gap
+      /// that precedes its first word; `contentRange` is the piece the scan actually found.
+      /// The gap can hold words an UNPLACEABLE earlier passage failed to claim, which is why
+      /// poisoning reads `contentRange` and slicing reads `rawRange` (chunk 1 review).
+      case placed(rawRange: Range<Int>, contentRange: Range<Int>)
       case unplaceable
     }
     public let placement: Placement
@@ -82,6 +85,7 @@ public enum TurnTextAligner {
     let indexByID = Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($1.id, $0) })
 
     var pieces: [String: [(passageIndex: Int, text: String)]] = [:]
+    var leadingWhitespace: [Int: String] = [:]
     var fallbacks: [String: Fallback] = [:]
     var polishedAll = Dictionary(uniqueKeysWithValues: turns.map { ($0.id, true) })
 
@@ -102,12 +106,12 @@ public enum TurnTextAligner {
     var previousEnd = 0
     for (index, passage) in passages.enumerated() {
       switch passage.placement {
-      case .placed(let range):
+      case .placed(let range, _):
         previousEnd = range.upperBound
       case .unplaceable:
         let nextStart =
           passages[(index + 1)...].lazy.compactMap { p -> Int? in
-            if case .placed(let r) = p.placement { return r.lowerBound }
+            if case .placed(_, let content) = p.placement { return content.lowerBound }
             return nil
           }.first ?? raw.count
         for turn in turnsOverlapping(previousEnd..<max(previousEnd, nextStart)) {
@@ -118,7 +122,7 @@ public enum TurnTextAligner {
 
     // 2. Each placed passage: align, attribute, cut.
     for (passageIndex, passage) in passages.enumerated() {
-      guard case .placed(let passageRange) = passage.placement else { continue }
+      guard case .placed(let passageRange, _) = passage.placement else { continue }
       let overlapping = turnsOverlapping(passageRange)
       guard let cleaned = passage.cleaned else {
         for turn in overlapping { fail(turn.id, .unreached) }
@@ -142,19 +146,46 @@ public enum TurnTextAligner {
         let owners = overlapping.filter { $0.originalTextRange.overlaps(range) }
         return owners.count == 1 ? owners[0] : nil
       }
-      /// Whether the deleted boundary word `ai` has the same key as the neighbouring turn's
-      /// adjacent word: its last word when looking backwards, its first when forwards.
-      func repeatsAcross(_ ai: Int, into neighbour: Turn, before: Bool) -> Bool {
-        let key = a[ai].key
-        let candidates = a.indices.filter { overlappingTurn(absolute[$0], is: neighbour) }
-        guard let adjacent = before ? candidates.last : candidates.first else {
-          // The neighbour's words are outside this passage: treat as a repeat (unknown).
-          return true
+      /// Whether a deleted run touching a turn boundary could have been kept from the OTHER
+      /// side instead: Myers keeps one copy of a repeated phrase and deletes the other, so a
+      /// deleted run at B's start that repeats the end of A (or at A's end that repeats the
+      /// start of B) is ambiguous. `run` is the maximal contiguous deleted run in this hunk
+      /// that touches the boundary, in document order; ambiguity is any nonempty prefix of it
+      /// (looking back into A) or suffix (looking forward into B) matching the neighbour's
+      /// adjacent words of the same length (chunk 1 review: "go now" | "go now please").
+      func repeatsAcross(_ run: [Int], into neighbour: Turn, before: Bool) -> Bool {
+        // The neighbour's words come from the RAW text, not this passage: the boundary can
+        // sit at a passage edge, and the neighbour's words are still there to compare.
+        let neighbourKeys = WordDiff.tokenize(
+          String(decoding: raw[neighbour.originalTextRange], as: UTF16.self), locale: locale
+        ).map(\.key)
+        guard !neighbourKeys.isEmpty else { return false }
+        let keys = run.map { a[$0].key }
+        for length in 1...keys.count {
+          if before {
+            let prefix = Array(keys.prefix(length))
+            let adjacent = Array(neighbourKeys.suffix(length))
+            if adjacent.count == length, adjacent == prefix { return true }
+          } else {
+            let suffix = Array(keys.suffix(length))
+            let adjacent = Array(neighbourKeys.prefix(length))
+            if adjacent.count == length, adjacent == suffix { return true }
+          }
         }
-        return a[adjacent].key == key
+        return false
       }
-      func overlappingTurn(_ range: Range<Int>, is turn: Turn) -> Bool {
-        turn.originalTextRange.overlaps(range)
+      /// The maximal run of consecutive original indices in `deletes` starting at `ai` and
+      /// extending forward (from a turn's first word) or backward (to a turn's last word),
+      /// returned in document order.
+      func contiguousRun(from ai: Int, in deletes: [Int], forward: Bool) -> [Int] {
+        let set = Set(deletes)
+        var run = [ai]
+        var next = forward ? ai + 1 : ai - 1
+        while set.contains(next) {
+          run.append(next)
+          next += forward ? 1 : -1
+        }
+        return forward ? run : run.reversed()
       }
       func failAllTouching(_ ai: Int, _ reason: Fallback) {
         for turn in overlapping where turn.originalTextRange.overlaps(absolute[ai]) {
@@ -229,14 +260,16 @@ public enum TurnTextAligner {
           owners.insert(turn.id)
           touched.insert(turn.id)
           if absolute[ai].lowerBound == turn.originalTextRange.lowerBound,
-            let n = neighbour(of: turn, before: true), repeatsAcross(ai, into: n, before: true)
+            let n = neighbour(of: turn, before: true),
+            repeatsAcross(contiguousRun(from: ai, in: deletes, forward: true), into: n, before: true)
           {
             trustworthy = false
             touched.insert(n.id)
           }
           if absolute[ai].upperBound == turn.originalTextRange.upperBound,
             let n = neighbour(of: turn, before: false),
-            repeatsAcross(ai, into: n, before: false)
+            repeatsAcross(
+              contiguousRun(from: ai, in: deletes, forward: false), into: n, before: false)
           {
             trustworthy = false
             touched.insert(n.id)
@@ -251,16 +284,13 @@ public enum TurnTextAligner {
       }
 
       // The passage original's leading whitespace is layout `tokenize` drops (its first
-      // token starts after it); it belongs BETWEEN a turn's pieces when the turn continues
-      // from the previous passage, and is trimmed away when the turn starts here.
-      let leading = String(original.prefix { $0.isWhitespace })
+      // token starts after it); the join below puts it BETWEEN a turn's pieces when the turn
+      // continues from an earlier passage.
+      leadingWhitespace[passageIndex] = String(original.prefix { $0.isWhitespace })
       var perTurn: [String: String] = [:]
       var order: [String] = []
       for (turnID, text) in attributed {
-        if perTurn[turnID] == nil {
-          order.append(turnID)
-          perTurn[turnID] = leading
-        }
+        if perTurn[turnID] == nil { order.append(turnID) }
         perTurn[turnID, default: ""] += text
       }
       for turnID in order {
@@ -287,11 +317,19 @@ public enum TurnTextAligner {
       var previousIndex: Int?
       for (passageIndex, text) in parts {
         if let previousIndex, previousIndex != passageIndex,
-          case .placed(let prev) = passages[previousIndex].placement,
-          case .placed(let next) = passages[passageIndex].placement,
+          case .placed(let prev, _) = passages[previousIndex].placement,
+          case .placed(let next, _) = passages[passageIndex].placement,
           prev.upperBound <= next.lowerBound
         {
-          joined += String(decoding: raw[prev.upperBound..<next.lowerBound], as: UTF16.self)
+          // The separator is the raw text between the two placed ranges plus the next
+          // passage's own leading whitespace. Only whitespace crosses: content in the gap
+          // means a passage in between produced no piece for this turn (its words were all
+          // removed), and copying it would restore deleted words (chunk 1 review); a single
+          // space stands in.
+          let gap =
+            String(decoding: raw[prev.upperBound..<next.lowerBound], as: UTF16.self)
+            + (leadingWhitespace[passageIndex] ?? "")
+          joined += gap.allSatisfy(\.isWhitespace) ? gap : " "
         }
         joined += text
         previousIndex = passageIndex

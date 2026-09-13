@@ -33,7 +33,10 @@ struct TurnTextAlignerTests {
   private func placed(_ raw: String, cleaned: String?, wasPolished: Bool = true)
     -> TurnTextAligner.Passage
   {
-    .init(placement: .placed(0..<raw.utf16.count), cleaned: cleaned, wasPolished: wasPolished)
+    let lead = raw.prefix { $0.isWhitespace }.utf16.count
+    return .init(
+      placement: .placed(rawRange: 0..<raw.utf16.count, contentRange: lead..<raw.utf16.count),
+      cleaned: cleaned, wasPolished: wasPolished)
   }
 
   private func text(_ outcome: TurnTextAligner.Outcome, _ id: String) -> TurnTextAligner.TurnText? {
@@ -156,10 +159,10 @@ struct TurnTextAlignerTests {
     ]
     let cut = "first part ends here".utf16.count
     let p1 = TurnTextAligner.Passage(
-      placement: .placed(0..<cut), cleaned: "first part ends here", wasPolished: true)
+      placement: .placed(rawRange: 0..<cut, contentRange: 0..<cut), cleaned: "first part ends here", wasPolished: true)
     let rest = String(decoding: Array(raw.utf16)[cut...], as: UTF16.self)  // " and continues there. done."
     let p2 = TurnTextAligner.Passage(
-      placement: .placed(cut..<raw.utf16.count), cleaned: "and continues there. done.",
+      placement: .placed(rawRange: cut..<raw.utf16.count, contentRange: (cut + 1)..<raw.utf16.count), cleaned: "and continues there. done.",
       wasPolished: true)
     _ = rest
     let out = TurnTextAligner.align(rawText: raw, passages: [p1, p2], turns: turns)
@@ -179,10 +182,15 @@ struct TurnTextAlignerTests {
     let last = "alpha beta. gamma delta.".utf16.count
     let passages = [
       TurnTextAligner.Passage(
-        placement: .placed(0..<first), cleaned: "alpha beta.", wasPolished: true),
+        placement: .placed(rawRange: 0..<first, contentRange: 0..<first), cleaned: "alpha beta.",
+        wasPolished: true),
       TurnTextAligner.Passage(placement: .unplaceable, cleaned: "gamma delta.", wasPolished: true),
+      // The unplaceable passage's words ride in the next passage's leading gap, as the
+      // coordinator's scan produces them: raw range from the previous end, content from the
+      // found piece.
       TurnTextAligner.Passage(
-        placement: .placed(last..<raw.utf16.count), cleaned: "epsilon zeta.", wasPolished: true),
+        placement: .placed(rawRange: first..<raw.utf16.count, contentRange: (last + 1)..<raw.utf16.count),
+        cleaned: "epsilon zeta.", wasPolished: true),
     ]
     let out = TurnTextAligner.align(rawText: raw, passages: passages, turns: turns)
     #expect(text(out, "a")?.processedText == "alpha beta.")
@@ -232,6 +240,51 @@ struct TurnTextAlignerTests {
     #expect(text(out, "a")?.processedText == "we should go now.")
     #expect(text(out, "b")?.processedText == nil && out.fallbacks["b"] == .emptied)
     #expect(text(out, "c")?.processedText == "and then we left.")
+  }
+
+  @Test("a repeated PHRASE across a boundary is ambiguous: both turns keep raw words")
+  func repeatedPhraseAcrossBoundaryIsAmbiguous() {
+    let raw = "go now go now please"
+    let turns = [
+      turn("a", "A", in: raw, from: "go now", to: "now"),
+      turn("b", "B", in: raw, from: "go now please", to: "please"),
+    ]
+    // Myers keeps one "go now" and deletes the other; which speaker kept it is a guess.
+    let cleaned = "go now please"
+    let out = TurnTextAligner.align(
+      rawText: raw, passages: [placed(raw, cleaned: cleaned)], turns: turns)
+    #expect(text(out, "a")?.processedText == nil && text(out, "b")?.processedText == nil)
+    #expect(out.fallbacks["a"] == .boundary && out.fallbacks["b"] == .boundary)
+  }
+
+  @Test("a deleted filler at a boundary that repeats nothing is attributed, not failed")
+  func distinctFillerAtBoundaryIsAttributed() {
+    let raw = "life's too short. like you know that."
+    let turns = [
+      turn("a", "A", in: raw, from: "life's", to: "short."),
+      turn("b", "B", in: raw, from: "like", to: "that."),
+    ]
+    let cleaned = "life's too short. you know that."
+    let out = TurnTextAligner.align(
+      rawText: raw, passages: [placed(raw, cleaned: cleaned)], turns: turns)
+    #expect(text(out, "a")?.processedText == "life's too short.")
+    #expect(text(out, "b")?.processedText == "you know that.")
+  }
+
+  @Test("a passage in the middle of a turn that lost all its words does not come back via the join")
+  func joinNeverRestoresDeletedWords() {
+    let raw = "one um two"
+    let turns = [turn("a", "A", in: raw, from: "one", to: "two")]
+    let passages = [
+      TurnTextAligner.Passage(
+        placement: .placed(rawRange: 0..<3, contentRange: 0..<3), cleaned: "one", wasPolished: true),
+      TurnTextAligner.Passage(
+        placement: .placed(rawRange: 3..<6, contentRange: 4..<6), cleaned: "", wasPolished: true),
+      TurnTextAligner.Passage(
+        placement: .placed(rawRange: 6..<10, contentRange: 7..<10), cleaned: "two", wasPolished: true),
+    ]
+    let out = TurnTextAligner.align(rawText: raw, passages: passages, turns: turns)
+    #expect(text(out, "a")?.processedText == "one two")
   }
 
   @Test("a space-free passage is one token and aligns whole or falls back whole")
