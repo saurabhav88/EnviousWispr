@@ -131,11 +131,14 @@ public enum TurnTextAligner {
       }
     }
 
-    // 2. Each placed passage: align, attribute, cut.
+    // 2. Each placed passage: align, attribute, cut. A cancelled caller (a run stopped or a
+    //    document replaced while this computed) stops at the next passage: the rest read as
+    //    unreached, and the caller's own cancellation check refuses the partial outcome
+    //    (cloud review of PR #2871, round 3).
     for (passageIndex, passage) in passages.enumerated() {
       guard case .placed(let passageRange, _) = passage.placement else { continue }
       let overlapping = turnsOverlapping(passageRange)
-      guard let cleaned = passage.cleaned else {
+      guard let cleaned = passage.cleaned, !Task.isCancelled else {
         for turn in overlapping { fail(turn.id, .unreached) }
         continue
       }

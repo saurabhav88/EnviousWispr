@@ -192,6 +192,43 @@ struct TurnTextAlignerTests {
     #expect(text(out, "u")?.processedText == "not so much. I")
   }
 
+  @Test("a cancelled caller stops at the next passage: the rest read as unreached")
+  func cancelledCallerStopsAtTheNextPassage() async {
+    let raw = "first part ends here and continues there. done."
+    let turns = [
+      turn("a", "A", in: raw, from: "first", to: "there."),
+      turn("b", "B", in: raw, from: "done.", to: "done."),
+    ]
+    let cut = "first part ends here".utf16.count
+    let passages = [
+      TurnTextAligner.Passage(
+        placement: .placed(rawRange: 0..<cut, contentRange: 0..<cut), cleaned: "first part ends here",
+        wasPolished: true),
+      TurnTextAligner.Passage(
+        placement: .placed(rawRange: cut..<raw.utf16.count, contentRange: (cut + 1)..<raw.utf16.count),
+        cleaned: "and continues there. done.", wasPolished: true),
+    ]
+    let job = Task<TurnTextAligner.Outcome?, Never> {
+      // Parked on a cancellation-aware sleep; the cancel below wakes it, and only then
+      // does the aligner run, inside a task that IS cancelled.
+      try? await Task.sleep(for: .seconds(30))
+      guard Task.isCancelled else { return nil }
+      return TurnTextAligner.align(rawText: raw, passages: passages, turns: turns)
+    }
+    job.cancel()
+    guard let out = await job.value else {
+      Issue.record("the task woke without being cancelled")
+      return
+    }
+    #expect(text(out, "a")?.processedText == nil)
+    #expect(text(out, "b")?.processedText == nil)
+    #expect(out.fallbacks["a"] == .unreached && out.fallbacks["b"] == .unreached)
+    // Control: the same call outside a cancelled task aligns both.
+    let control = TurnTextAligner.align(rawText: raw, passages: passages, turns: turns)
+    #expect(text(control, "a")?.processedText == "first part ends here and continues there.")
+    #expect(text(control, "b")?.processedText == "done.")
+  }
+
   @Test("an unplaceable passage poisons the raw interval up to the next placed one")
   func unplaceablePassageFallsBack() {
     let raw = "alpha beta. gamma delta. epsilon zeta."

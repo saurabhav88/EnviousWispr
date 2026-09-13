@@ -1321,12 +1321,16 @@ final class FileImportCoordinator {
   /// The commit re-validates the input and the row's existence immediately before the
   /// write, with no suspension point in between.
   func refreshTurnTexts() async {
+    // A cancelled caller (a stopped run) starts no job of its own (cloud review of PR
+    // #2871, round 3).
+    guard !Task.isCancelled else { return }
     while let inFlight = alignWorker {
       // The job clears `alignWorker` on the main actor before its value resolves, so the
       // re-check sees either nothing or a job another waiter started first. A caller
       // returns only once a job has aligned exactly the CURRENT input: if the input moved
       // on while it waited (a part landed), it goes round again (whole-diff review).
       await inFlight.job.value
+      guard !Task.isCancelled else { return }
       if !inFlight.job.isCancelled, inFlight.input == currentAlignInput() { return }
     }
     guard let input = currentAlignInput() else { return }
@@ -1717,6 +1721,10 @@ final class FileImportCoordinator {
     speakerStepTask?.cancel()
     runTask?.cancel()
     guard isRunning else { return }
+    // A run's in-flight alignment is obsolete with it (its revision changes below); after
+    // Done there is nothing to stop, and a late alignment finishing the on-disk state is
+    // left alone (chunk 3 review; cloud review of PR #2871, round 3).
+    alignWorker?.job.cancel()
     generation += 1
     state = .stopped
     // **The step moves with the state.** Stopping is an ENDING, so the user
