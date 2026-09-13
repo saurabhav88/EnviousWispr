@@ -2,13 +2,11 @@
 import { getImage } from 'astro:assets';
 import cases from '../../data/home/cases.json';
 import AppDemo from './AppDemo.astro';
-const images = import.meta.glob('../../assets/home/*.{webp,png}', {
-  eager: true,
-  import: 'default',
-});
+import { useCaseArt as images } from '../../utils/home/use-case-art.js';
 const assets = await Promise.all(
   cases.map(async (item) => {
-    const src = images['../../assets/home/' + item.image];
+    const src = images[item.image];
+    if (!src) throw new Error(`UseCases: no import for cases.json image "${item.image}"`);
     const widths = [480, 800, 1200];
     const outputs = await Promise.all(
       widths.map((width) => getImage({ src, width, format: 'webp', quality: 82 })),
@@ -16,8 +14,13 @@ const assets = await Promise.all(
     return {
       src: outputs[1].src,
       srcset: outputs.map((v, i) => v.src + ' ' + widths[i] + 'w').join(', '),
-      width: src.width,
-      height: src.height,
+      // Dimensions come from the 800w output, never from `src`: any property
+      // read on an imported ImageMetadata marks the ORIGINAL as referenced
+      // (astro/assets/utils/proxy.js), and the full-size master (1.4 to
+      // 1.9 MB each, 14 MB for the nine) is then kept in dist although no
+      // page loads it. check-dist-weight.mjs fails the build if that returns.
+      width: outputs[1].attributes.width,
+      height: outputs[1].attributes.height,
     };
   }),
 );
