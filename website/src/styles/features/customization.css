@@ -106,13 +106,13 @@
 .kf-done::before{content:'✓ '}
 .keybind-film[data-done=true] .kf-done{opacity:1;transform:none}
 .kf-keyboard{display:flex;gap:5px;align-items:stretch}
-.kf-key{flex:var(--w) 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:44px;border-radius:7px;background:var(--kf-key);border:1px solid var(--kf-key-edge);border-bottom-width:3px;color:var(--kf-key-ink);font-size:13px;line-height:1;transition:transform .12s,border-bottom-width .12s,background .2s,color .2s,border-color .2s}
+.kf-key{flex:var(--w) 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:44px;border-radius:7px;background:var(--kf-key);border:1px solid var(--kf-key-edge);box-shadow:0 2px 0 var(--kf-key-edge);color:var(--kf-key-ink);font-size:13px;line-height:1;transition:transform .12s,box-shadow .12s,background .2s,color .2s,border-color .2s}
 .kf-key b{font-weight:500}
 .kf-key small{font-size:8.5px;letter-spacing:.02em;text-transform:lowercase}
 .kf-key.arrow b{font-size:8px}
 .kf-key.stack{gap:0}
-.kf-key.record{background:color-mix(in srgb,var(--accent) 14%,var(--card));border-color:color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--accent);font-weight:600}
-.keybind-film[data-key=down] .kf-key.record{transform:translateY(2px);border-bottom-width:1px;background:var(--accent);color:var(--bg)}
+.kf-key.record{background:color-mix(in srgb,var(--accent) 14%,var(--card));border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:0 2px 0 color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--accent);font-weight:600}
+.keybind-film[data-key=down] .kf-key.record{transform:translateY(2px);box-shadow:0 0 0 var(--kf-key-edge);background:var(--accent);color:var(--bg)}
 .kf-caption{margin:12px 6px 2px;font-size:14px;line-height:1.5;color:var(--body);min-height:42px}
 .kf-caption::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:8px;vertical-align:1px}
 .keybind-film[data-animate=paused] .kf-caret,.keybind-film[data-animate=paused] .kf-glow{animation:none}

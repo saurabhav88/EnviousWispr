@@ -74,9 +74,16 @@ export function init(root, motion, scope) {
     return { ...state, frame, index };
   }
 
+  // With reduced motion each scene is one still: the key, the pill and the
+  // landed text together, with a caption that tells the whole scene at once.
+  function stillFor(index) {
+    const still = { ...stateAt(SCENES.slice(0, index + 1).reduce((a, s) => a + s.length, 0) - 1), done: false };
+    if (index === 0) return { ...still, key: 'down', pill: 'shown', frame: 3, caption: 'Hold the right Option key and talk. Let go, and your words land where your cursor was.' };
+    return { ...still, key: 'up', pill: 'handsfree', caption: 'Tap it twice to lock hands-free, talk as long as you like, and tap once more when you are done.' };
+  }
+
   function render(reduced = motion.reduced.matches) {
-    // With reduced motion the film stands still on its finished first scene.
-    const state = reduced ? { ...stateAt(SCENES[0].length - 1), key: 'down', pill: 'shown', frame: 3, done: false } : stateAt(elapsed);
+    const state = reduced ? stillFor(stateAt(elapsed).index) : stateAt(elapsed);
     root.dataset.scene = state.scene;
     root.dataset.key = state.key;
     root.dataset.pill = state.pill;
@@ -84,8 +91,7 @@ export function init(root, motion, scope) {
     root.dataset.done = String(state.done);
     const shown = FULL.slice(0, state.typed);
     if (text.textContent !== shown) text.textContent = shown;
-    const words = reduced ? 'Hold the right Option key and talk. Let go, and your words land where your cursor was.' : state.caption;
-    if (caption.textContent !== words) caption.textContent = words;
+    if (caption.textContent !== state.caption) caption.textContent = state.caption;
     buttons.forEach((b, i) => {
       const active = i === state.index;
       b.classList.toggle('selected', active);
