@@ -44,7 +44,7 @@ EnviousWispr handles transcription locally using two backends: Parakeet for fast
 
 Here's what the pipeline looks like in practice:
 
-1. **Record.** You speak, and EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
+1. **Record.** You speak, and EnviousWispr captures audio from your microphone. While the microphone is still awake from a recent dictation, it also keeps the half second from before you pressed the key, so an early start is usually captured.
 2. **Transcribe.** On-device speech recognition converts your speech to text using Core ML.
 3. **Post-process.** Deterministic cleanup runs locally. Optional AI polish can use EG-1, supported Apple Intelligence, or a downloaded Ollama model locally, or OpenAI, Gemini, Claude, and Ollama-hosted models over the network.
 4. **Deliver.** The polished text pastes directly into the app you're using. Your previous clipboard contents are preserved.
@@ -140,7 +140,7 @@ On first launch, macOS will ask for two permissions:
 - **Microphone access.** Required for recording your speech.
 - **Accessibility access.** Required for pasting text directly into apps.
 
-Both prompts appear automatically. Click Allow for each.
+Setup asks for the microphone and offers a Grant button for Accessibility, which opens System Settings.
 
 ### Model Download
 
