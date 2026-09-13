@@ -140,9 +140,16 @@ final class TranscriptCoordinator {
       // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
       // `marketing_sync.wav` removed the row while its badge said the word. Found by the
       // cloud review of PR #2786.
+      // #2811, phase 4 of #2807: a renamed speaker's name does not enter `displayText` — the
+      // epic's own "find the row with 'Zach, Ariana' on it" walkthrough needs an explicit
+      // match against the speaker names themselves, a genuinely new gap this phase closes
+      // (plan §6 downstream consumer matrix).
       $0.escapeRecoveredAt == nil
         && ($0.displayText.localizedCaseInsensitiveContains(searchQuery)
-          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false))
+          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+          || ($0.speakerNames?.values.contains {
+            $0.localizedCaseInsensitiveContains(searchQuery)
+          } ?? false))
     }
   }
 
