@@ -74,7 +74,7 @@ That's the before and after. You spoke naturally, with filler words and run-on p
 
 ### What the post-processing does
 
-Filler removal ("um," "uh," and "like") and number formatting run on your Mac with no AI model involved, and are on out of the box. AI rewriting is on by default on macOS 26 through Apple Intelligence; on older macOS pick EG-1 or S1-mini under Settings, AI Polish, or add an OpenAI, Gemini, or Claude key. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
+Filler removal ("um," "uh," and "like") and number formatting run on your Mac with no AI model involved, and are on out of the box. AI rewriting is on by default through Apple Intelligence, which needs macOS 26 with Apple Intelligence switched on in System Settings; if that is not you, pick EG-1 or S1-mini under Settings, AI Polish (both run on macOS 14 or later), or add an OpenAI, Gemini, or Claude key. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
 
@@ -108,7 +108,7 @@ Double-press your keybind to lock recording for longer dictation sessions. You d
 
 ### Clipboard mode
 
-By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. If you would rather paste yourself, switch off **Restore clipboard after paste** under Settings, Clipboard: your dictation stays on the clipboard after it lands, and you can paste it again wherever you want with Cmd+V.
+By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. There is no separate clipboard mode to switch on. EnviousWispr writes into the app in front of you; whenever it cannot (no text field has focus, or the app refuses every paste route), it copies the dictation to your clipboard and tells you, and you press Cmd+V.
 
 ## Troubleshooting Quick Tips
 

@@ -75,7 +75,7 @@ Charting is most of the writing, but it isn't all of it. Email replies to staff,
 
 ## Let your dictation shape the documentation
 
-On macOS 26 the built-in polish works with no setup. On macOS 14 or 15, pick EG-1 under Settings, AI Polish, and it stays on your Mac. A quick one-line order stays a line. With AI polish on, a longer note spoken in sections comes back with paragraphs, and an announced list usually comes back as a list (S1-mini follows its own Structure setting). You guide it by how you speak.
+On macOS 26 with Apple Intelligence switched on, the built-in polish works with no setup. Otherwise pick EG-1 under Settings, AI Polish; it runs on macOS 14 or later and stays on your Mac. A quick one-line order stays a line. With AI polish on, a longer note spoken in sections comes back with paragraphs, and an announced list usually comes back as a list (S1-mini follows its own Structure setting). You guide it by how you speak.
 
 A few patterns that work well for clinicians (formatting applies with AI polish on):
 
