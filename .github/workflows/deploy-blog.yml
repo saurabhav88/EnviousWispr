@@ -11,7 +11,7 @@ on:
     # post dated for today becomes visible on the first run on/after that date.
     # Runs well after midnight ET in both EST and EDT, so posts always publish
     # on the correct calendar day. Safe to leave on year-round (a day with no
-    # newly-due post just redeploys identical output).
+    # newly-due post skips the upload: see "Skip an unchanged deploy" below).
     - cron: '7 14 * * *'
   workflow_dispatch: # Manual trigger
 
@@ -55,13 +55,64 @@ jobs:
           fi
           echo "Build output verified"
 
+      # Skip an unchanged deploy. The daily cron rebuilt and re-uploaded
+      # byte-identical output on most days (20 of 20 scheduled runs in the 30
+      # days to 2026-09-13 deployed; posts go live on a handful of them). The
+      # build is deterministic once the sitemap stopped stamping today's date
+      # (#2889), so one hash over every output file's path and content says
+      # whether an upload would change anything. The hash of the last
+      # SUCCESSFUL deploy lives in the Actions cache (saved after the deploy
+      # step, never before it, so a failed upload is retried next run).
+      # Only scheduled runs skip: a push or a manual dispatch always deploys.
+      - name: Hash build output
+        id: manifest
+        working-directory: website
+        run: echo "hash=$(bash scripts/dist-manifest.sh dist)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore last deployed hash
+        id: last
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: website/.last-deployed-manifest
+          key: website-deploy-manifest-${{ steps.manifest.outputs.hash }}
+          restore-keys: website-deploy-manifest-
+
+      - name: Decide whether to deploy
+        id: decide
+        working-directory: website
+        run: |
+          last="$(cat .last-deployed-manifest 2>/dev/null || true)"
+          now="${{ steps.manifest.outputs.hash }}"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -n "$last" ] && [ "$last" = "$now" ]; then
+            echo "Build output unchanged since the last deploy ($now); skipping upload."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Deploying: event=${{ github.event_name }} last=${last:-none} now=$now"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Cloudflare Pages
+        if: steps.decide.outputs.deploy == 'true'
         working-directory: website
         run: npx wrangler pages deploy dist/ --project-name=enviouswispr --branch=main
         env:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Record the hash only after a successful upload, keyed by the hash so
+      # the next run's restore-keys prefix match finds the newest entry.
+      - name: Save deployed hash
+        if: steps.decide.outputs.deploy == 'true' && success()
+        working-directory: website
+        run: echo "${{ steps.manifest.outputs.hash }}" > .last-deployed-manifest
+
+      - name: Cache deployed hash
+        if: steps.decide.outputs.deploy == 'true' && success()
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: website/.last-deployed-manifest
+          key: website-deploy-manifest-${{ steps.manifest.outputs.hash }}
 
       # Tell IndexNow (Bing/Yandex/Naver) about posts that go live TODAY only.
       # Submitting just the newly-published URLs (not a daily blast of every URL)
@@ -70,7 +121,7 @@ jobs:
       # "Today" is computed in America/New_York to match the build-time
       # visibility gate in website/src/utils/posts.ts (isPublishedPost).
       - name: Notify IndexNow for posts published today
-        if: success()
+        if: steps.decide.outputs.deploy == 'true' && success()
         continue-on-error: true
         working-directory: website
         run: |
