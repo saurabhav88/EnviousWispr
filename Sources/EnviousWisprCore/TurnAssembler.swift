@@ -34,10 +34,15 @@ public enum TurnAssembler {
   /// speakers stays unknown: on that row those were real exchanges ("Yeah? Been working on
   /// it? Mm-hmm. Gonna be crazy?"), and naming one side would be a guess.
   public static let unknownFoldMaxEntries = 4
-  /// A group of ANY size between two groups of the SAME speaker folds into that speaker: the
-  /// diarizer under-segmented one person's speech, and both neighbours agree who was
-  /// talking (11 of the 18 five-plus-word unknown groups on the 48-minute row: "um oh my
-  /// god, what did I miss? What are we laughing at?" between two S2 turns).
+  /// A group of up to this many entries between two groups of the SAME speaker folds into
+  /// that speaker: the diarizer under-segmented one person's speech, and both neighbours
+  /// agree who was talking (11 of the 18 five-plus-word unknown groups on the 48-minute
+  /// row, the largest 13 entries: "um oh my god, what did I miss? What are we laughing
+  /// at?" between two S2 turns). The ceiling is provisional, not research-validated (Codex
+  /// review, 2026-09-13): a third voice the diarizer never segmented at all, speaking
+  /// between two of one person's turns, would take that shape too; how often is unmeasured,
+  /// and the ceiling bounds the damage to one short stretch.
+  public static let unknownFoldSameSpeakerMaxEntries = 20
   /// Whether the fold runs at all. On since the research of 2026-09-13 (#2851 follow-up):
   /// the two rules above are the diarization field's own, and on the 48-minute row they
   /// fold 98 of the 105 unknown groups and keep the 7 real exchanges.
@@ -91,7 +96,8 @@ public enum TurnAssembler {
         && previous.map { result[$0].speaker } == next.map { result[$0].speaker }
         && previous.map { result[$0].speaker } != unknownSpeakerID
       guard group.speaker == unknownSpeakerID,
-        group.entries.count <= unknownFoldMaxEntries || sameSpeakerOnBothSides
+        group.entries.count <= unknownFoldMaxEntries
+          || (sameSpeakerOnBothSides && group.entries.count <= unknownFoldSameSpeakerMaxEntries)
       else {
         i += 1
         continue

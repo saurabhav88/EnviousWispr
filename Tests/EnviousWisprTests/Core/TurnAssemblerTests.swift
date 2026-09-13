@@ -362,6 +362,10 @@ struct TurnAssemblerTests {
     let b2 = words(2, from: 60, at: 7000)
     let differentSides = fold([("A", a1), ("unknown", big), ("B", b2)])
     #expect(differentSides.map(\.speaker) == ["A", "unknown", "B"], "an exchange between two speakers stays unknown")
+    // Over the same-speaker ceiling the group stays, whoever the neighbours are.
+    let huge = words(TurnAssembler.unknownFoldSameSpeakerMaxEntries + 1, from: 10, at: 2000)
+    let a3 = words(2, from: 200, at: 12000)
+    #expect(fold([("A", a1), ("unknown", huge), ("A", a3)]).map(\.speaker) == ["A", "unknown", "A"])
   }
 
   @Test("empty input produces no turns")

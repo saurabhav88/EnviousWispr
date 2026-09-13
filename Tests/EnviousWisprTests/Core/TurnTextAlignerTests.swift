@@ -343,6 +343,21 @@ struct TurnTextAlignerTests {
     #expect(text(out2, "c")?.processedText == "z the")
   }
 
+  @Test("known limit: a word moved and rewritten in the same move is not seen as a move")
+  func movedAndRewrittenWordIsTheStatedBlindSpot() {
+    // Codex review 2026-09-13: both reaches match on the key, so "nine" leaving A and "9"
+    // arriving in B look like an ordinary deletion and an ordinary insertion. Documented in
+    // the aligner header; this pins the limit so a change to it is a deliberate one.
+    let raw = "nine x y"
+    let turns = [
+      turn("a", "A", in: raw, from: "nine", to: "x"),
+      turn("b", "B", in: raw, from: "y", to: "y"),
+    ]
+    let out = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "x y 9")], turns: turns)
+    #expect(text(out, "a")?.processedText == "x")
+    #expect(text(out, "b")?.processedText == "y 9")
+  }
+
   @Test("a turn spanning a polished passage and a failed one reads unpolished, in either order")
   func turnSpanningSucceededAndFailedPassagesIsUnpolished() {
     let raw = "one two"

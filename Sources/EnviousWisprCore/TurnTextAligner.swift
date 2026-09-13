@@ -9,8 +9,10 @@ import Foundation
 /// alignment can see the move. It compares within ONE passage (each passage is cleaned on
 /// its own, so a cleanup cannot carry a word from one passage into another): every edit
 /// inside a turn, a unique word moved anywhere in the passage, and a common word moved
-/// between neighbouring turns. The one accepted blind spot is a common word carried across
-/// two or more turns inside one passage (see the last rule). Wherever the alignment cannot
+/// between neighbouring turns. Two accepted blind spots: a common word carried across two
+/// or more turns inside one passage, and a word that was moved AND rewritten in the move
+/// ("nine" to "9" under another speaker), since both reaches match on the word's key (see
+/// the last rule). Wherever the alignment cannot
 /// say who a cleaned word belongs to, the turn keeps its raw words (`processedText` nil)
 /// and is disclosed, rather than guessed. The rules,
 /// from the plan's §2.5 P3, P5, P6:
