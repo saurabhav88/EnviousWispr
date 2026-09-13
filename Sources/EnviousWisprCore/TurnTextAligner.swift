@@ -6,11 +6,13 @@ import Foundation
 /// No second cleanup, no model call, no speaker name near a prompt.
 ///
 /// The contract that matters: a word is never shown under the wrong speaker where the
-/// alignment can see the move, which is every edit inside a turn and every edit between
-/// NEIGHBOURING turns; the one accepted blind spot is a word carried across two or more
-/// turns inside one passage (see the last rule). Wherever the alignment cannot say who a
-/// cleaned word belongs to, the turn keeps its raw words (`processedText` nil) and is
-/// disclosed, rather than guessed. The rules, from the plan's §2.5 P3, P5, P6:
+/// alignment can see the move. It compares within ONE passage (each passage is cleaned on
+/// its own, so a cleanup cannot carry a word from one passage into another): every edit
+/// inside a turn, and a word one turn lost and a NEIGHBOURING turn gained. The one accepted
+/// blind spot is a word carried across two or more turns inside one passage (see the last
+/// rule). Wherever the alignment cannot say who a cleaned word belongs to, the turn keeps
+/// its raw words (`processedText` nil) and is disclosed, rather than guessed. The rules,
+/// from the plan's §2.5 P3, P5, P6:
 /// - An equal word belongs to the turn its raw range lies in; a raw word whose range
 ///   straddles two turns is unassignable and fails both.
 /// - A hunk (a maximal run of deletes and inserts between equals) whose deleted raw words
