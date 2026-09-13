@@ -608,6 +608,17 @@ final class FileImportCoordinator {
   private(set) var generation = 0
   private var runTask: Task<Void, Never>?
 
+  /// The ONE way `generation` moves (#2851; cloud review of PR #2871, rounds 3 and 6). An
+  /// alignment job in flight was computed against the old revision, which its commit will
+  /// refuse, so it is cancelled here rather than left to finish: a caller that would wait
+  /// on it (the next cleanup's first part, under the engine lease) waits for a cancelled
+  /// job's next passage instead of its whole diff. The five callers: a new file chosen, a
+  /// new file started, Start over, Stop, and Clean it again.
+  private func advanceGeneration() {
+    generation += 1
+    alignWorker?.job.cancel()
+  }
+
   init(
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
     transcribe: @escaping @MainActor ([Float]) async throws -> ASRResult,
@@ -714,7 +725,7 @@ final class FileImportCoordinator {
     // the first is still decoding is an ordinary thing to do, and without this
     // both decodes carry the same generation, so whichever finishes last wins —
     // which can be the file the user already replaced.
-    generation += 1
+    advanceGeneration()
     let generationAtStart = generation
     file = nil
     step = .upload
@@ -1170,7 +1181,7 @@ final class FileImportCoordinator {
     guard !isRunning else { return }
     decodeTask?.cancel()
     decodeTask = nil
-    generation += 1
+    advanceGeneration()
     file = nil
     parts = []
     rawTranscript = ""
@@ -1638,7 +1649,7 @@ final class FileImportCoordinator {
       return
     }
 
-    generation += 1
+    advanceGeneration()
     let generationAtStart = generation
     step = .working
     // The engine may need switching or warming, which takes long enough to be
@@ -1737,11 +1748,10 @@ final class FileImportCoordinator {
     speakerStepTask?.cancel()
     runTask?.cancel()
     guard isRunning else { return }
-    // A run's in-flight alignment is obsolete with it (its revision changes below); after
-    // Done there is nothing to stop, and a late alignment finishing the on-disk state is
-    // left alone (chunk 3 review; cloud review of PR #2871, round 3).
-    alignWorker?.job.cancel()
-    generation += 1
+    // A run's in-flight alignment is obsolete with it (`advanceGeneration` cancels it);
+    // after Done there is nothing to stop, and a late alignment finishing the on-disk state
+    // is left alone (chunk 3 review; cloud review of PR #2871, round 3).
+    advanceGeneration()
     state = .stopped
     // **The step moves with the state.** Stopping is an ENDING, so the user
     // lands on Done holding whatever finished, with Copy, Save and New
@@ -1788,7 +1798,7 @@ final class FileImportCoordinator {
     heldLocalPolishProvider = configuration.localPolishProvider
     heldOllamaModel = configuration.ollamaModel
 
-    generation += 1
+    advanceGeneration()
     let generationAtStart = generation
     parts = []
     // The turns follow the new cleanup part by part (#2851): a turn keeps its last cleaned

@@ -698,6 +698,32 @@ struct FileImportCoordinatorTests {
   /// forget the History write, which is the defect that chunk exists to fix, so the three
   /// were consolidated into `finishRun(savingDocument:)` instead. The number went DOWN
   /// because a writer was removed, never because one was waved through.
+  /// #2851 (cloud review of PR #2871, rounds 3 and 6): a revision bump that does not cancel
+  /// the in-flight alignment lets the next cleanup wait on an obsolete job under the engine
+  /// lease. `advanceGeneration()` is the one writer; this pins that no second one appears.
+  @Test("every cleanup-revision bump goes through advanceGeneration", .tags(.driftGuard))
+  func generationHasOneWriter() throws {
+    let source = try String(
+      contentsOf: RepoRoot.url.appendingPathComponent(
+        "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift"),
+      encoding: .utf8)
+    let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+    func isBump(_ line: String) -> Bool {
+      guard !line.hasPrefix("//") else { return false }
+      return line.hasPrefix("generation += ") || line.hasPrefix("self.generation += ")
+        || line.hasPrefix("generation = generation +")
+    }
+    #expect(isBump("generation += 1"), "the detector misses the plain bump")
+    #expect(!isBump("let generationAtStart = generation"), "the detector counts a read")
+    #expect(!isBump("// generation += 1"), "the detector counts a comment")
+    let bumps = lines.filter(isBump)
+    #expect(bumps.count == 1, "one bump, inside advanceGeneration(): \(bumps)")
+    #expect(
+      lines.filter { $0 == "advanceGeneration()" || $0.hasPrefix("advanceGeneration()") }.count == 5,
+      "five callers: choose, startOver, start, stop, rePolish")
+  }
+
   @Test("every navigation writer goes through the one authority")
   func navigationHasOneWriter() throws {
     let source = try String(
