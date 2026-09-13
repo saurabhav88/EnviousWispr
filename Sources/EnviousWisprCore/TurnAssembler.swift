@@ -30,9 +30,10 @@ public enum TurnAssembler {
   /// airs."). Five words and up stay unknown: those are real overlaps, not boundary jitter.
   public static let unknownFoldMaxEntries = 4
   /// The fold is a GUESS by proximity where the diarizer had none; the plan's hand-check of
-  /// twenty folded fragments against the audio decides whether it ships on. Off leaves
-  /// every unknown group as its own turn, exactly as before #2851.
-  public static let unknownFoldEnabled = true
+  /// twenty folded fragments against the audio decides whether it ships on, and that check
+  /// has not been done yet (it needs a listener), so it ships OFF: every unknown group stays
+  /// its own turn, exactly as before #2851. Flipping this to true is the whole switch.
+  public static let unknownFoldEnabled = false
 
   public static func assemble(entries: [ASRWordTiming], segments: [SpeakerSegment]) -> [Turn] {
     guard !entries.isEmpty else { return [] }
@@ -95,12 +96,16 @@ public enum TurnAssembler {
         let fragmentEnd = group.entries.compactMap(\.endMs).max()
         let previousEnd = result[p].entries.compactMap(\.endMs).max()
         let nextStart = result[n].entries.compactMap(\.startMs).min()
-        guard let fragmentStart, let fragmentEnd, let previousEnd, let nextStart else {
-          target = p  // untimed on either side: the previous turn keeps the sentence going
+        // Untimed on either side, or timings out of document order (a backwards gap is
+        // not closeness, chunk 2 review): the previous turn keeps the sentence going.
+        guard let fragmentStart, let fragmentEnd, let previousEnd, let nextStart,
+          fragmentStart >= previousEnd, nextStart >= fragmentEnd
+        else {
+          target = p
           break
         }
-        let gapBefore = max(0, fragmentStart - previousEnd)
-        let gapAfter = max(0, nextStart - fragmentEnd)
+        let gapBefore = fragmentStart - previousEnd
+        let gapAfter = nextStart - fragmentEnd
         target = gapAfter < gapBefore ? n : p
       case (nil, nil):
         target = i
