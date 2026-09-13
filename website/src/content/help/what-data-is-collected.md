@@ -8,11 +8,11 @@ keywords: ["what data", "analytics", "telemetry", "collected", "do you see my te
 related: ["privacy-overview"]
 updated: 2026-09-01
 ---
-EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio and your transcripts never reach Envious Labs, the company that makes the app.
+EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio, your dictations and your transcripts never reach Envious Labs, the company that makes the app.
 
 ### What stays on your Mac
 
-Your transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
+Your dictations and transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
 
 [Escape Recovery](/help/escape-recovery/) is on unless you switch it off, so a recording you cancel with your keybind is transcribed and held in that same folder, letting you paste it back or press Keep to make it permanent. It stays available for 24 hours. After that it is removed while the app is running, or the next time you launch it. Its audio is deleted once its text is safely saved, exactly as with any other dictation.
 
@@ -23,7 +23,7 @@ Your custom words, settings, and API keys live here too. They stay on your Mac u
 ### What Envious Labs never receives
 
 - Your audio
-- Your transcripts, before or after polish
+- Your dictations and transcripts, before or after polish
 - Your custom words
 - The text around your cursor
 - Your API keys
@@ -39,8 +39,8 @@ If you would rather run without it, EnviousWispr is open source under the GPLv3 
 
 ### Where your text goes if you use cloud AI polish
 
-Polish runs on your Mac by default. If you choose OpenAI, Gemini, or Claude instead, you add your own API key. Your transcript is then sent to that provider, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That connection is your account with that company, governed by their terms.
+Polish runs on your Mac by default. If you choose OpenAI, Gemini, or Claude instead, you add your own API key. Your text is then sent to that provider, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That connection is your account with that company, governed by their terms.
 
-Ollama works in two ways, and only one of them keeps your transcript on your Mac. A model you download runs on your Mac and sends nothing anywhere. A hosted model runs on Ollama's servers, so your transcript goes to Ollama in the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
+Ollama works in two ways, and only one of them keeps your text on your Mac. A model you download runs on your Mac and sends nothing anywhere. A hosted model runs on Ollama's servers, so your text goes to Ollama in the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
 
 Envious Labs is not in the middle of any of these requests. Everything goes straight from your Mac to the provider, so Envious Labs never sees it either way.

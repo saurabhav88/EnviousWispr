@@ -16,7 +16,7 @@ EnviousWispr is a free dictation app for macOS. Your voice becomes text on your 
 You can use the app without an internet connection at all, and your dictation stays on your own hardware.
 
 - **Offline operation.** Recording, transcribing, and pasting need no internet connection. Both speech engines run on your Mac.
-- **Local transcripts.** Your transcripts are saved in your user folder. Envious Labs, the company that makes EnviousWispr, never receives a copy.
+- **Local History.** Your dictations and transcripts are saved in your user folder. Envious Labs, the company that makes EnviousWispr, never receives a copy.
 - **Open source verification.** You can read the code. EnviousWispr is open source, so every claim on this page can be checked against it.
 
 ### When EnviousWispr uses the network

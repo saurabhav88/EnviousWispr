@@ -1182,7 +1182,7 @@ struct ProviderSetupSection: View {
   private var claudeExplainer: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text(
-        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends the transcript to Anthropic under your API account."
+        "Claude is a strong fit for technical writing, code review comments, and identifiers. Haiku is the recommended starting point for dictation cleanup: it is Anthropic's fastest and cheapest current tier, and most cleanup runs finish in one to two seconds. Model names and availability come from your Claude Platform account, so the list shown here can vary by account and usage tier. Cloud polish sends your text to Anthropic under your API account."
       )
       .settingsReadingCopy()
 
@@ -1260,7 +1260,7 @@ struct ProviderSetupSection: View {
     if provider == .openAI {
       VStack(alignment: .leading, spacing: 10) {
         Text(
-          "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to OpenAI under your API account."
+          "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends your text to OpenAI under your API account."
         )
         .settingsReadingCopy()
 
@@ -1286,7 +1286,7 @@ struct ProviderSetupSection: View {
     } else if provider == .gemini {
       VStack(alignment: .leading, spacing: 10) {
         Text(
-          "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to Google under your Gemini API account."
+          "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends your text to Google under your Gemini API account."
         )
         .settingsReadingCopy()
 

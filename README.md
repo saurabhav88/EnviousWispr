@@ -74,7 +74,7 @@ Dictation is only useful if you can trust it mid-sentence, every time. EnviousWi
 | **Clear answers when AI polish has a problem** | If a cloud or local model fails (OpenAI, Gemini, Ollama), you get a specific, plain-language message, and your raw text still arrives. |
 | **Deterministic cleanup before AI** | For English, numbers, dates, and money are formatted by a fixed, predictable step, even when AI polish is off or unavailable. |
 | **Fast recovery after idle** | After the app sits idle, it re-wakes in a fraction of a second so your next press, and its first word, are not lost. |
-| **Privacy-safe diagnostics** | Crash reports carry counts and context, never your transcript or audio, and are redacted before they are sent. |
+| **Privacy-safe diagnostics** | Crash reports carry counts and context, never your dictations, transcripts or audio, and are redacted before they are sent. |
 | **Hardened releases** | Every build is signed, notarized, and Gatekeeper-checked before it ships. |
 
 ## Supported Models
@@ -118,7 +118,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Appearance settings, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
-- 🕘 **Transcript history** for browsing, searching, and reviewing past dictations
+- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
 
@@ -211,7 +211,7 @@ EnviousWispr is built on a simple principle: **your voice is yours.**
 - Audio is captured, transcribed, and discarded locally. Nothing is uploaded, stored, or shared.
 - LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick OpenAI, Gemini, or Claude, only text is sent (your transcript plus the polish instructions) using your own API key. If you pick a hosted Ollama model, the same text is sent to Ollama using your Ollama sign-in. Audio is never sent.
 - Anonymous product analytics (PostHog) can be disabled in Settings.
-- Crash reporting (Sentry) contains no transcript content, audio, or personal data.
+- Crash reporting (Sentry) contains no dictation or transcript content, audio, or personal data.
 
 ## Connect
 
