@@ -60,15 +60,18 @@ concurrency:
 jobs:
   validate:
     # Only `test-hardening` issues carry a recipe. On `workflow_dispatch` the label check
-    # is skipped so an operator can re-validate any number by hand. The workflow's own
-    # verdict comment must not re-trigger it, nor may any comment on a pull request
-    # (`issue_comment` fires for PR comments too).
+    # is skipped so an operator can re-validate any number by hand. Comments on a pull
+    # request are excluded (`issue_comment` fires for those too), and so are comments
+    # authored by the Actions bot, which is how this workflow's own verdict comment is
+    # recognised: by its AUTHOR, never by text in its body, which any commenter could
+    # paste to switch the check off for a comment that also carries the recipe (cloud
+    # review r1). GitHub also never starts a run from an event the workflow token raised.
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
         contains(github.event.issue.labels.*.name, 'test-hardening')
         && !github.event.issue.pull_request
-        && !contains(github.event.comment.body || '', '<!-- test-hardening-recipe-check -->')
+        && github.event.comment.user.login != 'github-actions[bot]'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -96,10 +99,17 @@ jobs:
           rc=0
           python3 scripts/validate-mutation-recipe.py --issue "$ISSUE" --checkout "$PWD" \
             > validator.txt 2>&1 || rc=$?
+          # Exit 2 also covers the validator failing to READ the issue at all (a `gh` or API
+          # failure), which is nobody's recipe to fix. That refusal names itself; treat it as
+          # infrastructure: no verdict is posted and the run fails with its own message, so a
+          # transient outage never leaves a "fix your body" comment on a sound recipe.
+          kind=verdict
+          if [ "$rc" = "2" ] && grep -q "could not read issue" validator.txt; then kind=infra; fi
           # The commit actually validated against, never the event's sha: on an issue event
           # there is none that means anything, and on a dispatch it is the selected branch.
           {
             echo "rc=$rc"
+            echo "kind=$kind"
             echo "issue=$ISSUE"
             echo "sha=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
@@ -107,6 +117,7 @@ jobs:
           exit 0
 
       - name: Post or update the verdict on the issue
+        if: steps.validate.outputs.kind == 'verdict'
         env:
           GH_TOKEN: ${{ github.token }}
           RC: ${{ steps.validate.outputs.rc }}
@@ -155,8 +166,14 @@ jobs:
             gh issue comment "$ISSUE" --body-file comment.md
           fi
 
+      - name: Fail the run when the issue could not be read at all
+        if: steps.validate.outputs.kind == 'infra'
+        run: |
+          echo "::error::Issue #${{ steps.validate.outputs.issue }} could not be read by the validator (gh or API failure); no verdict was posted. Re-run this workflow."
+          exit 1
+
       - name: Fail the run only on a structural refusal
-        if: steps.validate.outputs.rc == '2'
+        if: steps.validate.outputs.kind == 'verdict' && steps.validate.outputs.rc == '2'
         run: |
           echo "::error::Issue #${{ steps.validate.outputs.issue }}: no runnable recipe could be read from the issue (validator exit 2)"
           exit 1
