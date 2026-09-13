@@ -529,9 +529,13 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     font-size: 26px;
   }
 }
-@media (min-width: 1000px) and (max-width: 1190px) {
+/* The compact desktop band. The pill and the button need 1123px of header
+ * in the 1240px-up layout, so that layout starts there; here the brand, nav
+ * gaps and actions tighten so everything fits from 1000px with room to spare
+ * (#2849: measured 921px needed inside a 934px header at 1000px). */
+@media (min-width: 1000px) and (max-width: 1239px) {
   html[data-nav-js] .chrome-header .main-nav {
-    gap: 22px;
+    gap: 18px;
   }
   html[data-nav-js] .chrome-header .nav-trigger,
   html[data-nav-js] .chrome-header .nav-link {
@@ -539,12 +543,15 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
   }
 }
 @media (max-width: 1190px) {
+  /* The page content's .wrap narrows here too; the chrome stays aligned. */
   .chrome-header,
   .chrome-footer {
     width: calc(100% - 64px);
   }
+}
+@media (max-width: 1239px) {
   .chrome-header .chrome-inner {
-    gap: 17px;
+    gap: 14px;
     padding: 0 18px;
   }
   .site-chrome .chrome-brand {
@@ -558,14 +565,14 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     gap: 16px;
   }
   .chrome-header .chrome-actions {
-    gap: 8px;
+    gap: 7px;
   }
   .chrome-header .chrome-actions .chrome-button {
     padding: 10px 13px;
     font-size: 13px;
   }
   .chrome-header .chrome-actions .chrome-pill {
-    padding: 0 12px;
+    padding: 0 11px;
     font-size: 13px;
   }
 }
