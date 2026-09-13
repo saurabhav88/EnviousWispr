@@ -136,19 +136,20 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
     path = os.path.abspath(os.path.expanduser(path))
     if not os.path.isfile(path):
         raise RuntimeError(f"not a file: {path}")
-    instances = running_enviouswispr_instances()
-    if pid not in instances:
-        rows = "\n".join(f"    {p}  {e}" for p, e in sorted(instances.items()))
-        raise RuntimeError(f"pid {pid} is not a running EnviousWispr; running:\n{rows}")
-    if worktree is not None:
-        root = os.path.abspath(os.path.expanduser(worktree)) + "/"
-        if not instances[pid].startswith(root):
-            raise RuntimeError(
-                f"pid {pid} runs {instances[pid]}, not a build under {root}")
-
+    # ONE snapshot answers "is it EnviousWispr", "is it from this worktree" and "which
+    # process exactly": validating the worktree against a different read than the one
+    # the post-discover comparison uses would let a replacement from another worktree
+    # pass (cloud review, PR #2887).
     identity = _process_identity(pid)
     if identity is None:
-        raise RuntimeError(f"pid {pid} exited before the request was posted")
+        instances = running_enviouswispr_instances()
+        rows = "\n".join(f"    {p}  {e}" for p, e in sorted(instances.items()))
+        raise RuntimeError(f"pid {pid} is not a running EnviousWispr; running:\n{rows}")
+    exe = identity[0]
+    if worktree is not None:
+        root = os.path.abspath(os.path.expanduser(worktree)) + "/"
+        if not exe.startswith(root):
+            raise RuntimeError(f"pid {pid} runs {exe}, not a build under {root}")
 
     observer = _Replies.alloc().init()
     # Registered BEFORE the first post: a reply that lands before the observer exists is
@@ -162,7 +163,7 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
         alive = _wait(observer, discover, {"alive"}, 15.0, echo)
         if alive is None:
             raise RuntimeError(
-                f"pid {pid} ({instances[pid]}) did not answer discover in 15 s: "
+                f"pid {pid} ({exe}) did not answer discover in 15 s: "
                 "is it a DEBUG build carrying #2885's door?")
         launch = alive["launch"]
         # The `alive` reply proves SOME EnviousWispr with this PID answered. If the one
@@ -175,8 +176,10 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
                 f"now {_process_identity(pid)}); refusing to hand it a file")
 
         request = str(uuid.uuid4())
+        # The door parses a Double; a fraction is kept (a `0.5` must not become `"0"`,
+        # which the door refuses as malformed).
         _post({"kind": "transcribe", "pid": pid, "launch": launch, "request": request,
-               "path": path, "timeout": str(int(timeout))})
+               "path": path, "timeout": repr(float(timeout))})
         # A refusal can be a busy/malformed one OR a `refused` raised before any file is
         # chosen (the screen's polish gate, #2885 round 4): both come instead of
         # `accepted`, so both are terminal here. Found live: the first version waited only
