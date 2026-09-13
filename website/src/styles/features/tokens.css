@@ -3,5 +3,4 @@
 html[data-theme=dark]{--qa-prompt:#bca2eb;--qa-mark-bg:#bbd1ff;--qa-mark-ink:#24213a;--muted:#ac9fbb;--green:#80d4b4;--green-soft:#1e3930;--film-panel:#1b1525;--film-high:#30213f;--film-well:#241c31;--film-ink:#f4eff9;--film-line:#57406e;--rose:#ffc1d0;--rose-soft:#fc568524}
 
 /* Inline logo marks inside the demos (#2816): the mock loaded app-logo.svg as a background. */
-.comfort-logo svg{width:100%;height:100%;display:block}
 .fd-top .fd-logo{width:20px;height:20px;vertical-align:middle}

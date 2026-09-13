@@ -1,17 +1,29 @@
 ---
-// Start/stop sound pairs (#2816). Each button carries the emitted asset URLs
-// for scripts/features/sounds.js.
+// The full start/stop sound library: all twelve pairings the app ships, in the
+// app's own order. Each button carries the emitted asset URLs for
+// scripts/features/sounds.js, which plays the start half, waits, then the stop.
 import { sounds } from '../../data/features/customization.js';
 ---
 
 <div class="sound-samples" data-sound-group>
-  {
-    sounds.map((s) => (
-      <button type="button" data-sound={s.key} data-start={s.start} data-stop={s.stop} disabled data-enables>
-        ♫ <span>{s.name}</span>
-        <small>Play pair</small>
-      </button>
-    ))
-  }
-  <p id="sound-status" data-sound-status aria-live="polite">Actual sounds from EnviousWispr. Tap to listen.</p>
+  <div class="sound-grid">
+    {
+      sounds.map((s) => (
+        <button type="button" data-sound={s.key} data-start={s.start} data-stop={s.stop} disabled data-enables>
+          <span class="sound-play" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="sound-play-icon"><path d="m8 5.5 10 6.5-10 6.5z" /></svg>
+            <i class="sound-wave"><b /><b /><b /><b /><b /></i>
+          </span>
+          <span class="sound-text">
+            <span class="sound-name">
+              {s.name}
+              {s.isDefault ? <em>Default</em> : null}
+            </span>
+            <small>{s.note}</small>
+          </span>
+        </button>
+      ))
+    }
+  </div>
+  <p id="sound-status" data-sound-status aria-live="polite">Twelve real pairings from the app, each with its own start and stop. Tap one to hear both.</p>
 </div>
