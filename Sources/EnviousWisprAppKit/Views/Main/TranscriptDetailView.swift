@@ -1,6 +1,8 @@
+import CoreTransferable
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Detail view for a single transcript: an action bar, a titled header with
 /// metadata chips, and the polished/original text each in its own card (mockup
@@ -20,7 +22,11 @@ struct TranscriptDetailView: View {
   /// `@State` across a mere value change at the same tree position (§5 E2E audit).
   @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
   @State private var timesOn = true
-  @State private var turnDiffs: [String: WordDiff.Result] = [:]
+  @State private var turnDiffCache:
+    (input: FileImportCoordinator.TurnDiffInput, results: [String: WordDiff.Result])?
+  /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
+  /// disk write must not look identical to a successful one.
+  @State private var saveError: String?
 
   /// #2087: the two actions this feature adds stand down while a dictation is
   /// in flight — Paste on a HELD recovery, and Keep.
@@ -62,18 +68,28 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          if transcript.turns != nil {
+          if let renderedTurns {
             transcriptSection(kindWord, icon: "doc.text") {
+              // `fallback` is genuinely unreachable here — `renderedTurns` is already known
+              // non-nil — so it carries no risk of the double-card nesting a reachable
+              // `plainTextSections` would produce inside this same `transcriptSection`.
               TurnDocumentView(
                 turns: renderedTurns,
                 onRename: { id, name in
                   transcriptCoordinator.renameSpeaker(
                     id: transcript.id, speakerId: id, name: name)
                 },
-                fallback: { plainTextSections }
+                fallback: { EmptyView() }
               )
             }
             .task(id: turnDiffInput) { await prepareTurnDiffs() }
+            // Gives the WHOLE turn-rendering subtree — including every `TurnRowView`'s own
+            // rename-popover `@State` — a fresh identity per document (found by chunk
+            // review): `HistoryContentView` reuses this view across row selections at a
+            // fixed tree position, and `ForEach`'s own `id: \.offset` can otherwise let a
+            // rename popover opened on document A's turn survive into document B if B has a
+            // turn at the same position, committing a rename against the wrong document.
+            .id(transcript.id)
           } else {
             plainTextSections
           }
@@ -85,7 +101,16 @@ struct TranscriptDetailView: View {
     .onChange(of: transcript.id) {
       documentView = .cleaned
       timesOn = true
-      turnDiffs = [:]
+      turnDiffCache = nil
+    }
+    .alert(
+      "Couldn't save the file",
+      isPresented: Binding(
+        get: { saveError != nil }, set: { if !$0 { saveError = nil } })
+    ) {
+      Button("OK") { saveError = nil }
+    } message: {
+      Text(saveError ?? "")
     }
   }
 
@@ -116,7 +141,15 @@ struct TranscriptDetailView: View {
       .disabled(exportText == nil)
       .help("Save as a text file")
 
-      ShareLink(item: exportText ?? "") {
+      // `DeliverableText`, never a plain `String` item (found by chunk review): a share sheet
+      // can sit open far longer than Save's modal, and a bare `String` freezes `exportText`
+      // at THIS body evaluation — a row that expires (the escape-recovery 24-hour promise)
+      // while the sheet is still open would still hand over its text. The closure defers the
+      // read to whenever the system actually asks for the data.
+      ShareLink(
+        item: DeliverableText(resolve: { exportText }),
+        preview: SharePreview(kindWord)
+      ) {
         Label(exportButtonLabels.share, systemImage: "square.and.arrow.up")
       }
       .disabled(exportText == nil || exportText?.isEmpty == true)
@@ -224,7 +257,11 @@ struct TranscriptDetailView: View {
         }
 
         // View mode + Times (#2811 §2.1) — only meaningful once there are turns to show.
-        if transcript.turns != nil {
+        // `hasRenderableTurns`, never a bare `!= nil` (found by chunk review): `turns == []`
+        // is a real, reachable state (`TurnAssembler.assemble` can return it) that must
+        // collapse to "nothing to show" exactly like `nil`, or these controls appear with
+        // nothing for them to control.
+        if hasRenderableTurns {
           HStack(spacing: 10) {
             Picker(
               "View", selection: $documentView
@@ -338,12 +375,19 @@ struct TranscriptDetailView: View {
     }
   }
 
+  /// `TurnAssembler.assemble` can return `[]` — collapses to the SAME "nothing to render"
+  /// outcome as `nil` everywhere this view branches on turns, never just `!= nil`.
+  private var hasRenderableTurns: Bool {
+    guard let turns = transcript.turns else { return false }
+    return !turns.isEmpty
+  }
+
   private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
     let diffs = turnDiffs
     return TranscriptDocumentPresenter.render(
       turns: transcript.turns, rawText: transcript.text,
       speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
-      diffLookup: { diffs[$0.id] })
+      diffLookup: { diffs?[$0.id] })
   }
 
   /// Mirrors `FileImportCoordinator.turnDiffInput`, reusing its own `TurnDiffPair`/
@@ -363,14 +407,24 @@ struct TranscriptDetailView: View {
     return FileImportCoordinator.TurnDiffInput(pairs: pairs, language: transcript.language)
   }
 
+  /// `nil` while `prepareTurnDiffs` is still running or the input has moved — same
+  /// input-matches-cache contract as `FileImportCoordinator.turnDiffs` (found by chunk
+  /// review: an unkeyed dictionary can go on describing OLDER text after this row's own
+  /// turns change under it — a retry or a background pass replacing `processedText` while
+  /// this row happens to still be selected — even though the turn ids themselves survive).
+  private var turnDiffs: [String: WordDiff.Result]? {
+    guard let cached = turnDiffCache, cached.input == turnDiffInput else { return nil }
+    return cached.results
+  }
+
   /// Off the main actor, same reason as the wizard's own `prepareTurnDiffs` (chunk-1 review:
   /// `WordDiff` can take ~3 seconds on worst-case inputs). `.task(id:)` already cancels a
-  /// stale computation when `transcript`/`documentView`/`timesOn` moves — the explicit
-  /// `Task.isCancelled` check below is what stops that stale result from still landing in
-  /// `@State` after cancellation, since the write happens AFTER the `await` returns.
+  /// stale computation when `turnDiffInput` moves — the explicit re-check below is what stops
+  /// a stale result from still landing in `@State` after cancellation, since the write
+  /// happens AFTER the `await` returns.
   private func prepareTurnDiffs() async {
     let input = turnDiffInput
-    guard !input.pairs.isEmpty else { return }
+    guard turnDiffs == nil, !input.pairs.isEmpty else { return }
     let computed = await Task.detached(priority: .userInitiated) {
       var results: [String: WordDiff.Result] = [:]
       for pair in input.pairs {
@@ -379,8 +433,8 @@ struct TranscriptDetailView: View {
       }
       return results
     }.value
-    guard !Task.isCancelled else { return }
-    turnDiffs = computed
+    guard turnDiffInput == input else { return }
+    turnDiffCache = (input, computed)
   }
 
   /// What Copy/Save/Share hand over. Turn-labeled documents route through the presenter
@@ -405,12 +459,35 @@ struct TranscriptDetailView: View {
     TranscriptDocumentPresenter.exportButtonLabels(mode: documentView)
   }
 
+  /// `exportText` is read AFTER the modal returns, never before it (found by chunk review):
+  /// `NSSavePanel.runModal()` blocks for as long as the user takes, and a row can expire
+  /// (the escape-recovery 24-hour promise) or be deleted in that window — writing a value
+  /// captured before the panel opened would export text the user was told had gone.
   private func saveDocument() {
-    guard let text = exportText else { return }
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.plainText]
     panel.nameFieldStringValue = kindWord
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    try? text.write(to: url, atomically: true, encoding: .utf8)
+    guard let text = exportText else { return }
+    do {
+      try text.write(to: url, atomically: true, encoding: .utf8)
+    } catch {
+      saveError = String(describing: error)
+    }
+  }
+}
+
+/// Defers reading the export text to whenever the system actually asks for the data, rather
+/// than whenever SwiftUI last evaluated `body` (found by chunk review) — `resolve` closes
+/// over `transcriptCoordinator` (a reference) and re-reads `exportText`'s own live,
+/// expiry-checked selection at that later point, the same delivery-time validation Save gets
+/// from being read after its modal returns.
+private struct DeliverableText: Transferable, Sendable {
+  let resolve: @Sendable () -> String?
+
+  static var transferRepresentation: some TransferRepresentation {
+    DataRepresentation(exportedContentType: .plainText) { deliverable in
+      Data((deliverable.resolve() ?? "").utf8)
+    }
   }
 }
