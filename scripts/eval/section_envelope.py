@@ -118,8 +118,10 @@ def _trim_punctuation(word: str) -> str:
 def _characters(text: str) -> int:
     """Swift `String.count` counts grapheme clusters; the stdlib has no segmenter, so this
     counts code points after NFC normalisation. Known gap, stated: a combining sequence NFC
-    cannot compose (e.g. a base letter with several marks) counts more here than in Swift,
-    which can only make the expansion guard STRICTER on such text. Adding the `regex`
+    cannot compose (e.g. a base letter with several marks) counts more here than in Swift.
+    The gap can make the expansion guard stricter or looser, depending on whether the extra
+    code points occur in the candidate or the original; an approximation, not Swift parity,
+    acceptable for an English ASR corpus (Codex r2). Adding the `regex`
     package would close it, but the CI step runs the eval tests under bare stdlib python3
     (pr-check.yml, the eval-tests step), so the gap is documented rather than closed."""
     return len(unicodedata.normalize("NFC", text))

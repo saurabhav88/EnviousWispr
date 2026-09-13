@@ -99,8 +99,12 @@ def test_accept_mirrors_the_validator() -> None:
           accept_section("should we ship it today", "We ship it today.").status
           == "rejectedQuestionAnswer")
     # Precomposed and decomposed forms count the same after NFC.
-    check("NFC before counting", accept_section("x", "\u00e9" * 100).status
-          == accept_section("x", "e\u0301" * 100).status)
+    # 101 precomposed = 101 code points (accepted under the 200 floor); 101 decomposed would be
+    # 202 code points and rejected WITHOUT the NFC step, so this row fails before the fix.
+    check("NFC before counting",
+          accept_section("x", "\u00e9" * 101).status
+          == accept_section("x", "e\u0301" * 101).status
+          == "accepted")
 
 
 def test_looks_like_question_rows() -> None:
