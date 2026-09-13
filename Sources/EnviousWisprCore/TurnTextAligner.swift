@@ -12,9 +12,10 @@ import Foundation
 ///   straddles two turns is unassignable and fails both.
 /// - A hunk (a maximal run of deletes and inserts between equals) whose deleted raw words
 ///   belong to more than one turn fails every turn it touches. A deleted word at a turn's
-///   FIRST or LAST position fails both turns at that boundary only when it repeats the
-///   neighbouring turn's adjacent word ("yes / yes"): Myers may have kept either copy, so
-///   ownership there is a guess. A distinct filler removed at an edge is attributed.
+///   FIRST or LAST position fails both turns at that boundary when the deleted run shares
+///   any word with the neighbouring turn ("yes / yes", "go now" | "yes go now please"):
+///   Myers may have kept either copy, so ownership there is a guess. A distinct filler
+///   removed at an edge is attributed.
 /// - A turn whose cleaned words all vanished keeps its raw words, disclosed.
 /// - A pure insertion (no deletes) belongs to the turn of the nearest preceding raw word in
 ///   the passage; at a passage start, the following one.
@@ -147,32 +148,19 @@ public enum TurnTextAligner {
         return owners.count == 1 ? owners[0] : nil
       }
       /// Whether a deleted run touching a turn boundary could have been kept from the OTHER
-      /// side instead: Myers keeps one copy of a repeated phrase and deletes the other, so a
-      /// deleted run at B's start that repeats the end of A (or at A's end that repeats the
-      /// start of B) is ambiguous. `run` is the maximal contiguous deleted run in this hunk
-      /// that touches the boundary, in document order; ambiguity is any nonempty prefix of it
-      /// (looking back into A) or suffix (looking forward into B) matching the neighbour's
-      /// adjacent words of the same length (chunk 1 review: "go now" | "go now please").
-      func repeatsAcross(_ run: [Int], into neighbour: Turn, before: Bool) -> Bool {
-        // The neighbour's words come from the RAW text, not this passage: the boundary can
-        // sit at a passage edge, and the neighbour's words are still there to compare.
-        let neighbourKeys = WordDiff.tokenize(
-          String(decoding: raw[neighbour.originalTextRange], as: UTF16.self), locale: locale
-        ).map(\.key)
-        guard !neighbourKeys.isEmpty else { return false }
-        let keys = run.map { a[$0].key }
-        for length in 1...keys.count {
-          if before {
-            let prefix = Array(keys.prefix(length))
-            let adjacent = Array(neighbourKeys.suffix(length))
-            if adjacent.count == length, adjacent == prefix { return true }
-          } else {
-            let suffix = Array(keys.suffix(length))
-            let adjacent = Array(neighbourKeys.prefix(length))
-            if adjacent.count == length, adjacent == suffix { return true }
-          }
-        }
-        return false
+      /// side instead: Myers keeps one copy of a repeated word or phrase and deletes the
+      /// other, and the repeat need not sit at the edge (chunk 1 review, round 2: A "go now",
+      /// B "yes go now please", cleaned "go now please" deletes B's "yes go now", whose
+      /// prefixes never match A's end). So: any word the deleted run shares with the
+      /// neighbouring turn makes the boundary ambiguous. The neighbour's words come from the
+      /// RAW text, not this passage, so a boundary at a passage edge is compared too, and an
+      /// unplaced or unreached neighbour still has its original words to compare.
+      func repeatsAcross(_ run: [Int], into neighbour: Turn) -> Bool {
+        let neighbourKeys = Set(
+          WordDiff.tokenize(
+            String(decoding: raw[neighbour.originalTextRange], as: UTF16.self), locale: locale
+          ).map(\.key))
+        return run.contains { neighbourKeys.contains(a[$0].key) }
       }
       /// The maximal run of consecutive original indices in `deletes` starting at `ai` and
       /// extending forward (from a turn's first word) or backward (to a turn's last word),
@@ -261,7 +249,7 @@ public enum TurnTextAligner {
           touched.insert(turn.id)
           if absolute[ai].lowerBound == turn.originalTextRange.lowerBound,
             let n = neighbour(of: turn, before: true),
-            repeatsAcross(contiguousRun(from: ai, in: deletes, forward: true), into: n, before: true)
+            repeatsAcross(contiguousRun(from: ai, in: deletes, forward: true), into: n)
           {
             trustworthy = false
             touched.insert(n.id)
@@ -269,7 +257,7 @@ public enum TurnTextAligner {
           if absolute[ai].upperBound == turn.originalTextRange.upperBound,
             let n = neighbour(of: turn, before: false),
             repeatsAcross(
-              contiguousRun(from: ai, in: deletes, forward: false), into: n, before: false)
+              contiguousRun(from: ai, in: deletes, forward: false), into: n)
           {
             trustworthy = false
             touched.insert(n.id)

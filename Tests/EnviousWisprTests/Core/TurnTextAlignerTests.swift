@@ -257,6 +257,22 @@ struct TurnTextAlignerTests {
     #expect(out.fallbacks["a"] == .boundary && out.fallbacks["b"] == .boundary)
   }
 
+  @Test("a repeat that is NOT at the edge of the deleted run is still ambiguous")
+  func nonAdjacentRepeatAcrossBoundaryIsAmbiguous() {
+    let raw = "go now yes go now please"
+    let turns = [
+      turn("a", "A", in: raw, from: "go now", to: "now"),
+      turn("b", "B", in: raw, from: "yes go now please", to: "please"),
+    ]
+    // Myers deletes B's "yes go now" and keeps A's "go now"; the cleanup could equally have
+    // removed A's repetition and B's "yes", leaving B's "go now please" (chunk 1 review r2).
+    let cleaned = "go now please"
+    let out = TurnTextAligner.align(
+      rawText: raw, passages: [placed(raw, cleaned: cleaned)], turns: turns)
+    #expect(text(out, "a")?.processedText == nil && text(out, "b")?.processedText == nil)
+    #expect(out.fallbacks["a"] == .boundary && out.fallbacks["b"] == .boundary)
+  }
+
   @Test("a deleted filler at a boundary that repeats nothing is attributed, not failed")
   func distinctFillerAtBoundaryIsAttributed() {
     let raw = "life's too short. like you know that."
