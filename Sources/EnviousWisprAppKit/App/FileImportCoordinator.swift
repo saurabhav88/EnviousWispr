@@ -1727,7 +1727,8 @@ final class FileImportCoordinator {
     // `runTask` and `speakerStepTask` are both already cancelled unconditionally above,
     // before this guard.
     // #2851 follow-up: the labels found before the Stop are not thrown away. The turns are
-    // written raw and disclosed; the cleaned sections stay on screen for Copy.
+    // written raw and disclosed, and that raw labeled document is what Done shows and Copy
+    // hands over; `isSavedToHistory` asks about the raw words for a stopped run.
     if pendingSpeakerResult != nil, historyID != nil {
       let generationAtStop = generation
       Task { @MainActor [weak self] in
@@ -2094,7 +2095,9 @@ final class FileImportCoordinator {
   /// `.noWordTimings` failure whose timing data can never bind a speaker, where a retry
   /// would only reach the same failure again (cloud review of PR #2846).
   var canRetrySpeakerAnalysis: Bool {
-    guard speakerNoticeReason != .none, !retainedAnalysisSamples.isEmpty, let historyID,
+    // Never while a cleanup runs (second-pass review): a retry that landed mid-cleanup would
+    // replace the turns that cleanup never sectioned. `rePolish` refuses the mirror case.
+    guard !isRunning, speakerNoticeReason != .none, !retainedAnalysisSamples.isEmpty, let historyID,
       let current = currentHistoryRow(historyID)
     else { return false }
     return retryCouldChange(current.speakerAnalysis)
@@ -2544,7 +2547,9 @@ final class FileImportCoordinator {
     // screen falls back to the raw transcript, while the saved row's display text is the
     // PREVIOUS cleaned version — a mismatch over words that are safely stored. Found by
     // Codex. The Show original words toggle is the same question asked by the user.
-    if screenShowsRawWords { return savedHistoryRow.text == rawTranscript }
+    // A stopped labeled document shows its turns RAW (a Stop writes them raw, #2851
+    // follow-up), so the question is again whether the raw words are saved.
+    if screenShowsRawWords || state == .stopped { return savedHistoryRow.text == rawTranscript }
     return savedHistoryRow.displayText == documentText
   }
 
