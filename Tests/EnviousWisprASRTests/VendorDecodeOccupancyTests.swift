@@ -145,9 +145,22 @@ struct VendorDecodeOccupancyTests {
     #expect(resumed.names.isEmpty, "a cancelled waiter is not a returned decode")
     gate.open()
     _ = await sessionWait.value
-    _ = await waiterA.value
-    _ = await waiterB.value
-    #expect(resumed.names.sorted() == ["a", "b"])
+    // BOUNDED. `awaitIdle` resumes only when the count reaches zero, so a
+    // subject that never counts a decode down parks both waiters forever, and
+    // an unbounded `await waiterA.value` parked the whole lane with them: the
+    // #2793 battery's first row timed out at 30 minutes instead of failing
+    // (2026-09-13). The waiters are observed through `resumed` under a deadline,
+    // so that mutant now FAILS the assertion below in seconds. Both waiters are
+    // cancelled at the end so a parked one cannot outlive the test.
+    let deadline = ContinuousClock.now + .seconds(5)
+    while resumed.names.count < 2, ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+    waiterA.cancel()
+    waiterB.cancel()
+    #expect(
+      resumed.names.sorted() == ["a", "b"],
+      "both waiters must resume once the decode returns, got \(resumed.names)")
     #expect(occupancy.isIdle)
   }
 
