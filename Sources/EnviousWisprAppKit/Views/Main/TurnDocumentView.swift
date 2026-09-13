@@ -32,9 +32,15 @@ struct TurnDocumentView<Fallback: View>: View {
   /// History's detail view alike. A nested `ScrollView` with no height of its own has nothing
   /// to size against and collapses instead of growing with the text, exactly the "renders
   /// exactly today's plain text" contract this view exists to preserve.
+  ///
+  /// `LazyVStack`, not `VStack` (found by cloud review, round 5): a multi-hour recording has
+  /// thousands of turns, each row carrying its own rename state and popover, and the eager
+  /// stack built and laid out every one of them at once inside the callers' scroll views.
+  /// Rows now materialise as they scroll into view; a rename popover only ever belongs to a
+  /// visible row, so the per-row state a lazy stack discards off-screen is never in use.
   var body: some View {
     if let turns {
-      VStack(alignment: .leading, spacing: 16) {
+      LazyVStack(alignment: .leading, spacing: 16) {
         ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
           TurnRowView(turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled)
         }
