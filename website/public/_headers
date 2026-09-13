@@ -13,6 +13,22 @@
 /images/*
   Cache-Control: public, max-age=2592000
 
+# Root files are replaced in place under a fixed name (a new preview card, a
+# new favicon). Without a rule Cloudflare served the old /og-image.png for a
+# year and a manual purge was needed. One hour lets a replacement land on its
+# own; hashed /_astro/* assets keep the year above.
+/og-image.png
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/favicon.svg
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/favicon.ico
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/llms.txt
+  Cache-Control: public, max-age=3600, must-revalidate
+
 /appcast.xml
   Cache-Control: public, max-age=60
   X-Robots-Tag: noindex

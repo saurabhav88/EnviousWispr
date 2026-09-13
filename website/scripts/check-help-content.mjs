@@ -33,7 +33,6 @@ const DASHES = [
 ];
 
 const errors = [];
-const warnings = [];
 
 const files = fs.existsSync(DIR) ? fs.readdirSync(DIR).filter((f) => f.endsWith('.md')) : [];
 
@@ -59,12 +58,8 @@ for (const file of files) {
   if (/macOS 15\.1/.test(body)) {
     errors.push(`${file}: says "macOS 15.1" for Apple Intelligence (it is macOS 26)`);
   }
-  if (/open.source/i.test(body)) {
-    warnings.push(`${file}: mentions "open source" — verify it refers to EnviousWispr correctly`);
-  }
 }
 
-for (const w of warnings) console.warn(`WARN: ${w}`);
 for (const e of errors) console.error(`FAIL: ${e}`);
-console.log(`help content: ${files.length} articles, ${errors.length} error(s), ${warnings.length} warning(s)`);
+console.log(`help content: ${files.length} articles, ${errors.length} error(s)`);
 process.exit(errors.length ? 1 : 0);

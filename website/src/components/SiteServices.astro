@@ -83,12 +83,16 @@
   }
   events.forEach((e) => window.addEventListener(e, trigger, { once: true, passive: true }));
   setTimeout(loadServices, 5000);
-</script>
-<!-- Download click tracking with source attribution -->
-<script>
+
+  // Download click tracking with source attribution. A visitor who lands and
+  // taps Download before the deferred load has fired is the best visitor we
+  // get, so the click must never be dropped: the PostHog snippet installs a
+  // queueing stub synchronously, so loading it here and capturing on the stub
+  // records the event once the real library arrives.
   document.addEventListener('click', (e) => {
     const link = e.target.closest('a[href*="EnviousWispr.dmg"]');
-    if (!link || typeof window.posthog === 'undefined') return;
+    if (!link) return;
+    if (typeof window.posthog === 'undefined') loadPostHog();
     const source =
       link.dataset.downloadSource ||
       (link.closest('nav') && 'nav') ||
