@@ -27,7 +27,7 @@ The slowest part of dictation is not the talking. It is the moment after you sto
 
 Until now, EnviousWispr's All Languages engine handled that moment the traditional way: it collected your audio while you spoke, and when you released the key, it transcribed the whole thing in one pass. That works, and it is accurate. But the wait grows with the length of the dictation. Talk for two minutes and you wait for two minutes of audio to be processed. Talk through a whole idea, the way [an hour-long session](/blog/you-can-now-dictate-for-a-full-hour/) invites you to, and the pause at the end starts to pull you out of your flow.
 
-In the latest update, the All Languages engine transcribes while you speak. When you stop, there is almost nothing left to do, so the transcription is essentially done when you release the key, whether you spoke for ten seconds or ten minutes. Any AI polish you have on still runs afterward, and takes longer for longer dictations.
+In the latest update, the All Languages engine transcribes while you speak. When you stop, there is almost nothing left to do, so the transcription is essentially done when you release the key, whether you spoke for ten seconds or ten minutes. (This is the transcription step; what happens after it, such as AI polish, is a separate matter.)
 
 ## How it works
 
