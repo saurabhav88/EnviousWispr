@@ -195,6 +195,57 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     return Int((Double(text.count) / divisor).rounded(.up))
   }
 
+  // MARK: - #2883: the exact counter is trusted only on a release OS build
+
+  /// The kernel's OS build tag: "25E246" is the 26.4 release, "25E5207k" the 26.4
+  /// developer beta 1. Read once per process; nil when the sysctl is unavailable.
+  static let osBuildTag: String? = readOSBuildTag()
+
+  static func readOSBuildTag() -> String? {
+    var size = 0
+    guard sysctlbyname("kern.osversion", nil, &size, nil, 0) == 0, size > 0 else { return nil }
+    var buffer = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("kern.osversion", &buffer, &size, nil, 0) == 0 else { return nil }
+    return String(cString: buffer)
+  }
+
+  /// Apple's beta seeds carry a trailing letter on the build tag; public releases AND
+  /// release candidates end in a digit (26A428 was an RC), so this is "letter-suffixed
+  /// seed" versus "everything else", by convention rather than a documented API. Pure, so a
+  /// table test drives it with both shapes. `nil` reads as not-a-seed: a failed sysctl is
+  /// not evidence of a seed, and an unknown build keeps today's behaviour rather than
+  /// silently downgrading a release user.
+  static func isPreReleaseOSBuild(_ tag: String?) -> Bool {
+    guard let last = tag?.last else { return false }
+    return last.isLetter
+  }
+
+  /// #2883: one production crash (v2.4.8, ENVIOUSWISPR-56) faulted inside
+  /// `estimateAFMTokens` after Apple's exact `tokenCount(for:)` on the one Mac running the
+  /// 26.4 developer beta 1 seed (25E5207k) under a binary built against SDK 26.5; no
+  /// digit-suffixed build has reported it. The cause is not proven (HYPOTHETICAL: no seed
+  /// machine to reproduce on), so this is a precaution: a letter-suffixed seed takes the
+  /// heuristic it already took below 26.4; everything else keeps today's exact counter.
+  static let exactTokenCounterIsTrusted: Bool = !isPreReleaseOSBuild(osBuildTag)
+
+  /// The routing, pure over a closure so a test drives it without FoundationModels: the
+  /// heuristic when the counter is not trusted; else the counter, with cancellation
+  /// rethrown (the pipeline's timeout path) and any other error falling back to the
+  /// heuristic, exactly as before #2883.
+  static func afmTokenEstimate(
+    useExactCounter: Bool, text: String, lang: String?,
+    exact: () async throws -> Int
+  ) async throws -> Int {
+    guard useExactCounter else { return heuristicAFMTokens(text, lang: lang) }
+    do {
+      return try await exact()
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      return heuristicAFMTokens(text, lang: lang)
+    }
+  }
+
   /// The single unified copy-editor prompt (v38; #1083 promotes v33 -> v38).
   /// Eval-validated +11pp over v33 on the ci151 tier-bench (gemini-3.1-pro-preview
   /// judge, reps=3, default-Parakeet nil-language path): 69.8% -> 80.6% overall,
@@ -738,24 +789,39 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       let systemPrompt: String
     }
 
-    /// Exact token count via Apple's counter (macOS 26.4+); on older systems or
-    /// if the counter throws (non-cancellation), fall back to the conservative
-    /// char heuristic. Cancellation rethrows so the pipeline timeout/cancel path
-    /// is preserved.
+    /// Exact token count via Apple's counter (macOS 26.4+, release builds only, #2883);
+    /// on older systems, on a pre-release seed, or if the counter throws
+    /// (non-cancellation), the conservative char heuristic. Cancellation rethrows so
+    /// the pipeline timeout/cancel path is preserved. The routing itself is
+    /// `afmTokenEstimate`, outside this `#if`, so a test pins it without a model.
     @available(macOS 26.0, *)
     private static func estimateAFMTokens(
       model: SystemLanguageModel, text: String, lang: String?
     ) async throws -> Int {
       if #available(macOS 26.4, *) {
-        do {
-          return try await model.tokenCount(for: text)
-        } catch is CancellationError {
-          throw CancellationError()
-        } catch {
-          return heuristicAFMTokens(text, lang: lang)
-        }
+        await logCounterChoiceOnce()
+        return try await afmTokenEstimate(
+          useExactCounter: exactTokenCounterIsTrusted, text: text, lang: lang,
+          exact: { try await model.tokenCount(for: text) })
       }
       return heuristicAFMTokens(text, lang: lang)
+    }
+
+    /// DEBUG-build diagnostic: on the first macOS 26.4+ token estimate per process, logs the
+    /// counter selected by the OS-build guard for development and Live UAT. AppLogger emits
+    /// nothing in Release builds; this is not a production breadcrumb. The exact counter may
+    /// still fall back to the heuristic if it throws.
+    /// Actor-isolated so the flag has one writer.
+    @MainActor private static var counterChoiceLogged = false
+    @MainActor private static func logCounterChoiceOnce() async {
+      guard !counterChoiceLogged else { return }
+      counterChoiceLogged = true
+      let tag = osBuildTag ?? "unknown"
+      await AppLogger.shared.log(
+        exactTokenCounterIsTrusted
+          ? "AFM token counter: exact (OS build \(tag))"
+          : "AFM token counter: heuristic (pre-release OS build \(tag))",
+        level: .info, category: "LLM")
     }
 
     /// #1055 preflight + generation guard. Counts instructions + wrapped

@@ -77,6 +77,94 @@ struct LanguageNormalizerTests {
 /// with the Latin rate (lang: nil) regardless of the dictation language — else
 /// a CJK/Thai dictation makes the preflight count the ~2.5k-char English prompt
 /// at ~1 char/token and skip a transcript that actually fits.
+/// #2883 — Apple's exact token counter is trusted only on a RELEASE macOS build.
+///
+/// **When this fails, a user on a developer beta seed of macOS crashes mid-dictation the
+/// moment on-device polish counts its prompt (an uncatchable memory fault inside the
+/// resumed continuation, seen once on v2.4.8 / 25E5207k), or a release user silently loses
+/// the exact counter and long dictations skip polish earlier than they should.** Product
+/// coverage.
+@Suite(.tags(.productOutcome))
+struct AFMExactCounterGuardTests {
+
+  @Test(
+    "a build tag ending in a letter is a seed; a digit, or no tag at all, is a release",
+    arguments: [
+      ("25E5207k", true),  // 26.4 developer beta 1: the crashing Mac
+      ("25E246", false),  // 26.4 release
+      ("26A428", false),  // digit-suffixed release candidate: trusted by design
+      ("25A353", false),  // 26.0 release
+      ("24G84", false),  // 15.6 release
+    ])
+  func classifierTable(tag: String, isSeed: Bool) {
+    #expect(AppleIntelligenceConnector.isPreReleaseOSBuild(tag) == isSeed, Comment(rawValue: tag))
+  }
+
+  @Test("an unreadable build tag keeps today's behaviour, never a seed")
+  func nilTagIsTrusted() {
+    #expect(AppleIntelligenceConnector.isPreReleaseOSBuild(nil) == false)
+  }
+
+  private static let latin = String(
+    repeating: "You are a transcript cleaner. Fix punctuation and remove fillers. ", count: 20)
+  private static let cjk = String(repeating: "今日は会議があります。", count: 40)
+
+  @Test("with the counter untrusted the estimate IS the heuristic and the counter is never asked")
+  func untrustedRoutesToHeuristic() async throws {
+    for (text, lang) in [(Self.latin, nil as String?), (Self.cjk, "ja")] {
+      let estimate = try await AppleIntelligenceConnector.afmTokenEstimate(
+        useExactCounter: false, text: text, lang: lang
+      ) {
+        Issue.record("the exact counter was called on an untrusted build")
+        return -1
+      }
+      #expect(estimate == AppleIntelligenceConnector.heuristicAFMTokens(text, lang: lang))
+    }
+  }
+
+  @Test("with the counter trusted its answer is returned as-is")
+  func trustedReturnsTheCounter() async throws {
+    let estimate = try await AppleIntelligenceConnector.afmTokenEstimate(
+      useExactCounter: true, text: Self.latin, lang: nil
+    ) { 42 }
+    #expect(estimate == 42)
+    #expect(estimate != AppleIntelligenceConnector.heuristicAFMTokens(Self.latin, lang: nil))
+  }
+
+  struct CounterFailed: Error {}
+
+  @Test("a counter that throws falls back to the heuristic; cancellation is rethrown")
+  func trustedFallbacks() async throws {
+    let fallback = try await AppleIntelligenceConnector.afmTokenEstimate(
+      useExactCounter: true, text: Self.latin, lang: nil
+    ) { throw CounterFailed() }
+    #expect(fallback == AppleIntelligenceConnector.heuristicAFMTokens(Self.latin, lang: nil))
+    await #expect(throws: CancellationError.self) {
+      try await AppleIntelligenceConnector.afmTokenEstimate(
+        useExactCounter: true, text: Self.latin, lang: nil
+      ) { throw CancellationError() }
+    }
+  }
+
+  /// The premise behind the classifier, checked on the host: the sysctl answers, and on a
+  /// release build the tag ends in a digit so this Mac keeps the exact counter. Skipped
+  /// (not failed) only where the host is itself a genuine seed (`isPreReleaseOSBuild` true
+  /// on the read tag); a reader that is simply BROKEN and always returns nil is not a seed
+  /// by that classifier, so this still runs and fails on `tag != nil` instead of skipping
+  /// silently (a nil-returning gate on the old `.map { … } ?? false` read as a seed either
+  /// way and hid exactly that breakage).
+  @Test(
+    "the kernel reports a build tag and this release host trusts the counter",
+    .enabled(
+      if: !AppleIntelligenceConnector.isPreReleaseOSBuild(
+        AppleIntelligenceConnector.readOSBuildTag())))
+  func hostTagReads() {
+    let tag = AppleIntelligenceConnector.readOSBuildTag()
+    #expect(tag != nil)
+    #expect(AppleIntelligenceConnector.exactTokenCounterIsTrusted)
+  }
+}
+
 @Suite("Apple Intelligence: AFM token heuristic")
 struct AFMTokenHeuristicTests {
 
