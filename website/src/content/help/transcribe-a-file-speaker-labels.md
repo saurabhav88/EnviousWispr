@@ -8,7 +8,7 @@ keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
 ---
-When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
+When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. A turn also shows the time in the recording where it starts, when the app has a time for it. A recording with one voice comes back as plain text with no labels.
 
 The speakers are found on your Mac, by the same app, before the cleanup runs. Nothing about the recording is sent anywhere to work out who is talking.
 
@@ -22,9 +22,9 @@ The numbers are placeholders. Give each one a real name and the whole transcript
 
 ### What "Both" means
 
-Sometimes two people talk at the same time, or trade very short replies so quickly that the app cannot say which words belong to whom. Rather than guess, or leave a gap, it labels that stretch **Both**. A Both turn has no number and cannot be renamed, because it is not one person.
+Some stretches of words the app cannot confidently give to one speaker: two people talking at the same time, very short replies traded quickly, or a few words that fell outside every stretch of speech it had assigned. Rather than guess, or leave a gap, it labels that stretch **Both**. A Both turn has no number and cannot be renamed, because the app did not assign it to one person.
 
-If a recording comes back with many Both turns, the two voices were hard to separate in that stretch. The words are still all there and still in order.
+If a recording comes back with many Both turns, the voices were hard to separate in those stretches. The words are still all there and still in order.
 
 ### What "Not fully polished" means
 
@@ -63,7 +63,7 @@ Both speech engines give you speaker labels. The labels are built from the time 
 | **Fast** | Yes | Recommended. Its language count is compared with All Languages in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
 | **All Languages** | Yes | Every language the engine supports, with one exception below. |
 
-**Languages written without spaces between words** (for example Chinese, Japanese and Thai) do not get speaker turns yet. The engine cannot report a time per word for those scripts, so the app has nothing to attach a speaker to. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+**Languages written without spaces between words** (for example Chinese, Japanese and Thai) do not get speaker turns yet. The engines do report timings, but the app cannot yet map them onto transcript text that has no spaces to split on, so it has nothing to attach a speaker to. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### If the labels did not appear
 
