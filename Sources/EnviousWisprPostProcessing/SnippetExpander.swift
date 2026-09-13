@@ -117,9 +117,10 @@ public struct SnippetExpander: Sendable {
     var issued: Set<String> = []
     // Decided ONCE per take, not once per fired snippet (#2759 site 2): the input and the saved
     // expansions do not change while this loop runs, and a scan of both per mint made a long
-    // take with several triggers pay O(text x fired).
-    let expansions = vocabulary.snippets.map(\.expansion)
-    let domainCanCollide = Self.domainCanCollide(rawInput: text, expansions: expansions)
+    // take with several triggers pay O(text x fired). Lazy, so a take that fires nothing, the
+    // common case, pays no scan at all, as before.
+    lazy var expansions = vocabulary.snippets.map(\.expansion)
+    lazy var domainCanCollide = Self.domainCanCollide(rawInput: text, expansions: expansions)
     var cursor = 0
 
     while cursor < wordIndices.count {
