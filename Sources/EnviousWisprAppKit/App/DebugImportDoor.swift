@@ -87,12 +87,18 @@
       }
     }
 
-    func uninstall() {
+    /// Returns the cancelled walk, if one was in flight, so a caller that must know the
+    /// cancellation LANDED (a test asserting "no reply") can await it rather than yield
+    /// and hope. Cancellation is a flag; the task runs until its next check.
+    @discardableResult
+    func uninstall() -> Task<Void, Never>? {
+      let pending = walkTask
       if let observer { DistributedNotificationCenter.default().removeObserver(observer) }
       observer = nil
-      walkTask?.cancel()
+      pending?.cancel()
       walkTask = nil
       inFlight = nil
+      return pending
     }
 
     // MARK: - Requests

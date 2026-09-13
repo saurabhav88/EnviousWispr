@@ -505,9 +505,11 @@
       door3.handle(transcribeRequest(door3))
       let probing3 = await settleUntilObserved { box3.probes == 1 }
       #expect(probing3)
-      door3.uninstall()
+      let pending = door3.uninstall()
       await box3.gate!.open()
-      await Task.yield()
+      // The cancelled task's own completion, never a yield count: the "no reply" claim
+      // is only meaningful once the task has run past its cancellation check.
+      await pending?.value
       #expect(sink3.replies.isEmpty)
       #expect(c3.state == .idle)
 
