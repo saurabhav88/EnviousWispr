@@ -1123,7 +1123,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(firstPassFinished, "the first pass never persisted a failed outcome")
     #expect(coordinator.canRetrySpeakerAnalysis, "a failed analysis should be retry-eligible")
 
-    await coordinator.retrySpeakerAnalysis()
+    coordinator.retrySpeakerAnalysis()
 
     let retried = await settleUntil {
       store.current(historyID)?.speakerAnalysis == .labeled(count: 2)
@@ -1131,6 +1131,127 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(retried, "retry never persisted the successful labeled outcome")
     #expect(store.current(historyID)?.turns?.count == 2)
     #expect(cleanupCounter.count == 0, "retry must never reach TurnCleanupRunner")
+  }
+
+  @Test(
+    "a retry whose analyzer call is still in flight when the document is replaced never persists against the old row"
+  )
+  func retryNeverPersistsAfterDocumentReplaced() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Attempt 1: the ordinary first pass, which fails. Attempt 2: the retry, blocked
+        // until the test lets it through — exactly the window a document replacement (or a
+        // Stop, in the sibling test below) can land in.
+        if attempts.next() == 1 { return .failed(.analyzerThrew("boom")) }
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let firstHistoryID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(firstHistoryID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+    #expect(coordinator.canRetrySpeakerAnalysis)
+
+    coordinator.retrySpeakerAnalysis()
+    await speakerGate.waitUntilArrived()
+
+    // The user moves on to a DIFFERENT file while the retry's own analyzer call is still
+    // blocked — `choose(url:)` cancels `speakerStepTask` (which now owns the retry, per the
+    // chunk-2a review fix) and gives `historyID` a new value.
+    coordinator.choose(url: Self.anyURL)
+
+    await speakerGate.open()
+    let sawRetryAttempt = await settleUntil { attempts.count == 2 }
+    #expect(sawRetryAttempt, "the retry's own analyzer call should still have run to completion")
+    // A bounded settle for the (deliberately absent) write, not a wait for a signal that a
+    // correct implementation never sends.
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(
+      store.current(firstHistoryID)?.speakerAnalysis != .labeled(count: 2),
+      "a stale retry must never persist a labeled outcome against a document the user already left"
+    )
+  }
+
+  @Test("Stop pressed while a retry's own analyzer call is in flight prevents any further write")
+  func stopDuringRetryPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        if attempts.next() == 1 { return .failed(.analyzerThrew("boom")) }
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+    #expect(coordinator.canRetrySpeakerAnalysis)
+
+    coordinator.retrySpeakerAnalysis()
+    await speakerGate.waitUntilArrived()
+
+    // Stop is unconditional, before `isRunning` (the visible screen already reads Done) —
+    // this is exactly the "background pass can outlive Done" case the retry task must now
+    // be reachable from, per the chunk-2a review fix (retry runs as `speakerStepTask`).
+    coordinator.stop()
+
+    await speakerGate.open()
+    let sawRetryAttempt = await settleUntil { attempts.count == 2 }
+    #expect(sawRetryAttempt, "the retry's own analyzer call should still have run to completion")
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(
+      store.current(historyID)?.speakerAnalysis != .labeled(count: 2),
+      "Stop during a retry must prevent its result from ever being persisted"
+    )
   }
 
   @Test("canRetrySpeakerAnalysis is false for a labeled or single outcome, and while in progress")

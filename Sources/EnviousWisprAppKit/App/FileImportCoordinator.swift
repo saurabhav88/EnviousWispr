@@ -1155,6 +1155,33 @@ final class FileImportCoordinator {
   private var retainedWordTimings: [ASRWordTiming]?
   private var retainedWordTimingCoverage: ASRWordTimingCoverage?
 
+  /// Bumped only by a successful `renameSpeaker` (#2811, phase 4 of #2807). `turns`/
+  /// `speakerNames` below read through `currentHistoryRow`, a plain closure the `@Observable`
+  /// macro cannot see into — so nothing tells a view depending on them to re-render after a
+  /// rename lands anywhere else (the wizard's own popover, or History's). Reading this
+  /// alongside them inside their own getters gives Observation a real stored-property
+  /// dependency to invalidate on. A background turn-storage pass or a retry needs no such
+  /// bump: both already flip the genuinely-tracked `speakerStepState`, which a view showing
+  /// "Finding speakers" already depends on.
+  private(set) var speakerFieldsRevision = 0
+
+  /// The wizard's own document turns, read fresh from the live store on every access — this
+  /// coordinator never caches them itself, so a background pass finishing, a retry, or a
+  /// rename is always reflected. `nil` under the exact same conditions
+  /// `TranscriptDocumentPresenter.render` treats as "nothing turn-shaped to show."
+  var turns: [Turn]? {
+    _ = speakerFieldsRevision
+    guard let historyID else { return nil }
+    return currentHistoryRow(historyID)?.turns
+  }
+
+  /// `speakerId -> display name` for the current document, read fresh alongside `turns`.
+  var speakerNames: [String: String] {
+    _ = speakerFieldsRevision
+    guard let historyID else { return [:] }
+    return currentHistoryRow(historyID)?.speakerNames ?? [:]
+  }
+
   /// The in-flight speaker step, run detached from `run()`'s own completion — it touches
   /// no ASR engine and must never add its own deadline (20s minimum) to the user-visible
   /// polish latency every import already pays (found by cloud review: awaiting it inline
@@ -1520,7 +1547,12 @@ final class FileImportCoordinator {
     outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, rawText: String,
     generationAtStart: Int, historyIDAtStart: UUID?
   ) async {
-    guard let historyID else { return }
+    // NEVER named `historyID` — that would SHADOW the live computed property for the rest of
+    // this function, turning every `historyIDAtStart == historyID` guard below into a
+    // comparison of two constants that can never diverge, silently neutering the staleness
+    // check they exist to perform (found by chunk review, in the sibling `retrySpeakerAnalysis`
+    // this pattern was copied into — fixed here too since the class is the same).
+    guard let historyIDForWrite = historyID else { return }
     let passStart = CFAbsoluteTimeGetCurrent()
 
     // Waits for the visible document's own cleanup FIRST, uniformly for EVERY branch below
@@ -1542,7 +1574,7 @@ final class FileImportCoordinator {
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyID: historyID,
+        outcome: outcome, wordTimings: wordTimings, historyIDForWrite: historyIDForWrite,
         historyIDAtStart: historyIDAtStart, passStart: passStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
@@ -1590,7 +1622,7 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
     await mergeAndReport(
-      historyID: historyID, analysis: .labeled(count: labeledCount), turns: cleanedTurns,
+      historyID: historyIDForWrite, analysis: .labeled(count: labeledCount), turns: cleanedTurns,
       outcome: .stored, turnCount: cleanedTurns.count, fallbackTurnCount: fallbackTurnCount,
       passStart: passStart)
   }
@@ -1606,9 +1638,12 @@ final class FileImportCoordinator {
   /// caller must stop, writing nothing further. Non-nil hands back turns ready for EITHER
   /// cleanup (the ordinary path) or direct persistence (retry, which skips cleanup).
   private func assembleTurnsOrPersistTerminal(
-    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyID: UUID,
+    outcome: SpeakerAnalysis, wordTimings: [ASRWordTiming]?, historyIDForWrite: UUID,
     historyIDAtStart: UUID?, passStart: CFAbsoluteTime
   ) async -> (turns: [Turn], labeledCount: Int)? {
+    // `historyIDForWrite`, NEVER `historyID` — that name would SHADOW the live computed
+    // property for this whole function, turning every `historyIDAtStart == historyID` guard
+    // below into a comparison of two constants that can never diverge (found by chunk review).
     // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
     // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
     // actually needed — checking it before the outcome type would let a merge-input gap
@@ -1622,13 +1657,13 @@ final class FileImportCoordinator {
       let turnsOutcome: TelemetryService.FileImportTurnsOutcome? =
         if case .single = outcome { .singleNoTurns } else { nil }
       await mergeAndReport(
-        historyID: historyID, analysis: outcome.asStorageAnalysis, turns: nil,
+        historyID: historyIDForWrite, analysis: outcome.asStorageAnalysis, turns: nil,
         outcome: turnsOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
       return nil
     }
     guard let wordTimings else {
       await mergeAndReport(
-        historyID: historyID, analysis: .failed(.noWordTimings), turns: nil,
+        historyID: historyIDForWrite, analysis: .failed(.noWordTimings), turns: nil,
         outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
       return nil
     }
@@ -1654,7 +1689,9 @@ final class FileImportCoordinator {
     )
     // A stale/cancelled pass writes NOTHING here, matching every other staleness guard in
     // this file — the caller must not fall through to the all-unknown check below and
-    // persist a failure on behalf of a document nobody is watching anymore.
+    // persist a failure on behalf of a document nobody is watching anymore. Compares against
+    // the LIVE `historyID` property, never `historyIDForWrite` — a value captured once at
+    // entry cannot detect a document swap that happened during this `await`.
     guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
 
     // A space-free script (Chinese, Japanese, ...) makes the production word-timing mapper
@@ -1670,7 +1707,7 @@ final class FileImportCoordinator {
     guard assembledTurns.contains(where: { $0.speakerId != TurnAssembler.unknownSpeakerID })
     else {
       await mergeAndReport(
-        historyID: historyID, analysis: .failed(.noWordTimings), turns: nil,
+        historyID: historyIDForWrite, analysis: .failed(.noWordTimings), turns: nil,
         outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
       return nil
     }
@@ -1702,20 +1739,36 @@ final class FileImportCoordinator {
   /// silently re-run cleanup, but it MUST still persist its result"). Shares the
   /// analysis/assembly PREFIX with the ordinary pass via `assembleTurnsOrPersistTerminal`;
   /// the CLEANUP SUFFIX, which stays "Clean it again" (`rePolish()`), is never reached here.
-  func retrySpeakerAnalysis() async {
-    guard canRetrySpeakerAnalysis, let historyID else { return }
+  ///
+  /// Synchronous and task-owning, matching `rePolish()`'s own shape (found by chunk review:
+  /// an `async` entry point that never assigned `speakerStepTask` ran in the CALLER's task,
+  /// so `stop()`/`choose()`/`startOver()`'s existing `speakerStepTask?.cancel()` targeted the
+  /// PREVIOUS pass and never touched a running retry at all).
+  func retrySpeakerAnalysis() {
+    guard canRetrySpeakerAnalysis, let historyIDAtStart = historyID else { return }
     let analysisSamples = retainedAnalysisSamples
     let wordTimings = retainedWordTimings
     let wordTimingCoverage = retainedWordTimingCoverage
-    // No retained `rawText`: retry never reaches `TurnCleanupRunner`, the only consumer of
-    // raw text in this pipeline, so there is nothing here that would use it.
-    let historyIDAtStart = historyID
     speakerStepState = .inProgress
+    speakerStepTask = Task { [weak self] in
+      await self?.runRetryAnalysis(
+        analysisSamples: analysisSamples, wordTimings: wordTimings,
+        wordTimingCoverage: wordTimingCoverage, historyIDAtStart: historyIDAtStart)
+    }
+  }
+
+  private func runRetryAnalysis(
+    analysisSamples: [Float], wordTimings: [ASRWordTiming]?,
+    wordTimingCoverage: ASRWordTimingCoverage?, historyIDAtStart: UUID
+  ) async {
+    // Every comparison below reads the LIVE `historyID` property — never a locally-bound
+    // value of the same name, which would shadow it and neuter the staleness check (the
+    // exact defect found by chunk review in an earlier version of this function).
+    defer { if historyIDAtStart == historyID { speakerStepState = .finished } }
     let durationSeconds = file?.seconds ?? 0
     let analysisStart = CFAbsoluteTimeGetCurrent()
     let outcome = await speakerLabeler(analysisSamples, durationSeconds)
     let analysisMs = Int(((CFAbsoluteTimeGetCurrent() - analysisStart) * 1000).rounded())
-    defer { if historyIDAtStart == historyID { speakerStepState = .finished } }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     speakerAnalysis = outcome
     await AppLogger.shared.log(
@@ -1727,10 +1780,11 @@ final class FileImportCoordinator {
     // shape (`analysisStart` for the analyzer alone, `passStart` for everything after) — so
     // this pass's `ms=` reads the same way as the ordinary pass's, minus the cleanup it skips.
     let passStart = CFAbsoluteTimeGetCurrent()
+    guard let historyIDForWrite = historyID, historyIDForWrite == historyIDAtStart else { return }
 
     guard
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
-        outcome: outcome, wordTimings: wordTimings, historyID: historyID,
+        outcome: outcome, wordTimings: wordTimings, historyIDForWrite: historyIDForWrite,
         historyIDAtStart: historyIDAtStart, passStart: passStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
@@ -1738,9 +1792,9 @@ final class FileImportCoordinator {
     // turns persist AS-IS, exactly as they came out of analysis, matching the epic's own
     // "cleanup stays 'Clean it again'" requirement.
     await mergeAndReport(
-      historyID: historyID, analysis: .labeled(count: labeledCount), turns: assembledTurns,
-      outcome: .stored, turnCount: assembledTurns.count, fallbackTurnCount: 0,
-      passStart: passStart)
+      historyID: historyIDForWrite, analysis: .labeled(count: labeledCount),
+      turns: assembledTurns, outcome: .stored, turnCount: assembledTurns.count,
+      fallbackTurnCount: 0, passStart: passStart)
   }
 
   /// Renames a speaker id across every turn showing it (#2811, phase 4 of #2807). Re-fetches
@@ -1750,17 +1804,23 @@ final class FileImportCoordinator {
   /// Design correction 2). Callable from either screen; both are ordinary, symmetric callers
   /// of the same underlying write.
   func renameSpeaker(id: String, name: String) async -> RenameFailure? {
-    guard let historyID, let current = currentHistoryRow(historyID), current.turns != nil,
-      let analysis = current.speakerAnalysis
+    guard let historyIDForWrite = historyID, let current = currentHistoryRow(historyIDForWrite),
+      current.turns != nil, let analysis = current.speakerAnalysis
     else {
       return RenameFailure(message: "Couldn't save the name.", currentName: nil)
     }
     do {
-      let saved = try writeExplicitRename(historyID, analysis, current.turns, (id, name))
+      let saved = try writeExplicitRename(
+        historyIDForWrite, analysis, current.turns, (id, name))
       guard saved else {
         return RenameFailure(
           message: "This recording was removed from History.", currentName: nil)
       }
+      // Neither `turns` nor `speakerNames` below is itself an `@Observable`-tracked stored
+      // property — they read through `currentHistoryRow`, a closure Observation cannot see
+      // into — so nothing would tell a view to re-render after a successful rename without
+      // this. Bumping it is what makes "every turn showing that speaker id re-renders" true.
+      speakerFieldsRevision += 1
       return nil
     } catch {
       return RenameFailure(
