@@ -1198,6 +1198,75 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(untouched == true, "a stopped re-clean must never persist its result")
   }
 
+  /// Drives one import to `state == .finished` plus a settled speaker step, and returns the
+  /// coordinator and its history id; nil (with an issue recorded) if no row landed.
+  private func settledImport(
+    store: FakeHistoryStore, wordTimings: [ASRWordTiming]?,
+    speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis
+  ) async -> (FileImportCoordinator, UUID)? {
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: wordTimings, speakerLabeler: speakerLabeler)
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return nil
+    }
+    let settled = await settleUntil {
+      store.current(historyID)?.speakerAnalysis != nil
+        && coordinator.speakerStepState == .finished
+    }
+    #expect(settled, "the speaker step never settled")
+    return (coordinator, historyID)
+  }
+
+  @Test("the retained audio is released once the stored outcome is one no retry could change")
+  func retryInputsReleasedOnceSettled() async {
+    // A labeled success: nothing to retry, audio freed.
+    let labeledStore = FakeHistoryStore()
+    guard
+      let (labeled, _) = await settledImport(
+        store: labeledStore, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(!labeled.retainsRetryInputs, "a labeled outcome must not pin the audio")
+    #expect(!labeled.canRetrySpeakerAnalysis)
+
+    // A real analyzer failure: retry is offered, so the audio stays.
+    let failedStore = FakeHistoryStore()
+    guard
+      let (failed, _) = await settledImport(
+        store: failedStore, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .failed(.modelsUnavailable) })
+    else { return }
+    #expect(failed.retainsRetryInputs, "a retryable failure keeps the audio for Try again")
+    #expect(failed.canRetrySpeakerAnalysis)
+    #expect(failed.speakerNoticeReason == .failed)
+  }
+
+  @Test("no word timings: the notice shows, Try again does not, and the audio is released")
+  func missingTimingsIsNotRetryable() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: nil,
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(store.current(historyID)?.speakerAnalysis == .failed(.noWordTimings))
+    #expect(coordinator.speakerNoticeReason == .failed, "the user is still told labels failed")
+    #expect(
+      !coordinator.canRetrySpeakerAnalysis,
+      "a retry reruns only the analyzer against the same missing timings; it cannot help")
+    #expect(!coordinator.retainsRetryInputs, "nothing a retry could use is worth holding")
+    // And pressing it anyway is a no-op, never an empty-buffer analysis.
+    coordinator.retrySpeakerAnalysis()
+    #expect(coordinator.speakerStepState == .finished)
+  }
+
   @Test("Clean it again cleans the raw turns a retry left behind (#2811)")
   func rePolishCleansTurnsLeftRawByRetry() async {
     let store = FakeHistoryStore()

@@ -1205,12 +1205,52 @@ final class FileImportCoordinator {
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
   /// correction): a genuinely NEW retention this phase adds, since `releaseDecodedAudio()`
   /// already clears `decodedSamples` immediately after transcription, well before a retry
-  /// would exist to need it. Cleared at the exact points `decodedSamples` itself resets
+  /// would exist to need it. Cleared at the points `decodedSamples` itself resets
   /// (`choose(url:)`, `startOver()`), so a stale retry can never fire against a replaced
-  /// document.
+  /// document, AND as soon as a pass settles on an outcome no retry could change
+  /// (`releaseRetryInputsIfNoLongerRetryable`, found by cloud review of PR #2846): this
+  /// coordinator lives for the process, and a multi-hour import's buffer is hundreds of
+  /// megabytes to hold behind a screen the user has left.
   private var retainedAnalysisSamples: [Float] = []
   private var retainedWordTimings: [ASRWordTiming]?
   private var retainedWordTimingCoverage: ASRWordTimingCoverage?
+
+  /// Test-facing: whether a "Try again" still has audio to run against.
+  var retainsRetryInputs: Bool { !retainedAnalysisSamples.isEmpty }
+
+  /// Whether the retained timing data could ever bind a speaker: `nil` timings, or a
+  /// coverage with zero timed entries (a space-free script, #2838), can only reach
+  /// `.failed(.noWordTimings)` again however the analyzer segments the audio, since a retry
+  /// reruns the analyzer and never the ASR or the timing mapper. A present-but-partial
+  /// coverage stays retryable: assembly binds whatever entries ARE timed, and a different
+  /// segmentation can bind them differently.
+  private var retainedTimingsCanBindSpeakers: Bool {
+    guard retainedWordTimings != nil else { return false }
+    if let coverage = retainedWordTimingCoverage, coverage.timed == 0 { return false }
+    return true
+  }
+
+  /// The one reading of "could a retry change this stored outcome", shared by the button
+  /// and by the release of the retained audio, so the two can never disagree.
+  private func retryCouldChange(_ analysis: TranscriptSpeakerAnalysis?) -> Bool {
+    switch analysis {
+    case .single, .labeled: return false
+    case .failed(.noWordTimings): return retainedTimingsCanBindSpeakers
+    case .failed, .unanalyzed, nil: return true
+    }
+  }
+
+  /// Frees the retained retry inputs once the CURRENT document's stored outcome is one no
+  /// retry could change. Reads the stored field, never the in-memory analyzer property, so
+  /// a save that threw (row still at its previous retryable outcome) keeps them.
+  private func releaseRetryInputsIfNoLongerRetryable() {
+    guard let historyID, let current = currentHistoryRow(historyID),
+      !retryCouldChange(current.speakerAnalysis)
+    else { return }
+    retainedAnalysisSamples = []
+    retainedWordTimings = nil
+    retainedWordTimingCoverage = nil
+  }
 
   /// Bumped only by a successful `renameSpeaker` (#2811, phase 4 of #2807). `turns`/
   /// `speakerNames` below read through `currentHistoryRow`, a plain closure the `@Observable`
@@ -1647,7 +1687,8 @@ final class FileImportCoordinator {
       // #2811, phase 4: retained for a possible "Try again," a genuinely NEW retention this
       // phase adds — `analysisSamples` itself is a local (freed once this function returns),
       // and `wordTimings`/`wordTimingCoverage` were never stored at all before. Cleared at the
-      // same points `decodedSamples` itself resets.
+      // points `decodedSamples` itself resets, and once the pass settles on an outcome no
+      // retry could change (see the declaration).
       retainedAnalysisSamples = analysisSamples
       retainedWordTimings = result.wordTimings
       retainedWordTimingCoverage = result.wordTimingCoverage
@@ -1683,7 +1724,12 @@ final class FileImportCoordinator {
     analysisSamples: [Float], generationAtStart: Int, historyIDAtStart: UUID?, rawText: String,
     wordTimings: [ASRWordTiming]?, wordTimingCoverage: ASRWordTimingCoverage?
   ) async {
-    defer { if historyIDAtStart == historyID { speakerStepState = .finished } }
+    defer {
+      if historyIDAtStart == historyID {
+        speakerStepState = .finished
+        releaseRetryInputsIfNoLongerRetryable()
+      }
+    }
     let durationSeconds = file?.seconds ?? 0
     let analysisStart = CFAbsoluteTimeGetCurrent()
     let outcome = await speakerLabeler(analysisSamples, durationSeconds)
@@ -1899,7 +1945,10 @@ final class FileImportCoordinator {
   enum SpeakerNoticeReason: Equatable, Sendable { case none, failed, unresolved }
 
   var speakerNoticeReason: SpeakerNoticeReason {
-    guard speakerStepState == .finished, !retainedAnalysisSamples.isEmpty, let historyID,
+    // No retained-audio guard here (cloud review of PR #2846): a notice can be owed for an
+    // outcome no retry could change, whose audio has already been released. `choose`/
+    // `startOver` reset both the step and the document identity, so no notice survives them.
+    guard speakerStepState == .finished, let historyID,
       let current = currentHistoryRow(historyID)
     else { return .none }
     switch current.speakerAnalysis {
@@ -1913,9 +1962,17 @@ final class FileImportCoordinator {
     }
   }
 
-  /// Whether "Try again" should be offered right now — true for either notice reason above,
-  /// since both are genuinely retry-eligible per §4's invariant (only the WORDING differs).
-  var canRetrySpeakerAnalysis: Bool { speakerNoticeReason != .none }
+  /// Whether "Try again" should be offered right now: a notice is showing, the audio to run
+  /// against is still held, and the stored outcome is one a retry could change. Both notice
+  /// reasons are eligible in principle (§4's invariant); the one exception is a
+  /// `.noWordTimings` failure whose timing data can never bind a speaker, where a retry
+  /// would only reach the same failure again (cloud review of PR #2846).
+  var canRetrySpeakerAnalysis: Bool {
+    guard speakerNoticeReason != .none, !retainedAnalysisSamples.isEmpty, let historyID,
+      let current = currentHistoryRow(historyID)
+    else { return false }
+    return retryCouldChange(current.speakerAnalysis)
+  }
 
   /// Re-runs speaker analysis and turn assembly from retained state, then PERSISTS that
   /// result — but skips `TurnCleanupRunner` entirely (#2811 §3 Design "retry must not
@@ -1963,7 +2020,12 @@ final class FileImportCoordinator {
     // Every comparison below reads the LIVE `historyID` property — never a locally-bound
     // value of the same name, which would shadow it and neuter the staleness check (the
     // exact defect found by chunk review in an earlier version of this function).
-    defer { if historyIDAtStart == historyID { speakerStepState = .finished } }
+    defer {
+      if historyIDAtStart == historyID {
+        speakerStepState = .finished
+        releaseRetryInputsIfNoLongerRetryable()
+      }
+    }
     let durationSeconds = file?.seconds ?? 0
     let analysisStart = CFAbsoluteTimeGetCurrent()
     let outcome = await speakerLabeler(analysisSamples, durationSeconds)

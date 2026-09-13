@@ -1415,12 +1415,18 @@ struct TranscribeFileView: View {
       InsetNotice(
         text: "Couldn't add speaker labels to this recording.",
         systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
-      wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      // Absent, not inert, when a retry could only reach the same failure (no usable word
+      // timings): offering it would promise what the retry cannot deliver (§3e).
+      if coordinator.canRetrySpeakerAnalysis {
+        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      }
     case .unresolved:
       InsetNotice(
         text: "Speaker detection didn't finish for this recording.",
         systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
-      wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      if coordinator.canRetrySpeakerAnalysis {
+        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      }
     }
     // ONE row, which is finding 12. Founder, on the shipped two-row version: "You see how
     // cleaned up by EG-1 is on the wrong line and looks unpolished?" The prototype puts the
