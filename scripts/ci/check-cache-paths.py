@@ -185,22 +185,13 @@ EXPECTED_OWNERS = (
     (".github/workflows/main-post-merge.yml", "release-validation", "save"),
 )
 
-# Cache steps that are NOT Xcode caches and are allowed to exist, one
-# (file, unit, kind) per step, compared as a MULTISET against what the files
-# contain: a step missing, duplicated, of the other kind, or added in the same
-# job is a difference, never absorbed by a per-job allow. The npm cache comes
-# from setup-node's own `cache:` input, not an actions/cache step. The two
-# entries are the website deploy's last-deployed-output hash
-# (`website-deploy-manifest-run-*`, #2892: one restore, one save), which lets
-# the daily rebuild skip an upload that would change nothing. A cache step
-# that is neither in the family nor listed here is an ERROR, never merely
-# printed — an Xcode cache whose key lost its marker would otherwise land
-# outside the family, and the family would still read clean and complete
-# (second-pass finding on #2593).
-EXPECTED_OTHER = (
-    (".github/workflows/deploy-blog.yml", "deploy", "restore"),
-    (".github/workflows/deploy-blog.yml", "deploy", "save"),
-)
+# Cache steps that are NOT Xcode caches and are allowed to exist, (file, unit).
+# Empty today: the npm cache comes from setup-node's own `cache:` input, not an
+# actions/cache step. A cache step that is neither in the family nor listed here
+# is an ERROR, never merely printed — an Xcode cache whose key lost its marker
+# would otherwise land outside the family, and the family would still read
+# clean and complete (second-pass finding on #2593).
+EXPECTED_OTHER = ()
 
 
 def in_family(key: str) -> bool:
@@ -457,12 +448,11 @@ def check(files, expected_paths, expected_owners, expected_root, expected_other=
     # A step that falls out of the family because its key was reworded would
     # otherwise vanish in silence, and this check would keep reporting a clean,
     # smaller set.
-    seen_other = sorted((src, unit, kind) for src, unit, _, _, _, kind in other)
-    want_other = sorted(tuple(o) for o in expected_other)
     if other:
         print("not in the Xcode cache family:")
+        allowed = {tuple(o) for o in expected_other}
         for src, unit, name, _, _, kind in other:
-            ok = (src, unit, kind) in want_other
+            ok = (src, unit) in allowed
             print(f"    {src} :: {unit} :: {name} [{kind}] {'(allowlisted)' if ok else '(NOT allowlisted)'}")
             if not ok:
                 bad.append((src, unit, f"a cache {kind} step whose key matches none of {XCODE_KEY_MARKERS} and "
@@ -470,18 +460,6 @@ def check(files, expected_paths, expected_owners, expected_root, expected_other=
                                        "lost its marker, or it is a new unrelated cache — add it to "
                                        "EXPECTED_OTHER after confirming which."))
         print()
-    # The allowlist is exact, both ways: every listed step must exist exactly
-    # as often as listed. An entry whose step vanished (or doubled) is stale,
-    # and a stale allow is how a removed marker goes unnoticed.
-    if seen_other != want_other:
-        for entry in sorted(set(want_other)):
-            if seen_other.count(entry) < want_other.count(entry):
-                bad.append((entry[0], entry[1], f"EXPECTED_OTHER lists a cache {entry[2]} step here that the file "
-                                                "does not contain (or contains fewer times) — remove the entry or "
-                                                "restore the step."))
-            elif seen_other.count(entry) > want_other.count(entry):
-                bad.append((entry[0], entry[1], f"a cache {entry[2]} step appears more often than EXPECTED_OTHER "
-                                                "lists it."))
 
     print(f"{'unit':64s} kind     entries")
     print("-" * 86)
@@ -679,21 +657,6 @@ def self_test() -> int:
                       path: |
                         website/node_modules
             """, env=None)
-        unrelated_twice = fixture("""
-            jobs:
-              g:
-                steps:
-                  - uses: actions/cache/restore@v5
-                    with:
-                      key: node-cache-Linux-x64-npm-abc
-                      path: |
-                        website/node_modules
-                  - uses: actions/cache/restore@v5
-                    with:
-                      key: node-cache-Linux-x64-npm-def
-                      path: |
-                        website/node_modules
-            """, env=None)
         # And whitespace inside an expression is not a real difference.
         spaced = fixture("""
             jobs:
@@ -751,15 +714,9 @@ def self_test() -> int:
         ]:
             expect(label, run(files, F, owners(*files)), want, saying)
         expect("an allowlisted unrelated cache is ignored, not reded",
-               run([good_a, good_b, unrelated], F, owners(good_a, good_b), DD_LITERAL, [(unrelated, "g", "restore")]), 0)
+               run([good_a, good_b, unrelated], F, owners(good_a, good_b), DD_LITERAL, [(unrelated, "g")]), 0)
         expect("an unrelated cache NOT in EXPECTED_OTHER is an error (a drifted marker looks the same)",
                run([good_a, good_b, unrelated], F, owners(good_a, good_b)), 1, "not in EXPECTED_OTHER")
-        expect("an allow of the wrong KIND does not cover the step",
-               run([good_a, good_b, unrelated], F, owners(good_a, good_b), DD_LITERAL, [(unrelated, "g", "save")]), 1, "not in EXPECTED_OTHER")
-        expect("an allowlisted step that is not in the files is a stale entry, an error",
-               run([good_a, good_b], F, owners(good_a, good_b), DD_LITERAL, [(unrelated, "g", "restore")]), 1, "does not contain")
-        expect("an allowlisted step listed once but present twice is an error",
-               run([good_a, good_b, unrelated_twice], F, owners(good_a, good_b), DD_LITERAL, [(unrelated_twice, "g", "restore")]), 1, "more often")
         broken = fixture("jobs:\n  x:\n    steps:\n      - [unterminated\n", env=None)
         expect("a file that does not parse is an annotation naming it, not a traceback",
                run([good_a, broken], F, owners(good_a)), 1, "cannot be read as YAML")

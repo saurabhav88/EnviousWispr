@@ -11,7 +11,8 @@ dist="${1:-dist}"
 functions="${2:-functions}"
 [ -d "$dist" ] || { echo "dist-manifest: $dist missing" >&2; exit 1; }
 {
-  (cd "$dist" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+  # deploy-manifest.txt is the hash's own carrier and is excluded from it.
+  (cd "$dist" && find . -type f ! -name deploy-manifest.txt | LC_ALL=C sort | while IFS= read -r f; do
     printf 'dist %s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"
   done)
   if [ -d "$functions" ]; then

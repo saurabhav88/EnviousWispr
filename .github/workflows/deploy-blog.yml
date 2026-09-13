@@ -65,43 +65,38 @@ jobs:
       # byte-identical output on most days (20 of 20 scheduled runs in the 30
       # days to 2026-09-13 deployed; posts go live on a handful of them). The
       # build is deterministic once the sitemap stopped stamping today's date
-      # (#2889), so one hash over every output file's path and content says
-      # whether an upload would change anything. The hash of the last
-      # SUCCESSFUL deploy lives in the Actions cache (saved after the deploy
-      # step, never before it, so a failed upload is retried next run). The
-      # cache key is per run AND attempt and restored by prefix, so the newest
-      # entry is always the last thing that reached production: a re-run of an
-      # older run keeps its run_id but gets a fresh attempt, deploys (push and
-      # dispatch always deploy) and can still record itself; with a run-only
-      # key the immutable old entry would have stayed and a later scheduled
-      # run could skip while the re-run's older content was live. A
-      # content-addressed key had the same hole via exact hits on older
-      # entries (cloud review on #2892, two rounds).
+      # (#2889), so one hash over every file wrangler ships (dist/ and
+      # functions/) says whether an upload would change anything.
+      #
+      # The record of "what is live" is the LIVE SITE ITSELF: every deploy
+      # writes its hash to dist/deploy-manifest.txt, and the next run reads
+      # that file back from the production domain. Nothing else can be the
+      # authority: an Actions-cache record can outlive a rollback, a CLI
+      # deploy, a foreign-ref dispatch, a failed save after a successful
+      # upload, or cache eviction, and each of those was a way to skip while
+      # production held something else (five review rounds on #2892).
       # Only scheduled runs skip: a push or a manual dispatch always deploys.
-      - name: Hash build output
+      - name: Hash what will ship
         id: manifest
         working-directory: website
-        run: echo "hash=$(bash scripts/dist-manifest.sh dist)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore last deployed hash
-        id: last
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: website/.last-deployed-manifest
-          key: website-deploy-manifest-run-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: website-deploy-manifest-run-
+        run: |
+          set -euo pipefail
+          hash="$(bash scripts/dist-manifest.sh dist functions)"
+          printf '%s\n' "$hash" > dist/deploy-manifest.txt
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
 
       - name: Decide whether to deploy
         id: decide
-        working-directory: website
         run: |
-          last="$(cat .last-deployed-manifest 2>/dev/null || true)"
+          set -euo pipefail
           now="${{ steps.manifest.outputs.hash }}"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ -n "$last" ] && [ "$last" = "$now" ]; then
-            echo "Build output unchanged since the last deploy ($now); skipping upload."
+          # Read the live site's own record, bypassing every cache layer.
+          live="$(curl -fsS --max-time 20 "https://enviouswispr.com/deploy-manifest.txt?cb=${{ github.run_id }}-${{ github.run_attempt }}" | tr -d '[:space:]' || true)"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -n "$live" ] && [ "$live" = "$now" ]; then
+            echo "Live site already serves this build ($now); skipping upload."
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Deploying: event=${{ github.event_name }} last=${last:-none} now=$now"
+            echo "Deploying: event=${{ github.event_name }} live=${live:-unreadable} now=$now"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -113,20 +108,6 @@ jobs:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      # Record the hash only after a successful upload, under this run's key,
-      # so the next run's prefix restore finds it as the newest entry.
-      - name: Save deployed hash
-        if: steps.decide.outputs.deploy == 'true' && success()
-        working-directory: website
-        run: echo "${{ steps.manifest.outputs.hash }}" > .last-deployed-manifest
-
-      - name: Cache deployed hash
-        if: steps.decide.outputs.deploy == 'true' && success()
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: website/.last-deployed-manifest
-          key: website-deploy-manifest-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Tell IndexNow (Bing/Yandex/Naver) about posts that go live TODAY only.
       # Submitting just the newly-published URLs (not a daily blast of every URL)
