@@ -6,8 +6,9 @@
 //   packs      → data-words / data-description on each button, output in
 //                [data-pack-words] and [data-pack-description]
 //   panels     → each button names a panel id in data-panel (inside the root)
-//   classname  → the element with the group's data-target id (inside the
-//                root) gets data-base plus the choice
+//   dataset    → the element with the group's data-target id (inside the
+//                root) gets data-<data-name>="<choice>", so several groups
+//                can drive one element without clobbering each other
 import { keepRoot, enableControls, on } from './guard.js';
 
 export function init(root, motion, scope) {
@@ -49,10 +50,12 @@ export function init(root, motion, scope) {
           const panels = buttons.map((b) => inRoot(b.dataset.panel));
           choose(button);
           buttons.forEach((b, i) => (panels[i].hidden = b !== button));
-        } else if (kind === 'classname') {
+        } else if (kind === 'dataset') {
           const target = inRoot(group.dataset.target);
+          const name = group.dataset.name;
+          if (!name) throw new Error('picker: a dataset group has no data-name');
           choose(button);
-          target.className = group.dataset.base + ' ' + button.dataset.choice;
+          target.dataset[name] = button.dataset.choice;
         } else {
           throw new Error('picker: unknown kind ' + kind);
         }

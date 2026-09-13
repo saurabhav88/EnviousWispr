@@ -1,18 +1,21 @@
 ---
-// Make it yours (#2816): the recording pill, start and stop sounds, shortcuts.
-// Copy from the mock's page_content.py.
+// Make it yours (#2816): the recording pill on a real Mac screen, the full
+// start and stop sound library, and the default keybinds at work.
 import FeatureShell from '../layouts/FeatureShell.astro';
 import FeatureHero from '../components/features/FeatureHero.astro';
-import ComfortPreview from '../components/features/ComfortPreview.astro';
+import MacScene from '../components/features/MacScene.astro';
 import SoundSamples from '../components/features/SoundSamples.astro';
+import KeybindFilm from '../components/features/KeybindFilm.astro';
 import DownloadClosing from '../components/DownloadClosing.astro';
+import { keybinds } from '../data/features/customization.js';
+import '../styles/features/customization.css';
 ---
 
 <FeatureShell
   path="/customization/"
   activePage="customization"
-  title="Make it yours: keybinds, sounds and paste behavior"
-  description="Pick your record key, choose start and stop sounds, decide how text lands, and set the overlay position. Small settings that make dictation feel yours."
+  title="Make it yours: keybinds, sounds and the recording pill"
+  description="Pick your record key, choose from twelve start and stop sounds, and decide how the recording pill looks and where it sits. Small settings, big comfort."
 >
   <FeatureHero
     kind="customization"
@@ -20,23 +23,43 @@ import DownloadClosing from '../components/DownloadClosing.astro';
     title={'Make dictation<br><span class="accent-ink">feel like yours.</span>'}
     copy="Choose how dictation looks, sounds and fits into your habits. A small recording view. Familiar shortcuts. A chime that tells you it’s time to speak."
   >
-    <ComfortPreview />
+    <MacScene />
   </FeatureHero>
+
   <section class="sound-story wrap">
-    <div>
+    <div class="sound-copy">
       <span class="eyebrow">A little reassurance</span>
       <h2>Hear when it starts.<br />Know when it’s done.</h2>
-      <p>Pick a start-and-stop sound pairing you enjoy, or keep it quiet.</p>
+      <p>A short sound when recording starts, and another when it stops, so you know it heard you without looking up. Twelve pairings, from barely there to a clear glint. Pick the one you like, or keep it quiet.</p>
+      <small>Whisper Tick plays unless you change it. Switch sounds off in Settings, Sounds.</small>
     </div>
     <SoundSamples />
   </section>
+
   <section class="shortcuts-story wrap">
-    <div class="shortcut-art"><span>⌥</span><span>⌘</span><span>⇧</span></div>
-    <div>
+    <KeybindFilm />
+    <div class="shortcuts-copy">
+      <span class="eyebrow">One key, two ways</span>
       <h2>Make it<br />second nature.</h2>
-      <p>Hold to record or toggle for a longer thought. Choose recording, cancel and add-a-word shortcuts that fit your hands and habits.</p>
-      <small>Illustrative keys. Configure your own supported bindings in the app.</small>
+      <p>Hold the key and talk, or tap it twice and go hands-free for a longer thought. The right Option key is the default, because your hand is already resting next to it.</p>
+      <ul class="keybind-list">
+        {
+          keybinds.map((k) => (
+            <li>
+              <span class="keycaps" aria-label={k.label}>
+                {k.keys.map((key) => <kbd>{key}</kbd>)}
+              </span>
+              <span class="keybind-words">
+                <strong>{k.name}</strong>
+                <span>{k.note}</span>
+              </span>
+            </li>
+          ))
+        }
+      </ul>
+      <small>These are the defaults. Change any of them in Settings, Keybinds: any key, with or without Command, Option, Control or Shift, a modifier on its own, or the Globe key.</small>
     </div>
   </section>
+
   <DownloadClosing title="Make dictation feel like yours." />
 </FeatureShell>
