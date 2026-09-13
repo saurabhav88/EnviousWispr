@@ -2232,7 +2232,8 @@ struct ProviderSetupLifecycle: ViewModifier {
         llmDiscovery.loadCachedModels(for: .ollama)
         setup.startOllamaStatusWatch()
         Task {
-          await setup.ollamaSetup.detectState(trigger: "settings_open")
+          await FileImportPolishGate.armImport(
+            .ollama, trigger: "settings_open", setup: setup, availability: aiAvailability)
           if case .ready = setup.ollamaSetup.setupState {
             await llmDiscovery.validateKeyAndDiscoverModels(
               provider: .ollama, settings: settings, surface: surface)
@@ -2246,7 +2247,11 @@ struct ProviderSetupLifecycle: ViewModifier {
         // readiness-transition refresh below.
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
       } else if provider == .appleIntelligence {
-        Task { await aiAvailability.checkAvailability(trigger: "settings_open") }
+        Task {
+          await FileImportPolishGate.armImport(
+            .appleIntelligence, trigger: "settings_open", setup: setup,
+            availability: aiAvailability)
+        }
       } else if provider == .egOne {
         // #1271: settings-open is one of the two probe moments (the other is
         // provider activation via PipelineSettingsSync). No background polling.

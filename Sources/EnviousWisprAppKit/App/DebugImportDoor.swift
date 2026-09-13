@@ -107,16 +107,10 @@
       let kind = info["kind"] ?? ""
       switch kind {
       case "discover":
-        Task { [weak self] in
-          guard let self else { return }
-          let polish = await polishReadiness()
-          reply(
-            request,
-            [
-              "status": "alive", "acceptance": acceptance() ?? "accept",
-              "polish": Self.name(of: polish),
-            ])
-        }
+        // Identity and the acceptance rule, answered at once. The polish gate is NOT asked
+        // here: it can probe a daemon, and a discover that waits on a probe is a discover
+        // that can time out; the `transcribe` reply carries the gate's verdict.
+        reply(request, ["status": "alive", "acceptance": acceptance() ?? "accept"])
       case "transcribe":
         handleTranscribe(request: request, info: info)
       default:
@@ -168,14 +162,25 @@
         // The screen's Continue is disabled for this; the door refuses the same way, before
         // any file is chosen. Checked again before Start, because a key can be saved or a
         // daemon can stop during the decode.
-        if case .blocked(let block) = await polishReadiness() {
+        let readiness = await polishReadiness()
+        // Everything below assumes the world of before the probe; the probe suspended.
+        // Cancelled (uninstall) means no reply and no file; a deadline spent on the probe
+        // means timeout, never a late `choose(url:)` nobody is watching.
+        guard !Task.isCancelled else { return }
+        guard ContinuousClock.now < deadline else {
+          inFlight = nil
+          walkTask = nil
+          reply(request, ["status": "timeout", "reason": "probe"])
+          return
+        }
+        if case .blocked(let block) = readiness {
           inFlight = nil
           walkTask = nil
           reply(request, ["status": "refused", "reason": "polishNotReady", "block": "\(block)"])
           return
         }
-        // The probe suspended; the coordinator may have moved meanwhile (a user picked a
-        // file). Re-asked with the reservation excluded, since that reservation is ours.
+        // The coordinator may have moved meanwhile (a user picked a file). Re-asked with
+        // the reservation excluded, since that reservation is ours.
         if let reason = acceptance(ignoringReservation: true) {
           inFlight = nil
           walkTask = nil
@@ -285,18 +290,19 @@
           switch c.state {
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
-            if case .blocked(let block) = await polishReadiness() {
-              // The probe suspended; if the user took the coordinator meanwhile the guard
-              // at the top of the next iteration answers, and `startOver()` below must not
-              // run on a file that is not ours.
-              guard c.generation == generation else { return .superseded }
-              // The decoded file is the DOOR's own; left in `.ready` it would read as a
-              // user's file in hand and block every later request. Cleared the way the
-              // screen clears its own (`startOver()`), which is safe because the
-              // generation guard above proved nobody else has touched the coordinator.
-              c.startOver()
-              // Our own write; the reply check must not read it as someone else's.
-              watchedGeneration = c.generation
+            let readiness = await polishReadiness()
+            // The probe suspended. Before EITHER branch: a cancellation means no reply;
+            // a moved generation means the user took the coordinator and this file is no
+            // longer ours to start OR to clear; a spent deadline means timeout, with the
+            // door's own file released below.
+            if Task.isCancelled { return Outcome(status: "cancelled", detail: nil) }
+            guard c.generation == generation else { return .superseded }
+            guard ContinuousClock.now < deadline else {
+              releaseOwnFile()
+              return .timeout
+            }
+            if case .blocked(let block) = readiness {
+              releaseOwnFile()
               return Outcome(status: "refused", detail: "polishNotReady:\(block)")
             }
             for target in [FileImportCoordinator.Step.transcription, .polish, .review] {
@@ -337,7 +343,20 @@
           return Outcome(status: "cancelled", detail: nil)
         }
       }
+      // Out of time before Start: the decode may still land `.ready` later, and that file
+      // is the DOOR's own; left there it reads as a user's file in hand and blocks every
+      // later request (cloud review, PR #2887, round 9). After Start the run is the
+      // user's to see through and is left alone.
+      if !started, c.generation == generation { releaseOwnFile() }
       return .timeout
+    }
+
+    /// Clears the door's own chosen file the way the screen clears its own
+    /// (`startOver()`), and records that write as ours so the reply check does not read
+    /// it as someone else's. Callers hold the generation guard.
+    private func releaseOwnFile() {
+      coordinator.startOver()
+      watchedGeneration = coordinator.generation
     }
 
     // MARK: - Replies
@@ -366,13 +385,6 @@
         out[key] = String(describing: value)
       }
       return out
-    }
-
-    private static func name(of readiness: FileImportPolishReadiness) -> String {
-      switch readiness {
-      case .ready: return "ready"
-      case .blocked(let block): return "\(block)"
-      }
     }
 
     private static func name(of reason: FileImportCoordinator.FileImportRejection) -> String {

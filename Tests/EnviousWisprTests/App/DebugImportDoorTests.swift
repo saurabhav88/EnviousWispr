@@ -51,7 +51,7 @@
     }
 
     /// A decode or transcribe the test holds closed until it chooses to open it.
-    private actor ManualGate {
+    actor ManualGate {
       private var isOpen = false
       private var waiters: [CheckedContinuation<Void, Never>] = []
       private(set) var arrivals = 0
@@ -112,9 +112,13 @@
         })
     }
 
+    /// The injected polish gate. `gate`, when set, holds the probe open the way a daemon
+    /// check would, so a test can act on the coordinator WHILE the door is waiting on it.
     @MainActor
     final class ReadinessBox {
       var value: FileImportPolishReadiness = .ready
+      var gate: ManualGate?
+      var probes = 0
     }
 
     private func makeDoor(
@@ -122,8 +126,13 @@
       readiness: ReadinessBox = ReadinessBox()
     ) -> DebugImportDoor {
       DebugImportDoor(
-        coordinator: coordinator, polishReadiness: { readiness.value }, pid: Self.pid,
-        pollInterval: .milliseconds(1), post: { sink.post($0) })
+        coordinator: coordinator,
+        polishReadiness: {
+          readiness.probes += 1
+          if let gate = readiness.gate { await gate.pass() }
+          return readiness.value
+        },
+        pid: Self.pid, pollInterval: .milliseconds(1), post: { sink.post($0) })
     }
 
     private func transcribeRequest(
@@ -161,7 +170,7 @@
       let reply = await sink.reply(withStatus: "alive")
       #expect(reply["launch"] == door.launchID.uuidString)
       #expect(reply["acceptance"] == "accept")
-      #expect(reply["polish"] == "ready")
+      #expect(reply["polish"] == nil, "discover answers at once and never waits on a probe")
       #expect(reply["pid"] == String(Self.pid))
       #expect(reply["request"] == "r1")
     }
@@ -407,9 +416,6 @@
       let coordinator = makeCoordinator()
       let sink = ReplySink()
       let door = makeDoor(coordinator, sink: sink, readiness: readiness)
-      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r1"])
-      let alive = await sink.reply(withStatus: "alive")
-      #expect(alive["polish"] == "needsSetup")
       door.handle(transcribeRequest(door))
       let refusedEarly = await sink.reply(withStatus: "refused")
       #expect(refusedEarly["reason"] == "polishNotReady")
@@ -444,6 +450,106 @@
       lateDoor.handle(["kind": "discover", "pid": String(Self.pid), "request": "r3"])
       let alive3 = await lateSink.reply(withStatus: "alive", after: count)
       #expect(alive3["acceptance"] == "accept")
+    }
+
+    @Test("the world can change while the door waits on a probe: a user's file, an uninstall, a spent deadline, and none of them reaches choose or Start")
+    func probesDoNotOutliveTheirAssumptions() async {
+      // A. The user picks a file while the INITIAL probe is open: the door must not choose
+      // over it, and must say busy, not accepted.
+      let box = ReadinessBox()
+      box.gate = ManualGate()
+      let coordinator = makeCoordinator()
+      let sink = ReplySink()
+      let door = makeDoor(coordinator, sink: sink, readiness: box)
+      door.handle(transcribeRequest(door))
+      let probing = await settleUntilObserved { box.probes == 1 }
+      #expect(probing)
+      coordinator.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
+      await box.gate!.open()
+      let busy = await sink.reply(withStatus: "busy")
+      #expect(busy["reason"] == "fileInHand")
+      #expect(coordinator.file?.name == "users-own.m4a")
+      #expect(!sink.statuses().contains("accepted"))
+
+      // B. The user picks a file while the PRE-START probe is open (the door's own file
+      // decoded, the gate still answering): superseded, the user's file untouched, no Start.
+      let box2 = ReadinessBox()
+      let decodeGate = ManualGate()
+      let c2 = makeCoordinator(decodeGate: decodeGate)
+      let sink2 = ReplySink()
+      let door2 = makeDoor(c2, sink: sink2, readiness: box2)
+      door2.handle(transcribeRequest(door2))
+      _ = await sink2.reply(withStatus: "accepted")
+      box2.gate = ManualGate()  // arms the SECOND probe, the one before Start
+      await decodeGate.open()
+      let secondProbe = await settleUntilObserved { box2.probes == 2 }
+      #expect(secondProbe)
+      c2.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
+      await box2.gate!.open()
+      let superseded = await sink2.reply(withStatus: "superseded")
+      #expect(superseded["history"] == nil)
+      await decodeGate.open()
+      let usersReady = await settleUntilObserved {
+        if case .ready = c2.state { return true } else { return false }
+      }
+      #expect(usersReady)
+      #expect(c2.file?.name == "users-own.m4a")
+      #expect(c2.step == .upload, "never started")
+
+      // C. Uninstall while the initial probe is open: no reply, no file chosen.
+      let box3 = ReadinessBox()
+      box3.gate = ManualGate()
+      let c3 = makeCoordinator()
+      let sink3 = ReplySink()
+      let door3 = makeDoor(c3, sink: sink3, readiness: box3)
+      door3.handle(transcribeRequest(door3))
+      let probing3 = await settleUntilObserved { box3.probes == 1 }
+      #expect(probing3)
+      door3.uninstall()
+      await box3.gate!.open()
+      await Task.yield()
+      #expect(sink3.replies.isEmpty)
+      #expect(c3.state == .idle)
+
+      // D. The whole deadline spent on the initial probe: timeout, no file chosen, door free.
+      let box4 = ReadinessBox()
+      box4.gate = ManualGate()
+      let c4 = makeCoordinator()
+      let sink4 = ReplySink()
+      let door4 = makeDoor(c4, sink: sink4, readiness: box4)
+      door4.handle(transcribeRequest(door4, extra: ["timeout": "0.001"]))
+      let probing4 = await settleUntilObserved { box4.probes == 1 }
+      #expect(probing4)
+      // settle: the deadline is 1 ms and must pass while the probe is held open
+      try? await Task.sleep(for: .milliseconds(5))
+      await box4.gate!.open()
+      let timedOut = await sink4.reply(withStatus: "timeout")
+      #expect(timedOut["reason"] == "probe")
+      #expect(c4.state == .idle)
+      let count4 = sink4.replies.count
+      door4.handle(["kind": "discover", "pid": String(Self.pid), "request": "r4"])
+      let alive4 = await sink4.reply(withStatus: "alive", after: count4)
+      #expect(alive4["acceptance"] == "accept")
+    }
+
+    @Test("a watch that runs out before Start releases the door's own file, so the door is not blocked by itself")
+    func timeoutBeforeStartReleasesOwnFile() async {
+      let gate = ManualGate()
+      let coordinator = makeCoordinator(decodeGate: gate)
+      let sink = ReplySink()
+      let door = makeDoor(coordinator, sink: sink)
+      door.handle(transcribeRequest(door, extra: ["timeout": "0.02"]))
+      _ = await sink.reply(withStatus: "accepted")
+      let timedOut = await sink.reply(withStatus: "timeout")
+      #expect(timedOut["history"] == nil)
+      // The decode lands after the watch gave up; the file must not linger as "in hand".
+      await gate.open()
+      let released = await settleUntilObserved { coordinator.file == nil && coordinator.state == .idle }
+      #expect(released)
+      let count = sink.replies.count
+      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r5"])
+      let alive = await sink.reply(withStatus: "alive", after: count)
+      #expect(alive["acceptance"] == "accept")
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")

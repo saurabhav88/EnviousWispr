@@ -133,6 +133,30 @@ enum FileImportPolishGate {
         importOllamaModel, downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
   }
 
+  /// The probes the gate's inputs depend on that nothing runs by itself: Ollama's daemon
+  /// state (`.detecting` from launch until asked, and stale the moment the daemon starts
+  /// or stops) and Apple Intelligence availability (taken at launch, stale after a
+  /// Settings change). The screen runs both on every appearance
+  /// (`ProviderSetupLifecycle`); the DEBUG import door runs them on every check (#2885).
+  /// One owner for the two callers, so neither can forget a probe the other has.
+  ///
+  /// Not here, on purpose: the status watch, the cloud catalog, model discovery for the
+  /// picker, and the editor's key drafts. Those are screen state, not gate inputs.
+  @MainActor
+  static func armImport(
+    _ provider: LLMProvider, trigger: String,
+    setup: SetupCoordinator, availability: AIAvailabilityCoordinator
+  ) async {
+    switch provider {
+    case .ollama:
+      await setup.ollamaSetup.detectState(trigger: trigger)
+    case .appleIntelligence:
+      await availability.checkAvailability(trigger: trigger)
+    case .egOne, .s1Mini, .openAI, .gemini, .claude, .none:
+      break
+    }
+  }
+
   /// The saved-key fact for `provider` read straight from the Keychain, for a caller with
   /// no editor on screen. Key-less engines answer `.absent`, which the gate ignores for
   /// them; a thrown read answers `.unknown`.
