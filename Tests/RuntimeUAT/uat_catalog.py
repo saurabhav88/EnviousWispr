@@ -93,7 +93,7 @@ HARNESS_STATUS = {
     "scan":            {"status": "primitive", "issue": None, "note": "reads every tab via nav()+read(); #1296 is FIXED. Slow AX sweep, informational"},
     "check_ai_diagnostics": {"status": "primitive", "issue": None, "note": "#1296 is FIXED. AX read of the AI Polish diagnostics pane"},
     "nav":             {"status": "primitive", "issue": None, "note": "drives the button sidebar directly; the #1296 AXOutline->AXButton swap is FIXED and switch_backend relies on nav. Auto-opens Settings if closed"},
-    "tap":             {"status": "unreliable", "issue": "#2511", "note": "reports NOT FOUND for a button whose AXValue holds a state (Dictionary sub-tabs); press by enumerating find_all_elements + perform_action"},
+    "tap":             {"status": "primitive", "issue": None, "note": "the #2511 NOT FOUND for a button whose AXValue holds a state (Dictionary sub-tabs) is FIXED: matching reads every text attribute via _names(), display still reads the first via _txt(). Bound by the self-test's see()/tap() property row"},
     "look":            {"status": "primitive", "issue": None, "note": "exploration only; never a pass/fail source"},
     "see":             {"status": "primitive", "issue": None, "note": "PRINTS the tree and returns None; capture with redirect_stdout, never str(see())"},
     "clipboard":       {"status": "primitive", "issue": None, "note": "fallback signal only; verdicts come from app.log (RULE: uat-verdicts-from-app-log)"},

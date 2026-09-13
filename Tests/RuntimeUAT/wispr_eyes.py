@@ -109,11 +109,57 @@ _MAX_LINES = 50
 
 def _fuzzy(t, s): return bool(t and s and t.lower() in s.lower())
 
+# Every attribute an element can carry a searchable name in. `_txt` picks ONE of
+# these to DISPLAY; `_names` returns all of them, because matching and displaying
+# are different questions and collapsing them is #2511.
+_TEXT_ATTRS = ("AXTitle","AXValue","AXDescription")
+
 def _txt(el):
-    for a in ("AXTitle","AXValue","AXDescription"):
+    """The element's display string: the FIRST non-empty text attribute.
+
+    This is a formatter, not a matcher. Do not search with it — see `_names`.
+    """
+    for a in _TEXT_ATTRS:
         v = get_attr(el, a)
         if v and isinstance(v, str) and v.strip(): return v.strip()
     return ""
+
+def _names(el):
+    """EVERY non-empty text attribute, for MATCHING rather than display (#2511).
+
+    `_txt` stops at the first non-empty attribute, so an element whose `AXValue`
+    holds a STATE rather than a label is searched by its state and never by its
+    name. SwiftUI does exactly that to a sub-tab button: `AXTitle` is empty,
+    `AXValue` is "Not selected", and the label lives in `AXDescription`. `see()`
+    prints it, because `_label()` renders `title or desc` and skips the value;
+    `tap()` could not find it, because `_find_match` searched `_txt`, which
+    returned "Not selected". A control you can see and cannot press.
+
+    Measured 2026-09-09 on the running Dictionary screen: 87 buttons, 83 where
+    the two agree, and the 4 that differ are exactly the 4 sub-tabs.
+
+    All four carry the same shape, read off the live tree 2026-09-09:
+
+        shown='Your Words'        title='' value='Selected'     desc='Your Words'
+        shown='Vocabulary Packs'  title='' value='Not selected' desc='Vocabulary Packs'
+        shown='Learn from...'     title='' value='Not selected' desc='Learn from...'
+        shown='Quick Add'         title='' value='Not selected' desc='Quick Add'
+
+    An earlier reading held that `Your Words` was reachable because its state
+    string is "Selected" rather than "Not selected". That does not survive: the
+    state string is not the label in either case, so the old matcher missed all
+    four, and the self-test rows below fail 4/4 against it rather than 3/4.
+    Whatever made `Your Words` appear reachable is unestablished and is not
+    load-bearing — after this change all four resolve, live and synthetically.
+
+    Widening only. Every string `_txt` could return is still here, so a picker
+    or a text field still matches on its `AXValue` exactly as before.
+    """
+    out = []
+    for a in _TEXT_ATTRS:
+        v = get_attr(el, a)
+        if v and isinstance(v, str) and v.strip(): out.append(v.strip())
+    return out
 
 def _row_text(row, depth=0):
     if depth > 4: return ""
@@ -137,8 +183,8 @@ def _find_match(root, text, role_filter=None, exact=False, mx=10, dep=0):
     if dep > mx: return None
     r = get_attr(root,"AXRole") or ""
     if role_filter is None or r == role_filter:
-        t = _txt(root)
-        if t:
+        # EVERY name, not just the displayed one (#2511). See `_names`.
+        for t in _names(root):
             if exact and t.lower() == text.lower(): return root
             if not exact and _fuzzy(text, t): return root
     for c in _iter_children_with_menubars(root):
@@ -151,7 +197,7 @@ def _text_visible(text):
     needle = text.lower()
     def _search(el, dep=0):
         if dep > 10: return False
-        for a in ("AXTitle","AXValue","AXDescription"):
+        for a in _TEXT_ATTRS:   # one owner for the searchable set (#2511)
             v = get_attr(el, a)
             if v and isinstance(v, str) and needle in v.lower(): return True
         for c in (get_attr(el,"AXChildren") or []):
@@ -3191,8 +3237,113 @@ def _self_test():
         print("  ok      mid-write truncation keeps the complete later block")
     entry_rows += 1
 
+    # ---- #2511: tap() must reach every control see() lists -------------------
+    # Driven over a SYNTHETIC tree, because the defect is in which attributes
+    # get searched and that needs no running app. The shapes are copied from the
+    # real Dictionary screen measured 2026-09-09, including the detail that
+    # `Your Words` differs from its three siblings only in its state string.
+    #
+    # Both directions are required. Widening the search could buy buttons at the
+    # cost of pickers and fields, which legitimately match on `AXValue`, so those
+    # rows are not padding — without them a fix that searched ONLY the
+    # description would look identical here.
+    def _el(role, title="", value="", desc="", children=()):
+        return {"AXRole": role, "AXTitle": title, "AXValue": value,
+                "AXDescription": desc, "AXChildren": list(children)}
+
+    _tree = _el("AXApplication", children=[_el("AXWindow", title="EnviousWispr", children=[
+        # The four sub-tabs. Label in AXDescription, STATE in AXValue.
+        _el("AXButton", value="Selected",     desc="Your Words"),
+        _el("AXButton", value="Not selected", desc="Vocabulary Packs"),
+        _el("AXButton", value="Not selected", desc="Learn from..."),
+        _el("AXButton", value="Not selected", desc="Quick Add"),
+        # An ordinary button: label in AXTitle, nothing in AXValue.
+        _el("AXButton", title="Save"),
+        # A button with no name at all — nothing to find, and it must not raise.
+        _el("AXButton"),
+        # The two-way half: these carry their CONTENT in AXValue and must stay
+        # matchable by it.
+        _el("AXPopUpButton", title="Language", value="English (US)"),
+        _el("AXTextField",   desc="Replacement", value="on the fly"),
+    ])])
+
+    find_cases = [
+        # (needle, role, exact, want_found, why)
+        ("Vocabulary Packs", "AXButton", False, True,
+         "the reported defect: label in AXDescription behind a state in AXValue"),
+        ("Quick Add", "AXButton", False, True, "a second shadowed sub-tab"),
+        ("Learn from...", "AXButton", False, True,
+         "a third shadowed sub-tab; the real label is TRUNCATED, and the fixture "
+         "said 'Learn from Documents' until a live read corrected it"),
+        ("Your Words", "AXButton", False, True,
+         "the fourth sub-tab, modelled like its siblings; it was reported reachable "
+         "on the live tree for a reason this model does not reproduce"),
+        ("Vocabulary Packs", "AXButton", True, True,
+         "EXACT match must compare against the description, not the state"),
+        ("Save", "AXButton", False, True, "an ordinary AXTitle button still resolves"),
+        ("Not selected", "AXButton", False, True,
+         "the state string is still searchable — this widens, it never narrows"),
+        ("English (US)", "AXPopUpButton", False, True,
+         "TWO-WAY: a picker still matches on its AXValue"),
+        ("on the fly", "AXTextField", False, True,
+         "TWO-WAY: a text field still matches on its AXValue"),
+        ("Vocabulary Packs", "AXPopUpButton", False, False,
+         "the role filter still excludes — a button is not a picker"),
+        ("Nonexistent Control", "AXButton", False, False,
+         "NEGATIVE CONTROL: a genuinely absent label is still not found"),
+        ("Vocabulary", "AXButton", True, False,
+         "NEGATIVE CONTROL: exact match does not accept a prefix"),
+    ]
+
+    _real_get_attr = globals()["get_attr"]
+    _real_iter = globals()["_iter_children_with_menubars"]
+    globals()["get_attr"] = lambda el, a: el.get(a) if isinstance(el, dict) else None
+    globals()["_iter_children_with_menubars"] = \
+        lambda el: (el.get("AXChildren") or []) if isinstance(el, dict) else []
+    try:
+        for needle, role, exact, want, why in find_cases:
+            got = _find_match(_tree, needle, role, exact=exact) is not None
+            if got != want:
+                failures.append(f"_find_match({needle!r}, {role}, exact={exact}): "
+                                f"got {got}, want {want} — {why}")
+            else:
+                print(f"  ok      {why}")
+
+        # THE PROPERTY, so this cannot rot when the tabs are renamed: whatever
+        # see() PRINTS for a button, tap() must be able to find. Parsed out of
+        # the real `_label` rather than recomputed, so a change to the formatter
+        # moves this test with it instead of past it.
+        property_rows = 0
+        def _buttons(el):
+            if el.get("AXRole") == "AXButton": yield el
+            for c in el.get("AXChildren") or []:
+                yield from _buttons(c)
+        for b in _buttons(_tree):
+            shown = _label(b, "AXButton", "btn")
+            if '"' not in shown: continue        # an unnamed button; nothing to find
+            name = shown[shown.index('"') + 1:shown.rindex('"')]
+            property_rows += 1
+            if _find_match(_tree, name, "AXButton", exact=True) is None:
+                failures.append(f"see() prints {name!r} but tap() cannot find it")
+        if property_rows == 0:
+            failures.append("the see()/tap() property row asserted nothing — "
+                            "no named button reached it")
+        else:
+            print(f"  ok      every one of {property_rows} named buttons that see() "
+                  f"prints is reachable by tap()")
+    finally:
+        globals()["get_attr"] = _real_get_attr
+        globals()["_iter_children_with_menubars"] = _real_iter
+
+    if globals()["get_attr"] is not _real_get_attr:
+        failures.append("get_attr was not restored after the #2511 rows")
+    else:
+        print("  ok      the patched AX accessors are restored")
+
+    find_rows = len(find_cases) + 2   # the cases, the property row, the restore row
+
     total = (guard_rows + len(banner_cases) + banner_rows_extra + file_rows
-             + len(window_cases) + entry_rows)
+             + len(window_cases) + entry_rows + find_rows)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")

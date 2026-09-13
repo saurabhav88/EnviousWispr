@@ -40,7 +40,7 @@ once per session when harness use begins, so a session reuses the harness instea
 | `uat_catalog.py` | Closed recipe set + `HARNESS_STATUS`, the single owner of which harness functions are trustworthy. Pure; CI self-test fails if a public `wispr_eyes` function has no row. |
 | `log_verdict.py` | The one dictation-verdict reader: both `CORRECTION_DEBUG` forms, multi-line blocks kept whole, fed from rotated logs. Pure; CI-tested. |
 | `preflight.py` | Machine probes (volume, output transport, Accessibility, Screen Recording, TTS key) + `proc_start_epoch` and `output_volume`, which `faultInjection.py` imports. Pure; CI-tested. |
-| `wispr_eyes.py` | High-level harness — `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_ptt()`, `tts()`, `record_tts()`, `log_entries_since()` (the content log reader). `uat.py recipes` prints the current trust status of each; several lie in named ways (`test_hands_free` #2409, `check`/`verify`/`scan`/`tap` #1296/#2511). |
+| `wispr_eyes.py` | High-level harness — `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_ptt()`, `tts()`, `record_tts()`, `log_entries_since()` (the content log reader). `uat.py recipes` prints the current trust status of each; several lie in named ways (`test_hands_free` #2409, `check`/`verify`/`scan` #1296); `tap` was on that list until #2511 was fixed. |
 | `uat_runner.py` | Behavioral test runner (suite-based). Run `python3 Tests/RuntimeUAT/uat_runner.py list` to see suites. |
 | `ui_helpers.py` | Lower-level AX accessors used by `wispr_eyes` and `uat_runner`. |
 | `simulate_input.py` | CGEvent input synthesis (clicks, key presses, modifier-aware). |
