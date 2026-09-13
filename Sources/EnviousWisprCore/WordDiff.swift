@@ -109,6 +109,11 @@ public enum WordDiff {
     let text: String
     let trailing: String
     let key: String
+    /// The word's UTF-16 range in the text it was tokenized from, following the ORIGINAL
+    /// characters (never the folded `key`, whose length can differ). Read by
+    /// `TurnTextAligner` (#2851) to map an edit back onto raw turn boundaries; `compare`'s
+    /// output does not depend on it.
+    let range: Range<Int>
   }
 
   /// Whitespace-separated runs, each carrying the whitespace that followed it, keyed by
@@ -117,9 +122,14 @@ public enum WordDiff {
     var tokens: [Token] = []
     var word = ""
     var space = ""
+    var offset = 0
+    var wordStart = 0
     func flush() {
       guard !word.isEmpty else { return }
-      tokens.append(Token(text: word, trailing: space, key: key(for: word, locale: locale)))
+      tokens.append(
+        Token(
+          text: word, trailing: space, key: key(for: word, locale: locale),
+          range: wordStart..<(wordStart + word.utf16.count)))
       word = ""
       space = ""
     }
@@ -129,19 +139,24 @@ public enum WordDiff {
           // Whitespace before any word: attach to the previous token's trailing run. At the
           // very start there is no token yet; `compare` keeps that run as its own segment.
           if var last = tokens.popLast() {
-            last = Token(text: last.text, trailing: last.trailing + String(c), key: last.key)
+            last = Token(
+              text: last.text, trailing: last.trailing + String(c), key: last.key,
+              range: last.range)
             tokens.append(last)
           }
         } else {
           space.append(c)
           // A run of whitespace ends the word once the next non-space arrives; keep
           // accumulating until then.
+          offset += c.utf16.count
           continue
         }
       } else {
         if !space.isEmpty { flush() }
+        if word.isEmpty { wordStart = offset }
         word.append(c)
       }
+      offset += c.utf16.count
     }
     flush()
     return tokens
