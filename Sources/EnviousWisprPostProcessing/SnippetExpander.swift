@@ -115,6 +115,12 @@ public struct SnippetExpander: Sendable {
     var out = pieces.first?.isWhitespaceRun == true ? pieces[0].text : ""
     var records: [SnippetExpansionRecord] = []
     var issued: Set<String> = []
+    // Decided ONCE per take, not once per fired snippet (#2759 site 2): the input and the saved
+    // expansions do not change while this loop runs, and a scan of both per mint made a long
+    // take with several triggers pay O(text x fired). Lazy, so a take that fires nothing, the
+    // common case, pays no scan at all, as before.
+    lazy var expansions = vocabulary.snippets.map(\.expansion)
+    lazy var domainCanCollide = Self.domainCanCollide(rawInput: text, expansions: expansions)
     var cursor = 0
 
     while cursor < wordIndices.count {
@@ -145,7 +151,8 @@ public struct SnippetExpander: Sendable {
       let lastWordIndex = wordIndices[cursor + hit.length]
       let lastToken = pieces[lastWordIndex].text
       let sentinel = mintSentinel(
-        rawInput: text, expansions: vocabulary.snippets.map(\.expansion), alreadyIssued: issued)
+        rawInput: text, expansions: expansions, alreadyIssued: issued,
+        domainCanCollide: domainCanCollide)
       issued.insert(sentinel)
       let trailing = Self.trailingToRestore(
         lastToken: lastToken,
@@ -219,6 +226,17 @@ public struct SnippetExpander: Sendable {
     return (SnippetText.droppingSentenceEndings(from: run), true)
   }
 
+  /// Whether ANY candidate could collide with the input or a saved expansion.
+  ///
+  /// Every candidate this type mints carries `prefix`, so a domain that does not contain the
+  /// prefix cannot contain a candidate: one scan of each domain answers for every mint of the
+  /// take. `mintSentinel` still scans per candidate when this is true, and for a candidate that
+  /// does not carry the prefix (an injected source), so the guarantee does not rest on the
+  /// source.
+  static func domainCanCollide(rawInput: String, expansions: [String]) -> Bool {
+    rawInput.contains(prefix) || expansions.contains(where: { $0.contains(prefix) })
+  }
+
   /// A sentinel that appears in NONE of: the raw input, any saved expansion, or the sentinels
   /// already issued for this run.
   ///
@@ -227,12 +245,20 @@ public struct SnippetExpander: Sendable {
   /// reintroduce one after the finalizer had already checked. Re-minting is bounded — a
   /// collision on 128 random bits is not a case that recurs — but the loop is written to
   /// terminate rather than to trust that.
-  func mintSentinel(rawInput: String, expansions: [String], alreadyIssued: Set<String>) -> String {
+  ///
+  /// `domainCanCollide` is `Self.domainCanCollide` for this input and these expansions, computed
+  /// once by the caller; `false` skips the two domain scans for a prefixed candidate, which is
+  /// exact because such a candidate cannot occur in a domain the prefix does not occur in.
+  func mintSentinel(
+    rawInput: String, expansions: [String], alreadyIssued: Set<String>, domainCanCollide: Bool
+  ) -> String {
     for _ in 0..<8 {
       let candidate = candidateSource()
-      if rawInput.contains(candidate) { continue }
       if alreadyIssued.contains(candidate) { continue }
-      if expansions.contains(where: { $0.contains(candidate) }) { continue }
+      if domainCanCollide || !candidate.hasPrefix(Self.prefix) {
+        if rawInput.contains(candidate) { continue }
+        if expansions.contains(where: { $0.contains(candidate) }) { continue }
+      }
       return candidate
     }
     // Exhausted only when the candidate source is degenerate (a test forcing a collision).
@@ -243,8 +269,10 @@ public struct SnippetExpander: Sendable {
     while true {
       let candidate = "\(Self.prefix)fallback\(suffix)"
       let collides =
-        rawInput.contains(candidate) || alreadyIssued.contains(candidate)
-        || expansions.contains(where: { $0.contains(candidate) })
+        alreadyIssued.contains(candidate)
+        || (domainCanCollide
+          && (rawInput.contains(candidate)
+            || expansions.contains(where: { $0.contains(candidate) })))
       if !collides { return candidate }
       suffix += 1
     }

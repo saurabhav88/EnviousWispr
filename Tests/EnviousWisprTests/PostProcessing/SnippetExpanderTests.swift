@@ -502,6 +502,63 @@ struct SnippetExpanderTests {
     #expect(out.records[0].sentinel != out.records[1].sentinel)
   }
 
+  /// The fallback mint checks the same three domains as the random path. Bound here because
+  /// the fallback is the one route a degenerate source takes, and nothing else drives it with
+  /// a colliding value in the text.
+  @Test("A fallback sentinel already in the dictated text is skipped, and issued ones too")
+  func fallbackSentinelSkipsInputAndIssuedCollisions() {
+    let expander = fixedExpander(["EWSNIPsame"])
+    let out = expander.expand(
+      "EWSNIPsame EWSNIPfallback0 backslash my email or backslash support address",
+      using: vocabulary([
+        ("my email", "sam@example.com"),
+        ("support address", "help@example.com"),
+      ]))
+
+    #expect(out.records.map(\.sentinel) == ["EWSNIPfallback1", "EWSNIPfallback2"])
+  }
+
+  /// #2759 site 2: the PREFIX scan of the two domains runs once per take; the per-candidate
+  /// scans remain only when the prefix is present. What makes the skip exact is the prefix
+  /// every minted candidate carries, so the decision is bound here on both sides.
+  @Test("The domains can only collide when they contain the sentinel prefix")
+  func domainCanCollideIsThePrefixTest() {
+    #expect(
+      !SnippetExpander.domainCanCollide(
+        rawInput: "backslash my email", expansions: ["sam@example.com"]))
+    #expect(
+      SnippetExpander.domainCanCollide(
+        rawInput: "code EWSNIPx here", expansions: ["sam@example.com"]))
+    #expect(
+      SnippetExpander.domainCanCollide(rawInput: "backslash my email", expansions: ["see EWSNIP"]))
+    #expect(!SnippetExpander.domainCanCollide(rawInput: "", expansions: []))
+  }
+
+  /// An injected source is not bound to the prefix, so a candidate without it is still scanned
+  /// against the input even when the prefix scan said nothing could collide.
+  @Test("A candidate without the prefix is still checked against the dictated text")
+  func unprefixedCandidateIsStillCheckedAgainstInput() {
+    let expander = fixedExpander(["plain", "EWSNIPok"])
+    let out = expander.expand(
+      "the code is plain and backslash my email",
+      using: vocabulary([("my email", "sam@example.com")]))
+
+    #expect(out.records.first?.sentinel == "EWSNIPok")
+  }
+
+  @Test("A candidate without the prefix is still checked against saved expansions")
+  func unprefixedCandidateIsStillCheckedAgainstExpansions() {
+    let expander = fixedExpander(["plain", "EWSNIPok"])
+    let out = expander.expand(
+      "backslash my email",
+      using: vocabulary([
+        ("my email", "sam@example.com"),
+        ("my note", "in plain words"),
+      ]))
+
+    #expect(out.records.first?.sentinel == "EWSNIPok")
+  }
+
   // MARK: - The duplicate rule, stated once on the type
 
   @Test("Two triggers differing only by case and punctuation are the same trigger")
