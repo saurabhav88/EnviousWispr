@@ -1601,6 +1601,13 @@ package final class WisprBootstrapper {
       mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
         try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
+      // The rename write (#2811, phase 4) — same underlying method, an explicit rename pair
+      // this time.
+      writeExplicitRename: { [transcriptCoordinator] id, analysis, turns, explicitRename in
+        try transcriptCoordinator.mergeSpeakerFields(
+          id: id, analysis: analysis, turns: turns, explicitRename: explicitRename)
+      },
+      currentHistoryRow: { [transcriptCoordinator] id in transcriptCoordinator.currentRow(id: id) },
       historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)

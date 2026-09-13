@@ -810,6 +810,15 @@ final class TranscriptCoordinator {
     transcripts.contains { $0.id == id }
   }
 
+  /// The CURRENT row, read fresh from `transcripts` at call time — never a snapshot (#2811,
+  /// phase 4 of #2807). Mirrors `hasRow(id:)`'s own "the in-memory list is the oracle"
+  /// contract: a caller about to carry another writer's speaker fields forward, or decide
+  /// whether a rename/retry is eligible, must read this rather than trust a value it captured
+  /// earlier.
+  func currentRow(id: UUID) -> Transcript? {
+    transcripts.first { $0.id == id }
+  }
+
   /// Counts writes, so a disk read that began earlier can be told it is stale.
   ///
   /// `load()` prefers the DISK row whenever an id already exists, which is right for a

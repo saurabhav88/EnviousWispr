@@ -555,4 +555,20 @@ public struct Transcript: Codable, Identifiable, Sendable {
     copy.speakerNames = mergedNames
     return copy
   }
+
+  /// Adopts another row's speaker fields VERBATIM — no retire/fill logic, unlike
+  /// `mergingSpeakerFields`, because the caller already knows `other` holds the CURRENT,
+  /// correct values and is only carrying them onto a copy whose non-speaker fields (text,
+  /// polish credit) just changed (#2811, phase 4 of #2807). `FileImportCoordinator
+  /// .savePolishedToHistory` needs this: its own cached row snapshot can be stale relative to
+  /// a rename or a background turn-storage pass that landed on the live row since that
+  /// snapshot was taken, and `withImportResult` alone would silently carry the STALE fields
+  /// forward, reverting whatever the live row had just gained.
+  public func carryingSpeakerFields(from other: Transcript) -> Transcript {
+    var copy = self
+    copy.speakerAnalysis = other.speakerAnalysis
+    copy.speakerNames = other.speakerNames
+    copy.turns = other.turns
+    return copy
+  }
 }
