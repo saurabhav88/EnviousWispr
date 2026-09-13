@@ -1,51 +1,38 @@
 ---
-import { render } from 'astro:content';
-import { getPublishedPosts } from '../../utils/posts';
-import BlogPost from '../../layouts/BlogPost.astro';
-
+import { render } from "astro:content";
+import { getPublishedPosts } from "../../utils/posts";
+import { presentPost } from "../../utils/blog-presentation";
+import BlogPost from "../../layouts/BlogPost.astro";
 export async function getStaticPaths() {
-  const posts = await getPublishedPosts();
-  return posts.map(post => ({
+  return (await getPublishedPosts()).map((post) => ({
     params: { slug: post.id },
     props: { post },
   }));
 }
-
 const { post } = Astro.props;
-const { Content } = await render(post);
-const { title, description, pubDate, updatedDate, tags, author, authorUrl, image, faqs } = post.data;
-
-const allPosts = await getPublishedPosts();
-const currentTags = tags ?? [];
-
-const relatedPosts = allPosts
-  .filter(p => p.id !== post.id)
-  .map(p => {
-    const overlap = (p.data.tags ?? []).filter(t => currentTags.includes(t)).length;
-    return { post: p, overlap };
-  })
-  .filter(({ overlap }) => overlap > 0)
-  .sort((a, b) => b.overlap - a.overlap || b.post.data.pubDate.valueOf() - a.post.data.pubDate.valueOf())
-  .slice(0, 3)
-  .map(({ post: p }) => ({
-    slug: p.id,
-    title: p.data.title,
-    description: p.data.description,
-    pubDate: p.data.pubDate,
-  }));
+const { Content, headings } = await render(post);
+const related = (await getPublishedPosts())
+  .filter((candidate) => candidate.id !== post.id)
+  .map((candidate) => ({
+    post: candidate,
+    overlap: candidate.data.tags.filter((tag) => post.data.tags.includes(tag))
+      .length,
+    sameTopic: !!post.data.topic && candidate.data.topic === post.data.topic,
+  }))
+  .filter(({ overlap, sameTopic }) => overlap > 0 || sameTopic)
+  .sort(
+    (a, b) =>
+      Number(b.sameTopic) - Number(a.sameTopic) ||
+      b.overlap - a.overlap ||
+      b.post.data.pubDate.valueOf() - a.post.data.pubDate.valueOf() ||
+      a.post.id.localeCompare(b.post.id),
+  )
+  .slice(0, 3);
+const relatedPosts = await Promise.all(
+  related.map(({ post }) => presentPost(post)),
+);
 ---
 
-<BlogPost
-  title={title}
-  description={description}
-  pubDate={pubDate}
-  updatedDate={updatedDate}
-  tags={tags}
-  author={author}
-  authorUrl={authorUrl}
-  image={image}
-  relatedPosts={relatedPosts}
-  faqs={faqs}
->
+<BlogPost post={post} headings={headings} relatedPosts={relatedPosts}>
   <Content />
 </BlogPost>

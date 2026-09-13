@@ -1,6 +1,7 @@
 ---
 title: "Voice Input for RSI on macOS: A Keyboard-Free Workflow"
-description: "RSI makes every keystroke a trade-off. Voice input offers a practical path to a keyboard-reduced workflow that keeps you productive without the pain."
+description: "Explore ways to reduce typing and adapt voice input to your routine."
+topic: writing-productivity
 pubDate: 2026-03-12
 updatedDate: 2026-04-04
 tags: ["accessibility", "rsi", "voice-input", "workflow", "hands-free"]

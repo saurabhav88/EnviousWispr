@@ -1,6 +1,7 @@
 ---
 title: "How to Take Lecture Notes by Speaking on Mac"
-description: "Stop missing key points while typing. Voice notes for students: capture lecture notes by speaking. Free, private, on-device, and no subscription needed."
+description: "Use spoken summaries to work through what you have learned."
+topic: writing-productivity
 pubDate: 2026-03-17
 updatedDate: 2026-04-04
 tags: ["students", "lecture-notes", "dictation", "how-to"]

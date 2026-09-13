@@ -1,6 +1,7 @@
 ---
 title: "Building Commercial Software Solo With Claude Code"
-description: "How I structured Claude Code's .claude/ folder into a three-tier context system to ship a production macOS app as a solo developer."
+description: "The structure and decisions behind building a Mac app as a solo founder."
+topic: behind-enviouswispr
 pubDate: 2026-03-26
 updatedDate: 2026-06-19
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]

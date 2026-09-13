@@ -1,883 +1,288 @@
 ---
-import BaseLayout from './BaseLayout.astro';
-import BlogSidebar from '../components/BlogSidebar.astro';
-import BlogShareRow from '../components/BlogShareRow.astro';
-
-interface RelatedPost {
-  slug: string;
-  title: string;
-  description: string;
-  pubDate: Date;
-}
-
-interface FAQ {
-  question: string;
-  answer: string;
-}
+import type { CollectionEntry } from "astro:content";
+import { getImage } from "astro:assets";
+import ThemedLayout from "./ThemedLayout.astro";
+import BlogCard from "../components/blog/BlogCard.astro";
+import BlogIcon from "../components/blog/BlogIcon.astro";
+import ArticleContents from "../components/blog/ArticleContents.astro";
+import BlogShareRow from "../components/BlogShareRow.astro";
+import DownloadClosing from "../components/DownloadClosing.astro";
+import { presentPost, type BlogCardData } from "../utils/blog-presentation";
+import founder from "../assets/home/founder.png";
+import "../styles/themed-base.css";
+import "../styles/blog.css";
 
 interface Props {
-  title: string;
-  description: string;
-  pubDate: Date;
-  updatedDate?: Date;
-  tags?: string[];
-  author?: string;
-  authorUrl?: string;
-  image?: string;
-  relatedPosts?: RelatedPost[];
-  faqs?: FAQ[];
+  post: CollectionEntry<"blog">;
+  headings: { depth: number; slug: string; text: string }[];
+  relatedPosts: BlogCardData[];
 }
-
-const { title, description, pubDate, updatedDate, tags = [], author = 'Saurabh Vaish', authorUrl = 'https://enviouswispr.com/authors/saurabh-vaish/', image, relatedPosts = [], faqs } = Astro.props;
-
-const formatDate = (d: Date) =>
-  d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-const siteUrl = 'https://enviouswispr.com';
-const canonicalUrl = Astro.url.href;
-const ogImage = image || '/og-image.png';
-const ogImageAlt = `${title} | EnviousWispr`;
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BlogPosting",
-  "headline": title,
-  "description": description,
-  "image": ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`,
-  "datePublished": pubDate.toISOString(),
-  ...(updatedDate && { "dateModified": updatedDate.toISOString() }),
-  "author": {
-    "@type": "Person",
-    "name": author,
-    "url": authorUrl,
-    "jobTitle": "Founder",
-    "worksFor": {
-      "@type": "Organization",
-      "name": "Envious Labs",
-      "url": "https://enviouslabs.co",
-    },
-    "sameAs": [
-      "https://github.com/saurabhav88",
-      "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",
-      "https://x.com/EnviousLabs",
-    ],
-    "knowsAbout": [
-      "AI dictation",
-      "speech-to-text",
-      "on-device AI",
-      "macOS development",
-      "Apple Silicon",
-      "accessibility",
-      "privacy-first software",
-      "open source software",
-    ],
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-    "logo": {
-      "@type": "ImageObject",
-      "url": `${siteUrl}/favicon.svg`,
-    },
-  },
-  "mainEntityOfPage": {
-    "@type": "WebPage",
-    "@id": canonicalUrl,
-  },
-  ...(tags.length > 0 && { "keywords": tags.join(', ') }),
-});
-
-// Emit FAQPage schema only when the post supplies 3+ Q&A pairs (Google's threshold
-// for FAQPage rich-result eligibility — fewer than 3 is unlikely to be selected).
-const faqJsonLd = faqs && faqs.length >= 3
-  ? JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": faqs.map((faq) => ({
-        "@type": "Question",
-        "name": faq.question,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": faq.answer,
-        },
-      })),
+const { post, headings, relatedPosts } = Astro.props;
+const card = await presentPost(post);
+const {
+  title,
+  description,
+  pubDate,
+  updatedDate,
+  author,
+  authorUrl,
+  image,
+  tags,
+} = post.data;
+const isFounder = author === "Saurabh Vaish";
+const profile =
+  authorUrl ??
+  (isFounder ? "https://enviouswispr.com/authors/saurabh-vaish/" : undefined);
+const avatar = isFounder
+  ? await getImage({
+      src: founder,
+      width: 120,
+      height: 120,
+      fit: "cover",
+      format: "webp",
+      quality: 80,
     })
   : null;
-
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
+const formatDate = (date: Date) =>
+  date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+const canonical = `https://enviouswispr.com${card.url}`;
+const ogImage = image || card.artwork?.social || "/og-image.png";
+const authorSchema = {
+  "@type": author === "Envious Labs" ? "Organization" : "Person",
+  name: author,
+  ...(profile ? { url: profile } : {}),
+  ...(isFounder
+    ? {
+        jobTitle: "Founder",
+        worksFor: {
+          "@type": "Organization",
+          name: "Envious Labs",
+          url: "https://enviouslabs.co",
+        },
+        sameAs: [
+          "https://github.com/saurabhav88",
+          "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",
+          "https://x.com/EnviousLabs",
+        ],
+        knowsAbout: [
+          "AI dictation",
+          "speech-to-text",
+          "on-device AI",
+          "macOS development",
+          "Apple Silicon",
+          "accessibility",
+          "privacy-first software",
+          "open source software",
+        ],
+      }
+    : {}),
+};
+const faqs = post.data.faqs;
+const structured = JSON.stringify([
+  // Preserve authored FAQ data; this does not promise search rich results.
+  ...(faqs && faqs.length >= 3
+    ? [
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqs.map(({ question, answer }) => ({
+            "@type": "Question",
+            name: question,
+            acceptedAnswer: { "@type": "Answer", text: answer },
+          })),
+        },
+      ]
+    : []),
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: title,
+    description,
+    image: ogImage.startsWith("http")
+      ? ogImage
+      : `https://enviouswispr.com${ogImage}`,
+    datePublished: pubDate.toISOString(),
+    ...(updatedDate ? { dateModified: updatedDate.toISOString() } : {}),
+    author: authorSchema,
+    publisher: {
+      "@type": "Organization",
+      name: "Envious Labs",
+      url: "https://enviouswispr.com",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://enviouswispr.com/favicon.svg",
+      },
     },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Blog",
-      "item": `${siteUrl}/blog/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": title,
-      "item": canonicalUrl,
-    },
-  ],
-});
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+    ...(tags.length ? { keywords: tags.join(", ") } : {}),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: "https://enviouswispr.com/",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: "https://enviouswispr.com/blog/",
+      },
+      { "@type": "ListItem", position: 3, name: title, item: canonical },
+    ],
+  },
+]).replace(/</g, "\\u003c");
 ---
 
-<BaseLayout title={`${title} | EnviousWispr`} description={description} activePage="blog" ogType="article" ogImage={ogImage} ogImageAlt={ogImageAlt}>
+<ThemedLayout
+  title={`${title} | EnviousWispr`}
+  description={description}
+  activePage="blog"
+  canonicalPath={card.url}
+  ogType="article"
+  ogImage={ogImage}
+  ogImageAlt={`${title} | EnviousWispr`}
+>
   <Fragment slot="head">
     <meta property="article:published_time" content={pubDate.toISOString()} />
-    {updatedDate && <meta property="article:modified_time" content={updatedDate.toISOString()} />}
+    {updatedDate && (
+      <meta
+        property="article:modified_time"
+        content={updatedDate.toISOString()}
+      />
+    )}
     <meta property="article:author" content={author} />
-    {tags.map(tag => <meta property="article:tag" content={tag} />)}
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    {faqJsonLd && <script type="application/ld+json" set:html={faqJsonLd}></script>}
+    {tags.map((tag) => (
+      <meta property="article:tag" content={tag} />
+    ))}
+    <script type="application/ld+json" set:html={structured}></script>
   </Fragment>
-  <div class="blog-post-page">
-    <div class="blog-post-grid">
-      <div class="blog-post-main">
-
-      <a href="#blog-toc" class="skip-to-toc">Skip to On this page</a>
-
-      <a href="/blog/" class="back-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-        All posts
-      </a>
-
-      <article class="blog-article">
-        <header class="blog-header">
-          {tags.length > 0 && (
-            <div class="blog-tags" role="list" aria-label="Post tags">
-              {tags.map(tag => (
-                <span class="blog-tag" role="listitem">{tag}</span>
-              ))}
-            </div>
-          )}
-
-          <h1 class="blog-title">{title}</h1>
-          <p class="blog-description">{description}</p>
-
-          <div class="blog-meta">
-            <time datetime={pubDate.toISOString()}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              {formatDate(pubDate)}
-            </time>
-            {updatedDate && (
-              <span class="blog-updated">
-                Updated {formatDate(updatedDate)}
+  <div class="wrap article-wrap">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="/blog/">Blog</a>
+      <span aria-hidden="true">/</span>
+      <span>{card.topicLabel}</span>
+    </nav>
+    <div class="reading-layout">
+      <article class="reading-main">
+        <header class="reading-header">
+          <span class="topic">{card.topicLabel}</span>
+          <h1>{title}</h1>
+          <p class="article-deck">{description}</p>
+          <div class="article-byline">
+            {avatar && <img src={avatar.src} alt="" width="42" height="42" />}
+            <div>
+              {profile ? (
+                <a href={profile} rel="author">
+                  {author}
+                </a>
+              ) : (
+                <strong>{author}</strong>
+              )}
+              <span>
+                <time datetime={pubDate.toISOString()}>
+                  {formatDate(pubDate)}
+                </time>{" "}
+                · {card.minutes} min read
+                {updatedDate && (
+                  <>
+                    {" "}
+                    · Updated{" "}
+                    <time datetime={updatedDate.toISOString()}>
+                      {formatDate(updatedDate)}
+                    </time>
+                  </>
+                )}
               </span>
-            )}
+            </div>
           </div>
         </header>
-
-        <div class="blog-divider" aria-hidden="true"></div>
-
-        <div class="blog-body">
+        {card.artwork && (
+          <div class="article-hero">
+            <img
+              class="artwork-image"
+              src={card.artwork.src}
+              srcset={card.artwork.srcset}
+              sizes="(min-width: 1150px) 790px, (min-width: 851px) 65vw, calc(100vw - 40px)"
+              width={card.artwork.width}
+              height={card.artwork.height}
+              alt=""
+              decoding="async"
+              fetchpriority="high"
+            />
+          </div>
+        )}
+        <ArticleContents headings={headings} mobile />
+        <div class="reading-body">
           <slot />
         </div>
+        <BlogShareRow />
+        <div
+          id="share-status"
+          class="visually-hidden"
+          aria-live="polite"
+          aria-atomic="true"
+        ></div>
+        <aside class="author-note" aria-label="About the author">
+          {avatar && (
+            <img
+              src={avatar.src}
+              alt=""
+              width="60"
+              height="60"
+              loading="lazy"
+            />
+          )}
+          <div>
+            <strong>{author}</strong>
+            <p>
+              {isFounder
+                ? "Building EnviousWispr, a free dictation app for Mac. Sharing what we learn along the way."
+                : `Articles from ${author}.`}
+            </p>
+          </div>
+        </aside>
       </article>
-
-      <section class="blog-cta" aria-label="Download EnviousWispr">
-        <div class="blog-cta-inner">
-          <p class="blog-cta-text">Try EnviousWispr free. On-device dictation for Mac, no account required.</p>
-          <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="blog-cta-btn" data-download-source="blog-post">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Free
+      <aside class="reading-rail" aria-label="Article navigation">
+        <ArticleContents headings={headings} />
+        <div class="rail-share">
+          <button class="copy-link" data-share="copy">
+            <BlogIcon name="copy" />
+            <span class="rail-btn-label">Copy link</span>
+          </button>
+        </div>
+        <a class="rail-back" href="/blog/">
+          ← All articles
+        </a>
+      </aside>
+    </div>
+    {relatedPosts.length > 0 && (
+      <section class="related-section" aria-label="Related articles">
+        <div class="related-heading">
+          <h2>Keep exploring</h2>
+          <a class="text-link" href="/blog/">
+            All articles <BlogIcon />
           </a>
         </div>
-      </section>
-
-      <BlogShareRow />
-
-      <div id="share-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-
-      <aside class="author-bio" aria-label="About the author">
-        <div class="author-bio-inner">
-          <div class="author-bio-text">
-            <p class="author-bio-label">Written by</p>
-            <p class="author-bio-name">
-              {authorUrl ? <a href={authorUrl} rel="author">{author}</a> : author}
-            </p>
-            <p class="author-bio-desc">Founder of Envious Labs and creator of EnviousWispr, a free AI dictation app for macOS. He writes about on-device speech-to-text, privacy, Apple Silicon, and accessibility.</p>
-          </div>
+        <div class="article-grid">
+          {relatedPosts.map((related) => (
+            <BlogCard post={related} heading="h3" />
+          ))}
         </div>
-      </aside>
-
-      {relatedPosts.length > 0 && (
-        <section class="related-posts" aria-label="Related posts">
-          <h2 class="related-posts-heading">You might also like</h2>
-          <div class="related-posts-grid">
-            {relatedPosts.map(related => (
-              <a href={`/blog/${related.slug}/`} class="related-post-card">
-                <p class="related-post-title">{related.title}</p>
-                <p class="related-post-description">{related.description.length > 120 ? related.description.slice(0, 120).trimEnd() + '…' : related.description}</p>
-                <time class="related-post-date" datetime={related.pubDate.toISOString()}>
-                  {related.pubDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                </time>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <nav class="blog-post-nav" aria-label="Post navigation">
-        <a href="/blog/" class="back-link back-link-bottom">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-          Back to Blog
-        </a>
-      </nav>
-
-      </div><!-- /.blog-post-main -->
-
-      <BlogSidebar />
-
-    </div>
+      </section>
+    )}
   </div>
-</BaseLayout>
-
-<style>
-  .blog-post-page {
-    padding: 120px 0 96px;
-    position: relative;
-    z-index: 1;
-  }
-
-  .blog-post-grid {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 0 32px;
-  }
-
-  .blog-post-main {
-    min-width: 0;
-  }
-
-  @media (min-width: 1080px) {
-    .blog-post-grid {
-      max-width: 1080px;
-      display: grid;
-      grid-template-columns: 720px 240px;
-      column-gap: 60px;
-      align-items: start;
-    }
-  }
-
-  /* Skip-link for keyboard users to reach the desktop TOC.
-     Removed from focus order entirely below 1080px (where the sidebar is hidden) and on
-     TOC-less posts (where BlogSidebar's script adds .toc-hidden to the <html> element).
-     Otherwise visible only when focused. */
-  .skip-to-toc {
-    display: none;
-  }
-  @media (min-width: 1080px) {
-    .skip-to-toc {
-      display: inline-block;
-      position: absolute;
-      left: -9999px;
-      top: auto;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-    }
-    .skip-to-toc:focus {
-      position: static;
-      width: auto;
-      height: auto;
-      padding: 8px 14px;
-      margin-bottom: 16px;
-      background: var(--accent);
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      text-decoration: none;
-      border-radius: 6px;
-    }
-    :root.toc-hidden .skip-to-toc {
-      display: none;
-    }
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  /* Back link */
-  .back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-3);
-    text-decoration: none;
-    margin-bottom: 40px;
-    transition: color 0.2s;
-  }
-  .back-link:hover {
-    color: var(--accent);
-  }
-
-  /* Header */
-  .blog-header {
-    margin-bottom: 32px;
-  }
-
-  .blog-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-
-  .blog-tag {
-    display: inline-block;
-    padding: 3px 12px;
-    border-radius: var(--radius-pill);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    border: 1px solid rgba(124, 58, 237, 0.18);
-  }
-
-  .blog-title {
-    font-size: 42px;
-    font-weight: 800;
-    letter-spacing: -1.8px;
-    line-height: 1.1;
-    color: var(--text);
-    margin-bottom: 16px;
-  }
-
-  .blog-description {
-    font-size: 18px;
-    line-height: 1.65;
-    color: var(--text-2);
-    margin-bottom: 24px;
-  }
-
-  .blog-meta {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
-
-  .blog-meta time {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-3);
-    font-family: var(--font-mono);
-  }
-
-  .blog-updated {
-    font-size: 13px;
-    color: var(--text-3);
-    font-family: var(--font-mono);
-    padding: 2px 10px;
-    background: var(--surface);
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--border);
-  }
-
-  /* Divider */
-  .blog-divider {
-    height: 1px;
-    background: var(--rainbow-full);
-    border-radius: 1px;
-    margin-bottom: 40px;
-    opacity: 0.35;
-  }
-
-  /* Body prose */
-  .blog-body {
-    font-size: 16.5px;
-    line-height: 1.8;
-    color: var(--text);
-  }
-
-  .blog-body :global(h2) {
-    font-size: 26px;
-    font-weight: 700;
-    letter-spacing: -0.8px;
-    color: var(--text);
-    margin: 2.2em 0 0.7em;
-    line-height: 1.25;
-  }
-
-  .blog-body :global(h3) {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.4px;
-    color: var(--text);
-    margin: 1.8em 0 0.5em;
-    line-height: 1.3;
-  }
-
-  .blog-body :global(p) {
-    margin-bottom: 1.4em;
-    color: var(--text-2);
-  }
-
-  .blog-body :global(p:last-child) {
-    margin-bottom: 0;
-  }
-
-  .blog-body :global(a) {
-    color: var(--accent);
-    text-decoration: underline;
-    text-decoration-color: rgba(124, 58, 237, 0.3);
-    text-underline-offset: 3px;
-    transition: text-decoration-color 0.2s;
-  }
-
-  .blog-body :global(a:hover) {
-    text-decoration-color: var(--accent);
-  }
-
-  .blog-body :global(strong) {
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .blog-body :global(em) {
-    font-style: italic;
-    color: var(--text-2);
-  }
-
-  .blog-body :global(ul),
-  .blog-body :global(ol) {
-    padding-left: 1.6em;
-    margin-bottom: 1.4em;
-  }
-
-  .blog-body :global(li) {
-    margin-bottom: 0.5em;
-    color: var(--text-2);
-  }
-
-  .blog-body :global(li::marker) {
-    color: var(--accent);
-  }
-
-  .blog-body :global(blockquote) {
-    margin: 1.8em 0;
-    padding: 16px 20px;
-    border-left: 3px solid var(--accent);
-    background: var(--surface);
-    border-radius: 0 var(--radius-card) var(--radius-card) 0;
-    font-style: italic;
-    color: var(--text-2);
-  }
-
-  .blog-body :global(code) {
-    font-family: var(--font-mono);
-    font-size: 0.88em;
-    background: var(--surface);
-    color: var(--accent);
-    padding: 2px 6px;
-    border-radius: 5px;
-    border: 1px solid var(--border);
-  }
-
-  .blog-body :global(pre) {
-    position: relative;
-    background: #0f0a1a;
-    border-radius: var(--radius-card);
-    padding: 24px;
-    overflow-x: auto;
-    margin: 1.8em 0;
-    border: 1px solid rgba(124, 58, 237, 0.15);
-  }
-
-  .blog-body :global(.copy-btn) {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(124, 58, 237, 0.15);
-    border: 1px solid rgba(124, 58, 237, 0.25);
-    border-radius: 6px;
-    color: #a78bda;
-    font-size: 12px;
-    font-family: var(--font-mono);
-    padding: 4px 10px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s, background 0.2s;
-  }
-
-  .blog-body :global(pre:hover .copy-btn) {
-    opacity: 1;
-  }
-
-  .blog-body :global(.copy-btn:hover) {
-    background: rgba(124, 58, 237, 0.3);
-  }
-
-  .blog-body :global(.copy-btn.copied) {
-    color: #6ee7b7;
-    border-color: rgba(110, 231, 183, 0.3);
-    background: rgba(110, 231, 183, 0.1);
-  }
-
-  .blog-body :global(pre code) {
-    background: none;
-    border: none;
-    padding: 0;
-    color: #e0d8f0;
-    font-size: 14px;
-  }
-
-  .blog-body :global(img) {
-    max-width: 100%;
-    height: auto;
-    border-radius: 12px;
-    margin: 1.8em 0;
-  }
-
-  .blog-body :global(hr) {
-    border: none;
-    height: 1px;
-    background: var(--border-hover);
-    margin: 2.5em 0;
-  }
-
-  /* Author bio */
-  .author-bio {
-    margin-top: 48px;
-    padding: 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-  }
-
-  .author-bio-inner {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .author-bio-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-3);
-    margin-bottom: 6px;
-  }
-
-  .author-bio-name {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 8px;
-  }
-
-  .author-bio-name a {
-    color: var(--text);
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .author-bio-name a:hover {
-    color: var(--accent);
-  }
-
-  .author-bio-desc {
-    font-size: 14px;
-    color: var(--text-2);
-    line-height: 1.6;
-    margin: 0;
-  }
-
-  /* Related posts */
-  .related-posts {
-    margin-top: 64px;
-    padding-top: 48px;
-    border-top: 1px solid var(--border);
-  }
-
-  .related-posts-heading {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-3);
-    margin-bottom: 20px;
-  }
-
-  .related-posts-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-
-  .related-post-card {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    text-decoration: none;
-    transition: border-color 0.2s, background 0.2s;
-  }
-
-  .related-post-card:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-
-  .related-post-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.35;
-    margin: 0;
-  }
-
-  .related-post-card:hover .related-post-title {
-    color: var(--accent);
-  }
-
-  .related-post-description {
-    font-size: 13px;
-    color: var(--text-2);
-    line-height: 1.55;
-    margin: 0;
-    flex: 1;
-  }
-
-  .related-post-date {
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: var(--text-3);
-    margin-top: 4px;
-  }
-
-  @media (max-width: 720px) {
-    .related-posts-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (min-width: 721px) and (max-width: 900px) {
-    .related-posts-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  /* Blog CTA */
-  .blog-cta {
-    margin-top: 48px;
-  }
-
-  .blog-cta-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    padding: 20px 24px;
-    background: var(--accent-soft);
-    border: 1px solid rgba(124, 58, 237, 0.18);
-    border-radius: var(--radius-card);
-  }
-
-  .blog-cta-text {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text);
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .blog-cta-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background: var(--text);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    border-radius: var(--radius-btn);
-    text-decoration: none;
-    white-space: nowrap;
-    transition: background 0.2s, transform 0.1s;
-  }
-
-  .blog-cta-btn:hover {
-    background: #2a2035;
-  }
-
-  .blog-cta-btn:active {
-    transform: scale(0.98);
-  }
-
-  @media (max-width: 600px) {
-    .blog-cta-inner {
-      flex-direction: column;
-      text-align: center;
-    }
-  }
-
-  /* Bottom nav */
-  .blog-post-nav {
-    margin-top: 64px;
-    padding-top: 32px;
-    border-top: 1px solid var(--border);
-  }
-
-  .back-link-bottom {
-    margin-bottom: 0;
-  }
-
-  /* Responsive */
-  @media (max-width: 600px) {
-    .blog-post-page {
-      padding: 100px 0 64px;
-    }
-    .blog-post-grid {
-      padding: 0 20px;
-    }
-    .blog-title {
-      font-size: 30px;
-      letter-spacing: -1px;
-    }
-    .blog-description {
-      font-size: 16px;
-    }
-    .blog-body {
-      font-size: 16px;
-    }
-  }
-</style>
-
+  <DownloadClosing source="blog-post" />
+</ThemedLayout>
 <script>
-  document.querySelectorAll('.blog-body pre').forEach((pre) => {
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = 'Copy';
-    btn.addEventListener('click', async () => {
-      const code = pre.querySelector('code');
-      await navigator.clipboard.writeText(code ? code.textContent || '' : pre.textContent || '');
-      btn.textContent = 'Copied!';
-      btn.classList.add('copied');
-      setTimeout(() => {
-        btn.textContent = 'Copy';
-        btn.classList.remove('copied');
-      }, 2000);
-    });
-    pre.appendChild(btn);
-  });
-</script>
-
-<script>
-  // Share buttons — handles both BlogSidebar and BlogShareRow via event delegation.
-  // Telemetry fires AFTER success: clipboard write resolves, or window.open returns
-  // (popup blockers will swallow the open call but the click intent has already happened).
-  // For email (mailto:) we fire on click since the OS hands off and we can't observe.
-  (function () {
-    const slug = window.location.pathname.replace(/^\/blog\//, '').replace(/\/$/, '');
-    const title = document.title;
-
-    const fireTelemetry = (network: string) => {
-      const w = window as unknown as { posthog?: { capture?: (e: string, p: object) => void } };
-      if (typeof w.posthog !== 'undefined' && typeof w.posthog.capture === 'function') {
-        w.posthog.capture('share_clicked', { network, slug });
-      }
-    };
-
-    const status = document.getElementById('share-status');
-    const announce = (msg: string) => {
-      if (status) status.textContent = msg;
-    };
-
-    const composeUrl = () => {
-      // Prefer section-anchor when scroll-spy has marked an active heading.
-      const activeId = document.documentElement.dataset.tocActive;
-      const base = window.location.origin + window.location.pathname;
-      return activeId ? `${base}#${activeId}` : base;
-    };
-
-    const handleClick = async (btn: HTMLButtonElement) => {
-      const network = btn.getAttribute('data-share');
-      if (!network) return;
-      const url = composeUrl();
-
-      if (network === 'copy') {
-        try {
-          await navigator.clipboard.writeText(url);
-          fireTelemetry('copy');
-          announce('Link copied to clipboard');
-          flashSuccess(btn, 'Copied!');
-        } catch {
-          announce('Copy failed. Use your browser’s URL bar instead.');
-        }
-        return;
-      }
-
-      if (network === 'email') {
-        const subject = encodeURIComponent(title);
-        const body = encodeURIComponent(`${title}\n\n${url}`);
-        const href = `mailto:?subject=${subject}&body=${body}`;
-        fireTelemetry('email');
-        window.location.href = href;
-        return;
-      }
-
-      if (network === 'x') {
-        const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`;
-        fireTelemetry('x');
-        window.open(intent, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      if (network === 'linkedin') {
-        const intent = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
-        fireTelemetry('linkedin');
-        window.open(intent, '_blank', 'noopener,noreferrer');
-        return;
-      }
-    };
-
-    const flashSuccess = (btn: HTMLButtonElement, label: string) => {
-      const labelEl = btn.querySelector<HTMLElement>('[class$="-btn-label"]');
-      const original = labelEl?.textContent;
-      if (labelEl) labelEl.textContent = label;
-      btn.classList.add('share-btn-success');
-      setTimeout(() => {
-        if (labelEl && typeof original === 'string') labelEl.textContent = original;
-        btn.classList.remove('share-btn-success');
-      }, 1800);
-    };
-
-    document.querySelectorAll<HTMLButtonElement>('[data-share]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        void handleClick(btn);
-      });
-    });
-  })();
+  import "../scripts/blog-article";
 </script>

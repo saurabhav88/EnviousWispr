@@ -1,6 +1,7 @@
 ---
 title: "Dictate Meeting Notes to Polished Summaries on Mac"
-description: "Turn post-meeting chaos into structured summaries with action items. Dictate meeting notes on your Mac: privately, on-device, in seconds, no cloud."
+description: "Turn your thoughts after a meeting into a useful written summary."
+topic: writing-productivity
 pubDate: 2026-03-13
 updatedDate: 2026-04-04
 tags: ["meetings", "dictation", "productivity", "writing-styles"]

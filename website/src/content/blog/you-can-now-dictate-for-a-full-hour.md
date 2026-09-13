@@ -1,6 +1,7 @@
 ---
 title: "You Can Now Dictate for a Full Hour"
-description: "EnviousWispr used to cap a single dictation at about ten minutes. I raised it to a full hour, on-device, with a warning before it stops and nothing lost when it does."
+description: "More room for long thoughts, first drafts, and uninterrupted ideas."
+topic: behind-enviouswispr
 pubDate: 2026-07-01
 tags: ["dictation", "macos", "long-form", "privacy", "productivity"]
 draft: false

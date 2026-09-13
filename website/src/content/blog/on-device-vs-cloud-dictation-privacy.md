@@ -1,6 +1,7 @@
 ---
 title: "On-Device vs Cloud Dictation: Which Is Private on Mac?"
-description: "Cloud dictation uploads your voice; on-device dictation keeps it on your Mac. Here's what happens to your audio in each, and which Mac apps do which."
+description: "Where your audio and text go, and what changes when you choose cloud polish."
+topic: privacy-offline
 pubDate: 2026-03-23
 updatedDate: 2026-07-06
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]

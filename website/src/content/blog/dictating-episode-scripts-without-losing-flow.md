@@ -1,6 +1,7 @@
 ---
 title: "Dictating Podcast Scripts on macOS Without Losing Flow"
-description: "Stop wrestling with blank pages. Dictate podcast scripts in your natural speaking voice using on-device post-processing and hands-free mode on macOS."
+description: "Keep a spoken idea moving as you shape it into an episode script."
+topic: writing-productivity
 pubDate: 2026-03-21
 updatedDate: 2026-04-04
 tags: ["podcasting", "dictation", "workflow", "post-processing", "hands-free"]

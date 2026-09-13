@@ -1,6 +1,7 @@
 ---
 title: "How to Dictate Code Reviews and PR Descriptions on Mac"
-description: "How developers use macOS voice dictation to write PR descriptions, code review comments, and documentation, faster and without breaking flow state."
+description: "Use your voice to explain a code change, ask a question, or leave a thoughtful review."
+topic: writing-productivity
 pubDate: 2026-03-12
 updatedDate: 2026-08-22
 tags: ["developers", "dictation", "productivity", "code-review"]

@@ -1,6 +1,7 @@
 ---
 title: "Live Transcription That Keeps Up With You"
-description: "EnviousWispr now transcribes while you speak, so long dictations finish almost instantly when you stop. Here is how it works, and why Auto-detect waits."
+description: "What changes when transcription happens while you speak."
+topic: behind-enviouswispr
 pubDate: 2026-07-04
 tags: ["dictation", "macos", "live-transcription", "whisper", "on-device"]
 draft: false

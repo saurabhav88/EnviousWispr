@@ -1,0 +1,36 @@
+---
+import { archivePath } from "../../utils/blog-core.js";
+const { page, totalPages } = Astro.props;
+---
+
+{totalPages > 1 && (
+  <nav class="pagination" aria-label="Article pages">
+    {page > 1 ? (
+      <a class="page-direction" href={`${archivePath(page - 1)}#articles`}>
+        ← Previous
+      </a>
+    ) : (
+      <span class="page-direction unavailable">← Previous</span>
+    )}
+    <div>
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+        (number) => (
+          <a
+            href={`${archivePath(number)}#articles`}
+            aria-current={number === page ? "page" : undefined}
+            aria-label={`Page ${number}`}
+          >
+            {number}
+          </a>
+        ),
+      )}
+    </div>
+    {page < totalPages ? (
+      <a class="page-direction" href={`${archivePath(page + 1)}#articles`}>
+        Next →
+      </a>
+    ) : (
+      <span class="page-direction unavailable">Next →</span>
+    )}
+  </nav>
+)}

@@ -1,6 +1,7 @@
 ---
 title: "Mac Dictation for Productivity: The Complete Guide (2026)"
-description: "How knowledge workers use Mac dictation to move faster at email, meeting notes, async messages, and the day-to-day text that piles up. The full workflow."
+description: "Find a place for voice in your email, notes, and everyday writing."
+topic: writing-productivity
 pubDate: 2026-05-15
 updatedDate: 2026-05-15
 tags: ["productivity", "workflow", "email", "meetings", "remote-work"]

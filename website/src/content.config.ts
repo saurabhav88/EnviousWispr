@@ -1,17 +1,19 @@
-import { defineCollection, z } from 'astro:content';
-import { glob } from 'astro/loaders';
-import { HELP_CATEGORY_SLUGS } from './data/help-categories';
+import { defineCollection, z } from "astro:content";
+import { glob } from "astro/loaders";
+import { BLOG_TOPICS } from "./data/blog-topics.js";
+import { HELP_CATEGORY_SLUGS } from "./data/help-categories";
 
 const blog = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
+  loader: glob({ pattern: "**/*.md", base: "./src/content/blog" }),
   schema: z.object({
     title: z.string(),
     description: z.string(),
     pubDate: z.coerce.date(),
     updatedDate: z.coerce.date().optional(),
     tags: z.array(z.string()).default([]),
+    topic: z.enum(BLOG_TOPICS.map((topic) => topic.id)).optional(),
     draft: z.boolean().default(false),
-    author: z.string().default('Envious Labs'),
+    author: z.string().default("Envious Labs"),
     authorUrl: z.string().url().optional(),
     image: z.string().optional(),
     keywords: z.array(z.string()).optional(),
@@ -34,7 +36,7 @@ const blog = defineCollection({
 // are derived from the retired Crisp source and are checked against it by
 // scripts/check-help-frontmatter.mjs; the rest are migration-authored.
 const help = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/help' }),
+  loader: glob({ pattern: "**/*.md", base: "./src/content/help" }),
   schema: z.object({
     title: z.string(),
     description: z.string(),

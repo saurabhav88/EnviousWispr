@@ -1,6 +1,7 @@
 ---
 title: "Dictating Git Commits on macOS: Better Messages, Less Typing"
-description: "Dictating git commits produces better messages than typing. Here's how on-device polish turns spoken explanations into clean, readable commit bodies."
+description: "What changes when you speak the reasoning behind a commit."
+topic: writing-productivity
 pubDate: 2026-03-16
 updatedDate: 2026-04-04
 tags: ["developer", "git", "workflow", "dictation"]

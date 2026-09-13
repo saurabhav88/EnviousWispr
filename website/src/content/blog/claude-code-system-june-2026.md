@@ -1,6 +1,7 @@
 ---
 title: "The State of My Solo Claude Code System: June 2026"
-description: "An honest update to building a commercial macOS app solo with Claude Code: tiered docs, self-enforcing hooks, a four-phase workflow, GitHub as the tracker, and the two things I changed my mind about."
+description: "A look inside the systems behind building EnviousWispr."
+topic: behind-enviouswispr
 pubDate: 2026-06-19
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]
 image: "/images/blog/claude-code-system-june-2026/three-pillars.jpg"

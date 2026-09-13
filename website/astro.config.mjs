@@ -1,19 +1,19 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
-import sitemap from '@astrojs/sitemap';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { catalog } from './src/data/site-navigation.js';
-import { updated as comparisonUpdated } from './src/data/compare.js';
+import { defineConfig } from "astro/config";
+import sitemap from "@astrojs/sitemap";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { catalog } from "./src/data/site-navigation.js";
+import { updated as comparisonUpdated } from "./src/data/compare.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SITE = 'https://enviouswispr.com';
+const SITE = "https://enviouswispr.com";
 
 // Format a Date or YYYY-MM-DD string as an ISO date (YYYY-MM-DD).
 function toIsoDate(d) {
   if (!d) return null;
-  if (typeof d === 'string') {
+  if (typeof d === "string") {
     const m = d.match(/^(\d{4}-\d{2}-\d{2})/);
     return m ? m[1] : null;
   }
@@ -22,18 +22,18 @@ function toIsoDate(d) {
 
 // Walk the blog frontmatter and pick max(updatedDate, pubDate) for each post.
 const BLOG_POST_DATES = (() => {
-  const blogDir = path.join(__dirname, 'src/content/blog');
+  const blogDir = path.join(__dirname, "src/content/blog");
   const map = {};
   let latest = null;
   if (!fs.existsSync(blogDir)) return { map, latest };
   for (const file of fs.readdirSync(blogDir)) {
-    if (!file.endsWith('.md') && !file.endsWith('.mdx')) continue;
-    const content = fs.readFileSync(path.join(blogDir, file), 'utf8');
+    if (!file.endsWith(".md") && !file.endsWith(".mdx")) continue;
+    const content = fs.readFileSync(path.join(blogDir, file), "utf8");
     const pub = content.match(/^pubDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
     const upd = content.match(/^updatedDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
-    const date = upd ? upd[1] : (pub ? pub[1] : null);
+    const date = upd ? upd[1] : pub ? pub[1] : null;
     if (!date) continue;
-    const slug = file.replace(/\.mdx?$/, '');
+    const slug = file.replace(/\.mdx?$/, "");
     map[`${SITE}/blog/${slug}/`] = date;
     if (!latest || date > latest) latest = date;
   }
@@ -53,22 +53,26 @@ const BLOG_POST_DATES = (() => {
 // Categories take the latest `updated` among their own articles; the index
 // takes the latest across all of them.
 const HELP_DATES = (() => {
-  const helpDir = path.join(__dirname, 'src/content/help');
+  const helpDir = path.join(__dirname, "src/content/help");
   const map = {};
   if (!fs.existsSync(helpDir)) return map;
   const perCategory = {};
   let latest = null;
   for (const file of fs.readdirSync(helpDir)) {
-    if (!file.endsWith('.md')) continue;
-    const content = fs.readFileSync(path.join(helpDir, file), 'utf8');
+    if (!file.endsWith(".md")) continue;
+    const content = fs.readFileSync(path.join(helpDir, file), "utf8");
     const cat = content.match(/^category:\s*["']?([a-z-]+)["']?/m)?.[1];
-    const upd = content.match(/^updated:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m)?.[1];
-    if (!cat || !upd) throw new Error(`sitemap: ${file} is missing category or updated`);
-    map[`${SITE}/help/${file.replace(/\.md$/, '')}/`] = upd;
+    const upd = content.match(
+      /^updated:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m,
+    )?.[1];
+    if (!cat || !upd)
+      throw new Error(`sitemap: ${file} is missing category or updated`);
+    map[`${SITE}/help/${file.replace(/\.md$/, "")}/`] = upd;
     if (!perCategory[cat] || upd > perCategory[cat]) perCategory[cat] = upd;
     if (!latest || upd > latest) latest = upd;
   }
-  for (const [cat, date] of Object.entries(perCategory)) map[`${SITE}/help/${cat}/`] = date;
+  for (const [cat, date] of Object.entries(perCategory))
+    map[`${SITE}/help/${cat}/`] = date;
   if (latest) map[`${SITE}/help/`] = latest;
   return map;
 })();
@@ -77,8 +81,11 @@ const HELP_DATES = (() => {
 // `updated` date in src/data/site-navigation.js (imported, never parsed as
 // text), the same discipline as help articles. They never fall through to mtime: a fresh checkout or the daily
 // rebuild would otherwise publish today's date for pages nobody touched.
-const FEATURE_DATES = Object.fromEntries(catalog.map((entry) => [`${SITE}${entry.path}`, entry.updated]));
-if (Object.keys(FEATURE_DATES).length === 0) throw new Error('sitemap: no feature dates in site-navigation.js');
+const FEATURE_DATES = Object.fromEntries(
+  catalog.map((entry) => [`${SITE}${entry.path}`, entry.updated]),
+);
+if (Object.keys(FEATURE_DATES).length === 0)
+  throw new Error("sitemap: no feature dates in site-navigation.js");
 const isFeatureUrl = (url) =>
   url === `${SITE}/features/` ||
   url.startsWith(`${SITE}/features/`) ||
@@ -97,44 +104,46 @@ function mtimeIso(absPath) {
 // Map a sitemap URL to its source .astro file path on disk.
 function sourceForUrl(url) {
   // Strip site prefix and trailing slash.
-  let p = url.replace(SITE, '').replace(/\/$/, '');
-  if (p === '') p = '/index';
+  let p = url.replace(SITE, "").replace(/\/$/, "");
+  if (p === "") p = "/index";
   // Author pages: /authors/<slug>/ → src/pages/authors/<slug>.astro (static file). Trailing slash already stripped at line 53.
-  if (p.startsWith('/authors/')) {
-    const slug = p.replace('/authors/', '');
+  if (p.startsWith("/authors/")) {
+    const slug = p.replace("/authors/", "");
     return path.join(__dirname, `src/pages/authors/${slug}.astro`);
   }
   // Tag pages: /tags/<slug>/ → no static source on disk today. Forward-compatible scaffolding.
-  if (p.startsWith('/tags/')) return null;
+  if (p.startsWith("/tags/")) return null;
   // /blog/<slug>/ → handled by BLOG_POST_DATES.
-  if (p.startsWith('/blog/') && p !== '/blog') return null;
+  if (p.startsWith("/blog/") && p !== "/blog") return null;
   // /blog/ index → src/pages/blog/index.astro
-  if (p === '/blog') return path.join(__dirname, 'src/pages/blog/index.astro');
+  if (p === "/blog") return path.join(__dirname, "src/pages/blog/index.astro");
   // /compare/ index → src/pages/compare/index.astro
-  if (p === '/compare') return path.join(__dirname, 'src/pages/compare/index.astro');
+  if (p === "/compare")
+    return path.join(__dirname, "src/pages/compare/index.astro");
   // /compare/<slug>/ → src/pages/compare/<slug>.astro
-  if (p.startsWith('/compare/')) {
-    const slug = p.replace('/compare/', '');
+  if (p.startsWith("/compare/")) {
+    const slug = p.replace("/compare/", "");
     return path.join(__dirname, `src/pages/compare/${slug}.astro`);
   }
   // /solutions/ index → src/pages/solutions/index.astro
-  if (p === '/solutions') return path.join(__dirname, 'src/pages/solutions/index.astro');
+  if (p === "/solutions")
+    return path.join(__dirname, "src/pages/solutions/index.astro");
   // /solutions/<slug>/ → src/pages/solutions/<slug>.astro
-  if (p.startsWith('/solutions/')) {
-    const slug = p.replace('/solutions/', '');
+  if (p.startsWith("/solutions/")) {
+    const slug = p.replace("/solutions/", "");
     return path.join(__dirname, `src/pages/solutions/${slug}.astro`);
   }
   // /index → src/pages/index.astro
-  if (p === '/index') return path.join(__dirname, 'src/pages/index.astro');
+  if (p === "/index") return path.join(__dirname, "src/pages/index.astro");
   // /<page>/ → src/pages/<page>.astro
-  const slug = p.replace(/^\//, '');
+  const slug = p.replace(/^\//, "");
   return path.join(__dirname, `src/pages/${slug}.astro`);
 }
 
 export default defineConfig({
   site: SITE,
-  output: 'static',
-  trailingSlash: 'always',
+  output: "static",
+  trailingSlash: "always",
   // Astro 7 ships Vite 8, which switched the default CSS minifier to Lightning
   // CSS. Lightning CSS prunes vendor prefixes against browser targets, and it
   // silently dropped two that this site's stylesheets ship on purpose:
@@ -159,23 +168,35 @@ export default defineConfig({
   // Revisit if Lightning CSS target plumbing lands properly in Astro/Vite; it
   // minifies ~1% smaller. Correctness first.
   vite: {
-    build: { cssMinify: 'esbuild' },
+    build: { cssMinify: "esbuild" },
   },
   integrations: [
     sitemap({
       serialize(item) {
+        // Paginated archives have no reliable content-modification timestamp.
+        if (/^https:\/\/enviouswispr\.com\/blog\/page\/\d+\/$/.test(item.url)) {
+          delete item.lastmod;
+          return item;
+        }
         // A checkout or daily build must not turn mtime into a content update.
-        if ([`${SITE}/compare/`, `${SITE}/compare/macwhisper/`].includes(item.url)) {
+        if (
+          [`${SITE}/compare/`, `${SITE}/compare/macwhisper/`].includes(item.url)
+        ) {
           item.lastmod = comparisonUpdated;
           return item;
         }
         // Help: every help URL has a derived date. THROW rather than fall
         // through — a help URL reaching the today's-date fallback would
         // publish a false freshness signal on every daily rebuild, silently.
-        if (item.url === `${SITE}/help/` || item.url.startsWith(`${SITE}/help/`)) {
+        if (
+          item.url === `${SITE}/help/` ||
+          item.url.startsWith(`${SITE}/help/`)
+        ) {
           const helpDate = HELP_DATES[item.url];
           if (!helpDate) {
-            throw new Error(`sitemap: help URL has no mapped lastmod: ${item.url}`);
+            throw new Error(
+              `sitemap: help URL has no mapped lastmod: ${item.url}`,
+            );
           }
           item.lastmod = helpDate;
           return item;
@@ -184,7 +205,9 @@ export default defineConfig({
         if (isFeatureUrl(item.url)) {
           const featureDate = FEATURE_DATES[item.url];
           if (!featureDate) {
-            throw new Error(`sitemap: feature URL has no mapped lastmod: ${item.url}`);
+            throw new Error(
+              `sitemap: feature URL has no mapped lastmod: ${item.url}`,
+            );
           }
           item.lastmod = featureDate;
           return item;

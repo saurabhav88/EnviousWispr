@@ -1,0 +1,22 @@
+---
+const paths: Record<string, string> = {
+  arrow: "M5 12h14M13 6l6 6-6 6",
+  search: "M15.5 15.5 21 21M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0",
+  chevron: "m7 10 5 5 5-5",
+  copy: "M15 4H5a2 2 0 0 0-2 2v10M10 8h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2",
+};
+const { name = "arrow" } = Astro.props;
+---
+
+<svg
+  class="icon"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.65"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+>
+  <path d={paths[name] ?? paths.arrow} />
+</svg>
