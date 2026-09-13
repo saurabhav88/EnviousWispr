@@ -174,7 +174,7 @@
 
     @Test(
       "an accepted file runs the wizard's own steps to Done and the reply names the row it saved")
-    func acceptedFileRunsToFinishedWithARow() async {
+    func acceptedFileRunsToFinishedWithARow() async throws {
       let sink = ReplySink()
       let saved = SavedRows()
       let coordinator = makeCoordinator(saveToHistory: { saved.rows.append($0) })
@@ -187,8 +187,11 @@
       #expect(coordinator.state == .finished)
       #expect(finished["saved"] == "true")
       #expect(finished["polisher"] == "eg-1")
-      #expect(finished["history"] == coordinator.historyID?.uuidString)
-      #expect(saved.rows.first?.id == coordinator.historyID)
+      // `#require`, not optional equality: `nil == nil` would pass with no row at all.
+      let row = try #require(saved.rows.first)
+      let history = try #require(finished["history"])
+      #expect(history == row.id.uuidString)
+      #expect(coordinator.historyID == row.id)
       #expect(sink.statuses() == ["accepted", "finished"])
     }
 
@@ -214,13 +217,37 @@
       let door = makeDoor(coordinator, sink: sink)
       door.handle(transcribeRequest(door))
       _ = await sink.reply(withStatus: "accepted")
-      // Immediately after acceptance the reservation is what refuses; once the run is
-      // in flight `isRunning` does. Either way the answer is busy, never a second choose.
+      // Immediately after acceptance the reservation refuses (`requestInFlight`). This
+      // row is about the RUN refusing, so wait until the transcribe fake is holding it.
+      let running = await settleUntilObserved { coordinator.isRunning }
+      #expect(running)
       door.handle(transcribeRequest(door))
       let busy = await sink.reply(withStatus: "busy")
-      #expect(["requestInFlight", "running"].contains(busy["reason"] ?? ""))
+      #expect(busy["reason"] == "requestInFlight", "the reservation is checked first")
       await gate.open()
-      _ = await sink.reply(withStatus: "finished")
+      let finished = await sink.reply(withStatus: "finished")
+      #expect(finished["status"] == "finished")
+
+      // A run the USER started from the screen, with no door request in flight: the
+      // running rule itself refuses.
+      let screenGate = ManualGate()
+      let screen = makeCoordinator(transcribeGate: screenGate)
+      let screenSink = ReplySink()
+      let screenDoor = makeDoor(screen, sink: screenSink)
+      screen.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
+      let screenReady = await settleUntilObserved {
+        if case .ready = screen.state { return true } else { return false }
+      }
+      #expect(screenReady)
+      for _ in 0..<4 { screen.advance() }
+      let screenRunning = await settleUntilObserved { screen.isRunning }
+      #expect(screenRunning)
+      screenDoor.handle(transcribeRequest(screenDoor))
+      #expect(screenSink.replies.first?["status"] == "busy")
+      #expect(screenSink.replies.first?["reason"] == "running")
+      await screenGate.open()
+      let screenDone = await settleUntilObserved { screen.state == .finished }
+      #expect(screenDone)
 
       // The user picks a file on screen and has not pressed Start: the door must not
       // clobber it, because a second `choose(url:)` would silently supersede the decode.

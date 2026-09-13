@@ -35,6 +35,10 @@
     private let pollInterval: Duration
     private let post: @MainActor ([String: String]) -> Void
     private var inFlight: String?
+    /// The generation the in-flight walk is about: set after the door's own `choose(url:)`
+    /// and again after its own Start. Re-read when the walk returns, because the
+    /// coordinator can move between the walk's last poll and the reply.
+    private var watchedGeneration = 0
     private var seenRequests: Set<String> = []
     private var walkTask: Task<Void, Never>?
     private var observer: (any NSObjectProtocol)?
@@ -145,20 +149,26 @@
       // between would be read as the door's generation, so the door would walk and
       // start the USER's file. Found by `replacedDuringDecodeIsSuperseded`.
       let generation = coordinator.generation
+      watchedGeneration = generation
       let deadline = ContinuousClock.now + .seconds(timeout)
       walkTask = Task { [weak self] in
         guard let self else { return }
-        let outcome = await walk(from: generation, deadline: deadline)
+        let observed = await walk(from: generation, deadline: deadline)
         guard !Task.isCancelled else { return }
+        // The coordinator can move between the walk's last poll and this line; a reply
+        // must describe the run it watched, never whatever is there now.
+        let outcome = coordinator.generation == watchedGeneration ? observed : .superseded
         var fields = outcome.fields
         // Only a run this door started may claim a row; `superseded` names nothing, so a
         // caller can never read another import's History id as its own.
         if outcome.claimsRun {
           if let id = coordinator.historyID { fields["history"] = id.uuidString }
           if let model = coordinator.runConfiguration?.polishModel { fields["polisher"] = model }
-          // `.finished` follows a failed save too (`finishRun(savingDocument: false)`), so
-          // persistence is its own field and the caller validates the stored row itself.
-          fields["saved"] = coordinator.historySaveFailure == nil ? "true" : "false"
+          // `.finished` follows a failed save too (`finishRun(savingDocument: false)`), and a
+          // refusal before any save has no failure to report, so persistence is its own
+          // field read from the coordinator's own answer, and the caller validates the
+          // stored row itself.
+          fields["saved"] = coordinator.isSavedToHistory ? "true" : "false"
         }
         inFlight = nil
         walkTask = nil
@@ -195,7 +205,7 @@
       }
       /// Whether the run this outcome describes is one the door started, so its History
     /// row, polisher and save status belong in the reply.
-    var claimsRun: Bool { ["finished", "stopped", "refused"].contains(status) }
+    var claimsRun: Bool { ["finished", "refused"].contains(status) }
     static let superseded = Outcome(status: "superseded", detail: nil)
       static let timeout = Outcome(status: "timeout", detail: nil)
       static func unexpected(_ what: String) -> Outcome {
@@ -214,11 +224,13 @@
       var started = false
       while ContinuousClock.now < deadline {
         if Task.isCancelled { return Outcome(status: "cancelled", detail: nil) }
+        // Strict, before and after Start. Before it, the only other writer is a user's
+        // `choose(url:)` during the decode. After it, `stop()`, `rePolish()` and a new
+        // `choose(url:)` each bump the generation, and each makes what follows a
+        // different run: a replacement that reaches Done between two polls must never be
+        // reported as this request's result (Codex, code review round 1).
+        guard c.generation == generation else { return .superseded }
         if !started {
-          // Before our own Start the only writer of the generation is another
-          // `choose(url:)`: the user picked a file during the decode, and this door must
-          // not wait for, or claim, that import.
-          guard c.generation == generation else { return .superseded }
           switch c.state {
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
@@ -227,10 +239,11 @@
               guard c.step == target else { return .unexpected("step=\(c.step)") }
             }
             // Start. `advance()` at `.review` with no transcript in hand calls `start()`,
-            // which bumps the generation itself; re-captured so a later move means
-            // something happened to THIS run.
+            // which bumps the generation itself; re-captured so the guard above keeps
+            // watching THIS run.
             c.advance()
             generation = c.generation
+            watchedGeneration = generation
             started = true
           case .rejected(let reason):
             return Outcome(status: "refused", detail: Self.name(of: reason))
@@ -243,18 +256,13 @@
           switch c.state {
           case .finished where !c.isSettlingTurns:
             return Outcome(status: "finished", detail: nil)
-          case .stopped where !c.isSettlingTurns:
-            return Outcome(status: "stopped", detail: nil)
           case .rejected(let reason) where !c.isSettlingTurns:
             return Outcome(status: "refused", detail: Self.name(of: reason))
           case .idle:
             return .unexpected("state=idle")
-          case .reading, .ready:
-            // After Start, `stop()` and `rePolish()` bump the generation and land in a
-            // terminal state above on a later poll. A new `choose(url:)` never does: the
-            // user replaced the file, and that import is not this door's to wait for.
-            if c.generation != generation { return .superseded }
-          case .transcribing, .polishing, .finished, .stopped, .rejected:
+          // `.stopped` is unreachable under the guard above: `stop()` bumps the
+          // generation first, so a stopped run reads `superseded`.
+          case .reading, .ready, .transcribing, .polishing, .finished, .stopped, .rejected:
             break
           }
         }
