@@ -204,7 +204,12 @@ public struct OllamaConnector: TranscriptPolisher {
     // the idle ceiling for every request on the shared session, and a
     // per-request value would SHADOW it (measured; see that file).
 
-    let (data, _) = try await performWithRetry(request: request, config: config)
+    let (data, _, retryReceipt) = try await performWithRetry(request: request, config: config)
+    // #2641: the retry's verdict is the CALLER's, after validation. `accepted`
+    // flips only on the path that returns a result, so every throw below
+    // reports the retry as failed.
+    var accepted = false
+    defer { retryReceipt?.report(telemetrySink, succeeded: accepted) }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     guard let message = json?["message"] as? [String: Any],
@@ -226,6 +231,7 @@ public struct OllamaConnector: TranscriptPolisher {
       }
     }
 
+    accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
         .strippingLLMPreamble()
@@ -291,7 +297,11 @@ public struct OllamaConnector: TranscriptPolisher {
     // the idle ceiling for every request on the shared session, and a
     // per-request value would SHADOW it (measured; see that file).
 
-    let (data, _) = try await performWithRetry(request: request, config: config)
+    let (data, _, retryReceipt) = try await performWithRetry(request: request, config: config)
+    // #2641: the retry's verdict is the CALLER's, after validation (see the
+    // chat path above). Both accepting returns flip `accepted`.
+    var accepted = false
+    defer { retryReceipt?.report(telemetrySink, succeeded: accepted) }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     // `/api/generate` returns the text at the TOP LEVEL as `response`;
@@ -308,6 +318,7 @@ public struct OllamaConnector: TranscriptPolisher {
       if content.isEmpty {
         // A correct empty result: the empty-output floor keeps the user's
         // deterministic text, and no failure is recorded for a model doing its job.
+        accepted = true
         return LLMResult(polishedText: "")
       }
     } else {
@@ -347,6 +358,7 @@ public struct OllamaConnector: TranscriptPolisher {
     // Keyed off the same first-party authority the planner routes on, not a string sniff of
     // the outgoing prompt, which a user's own dictation could satisfy.
     let sentTranscriptTags = OllamaSetupService.isFirstPartyModel(config.model)
+    accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
         .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags)
@@ -691,7 +703,7 @@ public struct OllamaConnector: TranscriptPolisher {
     config: LLMProviderConfig,
     maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
-  ) async throws -> (Data, HTTPURLResponse) {
+  ) async throws -> (Data, HTTPURLResponse, LLMRetryPolicy.RetryReceipt?) {
     var lastError: Error?
     // #2641: what this attempt waited, so its outcome row can say so.
     var sleptBeforeAttempt: UInt64 = 0
@@ -727,13 +739,16 @@ public struct OllamaConnector: TranscriptPolisher {
 
         switch httpResponse.statusCode {
         case 200:
-          // #2641: a retry that RECOVERED is the row nothing else records.
-          if attempt > 0 {
-            LLMRetryPolicy.reportRetry(
-              telemetrySink, provider: .ollama, retrying: lastError,
-              attempt: attempt, delayNanoseconds: sleptBeforeAttempt, succeeded: true)
-          }
-          return (data, httpResponse)
+          // #2641: a retried 200 is NOT yet a recovered retry — the caller still
+          // has to parse the body, and a 200 it rejects must count as failed.
+          // Hand back a receipt; the caller reports once it knows.
+          let receipt =
+            attempt > 0
+            ? LLMRetryPolicy.RetryReceipt(
+              provider: .ollama, retrying: lastError, attempt: attempt,
+              delayNanoseconds: sleptBeforeAttempt)
+            : nil
+          return (data, httpResponse, receipt)
         default:
           // #945: read the body INSIDE the error arm for classification (404 ->
           // model not pulled, 5xx -> server error). `data` is in hand from above.

@@ -54,12 +54,37 @@ enum LLMRetryPolicy {
     _ sink: LLMTelemetrySink, provider: LLMProvider, retrying error: Error?,
     attempt: Int, delayNanoseconds: UInt64, succeeded: Bool
   ) {
-    sink.retryCompleted(
-      provider.rawValue,
-      error.map(telemetryReason(for:)) ?? "unknown",
-      attempt,
-      Int(delayNanoseconds / 1_000_000),
-      succeeded)
+    RetryReceipt(
+      provider: provider, retrying: error, attempt: attempt, delayNanoseconds: delayNanoseconds
+    ).report(sink, succeeded: succeeded)
+  }
+
+  /// #2641: a retry whose HTTP exchange came back, awaiting the caller's verdict.
+  ///
+  /// Three connectors validate the response INSIDE the retried operation, so
+  /// "the operation returned" is "the polish succeeded". Ollama's loop returns
+  /// raw bytes and its two callers parse them differently (chat shape versus
+  /// the S1-mini generate shape, which accepts an empty answer), so a 200 with
+  /// a body the caller then rejects must not count as a recovered retry (local
+  /// review r1). The loop hands back this receipt instead of reporting, and
+  /// the caller reports once it knows.
+  struct RetryReceipt {
+    let provider: LLMProvider
+    let reason: String
+    let attempt: Int
+    let delayNanoseconds: UInt64
+
+    init(provider: LLMProvider, retrying error: Error?, attempt: Int, delayNanoseconds: UInt64) {
+      self.provider = provider
+      self.reason = error.map(LLMRetryPolicy.telemetryReason(for:)) ?? "unknown"
+      self.attempt = attempt
+      self.delayNanoseconds = delayNanoseconds
+    }
+
+    func report(_ sink: LLMTelemetrySink, succeeded: Bool) {
+      sink.retryCompleted(
+        provider.rawValue, reason, attempt, Int(delayNanoseconds / 1_000_000), succeeded)
+    }
   }
 
   /// Determine if an error is transient and worth retrying.

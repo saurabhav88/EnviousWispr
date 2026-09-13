@@ -169,6 +169,80 @@ struct LLMRetryTelemetryTests {
     #expect(spy.reported.isEmpty)
   }
 
+  @Test("Ollama's loop reports through the sink handed to its initializer (no keychain)")
+  func ollamaReportsThroughItsOwnSink() async throws {
+    // Ollama carries no keychain, so the seam rides in at init; the polish
+    // step's factory passes the keychain's live sink. A 500 then a 200.
+    let spy = RetrySpy()
+    let responses = OSAllocatedUnfairLock(initialState: [
+      (Data(#"{"error": "overloaded"}"#.utf8), 500),
+      (Data(#"{"message": {"content": "Polished."}}"#.utf8), 200),
+    ])
+    let connector = OllamaConnector(
+      networkExecutor: { request in
+        await Task.yield()
+        let (body, code) = responses.withLock { $0.removeFirst() }
+        return (
+          body,
+          HTTPURLResponse(
+            url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+        )
+      },
+      telemetrySink: spy.makeSink())
+    let config = LLMProviderConfig(
+      model: "gemma4:latest", apiKeyKeychainId: nil, outputTokens: .capped(128),
+      temperature: 0.3, thinking: nil)
+
+    let result = try await connector.polish(
+      text: "hello", instructions: PolishInstructions(systemPrompt: "sys"), config: config,
+      onToken: nil)
+
+    #expect(result.polishedText == "Polished.")
+    #expect(
+      spy.reported == [
+        Reported(
+          provider: "ollama", reason: PolishFailureReason.providerServerError.rawValue,
+          attempt: 1, delayMs: 200, succeeded: true)
+      ], "\(spy.reported)")
+  }
+
+  @Test("an Ollama retry that returns a 200 the caller rejects is reported as FAILED")
+  func ollamaRejectedRetryBodyIsFailed() async {
+    // Local review r1: Ollama's loop returns raw bytes and the caller parses
+    // them, so a 200 with an empty answer must not count as a recovered retry.
+    let spy = RetrySpy()
+    let responses = OSAllocatedUnfairLock(initialState: [
+      (Data(#"{"error": "overloaded"}"#.utf8), 500),
+      (Data(#"{"message": {"content": ""}}"#.utf8), 200),
+    ])
+    let connector = OllamaConnector(
+      networkExecutor: { request in
+        await Task.yield()
+        let (body, code) = responses.withLock { $0.removeFirst() }
+        return (
+          body,
+          HTTPURLResponse(
+            url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+        )
+      },
+      telemetrySink: spy.makeSink())
+    let config = LLMProviderConfig(
+      model: "gemma4:latest", apiKeyKeychainId: nil, outputTokens: .capped(128),
+      temperature: 0.3, thinking: nil)
+
+    await #expect(throws: LLMError.self) {
+      _ = try await connector.polish(
+        text: "hello", instructions: PolishInstructions(systemPrompt: "sys"), config: config,
+        onToken: nil)
+    }
+    #expect(
+      spy.reported == [
+        Reported(
+          provider: "ollama", reason: PolishFailureReason.providerServerError.rawValue,
+          attempt: 1, delayMs: 200, succeeded: false)
+      ], "the retried exchange came back, the polish still failed: \(spy.reported)")
+  }
+
   @Test("the reason vocabulary is closed: classified reasons, URL error codes, one legacy bucket")
   func telemetryReasonVocabulary() {
     #expect(
