@@ -68,5 +68,5 @@ Both speech engines give you speaker labels. The labels are built from the time 
 ### If the labels did not appear
 
 - **"Couldn't add speaker labels to this recording."** The app could not tell the voices apart, or could not attach the words it heard to them. Click **Try again** if it is offered. It is offered only while the app still holds what it needs to retry and no cleanup is running; when a retry could not change the result (see the language note above) it is not offered. Your transcript is complete either way.
-- **"Speaker detection didn't finish for this recording."** No speaker result was saved for this transcript, usually because the speaker step was stopped before it could finish. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
-- **No labels and no message.** Usually the app heard one voice, so there was nothing to label. A missing message on its own does not say how many voices it heard.
+- **"Speaker detection didn't finish for this recording."** No speaker result was saved for this transcript. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
+- **No labels and no message.** A missing message on its own does not say how many voices the app heard. A recording it heard as one voice shows no labels and no message.
