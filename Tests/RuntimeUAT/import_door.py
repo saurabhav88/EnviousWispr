@@ -7,11 +7,11 @@ the wizard's own steps with whatever Settings hold and replies twice: `accepted`
 History row id. Nothing is activated and nothing is typed, so the founder keeps his
 keyboard and mouse.
 
-Every dev build shares one bundle id, so the caller names the PID and this module
-refuses when that PID is not a running EnviousWispr, or (when `worktree` is given) is
-not the build from that worktree. The door itself answers only its own PID and only a
-`transcribe` carrying the launch id it handed out to `discover`, so a PID reused by
-another process between resolve and post is never handed a file.
+Every dev build shares one bundle id, so the caller names the PID. The door answers only
+its own PID and only a `transcribe` carrying the launch id it handed out to `discover`,
+and every reply names the answering process's executable; with `worktree` given, that
+executable is validated, so the build validated is the build handed the file whatever
+happened to the PID in between.
 
     from import_door import transcribe_file_backend
     reply = transcribe_file_backend(pid, "/abs/clip.m4a", timeout=600,
@@ -21,7 +21,6 @@ another process between resolve and post is never handed a file.
     reply["saved"]    # "true" when the row was written; validate the JSON yourself
 """
 import os
-import subprocess
 import time
 import uuid
 
@@ -88,27 +87,10 @@ def _wait(observer, request, statuses, timeout, echo):
         _pump(0.1)
 
 
-def _process_identity(pid):
-    """(executable, start time) for `pid`, or None when it is gone. A PID can be reused
-    the moment its process exits; the start time is what tells the two apart.
-
-    ONE `ps` call answers both, so the pair can never mix the old process's executable
-    with a replacement's start time (cloud review, PR #2887, round 7). `comm` is the
-    executable alone on macOS (see `running_enviouswispr_instances`).
-    """
-    out = subprocess.run(["ps", "-o", "lstart=,comm=", "-p", str(pid)],
-                         capture_output=True, text=True).stdout.strip()
-    if not out:
-        return None
-    # lstart is five space-separated fields (e.g. `Sun Sep 13 12:25:07 2026`); the rest
-    # is the executable path, which may itself contain spaces.
-    parts = out.split(None, 5)
-    if len(parts) < 6:
-        return None
-    started, exe = " ".join(parts[:5]), parts[5]
-    if not exe.endswith(".app/Contents/MacOS/EnviousWispr"):
-        return None
-    return (exe, started)
+def _instance_executable(pid):
+    """The executable of `pid` if it is a running EnviousWispr, else None. A convenience
+    for a readable error BEFORE posting; the binding check is the door's own answer."""
+    return running_enviouswispr_instances().get(str(pid))
 
 
 def resolve_pid(worktree):
@@ -136,20 +118,14 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
     path = os.path.abspath(os.path.expanduser(path))
     if not os.path.isfile(path):
         raise RuntimeError(f"not a file: {path}")
-    # ONE snapshot answers "is it EnviousWispr", "is it from this worktree" and "which
-    # process exactly": validating the worktree against a different read than the one
-    # the post-discover comparison uses would let a replacement from another worktree
-    # pass (cloud review, PR #2887).
-    identity = _process_identity(pid)
-    if identity is None:
+    exe = _instance_executable(pid)
+    if exe is None:
         instances = running_enviouswispr_instances()
         rows = "\n".join(f"    {p}  {e}" for p, e in sorted(instances.items()))
         raise RuntimeError(f"pid {pid} is not a running EnviousWispr; running:\n{rows}")
-    exe = identity[0]
-    if worktree is not None:
-        root = os.path.abspath(os.path.expanduser(worktree)) + "/"
-        if not exe.startswith(root):
-            raise RuntimeError(f"pid {pid} runs {exe}, not a build under {root}")
+    root = None if worktree is None else os.path.abspath(os.path.expanduser(worktree)) + "/"
+    if root is not None and not exe.startswith(root):
+        raise RuntimeError(f"pid {pid} runs {exe}, not a build under {root}")
 
     observer = _Replies.alloc().init()
     # Registered BEFORE the first post: a reply that lands before the observer exists is
@@ -166,14 +142,18 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
                 f"pid {pid} ({exe}) did not answer discover in 15 s: "
                 "is it a DEBUG build carrying #2885's door?")
         launch = alive["launch"]
-        # The `alive` reply proves SOME EnviousWispr with this PID answered. If the one
-        # checked above exited and macOS reused its PID for another dev build in between,
-        # that build's launch id would pass the transcribe check below and be handed the
-        # file. Same executable AND same start time, or refuse (cloud review, PR #2887).
-        if _process_identity(pid) != identity:
-            raise RuntimeError(
-                f"pid {pid} is not the process resolved before discover (was {identity}, "
-                f"now {_process_identity(pid)}); refusing to hand it a file")
+        # The binding check. The reply names the executable of the process that ANSWERED,
+        # and `launch` names that same process for the transcribe below, so the build
+        # validated here is the build handed the file, whatever happened to the PID in
+        # between (reuse of any timing). No process-table snapshot can say that; only the
+        # answering process can.
+        answered = alive.get("executable", "")
+        if not answered.endswith(".app/Contents/MacOS/EnviousWispr"):
+            raise RuntimeError(f"pid {pid} answered discover with an unexpected executable "
+                               f"{answered!r}; refusing to hand it a file")
+        if root is not None and not answered.startswith(root):
+            raise RuntimeError(f"the process that answered discover on pid {pid} runs "
+                               f"{answered}, not a build under {root}; refusing")
 
         request = str(uuid.uuid4())
         # The door parses a Double; a fraction is kept (a `0.5` must not become `"0"`,

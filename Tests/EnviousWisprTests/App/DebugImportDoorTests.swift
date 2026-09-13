@@ -173,6 +173,7 @@
       #expect(reply["polish"] == nil, "discover answers at once and never waits on a probe")
       #expect(reply["pid"] == String(Self.pid))
       #expect(reply["request"] == "r1")
+      #expect(reply["executable"]?.isEmpty == false, "the answering process names its build")
     }
 
     @Test(
@@ -581,6 +582,24 @@
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r6"])
       let alive = await sink.reply(withStatus: "alive", after: count)
       #expect(alive["acceptance"] == "accept")
+    }
+
+    @Test("a gate still checking is waited out, not refused: the run starts once it settles")
+    func checkingGateIsWaitedOut() async {
+      let box = ReadinessBox()
+      box.value = .blocked(.checking)
+      let coordinator = makeCoordinator()
+      let sink = ReplySink()
+      let door = makeDoor(coordinator, sink: sink, readiness: box)
+      door.handle(transcribeRequest(door))
+      // Several probes answer `checking`; the door must keep asking, not refuse.
+      let asked = await settleUntilObserved { box.probes >= 2 }
+      #expect(asked)
+      #expect(!sink.statuses().contains("refused"))
+      box.value = .ready
+      let finished = await sink.reply(withStatus: "finished")
+      #expect(finished["saved"] == "true")
+      #expect(sink.statuses() == ["accepted", "finished"])
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")

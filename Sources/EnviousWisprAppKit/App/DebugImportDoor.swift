@@ -168,7 +168,7 @@
         // The screen's Continue is disabled for this; the door refuses the same way, before
         // any file is chosen. Checked again before Start, because a key can be saved or a
         // daemon can stop during the decode.
-        let readiness = await polishReadiness()
+        let readiness = await settledReadiness(deadline: deadline)
         // Everything below assumes the world of before the probe; the probe suspended.
         // Cancelled (uninstall) means no reply and no file; a deadline spent on the probe
         // means timeout, never a late `choose(url:)` nobody is watching.
@@ -229,6 +229,29 @@
         walkTask = nil
         reply(request, fields)
       }
+    }
+
+    /// How often a `.checking` gate is asked again. A daemon probe or a runtime verify is
+    /// behind it, so not the walk's poll rate.
+    static let checkingRetryInterval: Duration = .milliseconds(500)
+
+    /// The gate's answer once it is no longer `.checking`, or its last answer at the
+    /// deadline. `.checking` is transient by definition (a runtime verifying itself right
+    /// after launch, a daemon being probed): the screen shows "One moment" and the user
+    /// waits for Continue to enable; the door waits the same way, bounded by the request's
+    /// own deadline, instead of refusing a run the screen would have allowed a second
+    /// later (found live: the first request after a relaunch was refused `checking`).
+    private func settledReadiness(deadline: ContinuousClock.Instant) async
+      -> FileImportPolishReadiness
+    {
+      var readiness = await polishReadiness()
+      while case .blocked(.checking) = readiness, !Task.isCancelled,
+        ContinuousClock.now < deadline
+      {
+        do { try await Task.sleep(for: Self.checkingRetryInterval) } catch { return readiness }
+        readiness = await polishReadiness()
+      }
+      return readiness
     }
 
     /// Why a `transcribe` would be refused right now, or nil to accept. Asked by `discover`
@@ -297,7 +320,7 @@
           switch c.state {
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
-            let readiness = await polishReadiness()
+            let readiness = await settledReadiness(deadline: deadline)
             // The probe suspended. Before EITHER branch: a cancellation means no reply;
             // a moved generation means the user took the coordinator and this file is no
             // longer ours to start OR to clear; a spent deadline means timeout, with the
@@ -377,8 +400,17 @@
       out["request"] = request
       out["pid"] = String(pid)
       out["launch"] = launchID.uuidString
+      // The build that answered, from the process itself. A driver validates the
+      // worktree against THIS, not against a process-table read taken before the post:
+      // the process that answers is then the one validated and, through `launch`, the one
+      // handed the file, so PID reuse of any timing cannot route a file to another build
+      // (cloud review, PR #2887; closes the identity class).
+      out["executable"] = Self.executablePath
       post(out)
     }
+
+    nonisolated private static let executablePath: String =
+      Bundle.main.executablePath ?? ProcessInfo.processInfo.arguments.first ?? ""
 
     private static func postLive(_ fields: [String: String]) {
       DistributedNotificationCenter.default().postNotificationName(
