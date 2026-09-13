@@ -161,14 +161,19 @@
         var fields = outcome.fields
         // Only a run this door started may claim a row; `superseded` names nothing, so a
         // caller can never read another import's History id as its own.
-        if outcome.claimsRun {
-          if let id = coordinator.historyID { fields["history"] = id.uuidString }
-          if let model = coordinator.runConfiguration?.polishModel { fields["polisher"] = model }
-          // `.finished` follows a failed save too (`finishRun(savingDocument: false)`), and a
-          // refusal before any save has no failure to report, so persistence is its own
-          // field read from the coordinator's own answer, and the caller validates the
-          // stored row itself.
+        if outcome.claimsRun, let id = coordinator.historyID {
+          fields["history"] = id.uuidString
+          // `.finished` follows a failed save too (`finishRun(savingDocument: false)`), so
+          // persistence is its own field read from the coordinator's own answer, and the
+          // caller validates the stored row itself. `choose(url:)` clears the row identity,
+          // so a refusal before any persist carries neither field.
           fields["saved"] = coordinator.isSavedToHistory ? "true" : "false"
+        }
+        // `choose(url:)` does NOT clear `runConfiguration`: a request refused before this
+        // run's own `beginRun()` would read the PREVIOUS run's model. Only a finish is
+        // certainly past this run's `beginRun()` (cloud review, PR #2887).
+        if outcome.status == "finished", let model = coordinator.runConfiguration?.polishModel {
+          fields["polisher"] = model
         }
         inFlight = nil
         walkTask = nil
@@ -187,10 +192,14 @@
       if inFlight != nil { return "requestInFlight" }
       if coordinator.isRunning { return "running" }
       if coordinator.isSettlingTurns { return "settling" }
-      switch coordinator.state {
-      case .reading, .ready: return "fileInHand"
-      case .idle, .transcribing, .polishing, .finished, .rejected, .stopped: return nil
-      }
+      // `isReadyToRun` is `.ready` OR a refusal about the ENGINE with the audio still in
+      // hand (`canRetry`: the screen offers Try again). Both are a user's file the door
+      // must not replace. A refusal about the FILE or the polisher leaves nothing the
+      // door would take away, and `choose(url:)` clears it as the picker would (cloud
+      // review, PR #2887).
+      if coordinator.isReadyToRun { return "fileInHand" }
+      if case .reading = coordinator.state { return "fileInHand" }
+      return nil
     }
 
     // MARK: - The walk

@@ -82,6 +82,7 @@
     private func makeCoordinator(
       decodeGate: ManualGate? = nil,
       transcribeGate: ManualGate? = nil,
+      engineAdmission: EngineAdmissionAccess = .live(lease: EngineLease(), as: .fileImport),
       saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in }
     ) -> FileImportCoordinator {
       FileImportCoordinator(
@@ -95,7 +96,7 @@
             text: "one two three", language: "en", duration: 0, processingTime: 0,
             backendType: .parakeet, wordTimings: nil, wordTimingCoverage: nil)
         },
-        engineAdmission: .live(lease: EngineLease(), as: .fileImport),
+        engineAdmission: engineAdmission,
         beginRun: {
           FileImportCoordinator.RunConfiguration(
             polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
@@ -291,6 +292,78 @@
       // And the door is free again.
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r2"])
       #expect(sink.replies.last?["acceptance"] == "fileInHand")
+    }
+
+    @Test(
+      "a file the user can Try again after an engine refusal is protected exactly like a file in hand; a refusal about the file is not"
+    )
+    func retryableScreenFileIsProtected() async throws {
+      // The engine is held by dictation, so the user's Start is refused for an ENGINE
+      // reason and the decoded audio stays in hand (`canRetry`).
+      let lease = EngineLease()
+      guard case .granted(let token) = lease.admit(.dictation) else {
+        Issue.record("the fixture must hold the engine")
+        return
+      }
+      defer { lease.release(token) }
+      let held = makeCoordinator(engineAdmission: .live(lease: lease, as: .fileImport))
+      let sink = ReplySink()
+      let door = makeDoor(held, sink: sink)
+      held.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
+      let ready = await settleUntilObserved { held.isReadyToRun }
+      try #require(ready)
+      for _ in 0..<4 { held.advance() }
+      try #require(held.canRetry)
+      let generation = held.generation
+      door.handle(transcribeRequest(door))
+      #expect(sink.replies.last?["status"] == "busy")
+      #expect(sink.replies.last?["reason"] == "fileInHand")
+      #expect(held.generation == generation, "the user's decoded audio was not replaced")
+      #expect(held.file?.name == "users-own.m4a")
+
+      // A refusal about the FILE leaves nothing to protect: the door takes over, and its
+      // refused reply names no polisher (the previous run's would otherwise leak) and no row.
+      let refusing = FileImportCoordinator(
+        decode: { url in
+          if url.lastPathComponent == "door-recording.m4a" {
+            throw AudioFileDecoder.Rejection.unreadable
+          }
+          return Self.decoded(seconds: 1.0)
+        },
+        transcribe: { _ in
+          ASRResult(
+            text: "one two three", language: "en", duration: 0, processingTime: 0,
+            backendType: .parakeet, wordTimings: nil, wordTimingCoverage: nil)
+        },
+        engineAdmission: .live(lease: EngineLease(), as: .fileImport),
+        beginRun: {
+          FileImportCoordinator.RunConfiguration(
+            polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+            ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+        },
+        saveToHistory: { _ in }, updateHistoryRow: { _ in true },
+        mergeSpeakerFields: { _, _, _ in true }, historyRowExists: { _ in true },
+        processPart: { part, _ in
+          FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+        })
+      let refusingSink = ReplySink()
+      let refusingDoor = makeDoor(refusing, sink: refusingSink)
+      // A completed import first, so `runConfiguration` holds a previous run's model.
+      refusing.choose(url: URL(fileURLWithPath: "/tmp/earlier.m4a"))
+      let earlierReady = await settleUntilObserved {
+        if case .ready = refusing.state { return true } else { return false }
+      }
+      try #require(earlierReady)
+      for _ in 0..<4 { refusing.advance() }
+      let earlierDone = await settleUntilObserved { refusing.state == .finished }
+      try #require(earlierDone)
+      try #require(refusing.runConfiguration?.polishModel == "eg-1")
+      refusingDoor.handle(transcribeRequest(refusingDoor))
+      let refused = await refusingSink.reply(withStatus: "refused")
+      #expect(refused["reason"] == "cannotRead")
+      #expect(refused["polisher"] == nil, "a refusal before beginRun names no polisher")
+      #expect(refused["history"] == nil)
+      #expect(refused["saved"] == nil)
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")
