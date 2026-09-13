@@ -190,7 +190,10 @@ private struct RenamePopoverView: View {
     self.failure = failure
     self.onCommit = onCommit
     self.onCancel = onCancel
-    self._name = State(initialValue: failure?.currentName ?? initialName)
+    // `failure?.currentName ?? initialName` is WRONG when a failure exists but its re-read
+    // name is itself nil (a still-unnamed speaker): that reads as "no failure" and wrongly
+    // restores the stale opening name instead of blank (found by chunk review r4).
+    self._name = State(initialValue: failure.map { $0.currentName ?? "" } ?? initialName)
   }
 
   var body: some View {
