@@ -94,6 +94,19 @@ final class TranscriptCoordinator {
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryRestoredFromHistory: (_ ageMs: Int, _ takeID: String) -> Void
   private let recordEscapeRecoveryKeep: @MainActor (_ outcome: String, _ takeID: String?) -> Void
+  /// #2811, phase 4 of #2807 §3e — same seam-not-direct-call reason as the escape-recovery
+  /// emitters above, but with NO-OP defaults rather than a fallback to the shared service:
+  /// these mirror `FileImportCoordinator`'s emitters for the same feature, and both screens'
+  /// production wiring lives side by side in `WisprBootstrapper` (found by chunk review).
+  private let emitRenameTelemetry: (_ outcome: TelemetryService.FileImportRenameOutcome) -> Void
+  private let emitTurnsDisplayedTelemetry: () -> Void
+  /// Documents whose turn view History has already drawn this launch (#2811 §3e).
+  private var displayedTurnIDs: Set<UUID> = []
+  /// Called after a row is deleted here, with its id. Set by the bootstrapper once both
+  /// coordinators exist, since this one is built first: the file-import coordinator uses it
+  /// to drop the audio it holds for a possible speaker retry on that row (#2811). Nothing
+  /// else observes a deletion; the coordinator's own deleted-row notice stays derived.
+  @ObservationIgnored var onRowDeleted: (@MainActor (UUID) -> Void)?
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -140,9 +153,16 @@ final class TranscriptCoordinator {
       // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
       // `marketing_sync.wav` removed the row while its badge said the word. Found by the
       // cloud review of PR #2786.
+      // #2811, phase 4 of #2807: a renamed speaker's name does not enter `displayText` — the
+      // epic's own "find the row with 'Zach, Ariana' on it" walkthrough needs an explicit
+      // match against the speaker names themselves, a genuinely new gap this phase closes
+      // (plan §6 downstream consumer matrix).
       $0.escapeRecoveredAt == nil
         && ($0.displayText.localizedCaseInsensitiveContains(searchQuery)
-          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false))
+          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+          || ($0.speakerNames?.values.contains {
+            $0.localizedCaseInsensitiveContains(searchQuery)
+          } ?? false))
     }
   }
 
@@ -429,7 +449,10 @@ final class TranscriptCoordinator {
     emitEscapeRecoveryKept: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
     emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
     emitEscapeRecoveryRestoredFromHistory: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
-    recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil
+    recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil,
+    emitRenameTelemetry: @escaping (_ outcome: TelemetryService.FileImportRenameOutcome) -> Void =
+      { _ in },
+    emitTurnsDisplayedTelemetry: @escaping () -> Void = {}
   ) {
     self.store = store
     self.pendingPulseInterval = pendingPulseInterval
@@ -451,6 +474,8 @@ final class TranscriptCoordinator {
           source: .history, ageMs: ageMs, pasteResult: .pasted, takeID: takeID)
       }
     self.recordEscapeRecoveryKeep = recordEscapeRecoveryKeep ?? Self.logKeep
+    self.emitRenameTelemetry = emitRenameTelemetry
+    self.emitTurnsDisplayedTelemetry = emitTurnsDisplayedTelemetry
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -810,6 +835,57 @@ final class TranscriptCoordinator {
     transcripts.contains { $0.id == id }
   }
 
+  /// The CURRENT row, read fresh from `transcripts` at call time — never a snapshot (#2811,
+  /// phase 4 of #2807). Mirrors `hasRow(id:)`'s own "the in-memory list is the oracle"
+  /// contract: a caller about to carry another writer's speaker fields forward, or decide
+  /// whether a rename/retry is eligible, must read this rather than trust a value it captured
+  /// earlier.
+  func currentRow(id: UUID) -> Transcript? {
+    transcripts.first { $0.id == id }
+  }
+
+  /// Renames a speaker id across every turn showing it, for a row History renders directly
+  /// (#2811, phase 4 of #2807) — the History-side twin of `FileImportCoordinator
+  /// .renameSpeaker`, both ordinary, symmetric callers of `mergeSpeakerFields` above. Re-reads
+  /// the row's CURRENT analysis and turns TOGETHER, atomically, immediately before writing —
+  /// never a value captured when a popover opened (§3 Design correction 2).
+  func renameSpeaker(id transcriptID: UUID, speakerId: String, name: String) -> RenameFailure? {
+    guard let current = currentRow(id: transcriptID), current.turns != nil,
+      let analysis = current.speakerAnalysis
+    else {
+      emitRenameTelemetry(.failed)
+      return RenameFailure(message: "Couldn't save the name.", currentName: nil)
+    }
+    do {
+      let saved = try mergeSpeakerFields(
+        id: transcriptID, analysis: analysis, turns: current.turns,
+        explicitRename: (speakerId, name))
+      guard saved else {
+        emitRenameTelemetry(.failed)
+        return RenameFailure(
+          message: "This recording was removed from History.", currentName: nil)
+      }
+      emitRenameTelemetry(.saved)
+      return nil
+    } catch {
+      emitRenameTelemetry(.failed)
+      return RenameFailure(
+        message: "Couldn't save the name.", currentName: current.speakerNames?[speakerId])
+    }
+  }
+
+  /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only.
+  func noteRenameCancelled() {
+    emitRenameTelemetry(.cancelled)
+  }
+
+  /// History's detail view just drew a turn view for `id` (#2811 §3e). Reported once per
+  /// document per launch; re-selecting the same row is not a new fact.
+  func noteTurnsDisplayed(id: UUID) {
+    guard displayedTurnIDs.insert(id).inserted else { return }
+    emitTurnsDisplayedTelemetry()
+  }
+
   /// Counts writes, so a disk read that began earlier can be told it is stale.
   ///
   /// `load()` prefers the DISK row whenever an id already exists, which is right for a
@@ -826,6 +902,7 @@ final class TranscriptCoordinator {
       let displayed = filteredTranscripts
       try store.delete(id: transcript.id)
       transcripts.removeAll { $0.id == transcript.id }
+      onRowDeleted?(transcript.id)
       if selectedTranscriptID == transcript.id {
         // The next row in the same filter, else the previous one, else nothing — and
         // nothing means the status view, never the live fallback (the setter arms that).
@@ -959,7 +1036,11 @@ final class TranscriptCoordinator {
   func deleteAll() {
     do {
       try store.deleteAll()
+      let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
+      // The same announcement `delete(_:)` makes, per row, after the list is already empty
+      // (found by cloud review, round 3: this route bypassed it).
+      for id in removedIDs { onRowDeleted?(id) }
       selectedTranscriptID = nil
       // #2807: an empty History shows nothing, whatever the live pipeline last produced.
       liveFallbackSuppressed = true

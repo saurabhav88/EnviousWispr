@@ -289,7 +289,16 @@ package final class WisprBootstrapper {
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
     let transcriptStore = TranscriptStore()
-    let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
+    // The History half of #2811's turn-label telemetry; the wizard half is wired on
+    // `FileImportCoordinator` below, and both emit the same shape-only events.
+    let transcriptCoordinator = TranscriptCoordinator(
+      store: transcriptStore,
+      emitRenameTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportRename(outcome: outcome)
+      },
+      emitTurnsDisplayedTelemetry: {
+        TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .history)
+      })
 
     // #832/#913 PR8: app-owned output-safety classifier holder. Created before
     // the polish service + both kernel drivers so all three receive the same
@@ -1442,6 +1451,15 @@ package final class WisprBootstrapper {
         TelemetryService.shared.trackFileImportTurns(
           outcome: outcome, turnCount: turnCount, fallbackTurnCount: fallbackTurnCount)
       },
+      emitRenameTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportRename(outcome: outcome)
+      },
+      emitSpeakerRetryTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportSpeakerRetry(outcome: outcome)
+      },
+      emitTurnsDisplayedTelemetry: {
+        TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .wizard)
+      },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
       engineAdmission: .live(lease: engineLease, as: .fileImport),
@@ -1601,10 +1619,23 @@ package final class WisprBootstrapper {
       mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
         try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
+      // The rename write (#2811, phase 4) — same underlying method, an explicit rename pair
+      // this time.
+      writeExplicitRename: { [transcriptCoordinator] id, analysis, turns, explicitRename in
+        try transcriptCoordinator.mergeSpeakerFields(
+          id: id, analysis: analysis, turns: turns, explicitRename: explicitRename)
+      },
+      currentHistoryRow: { [transcriptCoordinator] id in transcriptCoordinator.currentRow(id: id) },
       historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })
+    // History announces a deleted row; the wizard drops the retry audio it holds for that
+    // row (#2811, cloud review of PR #2846). Late-bound because History's coordinator is
+    // built first.
+    transcriptCoordinator.onRowDeleted = { [weak fileImportCoordinator] id in
+      fileImportCoordinator?.noteHistoryRowDeleted(id)
+    }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator

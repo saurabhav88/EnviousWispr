@@ -381,7 +381,8 @@ struct TranscribeFileView: View {
     .padding(.vertical, 30)
     .padding(.horizontal, 20)
     .background(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg)
+    )
     .overlay(
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
         .strokeBorder(Color.stDivider, style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
@@ -617,7 +618,9 @@ struct TranscribeFileView: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+      .background(
+        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg)
+      )
       .overlay(
         RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
           .strokeBorder(selected ? Color.stAccent : Color.stDivider)
@@ -873,7 +876,8 @@ struct TranscribeFileView: View {
     case true: return "The model you picked runs on Ollama's servers, so the text is sent there."
     case false: return "That model runs on this Mac, so nothing leaves it."
     case nil:
-      return "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out."
+      return
+        "Checking whether that model runs here or on Ollama's servers. Start Ollama to find out."
     }
   }
 
@@ -916,7 +920,9 @@ struct TranscribeFileView: View {
       }
       .padding(12)
       .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-      .background(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+      .background(
+        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg)
+      )
       .overlay(
         RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
           .strokeBorder(selected ? Color.stAccent : Color.stDivider)
@@ -1144,7 +1150,9 @@ struct TranscribeFileView: View {
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+    .background(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg)
+    )
     .overlay(
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).strokeBorder(Color.stDivider))
   }
@@ -1187,6 +1195,10 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
+    // No speaker line on Working (founder, 2026-09-13: the bar plus a separate "Finding
+    // speakers" spinner read as two jobs). The bar is the one status here; Working's own Stop
+    // already cancels the speaker pass too. Speaker work shows on Done, where nothing else
+    // is moving (`speakerStatusLabel`).
     // Finished parts, then what is still waiting. NO raw-document fallback here: it renders
     // the WHOLE recording, so before the first part landed the highlighted current row
     // started below the entire transcript and the user read their meeting twice. My own fix
@@ -1226,10 +1238,12 @@ struct TranscribeFileView: View {
             .padding(.vertical, 10)
             .background(
               RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-                .fill(isWorking ? Color.stAccentLight.opacity(0.35) : Color.stSectionBg))
+                .fill(isWorking ? Color.stAccentLight.opacity(0.35) : Color.stSectionBg)
+            )
             .overlay(
               RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-                .strokeBorder(isWorking ? Color.stAccent : Color.stDivider))
+                .strokeBorder(isWorking ? Color.stAccent : Color.stDivider)
+            )
             .accessibilityLabel(
               isWorking
                 ? "Cleaning this part now. \(row.element)"
@@ -1242,71 +1256,117 @@ struct TranscribeFileView: View {
   /// The words themselves while the run goes: cleaned parts as they land, and
   /// the raw transcript until the first one does, so the page is never empty and
   /// never just a spinner.
+  ///
+  /// DONE only, and only when there are real turns to show (#2811, phase 4 of #2807):
+  /// `TurnDocumentView` takes over from the three branches below, which stay exactly as they
+  /// are for Working and for any document with nothing turn-shaped — "a solo memo looks
+  /// exactly like today" (plan §2.1).
   private var liveTranscript: some View {
     VStack(alignment: .leading, spacing: 14) {
-      // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
-      // and honouring it there hid the finished parts during a re-polish.
-      ForEach(
-        coordinator.step == .done
-          && (coordinator.screenShowsRawWords || coordinator.documentView == .markedUp)
-          ? [] : coordinator.parts
-      ) { part in
-        VStack(alignment: .leading, spacing: 4) {
-          Text(part.text)
-            .lineSpacing(6)
-            .foregroundStyle(Color.stTextBody)
-            .textSelection(.enabled)
-          // Only a FAILED polish is marked. A document the user chose not to
-          // have polished is not a document with fourteen problems in it.
-          if part.isUnpolished {
-            Text("This passage could not be cleaned up. These are the raw words.")
-              .font(.stHelper)
-              .foregroundStyle(Color.stTextSecondary)
-          }
+      if coordinator.step == .done {
+        TurnDocumentView(
+          turns: renderedTurns,
+          onRename: { id, name in await coordinator.renameSpeaker(id: id, name: name) },
+          onRenameCancelled: { coordinator.noteRenameCancelled() },
+          onTurnsDisplayed: { coordinator.noteTurnsDisplayed() },
+          fallback: { legacyTranscriptContent }
+        )
+        .task(
+          id: FileImportCoordinator.TurnDiffRequest(
+            input: coordinator.turnDiffInput, markedUp: coordinator.documentView == .markedUp)
+        ) {
+          guard coordinator.documentView == .markedUp else { return }
+          await coordinator.prepareTurnDiffs()
         }
-      }
-      // DONE only, the marked-up view (#2773): the original words with the cleanup on them,
-      // and the counts that are the point. The marks are one attributed text so selection
-      // and copy behave like the other two views.
-      if coordinator.step == .done, coordinator.documentView == .markedUp,
-        !coordinator.parts.isEmpty
-      {
-        Group {
-          if let markedUp = coordinator.markedUp {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(markedUp.legend)
-                .font(.stHelper)
-                .foregroundStyle(Color.stTextSecondary)
-                .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
-              Text(Self.markedUpText(markedUp.segments))
-                .lineSpacing(6)
-                .textSelection(.enabled)
-                // The marks are visual; this is what a screen reader gets instead.
-                .accessibilityLabel(Self.markedUpAccessibilityText(markedUp.segments))
-            }
-          } else {
-            ProgressView("Comparing words")
-              .controlSize(.small)
-          }
-        }
-        .task(id: coordinator.markedUpInput) { await coordinator.prepareMarkedUp() }
-      }
-      // DONE only. This is the "Original" view and the empty-document floor, and both belong
-      // to the finished screen; on Working the queue shows the raw words.
-      if coordinator.step == .done,
-        coordinator.screenShowsRawWords,
-        !coordinator.rawTranscript.isEmpty
-      {
-        Text(coordinator.rawTranscript)
-          .lineSpacing(6)
-          .foregroundStyle(Color.stTextSecondary)
-          .textSelection(.enabled)
+      } else {
+        legacyTranscriptContent
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 16)
     .padding(.vertical, 14)
-    .background(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+    .background(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius).fill(Color.stSectionBg))
+  }
+
+  /// `TurnDocumentView`'s `diffLookup` reads whatever `prepareTurnDiffs` has cached so far —
+  /// `nil` for a turn not yet diffed falls back to that turn's cleaned text (chunk-1's own
+  /// contract), never blocking. `coordinator.turnDiffs` is read exactly ONCE here, outside
+  /// the closure `render` calls once per turn (found by chunk review): that getter validates
+  /// its cache against a freshly-rebuilt `turnDiffInput`, which itself re-slices every turn's
+  /// text — calling it per-turn made the whole render pass quadratic in turn count despite the
+  /// diffs themselves being cached.
+  private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
+    let diffs = coordinator.turnDiffs
+    return TranscriptDocumentPresenter.render(
+      turns: coordinator.turns, rawText: coordinator.rawTranscript,
+      speakerNames: coordinator.speakerNames, mode: coordinator.documentView,
+      timesOn: coordinator.timesOn,
+      diffLookup: { turn in diffs?[turn.id] })
+  }
+
+  /// Today's own plain-text rendering, UNCHANGED — `TurnDocumentView`'s fallback for
+  /// `turns == nil`, and the whole of `liveTranscript` while Working.
+  @ViewBuilder
+  private var legacyTranscriptContent: some View {
+    // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
+    // and honouring it there hid the finished parts during a re-polish.
+    ForEach(
+      coordinator.step == .done
+        && (coordinator.screenShowsRawWords || coordinator.documentView == .markedUp)
+        ? [] : coordinator.parts
+    ) { part in
+      VStack(alignment: .leading, spacing: 4) {
+        Text(part.text)
+          .lineSpacing(6)
+          .foregroundStyle(Color.stTextBody)
+          .textSelection(.enabled)
+        // Only a FAILED polish is marked. A document the user chose not to
+        // have polished is not a document with fourteen problems in it.
+        if part.isUnpolished {
+          Text("This passage could not be cleaned up. These are the raw words.")
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+        }
+      }
+    }
+    // DONE only, the marked-up view (#2773): the original words with the cleanup on them,
+    // and the counts that are the point. The marks are one attributed text so selection
+    // and copy behave like the other two views.
+    if coordinator.step == .done, coordinator.documentView == .markedUp,
+      !coordinator.parts.isEmpty
+    {
+      Group {
+        if let markedUp = coordinator.markedUp {
+          VStack(alignment: .leading, spacing: 8) {
+            Text(markedUp.legend)
+              .font(.stHelper)
+              .foregroundStyle(Color.stTextSecondary)
+              .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
+            Text(Self.markedUpText(markedUp.segments))
+              .lineSpacing(6)
+              .textSelection(.enabled)
+              // The marks are visual; this is what a screen reader gets instead.
+              .accessibilityLabel(Self.markedUpAccessibilityText(markedUp.segments))
+          }
+        } else {
+          ProgressView("Comparing words")
+            .controlSize(.small)
+        }
+      }
+      .task(id: coordinator.markedUpInput) { await coordinator.prepareMarkedUp() }
+    }
+    // DONE only. This is the "Original" view and the empty-document floor, and both belong
+    // to the finished screen; on Working the queue shows the raw words.
+    if coordinator.step == .done,
+      coordinator.screenShowsRawWords,
+      !coordinator.rawTranscript.isEmpty
+    {
+      Text(coordinator.rawTranscript)
+        .lineSpacing(6)
+        .foregroundStyle(Color.stTextSecondary)
+        .textSelection(.enabled)
+    }
   }
 
   // MARK: - 6. Done
@@ -1330,6 +1390,46 @@ struct TranscribeFileView: View {
     // would alarm the first user and under-warn the second. Found by Codex.
     if let notice = coordinator.historySaveNotice {
       InsetNotice(text: notice, systemImage: "exclamationmark.triangle", tint: .orange)
+    }
+    // Background speaker work outlives the visible Working step (#2811 §3 Design correction)
+    // and Done has no other Stop, so this one line carries its own. ONE line, saying what is
+    // happening ("Finding speakers", then "Cleaning speaker turns: 120 of 372"); the count
+    // is what a 48-minute file needs (founder UAT, 2026-09-13).
+    if let label = coordinator.speakerStatusLabel {
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text(label).foregroundStyle(Color.stTextSecondary)
+        Spacer(minLength: 12)
+        wizardSecondary("Stop") { coordinator.stop() }
+      }
+    }
+    // Two distinct stored outcomes (found by chunk review), each with its own honestly-scoped
+    // wording (#2811 §3e: neither may imply a retry will fix a cause it cannot, such as
+    // #2838's CJK/space-free-script gap) — collapsing them into one message is exactly the
+    // "success transitions straight to a silently-unresolved state" gap §3 Design warns about.
+    switch coordinator.speakerNoticeReason {
+    case .none:
+      EmptyView()
+    case .failed:
+      // Not "couldn't find distinct speakers": `.failed(.noWordTimings)` is reached when the
+      // analyzer DID find several and the word timings could not bind them (a space-free
+      // script, #2838), so that wording was false for one of this case's own reasons (found
+      // by second-pass review). This is true for every stored failure reason.
+      InsetNotice(
+        text: "Couldn't add speaker labels to this recording.",
+        systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
+      // Absent, not inert, when a retry could only reach the same failure (no usable word
+      // timings): offering it would promise what the retry cannot deliver (§3e).
+      if coordinator.canRetrySpeakerAnalysis {
+        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      }
+    case .unresolved:
+      InsetNotice(
+        text: "Speaker detection didn't finish for this recording.",
+        systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
+      if coordinator.canRetrySpeakerAnalysis {
+        wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+      }
     }
     // ONE row, which is finding 12. Founder, on the shipped two-row version: "You see how
     // cleaned up by EG-1 is on the wrong line and looks unpolished?" The prototype puts the
@@ -1364,12 +1464,14 @@ struct TranscribeFileView: View {
         // file — both of which destroy something the user had, to give them
         // nothing. Found enumerating (step, state) rather than by review.
         // No trailing arrow on any of these: the arrow means "this moves you forward a
-        // step", and copying, saving and starting over do not.
+        // step", and copying, saving and starting over do not. Titles relabel while Marked
+        // up is showing, disclosing that Copy/Save/Share hand over the CLEANED text instead
+        // (#2811 §2.1, generalized from the founder's existing export-substitution rule).
         wizardPrimary(
-          "Copy everything", isEnabled: coordinator.hasDocument, systemImage: "doc.on.doc",
-          showsArrow: false, action: { copyDocument() })
+          coordinator.exportButtonLabels.copy, isEnabled: coordinator.hasDocument,
+          systemImage: "doc.on.doc", showsArrow: false, action: { copyDocument() })
         wizardSecondary(
-          "Save as...", isEnabled: coordinator.hasDocument,
+          coordinator.exportButtonLabels.save, isEnabled: coordinator.hasDocument,
           systemImage: "square.and.arrow.down", action: { saveDocument() })
         // #2772 finding 10a: the prototype has FOUR buttons and this one was missing
         // entirely. Anchored to its own frame so the macOS picker points at the button the
@@ -1461,6 +1563,15 @@ struct TranscribeFileView: View {
         .controlSize(.small)
         .fixedSize()
         .accessibilityLabel("Which words to show")
+      }
+      // Times on/off (#2811 §2.1) — only meaningful once there are turns to time.
+      if coordinator.turns != nil {
+        Toggle(
+          "Times",
+          isOn: Binding(get: { coordinator.timesOn }, set: { coordinator.timesOn = $0 })
+        )
+        .controlSize(.small)
+        .toggleStyle(.switch)
       }
     }
   }
@@ -1624,8 +1735,9 @@ struct TranscribeFileView: View {
       Text(
         Self.footerDetail(
           step: coordinator.step, isCloudPolish: isCloudPolish,
-          provider: footerProvider))
-        .foregroundStyle(Color.stTextSecondary)
+          provider: footerProvider)
+      )
+      .foregroundStyle(Color.stTextSecondary)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 16)
@@ -1803,8 +1915,9 @@ struct TranscribeFileView: View {
   private var shareButton: some View {
     ShareLink(item: coordinator.exportText) {
       SettingsActionButton(
-        title: "Share...", isEnabled: coordinator.hasDocument, emphasis: .quiet,
-        shape: .roundedRect, size: .medium, systemImage: "square.and.arrow.up")
+        title: coordinator.exportButtonLabels.share, isEnabled: coordinator.hasDocument,
+        emphasis: .quiet, shape: .roundedRect, size: .medium,
+        systemImage: "square.and.arrow.up")
     }
     .buttonStyle(.plain)
     // Same rule as Copy and Save: nothing to hand over means no offer, rather than a sheet

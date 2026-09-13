@@ -228,6 +228,25 @@ struct TranscriptRowView: View {
           .accessibilityLabel("Imported from \(importedFileName)")
         }
 
+        if let speakerNames = transcript.speakerNames, !speakerNames.isEmpty {
+          // #2811, phase 4 of #2807: rendered/exported speaker names never enter
+          // `displayText`, so scanning the list is the OTHER half of the epic's own "find
+          // the row with 'Zach, Ariana' on it" walkthrough — the search predicate above is
+          // the first half. Sorted for a stable order across renders; a dictionary's own
+          // iteration order is not guaranteed.
+          HStack(spacing: 2) {
+            Image(systemName: "person.2")
+            Text(speakerNames.values.sorted().joined(separator: ", "))
+          }
+          .font(.caption2)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 2)
+          .background(Color.stTextSecondary.opacity(0.14), in: Capsule())
+          .foregroundStyle(.stTextSecondary)
+        }
+
         if transcript.isRecovered == true {
           // #1063 PR2 — marks a transcript reconstructed from a recovered recording
           // after an abnormal exit. Icon + text (never color-only).

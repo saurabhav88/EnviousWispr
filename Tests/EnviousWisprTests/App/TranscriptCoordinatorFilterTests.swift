@@ -109,6 +109,34 @@ struct TranscriptCoordinatorFilterTests {
     #expect(ids(coordinator.filteredTranscripts) == [t.id], "found by its file name")
   }
 
+  @Test("search matches a renamed speaker's name, which does not enter displayText (#2811)")
+  func searchMatchesSpeakerNames() throws {
+    let (coordinator, _) = makeCoordinator()
+    let labeled = Transcript(
+      text: "hello there friend", language: "en", duration: 61, backendType: .parakeet,
+      importedFileName: "interview.m4a", speakerAnalysis: .labeled(count: 2),
+      speakerNames: ["A": "Zach", "B": "Ariana"],
+      turns: [
+        Turn(id: "0-5", speakerId: "A", startMs: 0, endMs: 200, originalTextRange: 0..<5),
+        Turn(id: "6-18", speakerId: "B", startMs: 5000, endMs: 5400, originalTextRange: 6..<18),
+      ])
+    let unrelated = transcript("a totally different recording", file: "other.m4a")
+    try coordinator.saveAndShow(unrelated)
+    try coordinator.saveAndShow(labeled)
+
+    coordinator.searchQuery = "Zach"
+    #expect(
+      ids(coordinator.filteredTranscripts) == [labeled.id],
+      "a speaker's own name must be searchable even though it never enters displayText")
+
+    coordinator.searchQuery = "Ariana"
+    #expect(
+      ids(coordinator.filteredTranscripts) == [labeled.id], "every speaker name, not just one")
+
+    coordinator.searchQuery = "nobody named this"
+    #expect(coordinator.filteredTranscripts.isEmpty)
+  }
+
   @Test("a held recovery is listed under All and Dictations, never under Transcripts")
   func heldRowIsADictation() async throws {
     let (coordinator, store) = makeCoordinator()

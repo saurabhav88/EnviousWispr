@@ -43,13 +43,19 @@ public struct TurnCleanupRunner: Sendable {
   /// "every part failed" — matches `Turn.wasPolished`'s own "true if ANY part polished").
   /// A cancellation partway through leaves the remaining turns' fields untouched (the caller
   /// must not persist a half-finished pass — this method makes no write of its own).
+  ///
+  /// `onProgress(done, total)` is called before the first turn (0 of N) and after each turn
+  /// lands, so a screen can say how far the pass is (#2811, founder UAT: a 48-minute file
+  /// spent 490 s here behind a bare spinner). Never called after a cancellation.
   @MainActor
   public func run(
-    turns: [Turn], rawText: String, engineLanguage: String?
+    turns: [Turn], rawText: String, engineLanguage: String?,
+    onProgress: @MainActor (Int, Int) -> Void = { _, _ in }
   ) async -> (turns: [Turn], fallbackTurnCount: Int) {
     var result: [Turn] = []
     result.reserveCapacity(turns.count)
     var fallbackTurnCount = 0
+    onProgress(0, turns.count)
     for turn in turns {
       guard !Task.isCancelled else {
         result.append(contentsOf: turns[result.count...])
@@ -59,6 +65,8 @@ public struct TurnCleanupRunner: Sendable {
         turn: turn, rawText: rawText, engineLanguage: engineLanguage)
       if hadFallbackPart { fallbackTurnCount += 1 }
       result.append(cleanedTurn)
+      guard !Task.isCancelled else { continue }
+      onProgress(result.count, turns.count)
     }
     return (result, fallbackTurnCount)
   }

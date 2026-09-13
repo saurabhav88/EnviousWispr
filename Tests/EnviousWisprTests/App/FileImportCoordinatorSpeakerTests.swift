@@ -108,12 +108,23 @@ struct FileImportCoordinatorSpeakerTests {
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
     mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws ->
       Bool = { _, _, _ in true },
+    writeExplicitRename: @escaping @MainActor (
+      UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
+    ) throws -> Bool = { _, _, _, _ in false },
+    currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
     emitSpeakerTelemetry: @escaping @MainActor (
       SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?
     ) -> Void = { _, _, _, _ in },
     emitTurnTelemetry: @escaping @MainActor (
       TelemetryService.FileImportTurnsOutcome, Int?, Int
     ) -> Void = { _, _, _ in },
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void = {
+      _ in
+    },
+    emitSpeakerRetryTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportSpeakerRetryOutcome
+    ) -> Void = { _ in },
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
     onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
       Bool = { _ in true },
@@ -133,6 +144,9 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: speakerLabeler,
       emitSpeakerTelemetry: emitSpeakerTelemetry,
       emitTurnTelemetry: emitTurnTelemetry,
+      emitRenameTelemetry: emitRenameTelemetry,
+      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
+      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
       onVisibleCleanupWaitResolved: onVisibleCleanupWaitResolved,
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
@@ -144,6 +158,8 @@ struct FileImportCoordinatorSpeakerTests {
       saveToHistory: saveToHistory,
       updateHistoryRow: updateHistoryRow,
       mergeSpeakerFields: mergeSpeakerFields,
+      writeExplicitRename: writeExplicitRename,
+      currentHistoryRow: currentHistoryRow,
       historyRowExists: { _ in true },
       processPart: processPart)
   }
@@ -951,5 +967,1091 @@ struct FileImportCoordinatorSpeakerTests {
       persisted,
       "a re-polish of the SAME document must never discard the only speaker analysis this document will ever get"
     )
+  }
+
+  // MARK: - Retry, rename, and the savePolishedToHistory race fix (#2811 phase 4 of #2807)
+
+  /// A live, mutable simulation of the History store — closer to `TranscriptCoordinator`'s own
+  /// "the in-memory list is the oracle" contract than four independent recorder closures, and
+  /// needed here specifically: these tests exist to prove a write reads back what ANOTHER
+  /// writer (an external rename) left behind, which four disconnected spies cannot represent.
+  @MainActor private final class FakeHistoryStore {
+    private(set) var rows: [UUID: Transcript] = [:]
+    func save(_ row: Transcript) { rows[row.id] = row }
+    func update(_ row: Transcript) -> Bool {
+      guard rows[row.id] != nil else { return false }
+      rows[row.id] = row
+      return true
+    }
+    func mergeSpeakerFields(_ id: UUID, _ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?)
+      -> Bool
+    {
+      guard let existing = rows[id] else { return false }
+      rows[id] = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
+      return true
+    }
+    func rename(
+      _ id: UUID, _ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?,
+      _ explicitRename: (speakerId: String, name: String)
+    ) -> Bool {
+      guard let existing = rows[id] else { return false }
+      rows[id] = existing.mergingSpeakerFields(
+        analysis: analysis, turns: turns, explicitRename: explicitRename)
+      return true
+    }
+    func current(_ id: UUID) -> Transcript? { rows[id] }
+  }
+
+  private func makeStoreBackedCoordinator(
+    store: FakeHistoryStore, lease: EngineLease = EngineLease(), seconds: Double = 1.0,
+    transcribedText: String = "hello there friend",
+    wordTimings: [ASRWordTiming]? = nil,
+    speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
+    processPart: @escaping @MainActor (String, String?) async throws ->
+      FileImportRunner.PartOutcome = { part, _ in
+        FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      },
+    emitTurnTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportTurnsOutcome, Int?, Int
+    ) -> Void = { _, _, _ in },
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void = {
+      _ in
+    },
+    emitSpeakerRetryTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportSpeakerRetryOutcome
+    ) -> Void = { _ in },
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {}
+  ) -> FileImportCoordinator {
+    makeCoordinator(
+      lease: lease, seconds: seconds, transcribedText: transcribedText,
+      wordTimings: wordTimings, speakerLabeler: speakerLabeler,
+      saveToHistory: { store.save($0) },
+      updateHistoryRow: { store.update($0) },
+      mergeSpeakerFields: { store.mergeSpeakerFields($0, $1, $2) },
+      writeExplicitRename: { store.rename($0, $1, $2, $3) },
+      currentHistoryRow: { store.current($0) },
+      emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
+      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
+      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry, processPart: processPart)
+  }
+
+  @Test(
+    "a re-polish's own write carries forward a rename that landed on the live row after this coordinator's own snapshot was taken"
+  )
+  func savePolishedToHistoryCarriesLiveSpeakerFieldsForward() async {
+    let store = FakeHistoryStore()
+    let telemetry = { @MainActor (
+      outcome: TelemetryService.FileImportTurnsOutcome, _: Int?, _: Int
+    ) in }
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitTurnTelemetry: telemetry)
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    // Waits for the background pass's OWN `speakerStepState` to reach `.finished`, not just
+    // for its write to land — the write and the telemetry both fire INSIDE `mergeAndReport`,
+    // strictly before that pass's own `defer` releases the shared engine claim. Gating only
+    // on the write risks `rePolish()`'s own claim being refused as busy a moment later
+    // (found while writing this test: `speakerStepState == .finished` is the one signal that
+    // is only set AFTER the whole pass, including its engine release, has unwound).
+    let stored = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+    #expect(stored, "the background turn-storage pass never finished persisting turns")
+
+    // An EXTERNAL rename — simulating a write from History, or the wizard's own rename UI —
+    // landing directly on the live store, entirely bypassing this coordinator. Nothing in
+    // this coordinator's own `originalHistoryRow` snapshot learns about it.
+    guard let liveRow = store.current(historyID), let analysis = liveRow.speakerAnalysis else {
+      Issue.record("no labeled row to rename against")
+      return
+    }
+    let renamed = store.rename(historyID, analysis, liveRow.turns, (speakerId: "A", name: "Zach"))
+    #expect(renamed)
+
+    // "Clean it again" — its own `savePolishedToHistory` write must not revert the rename
+    // that landed on the live row while this coordinator's own cache was still stale.
+    coordinator.rePolish()
+    let rePolishFinished = await settleUntil { coordinator.state == .finished }
+    #expect(rePolishFinished)
+
+    #expect(
+      store.current(historyID)?.speakerNames?["A"] == "Zach",
+      "the re-polish's own write reverted a rename it never knew about — savePolishedToHistory must carry the LIVE row's speaker fields forward, not its own stale snapshot"
+    )
+  }
+
+  /// A cleanup whose output the test can change between runs, so a re-clean is told apart
+  /// from the first clean by the text it wrote, never by a call count alone.
+  @MainActor private final class TaggedCleaner {
+    var tag = "first"
+    func outcome(_ part: String) -> FileImportRunner.PartOutcome {
+      FileImportRunner.PartOutcome(text: part, polishedText: "\(part) [\(tag)]", polishError: nil)
+    }
+  }
+
+  @Test("Clean it again re-cleans the stored turns and keeps an explicit rename (#2811)")
+  func rePolishRecleansStoredTurnsAndKeepsRename() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in cleaner.outcome(part) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+    #expect(stored)
+    let firstCleaned =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(firstCleaned == true, "the first pass should have cleaned every turn")
+
+    guard let liveRow = store.current(historyID), let analysis = liveRow.speakerAnalysis else {
+      Issue.record("no labeled row to rename against")
+      return
+    }
+    #expect(store.rename(historyID, analysis, liveRow.turns, (speakerId: "A", name: "Zach")))
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    _ = await settleUntil { coordinator.state == .finished }
+    let recleaned = await settleUntil {
+      store.current(historyID)?.turns?.allSatisfy {
+        $0.processedText?.hasSuffix("[second]") == true
+      } ?? false
+    }
+    #expect(recleaned, "Clean it again must re-clean the stored turns, not only the document")
+    #expect(store.current(historyID)?.turns?.count == 2, "re-cleaning must not change the turn set")
+    #expect(store.current(historyID)?.speakerNames?["A"] == "Zach", "a rename must survive a re-clean")
+  }
+
+  @Test("Stop pressed while Clean it again is re-cleaning the turns prevents that write (#2811)")
+  func stopDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        // The re-clean's OWN per-turn calls (never the whole-document part, which is what
+        // the visible run cleans) block until the test has pressed Stop.
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+    #expect(stored)
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    // The screen already reads Done (`isRunning` is false) while the re-clean is inside its
+    // first per-turn call; Stop here must still reach the task that owns the re-clean.
+    #expect(!coordinator.isRunning)
+    coordinator.stop()
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "a stopped re-clean must never persist its result")
+  }
+
+  /// Drives one import to `state == .finished` plus a settled speaker step, and returns the
+  /// coordinator and its history id; nil (with an issue recorded) if no row landed.
+  private func settledImport(
+    store: FakeHistoryStore, wordTimings: [ASRWordTiming]?,
+    speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis
+  ) async -> (FileImportCoordinator, UUID)? {
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: wordTimings, speakerLabeler: speakerLabeler)
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return nil
+    }
+    let settled = await settleUntil {
+      store.current(historyID)?.speakerAnalysis != nil
+        && coordinator.speakerStepState == .finished
+    }
+    #expect(settled, "the speaker step never settled")
+    return (coordinator, historyID)
+  }
+
+  @Test("the retained audio is released once the stored outcome is one no retry could change")
+  func retryInputsReleasedOnceSettled() async {
+    // A labeled success: nothing to retry, audio freed.
+    let labeledStore = FakeHistoryStore()
+    guard
+      let (labeled, _) = await settledImport(
+        store: labeledStore, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(!labeled.retainsRetryInputs, "a labeled outcome must not pin the audio")
+    #expect(!labeled.canRetrySpeakerAnalysis)
+
+    // A real analyzer failure: retry is offered, so the audio stays.
+    let failedStore = FakeHistoryStore()
+    guard
+      let (failed, _) = await settledImport(
+        store: failedStore, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .failed(.modelsUnavailable) })
+    else { return }
+    #expect(failed.retainsRetryInputs, "a retryable failure keeps the audio for Try again")
+    #expect(failed.canRetrySpeakerAnalysis)
+    #expect(failed.speakerNoticeReason == .failed)
+  }
+
+  @Test("a deleted History row releases the retry audio, for that row only")
+  func deletedRowReleasesRetryInputs() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .failed(.modelsUnavailable) })
+    else { return }
+    #expect(coordinator.retainsRetryInputs)
+
+    coordinator.noteHistoryRowDeleted(UUID())
+    #expect(coordinator.retainsRetryInputs, "another row's deletion is not this document's")
+
+    coordinator.noteHistoryRowDeleted(historyID)
+    #expect(!coordinator.retainsRetryInputs, "a retry has nothing to write against")
+    #expect(!coordinator.canRetrySpeakerAnalysis)
+  }
+
+  @Test("the Done step's speaker line names the analysis, then counts turns, then goes away")
+  func speakerStatusLabelCountsTurns() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let firstTurnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in
+        if part != "hello there friend" {
+          await firstTurnGate.markArrived()
+          await firstTurnGate.waitUntilOpen()
+        }
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await speakerGate.waitUntilArrived()
+    #expect(coordinator.speakerStatusLabel == "Finding speakers")
+
+    await speakerGate.open()
+    await firstTurnGate.waitUntilArrived()
+    #expect(coordinator.speakerStatusLabel == "Cleaning speaker turns: 0 of 2")
+
+    await firstTurnGate.open()
+    let cleared = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(cleared)
+    #expect(coordinator.turnCleanupProgress == nil)
+    #expect(coordinator.speakerStatusLabel == nil, "nothing to say once the labels are stored")
+  }
+
+  @Test("no word timings: the notice shows, Try again does not, and the audio is released")
+  func missingTimingsIsNotRetryable() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: nil,
+        speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+    else { return }
+    #expect(store.current(historyID)?.speakerAnalysis == .failed(.noWordTimings))
+    #expect(coordinator.speakerNoticeReason == .failed, "the user is still told labels failed")
+    #expect(
+      !coordinator.canRetrySpeakerAnalysis,
+      "a retry reruns only the analyzer against the same missing timings; it cannot help")
+    #expect(!coordinator.retainsRetryInputs, "nothing a retry could use is worth holding")
+    // And pressing it anyway is a no-op, never an empty-buffer analysis.
+    coordinator.retrySpeakerAnalysis()
+    #expect(coordinator.speakerStepState == .finished)
+  }
+
+  @Test("Change (back to Polish) while Clean it again is re-cleaning the turns prevents that write")
+  func changePolisherDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    #expect(coordinator.step == .done)
+    coordinator.choosePolisherAgain()
+    #expect(coordinator.step == .polish, "Change must still be allowed after Done")
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "leaving Done for Polish must end the re-clean, not let it write")
+  }
+
+  @Test("choosing another file while Clean it again is re-cleaning the turns prevents that write")
+  func chooseDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    // Done already reads finished, so `choose` is allowed; it must reach the re-clean's task.
+    coordinator.choose(url: Self.anyURL)
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "a re-clean the user abandoned by choosing another file must not write")
+  }
+
+  @Test("deleting the row while speakers are being found stops that pass and drops the audio")
+  func deletedRowDuringSpeakerPassStopsIt() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await speakerGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID once the speaker step is in flight")
+      return
+    }
+    #expect(coordinator.retainsRetryInputs)
+
+    coordinator.noteHistoryRowDeleted(historyID)
+    #expect(!coordinator.retainsRetryInputs)
+    await speakerGate.open()
+    for _ in 0..<50 { await Task.yield() }
+    #expect(
+      store.current(historyID)?.speakerAnalysis != .labeled(count: 2),
+      "a cancelled speaker pass must not persist against the deleted row")
+  }
+
+  @Test("Clean it again cleans the raw turns a retry left behind (#2811)")
+  func rePolishCleansTurnsLeftRawByRetry() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        attempts.next() == 1
+          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in cleaner.outcome(part) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    coordinator.retrySpeakerAnalysis()
+    let retried = await settleUntil {
+      store.current(historyID)?.speakerAnalysis == .labeled(count: 2)
+        && coordinator.speakerStepState == .finished
+    }
+    #expect(retried)
+    let rawAfterRetry = store.current(historyID)?.turns?.allSatisfy { $0.processedText == nil }
+    #expect(rawAfterRetry == true, "retry skips cleanup by design, so its turns start raw")
+
+    coordinator.rePolish()
+    _ = await settleUntil { coordinator.state == .finished }
+    let cleaned = await settleUntil {
+      store.current(historyID)?.turns?.allSatisfy {
+        $0.processedText?.hasSuffix("[first]") == true
+      } ?? false
+    }
+    #expect(cleaned, "Clean it again is the one path that cleans a retry's raw turns")
+  }
+
+  @Test("retrySpeakerAnalysis persists a labeled outcome without ever reaching cleanup")
+  func retrySpeakerAnalysisSkipsCleanupButPersists() async {
+    let store = FakeHistoryStore()
+    @MainActor final class CleanupCounter {
+      private(set) var count = 0
+      func increment() { count += 1 }
+    }
+    let cleanupCounter = CleanupCounter()
+    // Fails the FIRST attempt, succeeds the second — simulating whatever transient condition
+    // "Try again" exists to recover from.
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        attempts.next() == 1
+          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in
+        // Only the WIZARD's own visible-document part ("hello there friend") is legitimate
+        // cleanup; anything sliced to a single speaker's words would mean turn cleanup ran.
+        if part != "hello there friend" { await cleanupCounter.increment() }
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let firstPassFinished = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFinished, "the first pass never persisted a failed outcome")
+    #expect(coordinator.canRetrySpeakerAnalysis, "a failed analysis should be retry-eligible")
+
+    coordinator.retrySpeakerAnalysis()
+
+    let retried = await settleUntil {
+      store.current(historyID)?.speakerAnalysis == .labeled(count: 2)
+    }
+    #expect(retried, "retry never persisted the successful labeled outcome")
+    #expect(store.current(historyID)?.turns?.count == 2)
+    #expect(cleanupCounter.count == 0, "retry must never reach TurnCleanupRunner")
+  }
+
+  @Test(
+    "a retry whose analyzer call is still in flight when the document is replaced never persists against the old row"
+  )
+  func retryNeverPersistsAfterDocumentReplaced() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let retryTelemetry = RetryTelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Attempt 1: the ordinary first pass, which fails. Attempt 2: the retry, blocked
+        // until the test lets it through — exactly the window a document replacement (or a
+        // Stop, in the sibling test below) can land in.
+        if attempts.next() == 1 { return .failed(.analyzerThrew("boom")) }
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      }, emitSpeakerRetryTelemetry: { retryTelemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let firstHistoryID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(firstHistoryID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+    #expect(coordinator.canRetrySpeakerAnalysis)
+
+    coordinator.retrySpeakerAnalysis()
+    await speakerGate.waitUntilArrived()
+
+    // The user moves on to a DIFFERENT file while the retry's own analyzer call is still
+    // blocked — `choose(url:)` cancels `speakerStepTask` (which now owns the retry, per the
+    // chunk-2a review fix) and gives `historyID` a new value.
+    coordinator.choose(url: Self.anyURL)
+
+    await speakerGate.open()
+    let sawRetryAttempt = await settleUntil { attempts.count == 2 }
+    #expect(sawRetryAttempt, "the retry's own analyzer call should still have run to completion")
+    // A bounded settle for the (deliberately absent) write, not a wait for a signal that a
+    // correct implementation never sends.
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(
+      store.current(firstHistoryID)?.speakerAnalysis != .labeled(count: 2),
+      "a stale retry must never persist a labeled outcome against a document the user already left"
+    )
+    #expect(
+      retryTelemetry.outcomes == [],
+      "a superseded retry says nothing about the analyzer and must report neither outcome")
+  }
+
+  @Test("Stop pressed while a retry's own analyzer call is in flight prevents any further write")
+  func stopDuringRetryPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let retryTelemetry = RetryTelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        if attempts.next() == 1 { return .failed(.analyzerThrew("boom")) }
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      }, emitSpeakerRetryTelemetry: { retryTelemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+    #expect(coordinator.canRetrySpeakerAnalysis)
+
+    coordinator.retrySpeakerAnalysis()
+    await speakerGate.waitUntilArrived()
+
+    // Stop is unconditional, before `isRunning` (the visible screen already reads Done) —
+    // this is exactly the "background pass can outlive Done" case the retry task must now
+    // be reachable from, per the chunk-2a review fix (retry runs as `speakerStepTask`).
+    coordinator.stop()
+
+    await speakerGate.open()
+    let sawRetryAttempt = await settleUntil { attempts.count == 2 }
+    #expect(sawRetryAttempt, "the retry's own analyzer call should still have run to completion")
+    for _ in 0..<50 { await Task.yield() }
+
+    #expect(
+      store.current(historyID)?.speakerAnalysis != .labeled(count: 2),
+      "Stop during a retry must prevent its result from ever being persisted"
+    )
+    // Stop leaves `historyID` in place and the row still failed, so an identity-only guard
+    // would have blamed the analyzer for a retry the user abandoned (found by chunk review).
+    #expect(
+      retryTelemetry.outcomes == [],
+      "a stopped retry must report neither recovered nor still_failed")
+  }
+
+  @Test("canRetrySpeakerAnalysis is false for a labeled or single outcome, and while in progress")
+  func canRetryFalseForLabeledOrSingleOrInProgress() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    await speakerGate.waitUntilArrived()
+    #expect(
+      !coordinator.canRetrySpeakerAnalysis, "must not be retry-eligible while still in progress")
+
+    await speakerGate.open()
+    let stored = await settleUntil {
+      store.current(coordinator.historyID ?? UUID())?.speakerAnalysis == .labeled(count: 2)
+    }
+    #expect(stored)
+    // The write lands BEFORE the step reads finished; asserting on the write alone could
+    // pass while "in progress" was still what made the button absent (found by second-pass
+    // review). Wait for the whole pass, then the assertion is about the labeled outcome.
+    let finished = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(finished)
+    #expect(!coordinator.canRetrySpeakerAnalysis, "a labeled outcome has nothing to retry")
+  }
+
+  @Test("renameSpeaker re-reads the current row and writes through the explicit-rename path")
+  func renameSpeakerWritesThroughExplicitRenamePath() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil }
+    #expect(stored)
+
+    let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
+    #expect(failure == nil, "a rename against a real labeled row should not fail")
+    #expect(store.current(historyID)?.speakerNames?["A"] == "Zach")
+  }
+
+  @Test("renameSpeaker returns a failure, never crashing, when there are no turns to rename against")
+  func renameSpeakerFailsGracefullyWithNoTurns() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, speakerLabeler: { _, _ in .single(segments: []) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
+    #expect(failure != nil, "there is nothing to rename against a .single outcome")
+  }
+
+  @Test("exportButtonLabels relabels for Marked up regardless of whether the document has turns")
+  func exportButtonLabelsRelabelForMarkedUpRegardlessOfTurns() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, speakerLabeler: { _, _ in .single(segments: []) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.turns == nil, "a .single outcome has no turns")
+
+    #expect(coordinator.exportButtonLabels.copy == "Copy everything")
+    coordinator.documentView = .markedUp
+    #expect(
+      coordinator.exportButtonLabels.copy == "Copy cleaned",
+      "the export-rule relabel is general, not scoped to turn-labeled documents")
+    #expect(coordinator.exportButtonLabels.save == "Save cleaned as…")
+    #expect(coordinator.exportButtonLabels.share == "Share cleaned…")
+  }
+
+  @Test("exportText for a turn-labeled document routes through the presenter, honoring timesOn")
+  func exportTextForTurnLabeledDocumentRoutesThroughPresenter() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: "hello there friend", wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil { store.current(historyID)?.turns != nil }
+    #expect(stored)
+
+    coordinator.timesOn = true
+    #expect(
+      coordinator.exportText.contains(":"),
+      "with times on, a turn-labeled export should carry a time label")
+    coordinator.timesOn = false
+    #expect(
+      !coordinator.exportText.contains(":"),
+      "with times off, the export should carry no time label")
+  }
+
+  @Test("prepareTurnDiffs populates one diff per turn, off the main actor, matching prepareMarkedUp's shape")
+  func prepareTurnDiffsPopulatesOneDiffPerTurn() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: "hello there friend", wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    let stored = await settleUntil { coordinator.turns != nil }
+    #expect(stored)
+    #expect(coordinator.turnDiffs == nil, "nothing has computed a diff yet")
+
+    await coordinator.prepareTurnDiffs()
+
+    let diffs = coordinator.turnDiffs
+    #expect(diffs?.count == coordinator.turns?.count)
+    for turn in coordinator.turns ?? [] {
+      #expect(diffs?[turn.id] != nil, "every turn should have its own diff entry")
+    }
+  }
+
+  @Test(
+    "speakerNoticeReason distinguishes a real failure from an admission-refused pass that wrote nothing"
+  )
+  func speakerNoticeReasonDistinguishesFailedFromUnresolved() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let lease = EngineLease()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, lease: lease, transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Blocks AFTER the main run's own claim has already been released, so the test can
+        // claim the SAME lease itself in the exact window before turn-cleanup tries to —
+        // reproducing the admission-refused branch, which writes NOTHING at all.
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    await speakerGate.waitUntilArrived()
+    #expect(coordinator.isEngineHeld == false)
+
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("test setup: could not claim the lease to simulate contention")
+      return
+    }
+    await speakerGate.open()
+    let becameFinished = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(becameFinished)
+
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    #expect(
+      store.current(historyID)?.speakerAnalysis == nil,
+      "an admission-refused pass must write nothing at all")
+    #expect(coordinator.speakerNoticeReason == .unresolved)
+    #expect(coordinator.canRetrySpeakerAnalysis)
+  }
+
+  @Test("renameSpeaker reports saved on success and failed when there is nothing to rename against")
+  func renameSpeakerTelemetryReportsSavedAndFailed() async {
+    let store = FakeHistoryStore()
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitRenameTelemetry: { telemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    let stored = await settleUntil { coordinator.turns != nil }
+    #expect(stored)
+
+    _ = await coordinator.renameSpeaker(id: "A", name: "Zach")
+    #expect(telemetry.outcomes == [.saved])
+
+    let secondStore = FakeHistoryStore()
+    let secondCoordinator = makeStoreBackedCoordinator(
+      store: secondStore, speakerLabeler: { _, _ in .single(segments: []) },
+      emitRenameTelemetry: { telemetry.record($0) })
+    secondCoordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = secondCoordinator.state { return true } else { return false }
+    }
+    secondCoordinator.start()
+    _ = await settleUntil { secondCoordinator.state == .finished }
+
+    _ = await secondCoordinator.renameSpeaker(id: "A", name: "Ariana")
+    #expect(telemetry.outcomes == [.saved, .failed], "a .single outcome has nothing to rename against")
+  }
+
+  /// Shared by the retry-telemetry tests and the two in-flight retry tests above, which
+  /// each prove a retry that never reached its own write reports NOTHING.
+  @MainActor final class RetryTelemetryRecorder {
+    private(set) var outcomes: [TelemetryService.FileImportSpeakerRetryOutcome] = []
+    func record(_ outcome: TelemetryService.FileImportSpeakerRetryOutcome) {
+      outcomes.append(outcome)
+    }
+  }
+
+  /// Runs one import whose first analyzer pass fails, then presses "Try again" once, and
+  /// returns the exact retry-telemetry sequence once the retry has settled (bounded yields
+  /// AFTER the step reads finished, so a duplicate emit would still be caught).
+  private func retryOutcomes(
+    afterRetryReturning retryOutcome: SpeakerAnalysis
+  ) async -> [TelemetryService.FileImportSpeakerRetryOutcome]? {
+    let store = FakeHistoryStore()
+    let telemetry = RetryTelemetryRecorder()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        attempts.next() == 1 ? .failed(.analyzerThrew("boom")) : retryOutcome
+      }, emitSpeakerRetryTelemetry: { telemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return nil
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+    #expect(telemetry.outcomes == [], "the ordinary first pass is not a retry")
+
+    coordinator.retrySpeakerAnalysis()
+    let sawRetry = await settleUntil { attempts.count == 2 }
+    #expect(sawRetry)
+    _ = await settleUntil { coordinator.speakerStepState == .finished && !telemetry.outcomes.isEmpty }
+    for _ in 0..<50 { await Task.yield() }
+    return telemetry.outcomes
+  }
+
+  @Test("a retry whose write lands as labeled reports exactly one recovered (#2811 §3e)")
+  func retryTelemetryRecoveredForLabeled() async {
+    let outcomes = await retryOutcomes(
+      afterRetryReturning: .labeled(count: 2, segments: Self.twoSpeakerSegments))
+    #expect(outcomes == [.recovered])
+  }
+
+  @Test("a retry whose write lands as single reports recovered too, since that clears the notice")
+  func retryTelemetryRecoveredForSingle() async {
+    let outcomes = await retryOutcomes(afterRetryReturning: .single(segments: []))
+    #expect(outcomes == [.recovered])
+  }
+
+  @Test("a retry that runs to its own write and still fails reports exactly one still_failed")
+  func retryTelemetryStillFailed() async {
+    let outcomes = await retryOutcomes(afterRetryReturning: .failed(.modelsUnavailable))
+    #expect(outcomes == [.stillFailed])
+  }
+
+  @Test("noteRenameCancelled reports cancelled, and only that (#2811 §3e)")
+  func renameCancelledTelemetry() async {
+    let store = FakeHistoryStore()
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, speakerLabeler: { _, _ in .single(segments: []) },
+      emitRenameTelemetry: { telemetry.record($0) })
+    coordinator.noteRenameCancelled()
+    #expect(telemetry.outcomes == [.cancelled])
+  }
+
+  @Test("noteTurnsDisplayed reports once per document, and again for the next document")
+  func turnsDisplayedTelemetryOncePerDocument() async {
+    let store = FakeHistoryStore()
+    @MainActor final class Counter {
+      private(set) var count = 0
+      func bump() { count += 1 }
+    }
+    let displayed = Counter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitTurnsDisplayedTelemetry: { displayed.bump() })
+
+    // Before any import there is no document, so a stray appear reports nothing.
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 0)
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.historyID != nil)
+
+    coordinator.noteTurnsDisplayed()
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 1, "a view-mode flip re-appears the same document; not a new fact")
+
+    // A second import is a new document and reports once more.
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 2)
   }
 }

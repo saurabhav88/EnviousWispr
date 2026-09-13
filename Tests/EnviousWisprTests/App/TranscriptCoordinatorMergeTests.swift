@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -184,5 +185,89 @@ struct TranscriptCoordinatorMergeTests {
     let reloadedRow = row(reloaded, original.id)
     #expect(reloadedRow?.speakerAnalysis == nil)
     #expect(reloadedRow?.turns == nil)
+  }
+
+  @Test("renameSpeaker reports saved on success and failed against a row with no turns (#2811)")
+  func renameSpeakerTelemetryReportsSavedAndFailed() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = TranscriptCoordinator(
+      store: store, emitRenameTelemetry: { telemetry.record($0) })
+    let labeled = Self.makeTranscript()
+    try coordinator.saveAndShow(labeled)
+    _ = try coordinator.mergeSpeakerFields(
+      id: labeled.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
+
+    let failure = coordinator.renameSpeaker(id: labeled.id, speakerId: "A", name: "Zach")
+    #expect(failure == nil)
+    #expect(telemetry.outcomes == [.saved])
+
+    let unlabeled = Self.makeTranscript()
+    try coordinator.saveAndShow(unlabeled)
+    let secondFailure = coordinator.renameSpeaker(id: unlabeled.id, speakerId: "A", name: "Zach")
+    #expect(secondFailure != nil, "a row with no turns has nothing to rename against")
+    #expect(telemetry.outcomes == [.saved, .failed])
+
+    coordinator.noteRenameCancelled()
+    #expect(telemetry.outcomes == [.saved, .failed, .cancelled])
+  }
+
+  @Test("delete announces the deleted row's id, and nothing on a failed delete (#2811)")
+  func deleteAnnouncesTheRow() throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    @MainActor final class Recorder {
+      private(set) var ids: [UUID] = []
+      func record(_ id: UUID) { ids.append(id) }
+    }
+    let recorder = Recorder()
+    coordinator.onRowDeleted = { recorder.record($0) }
+    let row = Self.makeTranscript()
+    try coordinator.saveAndShow(row)
+
+    coordinator.delete(row)
+    #expect(recorder.ids == [row.id])
+    #expect(coordinator.currentRow(id: row.id) == nil)
+
+    // Delete All takes its own route to the store and must announce every row too.
+    let second = Self.makeTranscript()
+    let third = Self.makeTranscript()
+    try coordinator.saveAndShow(second)
+    try coordinator.saveAndShow(third)
+    coordinator.deleteAll()
+    #expect(Set(recorder.ids) == [row.id, second.id, third.id])
+    #expect(coordinator.currentRow(id: second.id) == nil)
+  }
+
+  @Test("noteTurnsDisplayed reports once per document per launch, never per re-selection (#2811)")
+  func turnsDisplayedTelemetryOncePerDocument() throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    @MainActor final class Counter {
+      private(set) var count = 0
+      func bump() { count += 1 }
+    }
+    let displayed = Counter()
+    let coordinator = TranscriptCoordinator(
+      store: TranscriptStore(directory: dir), emitTurnsDisplayedTelemetry: { displayed.bump() })
+    let first = Self.makeTranscript()
+    let second = Self.makeTranscript()
+    try coordinator.saveAndShow(first)
+    try coordinator.saveAndShow(second)
+
+    coordinator.noteTurnsDisplayed(id: first.id)
+    coordinator.noteTurnsDisplayed(id: first.id)
+    #expect(displayed.count == 1, "re-selecting the same row is not a new fact")
+    coordinator.noteTurnsDisplayed(id: second.id)
+    #expect(displayed.count == 2)
+    coordinator.noteTurnsDisplayed(id: first.id)
+    #expect(displayed.count == 2, "going back to a row already reported adds nothing")
   }
 }
