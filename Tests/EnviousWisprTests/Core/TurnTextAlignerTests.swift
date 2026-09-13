@@ -241,6 +241,17 @@ struct TurnTextAlignerTests {
     #expect(text(out, "b")?.processedText == nil, "B must not receive A's word")
     #expect(out.fallbacks["a"] == .boundary)
     #expect(out.fallbacks["b"] == .boundary)
+    // Round 2: the moved word need not sit at the edge. A "a x" | B "b", cleaned "x b a":
+    // A's FIRST word lands under B.
+    let raw2 = "a x b"
+    let turns2 = [
+      turn("a", "A", in: raw2, from: "a", to: "x"),
+      turn("b", "B", in: raw2, from: "b", to: "b"),
+    ]
+    let out2 = TurnTextAligner.align(
+      rawText: raw2, passages: [placed(raw2, cleaned: "x b a")], turns: turns2)
+    #expect(text(out2, "a")?.processedText == nil)
+    #expect(text(out2, "b")?.processedText == nil, "B must not receive A's first word either")
     // The same move inside ONE turn is an ordinary rewrite and stays attributed.
     let one = [turn("ab", "A", in: raw, from: "a", to: "b")]
     let within = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "b a")], turns: one)

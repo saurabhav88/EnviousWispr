@@ -19,8 +19,8 @@ import Foundation
 /// - A turn whose cleaned words all vanished keeps its raw words, disclosed.
 /// - A pure insertion (no deletes) belongs to the turn of the nearest preceding raw word in
 ///   the passage that had an owner; at a passage start, the following one.
-/// - A word one turn lost and another gained in the same passage was MOVED across a
-///   boundary: both turns fail.
+/// - A word one turn lost and a NEIGHBOURING turn gained in the same passage was moved
+///   across their boundary: both turns fail. A move two or more turns away is not seen.
 /// - A passage the caller could not place in the raw text, and the raw interval up to the
 ///   next placed passage, are untrustworthy: turns overlapping them fall back.
 /// - A passage not yet cleaned leaves its turns raw. A passage whose part failed to polish
@@ -186,15 +186,16 @@ public enum TurnTextAligner {
       }
 
       var attributed: [(turnID: String, text: String)] = []
-      // A word the cleanup MOVED across a boundary: deleted at one turn's edge, inserted
-      // into the neighbour (whole-diff review: raw "a b", A "a" | B "b", cleaned "b a"
-      // deletes A's "a" and inserts it after B's "b"). Neither hunk alone is ambiguous, so
-      // the passage is checked as a whole after the walk. Only an EDGE word of the
-      // neighbouring turn counts: measured on the 48-minute row, comparing every inserted
-      // word against every word any other turn lost read ordinary filler edits ("I",
-      // "the" dropped in one turn, added in another) as moves and cost 60 more raw turns
-      // (313 aligned to 253).
-      var deletedAtEdge: [(owner: Turn, key: String, lastWord: Bool)] = []
+      // A word the cleanup MOVED across a boundary: deleted from one turn, inserted into
+      // a NEIGHBOURING turn (whole-diff review: raw "a b", A "a" | B "b", cleaned "b a"
+      // deletes A's "a" and inserts it after B's "b"; round 2: "a x b" → "x b a" moves A's
+      // FIRST word, so the deleted word's position in its turn does not matter). Neither
+      // hunk alone is ambiguous, so the passage is checked as a whole after the walk.
+      // Neighbours only: measured on the 48-minute row, comparing every inserted word
+      // against every word ANY other turn lost read ordinary filler edits ("I", "the"
+      // dropped in one turn, added in another) as moves and cost 60 more raw turns (313
+      // aligned to 253). A move two or more turns away is not detected.
+      var deletedWords: [(owner: Turn, key: String)] = []
       var insertedKeys: [(turnID: String, key: String)] = []
       var lastOwner: Turn?
       var i = 0
@@ -264,12 +265,7 @@ public enum TurnTextAligner {
           }
           owners.insert(turn.id)
           touched.insert(turn.id)
-          if absolute[ai].upperBound == turn.originalTextRange.upperBound {
-            deletedAtEdge.append((turn, a[ai].key, true))
-          }
-          if absolute[ai].lowerBound == turn.originalTextRange.lowerBound {
-            deletedAtEdge.append((turn, a[ai].key, false))
-          }
+          deletedWords.append((turn, a[ai].key))
           if absolute[ai].lowerBound == turn.originalTextRange.lowerBound,
             let n = neighbour(of: turn, before: true),
             repeatsAcross(contiguousRun(from: ai, in: deletes, forward: true), into: n)
@@ -297,8 +293,11 @@ public enum TurnTextAligner {
         lastOwner = ordered[indexByID[turnID]!]
       }
       for (turnID, key) in insertedKeys {
-        for (owner, lostKey, lastWord) in deletedAtEdge
-        where lostKey == key && neighbour(of: owner, before: !lastWord)?.id == turnID {
+        for (owner, lostKey) in deletedWords
+        where lostKey == key
+          && (neighbour(of: owner, before: true)?.id == turnID
+            || neighbour(of: owner, before: false)?.id == turnID)
+        {
           fail(turnID, .boundary)
           fail(owner.id, .boundary)
         }
