@@ -982,6 +982,42 @@ struct FileImportCoordinatorSpeakerTests {
       "one event per import, the first terminal one: \(telemetry.events)")
   }
 
+  @Test("History's settling question stays true while a late speaker pass writes and aligns after Done, then clears (#2851 §3 D)")
+  func settlingCoversTheLateSpeakerPass() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in WordSwappingCleaner().outcome(part) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    await speakerGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    #expect(coordinator.isRunning == false, "Done")
+    #expect(coordinator.isSettlingTurns(of: historyID), "the speaker pass is still to write and align")
+    await speakerGate.open()
+    let first = Self.swappedTurnTexts(WordSwappingCleaner.first)
+    let settled = await settleUntil {
+      coordinator.speakerStepState == .finished
+        && turnTexts(store.current(historyID)) == [first.a, first.b]
+    }
+    #expect(settled)
+    #expect(coordinator.isSettlingTurns(of: historyID) == false, "aligned and finished: History may disclose")
+  }
+
   @Test("History's import-in-progress question reads true for this row while the cleanup runs, false for another row, false after Done (#2851 §3 D)")
   func importInProgressFollowsTheRunAndTheRow() async {
     // The expression the bootstrapper installs on `TranscriptCoordinator.isImportInProgress`,
@@ -996,9 +1032,7 @@ struct FileImportCoordinatorSpeakerTests {
         await cleanupGate.waitUntilOpen()
         return WordSwappingCleaner().outcome(part)
       })
-    let inProgress: @MainActor (UUID) -> Bool = { id in
-      coordinator.isRunning && coordinator.historyID == id
-    }
+    let inProgress: @MainActor (UUID) -> Bool = { id in coordinator.isSettlingTurns(of: id) }
 
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {

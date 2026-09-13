@@ -1444,6 +1444,19 @@ final class FileImportCoordinator {
     releaseRetryInputs()
   }
 
+  /// Whether this row's turn text is still being worked on, so a raw turn is not yet a
+  /// verdict (#2851 §3 D; cloud review of PR #2871, rounds 1 and 4). Enumerated from the
+  /// writers of turn text, the six `mergeAndReport` call sites: the visible cleanup and its
+  /// per-part alignments run while `isRunning`; the speaker pass (raw persist, then the
+  /// alignment it awaits) and a "Try again" retry run while `speakerStepState == .inProgress`,
+  /// which their `defer` clears only after that alignment; every other writer is terminal
+  /// (`single`, `noWordTimings`, a rejected cleanup's `polisher_not_ready`). Both reads are
+  /// observed, so History redraws when either ends. A fifth finding on this class would have
+  /// to name a writer of turn text outside those six sites.
+  func isSettlingTurns(of id: UUID) -> Bool {
+    historyID == id && (isRunning || speakerStepState == .inProgress)
+  }
+
   /// History deleted a row (wired from `TranscriptCoordinator.onRowDeleted`). Drops the retry
   /// audio and stops the background speaker pass still aimed at that row (never a visible
   /// run in flight, whose own save already refuses a deleted row; since #2851 nothing runs

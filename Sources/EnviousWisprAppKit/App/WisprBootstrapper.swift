@@ -1639,8 +1639,7 @@ package final class WisprBootstrapper {
     // And History asks whether a row's import is still cleaning (#2851 §3 D): the detail
     // view discloses "Not fully polished" only on a finished document.
     transcriptCoordinator.isImportInProgress = { [weak fileImportCoordinator] id in
-      guard let fileImportCoordinator else { return false }
-      return fileImportCoordinator.isRunning && fileImportCoordinator.historyID == id
+      fileImportCoordinator?.isSettlingTurns(of: id) ?? false
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
