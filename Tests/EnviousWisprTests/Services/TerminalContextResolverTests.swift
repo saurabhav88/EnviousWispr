@@ -501,6 +501,117 @@ struct TerminalContextResolverTests {
     #expect(!breaker.isOpen(for: 900))
   }
 
+  // MARK: - The trip is reported (#2777)
+
+  /// Collects what the breaker reports. The observer is `@Sendable`, so a plain
+  /// captured array will not compile.
+  private final class TripLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var trips: [TerminalBreakerTrip] = []
+    func record(_ trip: TerminalBreakerTrip) {
+      lock.lock()
+      defer { lock.unlock() }
+      trips.append(trip)
+    }
+    var all: [TerminalBreakerTrip] {
+      lock.lock()
+      defer { lock.unlock() }
+      return trips
+    }
+  }
+
+  @Test("An overrun REPORTS the trip, naming the step that spent the budget")
+  func overrunReportsTheTripWithItsStep() {
+    // Before #2777 a trip was only inferable from the refusal reason of the take
+    // that caused it, and one production user carried 1,647 `terminal_breaker_open`
+    // takes with no `terminal_deadline` at all. The trip is now a fact of its own,
+    // reported from the trip site, so it can be counted.
+    let clock = TestClock()
+    clock.perCallCost = 0.400  // the process scan is the first thing timed, and it wedges
+    let log = TripLog()
+    let breaker = TerminalCircuitBreaker(onTrip: { log.record($0) })
+    let budget = TerminalResolutionBudget(total: 0.100)
+
+    let result = resolve(dependencies(clock: clock), budget: budget, breaker: breaker, pid: 900)
+    #expect(result == .refused(.deadline))
+    #expect(
+      log.all == [TerminalBreakerTrip(exhaustedStep: "scan", phase: nil, wasAlreadyOpen: false)],
+      "exactly one trip, naming the scan that ate the budget, got \(log.all)")
+  }
+
+  @Test("A healthy resolution reports no trip")
+  func healthyResolutionReportsNoTrip() {
+    // The two-way control for the event: an observer that fired on every
+    // resolution would inflate the count the event exists to make honest.
+    let log = TripLog()
+    let breaker = TerminalCircuitBreaker(onTrip: { log.record($0) })
+    #expect(resolve(dependencies(), breaker: breaker, pid: 900).evidence != nil)
+    #expect(log.all.isEmpty)
+  }
+
+  @Test("The same terminal tripping again is reported as already open")
+  func repeatTripReportsAlreadyOpen() {
+    // "Tripped once" and "tripped forty times" were the same data; this flag is
+    // what tells them apart on the same process.
+    let log = TripLog()
+    let breaker = TerminalCircuitBreaker(onTrip: { log.record($0) })
+    breaker.trip(for: 900)
+    breaker.trip(for: 900)
+    breaker.trip(for: 901)
+    #expect(log.all.map(\.wasAlreadyOpen) == [false, true, false])
+  }
+
+  @Test("The exhausting step is the LAST recorded step, in the phase it ran")
+  func exhaustingStepReadsTheTrace() {
+    // The commit-boundary re-check re-runs the same reads under the same labels
+    // after a `recheck` marker, so a trip there must say so or two different
+    // wedges (`focused` at capture, `focused` at commit) collapse into one.
+    let budget = TerminalResolutionBudget(total: 0.100)
+    #expect(budget.exhaustingStep.label == nil, "nothing ran yet")
+    #expect(budget.exhaustingStep.phase == nil)
+
+    budget.charge(0.010, label: "scan")
+    #expect(budget.exhaustingStep.label == "scan")
+    #expect(budget.exhaustingStep.phase == nil, "the initial resolution has no marker")
+
+    budget.mark("recheck")
+    #expect(
+      budget.exhaustingStep.label == "scan" && budget.exhaustingStep.phase == nil,
+      "a marker with no step after it changes nothing: the last STEP still ran before it")
+
+    budget.charge(0.090, label: "focused")
+    #expect(budget.exhaustingStep.label == "focused")
+    #expect(budget.exhaustingStep.phase == "recheck")
+  }
+
+  #if DEBUG
+    @Test("The production breaker reaches telemetry as terminal_breaker.tripped")
+    @MainActor
+    func sharedBreakerEmitsTheEvent() async throws {
+      // The observer on `.shared` is the only wiring between the trip site and
+      // PostHog. A test breaker with its own observer cannot prove it exists, and
+      // the founder's question — how many times did THIS user's breaker trip —
+      // is answered by this event or by nothing.
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer {
+        TelemetryService.shared.testEventHook = nil
+        TerminalCircuitBreaker.shared.resetAll()
+      }
+
+      // A pid no live process holds, so the latch cannot touch a real terminal.
+      TerminalCircuitBreaker.shared.trip(
+        for: pid_t(Int32.max), exhaustedStep: ("screen", "recheck"))
+
+      let event = try await waiter.waitForEvent(named: "terminal_breaker.tripped")
+      #expect(event.stringProps["step"] == "screen")
+      #expect(event.stringProps["phase"] == "recheck")
+      #expect(event.boolProps["already_open"] == false)
+    }
+  #endif
+
   // MARK: - Revalidation
 
   @Test("Unchanged evidence revalidates")
