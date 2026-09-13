@@ -34,7 +34,7 @@ EnviousWispr runs the entire pipeline on your Mac. The audio is captured, transc
 
 This is architecture, not policy. A few things follow from it:
 
-- **No vendor sees the audio.** The recording is held in an encrypted backup on your Mac only until the text is saved, then deleted. There's no server log, no retention window, no third-party audit chain to navigate.
+- **No vendor sees the audio.** The recording is held in an encrypted backup on your Mac, and once the text is saved the app requests its deletion. There's no server log, no retention window, no third-party audit chain to navigate.
 - **No BAA needed for the dictation step itself.** Your existing EMR vendor's BAA still covers the chart that ends up in their system. EnviousWispr hands you polished text on the clipboard or pastes it into the focused field; with on-device polish, nothing is transmitted; finished transcripts are kept in History on your Mac, where you can delete them.
 - **No internet required.** Charting in a basement office with bad WiFi, a rural clinic with patchy coverage, or a hospital floor where corporate WiFi is locked down all work the same way. Local speech recognition does not care.
 - **The economics are different.** EnviousWispr is free. There's no per-seat license, no annual renewal, no usage-based billing.
@@ -75,9 +75,9 @@ Charting is most of the writing, but it isn't all of it. Email replies to staff,
 
 ## Let your dictation shape the documentation
 
-On macOS 26 the built-in polish works with no setup. On macOS 14 or 15, pick EG-1 under Settings, AI Polish, and it stays on your Mac. A quick one-line order stays a line. With AI polish on, whichever provider you pick, a longer note spoken in sections comes back with paragraphs, and an announced list comes back as a list. You guide it by how you speak.
+On macOS 26 the built-in polish works with no setup. On macOS 14 or 15, pick EG-1 under Settings, AI Polish, and it stays on your Mac. A quick one-line order stays a line. With AI polish on, a longer note spoken in sections comes back with paragraphs, and an announced list usually comes back as a list (S1-mini follows its own Structure setting). You guide it by how you speak.
 
-A few patterns that work well for clinicians (formatting applies with AI polish on, whichever provider you pick):
+A few patterns that work well for clinicians (formatting applies with AI polish on):
 
 - **SOAP notes.** Say "subjective," "objective," "assessment," "plan" as you move through the note, and each becomes its own section, with your clinical terms and dosing details preserved.
 - **Referral letters.** Dictate it the way a letter reads: a brief patient summary, the clinical question, and a closing to the consultant. The polish keeps that letter shape.
@@ -111,7 +111,7 @@ What still matters in your full clinical workflow:
 
 What changes:
 
-- The audio never reaches a vendor. The only copy is an encrypted backup on your Mac, deleted once the text is saved.
+- The audio never reaches a vendor. The only copy is an encrypted backup on your Mac, which the app asks to delete once the text is saved.
 - With on-device polish, no new BAA is required for the dictation step.
 
 If you want the full picture on the privacy architecture, the [on-device vs cloud privacy post](/blog/on-device-vs-cloud-dictation-privacy/) covers what each approach does with your data and what that implies.

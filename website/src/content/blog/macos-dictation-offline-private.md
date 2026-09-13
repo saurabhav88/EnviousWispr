@@ -44,7 +44,7 @@ EnviousWispr handles transcription locally using two backends: Parakeet for fast
 
 Here's what the pipeline looks like in practice:
 
-1. **Record.** You speak, and EnviousWispr captures audio from your microphone and keeps the half second from before you pressed the key, so an early start is usually captured.
+1. **Record.** You speak, and EnviousWispr captures audio from your microphone. While the microphone is still awake from a recent dictation, it also keeps the half second from before you pressed the key, so an early start is usually captured.
 2. **Transcribe.** On-device speech recognition converts your speech to text using Core ML.
 3. **Post-process.** Deterministic cleanup runs locally. Optional AI polish can use EG-1, supported Apple Intelligence, or a downloaded Ollama model locally, or OpenAI, Gemini, Claude, and Ollama-hosted models over the network.
 4. **Deliver.** The polished text pastes directly into the app you're using. Your previous clipboard contents are preserved.

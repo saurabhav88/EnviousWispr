@@ -74,7 +74,7 @@ That's the before and after. You spoke naturally, with filler words and run-on p
 
 ### What the post-processing does
 
-Filler removal ("um," "uh," and "like") and number formatting always run. AI rewriting is on by default on macOS 26 through Apple Intelligence; on older macOS pick EG-1 or S1-mini under Settings, AI Polish, or add an OpenAI, Gemini, or Claude key. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
+Filler removal ("um," "uh," and "like") and number formatting run on your Mac with no AI model involved, and are on out of the box. AI rewriting is on by default on macOS 26 through Apple Intelligence; on older macOS pick EG-1 or S1-mini under Settings, AI Polish, or add an OpenAI, Gemini, or Claude key. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
 
@@ -92,7 +92,7 @@ EnviousWispr's polish step removes filler words, fixes punctuation, and keeps yo
 
 ### Structure follows your voice
 
-You shape the output by how you talk. Speak a quick one-liner and it stays one line. With AI polish on, rattle off a list ("first... then... finally") and it comes back as bullet points, whichever polish option you use. There's nothing to configure.
+You shape the output by how you talk. Speak a quick one-liner and it stays one line. With AI polish on, rattle off a list ("first... then... finally") and it usually comes back as bullet points; S1-mini follows its own Structure setting. There's nothing else to configure.
 
 ### Custom word dictionary
 
