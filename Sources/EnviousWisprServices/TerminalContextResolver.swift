@@ -215,24 +215,34 @@ package final class TerminalResolutionBudget: Sendable {
     trace.withLock { $0.append((label, 0, true)) }
   }
 
-  /// The step that spent the budget last, and the phase marker in force when it
-  /// ran — what a breaker trip NAMES (#2777).
+  /// The step whose cost first reached the cap, and the phase marker in force
+  /// when it ran — what a breaker trip NAMES (#2777).
   ///
   /// The trace already records both; this reads them back so the trip event can
   /// carry "which labelled step exhausted the budget" without a second bookkeeping
-  /// path that could disagree with the log line. Nil label when no step recorded
-  /// itself (a budget exhausted before any read); nil phase during the initial
-  /// resolution, before the first `mark`.
+  /// path that could disagree with the log line.
+  ///
+  /// The FIRST step to reach the cap, never the last one recorded: the caret path
+  /// runs several reads against this budget and its caller tests exhaustion once,
+  /// afterwards, so reads keep being recorded after the one that crossed the line
+  /// and the last label would blame an innocent later read (local review r2).
+  /// When no traced step reaches the cap on its own — a cost charged with a nil
+  /// label is spent but not traced — the last recorded step is the best answer
+  /// available. Nil label when no step recorded itself; nil phase during the
+  /// initial resolution, before the first `mark`.
   package var exhaustingStep: (label: String?, phase: String?) {
     let samples = trace.withLock { $0 }
     var phase: String?
     var last: (label: String?, phase: String?) = (nil, nil)
+    var cumulative = 0.0
     for sample in samples {
       if sample.isMark {
         phase = sample.label
-      } else {
-        last = (sample.label, phase)
+        continue
       }
+      cumulative += sample.seconds
+      last = (sample.label, phase)
+      if cumulative >= total { return last }
     }
     return last
   }

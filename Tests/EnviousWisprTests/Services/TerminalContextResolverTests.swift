@@ -584,6 +584,25 @@ struct TerminalContextResolverTests {
     #expect(budget.exhaustingStep.phase == "recheck")
   }
 
+  @Test("The exhausting step is the FIRST to reach the cap, not the last read recorded")
+  func exhaustingStepIsTheFirstToCrossTheCap() {
+    // The caret path records several reads against one budget and its caller
+    // tests exhaustion once, afterwards. Reads recorded after the one that
+    // crossed the line must not take the blame (local review r2).
+    let budget = TerminalResolutionBudget(total: 0.100)
+    budget.charge(0.080, label: "focused")
+    budget.charge(0.050, label: "screen")  // cumulative 0.130: this is the one
+    budget.charge(0.010, label: "browser_address_bar")  // recorded after exhaustion
+    #expect(budget.exhaustingStep.label == "screen")
+
+    // A single read that blows the whole cap by itself is named even when
+    // healthy reads follow it.
+    let wedged = TerminalResolutionBudget(total: 0.100)
+    wedged.charge(0.400, label: "scan")
+    wedged.charge(0.001, label: "focused")
+    #expect(wedged.exhaustingStep.label == "scan")
+  }
+
   #if DEBUG
     @Test("The production breaker reaches telemetry as terminal_breaker.tripped")
     @MainActor
