@@ -290,11 +290,22 @@ package struct TerminalBreakerTrip: Equatable, Sendable {
 /// nothing ever cleared it, so once macOS recycled that PID an unrelated
 /// terminal would be refused forever with no way back. Identity, not a number.
 package final class TerminalCircuitBreaker: Sendable {
-  /// The production breaker reports every trip to telemetry (#2777). The hop to
-  /// the main actor is what `TelemetryService` requires; the trip itself has
-  /// already latched under the lock by the time the observer runs.
+  /// The production breaker reports every trip to telemetry (#2777). The trip
+  /// itself has already latched under the lock by the time the observer runs.
+  ///
+  /// `TelemetryService` is main-actor bound and every production trip already
+  /// happens there (the paste path reads the caret from `@MainActor` code), so
+  /// the event is emitted SYNCHRONOUSLY when the trip is on the main thread and
+  /// only hops when it is not. A synchronous emit is what lets a test observe
+  /// the `.shared` wiring with no suspension point — the process-wide test hook
+  /// is shared by every telemetry suite, and an `await` between installing it
+  /// and reading it is a window another suite can clobber (local review r1).
   package static let shared = TerminalCircuitBreaker(onTrip: { trip in
-    Task { @MainActor in TelemetryService.shared.terminalBreakerTripped(trip) }
+    if Thread.isMainThread {
+      MainActor.assumeIsolated { TelemetryService.shared.terminalBreakerTripped(trip) }
+    } else {
+      Task { @MainActor in TelemetryService.shared.terminalBreakerTripped(trip) }
+    }
   })
 
   /// A process, not merely a PID.

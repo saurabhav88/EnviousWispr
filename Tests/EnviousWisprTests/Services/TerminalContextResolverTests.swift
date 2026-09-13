@@ -587,11 +587,16 @@ struct TerminalContextResolverTests {
   #if DEBUG
     @Test("The production breaker reaches telemetry as terminal_breaker.tripped")
     @MainActor
-    func sharedBreakerEmitsTheEvent() async throws {
+    func sharedBreakerEmitsTheEvent() throws {
       // The observer on `.shared` is the only wiring between the trip site and
       // PostHog. A test breaker with its own observer cannot prove it exists, and
       // the founder's question — how many times did THIS user's breaker trip —
       // is answered by this event or by nothing.
+      //
+      // NO suspension point between installing the process-wide hook and reading
+      // it: every telemetry suite shares that hook, and a suite that parks on an
+      // `await` here is a suite another one can clobber mid-test (local review
+      // r1). A main-thread trip emits synchronously, so nothing needs waiting for.
       let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
         MainActor.assumeIsolated { waiter.record(event) }
@@ -605,7 +610,7 @@ struct TerminalContextResolverTests {
       TerminalCircuitBreaker.shared.trip(
         for: pid_t(Int32.max), exhaustedStep: ("screen", "recheck"))
 
-      let event = try await waiter.waitForEvent(named: "terminal_breaker.tripped")
+      let event = try #require(waiter.events.first { $0.name == "terminal_breaker.tripped" })
       #expect(event.stringProps["step"] == "screen")
       #expect(event.stringProps["phase"] == "recheck")
       #expect(event.boolProps["already_open"] == false)
