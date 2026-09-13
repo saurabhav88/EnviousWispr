@@ -112,11 +112,18 @@
         })
     }
 
-    private func makeDoor(_ coordinator: FileImportCoordinator, sink: ReplySink) -> DebugImportDoor
-    {
+    @MainActor
+    final class ReadinessBox {
+      var value: FileImportPolishReadiness = .ready
+    }
+
+    private func makeDoor(
+      _ coordinator: FileImportCoordinator, sink: ReplySink,
+      readiness: ReadinessBox = ReadinessBox()
+    ) -> DebugImportDoor {
       DebugImportDoor(
-        coordinator: coordinator, pid: Self.pid, pollInterval: .milliseconds(1),
-        post: { sink.post($0) })
+        coordinator: coordinator, polishReadiness: { readiness.value }, pid: Self.pid,
+        pollInterval: .milliseconds(1), post: { sink.post($0) })
     }
 
     private func transcribeRequest(
@@ -378,6 +385,39 @@
       #expect(refused["reason"] == "noSpeechFound")
       #expect(refused["polisher"] == "eg-1")
       #expect(refused["history"] == nil, "nothing was persisted")
+    }
+
+    @Test(
+      "the screen's polish gate refuses the door too: before any file is chosen, and again before Start when it closes during the decode"
+    )
+    func polishReadinessGatesTheDoorLikeTheScreen() async {
+      let readiness = ReadinessBox()
+      readiness.value = .blocked(.needsSetup)
+      let coordinator = makeCoordinator()
+      let sink = ReplySink()
+      let door = makeDoor(coordinator, sink: sink, readiness: readiness)
+      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r1"])
+      #expect(sink.replies.last?["polish"] == "needsSetup")
+      door.handle(transcribeRequest(door))
+      #expect(sink.replies.last?["status"] == "refused")
+      #expect(sink.replies.last?["reason"] == "polishNotReady")
+      #expect(sink.replies.last?["block"] == "needsSetup")
+      #expect(coordinator.state == .idle, "refused before choose(url:)")
+
+      // Open at the request, closed by the time the decode lands: refused before Start.
+      let gate = ManualGate()
+      let late = makeCoordinator(decodeGate: gate)
+      let lateBox = ReadinessBox()
+      let lateSink = ReplySink()
+      let lateDoor = makeDoor(late, sink: lateSink, readiness: lateBox)
+      lateDoor.handle(transcribeRequest(lateDoor))
+      _ = await lateSink.reply(withStatus: "accepted")
+      lateBox.value = .blocked(.unsavedKey)
+      await gate.open()
+      let refused = await lateSink.reply(withStatus: "refused")
+      #expect(refused["reason"] == "polishNotReady:unsavedKey")
+      #expect(late.step == .upload, "never advanced")
+      #expect(refused["polisher"] == nil)
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")

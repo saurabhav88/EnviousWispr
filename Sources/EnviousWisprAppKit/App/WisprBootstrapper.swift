@@ -1649,7 +1649,21 @@ package final class WisprBootstrapper {
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
     #if DEBUG
-      self.debugImportDoor = DebugImportDoor(coordinator: fileImportCoordinator)
+      self.debugImportDoor = DebugImportDoor(
+        coordinator: fileImportCoordinator,
+        // The screen's gate, composed from the same coordinators the screen reads; the
+        // door has no editor and so no unsaved-key draft.
+        polishReadiness: { [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
+          let provider = settings.effectiveFileImportLLMProvider
+          return FileImportPolishGate.readiness(
+            provider: provider,
+            savedKey: FileImportPolishGate.savedKey(for: provider, keychain: keychainManager),
+            hasUnsavedKeyDraft: false,
+            importOllamaModel: settings.fileImportLLMProvider == nil
+              ? settings.ollamaModel : settings.fileImportOllamaModel,
+            llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
+            aiAvailability: aiAvailability, setup: setup)
+        })
     #endif
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState

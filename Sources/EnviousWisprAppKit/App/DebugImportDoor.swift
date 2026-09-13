@@ -31,6 +31,11 @@
     let launchID = UUID()
 
     private let coordinator: FileImportCoordinator
+    /// The screen's own gate on Continue and Start (`FileImportPolishGate.readiness`),
+    /// asked for the engine this import will use. The door walks the coordinator directly,
+    /// which has no such gate of its own, so without this it would start a configuration
+    /// the screen refuses and report `finished` over raw passages (cloud review, PR #2887).
+    private let polishReadiness: @MainActor () -> FileImportPolishReadiness
     private let pid: Int32
     private let pollInterval: Duration
     private let post: @MainActor ([String: String]) -> Void
@@ -52,11 +57,13 @@
     ///     log line; tests capture the dictionary.
     init(
       coordinator: FileImportCoordinator,
+      polishReadiness: @escaping @MainActor () -> FileImportPolishReadiness,
       pid: Int32 = ProcessInfo.processInfo.processIdentifier,
       pollInterval: Duration = .milliseconds(100),
       post: (@MainActor ([String: String]) -> Void)? = nil
     ) {
       self.coordinator = coordinator
+      self.polishReadiness = polishReadiness
       self.pid = pid
       self.pollInterval = pollInterval
       self.post = post ?? Self.postLive
@@ -97,7 +104,12 @@
       let kind = info["kind"] ?? ""
       switch kind {
       case "discover":
-        reply(request, ["status": "alive", "acceptance": acceptance() ?? "accept"])
+        reply(
+          request,
+          [
+            "status": "alive", "acceptance": acceptance() ?? "accept",
+            "polish": Self.name(of: polishReadiness()),
+          ])
       case "transcribe":
         handleTranscribe(request: request, info: info)
       default:
@@ -138,6 +150,13 @@
       // acceptance.
       if let reason = acceptance() {
         reply(request, ["status": "busy", "reason": reason])
+        return
+      }
+      // The screen's Continue is disabled for this; the door refuses the same way, before
+      // any file is chosen. Checked again before Start, because a key can be saved or a
+      // daemon can stop during the decode.
+      if case .blocked(let block) = polishReadiness() {
+        reply(request, ["status": "refused", "reason": "polishNotReady", "block": "\(block)"])
         return
       }
       // Reserved before the reply so a second request arriving between the two reads busy.
@@ -244,6 +263,9 @@
           switch c.state {
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
+            if case .blocked(let block) = polishReadiness() {
+              return Outcome(status: "refused", detail: "polishNotReady:\(block)")
+            }
             for target in [FileImportCoordinator.Step.transcription, .polish, .review] {
               c.advance()
               guard c.step == target else { return .unexpected("step=\(c.step)") }
@@ -311,6 +333,13 @@
         out[key] = String(describing: value)
       }
       return out
+    }
+
+    private static func name(of readiness: FileImportPolishReadiness) -> String {
+      switch readiness {
+      case .ready: return "ready"
+      case .blocked(let block): return "\(block)"
+      }
     }
 
     private static func name(of reason: FileImportCoordinator.FileImportRejection) -> String {
