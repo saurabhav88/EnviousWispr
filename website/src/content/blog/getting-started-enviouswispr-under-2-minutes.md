@@ -9,7 +9,7 @@ draft: false
 author: "Saurabh Vaish"
 faqs:
   - question: "Do I need an account or API key to use EnviousWispr?"
-    answer: "No. EnviousWispr works fully offline out of the box with the default Parakeet engine. There is no signup, no email confirmation, and no API key to paste in. You can optionally bring your own OpenAI or Gemini key later if you want cloud AI polish, but it is opt-in."
+    answer: "No. EnviousWispr works fully offline out of the box with the default Parakeet engine. There is no signup, no email confirmation, and no API key to paste in. You can optionally bring your own OpenAI, Gemini, or Claude key later if you want cloud AI polish, but it is opt-in."
   - question: "Which permissions does EnviousWispr request, and why?"
     answer: "Up to three, all granted through standard macOS prompts. Microphone access lets the app capture your voice. Accessibility access lets the app paste polished text into the app you are typing in (Tier 1 direct insertion and Tier 2 simulated Cmd+V). Automation access is prompted only the first time the AppleScript paste fallback (Tier 2b) is needed, when both faster paste paths fail. None of these permissions sends data anywhere."
   - question: "What if my Mac is too old to run EnviousWispr?"
@@ -34,7 +34,7 @@ That's the entire install. No installer wizard, no setup assistant, no "create y
 
 ## Step 2: Grant Microphone and Accessibility Permissions
 
-On first launch, macOS will ask for two permissions. Both are required, and both stay entirely on your Mac. EnviousWispr doesn't phone home. A third prompt (Automation / Apple Events) appears only when the AppleScript paste fallback runs for the first time, and it's optional — declining it just means the paste cascade stops one tier sooner.
+On first launch, macOS will ask for two permissions, and setup needs both to finish. Microphone lets it hear you; Accessibility lets the text land in the app you are working in. Your audio never leaves your Mac. A third prompt (Automation / Apple Events) appears only when the AppleScript paste fallback runs for the first time, and it's optional; declining it means the paste cascade stops one tier sooner.
 
 ### Microphone access
 
@@ -46,7 +46,7 @@ If you accidentally clicked **Don't Allow**, open **System Settings > Privacy & 
 
 EnviousWispr needs Accessibility permission to paste transcribed text directly into your focused app. macOS will prompt you for this on first launch as well. You can also grant it manually in **System Settings > Privacy & Security > Accessibility**.
 
-After toggling it on, you may need to restart EnviousWispr for the permission to take effect. This is a macOS quirk, not a bug.
+No restart needed; the app notices within a few seconds. If the switch is on but nothing pastes, remove EnviousWispr from the list with the minus button and add it back with plus.
 
 Once both permissions are granted, you're ready to dictate.
 
@@ -58,7 +58,7 @@ This is the core loop, and it's as simple as it sounds:
 2. **Speak** naturally. Full sentences, half-formed thoughts, stream of consciousness. Don't worry about filler words or grammar.
 3. **Release** the keybind
 
-EnviousWispr records while you hold, transcribes when you release, runs the text through post-processing to clean up filler words and fix punctuation, and then pastes the polished result into whatever app has focus. The whole cycle takes a second or two on Apple Silicon.
+EnviousWispr records while you hold, transcribes when you release, runs the text through post-processing to clean up filler words and fix punctuation, and then pastes the polished result into whatever app has focus. Transcription takes under a second; polish adds a moment that grows with how much you said.
 
 That's it. You've just dictated your first text with EnviousWispr.
 
@@ -74,7 +74,7 @@ That's the before and after. You spoke naturally, with filler words and run-on p
 
 ### What the post-processing does
 
-By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. You can run this on-device with Apple Intelligence, EG-1, or Ollama, or use a cloud provider like OpenAI or Gemini. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
+Filler removal ("um," "uh," and "like") and number formatting run on your Mac with no AI model involved, and are on out of the box. AI rewriting is on by default through Apple Intelligence, which needs macOS 26 with Apple Intelligence switched on in System Settings; if that is not you, pick EG-1 or S1-mini under Settings, AI Polish (both run on macOS 14 or later), or add an OpenAI, Gemini, or Claude key. If you want to understand [how the full pipeline works](/features/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
 
@@ -84,7 +84,7 @@ EnviousWispr works well with zero configuration, but if you want to tune it to y
 
 ### Speech engine
 
-EnviousWispr downloads its speech recognition model automatically on first launch. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine is available for 99+ languages. The download takes a minute or two, and the model is cached locally from then on.
+EnviousWispr downloads its speech recognition model automatically on first launch. The primary engine, Fast, covers 25 European languages. A second engine, All Languages, covers 99+ languages. The download takes a minute or two, and the model is cached locally from then on.
 
 ### AI polish
 
@@ -92,7 +92,7 @@ EnviousWispr's polish step removes filler words, fixes punctuation, and keeps yo
 
 ### Structure follows your voice
 
-You shape the output by how you talk. Speak a quick one-liner and it stays one line. With Ollama, OpenAI, or Gemini polish on, rattle off a list ("first... then... finally") and it comes back as bullet points; on the Apple Intelligence default, you get the same items as clean prose. There's nothing to configure either way.
+You shape the output by how you talk. Speak a quick one-liner and it stays one line. With AI polish on, rattle off a list ("first... then... finally") and it usually comes back as bullet points; S1-mini follows its own Structure setting. There's nothing else to configure.
 
 ### Custom word dictionary
 
@@ -104,11 +104,11 @@ Once you're comfortable with the basic keybind workflow, there are a few feature
 
 ### Hands-free mode
 
-Double-press your keybind to lock recording for longer dictation sessions. You don't have to hold any key. Speak naturally for as long as you need, then triple-press to cancel or release to finish. This is especially useful for drafting an essay, capturing meeting notes, or working through a complex idea out loud.
+Double-press your keybind to lock recording for longer dictation sessions. You don't have to hold any key. Speak naturally for as long as you need, then press the keybind once to finish, or triple-press to cancel. This is especially useful for drafting an essay, capturing meeting notes, or working through a complex idea out loud.
 
 ### Clipboard mode
 
-By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. If you prefer more control over where text ends up, switch to clipboard-only mode. Your transcription lands on the clipboard, and you paste it wherever you want with Cmd+V.
+By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. There is no separate clipboard mode to switch on. EnviousWispr writes into the app in front of you; whenever it cannot (no text field has focus, or the app refuses every paste route), it copies the dictation to your clipboard and tells you, and you press Cmd+V.
 
 ## Troubleshooting Quick Tips
 
@@ -116,15 +116,15 @@ Most issues during the EnviousWispr setup process come down to permissions or mo
 
 ### "Paste isn't working"
 
-Check Accessibility permissions first. Open **System Settings > Privacy & Security > Accessibility** and make sure EnviousWispr is listed and toggled on. If it's already on, try toggling it off and back on, then restart EnviousWispr. macOS sometimes needs a fresh permission grant after updates.
+Check Accessibility permissions first. Open **System Settings > Privacy & Security > Accessibility** and make sure EnviousWispr is listed and toggled on. If it's already on but nothing pastes, remove EnviousWispr from the list with the minus button and add it back with plus. macOS sometimes holds on to a stale record of the app after updates.
 
 ### "No audio is being captured"
 
-Verify microphone access in **System Settings > Privacy & Security > Microphone**. Also check that your input device is set correctly in macOS Sound settings. EnviousWispr uses whatever input device your system is configured to use.
+Verify microphone access in **System Settings > Privacy & Security > Microphone**. Also check that your input device is set correctly in macOS Sound settings. By default EnviousWispr follows your Mac's input. To pin a specific mic, open Settings, Microphone.
 
 ### "Transcription is slow"
 
-The first transcription after launch includes model loading time. Subsequent transcriptions are faster because the model stays in memory. If you want near-instant response from the first dictation, keep EnviousWispr running in the background. You can also adjust the warm engine policy in Settings to keep the engine ready between recordings.
+The first transcription after launch includes model loading time. Subsequent transcriptions are faster because the model stays in memory. If you want near-instant response from the first dictation, keep EnviousWispr running in the background. You can also set Microphone Readiness under Settings, Microphone to 60 sec or Always to keep the engine ready between recordings.
 
 ### Something else?
 

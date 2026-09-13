@@ -18,16 +18,16 @@ faqs:
   - question: "Why does live transcription turn off when Auto-detect language is on?"
     answer: "Live transcription has to commit to one language within the first second or two of your recording, which is not enough audio to detect a language reliably. With Auto-detect on, EnviousWispr waits until you stop and decides the language from more of your opening audio instead, which is far more accurate. Pick a specific language in Settings to stream live."
   - question: "Does live transcription work with the Fast engine too?"
-    answer: "Yes. The Fast engine has transcribed live for a while. What is new is that the All Languages engine, the one that covers 99+ languages and the toughest audio, now does it too."
+    answer: "The toggle works on both engines, but we recommend leaving it off on the Fast engine, where it costs accuracy and saves no time under a minute. It shines on All Languages with a locked language. What is new is that the All Languages engine, the one that covers 99+ languages and the toughest audio, now does it too."
   - question: "Is live transcription less accurate?"
-    answer: "For most dictation it produces the same text. A word is only committed once two consecutive passes over the audio agree on it. On very long recordings, transcribing everything at the end can still read slightly cleaner, which is why the toggle is there."
+    answer: "On the All Languages engine, for most dictation it produces the same text. A word is only committed once two consecutive passes over the audio agree on it. On very long recordings, transcribing everything at the end can still read slightly cleaner, which is why the toggle is there."
 ---
 
 The slowest part of dictation is not the talking. It is the moment after you stop, when you are waiting for your words to show up.
 
 Until now, EnviousWispr's All Languages engine handled that moment the traditional way: it collected your audio while you spoke, and when you released the key, it transcribed the whole thing in one pass. That works, and it is accurate. But the wait grows with the length of the dictation. Talk for two minutes and you wait for two minutes of audio to be processed. Talk through a whole idea, the way [an hour-long session](/blog/you-can-now-dictate-for-a-full-hour/) invites you to, and the pause at the end starts to pull you out of your flow.
 
-In the latest update, the All Languages engine transcribes while you speak. When you stop, there is almost nothing left to do, so your text lands almost immediately, whether you spoke for ten seconds or ten minutes.
+In the latest update, the All Languages engine transcribes while you speak. When you stop, there is almost nothing left to do, so the transcription is essentially done when you release the key, whether you spoke for ten seconds or ten minutes. (This is the transcription step; what happens after it, such as AI polish, is a separate matter.)
 
 ## How it works
 
@@ -39,7 +39,7 @@ This approach comes from a research group at Charles University that studies liv
 
 **A note on the name:** in the app this setting is now called **Faster Transcription**, under Settings > Transcription. It does exactly what this post describes. The name changed because "live" was being read as "shows me my words as I speak", which is a different feature called Live Preview.
 
-By the time you release the key, nearly everything you said is already confirmed. The engine finishes the last unconfirmed words, and that is it. The end-of-dictation wait stops scaling with how long you spoke.
+By the time you release the key, nearly everything you said is already confirmed. The engine finishes the last unconfirmed words, and that is it. The transcription wait stops scaling with how long you spoke.
 
 And if anything goes wrong mid-recording, the engine keeps your full audio on the side and falls back to transcribing it in one pass, the traditional way. You always get your text. The fast path is never allowed to put your words at risk.
 
@@ -63,7 +63,7 @@ Here is the full picture:
 
 ## Why you might still turn it off
 
-The toggle exists for a reason. On very long recordings, a single pass over the finished audio can produce slightly cleaner text, because the engine gets to hear everything with full context before writing anything down. If you regularly dictate long-form and care about every comma, try both and see which reads better for you. For everyday dictation, live transcription produces the same text and gives you the time back.
+The toggle exists for a reason. On very long recordings, a single pass over the finished audio can produce slightly cleaner text, because the engine gets to hear everything with full context before writing anything down. If you regularly dictate long-form and care about every comma, try both and see which reads better for you. For everyday dictation on the All Languages engine, live transcription produces the same text and gives you the time back.
 
 ## Still on your Mac, in both modes
 

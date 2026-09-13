@@ -15,7 +15,7 @@ This is the quiet tax of modern medicine. Documentation has crept past the appoi
 
 Dictation should fix this. The catch is that most dictation tools route your patient's name, history, and clinical findings through someone else's servers. For anyone working under HIPAA, that's a real conversation with the vendor, the BAA, and the IT department before you can even start. And the price tags on legacy medical dictation tools are not small.
 
-That's the gap on-device dictation closes. Hold a keybind, speak your note, release. A second or two later, polished text lands in whatever EMR field has focus. The audio never leaves your Mac. There's no upload to negotiate, no third party to add to a BAA, no cloud round-trip to wait on.
+That's the gap on-device dictation closes. Hold a keybind, speak your note, release. Transcription finishes in under a second; the polish step adds a moment that grows with how much you said, and then the text lands in whatever EMR field has focus. The audio never leaves your Mac. There's no upload to negotiate, no third party to add to a BAA, no cloud round-trip to wait on.
 
 ## Why most dictation tools are awkward for clinicians
 
@@ -30,12 +30,12 @@ A few practical problems with cloud dictation in a clinical setting:
 
 ## What on-device dictation gets you
 
-EnviousWispr runs the entire pipeline on your Mac. The audio is captured, transcribed via on-device speech recognition through Core ML on the Neural Engine, and cleaned up by an LLM that can also run on-device using Apple Intelligence, EG-1, or Ollama. Nothing leaves your machine unless you explicitly choose a cloud LLM provider for the polish step (and you can pick on-device polish to keep the whole pipeline local).
+EnviousWispr runs the entire pipeline on your Mac. The audio is captured, transcribed by on-device speech recognition running on your Mac's Apple Silicon chip, and cleaned up by an AI model that can also run on-device (Apple Intelligence on macOS 26, EG-1, S1-mini, or a downloaded Ollama model). Your audio never leaves your Mac. The only time your dictated text does is if you explicitly choose a cloud polish provider, and you can pick on-device polish to keep the whole pipeline local.
 
 This is architecture, not policy. A few things follow from it:
 
-- **No vendor sees the audio.** The recording is processed in memory and discarded. There's no server log, no retention window, no third-party audit chain to navigate.
-- **No BAA needed for the dictation step itself.** Your existing EMR vendor's BAA still covers the chart that ends up in their system. EnviousWispr just hands you polished text on the clipboard or pastes it into the focused field; with on-device polish, it never stores or transmits patient data.
+- **No vendor sees the audio.** The recording is held in an encrypted backup on your Mac, and once the text is saved the app requests its deletion. There's no server log, no retention window, no third-party audit chain to navigate.
+- **No BAA needed for the dictation step itself.** Your existing EMR vendor's BAA still covers the chart that ends up in their system. EnviousWispr hands you polished text on the clipboard or pastes it into the focused field; with on-device polish, nothing is transmitted; finished transcripts are kept in History on your Mac, where you can delete them.
 - **No internet required.** Charting in a basement office with bad WiFi, a rural clinic with patchy coverage, or a hospital floor where corporate WiFi is locked down all work the same way. Local speech recognition does not care.
 - **The economics are different.** EnviousWispr is free. There's no per-seat license, no annual renewal, no usage-based billing.
 
@@ -53,7 +53,7 @@ You finish with a patient. You walk back to your workstation. The EMR is already
 
 > "Patient is a 58-year-old female presenting with two-week history of progressive shortness of breath on exertion. Denies chest pain, fever, or recent travel. Exam notable for bilateral lower extremity edema and a new S3 gallop. EKG shows new left bundle branch block. BNP elevated at 1,400. Likely new-onset heart failure with reduced ejection fraction; will start guideline-directed medical therapy and refer to cardiology for echo and further evaluation. Will follow up in two weeks."
 
-You release. A second or two later, the field has cleaned-up text: punctuated, structured, ready to save. The polish step removed your filler words, fixed any verbal artifacts, and produced a chart entry that reads like you took the time to type it. Twenty seconds of speaking replaced what would have been three or four minutes of typing.
+You release. A moment later, the field has cleaned-up text: punctuated, structured, ready to save. The polish step removed your filler words, fixed any verbal artifacts, and produced a chart entry that reads like you took the time to type it. Twenty seconds of speaking replaced what would have been three or four minutes of typing.
 
 EnviousWispr writes into whatever field has focus. That means it works in Epic's Smart Phrases, Cerner Millennium documentation pages, AthenaClinicals chart sections, NextGen progress notes, eClinicalWorks visit notes, OpenEMR free-text fields, or any web-based EMR you can click into. There's no integration to install. The text lands in the field as if you had typed it.
 
@@ -75,9 +75,9 @@ Charting is most of the writing, but it isn't all of it. Email replies to staff,
 
 ## Let your dictation shape the documentation
 
-EnviousWispr's polish handles clinical writing without any setup. A quick one-line order stays a line. With Ollama, OpenAI, or Gemini polish on, a longer note spoken in sections comes back structured with paragraphs and bullets; on the Apple Intelligence default, the same note lands as clean prose. You guide it by how you speak.
+On macOS 26 with Apple Intelligence switched on, the built-in polish works with no setup. Otherwise pick EG-1 under Settings, AI Polish; it runs on macOS 14 or later and stays on your Mac. A quick one-line order stays a line. With AI polish on, a longer note spoken in sections comes back with paragraphs, and an announced list usually comes back as a list (S1-mini follows its own Structure setting). You guide it by how you speak.
 
-A few patterns that work well for clinicians (formatting applies with Ollama, OpenAI, or Gemini polish on; the Apple Intelligence default keeps the same content as clean prose):
+A few patterns that work well for clinicians (formatting applies with AI polish on):
 
 - **SOAP notes.** Say "subjective," "objective," "assessment," "plan" as you move through the note, and each becomes its own section, with your clinical terms and dosing details preserved.
 - **Referral letters.** Dictate it the way a letter reads: a brief patient summary, the clinical question, and a closing to the consultant. The polish keeps that letter shape.
@@ -96,7 +96,7 @@ EnviousWispr is a different shape:
 - **On-device by default.** No BAA needed for the dictation step.
 - **Works across every app.** Not bound to a specific EMR integration.
 - **Faster to set up.** Download, grant microphone access, start dictating. The full setup is under five minutes.
-- **No medical-specific vocabulary tuning out of the box.** This is a real trade-off. Dragon Medical includes specialty-tuned models. EnviousWispr's default models handle common clinical terminology well but do not match a specialty-tuned model for very niche vocabulary. The Custom Words feature lets you add specific terms (drug names, uncommon procedures, your colleagues' names) so the speech model gets them right. For most general clinical workflows, this gap closes quickly. For very subspecialty work with unusual terminology, you may want to evaluate carefully.
+- **No medical-specific vocabulary tuning out of the box.** This is a real trade-off. Dragon Medical includes specialty-tuned models. EnviousWispr's default models handle common clinical terminology well but do not match a specialty-tuned model for very niche vocabulary. The Dictionary (Settings, Dictionary) lets you add specific terms (drug names, uncommon procedures, your colleagues' names) so the speech model gets them right. For most general clinical workflows, this gap closes quickly. For very subspecialty work with unusual terminology, you may want to evaluate carefully.
 
 ## Privacy reality check
 
@@ -111,7 +111,7 @@ What still matters in your full clinical workflow:
 
 What changes:
 
-- The audio never reaches a vendor. There's no recording stored anywhere outside your Mac's working memory.
+- The audio never reaches a vendor. The only copy is an encrypted backup on your Mac, which the app asks to delete once the text is saved.
 - With on-device polish, no new BAA is required for the dictation step.
 
 If you want the full picture on the privacy architecture, the [on-device vs cloud privacy post](/blog/on-device-vs-cloud-dictation-privacy/) covers what each approach does with your data and what that implies.

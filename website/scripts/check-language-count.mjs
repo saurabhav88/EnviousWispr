@@ -44,7 +44,7 @@ const SITES = [
   ['Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift', 'title: "Dictate in 99+ languages"'],
   ['website/src/content/blog/live-transcription-that-keeps-up-with-you.md', 'the one that covers 99+ languages and the toughest audio'],
   ['website/src/content/blog/on-device-dictation-polishing-small-models.md', 'with WhisperKit available for 99+ languages.'],
-  ['website/src/content/blog/getting-started-enviouswispr-under-2-minutes.md', 'A secondary engine is available for 99+ languages.'],
+  ['website/src/content/blog/getting-started-enviouswispr-under-2-minutes.md', 'A second engine, All Languages, covers 99+ languages.'],
   ['website/src/content/blog/welcome-to-enviouswispr.md', 'A secondary engine covers 99+ languages.'],
   ['website/src/content/help/choosing-a-speech-engine-parakeet-vs-whisperkit.md', '| Languages | 25 European | 99+ |'],
   ['website/src/content/help/multi-language-dictation.md', 'switch to the WhisperKit engine, which supports 99+ languages.'],
