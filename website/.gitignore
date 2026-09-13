@@ -25,4 +25,4 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
-website/.last-deployed-manifest
+.last-deployed-manifest

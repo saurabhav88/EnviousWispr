@@ -186,12 +186,16 @@ EXPECTED_OWNERS = (
 )
 
 # Cache steps that are NOT Xcode caches and are allowed to exist, (file, unit).
-# Empty today: the npm cache comes from setup-node's own `cache:` input, not an
-# actions/cache step. A cache step that is neither in the family nor listed here
-# is an ERROR, never merely printed — an Xcode cache whose key lost its marker
-# would otherwise land outside the family, and the family would still read
-# clean and complete (second-pass finding on #2593).
-EXPECTED_OTHER = ()
+# The npm cache comes from setup-node's own `cache:` input, not an actions/cache
+# step. The one entry is the website deploy's last-deployed-output hash
+# (`website-deploy-manifest-run-*`, #2892), which lets the daily rebuild skip an
+# upload that would change nothing. A cache step that is neither in the family
+# nor listed here is an ERROR, never merely printed — an Xcode cache whose key
+# lost its marker would otherwise land outside the family, and the family
+# would still read clean and complete (second-pass finding on #2593).
+EXPECTED_OTHER = (
+    (".github/workflows/deploy-blog.yml", "deploy"),
+)
 
 
 def in_family(key: str) -> bool:

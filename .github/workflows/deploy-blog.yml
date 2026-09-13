@@ -62,7 +62,12 @@ jobs:
       # (#2889), so one hash over every output file's path and content says
       # whether an upload would change anything. The hash of the last
       # SUCCESSFUL deploy lives in the Actions cache (saved after the deploy
-      # step, never before it, so a failed upload is retried next run).
+      # step, never before it, so a failed upload is retried next run). The
+      # cache key is per RUN and restored by prefix, so the newest entry is
+      # always the last thing that reached production. A content-addressed
+      # key would exact-hit an older main entry after a workflow_dispatch from
+      # another ref deployed different content, and then suppress the upload
+      # that should have put main back (cloud review on #2892).
       # Only scheduled runs skip: a push or a manual dispatch always deploys.
       - name: Hash build output
         id: manifest
@@ -74,8 +79,8 @@ jobs:
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: website/.last-deployed-manifest
-          key: website-deploy-manifest-${{ steps.manifest.outputs.hash }}
-          restore-keys: website-deploy-manifest-
+          key: website-deploy-manifest-run-${{ github.run_id }}
+          restore-keys: website-deploy-manifest-run-
 
       - name: Decide whether to deploy
         id: decide
@@ -100,8 +105,8 @@ jobs:
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # Record the hash only after a successful upload, keyed by the hash so
-      # the next run's restore-keys prefix match finds the newest entry.
+      # Record the hash only after a successful upload, under this run's key,
+      # so the next run's prefix restore finds it as the newest entry.
       - name: Save deployed hash
         if: steps.decide.outputs.deploy == 'true' && success()
         working-directory: website
@@ -112,7 +117,7 @@ jobs:
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: website/.last-deployed-manifest
-          key: website-deploy-manifest-${{ steps.manifest.outputs.hash }}
+          key: website-deploy-manifest-run-${{ github.run_id }}
 
       # Tell IndexNow (Bing/Yandex/Naver) about posts that go live TODAY only.
       # Submitting just the newly-published URLs (not a daily blast of every URL)
