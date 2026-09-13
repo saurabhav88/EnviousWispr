@@ -174,12 +174,24 @@ enum ScenarioInventory {
       // after a stall window of logical time (PR-3 plan §3.7). STOP waits for
       // the watcher's real clock registration before advanceClock supplies that
       // window; the trailing cancel then hits an already-terminal state (#1868).
+      //
+      // #2502: the cancel WAITS for that terminal. `advanceClock` makes the
+      // watcher's sleeper READY, never RUN, and the per-step ready-work drain is
+      // a quiescence heuristic, so under the hosted runner's scheduling the
+      // cancel landed before the wedge was detected and the scenario reached
+      // `.cancelled` with no user-visible error — a product-shaped failure for a
+      // harness-shaped race. A terminal `expectState` waits on the kernel's own
+      // conclusion signal (the thing being asserted is the thing waited on) and
+      // fails LOUDLY, naming the state it found, if four ticks ever stop being
+      // enough. The tick count is not raised: the next slower runner would need
+      // five, and nothing would say so.
       id: "A13", name: "adapter wedge on finalize",
       steps: [
         .engine(.setBehavior(.wedgeOnFinalize)),
         .trigger(.start), .capture(.deliverBuffer),
         .triggerAwaitingClockRegistration(.stop),
-        .advanceClock(ticks: 4), .trigger(.cancel),
+        .advanceClock(ticks: 4), .expectState(.failed(.asrWedged)),
+        .trigger(.cancel),
       ],
       expected: ExpectedOutcome(
         terminalState: .failed(.asrWedged), pasteCount: 0, pasteOutcome: .none,

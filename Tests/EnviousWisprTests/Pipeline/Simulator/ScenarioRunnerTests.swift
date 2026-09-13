@@ -248,4 +248,34 @@ struct ScenarioRunnerTests {
       the logical clock; a plain STOP reopens the CI-only spawn-to-register race.
       """)
   }
+
+  @Test("A13 waits for the wedge terminal before it cancels")
+  func a13WaitsForTheWedgeBeforeCancelling() {
+    // #2502: `advanceClock` resumes the watcher's sleeper but does not run it,
+    // so a cancel applied straight after can win and the scenario ends
+    // `.cancelled`. The terminal `expectState` between them is what makes the
+    // runner wait on the kernel's conclusion signal, and a bare advance-then-
+    // cancel reopens the CI-only resume-to-run race.
+    let a13 = ScenarioInventory.all.first { $0.id == "A13" }
+    let steps = a13?.steps ?? []
+    let advance = steps.firstIndex {
+      if case .advanceClock = $0 { return true } else { return false }
+    }
+    let cancel = steps.firstIndex {
+      if case .trigger(.cancel) = $0 { return true } else { return false }
+    }
+    let waitsForWedge = steps.indices.contains { index in
+      guard case .expectState(.failed(.asrWedged)) = steps[index],
+        let advance, let cancel
+      else { return false }
+      return advance < index && index < cancel
+    }
+    #expect(
+      waitsForWedge,
+      """
+      A13 must assert the wedge terminal between advancing the clock and \
+      cancelling; advance-then-cancel lets the cancel land before the wedge \
+      watcher has run.
+      """)
+  }
 }
