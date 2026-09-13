@@ -58,7 +58,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     case .openAI: OpenAIConnector(keychainManager: keychain)
     case .gemini: GeminiConnector(keychainManager: keychain)
     case .claude: ClaudeConnector(keychainManager: keychain)
-    case .ollama: OllamaConnector()
+    // #2641: Ollama has no keychain; the retry telemetry seam rides in explicitly.
+    case .ollama: OllamaConnector(telemetrySink: keychain.telemetrySink)
     // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
     // Intelligence output (the path where AFM can compose artifacts). Injected
     // via init — fail-open when nil (not yet prewarmed / load failed).

@@ -23,7 +23,8 @@ import Testing
         // #2093: this spy does not assert pre-warm counting; that lives in
         // LLMWarmupGateTests. Required rather than defaulted at the type so a
         // production factory cannot silently forget to wire it.
-        prewarmStarted: { _, _ in })
+        prewarmStarted: { _, _ in },
+        retryCompleted: { _, _, _, _, _ in })
     }
   }
 

@@ -1042,6 +1042,38 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("llm.prewarm_started", properties: props)
   }
 
+  /// #2641: one transient-failure retry of a polish call finished.
+  ///
+  /// `llm.polish_failed` records FINAL failures only, so until this event a
+  /// retry that recovered left no row anywhere: 41 `rate_limited` rows in 60
+  /// days said the retries had failed, and nothing could say how many had
+  /// worked. One row per retry ATTEMPT: `provider`, `reason` (the classified
+  /// reason of the failure that triggered it, `PolishFailureReason` raw values
+  /// plus `url_error_<code>` for transport failures), `attempt` (1-based),
+  /// `delay_ms` (what was slept before it), `succeeded`. Recovery rate =
+  /// `succeeded = true` over all rows, per `provider` and `reason`. Metadata
+  /// only, never content or key material.
+  public func llmRetryCompleted(
+    provider: String, reason: String, attempt: Int, delayMs: Int, succeeded: Bool
+  ) {
+    let props: [String: Any] = [
+      "provider": provider,
+      "reason": reason,
+      "attempt": attempt,
+      "delay_ms": delayMs,
+      "succeeded": succeeded,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "llm.retry_completed",
+          stringProps: ["provider": provider, "reason": reason],
+          intProps: ["attempt": attempt, "delay_ms": delayMs],
+          boolProps: ["succeeded": succeeded]))
+    #endif
+    PostHogSDK.shared.capture("llm.retry_completed", properties: props)
+  }
+
   /// #1408: the microphone died (or the duration cap fired) while a recording was
   /// in flight. Fires on EVERY such interruption that reaches a recording exit —
   /// salvaged or not — so `dictation.completed`'s salvage count has a denominator.

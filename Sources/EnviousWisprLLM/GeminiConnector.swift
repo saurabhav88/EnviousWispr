@@ -502,9 +502,12 @@ public struct GeminiConnector: TranscriptPolisher {
     operation: () async throws -> LLMResult
   ) async throws -> LLMResult {
     var lastError: Error?
+    // #2641: what this attempt waited, so its outcome row can say so.
+    var sleptBeforeAttempt: UInt64 = 0
     for attempt in 0...maxRetries {
       if attempt > 0 {
         let delay = delays[min(attempt - 1, delays.count - 1)]
+        sleptBeforeAttempt = delay
         Task {
           await AppLogger.shared.log(
             "Gemini retry \(attempt)/\(maxRetries) after \(delay / 1_000_000)ms (model=\(config.model))",
@@ -514,8 +517,20 @@ public struct GeminiConnector: TranscriptPolisher {
         try await Task.sleep(nanoseconds: delay)
       }
       do {
-        return try await operation()
+        let result = try await operation()
+        // #2641: a retry that RECOVERED is the row nothing else records.
+        if attempt > 0 {
+          LLMRetryPolicy.reportRetry(
+            keychainManager.telemetrySink, provider: .gemini, retrying: lastError,
+            attempt: attempt, delayNanoseconds: sleptBeforeAttempt, succeeded: true)
+        }
+        return result
       } catch {
+        if attempt > 0 {
+          LLMRetryPolicy.reportRetry(
+            keychainManager.telemetrySink, provider: .gemini, retrying: lastError,
+            attempt: attempt, delayNanoseconds: sleptBeforeAttempt, succeeded: false)
+        }
         lastError = error
         if !LLMRetryPolicy.isRetryable(error) { throw error }
       }

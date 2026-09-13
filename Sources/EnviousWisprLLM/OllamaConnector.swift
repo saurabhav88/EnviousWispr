@@ -136,14 +136,21 @@ public struct OllamaConnector: TranscriptPolisher {
   /// non-routable host, which a deleted guard still satisfied via fast ECONNREFUSED).
   private let networkExecutor: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
+  /// #2641: Ollama carries no keychain, so the module's telemetry seam is
+  /// handed in directly. `.noop` everywhere except the polish step's connector
+  /// factory, which passes the keychain's live sink.
+  private let telemetrySink: LLMTelemetrySink
+
   public init(
     baseURL: String = "http://localhost:11434",
     networkExecutor: @Sendable @escaping (URLRequest) async throws -> (Data, URLResponse) = {
       try await LLMNetworkSession.shared.session.data(for: $0)
-    }
+    },
+    telemetrySink: LLMTelemetrySink = .noop
   ) {
     self.baseURL = baseURL
     self.networkExecutor = networkExecutor
+    self.telemetrySink = telemetrySink
   }
 
   /// NOT REACHED IN PRODUCTION, and kept only because `TranscriptPolisher` requires it
@@ -686,9 +693,12 @@ public struct OllamaConnector: TranscriptPolisher {
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
   ) async throws -> (Data, HTTPURLResponse) {
     var lastError: Error?
+    // #2641: what this attempt waited, so its outcome row can say so.
+    var sleptBeforeAttempt: UInt64 = 0
     for attempt in 0...maxRetries {
       if attempt > 0 {
         let delay = delays[min(attempt - 1, delays.count - 1)]
+        sleptBeforeAttempt = delay
         Task {
           await AppLogger.shared.log(
             "Ollama retry \(attempt)/\(maxRetries) after \(delay / 1_000_000)ms (model=\(config.model))",
@@ -717,6 +727,12 @@ public struct OllamaConnector: TranscriptPolisher {
 
         switch httpResponse.statusCode {
         case 200:
+          // #2641: a retry that RECOVERED is the row nothing else records.
+          if attempt > 0 {
+            LLMRetryPolicy.reportRetry(
+              telemetrySink, provider: .ollama, retrying: lastError,
+              attempt: attempt, delayNanoseconds: sleptBeforeAttempt, succeeded: true)
+          }
           return (data, httpResponse)
         default:
           // #945: read the body INSIDE the error arm for classification (404 ->
@@ -742,6 +758,11 @@ public struct OllamaConnector: TranscriptPolisher {
             Self.classify(statusCode: httpResponse.statusCode, bodyString: bodyString))
         }
       } catch {
+        if attempt > 0 {
+          LLMRetryPolicy.reportRetry(
+            telemetrySink, provider: .ollama, retrying: lastError,
+            attempt: attempt, delayNanoseconds: sleptBeforeAttempt, succeeded: false)
+        }
         lastError = error
         if !LLMRetryPolicy.isRetryable(error) { throw error }
       }

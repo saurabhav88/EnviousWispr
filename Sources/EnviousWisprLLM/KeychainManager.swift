@@ -28,7 +28,9 @@ public struct KeychainManager: Sendable {
   /// reads it off the `keychainManager` it already receives). `internal` — module-visible
   /// to `LLMNetworkSession`, injected via the public `init` param. Defaults to `.noop`,
   /// so the ~43 test sites + the connector default-args stay silent.
-  let telemetrySink: LLMTelemetrySink
+  /// `public` so the polish step's connector factory can hand the same sink to
+  /// a connector that carries no keychain (Ollama, #2641).
+  public let telemetrySink: LLMTelemetrySink
 
   public init(telemetrySink: LLMTelemetrySink = .noop) {
     let legacyStore = FileLegacyKeyStore()
