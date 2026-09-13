@@ -125,7 +125,11 @@ enum TranscriptDocumentPresenter {
     return speakerNames[speakerId]
   }
 
-  private static func slice(_ text: String, _ range: Range<Int>) -> String {
+  /// Internal, not private (#2811, phase 4 of #2807): both callers preparing a turn's diff
+  /// input off-main — `FileImportCoordinator.turnDiffInput` and `TranscriptDetailView`'s own
+  /// equivalent — need the SAME slice this type uses for rendering, so this is the one owner
+  /// rather than a third private copy.
+  static func slice(_ text: String, _ range: Range<Int>) -> String {
     let lower = String.Index(utf16Offset: range.lowerBound, in: text)
     let upper = String.Index(utf16Offset: range.upperBound, in: text)
     guard lower <= upper, upper <= text.endIndex else { return "" }

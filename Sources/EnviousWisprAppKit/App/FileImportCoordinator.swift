@@ -1240,7 +1240,7 @@ final class FileImportCoordinator {
     guard let turns else { return TurnDiffInput(pairs: [], language: engineReportedLanguage) }
     let text = rawTranscript
     let pairs = turns.map { turn -> TurnDiffPair in
-      let original = Self.slice(text, turn.originalTextRange)
+      let original = TranscriptDocumentPresenter.slice(text, turn.originalTextRange)
       return TurnDiffPair(id: turn.id, original: original, cleaned: turn.processedText ?? original)
     }
     return TurnDiffInput(pairs: pairs, language: engineReportedLanguage)
@@ -1289,13 +1289,6 @@ final class FileImportCoordinator {
 
   @ObservationIgnored private var turnDiffWorker:
     (input: TurnDiffInput, task: Task<[String: WordDiff.Result], Never>)?
-
-  private static func slice(_ text: String, _ range: Range<Int>) -> String {
-    let lower = String.Index(utf16Offset: range.lowerBound, in: text)
-    let upper = String.Index(utf16Offset: range.upperBound, in: text)
-    guard lower <= upper, upper <= text.endIndex else { return "" }
-    return String(text[lower..<upper])
-  }
 
   /// The in-flight speaker step, run detached from `run()`'s own completion — it touches
   /// no ASR engine and must never add its own deadline (20s minimum) to the user-visible

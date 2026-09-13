@@ -819,6 +819,32 @@ final class TranscriptCoordinator {
     transcripts.first { $0.id == id }
   }
 
+  /// Renames a speaker id across every turn showing it, for a row History renders directly
+  /// (#2811, phase 4 of #2807) — the History-side twin of `FileImportCoordinator
+  /// .renameSpeaker`, both ordinary, symmetric callers of `mergeSpeakerFields` above. Re-reads
+  /// the row's CURRENT analysis and turns TOGETHER, atomically, immediately before writing —
+  /// never a value captured when a popover opened (§3 Design correction 2).
+  func renameSpeaker(id transcriptID: UUID, speakerId: String, name: String) -> RenameFailure? {
+    guard let current = currentRow(id: transcriptID), current.turns != nil,
+      let analysis = current.speakerAnalysis
+    else {
+      return RenameFailure(message: "Couldn't save the name.", currentName: nil)
+    }
+    do {
+      let saved = try mergeSpeakerFields(
+        id: transcriptID, analysis: analysis, turns: current.turns,
+        explicitRename: (speakerId, name))
+      guard saved else {
+        return RenameFailure(
+          message: "This recording was removed from History.", currentName: nil)
+      }
+      return nil
+    } catch {
+      return RenameFailure(
+        message: "Couldn't save the name.", currentName: current.speakerNames?[speakerId])
+    }
+  }
+
   /// Counts writes, so a disk read that began earlier can be told it is stale.
   ///
   /// `load()` prefers the DISK row whenever an id already exists, which is right for a

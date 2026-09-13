@@ -13,6 +13,15 @@ struct TranscriptDetailView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @Environment(LiveRecordingState.self) private var liveRecordingState
 
+  /// Screen-local, per-row UI state (#2811, phase 4 of #2807) — History has no persisted view
+  /// mode today, and this phase does not add one (plan §2.2 non-goal). Reset on row change
+  /// via `.onChange(of: transcript.id)`: without it, a stale Marked-up selection from one
+  /// file would leak onto the next file's detail view, since SwiftUI otherwise preserves
+  /// `@State` across a mere value change at the same tree position (§5 E2E audit).
+  @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
+  @State private var timesOn = true
+  @State private var turnDiffs: [String: WordDiff.Result] = [:]
+
   /// #2087: the two actions this feature adds stand down while a dictation is
   /// in flight — Paste on a HELD recovery, and Keep.
   ///
@@ -53,44 +62,31 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          // #2772: a THIRD rung. An import whose polish was bypassed or failed everywhere
-          // still has a derived document worth showing — numbers formatted, saved words
-          // corrected — and it must not be labelled as AI-polished. Falling back to the raw
-          // words instead would silently discard that work.
-          // #2807: the section names say what the TEXT is (polished, processed, original);
-          // the title above says what the row is (a dictation or a transcript).
-          if let output = transcript.polishedText ?? transcript.processedText {
-            transcriptSection(
-              transcript.polishedText == nil ? "Processed" : "Polished",
-              icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
-            ) {
-              Text(output)
-                .font(.system(size: 16))
-                .lineSpacing(3)
-                .foregroundStyle(.stTextPrimary)
-                .textSelection(.enabled)
-            }
-            transcriptSection("Original", icon: "doc.text") {
-              Text(transcript.text)
-                .font(.system(size: 15))
-                .lineSpacing(3)
-                .foregroundStyle(.stTextBody)
-                .textSelection(.enabled)
-            }
-          } else {
+          if transcript.turns != nil {
             transcriptSection(kindWord, icon: "doc.text") {
-              Text(transcript.text)
-                .font(.system(size: 16))
-                .lineSpacing(3)
-                .foregroundStyle(.stTextPrimary)
-                .textSelection(.enabled)
+              TurnDocumentView(
+                turns: renderedTurns,
+                onRename: { id, name in
+                  transcriptCoordinator.renameSpeaker(
+                    id: transcript.id, speakerId: id, name: name)
+                },
+                fallback: { plainTextSections }
+              )
             }
+            .task(id: turnDiffInput) { await prepareTurnDiffs() }
+          } else {
+            plainTextSections
           }
         }
         .padding(20)
       }
     }
     .background(Color.stPageBg)
+    .onChange(of: transcript.id) {
+      documentView = .cleaned
+      timesOn = true
+      turnDiffs = [:]
+    }
   }
 
   // MARK: - Action bar
@@ -98,16 +94,32 @@ struct TranscriptDetailView: View {
   private var actionBar: some View {
     HStack(spacing: 8) {
       Button {
-        // #2087: asked for by id rather than taken from the rendered row. A held
-        // recovery can lapse between this row appearing and the press, and
-        // copying the snapshot would hand back text the user was told had gone.
-        // Returns the text unchanged for an ordinary dictation.
-        guard let text = transcriptCoordinator.textForDelivery(transcript) else { return }
+        // #2087: `exportText` reads `textForDelivery` fresh by id rather than taking the
+        // rendered row's own snapshot. A held recovery can lapse between this row appearing
+        // and the press, and copying a snapshot would hand back text the user was told had
+        // gone. Returns the text unchanged for an ordinary dictation.
+        guard let text = exportText else { return }
         PasteService.copyToClipboard(text)
       } label: {
-        Label("Copy", systemImage: "doc.on.doc")
+        Label(exportButtonLabels.copy, systemImage: "doc.on.doc")
       }
       .help("Copy to clipboard")
+
+      // #2811, phase 4: History gains Save and Share, which did not exist before this phase
+      // (plan §6 downstream consumer matrix) — reusing `exportText`'s SAME expiry-checked
+      // selection as Copy, never a separate one.
+      Button {
+        saveDocument()
+      } label: {
+        Label(exportButtonLabels.save, systemImage: "square.and.arrow.down")
+      }
+      .disabled(exportText == nil)
+      .help("Save as a text file")
+
+      ShareLink(item: exportText ?? "") {
+        Label(exportButtonLabels.share, systemImage: "square.and.arrow.up")
+      }
+      .disabled(exportText == nil || exportText?.isEmpty == true)
 
       Button {
         if permissions.accessibilityGranted {
@@ -210,6 +222,27 @@ struct TranscriptDetailView: View {
             metaChip("AI Polished", icon: nil, accent: true)
           }
         }
+
+        // View mode + Times (#2811 §2.1) — only meaningful once there are turns to show.
+        if transcript.turns != nil {
+          HStack(spacing: 10) {
+            Picker(
+              "View", selection: $documentView
+            ) {
+              Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
+              Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
+              Text("Original").tag(FileImportCoordinator.DocumentView.original)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .fixedSize()
+            .accessibilityLabel("Which words to show")
+            Toggle("Times", isOn: $timesOn)
+              .controlSize(.small)
+              .toggleStyle(.switch)
+          }
+        }
       }
       Spacer(minLength: 0)
     }
@@ -261,5 +294,123 @@ struct TranscriptDetailView: View {
             .strokeBorder(Color.stDivider, lineWidth: 1)
         )
     }
+  }
+
+  // MARK: - Turn-labeled rendering (#2811, phase 4 of #2807)
+
+  /// Today's own rendering, UNCHANGED — `TurnDocumentView`'s fallback, structurally
+  /// unreachable here since the call site already gates on `transcript.turns != nil`, exactly
+  /// mirroring the wizard's own `legacyTranscriptContent` shape.
+  @ViewBuilder
+  private var plainTextSections: some View {
+    // #2772: a THIRD rung. An import whose polish was bypassed or failed everywhere
+    // still has a derived document worth showing — numbers formatted, saved words
+    // corrected — and it must not be labelled as AI-polished. Falling back to the raw
+    // words instead would silently discard that work.
+    // #2807: the section names say what the TEXT is (polished, processed, original);
+    // the title above says what the row is (a dictation or a transcript).
+    if let output = transcript.polishedText ?? transcript.processedText {
+      transcriptSection(
+        transcript.polishedText == nil ? "Processed" : "Polished",
+        icon: transcript.polishedText == nil ? "doc.text" : "sparkles"
+      ) {
+        Text(output)
+          .font(.system(size: 16))
+          .lineSpacing(3)
+          .foregroundStyle(.stTextPrimary)
+          .textSelection(.enabled)
+      }
+      transcriptSection("Original", icon: "doc.text") {
+        Text(transcript.text)
+          .font(.system(size: 15))
+          .lineSpacing(3)
+          .foregroundStyle(.stTextBody)
+          .textSelection(.enabled)
+      }
+    } else {
+      transcriptSection(kindWord, icon: "doc.text") {
+        Text(transcript.text)
+          .font(.system(size: 16))
+          .lineSpacing(3)
+          .foregroundStyle(.stTextPrimary)
+          .textSelection(.enabled)
+      }
+    }
+  }
+
+  private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
+    let diffs = turnDiffs
+    return TranscriptDocumentPresenter.render(
+      turns: transcript.turns, rawText: transcript.text,
+      speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
+      diffLookup: { diffs[$0.id] })
+  }
+
+  /// Mirrors `FileImportCoordinator.turnDiffInput`, reusing its own `TurnDiffPair`/
+  /// `TurnDiffInput` types (chunk review found their FIRST duplicate; this would have been a
+  /// second) — the wizard and History prepare the same per-turn diff shape from different
+  /// live/persisted sources.
+  private var turnDiffInput: FileImportCoordinator.TurnDiffInput {
+    guard let turns = transcript.turns else {
+      return FileImportCoordinator.TurnDiffInput(pairs: [], language: transcript.language)
+    }
+    let text = transcript.text
+    let pairs = turns.map { turn -> FileImportCoordinator.TurnDiffPair in
+      let original = TranscriptDocumentPresenter.slice(text, turn.originalTextRange)
+      return FileImportCoordinator.TurnDiffPair(
+        id: turn.id, original: original, cleaned: turn.processedText ?? original)
+    }
+    return FileImportCoordinator.TurnDiffInput(pairs: pairs, language: transcript.language)
+  }
+
+  /// Off the main actor, same reason as the wizard's own `prepareTurnDiffs` (chunk-1 review:
+  /// `WordDiff` can take ~3 seconds on worst-case inputs). `.task(id:)` already cancels a
+  /// stale computation when `transcript`/`documentView`/`timesOn` moves — the explicit
+  /// `Task.isCancelled` check below is what stops that stale result from still landing in
+  /// `@State` after cancellation, since the write happens AFTER the `await` returns.
+  private func prepareTurnDiffs() async {
+    let input = turnDiffInput
+    guard !input.pairs.isEmpty else { return }
+    let computed = await Task.detached(priority: .userInitiated) {
+      var results: [String: WordDiff.Result] = [:]
+      for pair in input.pairs {
+        results[pair.id] = WordDiff.compare(
+          original: pair.original, cleaned: pair.cleaned, language: input.language)
+      }
+      return results
+    }.value
+    guard !Task.isCancelled else { return }
+    turnDiffs = computed
+  }
+
+  /// What Copy/Save/Share hand over. Turn-labeled documents route through the presenter
+  /// FIRST, exactly mirroring `FileImportCoordinator.exportText`'s own fallback contract —
+  /// its `nil` for `turns == nil`/empty falls through to `textForDelivery`'s existing,
+  /// expiry-checked selection, UNCHANGED.
+  private var exportText: String? {
+    guard let base = transcriptCoordinator.textForDelivery(transcript) else { return nil }
+    if let turns = transcript.turns,
+      let result = TranscriptDocumentPresenter.exportText(
+        turns: turns, rawText: transcript.text, speakerNames: transcript.speakerNames ?? [:],
+        timesOn: timesOn, mode: documentView)
+    {
+      return result.text
+    }
+    return base
+  }
+
+  /// Copy/Save/Share titles — the SAME general export rule as the wizard (plan §2.1), never
+  /// scoped to turn-labeled documents.
+  private var exportButtonLabels: (copy: String, save: String, share: String) {
+    TranscriptDocumentPresenter.exportButtonLabels(mode: documentView)
+  }
+
+  private func saveDocument() {
+    guard let text = exportText else { return }
+    let panel = NSSavePanel()
+    panel.allowedContentTypes = [.plainText]
+    panel.nameFieldStringValue = kindWord
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    try? text.write(to: url, atomically: true, encoding: .utf8)
   }
 }
