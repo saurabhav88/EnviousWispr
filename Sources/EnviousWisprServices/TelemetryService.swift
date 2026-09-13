@@ -3235,10 +3235,11 @@ public final class TelemetryService {
 
   // MARK: - File import turn storage (#2810, phase 3 of #2807)
 
-  /// Shape-only telemetry for the background, dormant turn-safe cleanup pass. `turnCount` is
-  /// present only when `outcome == .stored` — every other outcome has no valid count.
-  /// `fallbackTurnCount` counts turns with AT LEAST ONE unpolished part (never only "every
-  /// part failed"), matching `Turn.wasPolished`'s own "true if ANY part polished" semantics.
+  /// Shape-only telemetry for the speaker turns of a file import. `turnCount` is present
+  /// only when `outcome == .stored` — every other outcome has no valid count. Since #2851
+  /// the turns take their text from the one document cleanup by alignment, so the former
+  /// `admission_refused` and `polisher_not_ready` outcomes of a second cleanup pass have no
+  /// producer and are gone.
   public enum FileImportTurnsOutcome: String {
     case stored
     case saveFailed = "save_failed"
@@ -3246,13 +3247,6 @@ public final class TelemetryService {
     case
       noWordTimings = "no_word_timings"
     case singleNoTurns = "single_no_turns"
-    case
-      admissionRefused = "admission_refused"
-    /// The background hold's own polisher failed to come up under its separate claim —
-    /// distinct from `saveFailed`, which means a WRITE was attempted and threw. Nothing was
-    /// ever written here (found by chunk review round 2: reusing `saveFailed` for this case
-    /// misclassified "never attempted a save" as "attempted and failed").
-    case polisherNotReady = "polisher_not_ready"
   }
 
   /// Since #2851 the turns' text comes from the ONE document cleanup by alignment, so

@@ -37,8 +37,8 @@ struct FileImportCoordinatorSpeakerTests {
   }
 
   /// A gate a test controls from outside: a call can wait to be told to proceed, and the
-  /// test can wait to know a call has arrived. Used to prove ORDERING (turn-cleanup's own
-  /// calls never arrive before the visible document's cleanup has actually returned).
+  /// test can wait to know a call has arrived. Used to prove ORDERING between the speaker
+  /// step and the document cleanup (#2851: either may land first).
   private actor ManualGate {
     private var openWaiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
@@ -125,7 +125,6 @@ struct FileImportCoordinatorSpeakerTests {
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
     emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
-    onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
       Bool = { _ in true },
     processPart: @escaping @MainActor (String, String?) async throws ->
@@ -147,7 +146,6 @@ struct FileImportCoordinatorSpeakerTests {
       emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
       emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
-      onVisibleCleanupWaitResolved: onVisibleCleanupWaitResolved,
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
@@ -1314,6 +1312,47 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(telemetry.stored.first?.turnCount == 2)
   }
 
+  @Test(
+    "the whole import makes exactly one cleanup call per document part; the speaker step makes none (#2851 drift guard)",
+    .tags(.driftGuard))
+  func cleanupCallsEqualTheDocumentPartsAcrossTheWholeImport() async {
+    let store = FakeHistoryStore()
+    @MainActor final class CallRecorder {
+      private(set) var parts: [String] = []
+      func record(_ part: String) { parts.append(part) }
+    }
+    let calls = CallRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        calls.record(part)
+        return WordSwappingCleaner().outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let first = Self.swappedTurnTexts(WordSwappingCleaner.first)
+    let aligned = await settleUntil {
+      coordinator.speakerStepState == .finished
+        && turnTexts(store.current(historyID)) == [first.a, first.b]
+    }
+    #expect(aligned, "the turns must carry the cleanup's words")
+    for _ in 0..<20 { await Task.yield() }
+    #expect(coordinator.pendingPieces.count == 1)
+    #expect(
+      calls.parts == coordinator.pendingPieces,
+      "one cleanup call per document part, none for the turns: \(calls.parts)")
+  }
+
   @Test("retrySpeakerAnalysis persists a labeled outcome without ever reaching cleanup")
   func retrySpeakerAnalysisSkipsCleanupButPersists() async {
     let store = FakeHistoryStore()
@@ -1369,7 +1408,7 @@ struct FileImportCoordinatorSpeakerTests {
     }
     #expect(retried, "retry never persisted the successful labeled outcome")
     #expect(store.current(historyID)?.turns?.count == 2)
-    #expect(cleanupCounter.count == 0, "retry must never reach TurnCleanupRunner")
+    #expect(cleanupCounter.count == 0, "retry must never run a cleanup of its own")
   }
 
   @Test(

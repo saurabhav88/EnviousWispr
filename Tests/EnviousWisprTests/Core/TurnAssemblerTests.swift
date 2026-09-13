@@ -14,7 +14,7 @@ struct TurnAssemblerTests {
     ASRWordTiming(word: word, range: lower..<upper, startMs: start, endMs: end)
   }
 
-  /// UTF-16-offset slicing, matching how `TurnCleanupRunner` reads a turn's raw text —
+  /// UTF-16-offset slicing, matching how `TurnTextAligner` reads a turn's raw text —
   /// `Range(_:in:)` does not accept a bare `Range<Int>`.
   private func slice(_ range: Range<Int>, of text: String) -> String {
     let lower = String.Index(utf16Offset: range.lowerBound, in: text)

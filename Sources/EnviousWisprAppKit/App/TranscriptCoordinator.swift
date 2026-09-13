@@ -810,7 +810,7 @@ final class TranscriptCoordinator {
     return true
   }
 
-  /// The turn-cleanup write (#2810 addendum §3 E), and the one future rename write (phase
+  /// The speaker-fields write (#2810 addendum §3 E), and the one future rename write (phase
   /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
   /// captured earlier — so "merge into the latest existing row, never overwrite newer
   /// names" holds structurally: whichever call runs second reads what the first one left.

@@ -1614,7 +1614,7 @@ package final class WisprBootstrapper {
       updateHistoryRow: { [transcriptCoordinator] transcript in
         try transcriptCoordinator.updateExistingRow(transcript)
       },
-      // The turn-cleanup write (#2810 addendum §3 E) — reads the row's CURRENT state at
+      // The speaker-fields write (#2810 addendum §3 E) — reads the row's CURRENT state at
       // call time, so it can never clobber a rename that landed while cleanup was running.
       mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
         try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)

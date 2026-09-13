@@ -339,10 +339,9 @@ final class FileImportCoordinator {
   private let emitSpeakerTelemetry:
     @MainActor (SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?) -> Void
 
-  /// Shape-only telemetry for the background turn-cleanup pass (#2810 addendum §3a):
-  /// outcome, the turn count (only meaningful on a successful store), and how many turns
-  /// carried at least one unpolished part. No-op default, same as every other
-  /// telemetry-shaped closure in this app.
+  /// Shape-only telemetry for the speaker turns (#2810 addendum §3a, #2851): outcome, the
+  /// turn count (only meaningful on a successful store), and how many turns kept their raw
+  /// words. No-op default, same as every other telemetry-shaped closure in this app.
   private let emitTurnTelemetry:
     @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) -> Void
 
@@ -357,12 +356,6 @@ final class FileImportCoordinator {
   /// (view mode flip, window re-open) reports each document once per launch, never per draw.
   private var displayedTurnHistoryIDs: Set<UUID> = []
 
-  /// Fires the instant `waitForVisibleCleanup(generation:)` actually returns for that
-  /// generation — never on a timeout, never on a guess. No-op default. Exists purely so a
-  /// test can prove the underlying `CheckedContinuation` was genuinely resumed rather than
-  /// asserting bookkeeping state that stays consistent even if `finishVisibleCleanup`'s own
-  /// `waiter.resume()` call were deleted (found by chunk review round 3).
-  private let onVisibleCleanupWaitResolved: @MainActor (Int) -> Void
   private let engineAdmission: EngineAdmissionAccess
 
   /// Stops both engines' pending model-unload timers, and puts the user's
@@ -529,7 +522,7 @@ final class FileImportCoordinator {
   /// with a flag: the first CREATES and must be allowed to, the second may not.
   private let updateHistoryRow: @MainActor (Transcript) throws -> Bool
 
-  /// The turn-cleanup write (#2810 addendum §3 E), separate from `updateHistoryRow` because
+  /// The speaker-fields write (#2810 addendum §3 E), separate from `updateHistoryRow` because
   /// it merges speaker fields against the row's CURRENT state at call time — never a value
   /// captured earlier — which is what makes it safe against a rename racing this write.
   /// Returns false when the row is no longer in History, same meaning as `updateHistoryRow`.
@@ -633,7 +626,6 @@ final class FileImportCoordinator {
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
     emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
-    onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
@@ -679,7 +671,6 @@ final class FileImportCoordinator {
     self.emitRenameTelemetry = emitRenameTelemetry
     self.emitSpeakerRetryTelemetry = emitSpeakerRetryTelemetry
     self.emitTurnsDisplayedTelemetry = emitTurnsDisplayedTelemetry
-    self.onVisibleCleanupWaitResolved = onVisibleCleanupWaitResolved
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
@@ -1585,34 +1576,6 @@ final class FileImportCoordinator {
   /// Cancelled by `stop()`/a new `choose()`/`startOver()`, same as `decodeTask`.
   private var speakerStepTask: Task<Void, Never>?
 
-  /// Which generations' `polishAll` has already finished, and everyone still waiting for a
-  /// generation that has not (#2810 addendum §2.5 item 4). The turn-cleanup background pass
-  /// awaits this BEFORE its first call into `FileImportRunner.process`, so it never competes
-  /// with the visible document's own cleanup for EG-1's one inference slot. `polishAll`
-  /// settles its own generation in a `defer` at the top of its body, covering every exit path
-  /// exactly once; `finishVisibleCleanup` is idempotent and removes each generation's waiters
-  /// before resuming them, so a continuation can never be resumed twice.
-  private(set) var visibleCleanupFinished: Set<Int> = []
-  private(set) var visibleCleanupWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
-
-  /// Suspends until `polishAll` for `generation` has returned, however it exited — including
-  /// via cancellation, whose `defer` still runs when the function body actually exits
-  /// (`Task.cancel()` only sets a flag; it does not force an early return on its own).
-  /// Returns immediately if that generation already finished.
-  private func waitForVisibleCleanup(generation: Int) async {
-    guard !visibleCleanupFinished.contains(generation) else { return }
-    await withCheckedContinuation { continuation in
-      visibleCleanupWaiters[generation, default: []].append(continuation)
-    }
-  }
-
-  private func finishVisibleCleanup(generation: Int) {
-    guard !visibleCleanupFinished.contains(generation) else { return }
-    visibleCleanupFinished.insert(generation)
-    let waiters = visibleCleanupWaiters.removeValue(forKey: generation) ?? []
-    for waiter in waiters { waiter.resume() }
-  }
-
   /// SHA-256 over the raw Float32 bytes of the PCM ASR consumed, so a retry can compare a
   /// re-decoded source against what actually ran without re-reading the whole buffer.
   /// #2809 addendum §2.5 "Retry identity" — a method with a unit test and no caller in
@@ -1729,11 +1692,10 @@ final class FileImportCoordinator {
   /// The claim is not released here — see `start`.
   func stop() {
     // Unconditional, BEFORE the `isRunning` guard (#2810 addendum §2.5 item 4): the
-    // background turn-cleanup pass can still be running after the visible screen already
-    // shows Done, and `choose(url:)`/`startOver()` already cancel it unconditionally in
-    // exactly that situation. A direct Stop press must behave the same way, or it becomes
-    // the one "user moves on" path that leaves a background engine hold with no way to end
-    // it. Cancelling a nil or already-finished task is a documented no-op.
+    // background speaker pass can still be running after the visible screen already shows
+    // Done, and `choose(url:)`/`startOver()` already cancel it unconditionally in exactly
+    // that situation. A direct Stop press must behave the same way. Cancelling a nil or
+    // already-finished task is a documented no-op.
     //
     // `runTask` joins it here: it only ever holds a run (`start()`/`rePolish()`), so
     // cancelling it outside a run is a no-op, and inside one it is the point.
@@ -2310,7 +2272,7 @@ final class FileImportCoordinator {
       saveFailed ? .saveFailed : (rowDeleted ? .rowDeleted : outcome)
     guard let reportedOutcome else { return }
     await AppLogger.shared.log(
-      "[TurnCleanup] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) ms=\(Self.elapsedMs(since: passStart))",
+      "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
@@ -2370,11 +2332,6 @@ final class FileImportCoordinator {
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
   private func polishAll(_ pieces: [String], generationAtStart: Int) async {
-    // #2810 addendum §2.5 item 4: settles the turn-cleanup completion gate on EVERY exit
-    // path of this function, exactly once, so the background turn-cleanup pass (which waits
-    // on this signal before its own first EG-1 call) never starts while this function is
-    // still competing for the same one inference slot.
-    defer { finishVisibleCleanup(generation: generationAtStart) }
     // #2772 finding 14: the queue the Working step renders. Published here, at the one place
     // the split exists, so the rows on screen are the pieces that will actually be cleaned.
     pendingPieces = pieces

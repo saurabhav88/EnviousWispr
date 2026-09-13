@@ -2,8 +2,9 @@ import Foundation
 
 /// One speaker's contiguous stretch of an imported transcript (#2810, phase 3 of #2807).
 ///
-/// Produced by `TurnAssembler` from phase 2's `ASRWordTiming`/`SpeakerSegment` data, then
-/// filled in by the background turn-cleanup step. Never rendered before phase 4.
+/// Produced by `TurnAssembler` from phase 2's `ASRWordTiming`/`SpeakerSegment` data and
+/// persisted raw at once; its cleaned text is placed onto it from the ONE document cleanup
+/// by `TurnTextAligner` (#2851), part by part.
 public struct Turn: Sendable, Equatable, Codable {
   /// Deterministic and range-derived, never a random UUID — a fresh `TurnAssembler` pass over
   /// identical input reproduces identical ids, which is what lets a retry (phase 4) compare
@@ -22,12 +23,13 @@ public struct Turn: Sendable, Equatable, Codable {
   /// the turn's own intra-turn whitespace but is not gap-free against neighboring turns
   /// (inter-turn and document-edge whitespace belongs to no turn).
   public let originalTextRange: Range<Int>
-  /// `nil` until turn-safe cleanup runs for this turn. Once set, joins every part's
-  /// `displayText` (polished where available, the deterministic floor otherwise) regardless
-  /// of that part's own success.
+  /// The cleanup's words for this turn, as `TurnTextAligner` placed them (#2851); `nil`
+  /// while the cleanup has not reached the turn's passage, and `nil` for good when the
+  /// alignment could not say who a cleaned word belongs to (the turn shows its raw words,
+  /// disclosed). Legacy rows carry the per-turn cleanup's text under the same field.
   public let processedText: String?
-  /// `true` if ANY of the turn's cleanup parts polished successfully; `false` only if every
-  /// part fell back to its deterministic floor.
+  /// `true` when the text came from a passage the polisher handled; `false` when the
+  /// passage fell back to its deterministic floor, or the turn keeps its raw words.
   public let wasPolished: Bool
 
   public init(
