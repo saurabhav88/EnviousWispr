@@ -64,9 +64,12 @@ jobs:
           set -uo pipefail
           # The validator's exit code is the verdict: 0 runnable, nonzero otherwise. Its
           # output is captured whole so the comment carries the same text an operator sees.
+          # Actions runs this under `bash -e`, which `set -uo pipefail` does not undo, so a
+          # nonzero validator would end the step before `rc=$?` ran and the issue would
+          # never hear about it (local review r1). Capture the status on the same line.
+          rc=0
           python3 scripts/validate-mutation-recipe.py --issue "$ISSUE" --checkout "$PWD" \
-            > validator.txt 2>&1
-          rc=$?
+            > validator.txt 2>&1 || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
           cat validator.txt
