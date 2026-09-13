@@ -181,9 +181,12 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
         # chosen (the screen's polish gate, #2885 round 4): both come instead of
         # `accepted`, so both are terminal here. Found live: the first version waited only
         # for the busy family and timed out on a `polishNotReady` refusal.
-        first = _wait(observer, request, REFUSALS | TERMINAL | {"accepted"}, 15.0, echo)
+        # The door's own deadline bounds this: a probe that outlives the request's timeout
+        # is answered `timeout reason=probe`, so waiting the full window can never hang.
+        first = _wait(observer, request, REFUSALS | TERMINAL | {"accepted"}, timeout + 15, echo)
         if first is None:
-            raise RuntimeError(f"pid {pid} did not answer the transcribe request in 15 s")
+            raise RuntimeError(
+                f"pid {pid} did not answer the transcribe request within {timeout + 15:.0f} s")
         if first["status"] != "accepted":
             return first
         final = _wait(observer, request, TERMINAL, timeout + 15, echo)

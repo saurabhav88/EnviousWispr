@@ -554,6 +554,35 @@
       #expect(alive["acceptance"] == "accept")
     }
 
+    @Test("an engine refusal at the door's own Start releases the door's file instead of blocking the door with it")
+    func engineRefusalAtStartReleasesOwnFile() async {
+      // The lease is free when the request is accepted and taken by dictation while the
+      // file decodes, so the door's own Start is refused for an ENGINE reason, which keeps
+      // the audio in hand for the screen's Try again. The door has no Try again.
+      let lease = EngineLease()
+      let gate = ManualGate()
+      let coordinator = makeCoordinator(
+        decodeGate: gate, engineAdmission: .live(lease: lease, as: .fileImport))
+      let sink = ReplySink()
+      let door = makeDoor(coordinator, sink: sink)
+      door.handle(transcribeRequest(door))
+      _ = await sink.reply(withStatus: "accepted")
+      guard case .granted(let token) = lease.admit(.dictation) else {
+        Issue.record("the fixture must hold the engine")
+        return
+      }
+      await gate.open()
+      let refused = await sink.reply(withStatus: "refused")
+      #expect(refused["reason"] == "engineBusy")
+      #expect(coordinator.file == nil, "released: not a user's file to Try again")
+      #expect(coordinator.state == .idle)
+      lease.release(token)
+      let count = sink.replies.count
+      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r6"])
+      let alive = await sink.reply(withStatus: "alive", after: count)
+      #expect(alive["acceptance"] == "accept")
+    }
+
     @Test("a request after Done replaces the finished document exactly as the picker would")
     func acceptsAfterDone() async {
       let sink = ReplySink()

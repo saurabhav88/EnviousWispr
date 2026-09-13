@@ -206,6 +206,7 @@
         // The coordinator can move between the walk's last poll and this line; a reply
         // must describe the run it watched, never whatever is there now.
         let outcome = coordinator.generation == watchedGeneration ? observed : .superseded
+        releaseOwnFileIfStillHeld()
         var fields = outcome.fields
         // Only a run this door started may claim a row; `superseded` names nothing, so a
         // caller can never read another import's History id as its own.
@@ -303,12 +304,8 @@
             // door's own file released below.
             if Task.isCancelled { return Outcome(status: "cancelled", detail: nil) }
             guard c.generation == generation else { return .superseded }
-            guard ContinuousClock.now < deadline else {
-              releaseOwnFile()
-              return .timeout
-            }
+            guard ContinuousClock.now < deadline else { return .timeout }
             if case .blocked(let block) = readiness {
-              releaseOwnFile()
               return Outcome(status: "refused", detail: "polishNotReady:\(block)")
             }
             for target in [FileImportCoordinator.Step.transcription, .polish, .review] {
@@ -349,20 +346,28 @@
           return Outcome(status: "cancelled", detail: nil)
         }
       }
-      // Out of time before Start: the decode may still land `.ready` later, and that file
-      // is the DOOR's own; left there it reads as a user's file in hand and blocks every
-      // later request (cloud review, PR #2887, round 9). After Start the run is the
-      // user's to see through and is left alone.
-      if !started, c.generation == generation { releaseOwnFile() }
       return .timeout
     }
 
-    /// Clears the door's own chosen file the way the screen clears its own
-    /// (`startOver()`), and records that write as ours so the reply check does not read
-    /// it as someone else's. Callers hold the generation guard.
-    private func releaseOwnFile() {
-      coordinator.startOver()
-      watchedGeneration = coordinator.generation
+    /// The ONE exit-side rule for the door's own file, applied after every walk, whatever
+    /// its outcome: if the coordinator is still ours (generation unmoved) and holds audio
+    /// in hand (`isReadyToRun`: `.ready`, or a refusal about the ENGINE with the decoded
+    /// audio kept for the screen's Try again) or is still reading it, release it the way
+    /// the screen releases its own (`startOver()`). Left there, that file reads as a
+    /// user's file in hand and blocks every later request, and the door exposes no Try
+    /// again. One rule at the exit instead of one per branch, because the branches kept
+    /// growing (late block, timeout, then an engine refusal at Start: cloud review, PR
+    /// #2887, rounds 5, 9 and 10). A finished or stopped run holds no audio and is left
+    /// alone; a coordinator the user took is not ours to touch.
+    private func releaseOwnFileIfStillHeld() {
+      let c = coordinator
+      guard c.generation == watchedGeneration else { return }
+      var reading = false
+      if case .reading = c.state { reading = true }
+      guard c.isReadyToRun || reading else { return }
+      c.startOver()
+      // Our own write; the reply check must not read it as someone else's.
+      watchedGeneration = c.generation
     }
 
     // MARK: - Replies
