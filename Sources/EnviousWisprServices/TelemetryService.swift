@@ -2417,10 +2417,18 @@ public final class TelemetryService {
   /// trips — one production user carried 1,647 `terminal_breaker_open` rows over
   /// 25 days with no `terminal_deadline` at all, and nothing in the data could say
   /// whether the breaker tripped once or on every launch. One row per trip closes
-  /// that: `step` is which labelled read spent the budget (`scan`, `focused`,
-  /// `screen`), `phase` is `recheck` when it happened at the commit boundary and
-  /// absent during the initial resolution, and `already_open` is true when the
-  /// same terminal tripped again. Names and shapes only, never screen text.
+  /// that: `step` is which labelled read spent the budget, `phase` is `recheck`
+  /// when it happened at the commit boundary and absent during the initial
+  /// resolution, and `already_open` is true when the same terminal tripped again.
+  ///
+  /// `step` is the closed set of `TerminalResolutionBudget.step` labels, and
+  /// every site that charges the budget is one of these (cloud review of the
+  /// #2777 PR asked for the whole set, not the three the resolver alone uses):
+  /// `scan` (the process sweep), `focused`, `role`, `count`, `range`,
+  /// `range_read`, `browser_address_bar` (the caret reads in
+  /// `PasteService.caretDerivedContext`) and `screen` (the terminal screen
+  /// read). Adding a label is adding a value here. Names and shapes only, never
+  /// screen text.
   package func terminalBreakerTripped(_ trip: TerminalBreakerTrip) {
     var props: [String: Any] = ["already_open": trip.wasAlreadyOpen]
     if let step = trip.exhaustedStep { props["step"] = step }

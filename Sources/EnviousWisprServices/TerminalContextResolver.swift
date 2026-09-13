@@ -266,9 +266,12 @@ package final class TerminalResolutionBudget: Sendable {
 // MARK: - Circuit breaker
 
 /// One breaker trip, as reported from the trip site (#2777). Metadata only —
-/// a step label from the closed set the budget records (`scan`, `focused`,
-/// `screen`), a phase marker, and a flag — never screen text, a path, or the
-/// derived line, the same boundary `TerminalContextRefusal` keeps.
+/// a step label from the closed set the budget records (every
+/// `TerminalResolutionBudget.step` label: the resolver's `scan` and `screen`,
+/// and `PasteService.caretDerivedContext`'s `focused`, `role`, `count`,
+/// `range`, `range_read`, `browser_address_bar`), a phase marker, and a flag —
+/// never screen text, a path, or the derived line, the same boundary
+/// `TerminalContextRefusal` keeps.
 package struct TerminalBreakerTrip: Equatable, Sendable {
   /// The labelled step that exhausted the budget, or nil when none recorded itself.
   package let exhaustedStep: String?
