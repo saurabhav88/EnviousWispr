@@ -1467,7 +1467,13 @@ final class FileImportCoordinator {
     // exactly that situation. A direct Stop press must behave the same way, or it becomes
     // the one "user moves on" path that leaves a background engine hold with no way to end
     // it. Cancelling a nil or already-finished task is a documented no-op.
+    //
+    // `runTask` joins it here (#2811, found by confirming review): "Clean it again" now
+    // re-cleans the stored turns on `runTask` AFTER the visible document reaches Done, so
+    // `isRunning` is already false while that re-clean is still writing. `runTask` only
+    // ever holds a run (`start()`/`rePolish()`), so cancelling it outside a run is a no-op.
     speakerStepTask?.cancel()
+    runTask?.cancel()
     guard isRunning else { return }
     generation += 1
     state = .stopped
@@ -1491,8 +1497,8 @@ final class FileImportCoordinator {
     // and Stop leaves `.stopped`, `canRetry` requires a rejection about the
     // ENGINE, and a re-polish reads `rawTranscript`. Nothing left can want it.
     releaseDecodedAudio()
-    runTask?.cancel()
-    // speakerStepTask is already cancelled unconditionally above, before this guard.
+    // `runTask` and `speakerStepTask` are both already cancelled unconditionally above,
+    // before this guard.
   }
 
   /// Re-runs the cleanup under the current settings, from the transcript already

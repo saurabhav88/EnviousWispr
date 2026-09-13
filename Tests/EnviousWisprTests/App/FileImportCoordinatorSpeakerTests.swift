@@ -1150,6 +1150,54 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(store.current(historyID)?.speakerNames?["A"] == "Zach", "a rename must survive a re-clean")
   }
 
+  @Test("Stop pressed while Clean it again is re-cleaning the turns prevents that write (#2811)")
+  func stopDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        // The re-clean's OWN per-turn calls (never the whole-document part, which is what
+        // the visible run cleans) block until the test has pressed Stop.
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+    #expect(stored)
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    // The screen already reads Done (`isRunning` is false) while the re-clean is inside its
+    // first per-turn call; Stop here must still reach the task that owns the re-clean.
+    #expect(!coordinator.isRunning)
+    coordinator.stop()
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "a stopped re-clean must never persist its result")
+  }
+
   @Test("Clean it again cleans the raw turns a retry left behind (#2811)")
   func rePolishCleansTurnsLeftRawByRetry() async {
     let store = FakeHistoryStore()
