@@ -604,10 +604,7 @@ public struct InverseTextNormalizer: Sendable {
     t = applyPunct(t, spokenPunctuation: spokenPunctuation)
 
     // restore register-preserved spans verbatim
-    for (i, p) in protected.enumerated() {
-      t = t.replacingOccurrences(
-        of: "\u{0}\(i)\u{0}", with: p.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
+    t = Self.restoreProtectedSpans(t, protected)
     t = reSub(#"\s+([,.!?;:])"#, t, caseInsensitive: false) { m in m.g(1) }
     t = reSub(#"([(\[“‘])\s+"#, t, caseInsensitive: false) { m in m.g(1) }  // open quote/bracket tight
     t = reSub(#"\s+([)\]”’])"#, t, caseInsensitive: false) { m in m.g(1) }  // space before close tight
@@ -1292,6 +1289,28 @@ public struct InverseTextNormalizer: Sendable {
   /// nearest whitespace. Only strippable punctuation means there genuinely is no neighbour —
   /// that is `(one B two C)`, which must still convert. A letter or digit means something is
   /// glued to this match and the run cannot be read, so refuse.
+  /// Put every register-preserved span back in ONE left-to-right pass (#2759).
+  ///
+  /// The sentinel is `\u{0}<index>\u{0}`, minted by `normalize`'s `protect` closures. The
+  /// previous shape was one `replacingOccurrences` per span, a full scan and copy of the text
+  /// for each idiom the take contains, so a take that repeats "quarter past four" paid
+  /// O(text x spans) inside the same 0.5 s budget #2758 already had to defend. One regex pass
+  /// visits each character once whatever the span count.
+  ///
+  /// Same result as the loop by construction: a span's text comes from the ORIGINAL take,
+  /// where `\w+` and the idiom literals cannot match across a NUL, so no restored span can
+  /// itself contain a sentinel for the loop to have found on a later iteration. An index the
+  /// take carries by accident that names no span (`\u{0}9\u{0}` with two spans) is left as
+  /// it was, which is also what the loop did. `InverseTextNormalizerSpanRestoreTests` pins both.
+  static func restoreProtectedSpans(_ text: String, _ protected: [String]) -> String {
+    guard !protected.isEmpty else { return text }
+    return reSub("\u{0}([0-9]+)\u{0}", text, caseInsensitive: false) { m in
+      guard let digits = m.g(1), let index = Int(digits), protected.indices.contains(index)
+      else { return nil }
+      return protected[index].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+  }
+
   static let unreadableToken = "\u{0}unreadable"
 
   /// The Unicode White_Space property, written out so the Python oracle carries the SAME literal
