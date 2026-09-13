@@ -1266,6 +1266,45 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(!coordinator.canRetrySpeakerAnalysis)
   }
 
+  @Test("the Done step's speaker line names the analysis, then counts turns, then goes away")
+  func speakerStatusLabelCountsTurns() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let firstTurnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in
+        if part != "hello there friend" {
+          await firstTurnGate.markArrived()
+          await firstTurnGate.waitUntilOpen()
+        }
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await speakerGate.waitUntilArrived()
+    #expect(coordinator.speakerStatusLabel == "Finding speakers")
+
+    await speakerGate.open()
+    await firstTurnGate.waitUntilArrived()
+    #expect(coordinator.speakerStatusLabel == "Cleaning speaker turns: 0 of 2")
+
+    await firstTurnGate.open()
+    let cleared = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(cleared)
+    #expect(coordinator.turnCleanupProgress == nil)
+    #expect(coordinator.speakerStatusLabel == nil, "nothing to say once the labels are stored")
+  }
+
   @Test("no word timings: the notice shows, Try again does not, and the audio is released")
   func missingTimingsIsNotRetryable() async {
     let store = FakeHistoryStore()

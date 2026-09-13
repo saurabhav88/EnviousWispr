@@ -1202,6 +1202,26 @@ final class FileImportCoordinator {
   enum SpeakerStepState: Equatable, Sendable { case notStarted, inProgress, finished }
   private(set) var speakerStepState: SpeakerStepState = .notStarted
 
+  /// How far the per-turn cleanup is, while one is running (the ordinary pass after Done,
+  /// or a re-clean after "Clean it again"); nil otherwise.
+  struct TurnCleanupProgress: Equatable, Sendable {
+    let done: Int
+    let total: Int
+  }
+  private(set) var turnCleanupProgress: TurnCleanupProgress?
+
+  /// The ONE line the Done step shows for background speaker work, or nil for none. Says
+  /// what is actually happening (founder UAT, 2026-09-13: "it's still stuck on finding
+  /// speakers" over a 490 s turn cleanup that had found the speakers in 17 s): the analysis
+  /// itself, or the per-turn cleanup with its count. The Working step shows nothing for
+  /// this: its bar is the one status there.
+  var speakerStatusLabel: String? {
+    if let progress = turnCleanupProgress {
+      return "Cleaning speaker turns: \(progress.done) of \(progress.total)"
+    }
+    return speakerStepState == .inProgress ? "Finding speakers" : nil
+  }
+
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
   /// correction): a genuinely NEW retention this phase adds, since `releaseDecodedAudio()`
   /// already clears `decodedSamples` immediately after transcription, well before a retry
@@ -1637,8 +1657,14 @@ final class FileImportCoordinator {
       let storedTurns = current.turns, !storedTurns.isEmpty
     else { return }
     let passStart = CFAbsoluteTimeGetCurrent()
+    defer { turnCleanupProgress = nil }
     let (cleanedTurns, fallbackTurnCount) = await TurnCleanupRunner(processPart: processPart)
-      .run(turns: storedTurns, rawText: rawTranscript, engineLanguage: engineReportedLanguage)
+      .run(
+        turns: storedTurns, rawText: rawTranscript, engineLanguage: engineReportedLanguage,
+        onProgress: { [weak self] done, total in
+          guard let self, historyIDForWrite == self.historyID else { return }
+          self.turnCleanupProgress = TurnCleanupProgress(done: done, total: total)
+        })
     guard historyIDForWrite == historyID, generationAtStart == generation, !Task.isCancelled
     else { return }
     await mergeAndReport(
@@ -1852,8 +1878,14 @@ final class FileImportCoordinator {
       return
     }
 
+    defer { turnCleanupProgress = nil }
     let (cleanedTurns, fallbackTurnCount) = await TurnCleanupRunner(processPart: processPart)
-      .run(turns: assembledTurns, rawText: rawText, engineLanguage: engineReportedLanguage)
+      .run(
+        turns: assembledTurns, rawText: rawText, engineLanguage: engineReportedLanguage,
+        onProgress: { [weak self] done, total in
+          guard let self, historyIDAtStart == self.historyID else { return }
+          self.turnCleanupProgress = TurnCleanupProgress(done: done, total: total)
+        })
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
     await mergeAndReport(

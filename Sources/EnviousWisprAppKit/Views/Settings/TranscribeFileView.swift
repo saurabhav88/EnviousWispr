@@ -1195,15 +1195,10 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
-    // "Finding speakers" (#2811 §3 Design): Working already has its own Stop above, which
-    // `stop()` already cancels the phase-3 speaker/turn-storage pass unconditionally — this
-    // adds only the text, never a second Stop control.
-    if coordinator.speakerStepState == .inProgress {
-      HStack(spacing: 6) {
-        ProgressView().controlSize(.small)
-        Text("Finding speakers").foregroundStyle(Color.stTextSecondary)
-      }
-    }
+    // No speaker line on Working (founder, 2026-09-13: the bar plus a separate "Finding
+    // speakers" spinner read as two jobs). The bar is the one status here; Working's own Stop
+    // already cancels the speaker pass too. Speaker work shows on Done, where nothing else
+    // is moving (`speakerStatusLabel`).
     // Finished parts, then what is still waiting. NO raw-document fallback here: it renders
     // the WHOLE recording, so before the first part landed the highlighted current row
     // started below the entire transcript and the user read their meeting twice. My own fix
@@ -1390,12 +1385,14 @@ struct TranscribeFileView: View {
     if let notice = coordinator.historySaveNotice {
       InsetNotice(text: notice, systemImage: "exclamationmark.triangle", tint: .orange)
     }
-    // "Finding speakers" can outlive the visible Working step (#2811 §3 Design correction) —
-    // Done has no existing Stop button, so this notice carries its own.
-    if coordinator.speakerStepState == .inProgress {
+    // Background speaker work outlives the visible Working step (#2811 §3 Design correction)
+    // and Done has no other Stop, so this one line carries its own. ONE line, saying what is
+    // happening ("Finding speakers", then "Cleaning speaker turns: 120 of 372"); the count
+    // is what a 48-minute file needs (founder UAT, 2026-09-13).
+    if let label = coordinator.speakerStatusLabel {
       HStack(spacing: 8) {
         ProgressView().controlSize(.small)
-        Text("Finding speakers").foregroundStyle(Color.stTextSecondary)
+        Text(label).foregroundStyle(Color.stTextSecondary)
         Spacer(minLength: 12)
         wizardSecondary("Stop") { coordinator.stop() }
       }
