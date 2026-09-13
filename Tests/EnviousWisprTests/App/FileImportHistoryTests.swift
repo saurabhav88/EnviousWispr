@@ -95,16 +95,13 @@ struct FileImportHistoryTests {
       })
   }
 
-  /// Yields until the condition holds. No clock: the run is a real `Task` and its terminal is
-  /// a STATE, so cooperative yielding is what advances it. Same shape and same limit as
-  /// `FileImportCoordinatorTests.settleUntil`.
+  /// #2854: a deadline-bounded wait on the condition, never a yield count. The
+  /// earlier note here said cooperative yielding was what advanced the run; the
+  /// coordinator's work is detached, so it is not.
+  /// Owner: `FileImportSettle.swift`.
   @discardableResult
-  private func settleUntil(limit: Int = 500, _ condition: @MainActor () -> Bool) async -> Bool {
-    for _ in 0..<limit {
-      if condition() { return true }
-      await Task.yield()
-    }
-    return condition()
+  private func settleUntil(_ condition: @MainActor @escaping () -> Bool) async -> Bool {
+    await settleUntilObserved { condition() }
   }
 
   private func run(_ c: FileImportCoordinator) async {

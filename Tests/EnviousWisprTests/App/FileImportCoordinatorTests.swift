@@ -829,18 +829,14 @@ struct FileImportCoordinatorTests {
     #expect(!coordinator.rawTranscript.isEmpty, "Change lost the words a re-run needs")
   }
 
-  /// Yields until the condition holds, or gives up. `Task.yield()` rather than a sleep: everything
-  /// here is main-actor work with no real waiting in it, so a clock would only make the suite slower
-  /// and flakier.
+  /// #2854: a deadline-bounded wait on the condition, never a yield count. The
+  /// earlier note here said everything was main-actor work with no real waiting
+  /// in it; the coordinator's decode, speaker analysis and turn assembly are
+  /// detached tasks, and on the hosted runner a yield count ran out before they
+  /// finished. Owner: `FileImportSettle.swift`.
   @discardableResult
-  private func settleUntil(
-    limit: Int = 500, _ condition: @MainActor () async -> Bool
-  ) async -> Bool {
-    for _ in 0..<limit {
-      if await condition() { return true }
-      await Task.yield()
-    }
-    return await condition()
+  private func settleUntil(_ condition: @MainActor () async -> Bool) async -> Bool {
+    await settleUntilObserved(condition)
   }
 
   private static let anyURL = URL(fileURLWithPath: "/tmp/recording.m4a")
