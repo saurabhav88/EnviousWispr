@@ -44,6 +44,11 @@ struct TranscribeFileView: View {
   /// `AIPolishSettingsView` owns its own.
   @State private var setupModel = ProviderSetupModel()
 
+  /// #2817: the sections this view has watched land on the current run, for the card's
+  /// "about N minutes left". View-owned on purpose: it is a property of what THIS screen has
+  /// observed, reset with the document's generation.
+  @State private var pace = SectionPace()
+
   var body: some View {
     VStack(spacing: 0) {
       stepBar
@@ -1142,124 +1147,61 @@ struct TranscribeFileView: View {
   @ViewBuilder
   private var workingStep: some View {
     stepHeading("Working on your transcript")
-    BrandedSection {
-      HStack(spacing: 14) {
-        GeometryReader { geo in
-          ZStack(alignment: .leading) {
-            Capsule().fill(Color.stAccentLight.opacity(0.6))
-            Capsule()
-              .fill(
-                LinearGradient(
-                  colors: [Color.stAccent, Color.stAccentSolid],
-                  startPoint: .leading, endPoint: .trailing)
-              )
-              .frame(width: max(6, geo.size.width * coordinator.progress))
-          }
-        }
-        .frame(width: 170, height: 9)
-        Text("\(Int(coordinator.progress * 100))%")
-          .font(.system(size: 14, weight: .semibold, design: .monospaced))
-          .monospacedDigit()
-          .frame(minWidth: 38, alignment: .leading)
-        HStack(spacing: 8) {
-          Image(systemName: "list.bullet").foregroundStyle(Color.stTextSecondary)
-          // The part, the total and the engine, from the coordinator, which reads the
-          // FROZEN configuration. Before a split has happened there is no part to name and
-          // this falls back to the phase ("Reading the file", "Dividing it up to clean").
-          Text(coordinator.cleaningLabel.isEmpty ? coordinator.phase : coordinator.cleaningLabel)
-        }
-        Spacer(minLength: 12)
-        Text("\(coordinator.wordCount) words").foregroundStyle(Color.stTextSecondary)
-        wizardSecondary("Stop") { coordinator.stop() }
-      }
-      .padding(.horizontal, SettingsLayout.rowPaddingH)
-      .padding(.vertical, SettingsLayout.rowPaddingV)
-    }
-    // No speaker line on Working (founder, 2026-09-13: the bar plus a separate "Finding
-    // speakers" spinner read as two jobs). The bar is the one status here; Working's own Stop
-    // already cancels the speaker pass too. Speaker work shows on Done, where nothing else
-    // is moving (`speakerStatusLabel`).
-    // Finished parts, then what is still waiting. NO raw-document fallback here: it renders
-    // the WHOLE recording, so before the first part landed the highlighted current row
-    // started below the entire transcript and the user read their meeting twice. My own fix
-    // narrowed the condition; Codex's deletes the fallback from this step instead, which
-    // also covers a "Show original words" selection surviving into a re-polish.
-    if !coordinator.parts.isEmpty {
-      liveTranscript
-    }
-    if case .polishing = coordinator.state {
-      cleaningQueue
-    }
-  }
-
-  /// The pieces still waiting, one row each, in order.
-  ///
-  /// **The one being worked is outlined and bright; the ones behind it are dim.** The
-  /// prototype draws it this way because a progress bar alone cannot show a person how much
-  /// of THEIR recording is left, and the rows are the raw words so they can see which part
-  /// of the meeting is in flight. Founder finding 14.
-  ///
-  /// Which row is current is derived, never stored: the queue is fixed for a run and
-  /// `parts.count` only grows, so their difference is the answer and the two cannot
-  /// disagree.
-  @ViewBuilder
-  private var cleaningQueue: some View {
-    let working = coordinator.parts.count
-    let waiting = Array(coordinator.pendingPieces.enumerated()).filter { $0.offset >= working }
-    if !waiting.isEmpty {
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(waiting, id: \.offset) { row in
-          let isWorking = row.offset == working
-          Text(row.element)
-            .lineSpacing(5)
-            .foregroundStyle(isWorking ? Color.stTextBody : Color.stTextTertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-              RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-                .fill(isWorking ? Color.stAccentLight.opacity(0.35) : Color.stSectionBg)
-            )
-            .overlay(
-              RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-                .strokeBorder(isWorking ? Color.stAccent : Color.stDivider)
-            )
-            .accessibilityLabel(
-              isWorking
-                ? "Cleaning this part now. \(row.element)"
-                : "Waiting to be cleaned. \(row.element)")
-        }
-      }
-    }
-  }
-
-  /// The words themselves while the run goes: cleaned parts as they land, and
-  /// the raw transcript until the first one does, so the page is never empty and
-  /// never just a spinner.
-  ///
-  /// DONE only, and only when there are real turns to show (#2811, phase 4 of #2807):
-  /// `TurnDocumentView` takes over from the three branches below, which stay exactly as they
-  /// are for Working and for any document with nothing turn-shaped — "a solo memo looks
-  /// exactly like today" (plan §2.1).
-  private var liveTranscript: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      if coordinator.step == .done {
-        TurnDocumentView(
-          turns: renderedTurns,
-          onRename: { id, name in await coordinator.renameSpeaker(id: id, name: name) },
-          onRenameCancelled: { coordinator.noteRenameCancelled() },
-          onTurnsDisplayed: { coordinator.noteTurnsDisplayed() },
-          fallback: { legacyTranscriptContent }
+    // #2817: ONE card and nothing else (founder, 2026-09-13: hide the work). The finished
+    // parts, the raw queue and the live document that used to grow under this card are gone:
+    // on a two-hour file the page grew by 500 words each time a part landed and the user read
+    // their meeting twice. The transcript appears once, at Done. The step name, the bar and
+    // the time left are the only things that change; the lips move so the page is visibly
+    // alive between sections (finding 3). No separate speaker line either (founder,
+    // 2026-09-13: the bar plus a "Finding speakers" spinner read as two jobs): the speaker
+    // step is one of the card's own steps, and Stop cancels it with the rest.
+    if let model = WorkingStepModel.make(
+      state: coordinator.state, phase: coordinator.phase,
+      speakerStepState: coordinator.speakerStepState)
+    {
+      BrandedSection {
+        TranscribeFileWorkingCard(
+          model: model,
+          remainingText: remainingText(for: model),
+          onStop: { coordinator.stop() }
         )
-        .task(
-          id: FileImportCoordinator.TurnDiffRequest(
-            input: coordinator.turnDiffInput, markedUp: coordinator.documentView == .markedUp)
-        ) {
-          guard coordinator.documentView == .markedUp else { return }
-          await coordinator.prepareTurnDiffs()
-        }
-      } else {
-        legacyTranscriptContent
+        .padding(.horizontal, SettingsLayout.rowPaddingH)
+        .padding(.vertical, SettingsLayout.rowPaddingV)
+      }
+      // The pace watches sections land through this view instance, and starts over when the
+      // document does (a re-polish restarts the numbering).
+      .onChange(of: coordinator.generation, initial: true) { _, _ in pace = SectionPace() }
+      .onChange(of: model.step, initial: true) { _, step in
+        if case .cleaning(let done, _) = step { pace.observe(sectionsDone: done, at: Date()) }
+      }
+    }
+  }
+
+  /// "about 3 minutes left", once three timed sections have landed on this run; nil before.
+  private func remainingText(for model: WorkingStepModel) -> String? {
+    guard case .cleaning(let done, let total) = model.step else { return nil }
+    return pace.remainingText(sectionsDone: done, sectionsTotal: total)
+  }
+
+  /// The document on Done (#2817: the transcript appears once, here; Working shows only its
+  /// card). When there are real turns to show (#2811, phase 4 of #2807) `TurnDocumentView`
+  /// draws them; for any document with nothing turn-shaped it falls back to the wizard's own
+  /// rendering below — "a solo memo looks exactly like today" (plan §2.1).
+  private var doneDocument: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      TurnDocumentView(
+        turns: renderedTurns,
+        onRename: { id, name in await coordinator.renameSpeaker(id: id, name: name) },
+        onRenameCancelled: { coordinator.noteRenameCancelled() },
+        onTurnsDisplayed: { coordinator.noteTurnsDisplayed() },
+        fallback: { legacyTranscriptContent }
+      )
+      .task(
+        id: FileImportCoordinator.TurnDiffRequest(
+          input: coordinator.turnDiffInput, markedUp: coordinator.documentView == .markedUp)
+      ) {
+        guard coordinator.documentView == .markedUp else { return }
+        await coordinator.prepareTurnDiffs()
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1289,15 +1231,12 @@ struct TranscribeFileView: View {
       diffLookup: { turn in diffs?[turn.id] })
   }
 
-  /// Today's own plain-text rendering, UNCHANGED — `TurnDocumentView`'s fallback for
-  /// `turns == nil`, and the whole of `liveTranscript` while Working.
+  /// The wizard's own plain-text rendering — `TurnDocumentView`'s fallback for `turns == nil`.
+  /// Done only since #2817; the Working step no longer draws any words.
   @ViewBuilder
   private var legacyTranscriptContent: some View {
-    // The original/cleaned toggle belongs to DONE. On Working there is nothing to toggle
-    // and honouring it there hid the finished parts during a re-polish.
     ForEach(
-      coordinator.step == .done
-        && (coordinator.screenShowsRawWords || coordinator.documentView == .markedUp)
+      coordinator.screenShowsRawWords || coordinator.documentView == .markedUp
         ? [] : coordinator.parts
     ) { part in
       VStack(alignment: .leading, spacing: 4) {
@@ -1314,12 +1253,10 @@ struct TranscribeFileView: View {
         }
       }
     }
-    // DONE only, the marked-up view (#2773): the original words with the cleanup on them,
-    // and the counts that are the point. The marks are one attributed text so selection
-    // and copy behave like the other two views.
-    if coordinator.step == .done, coordinator.documentView == .markedUp,
-      !coordinator.parts.isEmpty
-    {
+    // The marked-up view (#2773): the original words with the cleanup on them, and the
+    // counts that are the point. The marks are one attributed text so selection and copy
+    // behave like the other two views.
+    if coordinator.documentView == .markedUp, !coordinator.parts.isEmpty {
       Group {
         if let markedUp = coordinator.markedUp {
           VStack(alignment: .leading, spacing: 8) {
@@ -1340,12 +1277,8 @@ struct TranscribeFileView: View {
       }
       .task(id: coordinator.markedUpInput) { await coordinator.prepareMarkedUp() }
     }
-    // DONE only. This is the "Original" view and the empty-document floor, and both belong
-    // to the finished screen; on Working the queue shows the raw words.
-    if coordinator.step == .done,
-      coordinator.screenShowsRawWords,
-      !coordinator.rawTranscript.isEmpty
-    {
+    // The "Original" view and the empty-document floor.
+    if coordinator.screenShowsRawWords, !coordinator.rawTranscript.isEmpty {
       Text(coordinator.rawTranscript)
         .lineSpacing(6)
         .foregroundStyle(Color.stTextSecondary)
@@ -1439,7 +1372,7 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
-    liveTranscript
+    doneDocument
     BrandedSection {
       HStack(spacing: 10) {
         // **Offered only when there is something to hand over.** Stopping before
@@ -1671,16 +1604,19 @@ struct TranscribeFileView: View {
     var out = AttributedString()
     for segment in segments {
       var run = AttributedString(segment.text)
+      // Colours from `MarkUpPalette`, shared with the per-turn renderer in `TurnDocumentView`
+      // (#2817 finding 5: the old secondary-grey strike and faint accent wash vanished on the
+      // dark section background).
       switch segment.kind {
       case .same:
         run.foregroundColor = Color.stTextBody
       case .removed:
-        run.foregroundColor = Color.stTextSecondary
+        run.foregroundColor = MarkUpPalette.removed
         run.strikethroughStyle = .single
       case .changed, .added:
-        run.foregroundColor = Color.stTextBody
-        run.backgroundColor = Color.stAccentLight
-        run.font = .body.weight(.semibold)
+        run.foregroundColor = MarkUpPalette.changedText
+        run.backgroundColor = MarkUpPalette.changedBackground
+        run.font = .body.weight(MarkUpPalette.changedWeight)
       }
       out.append(run)
       // The original's own whitespace, never an invented one: `WordDiff` already put a
