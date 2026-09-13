@@ -226,6 +226,30 @@ struct TurnTextAlignerTests {
     #expect(text(out, "b")?.wasPolished == false)
   }
 
+  @Test("a turn spanning a polished passage and a failed one reads unpolished, in either order")
+  func turnSpanningSucceededAndFailedPassagesIsUnpolished() {
+    let raw = "one two"
+    let turns = [Turn(id: "a", speakerId: "A", startMs: nil, endMs: nil, originalTextRange: 0..<7)]
+    for firstSucceeded in [true, false] {
+      let out = TurnTextAligner.align(
+        rawText: raw,
+        passages: [
+          .init(
+            placement: .placed(rawRange: 0..<3, contentRange: 0..<3), cleaned: "one",
+            wasPolished: firstSucceeded),
+          .init(
+            placement: .placed(rawRange: 3..<7, contentRange: 4..<7), cleaned: "two",
+            wasPolished: !firstSucceeded),
+        ],
+        turns: turns)
+      #expect(text(out, "a")?.processedText == "one two", "first succeeded: \(firstSucceeded)")
+      #expect(text(out, "a")?.cleanedCut == true)
+      #expect(
+        text(out, "a")?.wasPolished == false,
+        "every passage a turn spans must have polished; first succeeded: \(firstSucceeded)")
+    }
+  }
+
   @Test("a turn the cleanup emptied keeps its raw words and is disclosed")
   func emptiedTurnKeepsRawWords() {
     let raw = "we should go now. yeah. and then we left."
