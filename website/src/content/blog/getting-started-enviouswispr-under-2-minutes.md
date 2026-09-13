@@ -34,7 +34,7 @@ That's the entire install. No installer wizard, no setup assistant, no "create y
 
 ## Step 2: Grant Microphone and Accessibility Permissions
 
-On first launch, macOS will ask for two permissions. Microphone is required. Accessibility lets the text land in your app; without it, EnviousWispr copies it to the clipboard. Your audio never leaves your Mac. A third prompt (Automation / Apple Events) appears only when the AppleScript paste fallback runs for the first time, and it's optional; declining it means the paste cascade stops one tier sooner.
+On first launch, macOS will ask for two permissions, and setup needs both to finish. Microphone lets it hear you; Accessibility lets the text land in the app you are working in. Your audio never leaves your Mac. A third prompt (Automation / Apple Events) appears only when the AppleScript paste fallback runs for the first time, and it's optional; declining it means the paste cascade stops one tier sooner.
 
 ### Microphone access
 
@@ -108,7 +108,7 @@ Double-press your keybind to lock recording for longer dictation sessions. You d
 
 ### Clipboard mode
 
-By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. If you would rather paste yourself, leave Accessibility ungranted: your transcription lands on the clipboard, and you paste it wherever you want with Cmd+V.
+By default, EnviousWispr pastes text directly into the focused app and preserves your previous clipboard contents. If you would rather paste yourself, switch off **Restore clipboard after paste** under Settings, Clipboard: your dictation stays on the clipboard after it lands, and you can paste it again wherever you want with Cmd+V.
 
 ## Troubleshooting Quick Tips
 
