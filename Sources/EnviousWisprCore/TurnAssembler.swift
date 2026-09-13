@@ -47,6 +47,14 @@ public enum TurnAssembler {
   /// the two rules above are the diarization field's own, and on the 48-minute row they
   /// fold 98 of the 105 unknown groups and keep the 7 real exchanges.
   public static let unknownFoldEnabled = true
+  /// What an `"unknown"` group that survives both folds becomes (#2851 follow-up, founder
+  /// 2026-09-13: no turn is shown as an unknown speaker). On the 48-minute row the survivors
+  /// were the 7 real exchanges between two DIFFERENT speakers ("Yeah? Been working on it?
+  /// Mm-hmm. Gonna be crazy?"), five or more words the diarizer did not segment. Naming one
+  /// side would be a guess, so the turn is labelled as both of them; the presenter renders it
+  /// "Both". `unknownSpeakerID` remains the assembler's working value and never reaches a
+  /// returned `Turn` while the fold is on.
+  public static let bothSpeakersID = "both"
 
   public static func assemble(entries: [ASRWordTiming], segments: [SpeakerSegment]) -> [Turn] {
     guard !entries.isEmpty else { return [] }
@@ -72,7 +80,10 @@ public enum TurnAssembler {
     }
     flushGroup()
 
-    if unknownFoldEnabled { groups = foldingTinyUnknownGroups(groups) }
+    if unknownFoldEnabled {
+      groups = foldingTinyUnknownGroups(groups)
+      groups = groups.map { $0.speaker == unknownSpeakerID ? (bothSpeakersID, $0.entries) : $0 }
+    }
     return coalescingAdjacentSpeakers(groups).map { makeTurn(speaker: $0.speaker, entries: $0.entries) }
   }
 
@@ -248,7 +259,8 @@ public enum TurnAssembler {
     let usedNumbers = Set(existingNames.values.compactMap(speakerNumber(in:)))
     var nextNumber = (usedNumbers.max() ?? 0) + 1
     var names: [String: String] = [:]
-    for turn in turns where turn.speakerId != unknownSpeakerID {
+    for turn in turns
+    where turn.speakerId != unknownSpeakerID && turn.speakerId != bothSpeakersID {
       guard names[turn.speakerId] == nil, existingNames[turn.speakerId] == nil else { continue }
       names[turn.speakerId] = "Speaker \(nextNumber)"
       nextNumber += 1

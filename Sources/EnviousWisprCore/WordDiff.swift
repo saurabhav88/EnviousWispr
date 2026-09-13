@@ -111,7 +111,7 @@ public enum WordDiff {
     let key: String
     /// The word's UTF-16 range in the text it was tokenized from, following the ORIGINAL
     /// characters (never the folded `key`, whose length can differ). Read by
-    /// `TurnTextAligner` (#2851) to map an edit back onto raw turn boundaries; `compare`'s
+    /// the marked-up view (#2851) to map an edit back onto raw text; `compare`'s
     /// output does not depend on it.
     let range: Range<Int>
   }

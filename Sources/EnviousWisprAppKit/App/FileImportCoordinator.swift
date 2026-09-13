@@ -175,6 +175,9 @@ final class FileImportCoordinator {
     /// drives the credit on the header. A document with no parts has neither, and the credit
     /// must not name an engine for work that never happened.
     var wasPolished: Bool = false
+    /// The speaker turn this piece belongs to (#2851 follow-up), nil on a document with no
+    /// turns. Several pieces share one id when a long turn was split.
+    var turnID: String? = nil
   }
 
   private(set) var state: State = .idle
@@ -608,15 +611,10 @@ final class FileImportCoordinator {
   private(set) var generation = 0
   private var runTask: Task<Void, Never>?
 
-  /// The ONE way `generation` moves (#2851; cloud review of PR #2871, rounds 3 and 6). An
-  /// alignment job in flight was computed against the old revision, which its commit will
-  /// refuse, so it is cancelled here rather than left to finish: a caller that would wait
-  /// on it (the next cleanup's first part, under the engine lease) waits for a cancelled
-  /// job's next passage instead of its whole diff. The five callers: a new file chosen, a
-  /// new file started, Start over, Stop, and Clean it again.
+  /// The ONE way `generation` moves. The five callers: a new file chosen, a new file
+  /// started, Start over, Stop, and Clean it again.
   private func advanceGeneration() {
     generation += 1
-    alignWorker?.job.cancel()
   }
 
   init(
@@ -719,7 +717,7 @@ final class FileImportCoordinator {
     // And a run still in flight. Since #2851 nothing runs behind Done, so after Done this
     // is a no-op.
     runTask?.cancel()
-    resetTurnAlignment()
+    resetSpeakerResult()
     let name = url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
@@ -921,7 +919,7 @@ final class FileImportCoordinator {
   /// One cleanup passage as the scan placed it in the raw transcript (#2851 §3c: computed
   /// ONCE here and shared by the marked-up view and the turn-text alignment).
   struct PlacedPassage: Equatable, Sendable {
-    let placement: TurnTextAligner.Passage.Placement
+    let placement: PiecePlacement
     /// The passage's original text: from the previous cursor to the piece's end, so the gap
     /// BEFORE the piece rides with it; the unplaceable case carries the piece itself.
     let original: String
@@ -1203,7 +1201,7 @@ final class FileImportCoordinator {
     // And a run still in flight. Since #2851 nothing runs behind Done, so after Done this
     // is a no-op.
     runTask?.cancel()
-    resetTurnAlignment()
+    resetSpeakerResult()
     forgetSaveOutcome()
     // A new file is a NEW History row. Carrying the id forward would make the next import
     // overwrite the last one's words, because the store names its file by id — which is the
@@ -1251,162 +1249,110 @@ final class FileImportCoordinator {
   private(set) var speakerStepState: SpeakerStepState = .notStarted
 
   /// The ONE line the Done step shows for background speaker work, or nil for none: the
-  /// analysis itself. Since #2851 nothing runs a second cleanup behind Done, so there is no
-  /// count to show; the turns appear raw as soon as they exist and their text turns clean
-  /// as each cleanup part lands (`refreshTurnTexts`).
+  /// analysis itself. Since #2851 nothing runs behind Done: the speaker step finishes before
+  /// the cleanup starts, and the turns are written once, cleaned, at the end.
   var speakerStatusLabel: String? {
     speakerStepState == .inProgress ? "Finding speakers" : nil
   }
 
-  // MARK: - Turn text alignment (#2851)
+  // MARK: - Speaker sections (#2851 follow-up)
 
-  /// Everything the alignment depends on, so a result is committed only against the SAME
-  /// state it was computed from (plan §3 B: document identity alone cannot reject a result
-  /// made obsolete by a later part, a re-polish or a retry on the same document).
-  struct AlignInput: Equatable, Sendable {
-    struct TurnKey: Equatable, Sendable {
-      let id: String
-      let speakerId: String
-      let range: Range<Int>
-    }
-    let historyID: UUID
-    let rawText: String
-    let language: String?
-    let cleanupRevision: Int
-    let cleanupComplete: Bool
-    let cleanupRejected: Bool
-    let passages: [TurnTextAligner.Passage]
-    let turns: [TurnKey]
+  /// What the speaker step hands the cleanup: the analysis to persist, and the turns when
+  /// there are any. Nothing is written to History until `finishRun`, so the row never shows
+  /// raw labels that a later write replaces (founder 2026-09-13: reveal the transcript once).
+  struct SpeakerStepResult: Equatable {
+    let analysis: TranscriptSpeakerAnalysis
+    let turns: [Turn]?
+    /// The telemetry outcome for a result with no turns (single speaker, no timings, all
+    /// unknown); nil when there are turns, whose outcome is `.stored` on the final write.
+    let terminalOutcome: TelemetryService.FileImportTurnsOutcome?
   }
 
-  /// The one alignment job in flight (compute off-main, then commit on the main actor) and
-  /// the input it was computed from. Cleared by the job itself, after its commit.
-  @ObservationIgnored private var alignWorker: (input: AlignInput, job: Task<Void, Never>)?
-  /// Set by the cleanup's own completion BEFORE the final alignment is requested, and part
-  /// of `AlignInput`, so the worker's commit knows it is the final one (plan §3 B, grounded
-  /// review round 3). Reset with the document.
-  @ObservationIgnored private var cleanupComplete = false
-  /// The document's polisher could not start (`polishAll`'s `.polisherNotReady` rejection),
-  /// so no part will land: the turns' terminal outcome is `polisher_not_ready`, emitted by
-  /// the alignment commit that finds the turns present (cloud review of PR #2871, round 2).
-  /// Kept explicitly rather than read off `state`, which navigation can change before late
-  /// speakers land. Reset with the document and at each Clean it again.
-  @ObservationIgnored private var cleanupRejected = false
-  /// `file_import_turns` is once per document: `mergeAndReport` emits the FIRST terminal
-  /// outcome it reports for a document (`stored` at the alignment commit that finds the
-  /// cleanup complete and the turns present, whichever landed last; or `save_failed`,
-  /// `row_deleted`, `no_word_timings`, `single_no_turns` from the pass that reached them)
-  /// and logs every later one without emitting (whole-diff review: an intermediate write
-  /// that threw used to emit `save_failed` and the final commit `stored` for one import).
+  /// The speaker step's result for the document being cleaned, awaited by `run` before the
+  /// sections are cut. Reset wherever the document is replaced.
+  @ObservationIgnored private var pendingSpeakerResult: SpeakerStepResult?
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
 
-  /// A new document: nothing computed for the old one may land, and the once-per-import
-  /// event is owed again.
-  private func resetTurnAlignment() {
-    alignWorker?.job.cancel()
-    alignWorker = nil
-    cleanupComplete = false
-    cleanupRejected = false
+  private func resetSpeakerResult() {
+    pendingSpeakerResult = nil
     turnsTelemetryEmittedFor = nil
   }
 
-  private func currentAlignInput() -> AlignInput? {
-    guard let historyID, let current = currentHistoryRow(historyID),
-      case .labeled = current.speakerAnalysis, let turns = current.turns, !turns.isEmpty,
-      !pendingPieces.isEmpty
-    else { return nil }
-    return AlignInput(
-      historyID: historyID, rawText: rawTranscript, language: engineReportedLanguage,
-      cleanupRevision: generation, cleanupComplete: cleanupComplete,
-      cleanupRejected: cleanupRejected,
-      passages: placedPassages().map {
-        TurnTextAligner.Passage(
-          placement: $0.placement, cleaned: $0.cleaned, wasPolished: $0.wasPolished)
-      },
-      turns: turns.map { .init(id: $0.id, speakerId: $0.speakerId, range: $0.originalTextRange) })
+  /// Where a cleanup piece sits in the raw transcript, for the marked-up view. UTF-16 ranges
+  /// from the coordinator's own scan (never a cumulative length): `rawRange` is the piece's
+  /// ORIGINAL text including the gap that precedes its first word; `contentRange` is the
+  /// piece the scan actually found.
+  enum PiecePlacement: Equatable, Sendable {
+    case placed(rawRange: Range<Int>, contentRange: Range<Int>)
+    case unplaceable
   }
 
-  /// Places the cleanup's words onto the stored turns and persists what changed (#2851 §3 B).
-  /// Called after the raw turns persist, after each cleanup part lands, after a retry, and
-  /// once more with `cleanupComplete` set. Returns only once the CURRENT input has been
-  /// aligned and committed (or found unchanged): one job runs at a time; a caller finding
-  /// a job on the same input shares it, and one finding a job on an older input waits for
-  /// it and then runs its own, so the newest input is always the last one persisted and
-  /// Done (`polishAll`'s final call) follows the final commit, never merely requests it.
-  /// The commit re-validates the input and the row's existence immediately before the
-  /// write, with no suspension point in between.
-  func refreshTurnTexts() async {
-    // A cancelled caller (a stopped run) starts no job of its own (cloud review of PR
-    // #2871, round 3).
-    guard !Task.isCancelled else { return }
-    while let inFlight = alignWorker {
-      // The job clears `alignWorker` on the main actor before its value resolves, so the
-      // re-check sees either nothing or a job another waiter started first. A caller
-      // returns only once a job has aligned exactly the CURRENT input: if the input moved
-      // on while it waited (a part landed), it goes round again (whole-diff review).
-      await inFlight.job.value
-      guard !Task.isCancelled else { return }
-      if !inFlight.job.isCancelled, inFlight.input == currentAlignInput() { return }
+  /// Cuts the raw transcript into the pieces the cleanup runs on: one per speaker turn when
+  /// the turns exist (a turn over the splitter's ceilings becomes several pieces carrying the
+  /// same turn id), else the word-count passages of a single-speaker document. Each piece is
+  /// a verbatim slice of `rawText`, in order, so `placedPassages()` finds it by literal search
+  /// like any passage.
+  static func cleanupPieces(turns: [Turn]?, rawText: String) -> (pieces: [String], turnIDs: [String?]) {
+    guard let turns, !turns.isEmpty else {
+      return (TranscriptSplitter.split(rawText), [])
     }
-    guard let input = currentAlignInput() else { return }
-    let job = Task { @MainActor [weak self] in
-      guard let self else { return }
-      await self.alignAndCommit(input)
+    var pieces: [String] = []
+    var ids: [String?] = []
+    for turn in turns {
+      let text = TranscriptDocumentPresenter.slice(rawText, turn.originalTextRange)
+      for piece in TranscriptSplitter.split(text) {
+        pieces.append(piece)
+        ids.append(turn.id)
+      }
     }
-    alignWorker = (input, job)
-    await job.value
+    return (pieces, ids)
   }
 
-  private func alignAndCommit(_ input: AlignInput) async {
-    defer { if alignWorker?.input == input { alignWorker = nil } }
-    let task = Task.detached(priority: .userInitiated) {
-      TurnTextAligner.align(
-        rawText: input.rawText, passages: input.passages,
-        turns: input.turns.map {
-          Turn(
-            id: $0.id, speakerId: $0.speakerId, startMs: nil, endMs: nil,
-            originalTextRange: $0.range)
-        },
-        language: input.language)
-    }
-    let outcome = await withTaskCancellationHandler(
-      operation: { await task.value },
-      onCancel: { task.cancel() }
-    )
-    // Commit, with nothing suspending between this re-validation and the write.
-    guard !Task.isCancelled, currentAlignInput() == input,
-      let current = currentHistoryRow(input.historyID),
-      case .labeled(let labeledCount) = current.speakerAnalysis, let stored = current.turns
-    else { return }
-    let byID = Dictionary(uniqueKeysWithValues: outcome.texts.map { ($0.turnID, $0) })
-    let patched = stored.map { turn -> Turn in
-      guard let text = byID[turn.id] else { return turn }
-      // A passage the cleanup has not reached yet says nothing about its turns: on a
-      // "Clean it again" they keep their last cleaned text until the matching passage
-      // lands (plan §2.5; chunk 3 review). Every other fallback is this cleanup's verdict.
-      if outcome.fallbacks[turn.id] == .unreached { return turn }
+  /// The turns as the final write stores them: each turn's cleaned words are its own pieces
+  /// joined in order, and it is polished only when every piece was (a piece the polisher
+  /// declined for being too short is not a failure: `PartOutcome.isUnpolished`). A turn with no
+  /// piece keeps its raw words: not disclosed when the cleanup completed (a whitespace-only
+  /// turn), disclosed when it did not reach the turn (Stop, or a refused polisher).
+  static func finalTurns(_ turns: [Turn], parts: [Part], cleanupCompleted: Bool) -> [Turn] {
+    turns.map { turn in
+      let mine = parts.filter { $0.turnID == turn.id }
+      guard !mine.isEmpty else {
+        return Turn(
+          id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
+          originalTextRange: turn.originalTextRange, processedText: nil,
+          wasPolished: cleanupCompleted)
+      }
       return Turn(
         id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
-        originalTextRange: turn.originalTextRange, processedText: text.processedText,
-        wasPolished: text.wasPolished)
+        originalTextRange: turn.originalTextRange,
+        processedText: mine.map(\.text).joined(separator: " "),
+        wasPolished: !mine.contains(where: \.isUnpolished))
     }
-    let uncut = outcome.texts.filter { !$0.cleanedCut }.count
-    let changed = patched != stored
-    let terminal = input.cleanupComplete || input.cleanupRejected
-    let emitsFinal = terminal && turnsTelemetryEmittedFor != input.historyID
-    guard changed || emitsFinal else { return }
-    let reasons = outcome.fallbacks.values
-    await AppLogger.shared.log(
-      "[TurnAlign] turns=\(stored.count) aligned=\(stored.count - uncut) uncut_boundary=\(reasons.filter { $0 == .boundary }.count) uncut_unplaced=\(reasons.filter { $0 == .unplaced }.count) uncut_unreached=\(reasons.filter { $0 == .unreached }.count) uncut_emptied=\(reasons.filter { $0 == .emptied }.count) final=\(emitsFinal)",
-      level: .info, category: "FileImportCoordinator")
-    // Re-check after the log's own suspension: same input, same row.
-    guard !Task.isCancelled, currentAlignInput() == input else { return }
-    await mergeAndReport(
-      historyID: input.historyID, analysis: .labeled(count: labeledCount),
-      turns: changed ? patched : stored,
-      outcome: emitsFinal ? (input.cleanupRejected ? .polisherNotReady : .stored) : nil,
-      turnCount: stored.count, fallbackTurnCount: uncut, passStart: CFAbsoluteTimeGetCurrent())
   }
+
+  /// The one write of the speaker fields for this document, at the end of the cleanup (or of
+  /// a cleanup that could not start). Turns carry their cleaned words; a document with no
+  /// turns writes its analysis and its terminal telemetry outcome.
+  private func writeSpeakerFields(cleanupOutcome: TelemetryService.FileImportTurnsOutcome) async {
+    guard let historyID, let result = pendingSpeakerResult else { return }
+    let passStart = CFAbsoluteTimeGetCurrent()
+    guard let turns = result.turns else {
+      await mergeAndReport(
+        historyID: historyID, analysis: result.analysis, turns: nil,
+        outcome: result.terminalOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      releaseRetryInputsIfNoLongerRetryable()
+      return
+    }
+    let final = Self.finalTurns(turns, parts: parts, cleanupCompleted: cleanupOutcome == .stored)
+    let disclosed = final.filter { !$0.wasPolished }.count
+    await mergeAndReport(
+      historyID: historyID, analysis: result.analysis, turns: final, outcome: cleanupOutcome,
+      turnCount: final.count, fallbackTurnCount: disclosed, passStart: passStart)
+    // The retry inputs are judged against the WRITTEN row (found by the staging session's
+    // test-row read): before this write the row has no analysis and the audio would be kept.
+    releaseRetryInputsIfNoLongerRetryable()
+  }
+
 
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
   /// correction): a genuinely NEW retention this phase adds, since `releaseDecodedAudio()`
@@ -1752,9 +1698,6 @@ final class FileImportCoordinator {
     speakerStepTask?.cancel()
     runTask?.cancel()
     guard isRunning else { return }
-    // A run's in-flight alignment is obsolete with it (`advanceGeneration` cancels it);
-    // after Done there is nothing to stop, and a late alignment finishing the on-disk state
-    // is left alone (chunk 3 review; cloud review of PR #2871, round 3).
     advanceGeneration()
     state = .stopped
     // **The step moves with the state.** Stopping is an ENDING, so the user
@@ -1779,6 +1722,15 @@ final class FileImportCoordinator {
     releaseDecodedAudio()
     // `runTask` and `speakerStepTask` are both already cancelled unconditionally above,
     // before this guard.
+    // #2851 follow-up: the labels found before the Stop are not thrown away. The turns are
+    // written with the sections that had finished; the rest keep their raw words, disclosed.
+    if pendingSpeakerResult != nil, historyID != nil {
+      let generationAtStop = generation
+      Task { @MainActor [weak self] in
+        guard let self, generationAtStop == self.generation else { return }
+        await self.writeSpeakerFields(cleanupOutcome: .stopped)
+      }
+    }
   }
 
   /// Re-runs the cleanup under the current settings, from the transcript already
@@ -1805,11 +1757,6 @@ final class FileImportCoordinator {
     advanceGeneration()
     let generationAtStart = generation
     parts = []
-    // The turns follow the new cleanup part by part (#2851): a turn keeps its last cleaned
-    // text until its passage lands again (`alignAndCommit` leaves unreached turns alone).
-    // This is a fresh cleanup, so its own completion is what the final alignment waits for.
-    cleanupComplete = false
-    cleanupRejected = false
     // #2772 finding 14: the OLD queue must not be shown as the current one while this run
     // is still preparing. Cleared here and republished by `polishAll` from the new split.
     pendingPieces = []
@@ -1836,8 +1783,13 @@ final class FileImportCoordinator {
       // a page that still says Review.
       localPolisherIsReady = await prepareLocalPolish(configuration)
       guard generationAtStart == generation else { return }
-      await polishAll(
-        TranscriptSplitter.split(rawTranscript), generationAtStart: generationAtStart)
+      // #2851 follow-up: the SAME sections as the first cleanup, from the turns this
+      // document has (the awaited speaker result, or the stored row after a retry); no
+      // second speaker pass.
+      let turns = pendingSpeakerResult?.turns
+        ?? historyID.flatMap { currentHistoryRow($0)?.turns }
+      let cut = Self.cleanupPieces(turns: turns, rawText: rawTranscript)
+      await polishAll(cut.pieces, turnIDs: cut.turnIDs, generationAtStart: generationAtStart)
     }
   }
 
@@ -1872,7 +1824,7 @@ final class FileImportCoordinator {
       // already durable. `polishAll`'s own gate at its entry stays — it also protects the
       // re-polish path, which never reaches here.
       guard rawIsSavedToHistory || saveRawToHistory() else {
-        finishRun(savingDocument: false)
+        await finishRun(savingDocument: false)
         return
       }
       // Launched, never awaited here: the speaker step must not add its own deadline
@@ -1900,15 +1852,23 @@ final class FileImportCoordinator {
       retainedWordTimings = result.wordTimings
       retainedWordTimingCoverage = result.wordTimingCoverage
       speakerStepState = .inProgress
-      speakerStepTask = Task { [weak self] in
+      // #2851 follow-up: AWAITED, not detached. The cleanup runs per speaker section, so it
+      // needs the turns first. The step is bounded (`SpeakerLabeler`), touches no ASR engine,
+      // and `stop()` cancels it; a cancelled or stale step returns nil and the document is
+      // cleaned as single-speaker passages.
+      phase = "Finding who said what"
+      let stepTask = Task { [weak self] () async -> Void in
         await self?.runSpeakerStep(
           analysisSamples: analysisSamples, generationAtStart: generationAtStart,
           historyIDAtStart: historyIDAtStart, rawText: result.text,
           wordTimings: result.wordTimings, wordTimingCoverage: result.wordTimingCoverage)
       }
+      speakerStepTask = stepTask
+      await stepTask.value
+      guard generationAtStart == generation else { return }
       phase = "Dividing it up to clean"
-      await polishAll(
-        TranscriptSplitter.split(result.text), generationAtStart: generationAtStart)
+      let cut = Self.cleanupPieces(turns: pendingSpeakerResult?.turns, rawText: result.text)
+      await polishAll(cut.pieces, turnIDs: cut.turnIDs, generationAtStart: generationAtStart)
     } catch is CancellationError {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
@@ -1995,19 +1955,13 @@ final class FileImportCoordinator {
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
-    // #2851: the turns persist RAW, immediately, so the labels show within seconds of the
-    // words; no engine claim, no polisher, no second cleanup. Their cleaned text comes from
-    // the one document cleanup by alignment (`refreshTurnTexts`), part by part. The
-    // once-per-import `file_import_turns` event is the alignment's to emit, on completion.
-    await mergeAndReport(
-      historyID: historyIDForWrite, analysis: .labeled(count: labeledCount),
-      turns: assembledTurns, outcome: nil, turnCount: assembledTurns.count,
-      fallbackTurnCount: 0, passStart: passStart)
+    // #2851 follow-up: nothing is written here. The turns wait for their section cleanup and
+    // are written once, cleaned, by `finishRun` (or raw, by a refused cleanup).
+    pendingSpeakerResult = SpeakerStepResult(
+      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
     await AppLogger.shared.log(
-      "[TurnStorage] raw turns=\(assembledTurns.count) ms=\(Self.elapsedMs(since: passStart))",
+      "[TurnStorage] assembled turns=\(assembledTurns.count) both=\(assembledTurns.filter { $0.speakerId == TurnAssembler.bothSpeakersID }.count) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
-    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
-    await refreshTurnTexts()
   }
 
   /// The analysis/assembly PREFIX shared by the ordinary post-import pass
@@ -2039,15 +1993,13 @@ final class FileImportCoordinator {
       // earlier — `nil` here means "write silently, do not double-report."
       let turnsOutcome: TelemetryService.FileImportTurnsOutcome? =
         if case .single = outcome { .singleNoTurns } else { nil }
-      await mergeAndReport(
-        historyID: historyIDForWrite, analysis: outcome.asStorageAnalysis, turns: nil,
-        outcome: turnsOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      pendingSpeakerResult = SpeakerStepResult(
+        analysis: outcome.asStorageAnalysis, turns: nil, terminalOutcome: turnsOutcome)
       return nil
     }
     guard let wordTimings else {
-      await mergeAndReport(
-        historyID: historyIDForWrite, analysis: .failed(.noWordTimings), turns: nil,
-        outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      pendingSpeakerResult = SpeakerStepResult(
+        analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
       return nil
     }
 
@@ -2087,11 +2039,14 @@ final class FileImportCoordinator {
     // timings that never bind to anything are exactly "nothing to merge against," matching
     // that reason's own documented scope. The real fix (a mapper that can tokenize a
     // space-free script) belongs to `WordTimingRangeMapper` itself, out of this phase's scope.
-    guard assembledTurns.contains(where: { $0.speakerId != TurnAssembler.unknownSpeakerID })
+    guard
+      assembledTurns.contains(where: {
+        $0.speakerId != TurnAssembler.unknownSpeakerID
+          && $0.speakerId != TurnAssembler.bothSpeakersID
+      })
     else {
-      await mergeAndReport(
-        historyID: historyIDForWrite, analysis: .failed(.noWordTimings), turns: nil,
-        outcome: .noWordTimings, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
+      pendingSpeakerResult = SpeakerStepResult(
+        analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
       return nil
     }
     return (assembledTurns, labeledCount)
@@ -2165,10 +2120,8 @@ final class FileImportCoordinator {
       // signals are required (found by chunk review): Stop cancels this task but leaves
       // `historyID` in place, so the identity check alone would read the untouched failed
       // row as "still failed" and blame the analyzer for a retry the user abandoned.
-      guard let self, !Task.isCancelled, historyIDAtStart == self.historyID,
-        let current = self.currentHistoryRow(historyIDAtStart)
-      else { return }
-      switch current.speakerAnalysis {
+      guard let self, !Task.isCancelled, historyIDAtStart == self.historyID else { return }
+      switch self.pendingSpeakerResult?.analysis {
       // The same two outcomes that clear `speakerNoticeReason`: a one-voice result is a
       // successful analysis too, not a failure the user needs to retry.
       case .single, .labeled: self.emitSpeakerRetryTelemetry(.recovered)
@@ -2211,17 +2164,19 @@ final class FileImportCoordinator {
       let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
         outcome: outcome, wordTimings: wordTimings, historyIDForWrite: historyIDForWrite,
         historyIDAtStart: historyIDAtStart, passStart: passStart)
-    else { return }
+    else {
+      // A terminal result (one voice, no timings, all unknown): written now, since no
+      // cleanup follows to write it.
+      guard historyIDAtStart == historyID, !Task.isCancelled else { return }
+      await writeSpeakerFields(cleanupOutcome: .stored)
+      return
+    }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
-    // The assembled turns persist raw, exactly as they came out of analysis, and the one
-    // document cleanup already on disk is placed onto them by alignment (#2851): a retry
-    // never runs a cleanup of its own.
-    await mergeAndReport(
-      historyID: historyIDForWrite, analysis: .labeled(count: labeledCount),
-      turns: assembledTurns, outcome: nil, turnCount: assembledTurns.count,
-      fallbackTurnCount: 0, passStart: passStart)
-    guard historyIDAtStart == historyID, !Task.isCancelled else { return }
-    await refreshTurnTexts()
+    // #2851 follow-up: the new turns need their own section cleanup before they are shown;
+    // `rePolish` cuts the sections from `pendingSpeakerResult` and `finishRun` writes them.
+    pendingSpeakerResult = SpeakerStepResult(
+      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+    rePolish()
   }
 
   /// Renames a speaker id across every turn showing it (#2811, phase 4 of #2807). Re-fetches
@@ -2388,7 +2343,7 @@ final class FileImportCoordinator {
   /// One at a time is not a simplification: the polish server has a single
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
-  private func polishAll(_ pieces: [String], generationAtStart: Int) async {
+  private func polishAll(_ pieces: [String], turnIDs: [String?] = [], generationAtStart: Int) async {
     // #2772 finding 14: the queue the Working step renders. Published here, at the one place
     // the split exists, so the rows on screen are the pieces that will actually be cleaned.
     pendingPieces = pieces
@@ -2401,23 +2356,20 @@ final class FileImportCoordinator {
     // asking for the work on this document; the rule protects a deletion made while work was
     // already running, where the user is not looking at the page and gets no say.
     guard rawIsSavedToHistory || saveRawToHistory() else {
-      finishRun(savingDocument: false)
+      await finishRun(savingDocument: false)
       return
     }
     guard !pieces.isEmpty else {
-      cleanupComplete = true
-      finishRun(savingDocument: true)
+      await finishRun(savingDocument: true)
       return
     }
     // AFTER the durability gate: the words are transcribed and in History before the
     // cleanup is refused, so the refusal costs the cleanup and nothing else.
     guard localPolisherIsReady else {
       showRejection(.polisherNotReady)
-      // The turns' terminal outcome for a labeled import whose cleanup never starts
-      // (cloud review of PR #2871, round 2): emitted now if the turns exist, else by the
-      // speaker step's own refresh when they land.
-      cleanupRejected = true
-      await refreshTurnTexts()
+      // The turns' terminal outcome for a labeled import whose cleanup never starts (cloud
+      // review of PR #2871, round 2): written now, raw, with the refusal as the outcome.
+      await writeSpeakerFields(cleanupOutcome: .polisherNotReady)
       return
     }
     phase = "Cleaning it up"
@@ -2433,29 +2385,24 @@ final class FileImportCoordinator {
         parts.append(
           Part(
             id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
-            wasPolished: outcome.polishedText != nil))
+            wasPolished: outcome.polishedText != nil,
+            turnID: index < turnIDs.count ? turnIDs[index] : nil))
       } catch is CancellationError {
         return
       } catch {
         guard generationAtStart == generation else { return }
         // A part that could not run at all still appears, carrying its raw
         // words. A gap in the document would be the silent failure.
-        parts.append(Part(id: index, text: piece, isUnpolished: true))
+        parts.append(
+          Part(
+            id: index, text: piece, isUnpolished: true,
+            turnID: index < turnIDs.count ? turnIDs[index] : nil))
       }
       guard generationAtStart == generation else { return }
       state = .polishing(done: index + 1, total: pieces.count)
-      // #2851: place this part's cleaned words onto the turns, if the turns exist yet.
-      // Milliseconds, off-main, single-flight; a stale result is discarded by its input.
-      await refreshTurnTexts()
-      guard generationAtStart == generation else { return }
     }
     guard generationAtStart == generation else { return }
-    // Cleanup complete BEFORE the final alignment is requested, so its commit is the final
-    // one (it emits `file_import_turns` once); Done follows that commit, not the model.
-    cleanupComplete = true
-    await refreshTurnTexts()
-    guard generationAtStart == generation else { return }
-    finishRun(savingDocument: true)
+    await finishRun(savingDocument: true)
   }
 
   /// **The ONE place a run ends.** Three paths reached the terminal before #2772 — an empty
@@ -2469,8 +2416,15 @@ final class FileImportCoordinator {
   /// This REDUCES the direct writers to `step` from eight to seven, so
   /// `FileImportCoordinatorTests.navigationHasOneWriter` is re-frozen deliberately rather
   /// than bumped, per the plan's requirement that the freeze change only on purpose.
-  private func finishRun(savingDocument: Bool) {
-    if savingDocument { savePolishedToHistory() }
+  private func finishRun(savingDocument: Bool) async {
+    let generationAtFinish = generation
+    if savingDocument {
+      // #2851 follow-up: the turns are written ONCE, here, carrying their cleaned words;
+      // `savePolishedToHistory` then re-reads the live row and carries them forward.
+      await writeSpeakerFields(cleanupOutcome: .stored)
+      guard generationAtFinish == generation else { return }
+      savePolishedToHistory()
+    }
     phase = ""
     state = .finished
     step = .done

@@ -1599,7 +1599,10 @@ struct TranscribeFileView: View {
     guard coordinator.parts.contains(where: \.wasPolished) else { return "No AI polish applied" }
     let complete: Bool
     if case .finished = coordinator.state {
-      complete = coordinator.parts.allSatisfy(\.wasPolished)
+      // #2851 follow-up: a section the polisher declined for being too short is not a
+      // failure (`PartOutcome.isUnpolished`); with one part per speaker section, "Yeah." must
+      // not turn the credit into "Partly polished".
+      complete = coordinator.parts.allSatisfy { !$0.isUnpolished }
     } else {
       complete = false
     }

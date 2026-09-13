@@ -14,7 +14,7 @@ struct TurnAssemblerTests {
     ASRWordTiming(word: word, range: lower..<upper, startMs: start, endMs: end)
   }
 
-  /// UTF-16-offset slicing, matching how `TurnTextAligner` reads a turn's raw text —
+  /// UTF-16-offset slicing, matching how the coordinator slices a turn's raw text for its cleanup section —
   /// `Range(_:in:)` does not accept a bare `Range<Int>`.
   private func slice(_ range: Range<Int>, of text: String) -> String {
     let lower = String.Index(utf16Offset: range.lowerBound, in: text)
@@ -179,7 +179,7 @@ struct TurnAssemblerTests {
     #expect(turns.map(\.speakerId) == ["A"])
   }
 
-  @Test("the tolerance boundary is exact: 250ms away assigns, 251ms away is unknown")
+  @Test("the tolerance boundary is exact: 250ms away assigns, 251ms away is nobody's, so both")
   func exactToleranceBoundary() {
     // Segment ends at 900ms. An entry starting at 1150ms is exactly 250ms away (within
     // tolerance); one starting at 1151ms is 251ms away (beyond it).
@@ -191,26 +191,43 @@ struct TurnAssemblerTests {
 
     let overBoundary = TurnAssembler.assemble(
       entries: [entry("word", 0, 4, 1151, 1251)], segments: segments)
-    #expect(overBoundary.map(\.speakerId) == ["unknown"])
+    #expect(overBoundary.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
   }
 
-  @Test("beyond tolerance, and with no segments at all, the entry is unknown")
-  func beyondToleranceAndNoSegmentsAreUnknown() {
+  @Test("beyond tolerance, and with no segments at all, the entry is nobody's: labelled both, never unknown")
+  func beyondToleranceAndNoSegmentsAreBoth() {
     let entries = [entry("word", 0, 4, 5000, 5100)]
     let segments = [SpeakerSegment(speakerId: "A", startMs: 200, endMs: 900, quality: 1)]
     let turns = TurnAssembler.assemble(entries: entries, segments: segments)
-    #expect(turns.map(\.speakerId) == ["unknown"])
+    #expect(turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
 
     let noSegmentTurns = TurnAssembler.assemble(entries: entries, segments: [])
-    #expect(noSegmentTurns.map(\.speakerId) == ["unknown"])
+    #expect(noSegmentTurns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
   }
 
-  @Test("an untimed entry (nil bounds) is unknown regardless of segments present")
-  func untimedEntryIsUnknown() {
+  @Test("a five-word stretch nobody covers between two different speakers is labelled both, and both is never numbered")
+  func survivingUnknownBetweenDifferentSpeakersIsBoth() {
+    let a = [entry("hello", 0, 5, 0, 500)]
+    let five = (0..<5).map { entry("w\($0)", 6 + $0 * 2, 7 + $0 * 2, 1000 + $0 * 20, 1010 + $0 * 20) }
+    let b = [entry("yes", 30, 33, 3000, 3500)]
+    let segments = [
+      SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1),
+      SpeakerSegment(speakerId: "B", startMs: 3000, endMs: 3500, quality: 1),
+    ]
+    let turns = TurnAssembler.assemble(entries: a + five + b, segments: segments)
+    #expect(turns.map(\.speakerId) == ["A", TurnAssembler.bothSpeakersID, "B"])
+    #expect(!turns.contains { $0.speakerId == TurnAssembler.unknownSpeakerID })
+    let names = TurnAssembler.defaultSpeakerNames(for: turns, existingNames: [:])
+    #expect(names[TurnAssembler.bothSpeakersID] == nil)
+    #expect(names.count == 2)
+  }
+
+  @Test("an untimed entry (nil bounds) is nobody's regardless of segments present, so both")
+  func untimedEntryIsBoth() {
     let entries = [entry("word", 0, 4, nil, nil)]
     let segments = [SpeakerSegment(speakerId: "A", startMs: 0, endMs: 100, quality: 1)]
     let turns = TurnAssembler.assemble(entries: entries, segments: segments)
-    #expect(turns.map(\.speakerId) == ["unknown"])
+    #expect(turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
     #expect(turns[0].startMs == nil)
     #expect(turns[0].endMs == nil)
   }

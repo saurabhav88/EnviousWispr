@@ -106,7 +106,9 @@ private struct TurnRowView: View {
   /// "unknown classification," so the tap target is gated on `speakerId`, not on the name.
   @ViewBuilder private var speakerLabel: some View {
     let displayName = turn.speakerName ?? "Unknown speaker"
-    if turn.speakerId == TurnAssembler.unknownSpeakerID {
+    if turn.speakerId == TurnAssembler.unknownSpeakerID
+      || turn.speakerId == TurnAssembler.bothSpeakersID
+    {
       Text(displayName)
         .font(.subheadline.bold())
         .foregroundStyle(.secondary)
