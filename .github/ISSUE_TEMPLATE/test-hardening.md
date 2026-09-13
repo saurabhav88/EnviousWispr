@@ -26,6 +26,12 @@ labels: test-hardening
 
       python3 scripts/validate-mutation-recipe.py --issue <N>
 
+  The `Test-Hardening Recipe Check` workflow runs that same command against main when
+  this issue is opened, edited, labelled or commented on, and posts one comment here
+  only when the validator refused something. Its output names what it refused: a
+  missing or doubled ```json block or bad JSON is yours to fix where the block lives;
+  an anchor or test not on main is EXPECTED while your PR is still open.
+
   Owner of the rules below: .claude/rules/testing-philosophy.md
   RULE: write-the-test-by-day-run-the-battery-by-night.
 -->
