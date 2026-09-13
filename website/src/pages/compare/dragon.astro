@@ -1,177 +1,71 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "dragon",
+  "title": "Dragon for Mac Alternative: Free On-Device Dictation",
+  "description": "Dragon for Mac was discontinued and is no longer sold. EnviousWispr is free on-device dictation for Apple Silicon Macs, with no account or subscription.",
   "headline": "EnviousWispr vs Dragon: Free Mac Dictation Alternative",
-  "description": "Compare EnviousWispr vs Dragon (Nuance) on price, privacy, platform support, and speed. Free on-device dictation for Apple Silicon Macs. No $700 license fee.",
-  "url": `${siteUrl}/compare/dragon/`,
-  "image": `${siteUrl}/images/og/dragon.png`,
+  "articleDescription": "Compare EnviousWispr vs Dragon (Nuance) on price, privacy, platform support, and speed. Free on-device dictation for Apple Silicon Macs. No $700 license fee.",
+  "breadcrumb": "EnviousWispr vs Dragon",
+  "ogImage": "/images/og/dragon.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T13:11:11Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Dragon",
-      "item": `${siteUrl}/compare/dragon/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is there a free Dragon alternative for Mac?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr is free, runs natively on macOS with Apple Silicon, and processes speech on-device. Dragon discontinued its Mac version in 2018, so EnviousWispr fills that gap without costing $700."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How does Apple Dictation compare with Dragon on Mac?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Apple Dictation is the practical choice between the two on a modern Mac. It is free and built into macOS, while Dragon for Mac was discontinued in 2018 and its last Mac release does not run on Apple Silicon. Apple Dictation can process general text dictation on-device depending on language and settings. It supports automatic punctuation in supported languages and simple spoken formatting commands. Sessions can be any length, but Dictation stops when it detects no speech for 30 seconds. Dragon's remaining strengths are advanced voice commands and specialized medical or legal vocabularies, but its current products are Windows or enterprise offerings rather than a supported Mac app. If you need everyday Mac dictation with automatic cleanup, EnviousWispr is free and keeps transcription on-device. Its local polish options can remove filler words and improve punctuation and phrasing. The tradeoff is that EnviousWispr does not provide Dragon-style application control or voice macros."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Dragon still work on Mac?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is Dragon dictation free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Dragon dropped its Mac version in 2018, so there is no Dragon for Apple Silicon. Dragon Professional for Windows has cost around $699 one-time. Either way, Dragon does not run on a Mac, and EnviousWispr is completely free with no license fee or subscription."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Do I need to train EnviousWispr to recognize my voice?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. EnviousWispr uses modern neural speech models that work accurately from the first sentence. Dragon improves accuracy as you use it and make corrections."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, S1-mini by Superwhisper, a local Ollama model, or Apple Intelligence (macOS 26+)."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can EnviousWispr do voice commands like Dragon?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr focuses on dictation: converting speech to text as fast as possible. It does not support macro commands or application control the way Dragon Professional does."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What happened to Dragon after Microsoft bought Nuance?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Dragon is entirely closed source."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can EnviousWispr match Dragon's accuracy for medical or legal terms?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add terms manually."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "I used Dragon on Mac before 2018. Is EnviousWispr a replacement?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "For dictation, yes. EnviousWispr handles the core workflow Dragon Mac users relied on: speak, transcribe, paste into any app. It adds AI polish that Dragon never had. The main gap is voice commands."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work with external microphones?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr uses whatever microphone macOS has selected as the input device. USB microphones, Bluetooth headsets, and audio interfaces all work."
-      }
-    }
-  ]
-});
-
+const faqs = [
+  {
+    "q": "Is there a free Dragon alternative for Mac?",
+    "a": "Yes. EnviousWispr is free, runs natively on macOS with Apple Silicon, and processes speech on-device. Dragon discontinued its Mac version in 2018, so EnviousWispr fills that gap without costing $700."
+  },
+  {
+    "q": "How does Apple Dictation compare with Dragon on Mac?",
+    "a": "Apple Dictation is the practical choice between the two on a modern Mac. It is free and built into macOS, while Dragon for Mac was discontinued in 2018 and its last Mac release does not run on Apple Silicon. Apple Dictation can process general text dictation on-device depending on language and settings. It supports automatic punctuation in supported languages and simple spoken formatting commands. Sessions can be any length, but Dictation stops when it detects no speech for 30 seconds. Dragon's remaining strengths are advanced voice commands and specialized medical or legal vocabularies, but its current products are Windows or enterprise offerings rather than a supported Mac app. If you need everyday Mac dictation with automatic cleanup, EnviousWispr is free and keeps transcription on-device. Its local polish options can remove filler words and improve punctuation and phrasing. The tradeoff is that EnviousWispr does not provide Dragon-style application control or voice macros."
+  },
+  {
+    "q": "Does Dragon still work on Mac?",
+    "a": "No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option."
+  },
+  {
+    "q": "Is Dragon dictation free?",
+    "a": "Dragon dropped its Mac version in 2018, so there is no Dragon for Apple Silicon. Dragon Professional for Windows has cost around $699 one-time. Either way, Dragon does not run on a Mac, and EnviousWispr is completely free with no license fee or subscription."
+  },
+  {
+    "q": "Do I need to train EnviousWispr to recognize my voice?",
+    "a": "No. EnviousWispr uses modern neural speech models that work accurately from the first sentence. Dragon improves accuracy as you use it and make corrections."
+  },
+  {
+    "q": "Does EnviousWispr work offline?",
+    "a": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, S1-mini by Superwhisper, a local Ollama model, or Apple Intelligence (macOS 26+)."
+  },
+  {
+    "q": "Can EnviousWispr do voice commands like Dragon?",
+    "a": "EnviousWispr focuses on dictation: converting speech to text as fast as possible. It does not support macro commands or application control the way Dragon Professional does."
+  },
+  {
+    "q": "What happened to Dragon after Microsoft bought Nuance?",
+    "a": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates."
+  },
+  {
+    "q": "Is EnviousWispr open source?",
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Dragon is entirely closed source."
+  },
+  {
+    "q": "Can EnviousWispr match Dragon's accuracy for medical or legal terms?",
+    "a": "For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add terms manually."
+  },
+  {
+    "q": "I used Dragon on Mac before 2018. Is EnviousWispr a replacement?",
+    "a": "For dictation, yes. EnviousWispr handles the core workflow Dragon Mac users relied on: speak, transcribe, paste into any app. It adds AI polish that Dragon never had. The main gap is voice commands."
+  },
+  {
+    "q": "Does EnviousWispr work with external microphones?",
+    "a": "Yes. EnviousWispr uses whatever microphone macOS has selected as the input device. USB microphones, Bluetooth headsets, and audio interfaces all work."
+  }
+];
 ---
 
-<BaseLayout
-  title="Dragon for Mac Alternative: Free On-Device Dictation"
-  description="Dragon for Mac was discontinued and is no longer sold. EnviousWispr is free on-device dictation for Apple Silicon Macs, with no account or subscription."
-  activePage="compare"
-  ogImage="/images/og/dragon.png"
-  canonicalPath="/compare/dragon/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -838,4 +732,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </footer>
 
-</BaseLayout>
+</CompareLayout>

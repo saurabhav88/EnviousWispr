@@ -1,153 +1,60 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "spokenly",
+  "title": "Spokenly vs EnviousWispr: Free Mac Dictation, One Open Source",
+  "description": "Compare Spokenly and EnviousWispr, two free, on-device Mac dictation apps. EnviousWispr is open source under GPLv3; Spokenly is free but proprietary.",
   "headline": "EnviousWispr vs Spokenly: Free, Open Source Mac Dictation",
-  "description": "Compare EnviousWispr and Spokenly, two free, on-device Mac dictation apps. EnviousWispr is open source; Spokenly is proprietary but free.",
-  "url": `${siteUrl}/compare/spokenly/`,
-  "image": `${siteUrl}/og-image.png`,
+  "articleDescription": "Compare EnviousWispr and Spokenly, two free, on-device Mac dictation apps. EnviousWispr is open source; Spokenly is proprietary but free.",
+  "breadcrumb": "EnviousWispr vs Spokenly",
+  "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T21:00:00Z",
-  "dateModified": "2026-08-21T21:00:00Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T21:00:00Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Spokenly",
-      "item": `${siteUrl}/compare/spokenly/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr free, like Spokenly?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How is EnviousWispr different from Spokenly?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is Spokenly open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Spokenly have AI cleanup like EnviousWispr's EG-1?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use EnviousWispr completely offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I import my Spokenly custom words into EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Spokenly run on Windows or iOS?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What is Spokenly's MCP integration for?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from Spokenly to EnviousWispr easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
-      }
-    }
-  ]
-});
+const faqs = [
+  {
+    "q": "Is EnviousWispr free, like Spokenly?",
+    "a": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind."
+  },
+  {
+    "q": "How is EnviousWispr different from Spokenly?",
+    "a": "The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions."
+  },
+  {
+    "q": "Is Spokenly open source?",
+    "a": "No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone."
+  },
+  {
+    "q": "Does Spokenly have AI cleanup like EnviousWispr's EG-1?",
+    "a": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription."
+  },
+  {
+    "q": "Can I use EnviousWispr completely offline?",
+    "a": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+  },
+  {
+    "q": "Can I import my Spokenly custom words into EnviousWispr?",
+    "a": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox."
+  },
+  {
+    "q": "Does Spokenly run on Windows or iOS?",
+    "a": "Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon."
+  },
+  {
+    "q": "What is Spokenly's MCP integration for?",
+    "a": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
+  },
+  {
+    "q": "Can I switch from Spokenly to EnviousWispr easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
+  }
+];
 ---
 
-<BaseLayout
-  title="Spokenly vs EnviousWispr: Free Mac Dictation, One Open Source"
-  description="Compare Spokenly and EnviousWispr, two free, on-device Mac dictation apps. EnviousWispr is open source under GPLv3; Spokenly is free but proprietary."
-  activePage="compare"
-  ogImage="/og-image.png"
-  canonicalPath="/compare/spokenly/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -754,4 +661,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

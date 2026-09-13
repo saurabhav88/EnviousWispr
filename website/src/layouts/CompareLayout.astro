@@ -1,0 +1,110 @@
+---
+// One owner for a /compare/<competitor>/ page's head and structured data.
+//
+// Before this layout each of the 17 per-competitor pages hand-rolled its own
+// Article, BreadcrumbList and FAQPage JSON-LD and repeated the title,
+// description and image in the head, so the same fact lived in three places
+// per page and drifted (one page's Article image pointed at a different file
+// than its og:image). The page passes ONE `meta` object and its FAQ list; the
+// head, the three JSON-LD blocks and the canonical URL are derived here.
+//
+// The visible page body (header, table, prose, FAQ markup) stays in the page:
+// it varies per competitor and is not a template.
+import BaseLayout from './BaseLayout.astro';
+
+export interface CompareFaq {
+  q: string;
+  a: string;
+}
+
+export interface CompareMeta {
+  /** URL slug under /compare/, e.g. "notta". */
+  slug: string;
+  /** <title> and og:title. */
+  title: string;
+  /** Meta description and og:description. */
+  description: string;
+  /** Article headline (may differ from the shorter <title>). */
+  headline: string;
+  /** Article description, when it differs from the meta description. */
+  articleDescription?: string;
+  /** Breadcrumb leaf, e.g. "EnviousWispr vs Notta". */
+  breadcrumb: string;
+  /** Site-relative preview image, e.g. "/images/og/notta.png". */
+  ogImage: string;
+  ogImageAlt?: string;
+  /** ISO 8601 timestamps. */
+  datePublished: string;
+  dateModified: string;
+}
+
+interface Props {
+  meta: CompareMeta;
+  faqs?: CompareFaq[];
+}
+
+const { meta, faqs = [] } = Astro.props;
+const siteUrl = 'https://enviouswispr.com';
+const canonicalPath = `/compare/${meta.slug}/`;
+const url = `${siteUrl}${canonicalPath}`;
+const image = `${siteUrl}${meta.ogImage}`;
+
+// `<` is escaped so an answer containing markup can never close the script tag
+// (same guard as BlogPost.astro).
+const ld = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
+
+const articleJsonLd = ld({
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: meta.headline,
+  description: meta.articleDescription ?? meta.description,
+  url,
+  image,
+  datePublished: meta.datePublished,
+  dateModified: meta.dateModified,
+  author: { '@type': 'Person', name: 'Saurabh Vaish', url: `${siteUrl}/authors/saurabh-vaish/` },
+  publisher: { '@type': 'Organization', name: 'Envious Labs', url: siteUrl },
+  isPartOf: { '@type': 'WebSite', url: siteUrl, name: 'EnviousWispr' },
+});
+
+const breadcrumbJsonLd = ld({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+    { '@type': 'ListItem', position: 2, name: 'Comparisons', item: `${siteUrl}/compare/` },
+    { '@type': 'ListItem', position: 3, name: meta.breadcrumb, item: url },
+  ],
+});
+
+const faqJsonLd =
+  faqs.length > 0
+    ? ld({
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: faqs.map(({ q, a }) => ({
+          '@type': 'Question',
+          name: q,
+          acceptedAnswer: { '@type': 'Answer', text: a },
+        })),
+      })
+    : null;
+---
+
+<BaseLayout
+  title={meta.title}
+  description={meta.description}
+  activePage="compare"
+  ogImage={meta.ogImage}
+  ogImageAlt={meta.ogImageAlt}
+  ogType="article"
+  canonicalPath={canonicalPath}
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    {faqJsonLd && <script type="application/ld+json" set:html={faqJsonLd}></script>}
+    <slot name="head" />
+  </Fragment>
+  <slot />
+</BaseLayout>
