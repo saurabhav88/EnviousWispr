@@ -1324,6 +1324,50 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.speakerStepState == .finished)
   }
 
+  @Test("Change (back to Polish) while Clean it again is re-cleaning the turns prevents that write")
+  func changePolisherDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    #expect(coordinator.step == .done)
+    coordinator.choosePolisherAgain()
+    #expect(coordinator.step == .polish, "Change must still be allowed after Done")
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "leaving Done for Polish must end the re-clean, not let it write")
+  }
+
   @Test("choosing another file while Clean it again is re-cleaning the turns prevents that write")
   func chooseDuringTurnRecleanPreventsWrite() async {
     let store = FakeHistoryStore()

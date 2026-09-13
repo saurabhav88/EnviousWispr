@@ -1136,6 +1136,13 @@ final class FileImportCoordinator {
   ///   the step you are already on.
   func jump(to target: Step, advancing: Bool = false) {
     guard canGo(to: target, advancing: advancing) else { return }
+    // Leaving Done ends a post-Done turn re-clean (#2811, found by cloud review, round 8):
+    // after "Clean it again" the visible run is finished, so `isRunning` is false while
+    // `runTask` may still be re-cleaning turns under the engine claim; walking to Polish
+    // ("Change"), Back, or the step bar would otherwise leave it running with no Stop in
+    // sight and refuse the next run as engine-busy. This is the one mover every such path
+    // goes through; `choose`, `startOver` and `stop` cancel on their own.
+    if step == .done, target != .done, !isRunning { runTask?.cancel() }
     step = target
   }
 
