@@ -2,9 +2,9 @@ import Foundation
 
 /// One speaker's contiguous stretch of an imported transcript (#2810, phase 3 of #2807).
 ///
-/// Produced by `TurnAssembler` from phase 2's `ASRWordTiming`/`SpeakerSegment` data and
-/// persisted raw at once; its cleaned text is placed onto it from the ONE document cleanup
-/// by `TurnTextAligner` (#2851), part by part.
+/// Produced by `TurnAssembler` from phase 2's `ASRWordTiming`/`SpeakerSegment` data, and
+/// written once, cleaned, when the import finishes: each turn is its own cleanup part
+/// (#2851 follow-up).
 public struct Turn: Sendable, Equatable, Codable {
   /// Deterministic and range-derived, never a random UUID — a fresh `TurnAssembler` pass over
   /// identical input reproduces identical ids, which is what lets a retry (phase 4) compare
@@ -23,20 +23,17 @@ public struct Turn: Sendable, Equatable, Codable {
   /// the turn's own intra-turn whitespace but is not gap-free against neighboring turns
   /// (inter-turn and document-edge whitespace belongs to no turn).
   public let originalTextRange: Range<Int>
-  /// The cleanup's words for this turn, as `TurnTextAligner` placed them (#2851); `nil`
-  /// while the cleanup has not reached the turn's passage (on a Clean it again the previous
-  /// cleanup's text stays until then), and `nil` for good when the alignment could not say
-  /// who a cleaned word belongs to (the turn shows its raw words, disclosed). Rows written
-  /// by the #2846 dev build carry the per-turn cleanup's text under the same field.
+  /// The cleanup's words for this turn, its own cleanup part's output (#2851 follow-up);
+  /// `nil` for a turn the cleanup never reached (a refused cleanup writes the turns raw) or a
+  /// whitespace-only turn. Rows written by the #2846 dev build carry the per-turn cleanup's
+  /// text under the same field; rows written by #2871 carry the aligned text.
   public let processedText: String?
-  /// `false` only when the turn shows words the cleanup did not polish: its passage's polish
-  /// was attempted and failed (every passage the turn spans must have succeeded), or the
-  /// alignment could not place the cleaned words and the turn keeps its raw ones. A document
-  /// the user chose not to have polished reads `true`: a bypass is not a failure
-  /// (`FileImportRunner.PartOutcome.isUnpolished`). A raw turn the cleanup has not reached
-  /// reads `false` (the default), which the screen does not disclose while the document
-  /// still runs. Drives the per-turn "Not fully polished" disclosure; the document header's
-  /// credit reads the parts, never this.
+  /// `false` only when this turn's own cleanup part was attempted and failed (every part of
+  /// the turn must have succeeded), so the turn shows words the polisher did not clean. A
+  /// part the polisher declined for being too short, and a document the user chose not to
+  /// have polished, read `true`: a bypass is not a failure
+  /// (`FileImportRunner.PartOutcome.isUnpolished`). Drives the per-turn "Not fully polished"
+  /// disclosure; the document header's credit reads the parts, never this.
   public let wasPolished: Bool
 
   public init(

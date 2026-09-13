@@ -121,14 +121,17 @@ enum TranscriptDocumentPresenter {
       : ("Copy everything", "Save as…", "Share…")
   }
 
-  /// `nil` for `"unknown"`; otherwise the caller-supplied name, or `nil` if the speaker has
-  /// none yet (a caller showing a rendered turn is responsible for its own "unnamed" default
-  /// — this type never invents one, matching `mergingSpeakerFields`'s own discipline of
-  /// never silently dropping or guessing a surviving speaker's name).
+  /// `nil` for `"unknown"`; "Both" for a turn the assembler could not give to one speaker
+  /// (#2851 follow-up: two people in quick exchange the listener did not separate); otherwise
+  /// the caller-supplied name, or `nil` if the speaker has none yet (a caller showing a
+  /// rendered turn is responsible for its own "unnamed" default — this type never invents
+  /// one, matching `mergingSpeakerFields`'s own discipline of never silently dropping or
+  /// guessing a surviving speaker's name).
   private static func displayName(for speakerId: String, in speakerNames: [String: String])
     -> String?
   {
     guard speakerId != TurnAssembler.unknownSpeakerID else { return nil }
+    guard speakerId != TurnAssembler.bothSpeakersID else { return "Both" }
     return speakerNames[speakerId]
   }
 

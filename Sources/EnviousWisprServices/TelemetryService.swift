@@ -3236,11 +3236,14 @@ public final class TelemetryService {
   // MARK: - File import turn storage (#2810, phase 3 of #2807)
 
   /// Shape-only telemetry for the speaker turns of a file import. `turnCount` is present
-  /// only when `outcome == .stored` — every other outcome has no valid count. Since #2851
-  /// the turns take their text from the one document cleanup by alignment; the former
-  /// `admission_refused` outcome of a second cleanup pass has no producer and is gone.
+  /// only when `outcome == .stored` — every other outcome has no valid count. Since the
+  /// #2851 follow-up each turn is its own cleanup part and the turns are written once at the
+  /// end; `stopped` is a labeled document the user stopped mid-cleanup, written with the
+  /// sections that had finished. The former `admission_refused` outcome of a second cleanup
+  /// pass has no producer and is gone.
   public enum FileImportTurnsOutcome: String {
     case stored
+    case stopped
     case saveFailed = "save_failed"
     case rowDeleted = "row_deleted"
     case

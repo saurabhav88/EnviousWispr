@@ -535,7 +535,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     copy.turns = newTurns
 
     let survivingSpeakerIDs = Set(newTurns.map(\.speakerId)).subtracting([
-      TurnAssembler.unknownSpeakerID
+      TurnAssembler.unknownSpeakerID, TurnAssembler.bothSpeakersID,
     ])
     // Only the names that will actually remain ON SCREEN after this merge — a RETIRED
     // speakerId's old number is free to reuse, but a SURVIVING one's number must never be
