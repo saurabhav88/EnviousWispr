@@ -1,0 +1,72 @@
+---
+title: "Speaker labels in Transcribe a File"
+description: "How Transcribe a File tells speakers apart, how to rename them, and what Both and Not fully polished mean."
+category: "features"
+section: "Transcribe a File"
+order: 9
+keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 2", "rename speaker", "Both", "Not fully polished", "transcribe a file", "diarization", "two people", "interview", "meeting recording", "podcast"]
+related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
+updated: 2026-09-13
+---
+When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/), the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
+
+The speakers are found on your Mac, by the same app, before the cleanup runs. Nothing about the recording is sent anywhere to work out who is talking.
+
+### Renaming a speaker
+
+The numbers are placeholders. Give each one a real name and the whole transcript updates.
+
+- **Click the name.** On the Done step, click **Speaker 1** on any turn. A small box opens where you can type.
+- **Type the new name and press Return.** Every turn by that speaker now shows the name you typed. Press Escape to leave the name as it was.
+- **It stays renamed.** The names are saved with the transcript, so the same names show when you open it later in [History](/help/transcript-history/). You can rename there too.
+
+### What "Both" means
+
+Sometimes two people talk at the same time, or trade very short replies so quickly that the app cannot say which words belong to whom. Rather than guess, or leave a gap, it labels that stretch **Both**. A Both turn has no number and cannot be renamed, because it is not one person.
+
+If a recording comes back with many Both turns, the two voices were hard to separate in that stretch. The words are still all there and still in order.
+
+### What "Not fully polished" means
+
+Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. When the cleanup could not be completed for one turn, that turn keeps the words exactly as they were spoken and shows **Not fully polished** beneath it. The turns around it are cleaned as usual.
+
+To run the cleanup again:
+
+- **Click Change next to the polisher's name.** It is in the row of chips above the transcript, for example "Polished by EG-1 · Change". You land on the polisher step.
+- **Keep or change the polisher, then click Continue.** You land on the Review step.
+- **Click Clean it again.** Only the cleanup runs. The recording is not read again, and the speaker labels and any names you gave them are kept.
+
+If the same turn comes back Not fully polished a second time, the polisher cannot finish that turn in the time it is given, or it reported an error on it. Choose a different polisher on the polisher step and clean it again.
+
+### What Stop keeps
+
+You can press **Stop** at any point while the file is being worked on.
+
+- **Stop while the file is still being transcribed.** Nothing is kept, because no words exist yet. Choose the file again to start over.
+- **Stop while the speakers are being found.** You get the transcript as one block of text, with no labels. It is saved to History, and the page offers **Try again** to find the speakers on the kept audio.
+- **Stop while the cleanup is running.** You keep the speaker labels and every turn. Turns the cleanup reached are cleaned; the rest show their exact spoken words with **Not fully polished** beneath them. The page header reads **Stopped**, and the transcript is saved to History.
+
+Once the words exist, Stop never throws them away. What was found is what you get.
+
+### Where the recording goes
+
+The recording never leaves your Mac. Transcription, finding the speakers and any on-device cleanup all run locally. The sentence at the bottom of the page states this for the run you are looking at.
+
+If you chose a cloud polisher (your own OpenAI, Gemini or Claude key, or a hosted Ollama model), the text of the transcript goes to that provider for the cleanup and nothing else does. The page says so while the file is running and again when it is done: "Your audio stayed on this Mac. Only the text went to OpenAI, under your own key." How that works and what each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).
+
+### Fast versus All Languages
+
+Both speech engines give you speaker labels. The labels are built from the time each word was spoken, which both engines report.
+
+| Engine | Speaker labels | Note |
+|---|---|---|
+| **Fast** | Yes | Recommended. English and the other languages listed in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
+| **All Languages** | Yes | Every language the engine supports, with one exception below. |
+
+**Languages written without spaces between words** (for example Chinese, Japanese and Thai) do not get speaker turns yet. The engine cannot report a time per word for those scripts, so the app has nothing to attach a speaker to. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+
+### If the labels did not appear
+
+- **"Couldn't add speaker labels to this recording."** The app could not tell the voices apart, or could not attach the words it heard to them. Click **Try again** if it is offered. If it is not offered, a retry could not change the result (see the language note above). Your transcript is complete either way.
+- **"Speaker detection didn't finish for this recording."** The speaker step was stopped before it could finish. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
+- **No labels and no message.** The recording has one voice, and there is nothing to label.
