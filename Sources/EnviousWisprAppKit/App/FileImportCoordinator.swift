@@ -706,9 +706,13 @@ final class FileImportCoordinator {
     // Same rule as `startOver`: a different file is a different row (#2772).
     originalHistoryRow = nil
     documentView = .cleaned
+    timesOn = true
     markedUpCache = nil
     markedUpWorker?.task.cancel()
     markedUpWorker = nil
+    turnDiffCache = nil
+    turnDiffWorker?.task.cancel()
+    turnDiffWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -850,6 +854,12 @@ final class FileImportCoordinator {
   /// way to check it is a promise the product does not keep. Found by Codex.
   var documentView: DocumentView = .cleaned
 
+  /// Times on/off for turn-labeled rendering and export (#2811, phase 4 of #2807). A
+  /// per-view-session UI toggle, never a persisted preference (plan §2.2 non-goal) —
+  /// defaults ON and resets at the same points `documentView` itself resets, matching that
+  /// property's own "screen-local, not carried across documents" contract.
+  var timesOn = true
+
   /// Which words the Done screen shows (#2773). Copy, Save and Share follow Cleaned and
   /// Original; the marked-up view has no plain-text form, so it exports the CLEANED text.
   enum DocumentView: Equatable, Sendable {
@@ -972,10 +982,32 @@ final class FileImportCoordinator {
   var screenShowsRawWords: Bool { documentView == .original || parts.isEmpty }
 
   /// What Copy and Save hand over, which is always what the screen is showing.
+  ///
+  /// Turn-labeled documents route through the presenter FIRST (#2811, phase 4 of #2807) —
+  /// its own `exportText` returns `nil` for `turns == nil`/empty, which is exactly when this
+  /// falls through to the EXISTING selection below, unchanged (plan §9: "each screen keeps
+  /// calling its OWN existing fallback UNCHANGED"). Never both: the presenter's fallback for
+  /// `.markedUp` is the CLEANED text, not `markedUpKeptText`, since a turn's own
+  /// `processedText` is what cleanup actually produced for that turn.
   var exportText: String {
+    if let turns,
+      let result = TranscriptDocumentPresenter.exportText(
+        turns: turns, rawText: rawTranscript, speakerNames: speakerNames, timesOn: timesOn,
+        mode: documentView)
+    {
+      return result.text
+    }
     if screenShowsRawWords { return rawTranscript }
     if documentView == .markedUp { return markedUpKeptText }
     return documentText
+  }
+
+  /// Copy/Save/Share titles. The founder's export rule (plan §2.1) is general, not scoped to
+  /// turn-labeled documents: `exportText` above already substitutes the CLEANED text for
+  /// `.markedUp` on every document, turn-labeled or not, so the label disclosure applies
+  /// uniformly too — never gated on `turns != nil`.
+  var exportButtonLabels: (copy: String, save: String, share: String) {
+    TranscriptDocumentPresenter.exportButtonLabels(mode: documentView)
   }
 
   /// What the marked-up view presents as KEPT: the cleaned passages, then every passage the
@@ -1109,9 +1141,13 @@ final class FileImportCoordinator {
     // same property that makes the raw-then-polished pair an update rather than a duplicate.
     originalHistoryRow = nil
     documentView = .cleaned
+    timesOn = true
     markedUpCache = nil
     markedUpWorker?.task.cancel()
     markedUpWorker = nil
+    turnDiffCache = nil
+    turnDiffWorker?.task.cancel()
+    turnDiffWorker = nil
     savedHistoryRow = nil
     historySaveFailure = nil
     pendingPieces = []
@@ -1180,6 +1216,85 @@ final class FileImportCoordinator {
     _ = speakerFieldsRevision
     guard let historyID else { return [:] }
     return currentHistoryRow(historyID)?.speakerNames ?? [:]
+  }
+
+  /// One turn's original/cleaned pair, computed once per `turnDiffInput` build. Wrapped in a
+  /// struct rather than a tuple because a tuple array is neither `Equatable` nor usable as an
+  /// `Equatable` cache key.
+  struct TurnDiffPair: Equatable, Sendable {
+    let id: String
+    let original: String
+    let cleaned: String
+  }
+
+  struct TurnDiffInput: Equatable, Sendable {
+    let pairs: [TurnDiffPair]
+    let language: String?
+  }
+
+  /// The current turns' own original/cleaned pairs, mirroring `markedUpInput`'s role but for
+  /// per-turn Marked-up rendering (#2811, phase 4 of #2807) — the presenter's `render` never
+  /// computes `WordDiff` itself (chunk-1 review), so this is the CALLER-side preparation it
+  /// consumes via `diffLookup`.
+  var turnDiffInput: TurnDiffInput {
+    guard let turns else { return TurnDiffInput(pairs: [], language: engineReportedLanguage) }
+    let text = rawTranscript
+    let pairs = turns.map { turn -> TurnDiffPair in
+      let original = Self.slice(text, turn.originalTextRange)
+      return TurnDiffPair(id: turn.id, original: original, cleaned: turn.processedText ?? original)
+    }
+    return TurnDiffInput(pairs: pairs, language: engineReportedLanguage)
+  }
+
+  private var turnDiffCache: (input: TurnDiffInput, results: [String: WordDiff.Result])?
+
+  /// `nil` while `prepareTurnDiffs` is still running or the input has moved — same OBSERVED
+  /// contract as `markedUp`.
+  var turnDiffs: [String: WordDiff.Result]? {
+    guard let cached = turnDiffCache, cached.input == turnDiffInput else { return nil }
+    return cached.results
+  }
+
+  /// Computes every current turn's diff OFF the main actor in ONE batched pass, exactly
+  /// mirroring `prepareMarkedUp`'s single-flight, cancel-on-mismatch shape — never per-turn
+  /// caching, which would multiply that machinery by the turn count for no benefit, since all
+  /// of a document's turns become stale together (a new analysis pass, a retry, or a
+  /// `processedText` change replaces the whole array at once).
+  func prepareTurnDiffs() async {
+    let input = turnDiffInput
+    guard turnDiffs == nil, !input.pairs.isEmpty else { return }
+    if let inFlight = turnDiffWorker, inFlight.input != input {
+      inFlight.task.cancel()
+      turnDiffWorker = nil
+    }
+    let task: Task<[String: WordDiff.Result], Never>
+    if let inFlight = turnDiffWorker {
+      task = inFlight.task
+    } else {
+      task = Task.detached(priority: .userInitiated) {
+        var results: [String: WordDiff.Result] = [:]
+        for pair in input.pairs {
+          results[pair.id] = WordDiff.compare(
+            original: pair.original, cleaned: pair.cleaned, language: input.language)
+        }
+        return results
+      }
+      turnDiffWorker = (input, task)
+    }
+    let result = await task.value
+    guard turnDiffInput == input else { return }
+    if turnDiffWorker?.input == input { turnDiffWorker = nil }
+    turnDiffCache = (input, result)
+  }
+
+  @ObservationIgnored private var turnDiffWorker:
+    (input: TurnDiffInput, task: Task<[String: WordDiff.Result], Never>)?
+
+  private static func slice(_ text: String, _ range: Range<Int>) -> String {
+    let lower = String.Index(utf16Offset: range.lowerBound, in: text)
+    let upper = String.Index(utf16Offset: range.upperBound, in: text)
+    guard lower <= upper, upper <= text.endIndex else { return "" }
+    return String(text[lower..<upper])
   }
 
   /// The in-flight speaker step, run detached from `run()`'s own completion — it touches
