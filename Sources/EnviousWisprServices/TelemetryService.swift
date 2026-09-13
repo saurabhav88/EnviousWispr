@@ -3255,6 +3255,11 @@ public final class TelemetryService {
     case polisherNotReady = "polisher_not_ready"
   }
 
+  /// Since #2851 the turns' text comes from the ONE document cleanup by alignment, so
+  /// `fallbackTurnCount` counts the turns that kept their raw words (an ambiguous speaker
+  /// boundary, an unplaced passage, an emptied turn, or a passage the cleanup never
+  /// reached) and `aligned_turn_count` is the rest; emitted once per import, on the
+  /// alignment commit that finds the cleanup complete and the turns present.
   public func trackFileImportTurns(
     outcome: FileImportTurnsOutcome, turnCount: Int?, fallbackTurnCount: Int
   ) {
@@ -3262,6 +3267,7 @@ public final class TelemetryService {
     if outcome == .stored, let turnCount {
       props["turn_count"] = Self.fileImportTurnCountBucket(turnCount)
       props["fallback_turn_count"] = fallbackTurnCount
+      props["aligned_turn_count"] = max(0, turnCount - fallbackTurnCount)
     }
     PostHogSDK.shared.capture("file_import_turns", properties: props)
   }
