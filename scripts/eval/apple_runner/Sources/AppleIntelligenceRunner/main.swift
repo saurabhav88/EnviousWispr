@@ -134,42 +134,45 @@ func fail(_ msg: String) -> Never {
 struct RunnerMain {
   static func main() async {
     let args = parseArgs()
-    let cases = loadCorpus(path: args.corpusPath)
 
     if args.precleanOnly {
-      // Re-read the corpus as raw objects: the output is meant to be fed back in as a corpus
-      // (#2843), so every field the gate reads (expected_output, must_contain, tiers...) must
-      // survive, and the CLEANED text must sit in `asr_input`, the one field every consumer
-      // reads. The original moves to `original_input`.
+      // The corpus is read as raw objects, once: the output is meant to be fed back in as a
+      // corpus (#2843), so every field the gate reads (expected_output, must_contain, tiers...)
+      // must survive, and the CLEANED text must sit in `asr_input`, the one field every consumer
+      // reads. The original moves to `original_input`; a record that already carries one (a
+      // second pass over this mode's own output) keeps it, so the first transcript stays
+      // recoverable. `changed` is about THIS pass.
       let rawCases = loadCorpusObjects(path: args.corpusPath)
-      let sink: FileHandle
-      if let outPath = args.outPath {
-        try? FileManager.default.removeItem(atPath: outPath)
-        FileManager.default.createFile(atPath: outPath, contents: nil)
-        guard let handle = FileHandle(forWritingAtPath: outPath) else {
-          fail("could not open --out for writing: \(outPath)")
-        }
-        sink = handle
-      } else {
-        sink = FileHandle.standardOutput
-      }
       let normalizer = InverseTextNormalizer()
+      var out = Data()
       for var object in rawCases {
         let original = object["asr_input"] as! String
         let cleaned = preclean(original, language: args.detectedLanguage, normalizer: normalizer)
         object["asr_input"] = cleaned
-        object["original_input"] = original
+        object["original_input"] = object["original_input"] ?? original
         object["changed"] = cleaned != original
         guard
           let data = try? JSONSerialization.data(
             withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
         else { fail("could not encode the preclean record for \(object["id"] ?? "?")") }
-        sink.write(data)
-        sink.write(Data("\n".utf8))
+        out.append(data)
+        out.append(Data("\n".utf8))
       }
-      if args.outPath != nil { try? sink.close() }
+      if let outPath = args.outPath {
+        // Whole file at once, so an interrupted run never leaves a valid-looking corpus that is
+        // missing its tail; the gate accepts any non-empty subset.
+        do {
+          try out.write(to: URL(fileURLWithPath: outPath), options: .atomic)
+        } catch {
+          fail("could not write --out \(outPath): \(error)")
+        }
+      } else {
+        FileHandle.standardOutput.write(out)
+      }
       exit(0)
     }
+
+    let cases = loadCorpus(path: args.corpusPath)
 
     // Enable file logging so [AIPolish] trace lines from AppleIntelligenceConnector
     // land in ~/Library/Logs/EnviousWispr/app.log. Required for bench-mode A/B
