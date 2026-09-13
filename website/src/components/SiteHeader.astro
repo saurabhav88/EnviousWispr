@@ -7,9 +7,13 @@
 // data-nav-ready on the header. A failed script leaves working links.
 // SiteHead.astro stamps html[data-nav-js] before first paint so the visible
 // lists never flash on a browser that is about to collapse them.
+//
+// The GitHub link (#2849) renders its plain label; github-stars.js swaps in
+// the live star count once it has a valid number, never before.
 import Logo from './home/Logo.astro';
 import SiteIcon from './SiteIcon.astro';
-import { menuProducts, menuFoot, headerLinks, resources, downloadUrl } from '../data/site-navigation.js';
+import StarCount from './StarCount.astro';
+import { menuProducts, menuFoot, headerLinks, resources, downloadUrl, githubUrl } from '../data/site-navigation.js';
 
 interface Props {
   activePage?: string;
@@ -95,8 +99,19 @@ const { activePage = 'home', themed = false } = Astro.props;
           }
         </div>
       </div>
+      <a class="nav-link nav-github" href={githubUrl} target="_blank" rel="noopener" aria-label="EnviousWispr on GitHub">
+        <StarCount />
+      </a>
     </nav>
     <div class="chrome-actions">
+      <a class="chrome-github chrome-pill" href={githubUrl} target="_blank" rel="noopener" aria-label="EnviousWispr on GitHub">
+        <svg class="github-mark" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"
+          ><path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+          /></svg
+        >
+        <StarCount />
+      </a>
       {
         themed && (
           <button class="chrome-theme-toggle chrome-icon-button" aria-label="Switch theme" data-theme-toggle data-enhancement-control hidden>
@@ -104,12 +119,12 @@ const { activePage = 'home', themed = false } = Astro.props;
           </button>
         )
       }
-      <a class="chrome-button chrome-download" href={downloadUrl} data-download-source="nav"
+      <a class="chrome-button chrome-download" href={downloadUrl} data-download-source="nav" aria-label="Download for Mac"
         ><svg class="download-apple" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"
           ><path
             d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.23 3.39 7.54 8.94 7.26c1.35.07 2.29.76 3.08.82 1.18-.24 2.31-.94 3.57-.85 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.43 4.13l.01-.01ZM12.03 7.2c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"
           /></svg
-        >Download for Mac</a
+        >Download</a
       >
     </div>
   </div>
@@ -117,4 +132,5 @@ const { activePage = 'home', themed = false } = Astro.props;
 
 <script>
   import '../scripts/site-nav.js';
+  import '../scripts/github-stars.js';
 </script>

@@ -3,7 +3,7 @@
 // tagline, three catalog links plus GitHub, then the legal line. The mock's
 // footer has no download link. The homepage passes motionControl so its
 // existing "Pause motion" control keeps rendering there.
-import { footerLinks } from '../data/site-navigation.js';
+import { footerLinks, githubUrl } from '../data/site-navigation.js';
 
 interface Props {
   motionControl?: boolean;
@@ -20,7 +20,7 @@ const year = new Date().getFullYear();
     </div>
     <nav class="chrome-footer-links" aria-label="Footer">
       {footerLinks.map(([label, href]) => <a href={href}>{label}</a>)}
-      <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href={githubUrl} target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
     <span class="chrome-footer-legal"
       >© {year} Envious Labs · GPLv3 app <a href="/privacy-policy/">Privacy</a>

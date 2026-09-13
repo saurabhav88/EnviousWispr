@@ -8,8 +8,8 @@
 // times for these URLs (a fresh checkout or the daily rebuild would otherwise
 // publish a false freshness signal).
 
-export const downloadUrl =
-  'https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg';
+export const githubUrl = 'https://github.com/saurabhav88/EnviousWispr';
+export const downloadUrl = `${githubUrl}/releases/latest/download/EnviousWispr.dmg`;
 
 export const catalog = [
   {
