@@ -1,169 +1,67 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "notta",
+  "title": "EnviousWispr vs Notta: Dictation vs Meeting Notes",
+  "description": "Notta records and transcribes meetings in the cloud. EnviousWispr is free, on-device Mac dictation for writing anywhere. Different jobs, compared.",
   "headline": "EnviousWispr vs Notta: Real-Time Dictation vs Meeting Transcription",
-  "description": "Compare EnviousWispr and Notta.ai. One is real-time dictation for typing on Mac. The other is meeting transcription across platforms. See which fits your workflow.",
-  "url": `${siteUrl}/compare/notta/`,
-  "image": `${siteUrl}/images/og/notta.png`,
+  "articleDescription": "Compare EnviousWispr and Notta.ai. One is real-time dictation for typing on Mac. The other is meeting transcription across platforms. See which fits your workflow.",
+  "breadcrumb": "EnviousWispr vs Notta",
+  "ogImage": "/images/og/notta.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T13:11:11Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Notta",
-      "item": `${siteUrl}/compare/notta/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Are EnviousWispr and Notta competitors?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Not really. They solve different problems. Notta is a meeting transcription platform: it records calls, identifies speakers, and generates summaries. EnviousWispr is a real-time dictation tool: hold a key, speak, and text appears at your cursor. If you want to dictate emails and messages, EnviousWispr is the right tool. If you want meeting notes, Notta is."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr really free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can EnviousWispr transcribe meetings?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls, join meeting rooms, or identify multiple speakers. For meeting transcription, Notta or a similar tool is the right choice."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Will my audio be used for training?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Notta have a free plan?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use EnviousWispr to take notes during meetings?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "You can dictate your own notes during a meeting by holding your keybind and speaking. But EnviousWispr does not record the meeting itself, does not join call rooms, and does not transcribe other participants. For full meeting transcription with speaker identification, Notta or a similar meeting tool is what you need."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Notta work for dictation like EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Notta has a recording mode where you can speak and get a transcript, but it stays inside Notta's app. It does not paste text into your active text field the way EnviousWispr does. Notta is designed around meetings and long recordings, not quick dictation into emails, Slack, or documents."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "I need both meeting notes and dictation. Can I use both?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. They do not overlap. Use Notta for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side."
-      }
-    },
-  ]
-});
-
+const faqs = [
+  {
+    "q": "Are EnviousWispr and Notta competitors?",
+    "a": "Not really. They solve different problems. Notta is a meeting transcription platform: it records calls, identifies speakers, and generates summaries. EnviousWispr is a real-time dictation tool: hold a key, speak, and text appears at your cursor. If you want to dictate emails and messages, EnviousWispr is the right tool. If you want meeting notes, Notta is."
+  },
+  {
+    "q": "Is EnviousWispr really free?",
+    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
+  },
+  {
+    "q": "Does EnviousWispr work offline?",
+    "a": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
+  },
+  {
+    "q": "Can EnviousWispr transcribe meetings?",
+    "a": "No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls, join meeting rooms, or identify multiple speakers. For meeting transcription, Notta or a similar tool is the right choice."
+  },
+  {
+    "q": "Will my audio be used for training?",
+    "a": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
+  },
+  {
+    "q": "What Mac do I need?",
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+  },
+  {
+    "q": "Does Notta have a free plan?",
+    "a": "Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits."
+  },
+  {
+    "q": "Is EnviousWispr open source?",
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
+  },
+  {
+    "q": "Can I use EnviousWispr to take notes during meetings?",
+    "a": "You can dictate your own notes during a meeting by holding your keybind and speaking. But EnviousWispr does not record the meeting itself, does not join call rooms, and does not transcribe other participants. For full meeting transcription with speaker identification, Notta or a similar meeting tool is what you need."
+  },
+  {
+    "q": "Does Notta work for dictation like EnviousWispr?",
+    "a": "Notta has a recording mode where you can speak and get a transcript, but it stays inside Notta's app. It does not paste text into your active text field the way EnviousWispr does. Notta is designed around meetings and long recordings, not quick dictation into emails, Slack, or documents."
+  },
+  {
+    "q": "I need both meeting notes and dictation. Can I use both?",
+    "a": "Yes. They do not overlap. Use Notta for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side."
+  }
+];
 ---
 
-<BaseLayout
-  title="EnviousWispr vs Notta: Dictation vs Meeting Notes"
-  description="Notta records and transcribes meetings in the cloud. EnviousWispr is free, on-device Mac dictation for writing anywhere. Different jobs, compared."
-  activePage="compare"
-  ogImage="/images/og/notta.png"
-  ogType="article"
-  canonicalPath="/compare/notta/"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -789,4 +687,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

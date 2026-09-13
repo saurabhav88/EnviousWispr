@@ -1,92 +1,67 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "google-docs-voice-typing",
+  "title": "EnviousWispr vs Google Docs Voice Typing",
+  "description": "Compare EnviousWispr vs Google Docs Voice Typing. Both free. EnviousWispr works in any app, offline, on-device. No Chrome required.",
   "headline": "EnviousWispr vs Google Docs Voice Typing: Dictation Beyond the Browser",
-  "description": "Compare EnviousWispr and Google Docs Voice Typing. Both free, but EnviousWispr works system-wide, offline, and on-device. No browser or Google account required.",
-  "url": `${siteUrl}/compare/google-docs-voice-typing/`,
-  "image": `${siteUrl}/images/og/google-docs-voice-typing.png`,
+  "articleDescription": "Compare EnviousWispr and Google Docs Voice Typing. Both free, but EnviousWispr works system-wide, offline, and on-device. No browser or Google account required.",
+  "breadcrumb": "EnviousWispr vs Google Docs Voice Typing",
+  "ogImage": "/images/og/google-docs-voice-typing.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T13:11:11Z"
+};
 
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    { "@type": "Question", "name": "Is there a Google Docs voice typing alternative that works outside the browser?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr is a native Mac app that works in any text field system-wide. Dictate into Slack, VS Code, email, Notes, or any other app. No browser required." } },
-    { "@type": "Question", "name": "Can I dictate outside Google Docs for free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac." } },
-    { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
-    { "@type": "Question", "name": "Does Google Docs voice typing send my audio to the cloud?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine." } },
-    { "@type": "Question", "name": "Does EnviousWispr have voice commands like Google Docs?", "acceptedAnswer": { "@type": "Answer", "text": "Not the same kind. Google Docs supports voice commands for select, format, and navigate in English. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing." } },
-    { "@type": "Question", "name": "What Mac do I need?", "acceptedAnswer": { "@type": "Answer", "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast." } },
-    { "@type": "Question", "name": "Can EnviousWispr remove filler words?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr automatically removes um, uh, like, and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers." } },
-    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
-    { "@type": "Question", "name": "Can I use Google Docs voice typing in Slack, VS Code, or other apps?", "acceptedAnswer": { "@type": "Answer", "text": "No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr." } },
-    { "@type": "Question", "name": "Does Google Docs voice typing add punctuation automatically?", "acceptedAnswer": { "@type": "Answer", "text": "Only to a limited extent. In most languages, you need to say period, comma, question mark, and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish." } },
-    { "@type": "Question", "name": "Can I teach Google Docs voice typing my company's terminology?", "acceptedAnswer": { "@type": "Answer", "text": "No. Google Docs Voice Typing has no custom vocabulary feature. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate." } },
-  ]
-});
-
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Google Docs Voice Typing",
-      "item": `${siteUrl}/compare/google-docs-voice-typing/`,
-    },
-  ],
-});
-
+const faqs = [
+  {
+    "q": "Is there a Google Docs voice typing alternative that works outside the browser?",
+    "a": "Yes. EnviousWispr is a native Mac app that works in any text field system-wide. Dictate into Slack, VS Code, email, Notes, or any other app. No browser required."
+  },
+  {
+    "q": "Can I dictate outside Google Docs for free?",
+    "a": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac."
+  },
+  {
+    "q": "Does EnviousWispr work offline?",
+    "a": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
+  },
+  {
+    "q": "Does Google Docs voice typing send my audio to the cloud?",
+    "a": "Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine."
+  },
+  {
+    "q": "Does EnviousWispr have voice commands like Google Docs?",
+    "a": "Not the same kind. Google Docs supports voice commands for select, format, and navigate in English. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing."
+  },
+  {
+    "q": "What Mac do I need?",
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+  },
+  {
+    "q": "Can EnviousWispr remove filler words?",
+    "a": "Yes. EnviousWispr automatically removes um, uh, like, and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers."
+  },
+  {
+    "q": "Is EnviousWispr open source?",
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome."
+  },
+  {
+    "q": "Can I use Google Docs voice typing in Slack, VS Code, or other apps?",
+    "a": "No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr."
+  },
+  {
+    "q": "Does Google Docs voice typing add punctuation automatically?",
+    "a": "Only to a limited extent. In most languages, you need to say period, comma, question mark, and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish."
+  },
+  {
+    "q": "Can I teach Google Docs voice typing my company's terminology?",
+    "a": "No. Google Docs Voice Typing has no custom vocabulary feature. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate."
+  }
+];
 ---
 
-<BaseLayout
-  title="EnviousWispr vs Google Docs Voice Typing"
-  description="Compare EnviousWispr vs Google Docs Voice Typing. Both free. EnviousWispr works in any app, offline, on-device. No Chrome required."
-  activePage="compare"
-  ogImage="/images/og/google-docs-voice-typing.png"
-  ogType="article"
-  canonicalPath="/compare/google-docs-voice-typing/"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -726,4 +701,4 @@ const breadcrumbJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

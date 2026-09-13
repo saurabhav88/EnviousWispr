@@ -1,170 +1,68 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "wisprflow",
+  "title": "EnviousWispr vs WisprFlow: Free Private Mac Dictation",
+  "description": "If you like WisprFlow but prefer no subscription or account, compare EnviousWispr: free Mac dictation, on-device audio, keybind to paste.",
   "headline": "EnviousWispr vs WisprFlow: Free Private Mac Dictation",
-  "description": "See how EnviousWispr and WisprFlow compare on privacy, speed, pricing, and architecture. Free on-device dictation vs. cloud subscription.",
-  "url": `${siteUrl}/compare/wisprflow/`,
-  "image": `${siteUrl}/images/og/wisprflow.png`,
+  "articleDescription": "See how EnviousWispr and WisprFlow compare on privacy, speed, pricing, and architecture. Free on-device dictation vs. cloud subscription.",
+  "breadcrumb": "EnviousWispr vs WisprFlow",
+  "ogImage": "/images/og/wisprflow.png",
   "datePublished": "2026-04-04T01:54:09Z",
-  "dateModified": "2026-08-21T13:11:11Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T13:11:11Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs WisprFlow",
-      "item": `${siteUrl}/compare/wisprflow/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr really free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Will my audio be used for training?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from WisprFlow easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr use the cloud at all?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is there a free alternative to WisprFlow?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It works offline and keeps your audio on your device."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr clip the first word like other dictation apps?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Rarely. While the microphone is warm, EnviousWispr's pre-roll audio buffer keeps the 500 milliseconds before you press the keybind, so the first word is captured even if you start speaking the instant you press the key. On a cold start there is no earlier audio to draw on, and the first word or two can still be lost."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What happens to my clipboard when EnviousWispr pastes text?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Nothing, when clipboard restoration is on (the default). EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I add custom words for names, brands, or jargon?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and on macOS 26+, Apple Intelligence can automatically suggest how the speech engine might mishear your terms. The vocabulary is also fed into the AI polish prompt for double-layer correction."
-      }
-    }
-  ]
-});
-
+const faqs = [
+  {
+    "q": "Is EnviousWispr really free?",
+    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
+  },
+  {
+    "q": "Does EnviousWispr work offline?",
+    "a": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
+  },
+  {
+    "q": "Will my audio be used for training?",
+    "a": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
+  },
+  {
+    "q": "Can I switch from WisprFlow easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
+  },
+  {
+    "q": "What Mac do I need?",
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+  },
+  {
+    "q": "Does EnviousWispr use the cloud at all?",
+    "a": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours."
+  },
+  {
+    "q": "Is there a free alternative to WisprFlow?",
+    "a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It works offline and keeps your audio on your device."
+  },
+  {
+    "q": "Is EnviousWispr open source?",
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
+  },
+  {
+    "q": "Does EnviousWispr clip the first word like other dictation apps?",
+    "a": "Rarely. While the microphone is warm, EnviousWispr's pre-roll audio buffer keeps the 500 milliseconds before you press the keybind, so the first word is captured even if you start speaking the instant you press the key. On a cold start there is no earlier audio to draw on, and the first word or two can still be lost."
+  },
+  {
+    "q": "What happens to my clipboard when EnviousWispr pastes text?",
+    "a": "Nothing, when clipboard restoration is on (the default). EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all."
+  },
+  {
+    "q": "Can I add custom words for names, brands, or jargon?",
+    "a": "Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and on macOS 26+, Apple Intelligence can automatically suggest how the speech engine might mishear your terms. The vocabulary is also fed into the AI polish prompt for double-layer correction."
+  }
+];
 ---
 
-<BaseLayout
-  title="EnviousWispr vs WisprFlow: Free Private Mac Dictation"
-  description="If you like WisprFlow but prefer no subscription or account, compare EnviousWispr: free Mac dictation, on-device audio, keybind to paste."
-  activePage="compare"
-  canonicalPath="/compare/wisprflow/"
-  ogImage="/images/og/wisprflow.png"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -839,4 +737,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

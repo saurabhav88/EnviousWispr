@@ -1,161 +1,64 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "juno",
+  "title": "Juno vs EnviousWispr: Free Mac Dictation on More Macs",
+  "description": "Compare Juno and EnviousWispr, two free, open-source, on-device Mac dictation apps. See which fits your Mac, memory, and voice workflow day to day.",
   "headline": "EnviousWispr vs Juno: Free Mac Dictation, Runs on More Macs",
-  "description": "Compare EnviousWispr and Juno, two free, open source, on-device Mac dictation tools. Juno needs an M2 Mac with 24GB RAM; EnviousWispr runs on M1 and up.",
-  "url": `${siteUrl}/compare/juno/`,
-  "image": `${siteUrl}/og-image.png`,
+  "articleDescription": "Compare EnviousWispr and Juno, two free, open source, on-device Mac dictation tools. Juno needs an M2 Mac with 24GB RAM; EnviousWispr runs on M1 and up.",
+  "breadcrumb": "EnviousWispr vs Juno",
+  "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T19:00:00Z",
-  "dateModified": "2026-08-21T19:00:00Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T19:00:00Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Juno",
-      "item": `${siteUrl}/compare/juno/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr free, like Juno?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Both EnviousWispr and Juno are completely free, with no subscription, no usage cap, and no account required. Both are also open source: EnviousWispr under GPLv3, Juno under MIT."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need for each app?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "This is the biggest practical difference. Juno's own site states it needs an M2 or newer Apple Silicon Mac, macOS 15 Sequoia or later, and at least 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac (M1 or later) on macOS 14 Sonoma or later, with no published RAM minimum. If you own an M1 Mac, or a Mac with 16GB of RAM, or you have not updated to macOS 15, EnviousWispr works there and Juno's own stated requirements say it will not."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is Juno just a dictation app, or something more?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Something more. Juno can create Notes, Reminders, and one-shot alarms from Voice Actions after you say Hey Juno. Its separate Voice Commands for rewriting text do not need a wake phrase while dictating. It can also learn from clear corrections, expand snippets, and apply a different Style per app. EnviousWispr has snippets too, and otherwise focuses on turning speech into clean text wherever your cursor is."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Juno have AI cleanup like EnviousWispr's EG-1?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, and like EG-1, it runs on-device with no prompt for you to write. Opening Juno's own model manager shows the pieces: Whisper Large V3 Turbo transcribes, a small Qwen3 0.6B model handles live correction as you speak, and a larger Qwen3 4B Instruct model does smart formatting afterward, both separate downloads from transcription itself. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use EnviousWispr completely offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source like Juno?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: a distributed derivative must also be open under GPLv3. Juno is licensed under the MIT license, a more permissive license that lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I import my Juno custom words into EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Juno, without changing Juno's own files, and shows you every word it found before anything joins your library. Juno ships with roughly 400 built-in terms of its own; only the words you added are imported, so your list stays yours. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Spokenly, and Vox."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Juno support Intel Macs or older Apple Silicon?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No, per Juno's own stated requirements: M2 or newer only. EnviousWispr supports every Apple Silicon Mac starting with the original M1."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I recover a dictation I cancelled by accident with Juno?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "We found no documentation of a recovery or undo feature for a cancelled Juno dictation. EnviousWispr has Escape Recovery, on by default, which keeps a dictation you cancel with your keybind or a triple press instead of discarding it instantly, and offers an Undo button afterward."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from Juno to EnviousWispr easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and alarm actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS."
-      }
-    }
-  ]
-});
+const faqs = [
+  {
+    "q": "Is EnviousWispr free, like Juno?",
+    "a": "Yes. Both EnviousWispr and Juno are completely free, with no subscription, no usage cap, and no account required. Both are also open source: EnviousWispr under GPLv3, Juno under MIT."
+  },
+  {
+    "q": "What Mac do I need for each app?",
+    "a": "This is the biggest practical difference. Juno's own site states it needs an M2 or newer Apple Silicon Mac, macOS 15 Sequoia or later, and at least 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac (M1 or later) on macOS 14 Sonoma or later, with no published RAM minimum. If you own an M1 Mac, or a Mac with 16GB of RAM, or you have not updated to macOS 15, EnviousWispr works there and Juno's own stated requirements say it will not."
+  },
+  {
+    "q": "Is Juno just a dictation app, or something more?",
+    "a": "Something more. Juno can create Notes, Reminders, and one-shot alarms from Voice Actions after you say Hey Juno. Its separate Voice Commands for rewriting text do not need a wake phrase while dictating. It can also learn from clear corrections, expand snippets, and apply a different Style per app. EnviousWispr has snippets too, and otherwise focuses on turning speech into clean text wherever your cursor is."
+  },
+  {
+    "q": "Does Juno have AI cleanup like EnviousWispr's EG-1?",
+    "a": "Yes, and like EG-1, it runs on-device with no prompt for you to write. Opening Juno's own model manager shows the pieces: Whisper Large V3 Turbo transcribes, a small Qwen3 0.6B model handles live correction as you speak, and a larger Qwen3 4B Instruct model does smart formatting afterward, both separate downloads from transcription itself. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it."
+  },
+  {
+    "q": "Can I use EnviousWispr completely offline?",
+    "a": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+  },
+  {
+    "q": "Is EnviousWispr open source like Juno?",
+    "a": "Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: a distributed derivative must also be open under GPLv3. Juno is licensed under the MIT license, a more permissive license that lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source."
+  },
+  {
+    "q": "Can I import my Juno custom words into EnviousWispr?",
+    "a": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Juno, without changing Juno's own files, and shows you every word it found before anything joins your library. Juno ships with roughly 400 built-in terms of its own; only the words you added are imported, so your list stays yours. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Spokenly, and Vox."
+  },
+  {
+    "q": "Does Juno support Intel Macs or older Apple Silicon?",
+    "a": "No, per Juno's own stated requirements: M2 or newer only. EnviousWispr supports every Apple Silicon Mac starting with the original M1."
+  },
+  {
+    "q": "Can I recover a dictation I cancelled by accident with Juno?",
+    "a": "We found no documentation of a recovery or undo feature for a cancelled Juno dictation. EnviousWispr has Escape Recovery, on by default, which keeps a dictation you cancel with your keybind or a triple press instead of discarding it instantly, and offers an Undo button afterward."
+  },
+  {
+    "q": "Can I switch from Juno to EnviousWispr easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and alarm actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS."
+  }
+];
 ---
 
-<BaseLayout
-  title="Juno vs EnviousWispr: Free Mac Dictation on More Macs"
-  description="Compare Juno and EnviousWispr, two free, open-source, on-device Mac dictation apps. See which fits your Mac, memory, and voice workflow day to day."
-  activePage="compare"
-  ogImage="/og-image.png"
-  canonicalPath="/compare/juno/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -779,4 +682,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

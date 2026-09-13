@@ -1,162 +1,64 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "superwhisper",
+  "title": "Superwhisper vs EnviousWispr: Free Mac Dictation",
+  "description": "Compare Superwhisper and EnviousWispr on price, privacy, offline use, and paste flow. EnviousWispr is free, GPLv3, and needs no subscription.",
   "headline": "EnviousWispr vs Superwhisper: Free Mac Dictation",
-  "description": "Compare EnviousWispr and Superwhisper on price, speech engines, offline support, and speed. Free on-device dictation with Parakeet for Apple Silicon Macs.",
-  "url": `${siteUrl}/compare/superwhisper/`,
-  "image": `${siteUrl}/images/og/superwhisper.png`,
+  "articleDescription": "Compare EnviousWispr and Superwhisper on price, speech engines, offline support, and speed. Free on-device dictation with Parakeet for Apple Silicon Macs.",
+  "breadcrumb": "EnviousWispr vs Superwhisper",
+  "ogImage": "/images/og/superwhisper.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-21T13:11:11Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T13:11:11Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs Superwhisper",
-      "item": `${siteUrl}/compare/superwhisper/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is there a free alternative to Superwhisper?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How is EnviousWispr different from Superwhisper?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How does EnviousWispr compare to Superwhisper for accuracy?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use EnviousWispr completely offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Superwhisper have offline AI polish?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1, S1-mini by Superwhisper, and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr really free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What is Parakeet TDT?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Parakeet TDT is a multilingual speech recognition model from NVIDIA covering 25 European languages. It is purpose-built for accurate, fast transcription and runs on the Apple Neural Engine at ~110x real-time. It delivers stronger English accuracy than Whisper for dictation use cases."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from Superwhisper easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
-      }
-    }
-  ]
-});
-
+const faqs = [
+  {
+    "q": "Is there a free alternative to Superwhisper?",
+    "a": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99+."
+  },
+  {
+    "q": "How is EnviousWispr different from Superwhisper?",
+    "a": "Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month."
+  },
+  {
+    "q": "How does EnviousWispr compare to Superwhisper for accuracy?",
+    "a": "EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines."
+  },
+  {
+    "q": "Can I use EnviousWispr completely offline?",
+    "a": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key."
+  },
+  {
+    "q": "Does Superwhisper have offline AI polish?",
+    "a": "Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1, S1-mini by Superwhisper, and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
+  },
+  {
+    "q": "Is EnviousWispr really free?",
+    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
+  },
+  {
+    "q": "What is Parakeet TDT?",
+    "a": "Parakeet TDT is a multilingual speech recognition model from NVIDIA covering 25 European languages. It is purpose-built for accurate, fast transcription and runs on the Apple Neural Engine at ~110x real-time. It delivers stronger English accuracy than Whisper for dictation use cases."
+  },
+  {
+    "q": "Can I switch from Superwhisper easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
+  },
+  {
+    "q": "What Mac do I need?",
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+  },
+  {
+    "q": "Is EnviousWispr open source?",
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
+  }
+];
 ---
 
-<BaseLayout
-  title="Superwhisper vs EnviousWispr: Free Mac Dictation"
-  description="Compare Superwhisper and EnviousWispr on price, privacy, offline use, and paste flow. EnviousWispr is free, GPLv3, and needs no subscription."
-  activePage="compare"
-  ogImage="/images/og/superwhisper.png"
-  canonicalPath="/compare/superwhisper/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -837,4 +739,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

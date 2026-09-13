@@ -1,161 +1,64 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "fluidvoice",
+  "title": "FluidVoice vs EnviousWispr: Free Mac Dictation, Both GPLv3",
+  "description": "Compare FluidVoice and EnviousWispr, two free, GPLv3, on-device Mac dictation apps with custom AI polish. See which fits your Mac and workflow today.",
   "headline": "EnviousWispr vs FluidVoice: Free, Open Source Mac Dictation",
-  "description": "Compare EnviousWispr and FluidVoice, two free, GPLv3, on-device Mac dictation apps, each with a custom-tuned AI polish model.",
-  "url": `${siteUrl}/compare/fluidvoice/`,
-  "image": `${siteUrl}/og-image.png`,
+  "articleDescription": "Compare EnviousWispr and FluidVoice, two free, GPLv3, on-device Mac dictation apps, each with a custom-tuned AI polish model.",
+  "breadcrumb": "EnviousWispr vs FluidVoice",
+  "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T18:00:00Z",
-  "dateModified": "2026-08-21T18:00:00Z",
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
+  "dateModified": "2026-08-21T18:00:00Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs FluidVoice",
-      "item": `${siteUrl}/compare/fluidvoice/`,
-    },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr free, like FluidVoice?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Both EnviousWispr and FluidVoice are completely free, with no subscription and no account required. Both are also open source under the same license, GPLv3, so you can read the code that runs on your Mac."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How is EnviousWispr different from FluidVoice?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does FluidVoice have AI polish like EnviousWispr's EG-1?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use EnviousWispr completely offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source like FluidVoice?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, and under the exact same license. Both EnviousWispr and FluidVoice's app code are licensed under the GNU General Public License v3 (GPLv3), an OSI-approved copyleft license. In both cases, the polish model itself sits outside that license under its own separate terms: our EG-1 under the EG-1 Community Model License, and FluidVoice's Fluid-1 under terms it has not published in the same place as its app code."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I import my FluidVoice custom words into EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of FluidVoice, without changing FluidVoice's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, Handy, TypeWhisper, Spokenly, Juno, and Vox."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What macOS version do I need for each app?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr needs macOS 14 Sonoma or later. FluidVoice needs macOS 15 Sequoia or later, one version newer. Both need Apple Silicon for their primary engines, though FluidVoice also supports Intel Macs through its Whisper option."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which speech engines does each app use?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually under Settings, Transcription. FluidVoice 1.6.9 showed 14 choices: two Apple speech options, one Cohere model, three Parakeet models, two Nemotron models, and six Whisper sizes."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does FluidVoice run on Windows or iOS?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Windows, partly. FluidVoice's own GitHub repository description states a Windows pre-build is available, so a Windows version exists though it may be earlier-stage than the Mac app. iOS is not shipped; the repository lists it as planned. EnviousWispr is macOS only, on Apple Silicon specifically."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from FluidVoice to EnviousWispr easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your FluidVoice custom words across in one pass. There is no other data to migrate. Both apps work in any text field on macOS, so nothing about your workflow has to change."
-      }
-    }
-  ]
-});
+const faqs = [
+  {
+    "q": "Is EnviousWispr free, like FluidVoice?",
+    "a": "Yes. Both EnviousWispr and FluidVoice are completely free, with no subscription and no account required. Both are also open source under the same license, GPLv3, so you can read the code that runs on your Mac."
+  },
+  {
+    "q": "How is EnviousWispr different from FluidVoice?",
+    "a": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident."
+  },
+  {
+    "q": "Does FluidVoice have AI polish like EnviousWispr's EG-1?",
+    "a": "Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details."
+  },
+  {
+    "q": "Can I use EnviousWispr completely offline?",
+    "a": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+  },
+  {
+    "q": "Is EnviousWispr open source like FluidVoice?",
+    "a": "Yes, and under the exact same license. Both EnviousWispr and FluidVoice's app code are licensed under the GNU General Public License v3 (GPLv3), an OSI-approved copyleft license. In both cases, the polish model itself sits outside that license under its own separate terms: our EG-1 under the EG-1 Community Model License, and FluidVoice's Fluid-1 under terms it has not published in the same place as its app code."
+  },
+  {
+    "q": "Can I import my FluidVoice custom words into EnviousWispr?",
+    "a": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of FluidVoice, without changing FluidVoice's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, Handy, TypeWhisper, Spokenly, Juno, and Vox."
+  },
+  {
+    "q": "What macOS version do I need for each app?",
+    "a": "EnviousWispr needs macOS 14 Sonoma or later. FluidVoice needs macOS 15 Sequoia or later, one version newer. Both need Apple Silicon for their primary engines, though FluidVoice also supports Intel Macs through its Whisper option."
+  },
+  {
+    "q": "Which speech engines does each app use?",
+    "a": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99+ languages, switched manually under Settings, Transcription. FluidVoice 1.6.9 showed 14 choices: two Apple speech options, one Cohere model, three Parakeet models, two Nemotron models, and six Whisper sizes."
+  },
+  {
+    "q": "Does FluidVoice run on Windows or iOS?",
+    "a": "Windows, partly. FluidVoice's own GitHub repository description states a Windows pre-build is available, so a Windows version exists though it may be earlier-stage than the Mac app. iOS is not shipped; the repository lists it as planned. EnviousWispr is macOS only, on Apple Silicon specifically."
+  },
+  {
+    "q": "Can I switch from FluidVoice to EnviousWispr easily?",
+    "a": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your FluidVoice custom words across in one pass. There is no other data to migrate. Both apps work in any text field on macOS, so nothing about your workflow has to change."
+  }
+];
 ---
 
-<BaseLayout
-  title="FluidVoice vs EnviousWispr: Free Mac Dictation, Both GPLv3"
-  description="Compare FluidVoice and EnviousWispr, two free, GPLv3, on-device Mac dictation apps with custom AI polish. See which fits your Mac and workflow today."
-  activePage="compare"
-  ogImage="/og-image.png"
-  canonicalPath="/compare/fluidvoice/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -777,4 +680,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

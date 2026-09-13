@@ -1,61 +1,23 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import { macWhisperProducts as comparedProducts, groups, checked, updated } from '../../data/compare.js';
 
-const siteUrl = 'https://enviouswispr.com';
+const meta = {
+  slug: 'macwhisper',
+  title: 'EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup',
+  description: 'Compare EnviousWispr and MacWhisper for dictation, file transcription, local AI cleanup, pricing and export workflows.',
+  headline: 'EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup',
+  breadcrumb: 'EnviousWispr vs MacWhisper',
+  ogImage: '/images/og/compare.png',
+  ogImageAlt: 'Compare dictation apps with EnviousWispr by price, privacy and AI cleanup',
+  datePublished: '2026-04-04T21:41:19Z',
+  // The comparison data carries the shared review date; the page moves with it.
+  dateModified: updated + 'T00:00:00Z',
+};
 
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
-  "headline": "EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup",
-  "description": "Compare EnviousWispr and MacWhisper for dictation, file transcription, local AI cleanup, pricing and export workflows.",
-  "url": `${siteUrl}/compare/macwhisper/`,
-  "image": `${siteUrl}/images/og/compare.png`,
-  "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": updated + 'T00:00:00Z',
-  "author": {
-    "@type": "Person",
-    "name": "Saurabh Vaish",
-    "url": `${siteUrl}/authors/saurabh-vaish/`,
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Envious Labs",
-    "url": siteUrl,
-  },
-  "isPartOf": {
-    "@type": "WebSite",
-    "url": siteUrl,
-    "name": "EnviousWispr",
-  },
-});
-
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": siteUrl,
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": `${siteUrl}/compare/`,
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "EnviousWispr vs MacWhisper",
-      "item": `${siteUrl}/compare/macwhisper/`,
-    },
-  ],
-});
-
-const faqs = [
+// [question, answer] pairs, rendered in the FAQ section below and fed to the
+// FAQPage JSON-LD through the layout.
+const faqPairs = [
   ['Is EnviousWispr a MacWhisper alternative?', 'Yes. Both offer dictation and file transcription. EnviousWispr includes free local AI polish on Apple Silicon Macs. MacWhisper offers additional subtitle, batch and meeting workflows.'],
   ['Is EnviousWispr really free?', 'Dictation, file transcription and local AI polish are free. No EnviousWispr account or subscription is required. Cloud providers may charge if you choose to use them. The app is open source under GPLv3; models have separate licenses.'],
   ['Does EnviousWispr work offline?', 'Yes, after downloading your speech and local polish models. Your audio stays on your Mac. Cloud polish needs internet and sends selected text and cleanup context directly to your chosen provider.'],
@@ -68,26 +30,10 @@ const faqs = [
   ['Does EnviousWispr support speaker diarization?', 'The current EnviousWispr file-transcription workflow does not label individual speakers. MacWhisper offers speaker identification for recordings.'],
   ['What happens to my clipboard when EnviousWispr pastes text?', 'When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.'],
 ];
-const faqJsonLd = JSON.stringify({
-  '@context': 'https://schema.org', '@type': 'FAQPage',
-  mainEntity: faqs.map(([name, text]) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } })),
-});
+const faqs = faqPairs.map(([q, a]) => ({ q, a }));
 ---
 
-<BaseLayout
-  title="EnviousWispr vs MacWhisper: Dictation, Files and AI Cleanup"
-  description="Compare EnviousWispr and MacWhisper for dictation, file transcription, local AI cleanup, pricing and export workflows."
-  activePage="compare"
-  ogImage="/images/og/compare.png"
-  ogImageAlt="Compare dictation apps with EnviousWispr by price, privacy and AI cleanup"
-  ogType="article"
-  canonicalPath="/compare/macwhisper/"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -308,7 +254,7 @@ const faqJsonLd = JSON.stringify({
 </section>
 <section class="section" aria-label="Frequently Asked Questions">
   <div class="container"><div class="section-head"><div class="section-label-pill">FAQ</div><h2 class="section-title">Common questions</h2></div>
-    <div class="faq-list">{faqs.map(([question, answer]) => <div class="faq-item"><div class="faq-q">{question}</div><p class="faq-a">{answer}</p></div>)}</div>
+    <div class="faq-list">{faqPairs.map(([question, answer]) => <div class="faq-item"><div class="faq-q">{question}</div><p class="faq-a">{answer}</p></div>)}</div>
   </div>
 </section>
 
@@ -346,4 +292,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>

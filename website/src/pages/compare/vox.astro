@@ -1,102 +1,48 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareLayout from '../../layouts/CompareLayout.astro';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
-const siteUrl = 'https://enviouswispr.com';
-
-const articleJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Article",
+const meta = {
+  "slug": "vox",
+  "title": "Vox vs EnviousWispr: Two Local Dictation Apps Compared",
+  "description": "Compare Vox and EnviousWispr for local Mac dictation, AI cleanup, Voice Modes, pricing, Windows support, and everyday paste behavior side by side.",
   "headline": "EnviousWispr vs Vox: Two Local Dictation Apps Compared",
-  "description": "Compare EnviousWispr and Vox on local transcription, AI cleanup, Voice Modes, pricing, platforms, and everyday paste behavior.",
-  "url": `${siteUrl}/compare/vox/`,
-  "image": `${siteUrl}/og-image.png`,
+  "articleDescription": "Compare EnviousWispr and Vox on local transcription, AI cleanup, Voice Modes, pricing, platforms, and everyday paste behavior.",
+  "breadcrumb": "EnviousWispr vs Vox",
+  "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T19:00:00Z",
-  "dateModified": "2026-08-21T19:00:00Z",
-  "author": { "@type": "Person", "name": "Saurabh Vaish", "url": `${siteUrl}/authors/saurabh-vaish/` },
-  "publisher": { "@type": "Organization", "name": "Envious Labs", "url": siteUrl },
-  "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
-});
+  "dateModified": "2026-08-21T19:00:00Z"
+};
 
-const breadcrumbJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
-    { "@type": "ListItem", "position": 2, "name": "Comparisons", "item": `${siteUrl}/compare/` },
-    { "@type": "ListItem", "position": 3, "name": "EnviousWispr vs Vox", "item": `${siteUrl}/compare/vox/` },
-  ],
-});
-
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr free, like Vox?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Do EnviousWispr and Vox both work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does Vox have AI cleanup like EnviousWispr's EG-1?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What is VoxNotch?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is Vox open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which Macs do EnviousWispr and Vox support?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Both support Apple Silicon Macs starting with M1 on macOS 14 or later. Neither supports Intel Macs. Vox also supports 64-bit Windows 10 and 11, while EnviousWispr is Mac only."
-      }
-    }
-  ]
-});
+const faqs = [
+  {
+    "q": "Is EnviousWispr free, like Vox?",
+    "a": "EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation."
+  },
+  {
+    "q": "Do EnviousWispr and Vox both work offline?",
+    "a": "Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key."
+  },
+  {
+    "q": "Does Vox have AI cleanup like EnviousWispr's EG-1?",
+    "a": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
+  },
+  {
+    "q": "What is VoxNotch?",
+    "a": "It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally."
+  },
+  {
+    "q": "Is Vox open source?",
+    "a": "No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3."
+  },
+  {
+    "q": "Which Macs do EnviousWispr and Vox support?",
+    "a": "Both support Apple Silicon Macs starting with M1 on macOS 14 or later. Neither supports Intel Macs. Vox also supports 64-bit Windows 10 and 11, while EnviousWispr is Mac only."
+  }
+];
 ---
 
-<BaseLayout
-  title="Vox vs EnviousWispr: Two Local Dictation Apps Compared"
-  description="Compare Vox and EnviousWispr for local Mac dictation, AI cleanup, Voice Modes, pricing, Windows support, and everyday paste behavior side by side."
-  activePage="compare"
-  ogImage="/og-image.png"
-  canonicalPath="/compare/vox/"
-  ogType="article"
->
-  <Fragment slot="head">
-    <script type="application/ld+json" set:html={articleJsonLd}></script>
-    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
-  </Fragment>
+<CompareLayout meta={meta} faqs={faqs}>
 
 <style>
 /* ── Page Header ── */
@@ -473,4 +419,4 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-</BaseLayout>
+</CompareLayout>
