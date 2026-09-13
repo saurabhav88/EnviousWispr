@@ -1,0 +1,47 @@
+---
+// Any key can be your record key: five clay keycaps, each a binding the app
+// accepts on its own. The chosen one sits pressed; the demo moves the press
+// from key to key, and a tap chooses. Driven by scripts/features/key-picker.js;
+// static without it (the default key pressed). Cap and base are separate
+// pictures so the cap can sink into the base.
+import capFn from '../../assets/features/keys/cap-fn.png';
+import baseFn from '../../assets/features/keys/base-fn.png';
+import capControl from '../../assets/features/keys/cap-control.png';
+import baseControl from '../../assets/features/keys/base-control.png';
+import capOption from '../../assets/features/keys/cap-option.png';
+import baseOption from '../../assets/features/keys/base-option.png';
+import capCommand from '../../assets/features/keys/cap-command.png';
+import baseCommand from '../../assets/features/keys/base-command.png';
+import capShift from '../../assets/features/keys/cap-shift.png';
+import baseShift from '../../assets/features/keys/base-shift.png';
+import { recordKeys } from '../../data/features/customization.js';
+
+const art = {
+  fn: { cap: capFn, base: baseFn },
+  control: { cap: capControl, base: baseControl },
+  option: { cap: capOption, base: baseOption },
+  command: { cap: capCommand, base: baseCommand },
+  shift: { cap: capShift, base: baseShift },
+};
+const defaultKey = recordKeys.find((k) => k.isDefault);
+---
+
+<div class="key-picker" data-key-picker data-chosen={defaultKey.key}>
+  <div class="kp-stage">
+    <div class="kp-keys" role="group" aria-label="Try a key as your record key">
+      {
+        recordKeys.map((k) => (
+          <button type="button" class="kp-key" data-kp-key={k.key} data-caption={k.caption} data-state={k.isDefault ? 'pressed' : 'idle'} aria-pressed={k.isDefault ? 'true' : 'false'} aria-label={`${k.name} as the record key`} disabled data-enables>
+            <span class="kp-key-glow" aria-hidden="true"></span>
+            <span class="kp-key-art" aria-hidden="true">
+              <img class="kp-base" src={art[k.key].base.src} alt="" width={art[k.key].base.width} height={art[k.key].base.height} loading="lazy" decoding="async" />
+              <img class="kp-cap" src={art[k.key].cap.src} alt="" width={art[k.key].cap.width} height={art[k.key].cap.height} loading="lazy" decoding="async" />
+            </span>
+            <span class="kp-key-shadow" aria-hidden="true"></span>
+          </button>
+        ))
+      }
+    </div>
+  </div>
+  <p class="kp-caption" data-kp-caption aria-live="polite">{defaultKey.caption}</p>
+</div>

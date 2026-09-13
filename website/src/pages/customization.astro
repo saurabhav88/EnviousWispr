@@ -1,13 +1,12 @@
 ---
-// Make it yours (#2816): the recording pill on a real Mac screen, the full
-// start and stop sound library, and the default keybinds at work.
+// Make it yours (#2816): the recording pill in its three designs, the full
+// start and stop sound library, and any key as the record key.
 import FeatureShell from '../layouts/FeatureShell.astro';
 import FeatureHero from '../components/features/FeatureHero.astro';
-import MacScene from '../components/features/MacScene.astro';
+import PillShowcase from '../components/features/PillShowcase.astro';
 import SoundSamples from '../components/features/SoundSamples.astro';
-import KeybindFilm from '../components/features/KeybindFilm.astro';
+import KeyPicker from '../components/features/KeyPicker.astro';
 import DownloadClosing from '../components/DownloadClosing.astro';
-import { keybinds } from '../data/features/customization.js';
 import '../styles/features/customization.css';
 ---
 
@@ -23,7 +22,7 @@ import '../styles/features/customization.css';
     title={'Make dictation<br><span class="accent-ink">feel like yours.</span>'}
     copy="Choose how dictation looks, sounds and fits into your habits. A small recording view. Familiar shortcuts. A chime that tells you it’s time to speak."
   >
-    <MacScene />
+    <PillShowcase />
   </FeatureHero>
 
   <section class="sound-story wrap">
@@ -37,27 +36,12 @@ import '../styles/features/customization.css';
   </section>
 
   <section class="shortcuts-story wrap">
-    <KeybindFilm />
+    <KeyPicker />
     <div class="shortcuts-copy">
-      <span class="eyebrow">One key, two ways</span>
-      <h2>Make it<br />second nature.</h2>
-      <p>Hold the key and talk, or tap it twice and go hands-free for a longer thought. The right Option key is the default, because your hand is already resting next to it.</p>
-      <ul class="keybind-list">
-        {
-          keybinds.map((k) => (
-            <li>
-              <span class="keycaps" aria-label={k.label}>
-                {k.keys.map((key) => <kbd>{key}</kbd>)}
-              </span>
-              <span class="keybind-words">
-                <strong>{k.name}</strong>
-                <span>{k.note}</span>
-              </span>
-            </li>
-          ))
-        }
-      </ul>
-      <small>These are the defaults. Change any of them in Settings, Keybinds: any key, with or without Command, Option, Control or Shift, a modifier on its own, or the Globe key.</small>
+      <span class="eyebrow">Your key, your call</span>
+      <h2>Any key can be<br />your record key.</h2>
+      <p>A key on its own, a key with modifiers, or the Globe key. Pick the one your hand already rests on, hold it, and talk. Tap a key to see it take the job.</p>
+      <small>The right Option key is the default. Change it in Settings, Keybinds. Cancel (Escape) and Add a word (Control Shift W) have keybinds of their own on the same page.</small>
     </div>
   </section>
 

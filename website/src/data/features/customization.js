@@ -45,45 +45,19 @@ export const sounds = [
 // The three recording pill designs, named as the app's Appearance page names
 // them (RecordingPillDesign.displayName), with the app's own one-line summary.
 export const pills = [
-  { key: 'classic', name: 'Capsule', note: 'A small capsule with the rainbow mark and a timer.' },
+  { key: 'classic', name: 'Capsule', note: 'A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown.' },
   { key: 'levelRail', name: 'Level Rail', note: 'A wider capsule with a live rainbow meter of your voice beside the timer.' },
-  { key: 'readingWell', name: 'Reading Well', note: 'A wide panel that shows your words as you speak, growing a line at a time.' },
+  { key: 'readingWell', name: 'Reading Well', note: 'A wide panel that shows your words as you speak, growing a line at a time. Needs Live Preview switched on.' },
 ];
 
-export const modes = [
-  { key: 'listening', name: 'Hold to talk' },
-  { key: 'handsfree', name: 'Hands-free' },
-];
-
-export const positions = [
-  { key: 'top', name: 'Top' },
-  { key: 'bottom', name: 'Bottom' },
-];
-
-// The screen the Mac scene is drawn on: a 14-inch MacBook Pro at its default
-// scaling, 1512 x 982 points with a 33-point menu bar. Every pill position
-// below is the app's own placement arithmetic (OverlayPlacementState.swift)
-// evaluated for that screen, in points from the top-left corner. The Dock is
-// hidden, so the bottom of the visible area is the bottom of the screen.
-export const screen = { width: 1512, height: 982, menuBar: 33 };
-
-// Pill geometry in points. Capsule and Level Rail sit inside a 92-point box
-// that the app keeps for the one-minute warning: centred in it at the top,
-// bottom-aligned at the bottom. The box top is 8 points under the menu bar.
-// Reading Well is sized to its words, so it sits 8 points under the menu bar.
-const boxTop = screen.menuBar + 8; // 41
-const capsuleHeight = 44;
-const wellHeight = 99;
-export const pillPlacement = {
-  classic: { height: capsuleHeight, top: boxTop + (92 - capsuleHeight) / 2, bottom: screen.height - capsuleHeight },
-  levelRail: { height: capsuleHeight, top: boxTop + (92 - capsuleHeight) / 2, bottom: screen.height - capsuleHeight },
-  readingWell: { height: wellHeight, top: boxTop, bottom: screen.height - wellHeight },
-};
-
-// The default keybinds, as the app ships them (ShortcutBinding.swift):
-// record = right Option alone, cancel = Escape, add a word = Control Shift W.
-export const keybinds = [
-  { key: 'record', name: 'Record', keys: ['⌥'], label: 'Right Option', note: 'Hold it to talk. Tap it twice to go hands-free.' },
-  { key: 'cancel', name: 'Cancel', keys: ['esc'], label: 'Escape', note: 'Stops the recording without pasting.' },
-  { key: 'quickAdd', name: 'Add a word', keys: ['⌃', '⇧', 'W'], label: 'Control Shift W', note: 'Teaches the app a word you have highlighted.' },
+// Keys a visitor can try as the record key. Every one is a binding the app
+// accepts on its own (ShortcutBinding.swift): the four modifiers, and the
+// Globe key. Caps Lock is deliberately absent: the recorder drops it.
+// `option` is the shipped default (right Option).
+export const recordKeys = [
+  { key: 'fn', name: 'Globe', caption: 'The Globe key, on its own. Hold it and talk.' },
+  { key: 'control', name: 'Control', caption: 'Control, on its own. Hold it and talk.' },
+  { key: 'option', name: 'Option', caption: 'Option, on its own. The right one is how EnviousWispr arrives.', isDefault: true },
+  { key: 'command', name: 'Command', caption: 'Command, on its own. Hold it and talk.' },
+  { key: 'shift', name: 'Shift', caption: 'Shift, on its own. Hold it and talk.' },
 ];

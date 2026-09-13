@@ -1,0 +1,58 @@
+---
+// Make it yours hero visual: the real recording pill, large, in its three
+// designs. Each picture is the app's own recording view rendered at 2x; the
+// picker drives the stage through the `dataset` picker kind.
+import pillClassic from '../../assets/features/pill/pill-classic-listening.png';
+import pillRail from '../../assets/features/pill/pill-levelRail-listening.png';
+import pillWell from '../../assets/features/pill/pill-readingWell-listening.png';
+import { pills } from '../../data/features/customization.js';
+
+// Point widths of the three designs (RecordingPillDesign.width) against the
+// 420-point stage the widest one nearly fills, so they keep their true ratio.
+const images = {
+  classic: { src: pillClassic.src, width: 185 },
+  levelRail: { src: pillRail.src, width: 288 },
+  readingWell: { src: pillWell.src, width: 400 },
+};
+const stage = 420;
+---
+
+<div class="pill-showcase" data-picker="pill-showcase">
+  <div class="pill-stage-wrap" id="pill-stage" data-design="classic">
+    <div class="pill-stage" role="img" aria-label="The EnviousWispr recording pill in the chosen design.">
+      <span class="pill-stage-glow" aria-hidden="true"></span>
+      {
+        pills.map((p) => (
+          <img
+            class="pill-picture"
+            data-design={p.key}
+            src={images[p.key].src}
+            alt=""
+            loading="eager"
+            decoding="async"
+            style={`width:${((images[p.key].width / stage) * 100).toFixed(2)}%`}
+          />
+        ))
+      }
+    </div>
+    <div class="pill-choices" role="group" aria-label="Recording pill design" data-choice-group data-kind="dataset" data-target="pill-stage" data-name="design">
+      {
+        pills.map((p, i) => (
+          <button type="button" class:list={{ selected: i === 0 }} data-choice={p.key} aria-pressed={i === 0 ? 'true' : 'false'} disabled data-enables>
+            {p.name}
+          </button>
+        ))
+      }
+    </div>
+    <div class="pill-notes" aria-live="polite">
+      {
+        pills.map((p) => (
+          <p class="pill-note" data-design={p.key}>
+            <strong>{p.name}.</strong> {p.note}
+          </p>
+        ))
+      }
+    </div>
+  </div>
+  <small>The real recording pill, drawn by the app itself. Pick the design in Settings, Appearance. It sits at the top or bottom of your screen, and you can drag it anywhere during a dictation.</small>
+</div>
