@@ -1419,6 +1419,11 @@ struct FileImportCoordinatorSpeakerTests {
       store.current(coordinator.historyID ?? UUID())?.speakerAnalysis == .labeled(count: 2)
     }
     #expect(stored)
+    // The write lands BEFORE the step reads finished; asserting on the write alone could
+    // pass while "in progress" was still what made the button absent (found by second-pass
+    // review). Wait for the whole pass, then the assertion is about the labeled outcome.
+    let finished = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(finished)
     #expect(!coordinator.canRetrySpeakerAnalysis, "a labeled outcome has nothing to retry")
   }
 

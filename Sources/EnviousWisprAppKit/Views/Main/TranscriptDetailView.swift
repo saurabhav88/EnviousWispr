@@ -448,11 +448,19 @@ struct TranscriptDetailView: View {
   /// FIRST, exactly mirroring `FileImportCoordinator.exportText`'s own fallback contract —
   /// its `nil` for `turns == nil`/empty falls through to `textForDelivery`'s existing,
   /// expiry-checked selection, UNCHANGED.
+  ///
+  /// Reads the LIVE row, never `self.transcript` (found by second-pass review): this view's
+  /// value is a snapshot from when the row was selected, while Save's panel and Share's
+  /// sheet can stay open across a "Clean it again" landing new turns, or across the row
+  /// being deleted. `nil` for a row that no longer exists, so nothing is delivered for a
+  /// recording the user was told is gone.
   private var exportText: String? {
-    guard let base = transcriptCoordinator.textForDelivery(transcript) else { return nil }
-    if let turns = transcript.turns,
+    guard let live = transcriptCoordinator.currentRow(id: transcript.id),
+      let base = transcriptCoordinator.textForDelivery(live)
+    else { return nil }
+    if let turns = live.turns,
       let result = TranscriptDocumentPresenter.exportText(
-        turns: turns, rawText: transcript.text, speakerNames: transcript.speakerNames ?? [:],
+        turns: turns, rawText: live.text, speakerNames: live.speakerNames ?? [:],
         timesOn: timesOn, mode: documentView)
     {
       return result.text

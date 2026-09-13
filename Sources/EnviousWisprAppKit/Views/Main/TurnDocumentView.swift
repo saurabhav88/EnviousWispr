@@ -53,6 +53,11 @@ struct TurnDocumentView<Fallback: View>: View {
 struct RenameFailure: Equatable, Sendable {
   let message: String
   let currentName: String?
+  /// Two consecutive failures with the same message and name must still read as DIFFERENT
+  /// values, or `RenamePopoverView`'s `.onChange(of: failure)` never fires for the second
+  /// and its `hasCommitted` guard stays stuck, so an outside click no longer commits (found
+  /// by second-pass review).
+  let attemptID = UUID()
 }
 
 private struct TurnRowView: View {

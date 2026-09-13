@@ -1408,8 +1408,12 @@ struct TranscribeFileView: View {
     case .none:
       EmptyView()
     case .failed:
+      // Not "couldn't find distinct speakers": `.failed(.noWordTimings)` is reached when the
+      // analyzer DID find several and the word timings could not bind them (a space-free
+      // script, #2838), so that wording was false for one of this case's own reasons (found
+      // by second-pass review). This is true for every stored failure reason.
       InsetNotice(
-        text: "Couldn't find distinct speakers in this recording.",
+        text: "Couldn't add speaker labels to this recording.",
         systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
       wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
     case .unresolved:
