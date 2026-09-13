@@ -24,16 +24,19 @@ public struct Turn: Sendable, Equatable, Codable {
   /// (inter-turn and document-edge whitespace belongs to no turn).
   public let originalTextRange: Range<Int>
   /// The cleanup's words for this turn, as `TurnTextAligner` placed them (#2851); `nil`
-  /// while the cleanup has not reached the turn's passage, and `nil` for good when the
-  /// alignment could not say who a cleaned word belongs to (the turn shows its raw words,
-  /// disclosed). Legacy rows carry the per-turn cleanup's text under the same field.
+  /// while the cleanup has not reached the turn's passage (on a Clean it again the previous
+  /// cleanup's text stays until then), and `nil` for good when the alignment could not say
+  /// who a cleaned word belongs to (the turn shows its raw words, disclosed). Rows written
+  /// by the #2846 dev build carry the per-turn cleanup's text under the same field.
   public let processedText: String?
   /// `false` only when the turn shows words the cleanup did not polish: its passage's polish
   /// was attempted and failed (every passage the turn spans must have succeeded), or the
   /// alignment could not place the cleaned words and the turn keeps its raw ones. A document
   /// the user chose not to have polished reads `true`: a bypass is not a failure
-  /// (`FileImportRunner.PartOutcome.isUnpolished`). Drives the per-turn "Not fully polished"
-  /// disclosure; the document header's credit reads the parts, never this.
+  /// (`FileImportRunner.PartOutcome.isUnpolished`). A raw turn the cleanup has not reached
+  /// reads `false` (the default), which the screen does not disclose while the document
+  /// still runs. Drives the per-turn "Not fully polished" disclosure; the document header's
+  /// credit reads the parts, never this.
   public let wasPolished: Bool
 
   public init(

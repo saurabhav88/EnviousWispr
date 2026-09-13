@@ -226,6 +226,27 @@ struct TurnTextAlignerTests {
     #expect(text(out, "b")?.wasPolished == false)
   }
 
+  @Test("a word the cleanup moved across a speaker boundary fails both turns")
+  func wordMovedAcrossBoundaryFailsBoth() {
+    // Whole-diff review: A "a" | B "b", cleaned "b a". Myers deletes A's "a" (a distinct
+    // filler, attributed), keeps B's "b", inserts "a" after it (a pure insertion, B's): A
+    // would show nothing and B would show A's word. Neither hunk is ambiguous on its own.
+    let raw = "a b"
+    let turns = [
+      turn("a", "A", in: raw, from: "a", to: "a"),
+      turn("b", "B", in: raw, from: "b", to: "b"),
+    ]
+    let out = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "b a")], turns: turns)
+    #expect(text(out, "a")?.processedText == nil)
+    #expect(text(out, "b")?.processedText == nil, "B must not receive A's word")
+    #expect(out.fallbacks["a"] == .boundary)
+    #expect(out.fallbacks["b"] == .boundary)
+    // The same move inside ONE turn is an ordinary rewrite and stays attributed.
+    let one = [turn("ab", "A", in: raw, from: "a", to: "b")]
+    let within = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "b a")], turns: one)
+    #expect(text(within, "ab")?.processedText == "b a")
+  }
+
   @Test("a turn spanning a polished passage and a failed one reads unpolished, in either order")
   func turnSpanningSucceededAndFailedPassagesIsUnpolished() {
     let raw = "one two"

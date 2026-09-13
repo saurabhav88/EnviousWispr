@@ -911,7 +911,8 @@ final class FileImportCoordinator {
     /// BEFORE the piece rides with it; the unplaceable case carries the piece itself.
     let original: String
     let cleaned: String?
-    /// False only when this passage's polish was attempted and failed.
+    /// False when this passage's polish was attempted and failed; also false, and unread,
+    /// while the cleanup has not reached it (`cleaned == nil`).
     let wasPolished: Bool
   }
 
@@ -1269,9 +1270,12 @@ final class FileImportCoordinator {
   /// of `AlignInput`, so the worker's commit knows it is the final one (plan §3 B, grounded
   /// review round 3). Reset with the document.
   @ObservationIgnored private var cleanupComplete = false
-  /// `file_import_turns` is once per import: the commit that first finds the cleanup
-  /// complete AND the turns present emits it, whichever landed last, and never again for
-  /// this document.
+  /// `file_import_turns` is once per document: `mergeAndReport` emits the FIRST terminal
+  /// outcome it reports for a document (`stored` at the alignment commit that finds the
+  /// cleanup complete and the turns present, whichever landed last; or `save_failed`,
+  /// `row_deleted`, `no_word_timings`, `single_no_turns` from the pass that reached them)
+  /// and logs every later one without emitting (whole-diff review: an intermediate write
+  /// that threw used to emit `save_failed` and the final commit `stored` for one import).
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
 
   /// A new document: nothing computed for the old one may land, and the once-per-import
@@ -1309,13 +1313,12 @@ final class FileImportCoordinator {
   /// write, with no suspension point in between.
   func refreshTurnTexts() async {
     while let inFlight = alignWorker {
-      if inFlight.input == currentAlignInput(), !inFlight.job.isCancelled {
-        await inFlight.job.value
-        return
-      }
       // The job clears `alignWorker` on the main actor before its value resolves, so the
-      // re-check above sees either nothing or a job another waiter started first.
+      // re-check sees either nothing or a job another waiter started first. A caller
+      // returns only once a job has aligned exactly the CURRENT input: if the input moved
+      // on while it waited (a part landed), it goes round again (whole-diff review).
       await inFlight.job.value
+      if !inFlight.job.isCancelled, inFlight.input == currentAlignInput() { return }
     }
     guard let input = currentAlignInput() else { return }
     let job = Task { @MainActor [weak self] in
@@ -1363,16 +1366,12 @@ final class FileImportCoordinator {
     let changed = patched != stored
     let emitsFinal = input.cleanupComplete && turnsTelemetryEmittedFor != input.historyID
     guard changed || emitsFinal else { return }
-    if emitsFinal { turnsTelemetryEmittedFor = input.historyID }
     let reasons = outcome.fallbacks.values
     await AppLogger.shared.log(
       "[TurnAlign] turns=\(stored.count) aligned=\(stored.count - uncut) uncut_boundary=\(reasons.filter { $0 == .boundary }.count) uncut_unplaced=\(reasons.filter { $0 == .unplaced }.count) uncut_unreached=\(reasons.filter { $0 == .unreached }.count) uncut_emptied=\(reasons.filter { $0 == .emptied }.count) final=\(emitsFinal)",
       level: .info, category: "FileImportCoordinator")
     // Re-check after the log's own suspension: same input, same row.
-    guard !Task.isCancelled, currentAlignInput() == input else {
-      if emitsFinal { turnsTelemetryEmittedFor = nil }
-      return
-    }
+    guard !Task.isCancelled, currentAlignInput() == input else { return }
     await mergeAndReport(
       historyID: input.historyID, analysis: .labeled(count: labeledCount),
       turns: changed ? patched : stored, outcome: emitsFinal ? .stored : nil,
@@ -2276,9 +2275,12 @@ final class FileImportCoordinator {
     let reportedOutcome: TelemetryService.FileImportTurnsOutcome? =
       saveFailed ? .saveFailed : (rowDeleted ? .rowDeleted : outcome)
     guard let reportedOutcome else { return }
+    let emitted = turnsTelemetryEmittedFor != historyID
     await AppLogger.shared.log(
-      "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) ms=\(Self.elapsedMs(since: passStart))",
+      "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) emitted=\(emitted) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
+    guard emitted else { return }
+    turnsTelemetryEmittedFor = historyID
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
   }

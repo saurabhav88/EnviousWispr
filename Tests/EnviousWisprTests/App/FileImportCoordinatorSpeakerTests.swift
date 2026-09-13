@@ -599,7 +599,7 @@ struct FileImportCoordinatorSpeakerTests {
         recorder.record(row)
         return store.update(row)
       },
-      mergeSpeakerFields: { store.mergeSpeakerFields($0, $1, $2) },
+      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: { outcome, _, _ in telemetry.record(outcome) })
 
@@ -687,6 +687,10 @@ struct FileImportCoordinatorSpeakerTests {
   /// writer (an external rename) left behind, which four disconnected spies cannot represent.
   @MainActor private final class FakeHistoryStore {
     private(set) var rows: [UUID: Transcript] = [:]
+    /// The 1-based merge call that throws, for a write that fails once mid-run.
+    var throwOnMergeCall: Int?
+    private(set) var mergeCalls = 0
+    struct MergeError: Error {}
     func save(_ row: Transcript) { rows[row.id] = row }
     func update(_ row: Transcript) -> Bool {
       guard rows[row.id] != nil else { return false }
@@ -694,8 +698,10 @@ struct FileImportCoordinatorSpeakerTests {
       return true
     }
     func mergeSpeakerFields(_ id: UUID, _ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?)
-      -> Bool
+      throws -> Bool
     {
+      mergeCalls += 1
+      if mergeCalls == throwOnMergeCall { throw MergeError() }
       guard let existing = rows[id] else { return false }
       rows[id] = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
       return true
@@ -737,7 +743,7 @@ struct FileImportCoordinatorSpeakerTests {
       wordTimings: wordTimings, speakerLabeler: speakerLabeler,
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
-      mergeSpeakerFields: { store.mergeSpeakerFields($0, $1, $2) },
+      mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
       writeExplicitRename: { store.rename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
@@ -927,6 +933,50 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(telemetry.stored.count == 1, "exactly one stored event: \(telemetry.events)")
     #expect(telemetry.stored.first?.turnCount == 2)
     #expect(telemetry.stored.first?.fallback == 0)
+  }
+
+  @Test("a write that throws mid-run is the import's one event; the final commit does not add a second (#2851)")
+  func aFailedIntermediateWriteIsTheOneEvent() async {
+    let store = FakeHistoryStore()
+    // Merge 1 persists the raw turns, merge 2 is the alignment after the part lands, merge
+    // 3 the final commit. Merge 2 throws.
+    store.throwOnMergeCall = 2
+    let cleanupGate = ManualGate()
+    let telemetry = TurnTelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        await cleanupGate.markArrived()
+        await cleanupGate.waitUntilOpen()
+        return WordSwappingCleaner().outcome(part)
+      },
+      emitTurnTelemetry: { telemetry.record($0, $1, $2) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await cleanupGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID once the cleanup is in flight")
+      return
+    }
+    let rawLanded = await settleUntil {
+      coordinator.speakerStepState == .finished && store.current(historyID)?.turns?.count == 2
+    }
+    #expect(rawLanded)
+    await cleanupGate.open()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    let first = Self.swappedTurnTexts(WordSwappingCleaner.first)
+    #expect(turnTexts(store.current(historyID)) == [first.a, first.b], "the final commit still lands")
+    for _ in 0..<20 { await Task.yield() }
+    #expect(store.mergeCalls >= 3, "merge calls: \(store.mergeCalls)")
+    #expect(
+      telemetry.events.map(\.outcome) == [.saveFailed],
+      "one event per import, the first terminal one: \(telemetry.events)")
   }
 
   @Test("turns landing after the cleanup already finished align at once and emit the one stored event (#2851)")
