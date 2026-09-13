@@ -289,6 +289,9 @@ scripts/eval/apple_runner/Package.resolved
 # #2851 phase 2: the pack-mode envelope the runner's --pack mode imports (mirror of the
 # planned Swift SectionEnvelope); its test is under scripts/eval/tests/ (already tracked).
 !scripts/eval/section_envelope.py
+# The paired-comparison gate the pack measurement names (`--packing-comparison` refuses an
+# isolated arm run without --validate); a gate that is not in the repo cannot run.
+!scripts/eval/compare_arms_paired.py
 !scripts/eval/tts_corpus.py
 !scripts/eval/build_parakeet_corpus.py
 !scripts/eval/build_refreshed_corpus.py

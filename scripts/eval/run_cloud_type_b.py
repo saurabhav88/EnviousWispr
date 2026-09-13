@@ -1018,6 +1018,12 @@ def main() -> int:
     if args.dry_run is not None and args.pack is None:
         print("--dry-run needs --pack", file=sys.stderr)
         return 2
+    if args.azure and args.provider != "openai":
+        # The same refusal the live path makes below, BEFORE the dry-run return: a pre-spend
+        # approval must never bless a configuration the real run would refuse (cloud review
+        # of PR #2902, round 3).
+        print("--azure applies to --provider openai only", file=sys.stderr)
+        return 2
     if args.pack is not None and args.dry_run is not None:
         # No key, no endpoint, no call: the bodies are written from the same builders the
         # live path uses, so what the founder approves for a real run is exactly what is

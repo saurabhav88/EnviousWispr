@@ -22,7 +22,7 @@ from section_envelope import (  # noqa: E402
 )
 import run_cloud_type_b as runner  # noqa: E402
 
-EXPECTED_TESTS = 13
+EXPECTED_TESTS = 14
 _failures = 0
 
 
@@ -260,6 +260,28 @@ def test_incomplete_pack_run_exits_nonzero() -> None:
                   row["candidate"] == "one two three" and row["section_status"] == "truncated")
         finally:
             runner.call_once = original
+
+
+def test_paired_gate_is_tracked_and_refuses_a_plain_arm() -> None:
+    """The measurement's mechanical gate lives in the repo and refuses a candidate file
+    whose rows lack `section_status` (an isolated arm run without --validate)."""
+    import subprocess
+    gate = Path(__file__).resolve().parents[1] / "compare_arms_paired.py"
+    check("compare_arms_paired.py is beside the runner", gate.exists())
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        graded = json.dumps({"id": "x", "verdict": "pass"}) + "\n"
+        (d / "a.jsonl").write_text(graded)
+        (d / "b.jsonl").write_text(graded)
+        (d / "a_cand.jsonl").write_text(json.dumps({"id": "x", "candidate": "t"}) + "\n")
+        (d / "b_cand.jsonl").write_text(json.dumps({"id": "x", "candidate": "t", "section_status": "accepted"}) + "\n")
+        r = subprocess.run(
+            [sys.executable, str(gate), "--a", str(d / "a.jsonl"), "--b", str(d / "b.jsonl"),
+             "--packing-comparison", "--a-candidates", str(d / "a_cand.jsonl"),
+             "--b-candidates", str(d / "b_cand.jsonl")],
+            capture_output=True, text=True)
+        check("a plain isolated arm is refused", r.returncode != 0 and "section_status missing" in (r.stdout + r.stderr),
+              (r.stdout + r.stderr)[-300:])
 
 
 def test_dry_run_writes_bodies_and_calls_nobody() -> None:
