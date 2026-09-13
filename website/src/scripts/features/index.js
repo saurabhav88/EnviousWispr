@@ -15,7 +15,7 @@ const islands = [
   ['[data-keyword-demo]', () => import('./keyword-demo.js')],
   ['[data-picker]', () => import('./pickers.js'), true],
   ['[data-sound-group]', () => import('./sounds.js')],
-  ['[data-keybind-film]', () => import('./keybind-film.js')],
+  ['[data-key-picker]', () => import('./key-picker.js')],
 ];
 
 try {
