@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// The one colour table for the Marked up view (#2817 finding 5), read by BOTH renderers: the
@@ -13,8 +14,12 @@ import SwiftUI
 enum MarkUpPalette {
   /// A word the cleanup dropped: red, and struck through.
   static let removed = Color.stError
-  /// A word the cleanup replaced or added: body colour on a green tint, semibold.
+  /// A word the cleanup replaced or added: body colour on a green tint, bold.
   static let changedText = Color.stTextBody
   static let changedBackground = Color.stSuccess.opacity(0.22)
-  static let changedWeight: Font.Weight = .semibold
+  /// Bold by INTENT, never by font: a run carrying its own `Font` replaces the size its
+  /// container set (the wizard reads at 14 pt through `.stBody`, History at the system body
+  /// size), so only the edited words changed size and rewrapped the line (cloud review of PR
+  /// #2897). `.stronglyEmphasized` keeps the inherited face and size and adds the weight.
+  static let changedIntent: InlinePresentationIntent = .stronglyEmphasized
 }

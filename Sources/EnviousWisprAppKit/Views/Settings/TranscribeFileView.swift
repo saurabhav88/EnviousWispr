@@ -1616,7 +1616,7 @@ struct TranscribeFileView: View {
       case .changed, .added:
         run.foregroundColor = MarkUpPalette.changedText
         run.backgroundColor = MarkUpPalette.changedBackground
-        run.font = .body.weight(MarkUpPalette.changedWeight)
+        run.inlinePresentationIntent = MarkUpPalette.changedIntent
       }
       out.append(run)
       // The original's own whitespace, never an invented one: `WordDiff` already put a

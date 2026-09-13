@@ -171,12 +171,21 @@ struct TranscribeFileWorkingCardTests {
       .init(kind: .added, text: "new", trailing: ""),
     ]
     let text = TranscribeFileView.markedUpText(segments)
-    struct Marks { let fg: Color?; let bg: Color?; let struck: Bool }
+    struct Marks {
+      let fg: Color?
+      let bg: Color?
+      let struck: Bool
+      let bold: Bool
+      let ownFont: Bool
+    }
     func marks(_ kind: WordDiff.Kind) -> Marks? {
       guard let segment = segments.first(where: { $0.kind == kind }) else { return nil }
       for run in text.runs where String(text[run.range].characters) == segment.text {
         return Marks(
-          fg: run.foregroundColor, bg: run.backgroundColor, struck: run.strikethroughStyle != nil)
+          fg: run.foregroundColor, bg: run.backgroundColor,
+          struck: run.strikethroughStyle != nil,
+          bold: run.inlinePresentationIntent == .stronglyEmphasized,
+          ownFont: run.font != nil)
       }
       return nil
     }
@@ -192,6 +201,12 @@ struct TranscribeFileWorkingCardTests {
       #expect(marks(kind)?.bg == MarkUpPalette.changedBackground, "\(kind)")
       #expect(marks(kind)?.fg == MarkUpPalette.changedText, "\(kind)")
       #expect(marks(kind)?.struck == false, "\(kind)")
+      #expect(marks(kind)?.bold == true, "\(kind)")
+    }
+    // No run carries its own font: a run-level `Font` replaced the container's size, so the
+    // edited words alone rendered at 13 pt inside 14 pt text (cloud review, PR #2897).
+    for kind in [WordDiff.Kind.same, .removed, .changed, .added] {
+      #expect(marks(kind)?.ownFont == false, "\(kind)")
     }
     #expect(marks(.same)?.bg == nil)
     #expect(marks(.same)?.struck == false)
