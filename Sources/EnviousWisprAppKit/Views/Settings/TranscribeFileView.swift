@@ -20,8 +20,8 @@ import UniformTypeIdentifiers
 ///
 /// This used to say the splitting is never named. That rule shipped, and the founder
 /// rejected it against the prototype: "the clean up was supposed to show # of chunks and it
-/// processing each chunk, not pasting the finished polished work in real-time." The label
-/// now reads "Cleaning part 9 of 14 with EG-1" (#2772 finding 14).
+/// processing each chunk, not pasting the finished polished work in real-time." The Working
+/// card reads "Cleaning section 9 of 14" (#2772 finding 14; the card itself is #2817).
 ///
 /// **The footer changes with the step**, because what is true changes: before a
 /// run it is where the audio stays, during a run it is that leaving is safe,

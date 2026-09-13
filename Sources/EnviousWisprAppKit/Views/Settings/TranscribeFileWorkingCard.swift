@@ -61,8 +61,8 @@ struct WorkingStepModel: Equatable {
         return WorkingStepModel(step: .preparing, title: "Preparing", fraction: nil)
       }
       let completed = min(max(done, 0), total)
-      // The CURRENT section, `min(done + 1, total)`: the same arithmetic as the coordinator's
-      // `cleaningLabel`, so "section 14 of 14" is the last one being cleaned, never a 15th.
+      // The CURRENT section, `min(done + 1, total)`, so "section 14 of 14" is the last one
+      // being cleaned, never a 15th.
       return WorkingStepModel(
         step: .cleaning(done: completed, total: total),
         title: "Cleaning section \(min(completed + 1, total)) of \(total)",
