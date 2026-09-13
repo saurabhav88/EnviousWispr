@@ -19,15 +19,17 @@ struct TurnDocumentView<Fallback: View>: View {
   let onRename: (String, String) async -> RenameFailure?
   @ViewBuilder let fallback: () -> Fallback
 
+  /// No `ScrollView` of its own (found by chunk review): both callers already embed this
+  /// view inside a container that scrolls the WHOLE page — the wizard's Done step and
+  /// History's detail view alike. A nested `ScrollView` with no height of its own has nothing
+  /// to size against and collapses instead of growing with the text, exactly the "renders
+  /// exactly today's plain text" contract this view exists to preserve.
   var body: some View {
     if let turns {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
-            TurnRowView(turn: turn, onRename: onRename)
-          }
+      VStack(alignment: .leading, spacing: 16) {
+        ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
+          TurnRowView(turn: turn, onRename: onRename)
         }
-        .padding()
       }
     } else {
       fallback()

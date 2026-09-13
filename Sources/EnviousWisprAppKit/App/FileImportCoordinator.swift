@@ -1829,25 +1829,35 @@ final class FileImportCoordinator {
     return (assembledTurns, labeledCount)
   }
 
-  /// Whether "Try again" should be offered right now (#2811 §4 invariant): the STORED outcome
-  /// is `.failed`, or `speakerStepState` reached `.finished` with the row STILL unanalyzed
-  /// (admission-refused/polisher-unavailable write nothing at all, leaving the row exactly as
-  /// it was — read the STORED field, never the in-memory analyzer-only `speakerAnalysis`, per
-  /// the §3 Design "failure authority" correction). Never while a pass is `.inProgress`, and
-  /// never for `.single`/`.labeled`, which have nothing to retry.
-  var canRetrySpeakerAnalysis: Bool {
+  /// Why the Done screen should show a speaker-analysis notice right now, if at all (#2811 §4
+  /// invariant, refined by chunk review): `.failed` (a real analyzer failure) and
+  /// `.unresolved` (admission-refused/polisher-unavailable, which write NOTHING at all,
+  /// leaving the row exactly as it was) are DISTINCT stored outcomes and must read as
+  /// distinct notices — collapsing them into one generic message is exactly the "success
+  /// transitions straight to a silently-unresolved state" gap the §3 Design "failure
+  /// authority" correction exists to close. Reads the STORED field via `currentHistoryRow`,
+  /// never the in-memory analyzer-only `speakerAnalysis`. `.none` while a pass is
+  /// `.inProgress`, and for `.single`/`.labeled`, which have nothing to retry.
+  enum SpeakerNoticeReason: Equatable, Sendable { case none, failed, unresolved }
+
+  var speakerNoticeReason: SpeakerNoticeReason {
     guard speakerStepState == .finished, !retainedAnalysisSamples.isEmpty, let historyID,
       let current = currentHistoryRow(historyID)
-    else { return false }
+    else { return .none }
     switch current.speakerAnalysis {
+    case .failed: return .failed
     // `.unanalyzed`/`nil` both mean "no outcome ever landed" — `nil` is a pre-#2810 legacy
     // row's decode default (Transcript.swift's own documented reading), `.unanalyzed` is the
     // enum's own explicit spelling of the same fact; neither is ever chosen over the other by
-    // this codebase's own writers, so both must be treated identically here.
-    case .failed, .unanalyzed, nil: return true
-    case .single, .labeled: return false
+    // this codebase's own writers, so both read as the same `.unresolved` notice.
+    case .unanalyzed, nil: return .unresolved
+    case .single, .labeled: return .none
     }
   }
+
+  /// Whether "Try again" should be offered right now — true for either notice reason above,
+  /// since both are genuinely retry-eligible per §4's invariant (only the WORDING differs).
+  var canRetrySpeakerAnalysis: Bool { speakerNoticeReason != .none }
 
   /// Re-runs speaker analysis and turn assembly from retained state, then PERSISTS that
   /// result — but skips `TurnCleanupRunner` entirely (#2811 §3 Design "retry must not

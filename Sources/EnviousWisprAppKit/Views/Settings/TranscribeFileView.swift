@@ -1288,13 +1288,18 @@ struct TranscribeFileView: View {
 
   /// `TurnDocumentView`'s `diffLookup` reads whatever `prepareTurnDiffs` has cached so far —
   /// `nil` for a turn not yet diffed falls back to that turn's cleaned text (chunk-1's own
-  /// contract), never blocking.
+  /// contract), never blocking. `coordinator.turnDiffs` is read exactly ONCE here, outside
+  /// the closure `render` calls once per turn (found by chunk review): that getter validates
+  /// its cache against a freshly-rebuilt `turnDiffInput`, which itself re-slices every turn's
+  /// text — calling it per-turn made the whole render pass quadratic in turn count despite the
+  /// diffs themselves being cached.
   private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
-    TranscriptDocumentPresenter.render(
+    let diffs = coordinator.turnDiffs
+    return TranscriptDocumentPresenter.render(
       turns: coordinator.turns, rawText: coordinator.rawTranscript,
       speakerNames: coordinator.speakerNames, mode: coordinator.documentView,
       timesOn: coordinator.timesOn,
-      diffLookup: { turn in coordinator.turnDiffs?[turn.id] })
+      diffLookup: { turn in diffs?[turn.id] })
   }
 
   /// Today's own plain-text rendering, UNCHANGED — `TurnDocumentView`'s fallback for
@@ -1393,11 +1398,21 @@ struct TranscribeFileView: View {
         wizardSecondary("Stop") { coordinator.stop() }
       }
     }
-    // A generic message, honestly true whatever the failure reason (#2811 §3e: this must not
-    // imply a retry will fix a cause it cannot, such as #2838's CJK/space-free-script gap).
-    if coordinator.canRetrySpeakerAnalysis {
+    // Two distinct stored outcomes (found by chunk review), each with its own honestly-scoped
+    // wording (#2811 §3e: neither may imply a retry will fix a cause it cannot, such as
+    // #2838's CJK/space-free-script gap) — collapsing them into one message is exactly the
+    // "success transitions straight to a silently-unresolved state" gap §3 Design warns about.
+    switch coordinator.speakerNoticeReason {
+    case .none:
+      EmptyView()
+    case .failed:
       InsetNotice(
         text: "Couldn't find distinct speakers in this recording.",
+        systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
+      wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
+    case .unresolved:
+      InsetNotice(
+        text: "Speaker detection didn't finish for this recording.",
         systemImage: "person.crop.circle.badge.questionmark", tint: .orange)
       wizardSecondary("Try again") { coordinator.retrySpeakerAnalysis() }
     }

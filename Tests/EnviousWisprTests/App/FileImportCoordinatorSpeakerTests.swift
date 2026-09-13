@@ -997,7 +997,8 @@ struct FileImportCoordinatorSpeakerTests {
   }
 
   private func makeStoreBackedCoordinator(
-    store: FakeHistoryStore, seconds: Double = 1.0, transcribedText: String = "hello there friend",
+    store: FakeHistoryStore, lease: EngineLease = EngineLease(), seconds: Double = 1.0,
+    transcribedText: String = "hello there friend",
     wordTimings: [ASRWordTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
     processPart: @escaping @MainActor (String, String?) async throws ->
@@ -1009,7 +1010,7 @@ struct FileImportCoordinatorSpeakerTests {
     ) -> Void = { _, _, _ in }
   ) -> FileImportCoordinator {
     makeCoordinator(
-      lease: EngineLease(), seconds: seconds, transcribedText: transcribedText,
+      lease: lease, seconds: seconds, transcribedText: transcribedText,
       wordTimings: wordTimings, speakerLabeler: speakerLabeler,
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
@@ -1403,5 +1404,53 @@ struct FileImportCoordinatorSpeakerTests {
     for turn in coordinator.turns ?? [] {
       #expect(diffs?[turn.id] != nil, "every turn should have its own diff entry")
     }
+  }
+
+  @Test(
+    "speakerNoticeReason distinguishes a real failure from an admission-refused pass that wrote nothing"
+  )
+  func speakerNoticeReasonDistinguishesFailedFromUnresolved() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let lease = EngineLease()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, lease: lease, transcribedText: "hello there friend",
+      wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        // Blocks AFTER the main run's own claim has already been released, so the test can
+        // claim the SAME lease itself in the exact window before turn-cleanup tries to —
+        // reproducing the admission-refused branch, which writes NOTHING at all.
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    await speakerGate.waitUntilArrived()
+    #expect(coordinator.isEngineHeld == false)
+
+    guard case .granted = lease.admit(.dictation) else {
+      Issue.record("test setup: could not claim the lease to simulate contention")
+      return
+    }
+    await speakerGate.open()
+    let becameFinished = await settleUntil { coordinator.speakerStepState == .finished }
+    #expect(becameFinished)
+
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    #expect(
+      store.current(historyID)?.speakerAnalysis == nil,
+      "an admission-refused pass must write nothing at all")
+    #expect(coordinator.speakerNoticeReason == .unresolved)
+    #expect(coordinator.canRetrySpeakerAnalysis)
   }
 }
