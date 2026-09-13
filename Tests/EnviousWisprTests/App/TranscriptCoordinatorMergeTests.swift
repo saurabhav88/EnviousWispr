@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -184,5 +185,33 @@ struct TranscriptCoordinatorMergeTests {
     let reloadedRow = row(reloaded, original.id)
     #expect(reloadedRow?.speakerAnalysis == nil)
     #expect(reloadedRow?.turns == nil)
+  }
+
+  @Test("renameSpeaker reports saved on success and failed against a row with no turns (#2811)")
+  func renameSpeakerTelemetryReportsSavedAndFailed() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = TranscriptCoordinator(
+      store: store, emitRenameTelemetry: { telemetry.record($0) })
+    let labeled = Self.makeTranscript()
+    try coordinator.saveAndShow(labeled)
+    _ = try coordinator.mergeSpeakerFields(
+      id: labeled.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
+
+    let failure = coordinator.renameSpeaker(id: labeled.id, speakerId: "A", name: "Zach")
+    #expect(failure == nil)
+    #expect(telemetry.outcomes == [.saved])
+
+    let unlabeled = Self.makeTranscript()
+    try coordinator.saveAndShow(unlabeled)
+    let secondFailure = coordinator.renameSpeaker(id: unlabeled.id, speakerId: "A", name: "Zach")
+    #expect(secondFailure != nil, "a row with no turns has nothing to rename against")
+    #expect(telemetry.outcomes == [.saved, .failed])
   }
 }

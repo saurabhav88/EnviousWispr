@@ -3206,6 +3206,38 @@ public final class TelemetryService {
     }
   }
 
+  // MARK: - File import turn labels: rename, retry (#2811, phase 4 of #2807)
+
+  /// Shape only, matching `trackFileImportTurns`'s own privacy floor: never a speaker's name,
+  /// never a document's text. `cancelled` (the popover's own blank-revert/Escape/outside-click
+  /// paths, which never call the write at all) is not tracked here — those paths never reach
+  /// either coordinator's rename entry point, so adding that outcome would need a NEW hook
+  /// through the shared, already-reviewed `TurnDocumentView` popover rather than a dimension
+  /// on an existing write path; left as a known, deliberate scope limit for this phase.
+  public enum FileImportRenameOutcome: String {
+    case saved
+    case failed
+  }
+
+  public func trackFileImportRename(outcome: FileImportRenameOutcome) {
+    PostHogSDK.shared.capture("file_import_turns_rename", properties: ["outcome": outcome.rawValue])
+  }
+
+  /// `recovered` reads the row's STORED outcome after the retry's own write (`.labeled`, per
+  /// the §3 Design "failure authority" correction — never the coordinator's in-memory
+  /// analyzer-only property); `stillFailed` covers every other outcome, including a stale/
+  /// cancelled retry that wrote nothing at all — from telemetry's perspective a retry that
+  /// did not recover is the only fact worth a dashboard, not why.
+  public enum FileImportSpeakerRetryOutcome: String {
+    case recovered
+    case stillFailed = "still_failed"
+  }
+
+  public func trackFileImportSpeakerRetry(outcome: FileImportSpeakerRetryOutcome) {
+    PostHogSDK.shared.capture(
+      "file_import_turns_retry", properties: ["outcome": outcome.rawValue])
+  }
+
   // MARK: - Update banner (issue #343)
 
   public func updateBannerShown(

@@ -346,6 +346,12 @@ final class FileImportCoordinator {
   private let emitTurnTelemetry:
     @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) -> Void
 
+  /// Shape-only telemetry for a rename attempt and a "Try again" press (#2811, phase 4 of
+  /// #2807 §3e) — No-op defaults, same as every other telemetry-shaped closure in this app.
+  private let emitRenameTelemetry: @MainActor (TelemetryService.FileImportRenameOutcome) -> Void
+  private let emitSpeakerRetryTelemetry:
+    @MainActor (TelemetryService.FileImportSpeakerRetryOutcome) -> Void
+
   /// Fires the instant `waitForVisibleCleanup(generation:)` actually returns for that
   /// generation — never on a timeout, never on a guess. No-op default. Exists purely so a
   /// test can prove the underlying `CheckedContinuation` was genuinely resumed rather than
@@ -615,6 +621,12 @@ final class FileImportCoordinator {
     ) -> Void = { _, _, _, _ in },
     emitTurnTelemetry: @escaping @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) ->
       Void = { _, _, _ in },
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void = {
+      _ in
+    },
+    emitSpeakerRetryTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportSpeakerRetryOutcome
+    ) -> Void = { _ in },
     onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
@@ -658,6 +670,8 @@ final class FileImportCoordinator {
     self.speakerLabeler = speakerLabeler
     self.emitSpeakerTelemetry = emitSpeakerTelemetry
     self.emitTurnTelemetry = emitTurnTelemetry
+    self.emitRenameTelemetry = emitRenameTelemetry
+    self.emitSpeakerRetryTelemetry = emitSpeakerRetryTelemetry
     self.onVisibleCleanupWaitResolved = onVisibleCleanupWaitResolved
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
@@ -1872,6 +1886,18 @@ final class FileImportCoordinator {
       await self?.runRetryAnalysis(
         analysisSamples: analysisSamples, wordTimings: wordTimings,
         wordTimingCoverage: wordTimingCoverage, historyIDAtStart: historyIDAtStart)
+      // Read AFTER the retry's own write, from the STORED outcome (§3 Design "failure
+      // authority" correction) — never the in-memory analyzer-only `speakerAnalysis`, and
+      // never assumed from whether `runRetryAnalysis` itself returned normally, since a
+      // stale/cancelled retry also returns normally having written nothing.
+      guard let self, historyIDAtStart == self.historyID,
+        let current = self.currentHistoryRow(historyIDAtStart)
+      else { return }
+      if case .labeled = current.speakerAnalysis {
+        self.emitSpeakerRetryTelemetry(.recovered)
+      } else {
+        self.emitSpeakerRetryTelemetry(.stillFailed)
+      }
     }
   }
 
@@ -1925,12 +1951,14 @@ final class FileImportCoordinator {
     guard let historyIDForWrite = historyID, let current = currentHistoryRow(historyIDForWrite),
       current.turns != nil, let analysis = current.speakerAnalysis
     else {
+      emitRenameTelemetry(.failed)
       return RenameFailure(message: "Couldn't save the name.", currentName: nil)
     }
     do {
       let saved = try writeExplicitRename(
         historyIDForWrite, analysis, current.turns, (id, name))
       guard saved else {
+        emitRenameTelemetry(.failed)
         return RenameFailure(
           message: "This recording was removed from History.", currentName: nil)
       }
@@ -1939,8 +1967,10 @@ final class FileImportCoordinator {
       // into — so nothing would tell a view to re-render after a successful rename without
       // this. Bumping it is what makes "every turn showing that speaker id re-renders" true.
       speakerFieldsRevision += 1
+      emitRenameTelemetry(.saved)
       return nil
     } catch {
+      emitRenameTelemetry(.failed)
       return RenameFailure(
         message: "Couldn't save the name.", currentName: current.speakerNames?[id])
     }

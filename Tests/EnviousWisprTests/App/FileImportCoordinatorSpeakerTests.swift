@@ -122,6 +122,12 @@ struct FileImportCoordinatorSpeakerTests {
     emitTurnTelemetry: @escaping @MainActor (
       TelemetryService.FileImportTurnsOutcome, Int?, Int
     ) -> Void = { _, _, _ in },
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void = {
+      _ in
+    },
+    emitSpeakerRetryTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportSpeakerRetryOutcome
+    ) -> Void = { _ in },
     onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
       Bool = { _ in true },
@@ -141,6 +147,8 @@ struct FileImportCoordinatorSpeakerTests {
       speakerLabeler: speakerLabeler,
       emitSpeakerTelemetry: emitSpeakerTelemetry,
       emitTurnTelemetry: emitTurnTelemetry,
+      emitRenameTelemetry: emitRenameTelemetry,
+      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
       onVisibleCleanupWaitResolved: onVisibleCleanupWaitResolved,
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
@@ -1007,7 +1015,13 @@ struct FileImportCoordinatorSpeakerTests {
       },
     emitTurnTelemetry: @escaping @MainActor (
       TelemetryService.FileImportTurnsOutcome, Int?, Int
-    ) -> Void = { _, _, _ in }
+    ) -> Void = { _, _, _ in },
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void = {
+      _ in
+    },
+    emitSpeakerRetryTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportSpeakerRetryOutcome
+    ) -> Void = { _ in }
   ) -> FileImportCoordinator {
     makeCoordinator(
       lease: lease, seconds: seconds, transcribedText: transcribedText,
@@ -1017,7 +1031,8 @@ struct FileImportCoordinatorSpeakerTests {
       mergeSpeakerFields: { store.mergeSpeakerFields($0, $1, $2) },
       writeExplicitRename: { store.rename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
-      emitTurnTelemetry: emitTurnTelemetry, processPart: processPart)
+      emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
+      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry, processPart: processPart)
   }
 
   @Test(
@@ -1452,5 +1467,92 @@ struct FileImportCoordinatorSpeakerTests {
       "an admission-refused pass must write nothing at all")
     #expect(coordinator.speakerNoticeReason == .unresolved)
     #expect(coordinator.canRetrySpeakerAnalysis)
+  }
+
+  @Test("renameSpeaker reports saved on success and failed when there is nothing to rename against")
+  func renameSpeakerTelemetryReportsSavedAndFailed() async {
+    let store = FakeHistoryStore()
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitRenameTelemetry: { telemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    let stored = await settleUntil { coordinator.turns != nil }
+    #expect(stored)
+
+    _ = await coordinator.renameSpeaker(id: "A", name: "Zach")
+    #expect(telemetry.outcomes == [.saved])
+
+    let secondStore = FakeHistoryStore()
+    let secondCoordinator = makeStoreBackedCoordinator(
+      store: secondStore, speakerLabeler: { _, _ in .single(segments: []) },
+      emitRenameTelemetry: { telemetry.record($0) })
+    secondCoordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = secondCoordinator.state { return true } else { return false }
+    }
+    secondCoordinator.start()
+    _ = await settleUntil { secondCoordinator.state == .finished }
+
+    _ = await secondCoordinator.renameSpeaker(id: "A", name: "Ariana")
+    #expect(telemetry.outcomes == [.saved, .failed], "a .single outcome has nothing to rename against")
+  }
+
+  @Test("retrySpeakerAnalysis reports recovered on success and stillFailed otherwise (#2811 §3e)")
+  func retryTelemetryReportsRecoveredAndStillFailed() async {
+    let store = FakeHistoryStore()
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportSpeakerRetryOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportSpeakerRetryOutcome) {
+        outcomes.append(outcome)
+      }
+    }
+    let telemetry = TelemetryRecorder()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        attempts.next() == 1
+          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      }, emitSpeakerRetryTelemetry: { telemetry.record($0) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the first run")
+      return
+    }
+    let firstPassFailed = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    #expect(firstPassFailed)
+
+    coordinator.retrySpeakerAnalysis()
+    let recovered = await settleUntil { telemetry.outcomes.contains(.recovered) }
+    #expect(recovered, "a retry that reaches .labeled should report recovered")
+    #expect(!telemetry.outcomes.contains(.stillFailed))
   }
 }

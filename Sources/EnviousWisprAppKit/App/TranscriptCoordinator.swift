@@ -94,6 +94,9 @@ final class TranscriptCoordinator {
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryRestoredFromHistory: (_ ageMs: Int, _ takeID: String) -> Void
   private let recordEscapeRecoveryKeep: @MainActor (_ outcome: String, _ takeID: String?) -> Void
+  /// #2811, phase 4 of #2807 §3e — same seam-not-direct-call reason as the escape-recovery
+  /// emitters above.
+  private let emitRenameTelemetry: (_ outcome: TelemetryService.FileImportRenameOutcome) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -436,7 +439,8 @@ final class TranscriptCoordinator {
     emitEscapeRecoveryKept: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
     emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
     emitEscapeRecoveryRestoredFromHistory: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
-    recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil
+    recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil,
+    emitRenameTelemetry: ((_ outcome: TelemetryService.FileImportRenameOutcome) -> Void)? = nil
   ) {
     self.store = store
     self.pendingPulseInterval = pendingPulseInterval
@@ -458,6 +462,9 @@ final class TranscriptCoordinator {
           source: .history, ageMs: ageMs, pasteResult: .pasted, takeID: takeID)
       }
     self.recordEscapeRecoveryKeep = recordEscapeRecoveryKeep ?? Self.logKeep
+    self.emitRenameTelemetry =
+      emitRenameTelemetry
+      ?? { outcome in TelemetryService.shared.trackFileImportRename(outcome: outcome) }
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -835,6 +842,7 @@ final class TranscriptCoordinator {
     guard let current = currentRow(id: transcriptID), current.turns != nil,
       let analysis = current.speakerAnalysis
     else {
+      emitRenameTelemetry(.failed)
       return RenameFailure(message: "Couldn't save the name.", currentName: nil)
     }
     do {
@@ -842,11 +850,14 @@ final class TranscriptCoordinator {
         id: transcriptID, analysis: analysis, turns: current.turns,
         explicitRename: (speakerId, name))
       guard saved else {
+        emitRenameTelemetry(.failed)
         return RenameFailure(
           message: "This recording was removed from History.", currentName: nil)
       }
+      emitRenameTelemetry(.saved)
       return nil
     } catch {
+      emitRenameTelemetry(.failed)
       return RenameFailure(
         message: "Couldn't save the name.", currentName: current.speakerNames?[speakerId])
     }

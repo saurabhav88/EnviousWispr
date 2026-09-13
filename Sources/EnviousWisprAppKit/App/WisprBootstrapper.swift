@@ -1442,6 +1442,12 @@ package final class WisprBootstrapper {
         TelemetryService.shared.trackFileImportTurns(
           outcome: outcome, turnCount: turnCount, fallbackTurnCount: fallbackTurnCount)
       },
+      emitRenameTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportRename(outcome: outcome)
+      },
+      emitSpeakerRetryTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportSpeakerRetry(outcome: outcome)
+      },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
       engineAdmission: .live(lease: engineLease, as: .fileImport),
