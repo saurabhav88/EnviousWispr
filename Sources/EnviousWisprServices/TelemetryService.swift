@@ -3235,10 +3235,10 @@ public final class TelemetryService {
 
   // MARK: - File import turn storage (#2810, phase 3 of #2807)
 
-  /// Shape-only telemetry for the background, dormant turn-safe cleanup pass. `turnCount` is
-  /// present only when `outcome == .stored` — every other outcome has no valid count.
-  /// `fallbackTurnCount` counts turns with AT LEAST ONE unpolished part (never only "every
-  /// part failed"), matching `Turn.wasPolished`'s own "true if ANY part polished" semantics.
+  /// Shape-only telemetry for the speaker turns of a file import. `turnCount` is present
+  /// only when `outcome == .stored` — every other outcome has no valid count. Since #2851
+  /// the turns take their text from the one document cleanup by alignment; the former
+  /// `admission_refused` outcome of a second cleanup pass has no producer and is gone.
   public enum FileImportTurnsOutcome: String {
     case stored
     case saveFailed = "save_failed"
@@ -3246,15 +3246,16 @@ public final class TelemetryService {
     case
       noWordTimings = "no_word_timings"
     case singleNoTurns = "single_no_turns"
-    case
-      admissionRefused = "admission_refused"
-    /// The background hold's own polisher failed to come up under its separate claim —
-    /// distinct from `saveFailed`, which means a WRITE was attempted and threw. Nothing was
-    /// ever written here (found by chunk review round 2: reusing `saveFailed` for this case
-    /// misclassified "never attempted a save" as "attempted and failed").
+    /// The document's polisher could not start. Existing turn text is retained (a Clean it
+    /// again keeps the previous cleanup's words); newly assembled turns remain raw.
     case polisherNotReady = "polisher_not_ready"
   }
 
+  /// Since #2851 the turns' text comes from the ONE document cleanup by alignment, so
+  /// `fallbackTurnCount` counts the turns that kept their raw words (an ambiguous speaker
+  /// boundary, an unplaced passage, an emptied turn, or a passage the cleanup never
+  /// reached) and `aligned_turn_count` is the rest; emitted once per import, on the
+  /// alignment commit that finds the cleanup complete and the turns present.
   public func trackFileImportTurns(
     outcome: FileImportTurnsOutcome, turnCount: Int?, fallbackTurnCount: Int
   ) {
@@ -3262,6 +3263,7 @@ public final class TelemetryService {
     if outcome == .stored, let turnCount {
       props["turn_count"] = Self.fileImportTurnCountBucket(turnCount)
       props["fallback_turn_count"] = fallbackTurnCount
+      props["aligned_turn_count"] = max(0, turnCount - fallbackTurnCount)
     }
     PostHogSDK.shared.capture("file_import_turns", properties: props)
   }

@@ -1614,7 +1614,7 @@ package final class WisprBootstrapper {
       updateHistoryRow: { [transcriptCoordinator] transcript in
         try transcriptCoordinator.updateExistingRow(transcript)
       },
-      // The turn-cleanup write (#2810 addendum §3 E) — reads the row's CURRENT state at
+      // The speaker-fields write (#2810 addendum §3 E) — reads the row's CURRENT state at
       // call time, so it can never clobber a rename that landed while cleanup was running.
       mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
         try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
@@ -1635,6 +1635,11 @@ package final class WisprBootstrapper {
     // built first.
     transcriptCoordinator.onRowDeleted = { [weak fileImportCoordinator] id in
       fileImportCoordinator?.noteHistoryRowDeleted(id)
+    }
+    // And History asks whether a row's import is still cleaning (#2851 §3 D): the detail
+    // view discloses "Not fully polished" only on a finished document.
+    transcriptCoordinator.isImportInProgress = { [weak fileImportCoordinator] id in
+      fileImportCoordinator?.isSettlingTurns(of: id) ?? false
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator

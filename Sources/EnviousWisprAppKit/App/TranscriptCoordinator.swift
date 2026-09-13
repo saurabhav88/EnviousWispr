@@ -107,6 +107,13 @@ final class TranscriptCoordinator {
   /// to drop the audio it holds for a possible speaker retry on that row (#2811). Nothing
   /// else observes a deletion; the coordinator's own deleted-row notice stays derived.
   @ObservationIgnored var onRowDeleted: (@MainActor (UUID) -> Void)?
+  /// Whether a file import is still settling the turn text of the row with this id: its
+  /// cleanup running, or its speaker pass placing words onto freshly persisted turns
+  /// (#2851 §3 D, cloud review of PR #2871; `FileImportCoordinator.isSettlingTurns(of:)`).
+  /// Set by the bootstrapper like `onRowDeleted`; nil reads false. History's detail view asks
+  /// it so a raw turn is not disclosed as "Not fully polished" before it is a verdict. The
+  /// closure reads the import coordinator's observed state, so a redraw follows.
+  @ObservationIgnored var isImportInProgress: (@MainActor (UUID) -> Bool)?
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -810,7 +817,7 @@ final class TranscriptCoordinator {
     return true
   }
 
-  /// The turn-cleanup write (#2810 addendum §3 E), and the one future rename write (phase
+  /// The speaker-fields write (#2810 addendum §3 E), and the one future rename write (phase
   /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
   /// captured earlier — so "merge into the latest existing row, never overwrite newer
   /// names" holds structurally: whichever call runs second reads what the first one left.

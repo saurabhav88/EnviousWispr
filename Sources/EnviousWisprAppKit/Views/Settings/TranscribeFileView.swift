@@ -1302,6 +1302,10 @@ struct TranscribeFileView: View {
       turns: coordinator.turns, rawText: coordinator.rawTranscript,
       speakerNames: coordinator.speakerNames, mode: coordinator.documentView,
       timesOn: coordinator.timesOn,
+      // Finished, stopped or refused, with no speaker pass still writing or aligning: the
+      // same question History asks (`isSettlingTurns`). While the turn text is still being
+      // settled, a turn without its words yet is not "unpolished", it is next.
+      documentFinished: !coordinator.isSettlingTurns,
       diffLookup: { turn in diffs?[turn.id] })
   }
 

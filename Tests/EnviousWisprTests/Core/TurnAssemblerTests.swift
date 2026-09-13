@@ -14,7 +14,7 @@ struct TurnAssemblerTests {
     ASRWordTiming(word: word, range: lower..<upper, startMs: start, endMs: end)
   }
 
-  /// UTF-16-offset slicing, matching how `TurnCleanupRunner` reads a turn's raw text —
+  /// UTF-16-offset slicing, matching how `TurnTextAligner` reads a turn's raw text —
   /// `Range(_:in:)` does not accept a bare `Range<Int>`.
   private func slice(_ range: Range<Int>, of text: String) -> String {
     let lower = String.Index(utf16Offset: range.lowerBound, in: text)
@@ -48,10 +48,9 @@ struct TurnAssemblerTests {
   func mixedFixtureNoRegroupingAcrossSpeakerChanges() {
     let text = "Hi, I'm 24. Well, nice to meet you. Yeah, likewise."
     // Entries: "Hi," / "I'm" / "24." (speaker A) — "Well," / "nice" (speaker B) — "to"
-    // (untimed, so always "unknown" — this correctly SPLITS the B turn, an untimed word in
-    // the middle of a speaker's turn is not smoothed over) — "meet" / "you." (speaker B
-    // again, a SEPARATE turn from the first B turn since "unknown" sits between them) —
-    // "Yeah," (unknown, beyond tolerance) — "likewise." (speaker A again, must NOT merge
+    // (untimed, so "unknown"; with the #2851 fold OFF, as shipped, it splits the B turn) —
+    // "meet" / "you." (speaker B again, a SEPARATE turn since "unknown" sits between them)
+    // — "Yeah," (unknown, beyond tolerance) — "likewise." (speaker A again, must NOT merge
     // back into the FIRST A turn just because the speaker recurs).
     let entries: [ASRWordTiming] = [
       entry("Hi,", 0, 3, 0, 300),
@@ -87,6 +86,18 @@ struct TurnAssemblerTests {
     #expect(slice(turns[3].originalTextRange, of: text) == "meet you.")
     #expect(slice(turns[4].originalTextRange, of: text) == "Yeah,")
     #expect(slice(turns[5].originalTextRange, of: text) == "likewise.")
+
+    // With the #2851 fold ON (the internal step, exercised directly since the shipped
+    // constant is off): "to" folds back into B and B's halves coalesce; "Yeah," sits at
+    // 50 s while "likewise." is at 0.9 s, an out-of-order timing that is NOT closeness, so
+    // it folds to the previous turn, B, not forward.
+    let groups = TurnAssembler.foldingTinyUnknownGroups([
+      ("A", Array(entries[0..<3])), ("B", Array(entries[3..<5])), ("unknown", [entries[5]]),
+      ("B", Array(entries[6..<8])), ("unknown", [entries[8]]), ("A", [entries[9]]),
+    ])
+    let folded = TurnAssembler.coalescingAdjacentSpeakers(groups)
+    #expect(folded.map(\.speaker) == ["A", "B", "A"])
+    #expect(folded[1].entries.map(\.word) == ["Well,", "nice", "to", "meet", "you.", "Yeah,"])
 
     // No entry lost or duplicated: every entry's range appears inside exactly one turn's
     // range, and the union of all turn ranges accounts for every entry.
@@ -257,6 +268,85 @@ struct TurnAssemblerTests {
     #expect(turns.map(\.speakerId) == ["A", "B"])
     #expect(turns[0].originalTextRange == 0..<4)
     #expect(turns[1].originalTextRange == 4..<6)
+  }
+
+  // MARK: - Unknown-fragment fold (#2851 §3 C)
+  //
+  // The shipped constant is OFF until the plan's twenty-fragment audio check; these drive
+  // the fold step directly on groups whose timings sit beyond the 250 ms tolerance, so every
+  // case exercises folding itself (chunk 2 review: fixtures inside the tolerance were being
+  // assigned by the resolver and passed with the fold disabled).
+
+  private typealias Group = (speaker: String, entries: [ASRWordTiming])
+
+  private func fold(_ groups: [Group]) -> [Group] {
+    TurnAssembler.coalescingAdjacentSpeakers(TurnAssembler.foldingTinyUnknownGroups(groups))
+  }
+
+  @Test("a tiny unknown fragment folds into the neighbour with the smaller time gap")
+  func tinyUnknownFoldsToNearerNeighbour() {
+    let a = [entry("hello", 0, 5, 0, 500)]
+    let um = [entry("um", 6, 8, 1100, 1150)]  // 600 after A, 350 before B
+    let b = [entry("yes", 9, 12, 1500, 2000)]
+    let folded = fold([("A", a), ("unknown", um), ("B", b)])
+    #expect(folded.map(\.speaker) == ["A", "B"])
+    #expect(folded[1].entries.map(\.word) == ["um", "yes"])
+  }
+
+  @Test("a tie in time gap, and an untimed fragment, both fold into the previous turn")
+  func tieAndUntimedFoldToPrevious() {
+    let a = [entry("hello", 0, 5, 0, 500)]
+    let tie = [entry("um", 6, 8, 900, 1000)]  // 400 after A, 400 before B
+    let b = [entry("yes", 9, 12, 1400, 2000)]
+    let folded = fold([("A", a), ("unknown", tie), ("B", b)])
+    #expect(folded.map(\.speaker) == ["A", "B"])
+    #expect(folded[0].entries.map(\.word) == ["hello", "um"])
+
+    let untimed = [entry("um", 6, 8, nil, nil)]
+    let folded2 = fold([("A", a), ("unknown", untimed), ("B", b)])
+    #expect(folded2[0].entries.map(\.word) == ["hello", "um"])
+  }
+
+  @Test("a four-entry unknown group folds; five entries stay their own turn")
+  func fourFoldsFiveStays() {
+    let a = [entry("hello", 0, 5, 0, 500)]
+    let b = [entry("yes", 30, 33, 3000, 3500)]
+    let four = (0..<4).map { entry("w\($0)", 6 + $0 * 2, 7 + $0 * 2, 1000 + $0 * 20, 1010 + $0 * 20) }
+    let five = (0..<5).map { entry("w\($0)", 6 + $0 * 2, 7 + $0 * 2, 1000 + $0 * 20, 1010 + $0 * 20) }
+    #expect(fold([("A", a), ("unknown", four), ("B", b)]).map(\.speaker) == ["A", "B"])
+    #expect(fold([("A", a), ("unknown", five), ("B", b)]).map(\.speaker) == ["A", "unknown", "B"])
+  }
+
+  @Test("a fragment at the document start folds forward; a trailing one folds back; a lone one stays")
+  func edgesAndLone() {
+    let a = [entry("hello", 3, 8, 1000, 1500)]
+    let lead = [entry("um", 0, 2, 0, 50)]
+    let tail = [entry("uh", 9, 11, 9000, 9050)]
+    let folded = fold([("unknown", lead), ("A", a), ("unknown", tail)])
+    #expect(folded.map(\.speaker) == ["A"])
+    #expect(folded[0].entries.map(\.word) == ["um", "hello", "uh"])
+    #expect(fold([("unknown", lead)]).map(\.speaker) == ["unknown"])
+  }
+
+  @Test("a fold that leaves two same-speaker groups adjacent coalesces them into one turn")
+  func foldThenCoalesce() {
+    let a1 = [entry("one", 0, 3, 0, 200)]
+    let um = [entry("um", 4, 6, 600, 650)]  // 400 after, 350 before: folds forward into A
+    let a2 = [entry("two", 7, 10, 1000, 1200)]
+    let folded = fold([("A", a1), ("unknown", um), ("A", a2)])
+    #expect(folded.map(\.speaker) == ["A"])
+    #expect(folded[0].entries.map(\.word) == ["one", "um", "two"])
+  }
+
+  @Test("with the shipped constant off, assemble leaves unknown fragments untouched")
+  func shippedConstantIsOff() {
+    #expect(TurnAssembler.unknownFoldEnabled == false)
+    let entries = [entry("hello", 0, 5, 0, 500), entry("um", 6, 8, 1100, 1150), entry("yes", 9, 12, 1500, 2000)]
+    let segments = [
+      SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1),
+      SpeakerSegment(speakerId: "B", startMs: 1500, endMs: 2000, quality: 1),
+    ]
+    #expect(TurnAssembler.assemble(entries: entries, segments: segments).map(\.speakerId) == ["A", "unknown", "B"])
   }
 
   @Test("empty input produces no turns")

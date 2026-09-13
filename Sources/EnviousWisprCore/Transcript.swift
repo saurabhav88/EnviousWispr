@@ -508,7 +508,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
 
   /// The same row with a fresh speaker-analysis result merged in (#2810, phase 3 of #2807).
   ///
-  /// TWO CALLERS, one shared invariant enforcement. The turn-cleanup write (`explicitRename:
+  /// TWO CALLERS, one shared invariant enforcement. The speaker-fields write (`explicitRename:
   /// nil`) PRESERVES an existing name for any speakerId still present in `newTurns`, REMOVES a
   /// name whose speakerId no longer appears (a retired id from a prior pass), and FILLS a
   /// newly-appearing speakerId from `TurnAssembler.defaultSpeakerNames(for: newTurns)` —
