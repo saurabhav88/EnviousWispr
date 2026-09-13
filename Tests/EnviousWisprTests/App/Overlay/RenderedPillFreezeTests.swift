@@ -40,7 +40,38 @@ struct RenderedPillFreezeTests {
     (ProcessInfo.processInfo.environment["CI"] ?? "").isEmpty
   }
 
-  /// Sizes of the routed content, measured 2026-08-25 on `e062ab4d`.
+  /// **The macOS build the absolute table was taken on.** A frozen table of point
+  /// sizes freezes the HOST as well as the code (`validation-discipline.md`
+  /// RULE: measure-with-the-real-tool-never-a-simulation): the same table read
+  /// one point taller on four rows the day the development Mac moved from
+  /// macOS 26 to 27.0 (#2790), with no code change. So the absolute rows run
+  /// only on the build that took them and SKIP elsewhere; a skipped receipt is
+  /// not a passed receipt, and the portable companion below is the claim that
+  /// travels. Re-take the table on a new build, and move this string with it.
+  nonisolated static let frozenOnBuild = "26A428"
+
+  /// `sw_vers -buildVersion`, read from the process rather than shelled out:
+  /// `operatingSystemVersionString` is "Version 27.0 (Build 26A428)".
+  nonisolated static var hostBuild: String {
+    build(from: ProcessInfo.processInfo.operatingSystemVersionString)
+  }
+
+  /// Empty when the string carries no build, so a parse failure reads as "not the
+  /// machine" and the absolute rows SKIP rather than run against a wrong table.
+  nonisolated static func build(from versionString: String) -> String {
+    guard let open = versionString.range(of: "(Build "),
+      let close = versionString[open.upperBound...].firstIndex(of: ")")
+    else { return "" }
+    return String(versionString[open.upperBound..<close])
+  }
+
+  nonisolated static var isTheMachineTheTableWasTakenOn: Bool {
+    isDeveloperMachine && hostBuild == frozenOnBuild
+  }
+
+  /// Sizes of the routed content, measured 2026-08-25 on `e062ab4d` (macOS 26),
+  /// re-taken 2026-09-13 on `f117c127` under macOS 27.0 (`frozenOnBuild`), where
+  /// four rows grew one point in height and nothing else moved (#2790).
   ///
   /// Read `RenderedPillHarness`'s own doc for what a row means: it is the
   /// content at the width the definition asks for, which is not the window's
@@ -50,8 +81,8 @@ struct RenderedPillFreezeTests {
       ("processing.transcribing", .processing(phase: .transcribing), 151.5, 44),
       ("clipboardFallback", .clipboardFallback, 226.5, 44),
       ("accessibilityToast", .accessibilityToast, 332.5, 43),
-      ("warning.polishFailed", .warning(reason: .polishFailed), 231, 37),
-      ("error.asrFailed", .error(reason: .asrFailed), 239, 38),
+      ("warning.polishFailed", .warning(reason: .polishFailed), 231, 38),
+      ("error.asrFailed", .error(reason: .asrFailed), 239, 39),
       // The one row whose width is a PROPOSAL rather than an ideal, because it
       // is the one pill asking for a fixed width and a content height. At its
       // real 360 it wraps to 68pt; unproposed it reports 927 x 39, a single
@@ -67,10 +98,10 @@ struct RenderedPillFreezeTests {
       ),
       ("interruption.deviceRemoved", .interruption(reason: .deviceRemoved), 225.5, 44),
       ("cachingModel", .cachingModel(engineLabel: "Parakeet"), 259.5, 51),
-      ("engineReady", .engineReady, 213, 40),
+      ("engineReady", .engineReady, 213, 41),
       ("recoveringLastRecording", .recoveringLastRecording, 352, 51),
       ("recoverySucceeded", .recoverySucceeded, 245, 51),
-      ("importStatus", .importStatus(message: "Imported 12 words"), 170, 38),
+      ("importStatus", .importStatus(message: "Imported 12 words"), 170, 39),
     ]
 
   /// **TEXT LAYOUT IS A PROPERTY OF THE MACHINE, so the exact-size half of this
@@ -94,7 +125,7 @@ struct RenderedPillFreezeTests {
   /// established on the machine that took them.
   @Test(
     "every notice pill renders exactly what it rendered before Phase 4",
-    .enabled(if: RenderedPillFreezeTests.isDeveloperMachine),
+    .enabled(if: RenderedPillFreezeTests.isTheMachineTheTableWasTakenOn),
     arguments: RenderedPillFreezeTests.frozenNotices)
   func noticeRowsAreFrozen(
     row: (label: String, request: PillCatalogRequest, width: CGFloat, height: CGFloat)
@@ -111,10 +142,27 @@ struct RenderedPillFreezeTests {
       """
       \(row.label) measured \(size.width) x \(size.height), frozen at \
       \(row.width) x \(row.height). Either this pill is routed through a different \
-      leaf now, or its treatment changed, or this is not the Mac the table was \
-      measured on. Phase 4 changes where a leaf's WORDS come from and must not \
-      change what any of them draws.
+      leaf now, or its treatment changed. (This is build \(Self.hostBuild), the one the \
+      table was taken on, so the host is not the explanation.) Phase 4 changes where a \
+      leaf's WORDS come from and must not change what any of them draws.
       """)
+  }
+
+  /// The gate's own two-way control: the parser reads the build out of the string
+  /// the OS gives, and a string without one reads as no machine at all. Run
+  /// everywhere, because a parser that silently returned "" on the developer Mac
+  /// would skip the absolute rows there for ever with nothing red.
+  @Test("the host build is read from the OS version string, and only from a real one")
+  func hostBuildIsParsedFromTheVersionString() {
+    #expect(Self.build(from: "Version 27.0 (Build 26A428)") == "26A428")
+    #expect(Self.build(from: "Version 26.1 (Build 25B77)") == "25B77")
+    #expect(Self.build(from: "Version 27.0") == "")
+    #expect(Self.build(from: "") == "")
+    // On any real host the string carries a build; an empty read here means the
+    // format moved and the gate above is skipping for the wrong reason.
+    #expect(
+      !Self.hostBuild.isEmpty,
+      "no build in \(ProcessInfo.processInfo.operatingSystemVersionString)")
   }
 
   /// **The portable half, and the one CI actually runs.** Every claim here is a
