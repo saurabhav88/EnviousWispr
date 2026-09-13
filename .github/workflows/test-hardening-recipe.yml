@@ -1,0 +1,127 @@
+name: Test-Hardening Recipe Check
+
+# #2703 candidate 1: run the recipe validator the moment a `test-hardening` issue is filed
+# or edited, and say so ON THE ISSUE when the night session would not be able to run it.
+#
+# Why: eight of the ten recipes filed before 2026-09-07 could not be handed to
+# `scripts/mutation-battery.py` as written (prose instead of a ```json block, a prefix
+# instead of a test name, two blocks where the runner accepts one). The rule already
+# says to run `validate-mutation-recipe.py --issue N` at filing time; nothing checked.
+# A filer who reads a red comment fixes the row while every dead row is still cheap.
+#
+# What it is NOT: a battery. It never runs xcodebuild. It reads the checkout to prove
+# every anchor exists exactly once and every expectation names a real test, which is
+# what the validator does locally in under a second.
+#
+# Two kinds of refusal, told apart by the validator's exit code, because they need
+# different readers:
+#   exit 2  REFUSED before any row was read: no fenced ```json block, two blocks, invalid
+#           JSON, a missing field. Always the filer's to fix, whatever the tree says.
+#   exit 1  one or more rows UNRUNNABLE against MAIN: an anchor not found, a test name
+#           that resolves to nothing. At filing time this is usually EXPECTED, because the
+#           recipe is filed while its PR is still open and the code it anchors on is not on
+#           main yet. Reported as information, never as a failure; re-check after the merge
+#           with `workflow_dispatch`, or let the night session's own validation catch drift.
+#
+# Comment policy: one comment per issue, marked `<!-- test-hardening-recipe-check -->`,
+# EDITED on later runs rather than re-posted, so an issue that goes through three edits
+# carries one current verdict, not three. A passing recipe with no prior comment posts
+# nothing; a passing recipe that had a comment gets that comment updated to green.
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number to validate"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    # Only `test-hardening` issues carry a recipe. On `workflow_dispatch` the label check
+    # is skipped so an operator can re-validate any number by hand.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.issue.labels.*.name, 'test-hardening')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Validate the recipe against this checkout
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event_name == 'workflow_dispatch' && inputs.issue || github.event.issue.number }}
+        run: |
+          set -uo pipefail
+          # The validator's exit code is the verdict: 0 runnable, nonzero otherwise. Its
+          # output is captured whole so the comment carries the same text an operator sees.
+          python3 scripts/validate-mutation-recipe.py --issue "$ISSUE" --checkout "$PWD" \
+            > validator.txt 2>&1
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+          cat validator.txt
+          exit 0
+
+      - name: Post or update the verdict on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC: ${{ steps.validate.outputs.rc }}
+          ISSUE: ${{ steps.validate.outputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          marker='<!-- test-hardening-recipe-check -->'
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$marker\"))] | last | .id // empty")
+
+          if [ "$RC" = "0" ] && [ -z "$existing" ]; then
+            echo "recipe runnable and no prior verdict comment: nothing to post"
+            exit 0
+          fi
+
+          {
+            echo "$marker"
+            if [ "$RC" = "0" ]; then
+              echo "## Recipe check: RUNNABLE"
+              echo
+              echo "Every row validates against main at \`${GITHUB_SHA}\`. The night session can hand this issue to \`scripts/mutation-battery.py --from-issue ${ISSUE}\` as filed."
+            elif [ "$RC" = "2" ]; then
+              echo "## Recipe check: REFUSED before any row was read"
+              echo
+              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` could not read a recipe out of this issue: no fenced \`json\` block, more than one, invalid JSON, or a missing field. This is independent of what is on main. Edit the BODY (the runner reads exactly one fenced \`json\` block across body and comments) and this check re-runs on the edit."
+            else
+              echo "## Recipe check: rows not runnable against main today"
+              echo
+              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` read the recipe but at least one row does not resolve against main at \`${GITHUB_SHA}\`. If this issue's PR is still open that is EXPECTED: the code the rows anchor on is not on main yet. Re-check after the merge from the Actions tab (Test-Hardening Recipe Check, Run workflow, issue ${ISSUE}). If the PR is already merged, the row has drifted and needs re-pointing on a new issue."
+            fi
+            echo
+            echo '```text'
+            cat validator.txt
+            echo '```'
+            echo
+            echo "Run: ${RUN_URL}"
+          } > comment.md
+
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@comment.md > /dev/null
+            echo "updated comment ${existing}"
+          else
+            gh issue comment "$ISSUE" --body-file comment.md
+          fi
+
+      - name: Fail the run only on a structural refusal
+        if: steps.validate.outputs.rc == '2'
+        run: |
+          echo "::error::Issue #${{ steps.validate.outputs.issue }}: no runnable recipe could be read from the issue (validator exit 2)"
+          exit 1
