@@ -1,32 +1,34 @@
 ---
-title: "Transcript History"
-description: "Finding, reusing, and deleting your past dictations."
+title: "History"
+description: "Finding, reusing, and deleting your past dictations and transcripts."
 category: "features"
-section: "Transcript History"
+section: "History"
 order: 1
-keywords: ["history", "past dictations", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log"]
+keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log"]
 related: ["clipboard-preservation", "escape-recovery"]
-updated: 2026-09-01
+updated: 2026-09-13
 ---
-EnviousWispr saves each finished dictation so you can find it again later. To see your past dictations, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
+EnviousWispr saves everything it transcribes so you can find it again later. History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with Transcribe a File. To see them, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 
-Recordings where no speech was found are not saved. A recording you cancel with your keybind IS saved, because [Escape Recovery](/help/escape-recovery/) is on unless you switch it off: it is kept here for 24 hours with a **Kept** badge and a countdown, and press **Keep** to make it permanent. Switch that setting off, or use the Cancel button in the recording bar, and nothing is saved. Until you do, it stays out of search and out of your dictation counts. If saving fails for a storage reason, EnviousWispr tells you.
+Each row says which kind it is. The **All**, **Dictations** and **Transcripts** buttons above the list show one kind or both. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on; click a name to rename it.
+
+Recordings where no speech was found are not saved. A dictation you cancel with your keybind IS saved, because [Escape Recovery](/help/escape-recovery/) is on unless you switch it off: it is kept here for 24 hours with a **Kept** badge and a countdown, and press **Keep** to make it permanent. Switch that setting off, or use the Cancel button in the recording bar, and nothing is saved. Until you do, it stays out of search and out of your counts. If saving fails for a storage reason, EnviousWispr tells you.
 
 ### What you can do
 
 History gives you several ways to work with past recordings.
 
-- **Search your past dictations.** Find text from an earlier session inside the history window.
-- **Copy or paste.** Copy a past dictation back to your clipboard, or paste it straight into the app you are in.
-- **Delete records.** Remove a single dictation you no longer need, or delete all of them at once.
+- **Search.** Type in **Search history** to find text from an earlier dictation or transcript, the name of an imported file, or a speaker you renamed.
+- **Copy or paste.** Copy a past dictation or transcript back to your clipboard, or paste it straight into the app you are in.
+- **Delete records.** Remove a single dictation or transcript you no longer need, or delete all of them at once. Delete all removes every item in History, including any a filter or search is hiding.
 
 ### Where it is kept
 
-Your past dictations are stored on your Mac, inside your user folder. They survive quitting the app, updating it, and restarting your computer. Envious Labs never receives a copy of your history, and there is no limit on how many dictations are kept.
+Your past dictations and transcripts are stored on your Mac, inside your user folder. They survive quitting the app, updating it, and restarting your computer. Envious Labs never receives a copy of your History, and there is no limit on how many items are kept.
 
 ### If History looks empty
 
 If the history view shows nothing, check these two things.
 
-- **Complete a dictation.** Finish at least one dictation, so there is something to display.
-- **Check the storage folder.** If dictations you know you recorded are missing, check whether `~/Library/Application Support/EnviousWispr` was moved or deleted. Every copy of the app on your Mac reads that same folder.
+- **Complete a dictation, or import a file.** Finish at least one, so there is something to display. If a filter is on, choose **All**.
+- **Check the storage folder.** If items you know you recorded are missing, check whether `~/Library/Application Support/EnviousWispr` was moved or deleted. Every copy of the app on your Mac reads that same folder.

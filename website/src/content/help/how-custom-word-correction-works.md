@@ -27,5 +27,5 @@ Custom word correction runs early. Only [snippet expansion](/help/using-snippets
 If one of your custom words keeps slipping through, work through these checks.
 
 - **Verify your spelling.** Check that the spelling you saved is exactly what you want to see in your text.
-- **Inspect your history.** Say the word as you normally would, then open **History** to see what EnviousWispr actually heard. That transcript tells you which wrong version to add.
+- **Inspect your history.** Say the word as you normally would, then open **History** to see what EnviousWispr actually heard. That dictation tells you which wrong version to add.
 - **Consider the word's length.** Very short words are harder to match safely, because matching them broadly enough to catch would also change common words you did not mean to touch.

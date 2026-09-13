@@ -28,7 +28,7 @@ struct ClipboardSettingsView: View {
               }
               .toggleStyle(BrandedToggleStyle())
               Text(
-                "Saves and restores whatever was on your clipboard before pasting the transcript."
+                "Saves and restores whatever was on your clipboard before pasting your dictation."
               )
               .settingsReadingCopy()
             }

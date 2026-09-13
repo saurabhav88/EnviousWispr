@@ -131,7 +131,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
       return "Improve recognition with your words and vocabulary."
     case .snippets:
       return "Say your keyword, then a snippet. The saved text lands for you."
-    case .clipboard: return "How your transcript reaches the clipboard and the app you're in."
+    case .clipboard: return "How your dictation reaches the clipboard and the app you're in."
     case .permissions: return "The microphone and accessibility access EnviousWispr needs."
     case .checkForUpdates: return ""
     case .openSourceLicenses:

@@ -54,7 +54,7 @@ struct LearningSection: View {
     learnCard {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .center, spacing: 8) {
-          Text("Learn from my transcripts")
+          Text("Learn from my edits")
             .settingsRowLabel()
           comingSoonPill
           Spacer(minLength: 8)

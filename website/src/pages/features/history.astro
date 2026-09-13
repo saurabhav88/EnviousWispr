@@ -12,12 +12,12 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
 <FeatureShell
   path="/features/history/"
   title="History: read, copy and recover recent dictations on Mac"
-  description="Every transcript stays on your Mac to read and copy. Cancelled by accident? The text can be kept for 24 hours. See how recovery works and where it stops."
+  description="Every dictation and transcript stays on your Mac to read and copy. Cancelled by accident? The text can be kept for 24 hours. See how recovery works."
 >
   <FeatureHero
     kind="history"
     label="History"
-    title={'Your transcripts,<br><span class="accent-ink">saved on your Mac.</span>'}
+    title={'Your dictations and transcripts,<br><span class="accent-ink">saved on your Mac.</span>'}
     copy="History saves the text from your dictations and file transcriptions. Find something you said earlier, copy it, and use it again."
   >
     <HistoryFilm />
@@ -26,32 +26,32 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
     <div>
       <span class="eyebrow">Cancelled recordings</span>
       <h2>Cancelled by mistake?</h2>
-      <p>With Escape Recovery enabled, cancelling with your keyboard shortcut keeps the transcript in History for 24 hours. Copy the text or select Keep to save it permanently.</p>
+      <p>With Escape Recovery enabled, cancelling with your keyboard shortcut keeps the dictation in History for 24 hours. Copy the text or select Keep to save it permanently.</p>
       <small>Escape Recovery is on by default. Clicking the Cancel button discards the recording.</small>
     </div>
     <div class="history-clock-card">
       <strong>24<span>hours</span></strong>
-      <p>To copy or keep<br />a cancelled transcript.</p>
+      <p>To copy or keep<br />a cancelled dictation.</p>
       <div><span>Kept</span><span>Copy or Keep</span></div>
     </div>
   </section>
   <section class="history-library wrap">
     <div class="section-top">
-      <div><span class="eyebrow">Saved transcripts</span><h2>Find and copy<br />your past transcripts.</h2></div>
-      <p>Open History to read a previous transcript. Search for a word or phrase, then copy the text you need.</p>
+      <div><span class="eyebrow">Saved dictations and transcripts</span><h2>Find and copy<br />your past dictations and transcripts.</h2></div>
+      <p>Open History to read a previous dictation or transcript. Search for a word or phrase, then copy the text you need.</p>
     </div>
     <div class="history-benefits">
       <div>
         <h3>Stored on your Mac.</h3>
-        <p>Your transcripts stay saved when you close the app or restart your Mac.</p>
+        <p>Your dictations and transcripts stay saved when you close the app or restart your Mac.</p>
         <details>
           <summary>What happens to the audio?</summary>
-          <p>History keeps transcripts. Dictation audio is normally cleared after processing; temporary audio can remain for recovery. Your original imported files are left alone.</p>
+          <p>History keeps dictations and transcripts. Dictation audio is normally cleared after processing; temporary audio can remain for recovery. Your original imported files are left alone.</p>
         </details>
       </div>
       <div>
         <h3>Copy or paste.</h3>
-        <p>Copy a transcript to your clipboard, or paste it directly into the app you are using.</p>
+        <p>Copy a dictation or transcript to your clipboard, or paste it directly into the app you are using.</p>
       </div>
     </div>
   </section>
@@ -65,7 +65,7 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
     <div class="history-rescued recovery-example">
       <div><b>History</b><span>Recovered</span></div>
       <p>Let’s move the meeting to Friday.</p>
-      <small>Recovered transcript</small>
+      <small>Recovered dictation</small>
       <div class="history-actions"><span>Copy</span></div>
     </div>
   </section>

@@ -35,7 +35,7 @@ OpenAI, Gemini, Claude, and Ollama's hosted models all run on their own servers.
 #### What is never sent
 
 - Your audio. That holds on every single option without exception.
-- Your other transcripts, or your History.
+- Your other dictations and transcripts, or your History.
 
 EnviousWispr adds nothing to the request that identifies you or your Mac. The provider still sees the ordinary details of any internet connection, such as your IP address.
 

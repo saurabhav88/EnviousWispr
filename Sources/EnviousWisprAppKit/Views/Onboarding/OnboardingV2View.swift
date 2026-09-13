@@ -1518,13 +1518,13 @@ private struct PermissionsPhaseView: View {
                   .font(.obLabel)
                   .foregroundStyle(Color.obTextPrimary)
                 Text(
-                  "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your transcript into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually."
+                  "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your dictation into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually."
                 )
                 .font(.obCaption)
                 .foregroundStyle(Color.obTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 Text(
-                  "We only use Accessibility at the moment we paste your transcript. Never to read your keystrokes, never to watch what happens in other apps."
+                  "We only use Accessibility at the moment we paste your dictation. Never to read your keystrokes, never to watch what happens in other apps."
                 )
                 .font(.obCaption)
                 .foregroundStyle(Color.obTextSecondary)
