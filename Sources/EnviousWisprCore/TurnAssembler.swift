@@ -23,16 +23,27 @@ public enum TurnAssembler {
 
   public static let unknownSpeakerID = "unknown"
 
+  /// An `"unknown"` group of this many entries or fewer folds into its nearest neighbour
+  /// (#2851 §3 C). Measured on the founder's 48-minute interview, 2026-09-13: 105 of 372
+  /// turns were `"unknown"`, 87 of them 1 to 4 words ("w", "too", "a", "Go on. We"), median
+  /// 0.8 s, and on screen they cut sentences in two ("Very" / "Soon. Now by the time this
+  /// airs."). Five words and up stay unknown: those are real overlaps, not boundary jitter.
+  public static let unknownFoldMaxEntries = 4
+  /// The fold is a GUESS by proximity where the diarizer had none; the plan's hand-check of
+  /// twenty folded fragments against the audio decides whether it ships on. Off leaves
+  /// every unknown group as its own turn, exactly as before #2851.
+  public static let unknownFoldEnabled = true
+
   public static func assemble(entries: [ASRWordTiming], segments: [SpeakerSegment]) -> [Turn] {
     guard !entries.isEmpty else { return [] }
 
-    var turns: [Turn] = []
+    var groups: [(speaker: String, entries: [ASRWordTiming])] = []
     var groupSpeaker: String?
     var groupEntries: [ASRWordTiming] = []
 
     func flushGroup() {
       guard let speaker = groupSpeaker, !groupEntries.isEmpty else { return }
-      turns.append(makeTurn(speaker: speaker, entries: groupEntries))
+      groups.append((speaker, groupEntries))
       groupEntries = []
     }
 
@@ -47,7 +58,82 @@ public enum TurnAssembler {
     }
     flushGroup()
 
-    return turns
+    if unknownFoldEnabled { groups = foldingTinyUnknownGroups(groups) }
+    return coalescingAdjacentSpeakers(groups).map { makeTurn(speaker: $0.speaker, entries: $0.entries) }
+  }
+
+  /// Folds each `"unknown"` group of `unknownFoldMaxEntries` entries or fewer into the
+  /// neighbour with the smaller time gap; the previous one on a tie, when the fragment is
+  /// untimed, or when there is no next; the next one when there is no previous. A fragment
+  /// with no neighbour at all stays. Runs on the speaker groups BEFORE `makeTurn`, so the
+  /// merged group's range and bounds derive from its entries like any other; the final
+  /// adjacent-speaker coalescing then merges what the fold made adjacent.
+  static func foldingTinyUnknownGroups(_ groups: [(speaker: String, entries: [ASRWordTiming])])
+    -> [(speaker: String, entries: [ASRWordTiming])]
+  {
+    var result = groups
+    var i = 0
+    while i < result.count {
+      let group = result[i]
+      guard group.speaker == unknownSpeakerID, group.entries.count <= unknownFoldMaxEntries
+      else {
+        i += 1
+        continue
+      }
+      let previous = i > 0 ? i - 1 : nil
+      let next = i + 1 < result.count ? i + 1 : nil
+      guard previous != nil || next != nil else {
+        i += 1
+        continue
+      }
+      let target: Int
+      switch (previous, next) {
+      case (let p?, nil): target = p
+      case (nil, let n?): target = n
+      case (let p?, let n?):
+        let fragmentStart = group.entries.compactMap(\.startMs).min()
+        let fragmentEnd = group.entries.compactMap(\.endMs).max()
+        let previousEnd = result[p].entries.compactMap(\.endMs).max()
+        let nextStart = result[n].entries.compactMap(\.startMs).min()
+        guard let fragmentStart, let fragmentEnd, let previousEnd, let nextStart else {
+          target = p  // untimed on either side: the previous turn keeps the sentence going
+          break
+        }
+        let gapBefore = max(0, fragmentStart - previousEnd)
+        let gapAfter = max(0, nextStart - fragmentEnd)
+        target = gapAfter < gapBefore ? n : p
+      case (nil, nil):
+        target = i
+      }
+      if target == i {
+        i += 1
+        continue
+      }
+      if target < i {
+        result[target].entries.append(contentsOf: group.entries)
+        result.remove(at: i)
+        // `i` now points at what followed the fragment; it is re-examined next.
+      } else {
+        result[target].entries.insert(contentsOf: group.entries, at: 0)
+        result.remove(at: i)
+        // The next group moved into `i`; re-examine it (it may itself be a fragment).
+      }
+    }
+    return result
+  }
+
+  static func coalescingAdjacentSpeakers(_ groups: [(speaker: String, entries: [ASRWordTiming])])
+    -> [(speaker: String, entries: [ASRWordTiming])]
+  {
+    var result: [(speaker: String, entries: [ASRWordTiming])] = []
+    for group in groups {
+      if let last = result.last, last.speaker == group.speaker {
+        result[result.count - 1].entries.append(contentsOf: group.entries)
+      } else {
+        result.append(group)
+      }
+    }
+    return result
   }
 
   /// Greatest-overlap assignment with a deterministic tie-break, a bounded nearest-segment
