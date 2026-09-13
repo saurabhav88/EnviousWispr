@@ -315,6 +315,66 @@ html[data-theme='dark'] .site-chrome {
   color: var(--nav-body);
   font-size: 21px;
 }
+
+/* GitHub link with the live star count (#2849). The pill sits beside the
+ * theme toggle from 600px up; below that the phone menu carries the same link
+ * as a plain row. Both hosts start as the word "GitHub" and switch to the
+ * star and number only once github-stars.js stamps data-stars-ready. */
+.site-chrome .chrome-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--nav-line);
+  border-radius: 999px;
+  color: var(--nav-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 0.18s, color 0.18s;
+}
+.site-chrome .chrome-pill:hover {
+  border-color: var(--nav-accent);
+  color: var(--nav-accent);
+}
+.site-chrome .github-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.site-chrome .chrome-stars {
+  display: inline-flex;
+  align-items: center;
+}
+.site-chrome .chrome-stars-count {
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
+.site-chrome .chrome-star {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #e8a53a;
+}
+.site-chrome [data-stars-ready] .chrome-stars-label {
+  display: none;
+}
+.site-chrome [data-stars-ready] .chrome-stars-count {
+  display: inline-flex;
+}
+/* The phone-menu row keeps the word and adds the count after it. */
+.chrome-header .nav-github [data-stars-ready] .chrome-stars-label {
+  display: inline;
+  margin-right: 8px;
+}
+.chrome-header .nav-github {
+  display: none;
+}
 .chrome-header .chrome-mobile-trigger {
   display: none;
 }
@@ -469,9 +529,13 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     font-size: 26px;
   }
 }
-@media (min-width: 1000px) and (max-width: 1190px) {
+/* The compact desktop band. The pill and the button need 1123px of header
+ * in the 1240px-up layout, so that layout starts there; here the brand, nav
+ * gaps and actions tighten so everything fits from 1000px with room to spare
+ * (#2849: measured 921px needed inside a 934px header at 1000px). */
+@media (min-width: 1000px) and (max-width: 1239px) {
   html[data-nav-js] .chrome-header .main-nav {
-    gap: 22px;
+    gap: 18px;
   }
   html[data-nav-js] .chrome-header .nav-trigger,
   html[data-nav-js] .chrome-header .nav-link {
@@ -479,12 +543,15 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
   }
 }
 @media (max-width: 1190px) {
+  /* The page content's .wrap narrows here too; the chrome stays aligned. */
   .chrome-header,
   .chrome-footer {
     width: calc(100% - 64px);
   }
+}
+@media (max-width: 1239px) {
   .chrome-header .chrome-inner {
-    gap: 17px;
+    gap: 14px;
     padding: 0 18px;
   }
   .site-chrome .chrome-brand {
@@ -498,10 +565,14 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     gap: 16px;
   }
   .chrome-header .chrome-actions {
-    gap: 8px;
+    gap: 7px;
   }
   .chrome-header .chrome-actions .chrome-button {
     padding: 10px 13px;
+    font-size: 13px;
+  }
+  .chrome-header .chrome-actions .chrome-pill {
+    padding: 0 11px;
     font-size: 13px;
   }
 }
@@ -617,6 +688,12 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     width: 18px;
     height: 18px;
   }
+  .chrome-header .chrome-actions .chrome-pill {
+    display: none;
+  }
+  .chrome-header .nav-github {
+    display: flex;
+  }
   html[data-nav-js] .chrome-header .main-nav {
     top: 78px;
     gap: 3px;
@@ -668,6 +745,7 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     transform: none;
   }
   .site-chrome .chrome-button,
+  .site-chrome .chrome-pill,
   .chrome-header .menu-product {
     transition: none;
   }
