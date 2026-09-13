@@ -140,12 +140,20 @@ private struct TurnRowView: View {
     }
   }
 
+  /// Selectable in both modes, as every passage this view replaces already was on both
+  /// screens (found by whole-diff review): a user copies one sentence of one turn as freely
+  /// as before, not only the whole document through Copy.
   @ViewBuilder private var content: some View {
     switch turn.content {
     case .plain(let text):
       Text(text)
+        .textSelection(.enabled)
     case .markedUp(let diff):
       MarkedUpTurnText(result: diff)
+        .textSelection(.enabled)
+        // The marks are visual; a screen reader gets the wizard's own spoken form instead,
+        // the same helper its whole-document marked-up view uses (found by whole-diff review).
+        .accessibilityLabel(TranscribeFileView.markedUpAccessibilityText(diff.segments))
     }
   }
 }

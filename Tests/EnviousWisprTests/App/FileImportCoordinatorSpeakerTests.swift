@@ -1095,6 +1095,114 @@ struct FileImportCoordinatorSpeakerTests {
     )
   }
 
+  /// A cleanup whose output the test can change between runs, so a re-clean is told apart
+  /// from the first clean by the text it wrote, never by a call count alone.
+  @MainActor private final class TaggedCleaner {
+    var tag = "first"
+    func outcome(_ part: String) -> FileImportRunner.PartOutcome {
+      FileImportRunner.PartOutcome(text: part, polishedText: "\(part) [\(tag)]", polishError: nil)
+    }
+  }
+
+  @Test("Clean it again re-cleans the stored turns and keeps an explicit rename (#2811)")
+  func rePolishRecleansStoredTurnsAndKeepsRename() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in cleaner.outcome(part) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let stored = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+    #expect(stored)
+    let firstCleaned =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(firstCleaned == true, "the first pass should have cleaned every turn")
+
+    guard let liveRow = store.current(historyID), let analysis = liveRow.speakerAnalysis else {
+      Issue.record("no labeled row to rename against")
+      return
+    }
+    #expect(store.rename(historyID, analysis, liveRow.turns, (speakerId: "A", name: "Zach")))
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    _ = await settleUntil { coordinator.state == .finished }
+    let recleaned = await settleUntil {
+      store.current(historyID)?.turns?.allSatisfy {
+        $0.processedText?.hasSuffix("[second]") == true
+      } ?? false
+    }
+    #expect(recleaned, "Clean it again must re-clean the stored turns, not only the document")
+    #expect(store.current(historyID)?.turns?.count == 2, "re-cleaning must not change the turn set")
+    #expect(store.current(historyID)?.speakerNames?["A"] == "Zach", "a rename must survive a re-clean")
+  }
+
+  @Test("Clean it again cleans the raw turns a retry left behind (#2811)")
+  func rePolishCleansTurnsLeftRawByRetry() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        attempts.next() == 1
+          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in cleaner.outcome(part) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    coordinator.retrySpeakerAnalysis()
+    let retried = await settleUntil {
+      store.current(historyID)?.speakerAnalysis == .labeled(count: 2)
+        && coordinator.speakerStepState == .finished
+    }
+    #expect(retried)
+    let rawAfterRetry = store.current(historyID)?.turns?.allSatisfy { $0.processedText == nil }
+    #expect(rawAfterRetry == true, "retry skips cleanup by design, so its turns start raw")
+
+    coordinator.rePolish()
+    _ = await settleUntil { coordinator.state == .finished }
+    let cleaned = await settleUntil {
+      store.current(historyID)?.turns?.allSatisfy {
+        $0.processedText?.hasSuffix("[first]") == true
+      } ?? false
+    }
+    #expect(cleaned, "Clean it again is the one path that cleans a retry's raw turns")
+  }
+
   @Test("retrySpeakerAnalysis persists a labeled outcome without ever reaching cleanup")
   func retrySpeakerAnalysisSkipsCleanupButPersists() async {
     let store = FakeHistoryStore()

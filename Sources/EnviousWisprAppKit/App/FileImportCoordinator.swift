@@ -1518,6 +1518,7 @@ final class FileImportCoordinator {
 
     generation += 1
     let generationAtStart = generation
+    let historyIDAtStart = historyID
     parts = []
     // #2772 finding 14: the OLD queue must not be shown as the current one while this run
     // is still preparing. Cleared here and republished by `polishAll` from the new split.
@@ -1547,7 +1548,44 @@ final class FileImportCoordinator {
       guard generationAtStart == generation else { return }
       await polishAll(
         TranscriptSplitter.split(rawTranscript), generationAtStart: generationAtStart)
+      // Still under THIS run's engine claim (the defer above releases it only after this
+      // returns), and after the visible document has already reached Done, exactly as the
+      // first import's own turn cleanup runs behind its Done step.
+      await reCleanStoredTurns(
+        generationAtStart: generationAtStart, historyIDAtStart: historyIDAtStart)
     }
+  }
+
+  /// "Clean it again" for the TURNS (#2811, found by whole-diff review). `polishAll` above
+  /// re-cleans only the whole document, but once a row is `.labeled` both screens draw and
+  /// export the stored turns, so without this the new cleanup never reached the screen: the
+  /// turns kept their previous `processedText`, and after a "Try again" retry (which skips
+  /// cleanup by design, so that cleanup stays "Clean it again") they stayed raw for good.
+  /// Re-runs the same `TurnCleanupRunner` over the row's CURRENT turns, from the raw text,
+  /// so speaker ids and every explicit rename survive (`mergeSpeakerFields` preserves names
+  /// for surviving ids). Skipped while the ordinary storage pass is still in flight: that
+  /// pass is about to write freshly cleaned turns of its own, and racing it would only
+  /// write the same thing twice. `outcome: nil` because `file_import_turns` is a
+  /// once-per-import event (plan §3e) and a re-clean is not a new import.
+  private func reCleanStoredTurns(generationAtStart: Int, historyIDAtStart: UUID?) async {
+    guard let historyIDForWrite = historyIDAtStart, historyIDForWrite == historyID,
+      generationAtStart == generation, !Task.isCancelled, speakerStepState == .finished,
+      let current = currentHistoryRow(historyIDForWrite),
+      case .labeled(let labeledCount) = current.speakerAnalysis,
+      let storedTurns = current.turns, !storedTurns.isEmpty
+    else { return }
+    let passStart = CFAbsoluteTimeGetCurrent()
+    let (cleanedTurns, fallbackTurnCount) = await TurnCleanupRunner(processPart: processPart)
+      .run(turns: storedTurns, rawText: rawTranscript, engineLanguage: engineReportedLanguage)
+    guard historyIDForWrite == historyID, generationAtStart == generation, !Task.isCancelled
+    else { return }
+    await mergeAndReport(
+      historyID: historyIDForWrite, analysis: .labeled(count: labeledCount), turns: cleanedTurns,
+      outcome: nil, turnCount: cleanedTurns.count, fallbackTurnCount: fallbackTurnCount,
+      passStart: passStart)
+    await AppLogger.shared.log(
+      "[TurnCleanup] outcome=recleaned turns=\(cleanedTurns.count) fallback=\(fallbackTurnCount) ms=\(Self.elapsedMs(since: passStart))",
+      level: .info, category: "FileImportCoordinator")
   }
 
   // MARK: - The run
