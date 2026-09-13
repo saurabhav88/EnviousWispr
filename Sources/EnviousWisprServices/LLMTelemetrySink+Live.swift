@@ -41,6 +41,17 @@ extension LLMTelemetrySink {
     TelemetryService.shared.prewarmStarted(provider: provider, model: model)
   }
 
+  package typealias RetryCompletedReporter = @MainActor (
+    _ provider: String, _ reason: String, _ attempt: Int, _ delayMs: Int, _ succeeded: Bool
+  ) -> Void
+
+  package static let defaultRetryCompletedReporter: RetryCompletedReporter = {
+    provider, reason, attempt, delayMs, succeeded in
+    TelemetryService.shared.llmRetryCompleted(
+      provider: provider, reason: reason, attempt: attempt, delayMs: delayMs,
+      succeeded: succeeded)
+  }
+
   package static let defaultHandledErrorReporter: HandledErrorReporter = {
     error, category, stage, extra, fingerprintDetail in
     SentryBreadcrumb.captureError(
@@ -58,7 +69,8 @@ extension LLMTelemetrySink {
   package static func makeLive(
     limbFailureReporter: @escaping LimbFailureReporter = defaultLimbFailureReporter,
     handledErrorReporter: @escaping HandledErrorReporter = defaultHandledErrorReporter,
-    prewarmStartedReporter: @escaping PrewarmStartedReporter = defaultPrewarmStartedReporter
+    prewarmStartedReporter: @escaping PrewarmStartedReporter = defaultPrewarmStartedReporter,
+    retryCompletedReporter: @escaping RetryCompletedReporter = defaultRetryCompletedReporter
   ) -> LLMTelemetrySink {
     LLMTelemetrySink(
       limbFailure: { limb, operation, result, errorCategory, durationMs in
@@ -88,6 +100,13 @@ extension LLMTelemetrySink {
         DispatchQueue.main.async {
           MainActor.assumeIsolated {
             prewarmStartedReporter(provider, model)
+          }
+        }
+      },
+      retryCompleted: { provider, reason, attempt, delayMs, succeeded in
+        DispatchQueue.main.async {
+          MainActor.assumeIsolated {
+            retryCompletedReporter(provider, reason, attempt, delayMs, succeeded)
           }
         }
       })

@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Shared retry infrastructure for LLM connectors.
@@ -26,6 +27,65 @@ enum LLMRetryPolicy {
   /// an accident.
   static let defaultDelays: [UInt64] = [200_000_000, 400_000_000]
   static let defaultMaxRetries = 2
+
+  /// #2641: the closed-vocabulary name of the failure a retry is answering, for
+  /// `llm.retry_completed`. A classified error names its `PolishFailureReason`;
+  /// a transport error names its `URLError` code; the legacy string-carrying
+  /// `requestFailed` is one bucket, because its message is free text and free
+  /// text is not a telemetry value.
+  static func telemetryReason(for error: Error) -> String {
+    if let llmError = error as? LLMError {
+      switch llmError {
+      case .classified(let reason): return reason.rawValue
+      case .requestFailed: return "request_failed"
+      default: return "llm_error"
+      }
+    }
+    if let urlError = error as? URLError {
+      return "url_error_\(urlError.code.rawValue)"
+    }
+    return "unknown"
+  }
+
+  /// #2641: report one retry attempt's outcome through the module's telemetry
+  /// seam. Called by every connector's retry loop AFTER the retried attempt
+  /// returns, never for attempt 0 (a first attempt is not a retry).
+  static func reportRetry(
+    _ sink: LLMTelemetrySink, provider: LLMProvider, retrying error: Error?,
+    attempt: Int, delayNanoseconds: UInt64, succeeded: Bool
+  ) {
+    RetryReceipt(
+      provider: provider, retrying: error, attempt: attempt, delayNanoseconds: delayNanoseconds
+    ).report(sink, succeeded: succeeded)
+  }
+
+  /// #2641: a retry whose HTTP exchange came back, awaiting the caller's verdict.
+  ///
+  /// Three connectors validate the response INSIDE the retried operation, so
+  /// "the operation returned" is "the polish succeeded". Ollama's loop returns
+  /// raw bytes and its two callers parse them differently (chat shape versus
+  /// the S1-mini generate shape, which accepts an empty answer), so a 200 with
+  /// a body the caller then rejects must not count as a recovered retry (local
+  /// review r1). The loop hands back this receipt instead of reporting, and
+  /// the caller reports once it knows.
+  struct RetryReceipt {
+    let provider: LLMProvider
+    let reason: String
+    let attempt: Int
+    let delayNanoseconds: UInt64
+
+    init(provider: LLMProvider, retrying error: Error?, attempt: Int, delayNanoseconds: UInt64) {
+      self.provider = provider
+      self.reason = error.map(LLMRetryPolicy.telemetryReason(for:)) ?? "unknown"
+      self.attempt = attempt
+      self.delayNanoseconds = delayNanoseconds
+    }
+
+    func report(_ sink: LLMTelemetrySink, succeeded: Bool) {
+      sink.retryCompleted(
+        provider.rawValue, reason, attempt, Int(delayNanoseconds / 1_000_000), succeeded)
+    }
+  }
 
   /// Determine if an error is transient and worth retrying.
   static func isRetryable(_ error: Error) -> Bool {

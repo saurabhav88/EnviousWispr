@@ -15,7 +15,8 @@ private final class CleanupSinkSpy: @unchecked Sendable {
       limbFailure: { _, _, _, _, _ in },
       legacyKeyCleanupFailed: { _, account in self.lock.withLock { self._accounts.append(account) }
       },
-      prewarmStarted: { _, _ in })
+      prewarmStarted: { _, _ in },
+      retryCompleted: { _, _, _, _, _ in })
   }
 }
 

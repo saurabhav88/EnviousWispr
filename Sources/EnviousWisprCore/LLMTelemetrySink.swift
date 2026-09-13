@@ -44,19 +44,36 @@ public struct LLMTelemetrySink: Sendable {
   /// intentions. Metadata only: provider and model, never key material.
   public let prewarmStarted: @Sendable (_ provider: String, _ model: String) -> Void
 
-  /// `prewarmStarted` is deliberately NOT defaulted. Only three sites construct
-  /// this type, so requiring it costs almost nothing and makes the compiler,
-  /// rather than a reviewer, catch a `.live` factory that forgets to wire the
-  /// event — the failure mode where the counter silently never fires and the
-  /// change looks unmeasurable rather than broken.
+  /// #2641: a transient-failure RETRY finished → `llm.retry_completed`.
+  ///
+  /// `llm.polish_failed` records only FINAL failures, so a retry that recovered
+  /// left no row anywhere and nobody could say whether the 200 ms / 400 ms
+  /// backoff (#2093) ever rescues a rate-limited or 5xx call. One row per retry
+  /// ATTEMPT, emitted after that attempt returns: the provider, the classified
+  /// reason of the failure that triggered it, the attempt index (1-based: the
+  /// first retry is 1), the delay slept before it, and whether it SUCCEEDED.
+  /// The last field is the whole point; attempts alone say the mechanism ran,
+  /// not that it works. Metadata only, never content or key material.
+  public let retryCompleted:
+    @Sendable (
+      _ provider: String, _ reason: String, _ attempt: Int, _ delayMs: Int, _ succeeded: Bool
+    ) -> Void
+
+  /// `prewarmStarted` and `retryCompleted` are deliberately NOT defaulted. Only
+  /// a handful of sites construct this type, so requiring them costs almost
+  /// nothing and makes the compiler, rather than a reviewer, catch a `.live`
+  /// factory that forgets to wire an event — the failure mode where the counter
+  /// silently never fires and the change looks unmeasurable rather than broken.
   public init(
     limbFailure: @escaping @Sendable (String, String, String, String, Int?) -> Void,
     legacyKeyCleanupFailed: @escaping @Sendable (any Error, String) -> Void,
-    prewarmStarted: @escaping @Sendable (String, String) -> Void
+    prewarmStarted: @escaping @Sendable (String, String) -> Void,
+    retryCompleted: @escaping @Sendable (String, String, Int, Int, Bool) -> Void
   ) {
     self.limbFailure = limbFailure
     self.legacyKeyCleanupFailed = legacyKeyCleanupFailed
     self.prewarmStarted = prewarmStarted
+    self.retryCompleted = retryCompleted
   }
 
   /// No-op sink — the default at every construction site except the App composition
@@ -64,5 +81,6 @@ public struct LLMTelemetrySink: Sendable {
   public static let noop = LLMTelemetrySink(
     limbFailure: { _, _, _, _, _ in },
     legacyKeyCleanupFailed: { _, _ in },
-    prewarmStarted: { _, _ in })
+    prewarmStarted: { _, _ in },
+    retryCompleted: { _, _, _, _, _ in })
 }
