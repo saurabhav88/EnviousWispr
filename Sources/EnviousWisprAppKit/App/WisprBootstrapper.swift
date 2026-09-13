@@ -1655,10 +1655,12 @@ package final class WisprBootstrapper {
         // door has no editor and so no unsaved-key draft.
         polishReadiness: { [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
           let provider = settings.effectiveFileImportLLMProvider
-          // What the screen's `onAppear` does for Ollama (`ProviderSetupLifecycle`): the
-          // daemon's state is `.detecting` from launch until something asks, and only the
-          // screen asks. The door asks once here when nothing has yet.
-          if provider == .ollama, case .detecting = setup.ollamaSetup.setupState {
+          // What the screen's `onAppear` does for Ollama (`ProviderSetupLifecycle`,
+          // unconditionally, every time): the daemon's state is a cached answer, and a
+          // daemon started or stopped since the last look changes it. The door asks on
+          // every check, exactly as the screen asks on every appearance (cloud review,
+          // PR #2887, round 8).
+          if provider == .ollama {
             await setup.ollamaSetup.detectState(trigger: "import_door")
           }
           return FileImportPolishGate.readiness(
