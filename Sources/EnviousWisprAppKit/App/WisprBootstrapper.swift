@@ -289,7 +289,16 @@ package final class WisprBootstrapper {
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
     let transcriptStore = TranscriptStore()
-    let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
+    // The History half of #2811's turn-label telemetry; the wizard half is wired on
+    // `FileImportCoordinator` below, and both emit the same shape-only events.
+    let transcriptCoordinator = TranscriptCoordinator(
+      store: transcriptStore,
+      emitRenameTelemetry: { outcome in
+        TelemetryService.shared.trackFileImportRename(outcome: outcome)
+      },
+      emitTurnsDisplayedTelemetry: {
+        TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .history)
+      })
 
     // #832/#913 PR8: app-owned output-safety classifier holder. Created before
     // the polish service + both kernel drivers so all three receive the same
@@ -1447,6 +1456,9 @@ package final class WisprBootstrapper {
       },
       emitSpeakerRetryTelemetry: { outcome in
         TelemetryService.shared.trackFileImportSpeakerRetry(outcome: outcome)
+      },
+      emitTurnsDisplayedTelemetry: {
+        TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .wizard)
       },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.

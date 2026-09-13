@@ -17,6 +17,14 @@ struct TurnDocumentView<Fallback: View>: View {
   /// The caller re-fetches current analysis/turns and writes through
   /// `mergeSpeakerFields(explicitRename:)` — this view never persists anything itself.
   let onRename: (String, String) async -> RenameFailure?
+  /// Called when a rename popover closes WITHOUT a commit: Escape, or a blank name reverting
+  /// (plan §3d). An outside click commits and never reaches this. Shape-only telemetry is the
+  /// only consumer (#2811 §3e `cancelled`); the view keeps nothing.
+  var onRenameCancelled: () -> Void = {}
+  /// Called each time the turn branch below APPEARS, i.e. `turns` became non-nil for this
+  /// view identity. The caller decides whether that is new for the document (#2811 §3e
+  /// `file_import_turns_displayed`, deduplicated per document in each coordinator).
+  var onTurnsDisplayed: () -> Void = {}
   @ViewBuilder let fallback: () -> Fallback
 
   /// No `ScrollView` of its own (found by chunk review): both callers already embed this
@@ -28,9 +36,10 @@ struct TurnDocumentView<Fallback: View>: View {
     if let turns {
       VStack(alignment: .leading, spacing: 16) {
         ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
-          TurnRowView(turn: turn, onRename: onRename)
+          TurnRowView(turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled)
         }
       }
+      .onAppear(perform: onTurnsDisplayed)
     } else {
       fallback()
     }
@@ -49,6 +58,7 @@ struct RenameFailure: Equatable, Sendable {
 private struct TurnRowView: View {
   let turn: TranscriptDocumentPresenter.RenderedTurn
   let onRename: (String, String) async -> RenameFailure?
+  let onRenameCancelled: () -> Void
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
@@ -103,6 +113,7 @@ private struct TurnRowView: View {
           onCancel: {
             renameFailure = nil
             isRenaming = false
+            onRenameCancelled()
           })
       }
     }

@@ -128,6 +128,7 @@ struct FileImportCoordinatorSpeakerTests {
     emitSpeakerRetryTelemetry: @escaping @MainActor (
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
     onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
       Bool = { _ in true },
@@ -149,6 +150,7 @@ struct FileImportCoordinatorSpeakerTests {
       emitTurnTelemetry: emitTurnTelemetry,
       emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
+      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
       onVisibleCleanupWaitResolved: onVisibleCleanupWaitResolved,
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
@@ -1021,7 +1023,8 @@ struct FileImportCoordinatorSpeakerTests {
     },
     emitSpeakerRetryTelemetry: @escaping @MainActor (
       TelemetryService.FileImportSpeakerRetryOutcome
-    ) -> Void = { _ in }
+    ) -> Void = { _ in },
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {}
   ) -> FileImportCoordinator {
     makeCoordinator(
       lease: lease, seconds: seconds, transcribedText: transcribedText,
@@ -1032,7 +1035,8 @@ struct FileImportCoordinatorSpeakerTests {
       writeExplicitRename: { store.rename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
-      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry, processPart: processPart)
+      emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
+      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry, processPart: processPart)
   }
 
   @Test(
@@ -1163,6 +1167,7 @@ struct FileImportCoordinatorSpeakerTests {
       }
     }
     let attempts = AttemptCounter()
+    let retryTelemetry = RetryTelemetryRecorder()
     let coordinator = makeStoreBackedCoordinator(
       store: store, wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in
@@ -1173,7 +1178,7 @@ struct FileImportCoordinatorSpeakerTests {
         await speakerGate.markArrived()
         await speakerGate.waitUntilOpen()
         return .labeled(count: 2, segments: Self.twoSpeakerSegments)
-      })
+      }, emitSpeakerRetryTelemetry: { retryTelemetry.record($0) })
 
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
@@ -1211,6 +1216,9 @@ struct FileImportCoordinatorSpeakerTests {
       store.current(firstHistoryID)?.speakerAnalysis != .labeled(count: 2),
       "a stale retry must never persist a labeled outcome against a document the user already left"
     )
+    #expect(
+      retryTelemetry.outcomes == [],
+      "a superseded retry says nothing about the analyzer and must report neither outcome")
   }
 
   @Test("Stop pressed while a retry's own analyzer call is in flight prevents any further write")
@@ -1225,6 +1233,7 @@ struct FileImportCoordinatorSpeakerTests {
       }
     }
     let attempts = AttemptCounter()
+    let retryTelemetry = RetryTelemetryRecorder()
     let coordinator = makeStoreBackedCoordinator(
       store: store, wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in
@@ -1232,7 +1241,7 @@ struct FileImportCoordinatorSpeakerTests {
         await speakerGate.markArrived()
         await speakerGate.waitUntilOpen()
         return .labeled(count: 2, segments: Self.twoSpeakerSegments)
-      })
+      }, emitSpeakerRetryTelemetry: { retryTelemetry.record($0) })
 
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
@@ -1268,6 +1277,11 @@ struct FileImportCoordinatorSpeakerTests {
       store.current(historyID)?.speakerAnalysis != .labeled(count: 2),
       "Stop during a retry must prevent its result from ever being persisted"
     )
+    // Stop leaves `historyID` in place and the row still failed, so an identity-only guard
+    // would have blamed the analyzer for a retry the user abandoned (found by chunk review).
+    #expect(
+      retryTelemetry.outcomes == [],
+      "a stopped retry must report neither recovered nor still_failed")
   }
 
   @Test("canRetrySpeakerAnalysis is false for a labeled or single outcome, and while in progress")
@@ -1509,16 +1523,23 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(telemetry.outcomes == [.saved, .failed], "a .single outcome has nothing to rename against")
   }
 
-  @Test("retrySpeakerAnalysis reports recovered on success and stillFailed otherwise (#2811 §3e)")
-  func retryTelemetryReportsRecoveredAndStillFailed() async {
-    let store = FakeHistoryStore()
-    @MainActor final class TelemetryRecorder {
-      private(set) var outcomes: [TelemetryService.FileImportSpeakerRetryOutcome] = []
-      func record(_ outcome: TelemetryService.FileImportSpeakerRetryOutcome) {
-        outcomes.append(outcome)
-      }
+  /// Shared by the retry-telemetry tests and the two in-flight retry tests above, which
+  /// each prove a retry that never reached its own write reports NOTHING.
+  @MainActor final class RetryTelemetryRecorder {
+    private(set) var outcomes: [TelemetryService.FileImportSpeakerRetryOutcome] = []
+    func record(_ outcome: TelemetryService.FileImportSpeakerRetryOutcome) {
+      outcomes.append(outcome)
     }
-    let telemetry = TelemetryRecorder()
+  }
+
+  /// Runs one import whose first analyzer pass fails, then presses "Try again" once, and
+  /// returns the exact retry-telemetry sequence once the retry has settled (bounded yields
+  /// AFTER the step reads finished, so a duplicate emit would still be caught).
+  private func retryOutcomes(
+    afterRetryReturning retryOutcome: SpeakerAnalysis
+  ) async -> [TelemetryService.FileImportSpeakerRetryOutcome]? {
+    let store = FakeHistoryStore()
+    let telemetry = RetryTelemetryRecorder()
     @MainActor final class AttemptCounter {
       private(set) var count = 0
       func next() -> Int {
@@ -1530,8 +1551,7 @@ struct FileImportCoordinatorSpeakerTests {
     let coordinator = makeStoreBackedCoordinator(
       store: store, wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in
-        attempts.next() == 1
-          ? .failed(.analyzerThrew("boom")) : .labeled(count: 2, segments: Self.twoSpeakerSegments)
+        attempts.next() == 1 ? .failed(.analyzerThrew("boom")) : retryOutcome
       }, emitSpeakerRetryTelemetry: { telemetry.record($0) })
 
     coordinator.choose(url: Self.anyURL)
@@ -1542,17 +1562,94 @@ struct FileImportCoordinatorSpeakerTests {
     _ = await settleUntil { coordinator.state == .finished }
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID after the first run")
-      return
+      return nil
     }
     let firstPassFailed = await settleUntil {
       if case .failed = store.current(historyID)?.speakerAnalysis { return true }
       return false
     }
     #expect(firstPassFailed)
+    #expect(telemetry.outcomes == [], "the ordinary first pass is not a retry")
 
     coordinator.retrySpeakerAnalysis()
-    let recovered = await settleUntil { telemetry.outcomes.contains(.recovered) }
-    #expect(recovered, "a retry that reaches .labeled should report recovered")
-    #expect(!telemetry.outcomes.contains(.stillFailed))
+    let sawRetry = await settleUntil { attempts.count == 2 }
+    #expect(sawRetry)
+    _ = await settleUntil { coordinator.speakerStepState == .finished && !telemetry.outcomes.isEmpty }
+    for _ in 0..<50 { await Task.yield() }
+    return telemetry.outcomes
+  }
+
+  @Test("a retry whose write lands as labeled reports exactly one recovered (#2811 §3e)")
+  func retryTelemetryRecoveredForLabeled() async {
+    let outcomes = await retryOutcomes(
+      afterRetryReturning: .labeled(count: 2, segments: Self.twoSpeakerSegments))
+    #expect(outcomes == [.recovered])
+  }
+
+  @Test("a retry whose write lands as single reports recovered too, since that clears the notice")
+  func retryTelemetryRecoveredForSingle() async {
+    let outcomes = await retryOutcomes(afterRetryReturning: .single(segments: []))
+    #expect(outcomes == [.recovered])
+  }
+
+  @Test("a retry that runs to its own write and still fails reports exactly one still_failed")
+  func retryTelemetryStillFailed() async {
+    let outcomes = await retryOutcomes(afterRetryReturning: .failed(.modelsUnavailable))
+    #expect(outcomes == [.stillFailed])
+  }
+
+  @Test("noteRenameCancelled reports cancelled, and only that (#2811 §3e)")
+  func renameCancelledTelemetry() async {
+    let store = FakeHistoryStore()
+    @MainActor final class TelemetryRecorder {
+      private(set) var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      func record(_ outcome: TelemetryService.FileImportRenameOutcome) { outcomes.append(outcome) }
+    }
+    let telemetry = TelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, speakerLabeler: { _, _ in .single(segments: []) },
+      emitRenameTelemetry: { telemetry.record($0) })
+    coordinator.noteRenameCancelled()
+    #expect(telemetry.outcomes == [.cancelled])
+  }
+
+  @Test("noteTurnsDisplayed reports once per document, and again for the next document")
+  func turnsDisplayedTelemetryOncePerDocument() async {
+    let store = FakeHistoryStore()
+    @MainActor final class Counter {
+      private(set) var count = 0
+      func bump() { count += 1 }
+    }
+    let displayed = Counter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitTurnsDisplayedTelemetry: { displayed.bump() })
+
+    // Before any import there is no document, so a stray appear reports nothing.
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 0)
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.historyID != nil)
+
+    coordinator.noteTurnsDisplayed()
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 1, "a view-mode flip re-appears the same document; not a new fact")
+
+    // A second import is a new document and reports once more.
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    coordinator.noteTurnsDisplayed()
+    #expect(displayed.count == 2)
   }
 }

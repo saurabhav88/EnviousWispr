@@ -79,6 +79,8 @@ struct TranscriptDetailView: View {
                   transcriptCoordinator.renameSpeaker(
                     id: transcript.id, speakerId: id, name: name)
                 },
+                onRenameCancelled: { transcriptCoordinator.noteRenameCancelled() },
+                onTurnsDisplayed: { transcriptCoordinator.noteTurnsDisplayed(id: transcript.id) },
                 fallback: { EmptyView() }
               )
             }

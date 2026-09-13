@@ -213,5 +213,33 @@ struct TranscriptCoordinatorMergeTests {
     let secondFailure = coordinator.renameSpeaker(id: unlabeled.id, speakerId: "A", name: "Zach")
     #expect(secondFailure != nil, "a row with no turns has nothing to rename against")
     #expect(telemetry.outcomes == [.saved, .failed])
+
+    coordinator.noteRenameCancelled()
+    #expect(telemetry.outcomes == [.saved, .failed, .cancelled])
+  }
+
+  @Test("noteTurnsDisplayed reports once per document per launch, never per re-selection (#2811)")
+  func turnsDisplayedTelemetryOncePerDocument() throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    @MainActor final class Counter {
+      private(set) var count = 0
+      func bump() { count += 1 }
+    }
+    let displayed = Counter()
+    let coordinator = TranscriptCoordinator(
+      store: TranscriptStore(directory: dir), emitTurnsDisplayedTelemetry: { displayed.bump() })
+    let first = Self.makeTranscript()
+    let second = Self.makeTranscript()
+    try coordinator.saveAndShow(first)
+    try coordinator.saveAndShow(second)
+
+    coordinator.noteTurnsDisplayed(id: first.id)
+    coordinator.noteTurnsDisplayed(id: first.id)
+    #expect(displayed.count == 1, "re-selecting the same row is not a new fact")
+    coordinator.noteTurnsDisplayed(id: second.id)
+    #expect(displayed.count == 2)
+    coordinator.noteTurnsDisplayed(id: first.id)
+    #expect(displayed.count == 2, "going back to a row already reported adds nothing")
   }
 }

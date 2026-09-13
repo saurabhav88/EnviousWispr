@@ -346,11 +346,16 @@ final class FileImportCoordinator {
   private let emitTurnTelemetry:
     @MainActor (TelemetryService.FileImportTurnsOutcome, Int?, Int) -> Void
 
-  /// Shape-only telemetry for a rename attempt and a "Try again" press (#2811, phase 4 of
-  /// #2807 §3e) — No-op defaults, same as every other telemetry-shaped closure in this app.
+  /// Shape-only telemetry for a rename attempt, a "Try again" press, and the first time this
+  /// screen draws a turn view for a document (#2811, phase 4 of #2807 §3e) — No-op defaults,
+  /// same as every other telemetry-shaped closure in this app.
   private let emitRenameTelemetry: @MainActor (TelemetryService.FileImportRenameOutcome) -> Void
   private let emitSpeakerRetryTelemetry:
     @MainActor (TelemetryService.FileImportSpeakerRetryOutcome) -> Void
+  private let emitTurnsDisplayedTelemetry: @MainActor () -> Void
+  /// Documents this wizard has already reported as displayed, so a Done step that re-appears
+  /// (view mode flip, window re-open) reports each document once per launch, never per draw.
+  private var displayedTurnHistoryIDs: Set<UUID> = []
 
   /// Fires the instant `waitForVisibleCleanup(generation:)` actually returns for that
   /// generation — never on a timeout, never on a guess. No-op default. Exists purely so a
@@ -627,6 +632,7 @@ final class FileImportCoordinator {
     emitSpeakerRetryTelemetry: @escaping @MainActor (
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
     onVisibleCleanupWaitResolved: @escaping @MainActor (Int) -> Void = { _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
@@ -672,6 +678,7 @@ final class FileImportCoordinator {
     self.emitTurnTelemetry = emitTurnTelemetry
     self.emitRenameTelemetry = emitRenameTelemetry
     self.emitSpeakerRetryTelemetry = emitSpeakerRetryTelemetry
+    self.emitTurnsDisplayedTelemetry = emitTurnsDisplayedTelemetry
     self.onVisibleCleanupWaitResolved = onVisibleCleanupWaitResolved
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
@@ -1889,14 +1896,18 @@ final class FileImportCoordinator {
       // Read AFTER the retry's own write, from the STORED outcome (§3 Design "failure
       // authority" correction) — never the in-memory analyzer-only `speakerAnalysis`, and
       // never assumed from whether `runRetryAnalysis` itself returned normally, since a
-      // stale/cancelled retry also returns normally having written nothing.
-      guard let self, historyIDAtStart == self.historyID,
+      // stale/cancelled retry also returns normally having written nothing. Both staleness
+      // signals are required (found by chunk review): Stop cancels this task but leaves
+      // `historyID` in place, so the identity check alone would read the untouched failed
+      // row as "still failed" and blame the analyzer for a retry the user abandoned.
+      guard let self, !Task.isCancelled, historyIDAtStart == self.historyID,
         let current = self.currentHistoryRow(historyIDAtStart)
       else { return }
-      if case .labeled = current.speakerAnalysis {
-        self.emitSpeakerRetryTelemetry(.recovered)
-      } else {
-        self.emitSpeakerRetryTelemetry(.stillFailed)
+      switch current.speakerAnalysis {
+      // The same two outcomes that clear `speakerNoticeReason`: a one-voice result is a
+      // successful analysis too, not a failure the user needs to retry.
+      case .single, .labeled: self.emitSpeakerRetryTelemetry(.recovered)
+      case .failed, .unanalyzed, nil: self.emitSpeakerRetryTelemetry(.stillFailed)
       }
     }
   }
@@ -1974,6 +1985,19 @@ final class FileImportCoordinator {
       return RenameFailure(
         message: "Couldn't save the name.", currentName: current.speakerNames?[id])
     }
+  }
+
+  /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only; nothing
+  /// to write and nothing to revert, since neither path ever reached `renameSpeaker`.
+  func noteRenameCancelled() {
+    emitRenameTelemetry(.cancelled)
+  }
+
+  /// The Done step's turn view just appeared for the current document (#2811 §3e). Reported
+  /// once per document per launch; a re-appearance for the same row is not a new fact.
+  func noteTurnsDisplayed() {
+    guard let historyID, displayedTurnHistoryIDs.insert(historyID).inserted else { return }
+    emitTurnsDisplayedTelemetry()
   }
 
   private static func elapsedMs(since start: CFAbsoluteTime) -> Int {

@@ -1272,6 +1272,8 @@ struct TranscribeFileView: View {
         TurnDocumentView(
           turns: renderedTurns,
           onRename: { id, name in await coordinator.renameSpeaker(id: id, name: name) },
+          onRenameCancelled: { coordinator.noteRenameCancelled() },
+          onTurnsDisplayed: { coordinator.noteTurnsDisplayed() },
           fallback: { legacyTranscriptContent }
         )
         .task(id: coordinator.turnDiffInput) { await coordinator.prepareTurnDiffs() }
