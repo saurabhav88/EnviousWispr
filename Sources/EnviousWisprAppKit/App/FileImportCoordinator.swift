@@ -2547,9 +2547,14 @@ final class FileImportCoordinator {
     // screen falls back to the raw transcript, while the saved row's display text is the
     // PREVIOUS cleaned version — a mismatch over words that are safely stored. Found by
     // Codex. The Show original words toggle is the same question asked by the user.
-    // A stopped labeled document shows its turns RAW (a Stop writes them raw, #2851
-    // follow-up), so the question is again whether the raw words are saved.
-    if screenShowsRawWords || state == .stopped { return savedHistoryRow.text == rawTranscript }
+    if screenShowsRawWords { return savedHistoryRow.text == rawTranscript }
+    // A stopped labeled document shows its turns RAW once the Stop's write LANDED (#2851
+    // follow-up), so the question is then whether the raw words are saved. Until that write
+    // lands, or if it failed, the screen still shows the partial cleaned document, and the
+    // comparison below says truthfully that it is not saved (cloud review of PR #2898).
+    if state == .stopped, currentHistoryRow(historyID)?.turns != nil {
+      return savedHistoryRow.text == rawTranscript
+    }
     return savedHistoryRow.displayText == documentText
   }
 

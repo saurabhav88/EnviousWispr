@@ -1307,6 +1307,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(store.current(historyID)?.turns?.map(\.wasPolished) == [false, false], "and disclosed")
     #expect(telemetry.events.map(\.outcome) == [.stopped], "\(telemetry.events)")
     #expect(store.current(historyID)?.polishedText == nil, "no polished document on a Stop")
+    #expect(coordinator.isSavedToHistory, "the raw labeled document on screen is the saved one")
     await secondPartGate.open()
     for _ in 0..<20 { await Task.yield() }
     #expect(coordinator.state == .stopped, "a late part cannot finish a stopped run")
@@ -1364,6 +1365,48 @@ struct FileImportCoordinatorSpeakerTests {
     }
     #expect(retried)
     #expect(turnTexts(store.current(historyID)) == ["clean hello", "clean there friend"])
+  }
+
+  @Test("a Stop whose turn write throws leaves the partial cleaned document on screen, reported as not saved (#2851 follow-up)")
+  func stopWhoseWriteThrowsIsNotReportedSaved() async {
+    let store = FakeHistoryStore()
+    store.throwOnMergeCall = 1
+    let secondPartGate = ManualGate()
+    @MainActor final class PartCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let partsSeen = PartCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if partsSeen.next() == 2 {
+          await secondPartGate.markArrived()
+          await secondPartGate.waitUntilOpen()
+        }
+        return FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await secondPartGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID once the second section is in flight")
+      return
+    }
+    coordinator.stop()
+    let attempted = await settleUntil { store.mergeCalls == 1 }
+    #expect(attempted)
+    #expect(store.current(historyID)?.turns == nil, "the write threw")
+    #expect(!coordinator.isSavedToHistory, "the cleaned section on screen is not on disk")
+    await secondPartGate.open()
   }
 
   /// Drives one import to `state == .finished` plus a settled speaker step, and returns the
