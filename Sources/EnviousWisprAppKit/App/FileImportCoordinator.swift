@@ -1451,11 +1451,14 @@ final class FileImportCoordinator {
   /// alignment it awaits) and a "Try again" retry run while `speakerStepState == .inProgress`,
   /// which their `defer` clears only after that alignment; every other writer is terminal
   /// (`single`, `noWordTimings`, a rejected cleanup's `polisher_not_ready`). Both reads are
-  /// observed, so History redraws when either ends. A fifth finding on this class would have
-  /// to name a writer of turn text outside those six sites.
-  func isSettlingTurns(of id: UUID) -> Bool {
-    historyID == id && (isRunning || speakerStepState == .inProgress)
-  }
+  /// observed, so both screens redraw when either ends. The wizard's Done page reads
+  /// `isSettlingTurns` for its own document; History asks `isSettlingTurns(of:)` for a row
+  /// (round 5: the wizard read `isRunning` alone, the twin of History's round-4 gap). A
+  /// further finding on this class would have to name a writer of turn text outside those
+  /// six sites, or a third reader of `documentFinished`.
+  var isSettlingTurns: Bool { isRunning || speakerStepState == .inProgress }
+
+  func isSettlingTurns(of id: UUID) -> Bool { historyID == id && isSettlingTurns }
 
   /// History deleted a row (wired from `TranscriptCoordinator.onRowDeleted`). Drops the retry
   /// audio and stops the background speaker pass still aimed at that row (never a visible

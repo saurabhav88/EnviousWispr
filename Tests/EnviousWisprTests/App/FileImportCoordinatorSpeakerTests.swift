@@ -1007,7 +1007,9 @@ struct FileImportCoordinatorSpeakerTests {
       return
     }
     #expect(coordinator.isRunning == false, "Done")
-    #expect(coordinator.isSettlingTurns(of: historyID), "the speaker pass is still to write and align")
+    #expect(coordinator.isSettlingTurns, "the wizard's own document: the speaker pass is still to write and align")
+    #expect(coordinator.isSettlingTurns(of: historyID), "History's row: the same answer")
+    #expect(coordinator.isSettlingTurns(of: UUID()) == false)
     await speakerGate.open()
     let first = Self.swappedTurnTexts(WordSwappingCleaner.first)
     let settled = await settleUntil {
@@ -1015,7 +1017,8 @@ struct FileImportCoordinatorSpeakerTests {
         && turnTexts(store.current(historyID)) == [first.a, first.b]
     }
     #expect(settled)
-    #expect(coordinator.isSettlingTurns(of: historyID) == false, "aligned and finished: History may disclose")
+    #expect(coordinator.isSettlingTurns == false, "aligned and finished: both screens may disclose")
+    #expect(coordinator.isSettlingTurns(of: historyID) == false)
   }
 
   @Test("History's import-in-progress question reads true for this row while the cleanup runs, false for another row, false after Done (#2851 §3 D)")
