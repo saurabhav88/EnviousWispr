@@ -6,6 +6,15 @@
 
 -
 
+## Recipe
+<!-- Required when this PR adds more than 100 lines under Tests/ (the recipe-check job fails otherwise).
+     Exactly ONE line, one of:
+       Recipe: #<N>                     a test-hardening issue whose recipe validates against this PR
+       Recipe: parent-red <TestName>    the new test ran RED on the parent commit for the bug's reason
+       Recipe: resource-control <Test>  a two-way control on a non-Swift resource, in this PR
+     Under the floor, delete this section. -->
+Recipe:
+
 ## Pre-Merge Checklist
 
 ### Build Verification

@@ -30,9 +30,12 @@ Actions updates are grouped into a single PR per week to reduce noise.
 requires exactly one status check:
 
 - `build-check` — the required aggregate gate (from `pr-check.yml`). It depends on
-  two parallel macOS lanes and is green only when both pass:
+  three macOS lanes and three Ubuntu lanes and is green only when all six pass:
   - `build-debug` — debug build, XPC error hygiene, debug-config logic tests
   - `build-release` — release build, FoundationModels compile probe
+  - plus `eval-packages`, `worker-tests`, `website-check`, and `recipe-check` (#2868: a PR adding
+    more than 100 lines under `Tests/` must carry one `Recipe:` line the job can accept; see
+    `scripts/ci/check-test-recipe.py`)
 - Restrict deletions and block force pushes enabled
 
 `ci-drift-check.yml` is NOT a required PR check — it runs weekly (Monday noon UTC)

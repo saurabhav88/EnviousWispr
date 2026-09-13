@@ -537,6 +537,41 @@ jobs:
         run: npm run check:help
 
 
+  # A PR adding more than a floor of test lines must name how those tests are
+  # bound (#2868): a `Recipe: #N` whose recipe VALIDATES against this PR's head,
+  # or one of the two substitutes testing-philosophy.md's ship condition names.
+  # Measured 2026-09-13: 8 of 18 such PRs since 2026-09-10 carried none. Runs
+  # on every PR (the count decides whether anything more is asked) and needs no
+  # Xcode. The body is read live with gh rather than from the event payload, so
+  # a body edited after the push is what the check sees on a re-run; an edit
+  # alone does not re-trigger (pull_request `edited` would cancel the macOS
+  # lanes for a typo fix), the failure message says to re-run the job or push.
+  recipe-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # The count is a three-dot diff against the PR base; a shallow clone
+          # cannot resolve it. Same reason as the build lanes.
+          fetch-depth: 0
+
+      - name: Test ship condition (recipe named and runnable against this PR)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/check-test-recipe.py --self-test
+          python3 scripts/ci/check-test-recipe.py --base "$BASE_SHA" --head "$HEAD_SHA" --pr "$PR_NUMBER" --checkout "$PWD"
+
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id
   # "build-check" preserves that context so no ruleset change is needed (#906).
@@ -544,7 +579,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-debug, build-release, eval-packages, worker-tests, website-check]
+    needs: [build-debug, build-release, eval-packages, worker-tests, website-check, recipe-check]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -557,6 +592,7 @@ jobs:
           set -euo pipefail
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
+          python3 scripts/ci/check-test-recipe.py --self-test
           # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
           # a restore matches on version BEFORE key — so two lists that differ in
           # any way describe caches that can never see each other, with nothing
@@ -690,8 +726,9 @@ jobs:
              || [ "${{ needs.build-release.result }}" != "success" ] \
              || [ "${{ needs.eval-packages.result }}" != "success" ] \
              || [ "${{ needs.worker-tests.result }}" != "success" ] \
-             || [ "${{ needs.website-check.result }}" != "success" ]; then
-            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} eval-packages=${{ needs.eval-packages.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }}"
+             || [ "${{ needs.website-check.result }}" != "success" ] \
+             || [ "${{ needs.recipe-check.result }}" != "success" ]; then
+            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} eval-packages=${{ needs.eval-packages.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }} recipe-check=${{ needs.recipe-check.result }}"
             exit 1
           fi
           echo "==> Both build lanes, the eval-package compile, and the worker unit suites passed."
