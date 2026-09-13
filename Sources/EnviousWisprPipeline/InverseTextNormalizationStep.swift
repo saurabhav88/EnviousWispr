@@ -188,6 +188,19 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   ///   (Parakeet-class, legacy English); defensively skip for LID backends
   ///   (WhisperKit), where nil means "couldn't identify" (`lid_backend_nil`).
   private func skipReason(language: String?, englishVetoed: Bool) -> String? {
+    InverseTextNormalizationGate.skipReason(
+      language: language, englishVetoed: englishVetoed, backendSupportsLID: backendSupportsLID)
+  }
+}
+
+/// The step's language gate as a pure function, public so a harness that claims to feed the
+/// model what production feeds it (`scripts/eval/apple_runner --preclean`, #2844) asks THIS
+/// predicate rather than carrying a copy that drifts. The step above is the only production
+/// caller; the buckets and their order are documented on `skipReason` there.
+public enum InverseTextNormalizationGate {
+  public static func skipReason(language: String?, englishVetoed: Bool, backendSupportsLID: Bool)
+    -> String?
+  {
     if englishVetoed { return "language_vetoed" }
     let lang = language?.lowercased()
     if let lang, !lang.isEmpty {

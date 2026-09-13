@@ -137,6 +137,11 @@ struct RunnerMain {
     let cases = loadCorpus(path: args.corpusPath)
 
     if args.precleanOnly {
+      // Re-read the corpus as raw objects: the output is meant to be fed back in as a corpus
+      // (#2843), so every field the gate reads (expected_output, must_contain, tiers...) must
+      // survive, and the CLEANED text must sit in `asr_input`, the one field every consumer
+      // reads. The original moves to `original_input`.
+      let rawCases = loadCorpusObjects(path: args.corpusPath)
       let sink: FileHandle
       if let outPath = args.outPath {
         try? FileManager.default.removeItem(atPath: outPath)
@@ -149,25 +154,18 @@ struct RunnerMain {
         sink = FileHandle.standardOutput
       }
       let normalizer = InverseTextNormalizer()
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.sortedKeys]
-      struct PrecleanRecord: Encodable {
-        let id: String
-        let asr_input: String
-        let deterministic_output: String
-        let changed: Bool
-      }
-      for caseItem in cases {
-        let noFillers = FillerRemovalStep.removingFillers(
-          from: caseItem.asr_input, language: args.detectedLanguage, englishVetoed: false)
-        let cleaned = normalizer.normalize(noFillers)
-        let record = PrecleanRecord(
-          id: caseItem.id, asr_input: caseItem.asr_input, deterministic_output: cleaned,
-          changed: cleaned != caseItem.asr_input)
-        if let data = try? encoder.encode(record) {
-          sink.write(data)
-          sink.write(Data("\n".utf8))
-        }
+      for var object in rawCases {
+        let original = object["asr_input"] as! String
+        let cleaned = preclean(original, language: args.detectedLanguage, normalizer: normalizer)
+        object["asr_input"] = cleaned
+        object["original_input"] = original
+        object["changed"] = cleaned != original
+        guard
+          let data = try? JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+        else { fail("could not encode the preclean record for \(object["id"] ?? "?")") }
+        sink.write(data)
+        sink.write(Data("\n".utf8))
       }
       if args.outPath != nil { try? sink.close() }
       exit(0)
@@ -250,9 +248,8 @@ struct RunnerMain {
       let caseStart = Date()
       let inputText: String
       if args.preclean {
-        let noFillers = FillerRemovalStep.removingFillers(
-          from: caseItem.asr_input, language: args.detectedLanguage, englishVetoed: false)
-        inputText = normalizer.normalize(noFillers)
+        inputText = preclean(
+          caseItem.asr_input, language: args.detectedLanguage, normalizer: normalizer)
       } else {
         inputText = caseItem.asr_input
       }
@@ -344,6 +341,50 @@ func loadCorpus(path: String) -> [CorpusCase] {
   }
   if cases.isEmpty { fail("corpus has zero cases") }
   return cases
+}
+
+/// The corpus lines as raw JSON objects, for `--preclean-only`, which rewrites one field and
+/// must carry every other one through unchanged. Same file, same validation as `loadCorpus`
+/// (each line is an object with a string `id` and a string `asr_input`), so the two loaders
+/// cannot accept different corpora.
+func loadCorpusObjects(path: String) -> [[String: Any]] {
+  let url = URL(fileURLWithPath: path)
+  guard let data = try? Data(contentsOf: url),
+    let text = String(data: data, encoding: .utf8)
+  else {
+    fail("could not read corpus at \(path)")
+  }
+  var objects: [[String: Any]] = []
+  for (lineNumber, rawLine) in text.split(separator: "\n", omittingEmptySubsequences: false)
+    .enumerated()
+  {
+    let line = rawLine.trimmingCharacters(in: .whitespaces)
+    if line.isEmpty { continue }
+    guard let lineData = line.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+      object["id"] is String, object["asr_input"] is String
+    else {
+      fail("corpus line \(lineNumber + 1) is not a valid CorpusCase JSON object")
+    }
+    objects.append(object)
+  }
+  if objects.isEmpty { fail("corpus has zero cases") }
+  return objects
+}
+
+/// The production pre-polish chain on one input: filler removal, then inverse text
+/// normalization under production's OWN language gate (#2844). Production skips ITN
+/// entirely for a non-English language (`InverseTextNormalizationStep`), so a bench that ran
+/// the English-oriented normalizer on German input was measuring a chain production never
+/// runs. `englishVetoed: false` and `backendSupportsLID: false`: the bench has no resolver
+/// veto and models the Parakeet-class backend, where an explicit language decides alone.
+@MainActor
+func preclean(_ text: String, language: String, normalizer: InverseTextNormalizer) -> String {
+  let noFillers = FillerRemovalStep.removingFillers(
+    from: text, language: language, englishVetoed: false)
+  let itnSkip = InverseTextNormalizationGate.skipReason(
+    language: language, englishVetoed: false, backendSupportsLID: false)
+  return itnSkip == nil ? normalizer.normalize(noFillers) : noFillers
 }
 
 func write(record: OutRecord, to sink: FileHandle, encoder: JSONEncoder) {
