@@ -22,7 +22,7 @@ from section_envelope import (  # noqa: E402
 )
 import run_cloud_type_b as runner  # noqa: E402
 
-EXPECTED_TESTS = 12
+EXPECTED_TESTS = 13
 _failures = 0
 
 
@@ -201,6 +201,28 @@ def test_bare_prompt_and_bedrock_payload() -> None:
           and body["inferenceConfig"] == {"maxTokens": runner.CLAUDE_MAX_OUTPUT_TOKENS}
           and body["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}},
           str(body)[:200])
+
+
+def test_isolated_arm_validate_flag() -> None:
+    """`--validate` gives the isolated arm the packed arm's fallback treatment; without it
+    the historical behaviour (raw answer, no status) is byte-identical."""
+    original = runner.call_once
+    case = {"id": "q", "text": "should we ship it today"}
+    try:
+        runner.call_once = lambda *a, **k: ("We ship it today.", {})
+        plain = runner.polish_case("openai", "m", "k", case)
+        check("without --validate the raw answer is kept and no status is written",
+              plain["candidate"] == "We ship it today." and "section_status" not in plain)
+        validated = runner.polish_case("openai", "m", "k", case, validate=True)
+        check("with --validate a rejected answer becomes the original with its reason",
+              validated["candidate"] == case["text"]
+              and validated["section_status"] == "rejectedQuestionAnswer")
+        runner.call_once = lambda *a, **k: ("Should we ship it today?", {})
+        accepted = runner.polish_case("openai", "m", "k", case, validate=True)
+        check("with --validate an accepted answer is kept and marked accepted",
+              accepted["candidate"] == "Should we ship it today?" and accepted["section_status"] == "accepted")
+    finally:
+        runner.call_once = original
 
 
 def test_thinking_off_refusal() -> None:

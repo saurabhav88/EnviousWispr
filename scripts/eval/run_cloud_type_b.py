@@ -580,6 +580,7 @@ def polish_case(
     prompt_mode: str = "production", azure_endpoint: str = "",
     prompt_body: str | None = None,
     thinking: tuple[str, object] | None = None,
+    validate: bool = False,
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
@@ -598,13 +599,25 @@ def polish_case(
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
             candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
-            return {
+            row = {
                 "id": case["id"],
                 "candidate": candidate,
                 "latencyMs": int((time.monotonic() - start) * 1000),
                 "attempts": attempt,
                 **{k: v for k, v in meta.items() if v is not None},
             }
+            if validate:
+                # `--validate`: the ISOLATED arm of the #2851 packing measurement carries
+                # the same production fallback the packed arm carries (a rejected answer
+                # becomes the original, `section_status` says why), so the paired judge
+                # scores both arms on what a user would get. Off by default: every arm
+                # graded before this flag existed judged the raw model answer, and a
+                # historical number must stay reproducible (cloud review of PR #2902,
+                # round 2).
+                verdict = accept_section(transcript, candidate)
+                row["candidate"] = verdict.candidate if verdict.status == "accepted" else transcript
+                row["section_status"] = verdict.status
+            return row
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:300]
             last_err = f"HTTP {e.code}: {detail}"
@@ -828,6 +841,10 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         packs = packs[: args.limit]
     print(f"packs    : {args.pack.name} ({len(packs)} packs, "
           f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
+    print("validate : every section carries production's fallback on a rejection; compare "
+          "against an isolated arm run with --validate through "
+          "`compare_arms_paired.py --packing-comparison`, which refuses a plain arm",
+          file=sys.stderr)
 
     if args.dry_run is not None:
         with open(args.dry_run, "w") as f:
@@ -921,6 +938,13 @@ def main() -> int:
         "--pack", type=Path, default=None,
         help="#2851 phase 2: a packs-*.jsonl beside --corpus (sections.jsonl); several "
              "sections per call, one output row per section, plus <out>.packs.jsonl",
+    )
+    ap.add_argument(
+        "--validate", action="store_true",
+        help="#2851 phase 2, the ISOLATED arm: apply production's output validator to each "
+             "answer (a rejected answer becomes the original, section_status says why), the "
+             "treatment pack mode always applies. Required on the isolated arm of a "
+             "packed-vs-isolated comparison; off by default so earlier arms stay reproducible.",
     )
     ap.add_argument(
         "--dry-run", type=Path, default=None,
@@ -1127,7 +1151,8 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint, prompt_body, thinking)
+                        args.system_prompt, azure_endpoint, prompt_body, thinking,
+                        args.validate)
             for c in cases
         ]
         for fut in as_completed(futures):
