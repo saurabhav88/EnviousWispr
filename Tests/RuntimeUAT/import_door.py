@@ -21,6 +21,7 @@ another process between resolve and post is never handed a file.
     reply["saved"]    # "true" when the row was written; validate the JSON yourself
 """
 import os
+import subprocess
 import time
 import uuid
 
@@ -87,6 +88,19 @@ def _wait(observer, request, statuses, timeout, echo):
         _pump(0.1)
 
 
+def _process_identity(pid):
+    """(executable, start time) for `pid`, or None when it is gone. A PID can be reused
+    the moment its process exits; the start time is what tells the two apart."""
+    exe = running_enviouswispr_instances().get(str(pid))
+    if exe is None:
+        return None
+    started = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
+                             capture_output=True, text=True).stdout.strip()
+    if not started:
+        return None
+    return (exe, started)
+
+
 def resolve_pid(worktree):
     """The one running dev app built from `worktree`, or a RuntimeError naming every
     running instance. REFUSES rather than picks when the count is not exactly one."""
@@ -122,6 +136,10 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
             raise RuntimeError(
                 f"pid {pid} runs {instances[pid]}, not a build under {root}")
 
+    identity = _process_identity(pid)
+    if identity is None:
+        raise RuntimeError(f"pid {pid} exited before the request was posted")
+
     observer = _Replies.alloc().init()
     # Registered BEFORE the first post: a reply that lands before the observer exists is
     # lost, and the door answers `discover` at once.
@@ -135,6 +153,14 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
                 f"pid {pid} ({instances[pid]}) did not answer discover in 5 s: "
                 "is it a DEBUG build carrying #2885's door?")
         launch = alive["launch"]
+        # The `alive` reply proves SOME EnviousWispr with this PID answered. If the one
+        # checked above exited and macOS reused its PID for another dev build in between,
+        # that build's launch id would pass the transcribe check below and be handed the
+        # file. Same executable AND same start time, or refuse (cloud review, PR #2887).
+        if _process_identity(pid) != identity:
+            raise RuntimeError(
+                f"pid {pid} is not the process resolved before discover (was {identity}, "
+                f"now {_process_identity(pid)}); refusing to hand it a file")
 
         request = str(uuid.uuid4())
         _post({"kind": "transcribe", "pid": pid, "launch": launch, "request": request,
