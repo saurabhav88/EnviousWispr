@@ -1033,9 +1033,6 @@ def main() -> int:
 
     azure_endpoint = ""
     if args.provider == "bedrock":
-        if args.azure:
-            print("--azure applies to --provider openai only", file=sys.stderr)
-            return 2
         # boto3 reads the credential chain itself; there is no key to pass down.
         # Checked here so a 1,462-case run fails in a second rather than as 1,462
         # identical AccessDenied retries. Ask boto3 whether it can resolve
@@ -1073,9 +1070,6 @@ def main() -> int:
             return 2
         api_key = ""
     elif args.azure:
-        if args.provider != "openai":
-            print("--azure applies to --provider openai only", file=sys.stderr)
-            return 2
         # Founders Hub credits instead of the direct key (founder 2026-08-01).
         api_key = _key("azure-openai-key")
         azure_endpoint = _key("azure-openai-endpoint")
