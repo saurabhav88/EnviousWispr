@@ -8,7 +8,7 @@ keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
 ---
-When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
+When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
 
 The speakers are found on your Mac, by the same app, before the cleanup runs. Nothing about the recording is sent anywhere to work out who is talking.
 
@@ -50,7 +50,7 @@ Once the words exist, Stop never throws them away. What was found is what you ge
 
 ### Where the recording goes
 
-The recording never leaves your Mac. Transcription, finding the speakers and any on-device cleanup all run locally. The sentence at the bottom of the page changes with the step and with the polisher you chose, and states where the text of this run went.
+The recording never leaves your Mac. Transcription, finding the speakers and any on-device cleanup all run locally. The sentence at the bottom of the page changes with the step and with the polisher you chose.
 
 If you chose a cloud polisher (your own OpenAI, Gemini or Claude key, or a hosted Ollama model), the text of the transcript goes to that provider for the cleanup and nothing else does. The page says so while the file is running and again when it is done: "Your audio stayed on this Mac. Only the text went to OpenAI, under your own key." How that works and what each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).
 
@@ -68,5 +68,5 @@ Both speech engines give you speaker labels. The labels are built from the time 
 ### If the labels did not appear
 
 - **"Couldn't add speaker labels to this recording."** The app could not tell the voices apart, or could not attach the words it heard to them. Click **Try again** if it is offered. It is offered only while the app still holds what it needs to retry and no cleanup is running; when a retry could not change the result (see the language note above) it is not offered. Your transcript is complete either way.
-- **"Speaker detection didn't finish for this recording."** The speaker step was stopped before it could finish. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
-- **No labels and no message.** The app heard the recording as one voice, so there was nothing to label.
+- **"Speaker detection didn't finish for this recording."** No speaker result was saved for this transcript, usually because the speaker step was stopped before it could finish. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
+- **No labels and no message.** Usually the app heard one voice, so there was nothing to label. A missing message on its own does not say how many voices it heard.

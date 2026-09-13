@@ -8,7 +8,7 @@ keywords: ["transcribe a file", "import audio", "voice memo", "meeting recording
 related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
 ---
-Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
+Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart and match the words to them, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
 
 ### Opening it
 
@@ -42,7 +42,7 @@ Both engines run entirely on this Mac. **This choice also changes the engine you
 
 | | **Fast** (recommended) | **All Languages** |
 |---|---|---|
-| Best for | Everyday English and European recordings | Other languages, or the toughest audio |
+| What the card says | "Best for everyday English and European recordings." | "Best for other languages or the toughest audio." |
 | Model | Parakeet v3 | Whisper Large v3 Turbo |
 | Languages | 25 European | 99+ |
 | An hour of audio takes | About 7 seconds | About 2 minutes |
@@ -83,7 +83,7 @@ The Done step shows your transcript with a row of chips above it: the word count
 
 ### Where it goes
 
-Every finished transcript is saved in [History](/help/transcript-history/) with a readable title taken from the file name and the date it was made. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
+A finished transcript is saved in [History](/help/transcript-history/) with a readable title taken from the file name and the date it was made; the **Saved to History** chip on the Done step confirms it was kept. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
 
 ### Where the recording goes
 
