@@ -17,11 +17,15 @@ name: Test-Hardening Recipe Check
 # different readers:
 #   exit 2  REFUSED before any row was read: no fenced ```json block, two blocks, invalid
 #           JSON, a missing field. Always the filer's to fix, whatever the tree says.
-#   exit 1  one or more rows UNRUNNABLE against MAIN: an anchor not found, a test name
-#           that resolves to nothing. At filing time this is usually EXPECTED, because the
-#           recipe is filed while its PR is still open and the code it anchors on is not on
-#           main yet. Reported as information, never as a failure; re-check after the merge
-#           with `workflow_dispatch`, or let the night session's own validation catch drift.
+#   exit 1  the recipe was read but did not validate: an anchor not found or a test name
+#           that resolves to nothing (usually EXPECTED at filing time, because the recipe is
+#           filed while its PR is still open and the code it anchors on is not on main yet),
+#           OR a row missing a required field, an empty rows list, a document that is not an
+#           object (structural, the filer's to fix now). The validator reports both with the
+#           same exit code, so the comment quotes every refusal and says which reading applies
+#           to which; the run is not failed, because the common case is the expected one.
+#           Re-check after the merge with `workflow_dispatch`, and the night session's own
+#           validation catches real drift.
 #
 # Comment policy: one comment per issue, marked `<!-- test-hardening-recipe-check -->`,
 # EDITED on later runs rather than re-posted, so an issue that goes through three edits
@@ -31,6 +35,10 @@ name: Test-Hardening Recipe Check
 on:
   issues:
     types: [opened, edited, labeled]
+  # A recipe may be supplied in a COMMENT (the runner reads body and comments and requires
+  # exactly one block across both), so a comment can make or break the recipe too.
+  issue_comment:
+    types: [created, edited]
   workflow_dispatch:
     inputs:
       issue:
@@ -42,18 +50,35 @@ permissions:
   contents: read
   issues: write
 
+# One verdict per issue at a time: an open-then-edit pair could otherwise run twice, both
+# find no prior comment, and post two; or the older run could overwrite the newer verdict.
+concurrency:
+  group: test-hardening-recipe-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     # Only `test-hardening` issues carry a recipe. On `workflow_dispatch` the label check
-    # is skipped so an operator can re-validate any number by hand.
+    # is skipped so an operator can re-validate any number by hand. The workflow's own
+    # verdict comment must not re-trigger it, nor may any comment on a pull request
+    # (`issue_comment` fires for PR comments too).
     if: >-
       github.event_name == 'workflow_dispatch'
-      || contains(github.event.issue.labels.*.name, 'test-hardening')
+      || (
+        contains(github.event.issue.labels.*.name, 'test-hardening')
+        && !github.event.issue.pull_request
+        && !contains(github.event.comment.body || '', '<!-- test-hardening-recipe-check -->')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
+      # Always MAIN. A manual dispatch from the Actions form checks out whatever branch
+      # was selected there, which could be the very PR the recipe anchors on, and would
+      # then report "runnable against main" for code main does not have.
+      - name: Checkout main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
 
       - name: Validate the recipe against this checkout
         id: validate
@@ -70,8 +95,13 @@ jobs:
           rc=0
           python3 scripts/validate-mutation-recipe.py --issue "$ISSUE" --checkout "$PWD" \
             > validator.txt 2>&1 || rc=$?
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+          # The commit actually validated against, never the event's sha: on an issue event
+          # there is none that means anything, and on a dispatch it is the selected branch.
+          {
+            echo "rc=$rc"
+            echo "issue=$ISSUE"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
           cat validator.txt
           exit 0
 
@@ -80,6 +110,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RC: ${{ steps.validate.outputs.rc }}
           ISSUE: ${{ steps.validate.outputs.issue }}
+          SHA: ${{ steps.validate.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -97,15 +128,15 @@ jobs:
             if [ "$RC" = "0" ]; then
               echo "## Recipe check: RUNNABLE"
               echo
-              echo "Every row validates against main at \`${GITHUB_SHA}\`. The night session can hand this issue to \`scripts/mutation-battery.py --from-issue ${ISSUE}\` as filed."
+              echo "Every row validates against main at \`${SHA}\`. The night session can hand this issue to \`scripts/mutation-battery.py --from-issue ${ISSUE}\` as filed."
             elif [ "$RC" = "2" ]; then
               echo "## Recipe check: REFUSED before any row was read"
               echo
               echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` could not read a recipe out of this issue: no fenced \`json\` block, more than one, invalid JSON, or a missing field. This is independent of what is on main. Edit the BODY (the runner reads exactly one fenced \`json\` block across body and comments) and this check re-runs on the edit."
             else
-              echo "## Recipe check: rows not runnable against main today"
+              echo "## Recipe check: the recipe was read but does not validate against main today"
               echo
-              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` read the recipe but at least one row does not resolve against main at \`${GITHUB_SHA}\`. If this issue's PR is still open that is EXPECTED: the code the rows anchor on is not on main yet. Re-check after the merge from the Actions tab (Test-Hardening Recipe Check, Run workflow, issue ${ISSUE}). If the PR is already merged, the row has drifted and needs re-pointing on a new issue."
+              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` read a recipe out of this issue but refused at least one row against main at \`${SHA}\`. Read each refusal below and sort it into one of two kinds. An anchor not found, a file that does not exist, or a test name that resolves to nothing is EXPECTED while this issue's PR is still open (the code the rows anchor on is not on main yet): re-check after the merge from the Actions tab (Test-Hardening Recipe Check, Run workflow, issue ${ISSUE}), and if the PR is already merged the row has drifted and needs re-pointing on a new issue. A missing required field, an empty rows list, or a document that is not an object is structural and yours to fix in the body now; no merge changes it."
             fi
             echo
             echo '```text'
