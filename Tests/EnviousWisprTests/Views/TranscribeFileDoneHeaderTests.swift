@@ -89,11 +89,15 @@ struct TranscribeFileDoneHeaderTests {
     #expect(runs.map(\.0) == ["the", "um", "gonna", "morning."])
     #expect(runs.map(\.1) == [false, true, false, false], "strikethrough marks exactly the removed word")
     #expect(runs.map(\.2) == [false, false, true, true], "the highlight marks exactly the altered and added words")
-    // And the weight, which is what makes the highlight readable without its colour.
-    let weighted = text.runs
+    // And the weight, which is what makes the highlight readable without its colour. Bold by
+    // INTENT, never by a run-level font: a `Font` on the run replaced the page's size (#2817,
+    // PR #2897 cloud review), so no run may carry one.
+    let marked = text.runs
       .filter { !String(text[$0.range].characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-      .map { $0.swiftUI.font }
-    #expect(weighted == [nil, nil, .body.weight(.semibold), .body.weight(.semibold)])
+    #expect(
+      marked.map { $0.inlinePresentationIntent == .stronglyEmphasized }
+        == [false, false, true, true])
+    #expect(marked.allSatisfy { $0.font == nil }, "no run carries its own font")
     // What a screen reader gets, since the marks say nothing aloud.
     #expect(
       TranscribeFileView.markedUpAccessibilityText([
