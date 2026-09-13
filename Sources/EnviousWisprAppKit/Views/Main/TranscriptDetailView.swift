@@ -418,10 +418,15 @@ struct TranscriptDetailView: View {
   }
 
   /// Off the main actor, same reason as the wizard's own `prepareTurnDiffs` (chunk-1 review:
-  /// `WordDiff` can take ~3 seconds on worst-case inputs). `.task(id:)` already cancels a
-  /// stale computation when `turnDiffInput` moves — the explicit re-check below is what stops
-  /// a stale result from still landing in `@State` after cancellation, since the write
-  /// happens AFTER the `await` returns.
+  /// `WordDiff` can take ~3 seconds on worst-case inputs). `View` is a VALUE type, so this
+  /// `async` method runs against a `self` FROZEN at the moment `.task(id:)` invoked it —
+  /// `turnDiffInput` inside this function keeps reading THAT frozen `transcript` forever, so
+  /// it can never observe a row-selection change on its own (found by chunk review: two
+  /// selections whose diffs finish OUT OF ORDER — A's slow computation outliving a switch to
+  /// B, then landing after B's own already has — would otherwise let A silently overwrite B's
+  /// cache, since the input comparison alone always reads true against itself). `Task
+  /// .isCancelled` is the one signal that DOES observe it: `.task(id:)` cancels the previous
+  /// invocation's Task the instant the id changes, which is exactly A's task in that repro.
   private func prepareTurnDiffs() async {
     let input = turnDiffInput
     guard turnDiffs == nil, !input.pairs.isEmpty else { return }
@@ -433,7 +438,7 @@ struct TranscriptDetailView: View {
       }
       return results
     }.value
-    guard turnDiffInput == input else { return }
+    guard !Task.isCancelled, turnDiffInput == input else { return }
     turnDiffCache = (input, computed)
   }
 
@@ -485,9 +490,16 @@ struct TranscriptDetailView: View {
 private struct DeliverableText: Transferable, Sendable {
   let resolve: @Sendable () -> String?
 
+  /// A `nil` resolve must REFUSE delivery, never substitute empty content (found by chunk
+  /// review): `Data("".utf8)` reads to the receiving app as a successful, if empty, export —
+  /// exactly the silent "expiry reads as success" failure `textForDelivery`'s own contract
+  /// exists to prevent.
+  struct ExpiredError: Error {}
+
   static var transferRepresentation: some TransferRepresentation {
     DataRepresentation(exportedContentType: .plainText) { deliverable in
-      Data((deliverable.resolve() ?? "").utf8)
+      guard let text = deliverable.resolve() else { throw ExpiredError() }
+      return Data(text.utf8)
     }
   }
 }
