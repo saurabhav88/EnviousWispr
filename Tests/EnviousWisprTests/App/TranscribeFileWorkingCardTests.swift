@@ -112,6 +112,15 @@ struct TranscribeFileWorkingCardTests {
     #expect(pace.secondsPerSection() == 12)
   }
 
+  @Test("batched sections keep their weight in the median")
+  func paceWeightsBatchedSections() {
+    // Three 12 s sections landed as one batch, then one 60 s section: the median is 12,
+    // not the mean of two batch votes (36), which would read nine minutes for fifteen left.
+    let p = pace([(0, 0), (1, 12), (4, 48), (5, 108)])
+    #expect(p.secondsPerSection() == 12)
+    #expect(p.remainingText(sectionsDone: 5, sectionsTotal: 20) == "about 3 minutes left")
+  }
+
   @Test("the wording: under a minute, about a minute, about N minutes")
   func paceWording() {
     let p = pace([(0, 0), (1, 12), (2, 24), (3, 36), (4, 48)])
@@ -173,6 +182,10 @@ struct TranscribeFileWorkingCardTests {
     }
     #expect(marks(.removed)?.fg == MarkUpPalette.removed)
     #expect(marks(.removed)?.fg == Color.stError, "the founder's red")
+    // Two-way control on the oracle: distinct dynamic tokens must compare unequal, or the
+    // equalities above would pass against any colour.
+    #expect(Color.stError != Color.stTextSecondary)
+    #expect(marks(.removed)?.fg != Color.stTextSecondary, "the old grey")
     #expect(marks(.removed)?.struck == true)
     #expect(marks(.removed)?.bg == nil)
     for kind in [WordDiff.Kind.changed, .added] {

@@ -112,13 +112,17 @@ struct SectionPace: Equatable {
       last.count - first.count >= Self.sectionsNeeded
     else { return nil }
     // Each landing may carry more than one section (two parts finishing between two
-    // renders), so the rate is elapsed / sections for each interval, then the median.
+    // renders), so an interval's rate is elapsed / sections, entered ONCE PER SECTION so a
+    // batch of three keeps three votes in the median (a batch with one vote let a single
+    // slow section triple the figure; found by Codex).
     var rates: [Double] = []
     var previous = first
     for landing in landings.dropFirst() {
       let sections = landing.count - previous.count
       let seconds = landing.at.timeIntervalSince(previous.at)
-      if sections > 0, seconds > 0 { rates.append(seconds / Double(sections)) }
+      if sections > 0, seconds > 0 {
+        rates.append(contentsOf: repeatElement(seconds / Double(sections), count: sections))
+      }
       previous = landing
     }
     guard !rates.isEmpty else { return nil }
