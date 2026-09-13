@@ -16,6 +16,8 @@ from ptt_binding import PTTBindingError, require_push_to_talk, resolve
 # every `wispr_eyes.running_enviouswispr_instances(...)` reference predates it.
 from instance_guard import (running_enviouswispr_instances,  # noqa: F401
                             _require_single_instance, run_guard_cases)
+# #2885: the DEBUG-only door. Hand a file to a running dev build without the screen.
+from import_door import resolve_pid, transcribe_file_backend  # noqa: F401,E402
 
 _pid = None
 _app = None

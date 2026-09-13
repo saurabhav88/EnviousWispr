@@ -732,6 +732,10 @@ final class FileImportCoordinator {
     forgetSaveOutcome()
     // Same rule as `startOver`: a different file is a different row (#2772).
     originalHistoryRow = nil
+    // And a different run: the previous document's frozen polisher must not be read
+    // against this file before its own `beginRun()`. `startOver()` already clears it;
+    // the Review step's `frozen` reads fall back to live Settings on nil (#2885).
+    runConfiguration = nil
     documentView = .cleaned
     timesOn = true
     markedUpCache = nil

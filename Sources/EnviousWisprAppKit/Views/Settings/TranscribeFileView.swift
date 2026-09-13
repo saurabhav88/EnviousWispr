@@ -799,29 +799,9 @@ struct TranscribeFileView: View {
       edited = false
     }
     return FileImportPolishGate.readiness(
-      provider: provider,
-      savedKey: savedKey,
-      hasUnsavedKeyDraft: edited,
-      // Only when the discovery coordinator's verdict is about THIS provider. It is shared
-      // with the AI Polish page, which may have validated a different one.
-      keyValidation: llmDiscovery.stateProvider == provider
-        ? llmDiscovery.keyValidationState : .idle,
-      egOneInstall: egOne.installState,
-      egOneHealth: egOne.health,
-      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
-      s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      appleStatus: aiAvailability.latestReport?.overallStatus,
-      ollamaSetup: setup.ollamaSetup.setupState,
-      // The import's own OLLAMA field, never the effective model.
-      //
-      // `effectiveFileImportLLMModel` answers "what will the SELECTED engine ask for", and
-      // this function now runs for every card. With OpenAI selected it returns a cloud id,
-      // which made the unselected Ollama card read "Ready" while its remembered Ollama
-      // selection was empty. A per-card question needs a per-card field. Found by Codex.
-      // And present in the daemon's own list, not merely remembered. See the gate's
-      // `ollamaModelIsArmed(_:downloaded:)`.
-      ollamaModelIsArmed: FileImportPolishGate.ollamaModelIsArmed(
-        importOllamaModel, downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
+      provider: provider, savedKey: savedKey, hasUnsavedKeyDraft: edited,
+      importOllamaModel: importOllamaModel, llmDiscovery: llmDiscovery,
+      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup)
   }
 
   struct PolishChoice {

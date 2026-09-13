@@ -196,9 +196,16 @@ import Testing
       // The job outlives every view that shows it — leaving the page and coming
       // back has to land on whatever the run reached — so a view could not own
       // it, and the sidebar's running indicator reads the same object.
-      count <= 43,
+      // #2885: 43 -> 44. `debugImportDoor`, the DEBUG-only door through which Live
+      // UAT hands `fileImportCoordinator` a file without the screen. `#if DEBUG`
+      // whole, so Release carries no property; the counter reads the source, so
+      // the cap counts it. Held here because the root owns the coordinator's
+      // lifetime and the two lifecycle hooks that install and remove the observer;
+      // a view could not own it (there is no view), and the coordinator must not
+      // (it would put notification parsing inside a production type).
+      count <= 44,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 43. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 44. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

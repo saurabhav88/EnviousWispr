@@ -36,6 +36,11 @@ package final class WisprBootstrapper {
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
+  #if DEBUG
+    /// #2885 — the DEBUG-only door through which Live UAT hands a file to
+    /// `fileImportCoordinator` without the screen. Installed after launch, removed at quit.
+    let debugImportDoor: DebugImportDoor
+  #endif
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
@@ -1643,6 +1648,31 @@ package final class WisprBootstrapper {
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
+    #if DEBUG
+      self.debugImportDoor = DebugImportDoor(
+        coordinator: fileImportCoordinator,
+        // The screen's gate, composed from the same coordinators the screen reads; the
+        // door has no editor and so no unsaved-key draft.
+        polishReadiness: { [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
+          let provider = settings.effectiveFileImportLLMProvider
+          // The probes the screen runs on every appearance, through the same owner.
+          await FileImportPolishGate.armImport(
+            provider, trigger: "import_door", setup: setup, availability: aiAvailability)
+          // The probe suspended; a provider changed underneath it would be judged with
+          // another engine's facts. Re-read and defer rather than answer for the wrong one.
+          guard provider == settings.effectiveFileImportLLMProvider else {
+            return .blocked(.checking)
+          }
+          return FileImportPolishGate.readiness(
+            provider: provider,
+            savedKey: FileImportPolishGate.savedKey(for: provider, keychain: keychainManager),
+            hasUnsavedKeyDraft: false,
+            importOllamaModel: settings.fileImportLLMProvider == nil
+              ? settings.ollamaModel : settings.fileImportOllamaModel,
+            llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
+            aiAvailability: aiAvailability, setup: setup)
+        })
+    #endif
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -1830,6 +1860,11 @@ package final class WisprBootstrapper {
     // the whole reason this call exists instead of the demand-driven path's
     // existing `DispatchQueue.main.async` default.
     recordingOverlay.prewarmFirstRender()
+    #if DEBUG
+      // #2885: after launch, like `quickAdd.install()` above, and after the coordinator
+      // exists, which the initializer guarantees.
+      debugImportDoor.install()
+    #endif
   }
 
   package func applicationDidBecomeActive() {
@@ -1839,6 +1874,10 @@ package final class WisprBootstrapper {
   }
 
   package func applicationWillTerminate() {
+    #if DEBUG
+      // #2885: stop answering, and stop watching, before anything below tears down.
+      debugImportDoor.uninstall()
+    #endif
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.

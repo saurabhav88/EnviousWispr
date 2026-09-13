@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
+import Security
 
 // MARK: - May the import proceed with the engine it has chosen? (#2772 chunk 3)
 
@@ -95,6 +96,90 @@ enum FileImportSavedKeyState: Equatable {
 }
 
 enum FileImportPolishGate {
+  /// The decision composed from the LIVE coordinators, for `provider`. One composer for the
+  /// two callers that must agree: the Transcribe a File screen (Continue and Start) and the
+  /// DEBUG import door (#2885), which walks the same steps without the screen and must
+  /// refuse exactly what the screen refuses. The screen alone knows whether a key was
+  /// TYPED but not saved; the door has no draft and passes `false`.
+  ///
+  /// `keyValidation` is taken only when the discovery coordinator's verdict is about THIS
+  /// provider: it is shared with the AI Polish page, which may have validated another.
+  @MainActor
+  static func readiness(
+    provider: LLMProvider,
+    savedKey: FileImportSavedKeyState,
+    hasUnsavedKeyDraft: Bool,
+    importOllamaModel: String,
+    llmDiscovery: LLMModelDiscoveryCoordinator,
+    localPolishRuntimes: LocalPolishRuntimeSet,
+    aiAvailability: AIAvailabilityCoordinator,
+    setup: SetupCoordinator
+  ) -> FileImportPolishReadiness {
+    readiness(
+      provider: provider,
+      savedKey: savedKey,
+      hasUnsavedKeyDraft: hasUnsavedKeyDraft,
+      keyValidation: llmDiscovery.stateProvider == provider
+        ? llmDiscovery.keyValidationState : .idle,
+      egOneInstall: localPolishRuntimes.egOne.installState,
+      egOneHealth: localPolishRuntimes.egOne.health,
+      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
+      s1MiniHealth: localPolishRuntimes.s1Mini.health,
+      appleStatus: aiAvailability.latestReport?.overallStatus,
+      ollamaSetup: setup.ollamaSetup.setupState,
+      // The import's own OLLAMA field, never the effective model, and present in the
+      // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
+      ollamaModelIsArmed: ollamaModelIsArmed(
+        importOllamaModel, downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
+  }
+
+  /// The probes the gate's inputs depend on that nothing runs by itself: Ollama's daemon
+  /// state (`.detecting` from launch until asked, and stale the moment the daemon starts
+  /// or stops) and Apple Intelligence availability (taken at launch, stale after a
+  /// Settings change). The screen runs both on every appearance
+  /// (`ProviderSetupLifecycle`); the DEBUG import door runs them on every check (#2885).
+  /// One owner for the two callers, so neither can forget a probe the other has.
+  ///
+  /// Not here, on purpose: the status watch, the cloud catalog, model discovery for the
+  /// picker, and the editor's key drafts. Those are screen state, not gate inputs.
+  @MainActor
+  static func armImport(
+    _ provider: LLMProvider, trigger: String,
+    setup: SetupCoordinator, availability: AIAvailabilityCoordinator
+  ) async {
+    switch provider {
+    case .ollama:
+      await setup.ollamaSetup.detectState(trigger: trigger)
+    case .appleIntelligence:
+      await availability.checkAvailability(trigger: trigger)
+    case .egOne, .s1Mini, .openAI, .gemini, .claude, .none:
+      break
+    }
+  }
+
+  /// The saved-key fact for `provider` read straight from the Keychain, for a caller with
+  /// no editor on screen. Key-less engines answer `.absent`, which the gate ignores for
+  /// them; a thrown read answers `.unknown`.
+  @MainActor
+  static func savedKey(for provider: LLMProvider, keychain: KeychainManager)
+    -> FileImportSavedKeyState
+  {
+    let id: String
+    switch provider {
+    case .openAI: id = KeychainManager.openAIKeyID
+    case .gemini: id = KeychainManager.geminiKeyID
+    case .claude: id = KeychainManager.claudeKeyID
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .absent
+    }
+    do {
+      return try keychain.retrieve(key: id).isEmpty ? .absent : .present
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      return .absent
+    } catch {
+      return .unknown
+    }
+  }
+
   /// The whole decision, as a pure function of the same coordinator states
   /// `ProviderStatusMapping.status` reads, plus the two facts a status chip has no reason to
   /// carry: whether the Keychain read succeeded, and whether an Ollama model is armed.
