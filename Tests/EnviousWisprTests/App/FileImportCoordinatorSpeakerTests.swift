@@ -1324,6 +1324,81 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.speakerStepState == .finished)
   }
 
+  @Test("choosing another file while Clean it again is re-cleaning the turns prevents that write")
+  func chooseDuringTurnRecleanPreventsWrite() async {
+    let store = FakeHistoryStore()
+    let cleaner = TaggedCleaner()
+    let turnGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        if cleaner.tag == "second", part != "hello there friend" {
+          await turnGate.markArrived()
+          await turnGate.waitUntilOpen()
+        }
+        return cleaner.outcome(part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      store.current(historyID)?.turns != nil && coordinator.speakerStepState == .finished
+    }
+
+    cleaner.tag = "second"
+    coordinator.rePolish()
+    await turnGate.waitUntilArrived()
+    // Done already reads finished, so `choose` is allowed; it must reach the re-clean's task.
+    coordinator.choose(url: Self.anyURL)
+    await turnGate.open()
+    for _ in 0..<50 { await Task.yield() }
+
+    let untouched =
+      store.current(historyID)?.turns?.allSatisfy { $0.processedText?.hasSuffix("[first]") == true }
+    #expect(untouched == true, "a re-clean the user abandoned by choosing another file must not write")
+  }
+
+  @Test("deleting the row while speakers are being found stops that pass and drops the audio")
+  func deletedRowDuringSpeakerPassStopsIt() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await speakerGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID once the speaker step is in flight")
+      return
+    }
+    #expect(coordinator.retainsRetryInputs)
+
+    coordinator.noteHistoryRowDeleted(historyID)
+    #expect(!coordinator.retainsRetryInputs)
+    await speakerGate.open()
+    for _ in 0..<50 { await Task.yield() }
+    #expect(
+      store.current(historyID)?.speakerAnalysis != .labeled(count: 2),
+      "a cancelled speaker pass must not persist against the deleted row")
+  }
+
   @Test("Clean it again cleans the raw turns a retry left behind (#2811)")
   func rePolishCleansTurnsLeftRawByRetry() async {
     let store = FakeHistoryStore()

@@ -1036,7 +1036,11 @@ final class TranscriptCoordinator {
   func deleteAll() {
     do {
       try store.deleteAll()
+      let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
+      // The same announcement `delete(_:)` makes, per row, after the list is already empty
+      // (found by cloud review, round 3: this route bypassed it).
+      for id in removedIDs { onRowDeleted?(id) }
       selectedTranscriptID = nil
       // #2807: an empty History shows nothing, whatever the live pipeline last produced.
       liveFallbackSuppressed = true

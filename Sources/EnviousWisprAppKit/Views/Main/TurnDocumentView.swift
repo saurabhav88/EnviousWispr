@@ -112,7 +112,7 @@ private struct TurnRowView: View {
       .accessibilityValue(displayName)
       .popover(isPresented: $isRenaming) {
         RenamePopoverView(
-          initialName: draftName,
+          name: $draftName,
           failure: renameFailure,
           onCommit: { name in commitRename(name) },
           onCancel: {
@@ -136,6 +136,10 @@ private struct TurnRowView: View {
     }
     Task {
       if let failure = await onRename(id, name) {
+        // The field reverts to the re-read current name (plan §9), never the rejected input;
+        // seeded HERE on the row's own binding so it holds whether the popover instance
+        // survived (Enter) or is about to be recreated (outside click).
+        draftName = failure.currentName ?? ""
         renameFailure = failure
         isRenaming = true
       } else {
@@ -190,37 +194,24 @@ private struct MarkedUpTurnText: View {
 /// attempt. Escape's own flag makes it read as a cancel instead, even though both paths
 /// dismiss through the same SwiftUI mechanism.
 ///
-/// `failure` renders inline when the caller's last commit attempt failed (plan §7) and reverts
-/// the field to the re-read current name (plan §9) — never the rejected input. Two different
-/// recreation paths need two different fixes, both required (found across chunk review r2/r3):
-/// an Enter-triggered failure keeps `isRenaming` true, so THIS SAME instance survives and
-/// `.onChange(of: failure)` resets the dismissal guards on it; an outside-click-triggered
-/// failure has ALREADY dismissed the popover before the write's result comes back, so its retry
-/// reopens a BRAND NEW instance, for which `.onChange` never fires on the value it was created
-/// with — that path is covered instead by seeding `_name` from `failure.currentName` at `init`.
+/// The field is a BINDING to the row's draft, never a `@State` seeded in `init` (found by
+/// Live UAT, 2026-09-13: the popover opened EMPTY for "Speaker 1"). macOS builds a
+/// popover's content before it is first shown, and a `State(initialValue:)` set in `init`
+/// counts only for that first construction, so the field kept the empty draft it was built
+/// with. The row sets the draft on open and on a failed commit (plan §9's revert), and the
+/// two dismissal guards are reset on every appearance for the same reason: this instance
+/// can be reused across presentations, and a `hasCommitted` left over from the last one
+/// would turn the next outside click into a silent no-op.
+///
+/// `failure` renders inline when the caller's last commit attempt failed (plan §7).
 private struct RenamePopoverView: View {
-  let initialName: String
+  @Binding var name: String
   let failure: RenameFailure?
   let onCommit: (String) -> Void
   let onCancel: () -> Void
-  @State private var name: String
   @State private var didCancelExplicitly = false
   @State private var hasCommitted = false
   private static let maxLength = 60
-
-  init(
-    initialName: String, failure: RenameFailure?, onCommit: @escaping (String) -> Void,
-    onCancel: @escaping () -> Void
-  ) {
-    self.initialName = initialName
-    self.failure = failure
-    self.onCommit = onCommit
-    self.onCancel = onCancel
-    // `failure?.currentName ?? initialName` is WRONG when a failure exists but its re-read
-    // name is itself nil (a still-unnamed speaker): that reads as "no failure" and wrongly
-    // restores the stale opening name instead of blank (found by chunk review r4).
-    self._name = State(initialValue: failure.map { $0.currentName ?? "" } ?? initialName)
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -242,11 +233,14 @@ private struct RenamePopoverView: View {
       }
     }
     .padding(8)
-    .onChange(of: failure) { _, newValue in
-      guard let newValue else { return }
+    .onAppear {
       hasCommitted = false
       didCancelExplicitly = false
-      name = newValue.currentName ?? ""
+    }
+    .onChange(of: failure) { _, newValue in
+      guard newValue != nil else { return }
+      hasCommitted = false
+      didCancelExplicitly = false
     }
     .onDisappear {
       guard !didCancelExplicitly, !hasCommitted else { return }

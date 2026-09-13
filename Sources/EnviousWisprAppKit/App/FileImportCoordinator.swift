@@ -714,6 +714,9 @@ final class FileImportCoordinator {
     // file's speaker step is still quietly running in the background must stop it
     // itself, not rely on Stop having already done so.
     speakerStepTask?.cancel()
+    // And the run task (found by cloud review, round 3): after Done it can still be
+    // running the turn re-clean under the engine claim, which `isRunning` no longer covers.
+    runTask?.cancel()
     let name = url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
@@ -1156,6 +1159,9 @@ final class FileImportCoordinator {
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil
     speakerStepTask?.cancel()
+    // And the run task (found by cloud review, round 3): after Done it can still be
+    // running the turn re-clean under the engine claim, which `isRunning` no longer covers.
+    runTask?.cancel()
     forgetSaveOutcome()
     // A new file is a NEW History row. Carrying the id forward would make the next import
     // overwrite the last one's words, because the store names its file by id — which is the
@@ -1273,13 +1279,17 @@ final class FileImportCoordinator {
     releaseRetryInputs()
   }
 
-  /// History deleted a row (wired from `TranscriptCoordinator.onRowDeleted`). Only a deletion
-  /// AFTER the speaker pass settled needs this; one during the pass is caught by the pass's
-  /// own completion above. A row the user later resurrects with "Clean it again" comes back
-  /// without speaker fields and without a retry: the audio for it is gone, on purpose.
+  /// History deleted a row (wired from `TranscriptCoordinator.onRowDeleted`). Drops the retry
+  /// audio and stops the background speaker work still aimed at that row: the speaker pass,
+  /// and a post-Done turn re-clean on `runTask` (never a visible run in flight, whose own
+  /// save already refuses a deleted row). A row the user later resurrects with "Clean it
+  /// again" comes back without speaker fields and without a retry: the audio for it is gone,
+  /// on purpose.
   func noteHistoryRowDeleted(_ id: UUID) {
     guard id == historyID else { return }
     releaseRetryInputs()
+    speakerStepTask?.cancel()
+    if !isRunning { runTask?.cancel() }
   }
 
   private func releaseRetryInputs() {
@@ -1630,6 +1640,10 @@ final class FileImportCoordinator {
       guard generationAtStart == generation else { return }
       await polishAll(
         TranscriptSplitter.split(rawTranscript), generationAtStart: generationAtStart)
+      // `polishAll` has already shown the polisher-not-ready rejection and cleaned nothing;
+      // re-cleaning the turns against the same unavailable polisher would only burn the
+      // claim and hand back their raw text (found by cloud review, round 3).
+      guard localPolisherIsReady else { return }
       // Still under THIS run's engine claim (the defer above releases it only after this
       // returns), and after the visible document has already reached Done, exactly as the
       // first import's own turn cleanup runs behind its Done step.

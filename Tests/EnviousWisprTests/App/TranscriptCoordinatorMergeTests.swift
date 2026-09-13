@@ -235,6 +235,15 @@ struct TranscriptCoordinatorMergeTests {
     coordinator.delete(row)
     #expect(recorder.ids == [row.id])
     #expect(coordinator.currentRow(id: row.id) == nil)
+
+    // Delete All takes its own route to the store and must announce every row too.
+    let second = Self.makeTranscript()
+    let third = Self.makeTranscript()
+    try coordinator.saveAndShow(second)
+    try coordinator.saveAndShow(third)
+    coordinator.deleteAll()
+    #expect(Set(recorder.ids) == [row.id, second.id, third.id])
+    #expect(coordinator.currentRow(id: second.id) == nil)
   }
 
   @Test("noteTurnsDisplayed reports once per document per launch, never per re-selection (#2811)")
