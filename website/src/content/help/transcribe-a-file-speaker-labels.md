@@ -22,9 +22,9 @@ The numbers are placeholders. Give each one a real name and the whole transcript
 
 ### What "Both" means
 
-Some stretches of words the app cannot confidently give to one speaker: two people talking at the same time, very short replies traded quickly, or a few words that fell outside every stretch of speech it had assigned. Rather than guess, or leave a gap, it labels that stretch **Both**. A Both turn has no number and cannot be renamed, because the app did not assign it to one person.
+**Both** marks words the app left unassigned to a single speaker after grouping nearby words. This can happen when word timings are missing or do not line up with the speaker stretches it found. A Both turn has no number and cannot be renamed.
 
-If a recording comes back with many Both turns, the voices were hard to separate in those stretches. The words are still all there and still in order.
+Several Both turns mean several stretches remained unassigned to a single speaker. The label does not explain why. The words are still all there and still in order.
 
 ### What "Not fully polished" means
 
@@ -36,7 +36,7 @@ To run the cleanup again:
 - **Keep or change the polisher, then click Continue.** You land on the Review step.
 - **Click Clean it again.** Only the cleanup runs. The recording is not read again, and the speaker labels and any names you gave them are kept.
 
-If the same turn comes back Not fully polished a second time, the polisher cannot finish that turn in the time it is given, or it reported an error on it. Choose a different polisher on the polisher step and clean it again.
+If the turn still shows **Not fully polished**, its cleanup did not complete. You can choose a different polisher on the polisher step and clean it again.
 
 ### What Stop keeps
 
@@ -63,7 +63,7 @@ Both speech engines give you speaker labels. The labels are built from the time 
 | **Fast** | Yes | Recommended. Its language count is compared with All Languages in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
 | **All Languages** | Yes | Every language the engine supports, with one exception below. |
 
-**Languages written without spaces between words** (for example Chinese, Japanese and Thai) do not get speaker turns yet. The engines do report timings, but the app cannot yet map them onto transcript text that has no spaces to split on, so it has nothing to attach a speaker to. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+**Text written without spaces between words** (for example Chinese, Japanese and Thai) can prevent the app from matching the transcript's words to the engine's timings. When usable timings are unavailable, speaker labels are unavailable too: the transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### If the labels did not appear
 
