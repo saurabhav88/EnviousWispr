@@ -12,11 +12,11 @@ import SwiftUI
 struct TurnDocumentView<Fallback: View>: View {
   let turns: [TranscriptDocumentPresenter.RenderedTurn]?
   /// Called with a speaker id and its new name when the user commits a rename. Returns `nil`
-  /// on success, or an error message to show inline without dismissing the popover (plan §7:
+  /// on success, or a `RenameFailure` to show inline without dismissing the popover (plan §7:
   /// "Rename write fails ... Popover shows an inline error, does not silently claim success").
   /// The caller re-fetches current analysis/turns and writes through
   /// `mergeSpeakerFields(explicitRename:)` — this view never persists anything itself.
-  let onRename: (String, String) async -> String?
+  let onRename: (String, String) async -> RenameFailure?
   @ViewBuilder let fallback: () -> Fallback
 
   var body: some View {
@@ -35,12 +35,21 @@ struct TurnDocumentView<Fallback: View>: View {
   }
 }
 
+/// A failed rename write. `currentName` is the re-read, currently-saved name (plan §9: "Revert
+/// popover's TextField to the LAST KNOWN GOOD name ... re-read, not the value the user typed"),
+/// `nil` if the speaker still has no name — the caller performs the actual re-read; this type
+/// only carries the result back into the popover.
+struct RenameFailure: Equatable, Sendable {
+  let message: String
+  let currentName: String?
+}
+
 private struct TurnRowView: View {
   let turn: TranscriptDocumentPresenter.RenderedTurn
-  let onRename: (String, String) async -> String?
+  let onRename: (String, String) async -> RenameFailure?
   @State private var isRenaming = false
   @State private var draftName = ""
-  @State private var renameError: String?
+  @State private var renameFailure: RenameFailure?
   /// Captured when the popover opens, never read live off `turn` at commit time: `ForEach`
   /// keys rows by POSITION (`\.offset`), so the same row identity can be reused for a
   /// different turn while a popover is still open (found by chunk review). Committing must
@@ -75,7 +84,7 @@ private struct TurnRowView: View {
       Button {
         renamingSpeakerId = turn.speakerId
         draftName = turn.speakerName ?? ""
-        renameError = nil
+        renameFailure = nil
         isRenaming = true
       } label: {
         Text(displayName)
@@ -87,29 +96,28 @@ private struct TurnRowView: View {
       .popover(isPresented: $isRenaming) {
         RenamePopoverView(
           initialName: draftName,
-          errorMessage: renameError,
+          failure: renameFailure,
           onCommit: { name in commitRename(name) },
           onCancel: {
-            renameError = nil
+            renameFailure = nil
             isRenaming = false
           })
       }
     }
   }
 
-  /// On failure, reopens the popover with the error message rather than letting the dismissal
-  /// already in flight (e.g. from an outside click) silently swallow the failed write.
+  /// On failure, the popover stays open (`isRenaming` was never cleared) showing the error and
+  /// the reverted name; on success it closes.
   private func commitRename(_ name: String) {
     guard let id = renamingSpeakerId else {
       isRenaming = false
       return
     }
     Task {
-      if let error = await onRename(id, name) {
-        renameError = error
-        isRenaming = true
+      if let failure = await onRename(id, name) {
+        renameFailure = failure
       } else {
-        renameError = nil
+        renameFailure = nil
         isRenaming = false
       }
     }
@@ -150,12 +158,18 @@ private struct MarkedUpTurnText: View {
 /// this distinguishes the two via a flag Escape sets before dismissal, and treats ANY OTHER
 /// disappearance (`.onDisappear`, which fires for outside-click dismissal too) as a commit
 /// attempt. Escape's own flag makes it read as a cancel instead, even though both paths
-/// dismiss through the same SwiftUI mechanism. `errorMessage` renders inline when the
-/// caller's last commit attempt failed (plan §7) — the popover is a fresh instance each time
-/// it reopens after a failure, so `hasCommitted`/`didCancelExplicitly` correctly reset.
+/// dismiss through the same SwiftUI mechanism.
+///
+/// `failure` renders inline when the caller's last commit attempt failed (plan §7) and reverts
+/// the field to the re-read current name (plan §9) — never the rejected input. Because a
+/// failure keeps `isRenaming` true, THIS SAME instance survives the failed attempt (found by
+/// chunk review r2: an instance that stayed alive kept `hasCommitted = true` from the failed
+/// Enter forever, so a following outside-click could never re-commit). `.onChange(of: failure)`
+/// resets both dismissal guards whenever a new failure arrives, so a retry behaves like a fresh
+/// attempt.
 private struct RenamePopoverView: View {
   let initialName: String
-  let errorMessage: String?
+  let failure: RenameFailure?
   let onCommit: (String) -> Void
   let onCancel: () -> Void
   @State private var name: String
@@ -164,11 +178,11 @@ private struct RenamePopoverView: View {
   private static let maxLength = 60
 
   init(
-    initialName: String, errorMessage: String?, onCommit: @escaping (String) -> Void,
+    initialName: String, failure: RenameFailure?, onCommit: @escaping (String) -> Void,
     onCancel: @escaping () -> Void
   ) {
     self.initialName = initialName
-    self.errorMessage = errorMessage
+    self.failure = failure
     self.onCommit = onCommit
     self.onCancel = onCancel
     self._name = State(initialValue: initialName)
@@ -187,13 +201,19 @@ private struct RenamePopoverView: View {
         .onChange(of: name) { _, newValue in
           if newValue.count > Self.maxLength { name = String(newValue.prefix(Self.maxLength)) }
         }
-      if let errorMessage {
-        Text(errorMessage)
+      if let failure {
+        Text(failure.message)
           .font(.caption)
           .foregroundStyle(.red)
       }
     }
     .padding(8)
+    .onChange(of: failure) { _, newValue in
+      guard let newValue else { return }
+      hasCommitted = false
+      didCancelExplicitly = false
+      name = newValue.currentName ?? ""
+    }
     .onDisappear {
       guard !didCancelExplicitly, !hasCommitted else { return }
       commit()
