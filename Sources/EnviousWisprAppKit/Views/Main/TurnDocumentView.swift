@@ -182,22 +182,17 @@ private struct TurnRowView: View {
   }
 }
 
-/// One turn's worth of marked-up text — struck-through removals, highlighted changes/adds.
-/// Mirrors the wizard's existing whole-document marked-up rendering, applied per turn.
+/// One turn's worth of marked-up text — red struck-through removals, green-tinted
+/// changes/adds. The colours come from `MarkUpPalette`, the same table the wizard's
+/// whole-document `markedUpText` reads (#2817 finding 5: this view painted orange and no red).
+///
+/// One `Text` per turn rather than one per document, so a 20,000-word transcript is forty-odd
+/// small layouts instead of one that re-lays out on every scroll (finding 5, the lag half).
 private struct MarkedUpTurnText: View {
   let result: WordDiff.Result
 
   var body: some View {
-    result.segments.enumerated().reduce(Text("")) { text, element in
-      let (_, segment) = element
-      var piece = Text(segment.text + segment.trailing)
-      switch segment.kind {
-      case .same: break
-      case .removed: piece = piece.strikethrough()
-      case .changed, .added: piece = piece.foregroundColor(.orange)
-      }
-      return text + piece
-    }
+    Text(TranscribeFileView.markedUpText(result.segments))
   }
 }
 
