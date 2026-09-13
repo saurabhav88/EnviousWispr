@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# Print one sha256 for the whole build output: every file's path and content,
-# in sorted order. Two builds of the same content produce the same hash, so
-# the deploy workflow can skip an upload that would change nothing.
+# Print one sha256 over everything `wrangler pages deploy dist/` ships: every
+# file under dist/ AND every file under functions/ (Pages Functions, which
+# wrangler picks up from cwd/functions and compiles at deploy time; the
+# contact-form API lives there). Paths and contents, sorted, so two builds of
+# the same tree hash identically and the deploy workflow can skip an upload
+# that would change nothing. A functions-only change must change the hash,
+# or a re-run could redeploy old handlers and be recorded as current.
 set -euo pipefail
 dist="${1:-dist}"
+functions="${2:-functions}"
 [ -d "$dist" ] || { echo "dist-manifest: $dist missing" >&2; exit 1; }
-cd "$dist"
-find . -type f | LC_ALL=C sort | while IFS= read -r f; do
-  printf '%s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"
-done | shasum -a 256 | cut -d' ' -f1
+{
+  (cd "$dist" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+    printf 'dist %s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"
+  done)
+  if [ -d "$functions" ]; then
+    (cd "$functions" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+      printf 'functions %s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"
+    done)
+  fi
+} | shasum -a 256 | cut -d' ' -f1
