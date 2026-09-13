@@ -165,7 +165,11 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
         request = str(uuid.uuid4())
         _post({"kind": "transcribe", "pid": pid, "launch": launch, "request": request,
                "path": path, "timeout": str(int(timeout))})
-        first = _wait(observer, request, REFUSALS | {"accepted"}, 5.0, echo)
+        # A refusal can be a busy/malformed one OR a `refused` raised before any file is
+        # chosen (the screen's polish gate, #2885 round 4): both come instead of
+        # `accepted`, so both are terminal here. Found live: the first version waited only
+        # for the busy family and timed out on a `polishNotReady` refusal.
+        first = _wait(observer, request, REFUSALS | TERMINAL | {"accepted"}, 5.0, echo)
         if first is None:
             raise RuntimeError(f"pid {pid} did not answer the transcribe request in 5 s")
         if first["status"] != "accepted":
