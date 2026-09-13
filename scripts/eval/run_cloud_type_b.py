@@ -740,6 +740,10 @@ def polish_pack(
                          for i in ids]
     summary.update(attempts=attempt, latencyMs=int((time.monotonic() - start) * 1000),
                    **{k: v for k, v in meta.items() if v is not None})
+    # The preamble strip runs on the WHOLE answer before unwrap (an assistant wrapper line
+    # before `<s1>` would otherwise fail the count), never per section, where it could
+    # remove a speaker's own words (Codex r1).
+    raw = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
     parts = unwrap_sections(raw, len(ids))
     if parts is None:
         summary["outcome"] = "miscount"
@@ -750,7 +754,7 @@ def polish_pack(
     rows = []
     statuses: dict[str, int] = {}
     for section_id, original, candidate in zip(ids, sections, parts):
-        verdict = accept_section(original, _strip_llm_preamble_python(candidate, strip_transcript_tags=False))
+        verdict = accept_section(original, candidate)
         statuses[verdict.status] = statuses.get(verdict.status, 0) + 1
         rows.append({
             "id": section_id,
@@ -775,7 +779,6 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         return 2
     if args.limit:
         packs = packs[: args.limit]
-    args.out.parent.mkdir(parents=True, exist_ok=True)
     print(f"packs    : {args.pack.name} ({len(packs)} packs, "
           f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
 
@@ -795,6 +798,7 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
               file=sys.stderr)
         return 0
 
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     summaries: list[dict] = []
     rows_by_id: dict[str, dict] = {}
     t0 = time.monotonic()

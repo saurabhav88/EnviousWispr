@@ -48,6 +48,10 @@ def test_round_trip_and_escaping() -> None:
     w = wrap_sections(sections)
     check("literal tag escaped on the way in", "<\\s2>" in w and "</\\s7>" in w, repr(w))
     check("round trip restores the words", unwrap_sections(w, 3) == sections)
+    # A speaker's words that already carry a backslash-escaped tag survive too.
+    nested = ["already <\\s2> escaped"]
+    check("an already-escaped literal round-trips unchanged",
+          unwrap_sections(wrap_sections(nested), 1) == nested, repr(wrap_sections(nested)))
 
 
 def test_unwrap_refusals() -> None:
@@ -59,6 +63,8 @@ def test_unwrap_refusals() -> None:
         ("text outside the tags", "Here you go:\n<s1>a</s1>\n<s2>b</s2>", 2),
         ("duplicated tag", "<s1>a</s1>\n<s1>b</s1>", 2),
         ("a stray open tag between sections", "<s1>a</s1><s3>\n<s2>b</s2>", 2),
+        ("a tag nested inside a section", "<s1>a<s2>b</s1><s2>c</s2>", 2),
+        ("zero-padded numbering", "<s01>a</s01>", 1),
         ("expected zero", "<s1>a</s1>", 0),
     ]
     for label, text, n in rows:
@@ -92,12 +98,16 @@ def test_accept_mirrors_the_validator() -> None:
     check("question to answer rejected",
           accept_section("should we ship it today", "We ship it today.").status
           == "rejectedQuestionAnswer")
+    # Precomposed and decomposed forms count the same after NFC.
+    check("NFC before counting", accept_section("x", "\u00e9" * 100).status
+          == accept_section("x", "e\u0301" * 100).status)
 
 
 def test_looks_like_question_rows() -> None:
     rows = [
         ("is it done?", True),
         ("um, should we go", True),
+        ("um\u2014 should we go", True),  # an em dash after the filler is punctuation too
         ("how do we handle this", True),
         ("how we handle this is simple", False),
         ("how many are there", True),
@@ -132,6 +142,7 @@ def test_polish_pack_outcomes() -> None:
     original = runner.call_once
     try:
         runner.call_once = lambda *a, **k: (
+            "Here is the cleaned transcript:\n"
             "<s1>We went to the store and bought some milk today.</s1>\n<s2>Yeah.</s2>\n"
             "<s3>We ship it today.</s3>", {"outTok": 12})
         summary, rows = runner.polish_pack("openai", "m", "k", pack, texts)
@@ -175,7 +186,7 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
         try:
             class Args:
                 provider, model = "gemini", "gemini-x"
-                corpus, pack, out = d / "sections.jsonl", d / "packs.jsonl", d / "out.jsonl"
+                corpus, pack, out = d / "sections.jsonl", d / "packs.jsonl", d / "nested" / "out.jsonl"
                 dry_run, limit, workers = d / "dry.jsonl", 0, 1
             rc = runner.run_pack_mode(Args, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
             check("dry-run exits 0", rc == 0)
@@ -185,6 +196,7 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
             check("body carries the section ids", body["section_ids"] == ["f:1", "f:2"])
             check("gemini body shape", "contents" in body["body"] and "systemInstruction" in body["body"])
             check("no output rows written on a dry run", not (d / "out.jsonl").exists())
+            check("no output directory created on a dry run", not (d / "nested").exists())
         finally:
             runner.call_once = original
 

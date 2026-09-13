@@ -16,21 +16,25 @@ shape is escaped so a speaker cannot forge a boundary. `unwrap_sections` is stri
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 # A tag the model must echo. Lowercase `s` + digits; nothing else is a tag.
 _TAG = re.compile(r"</?s(\d+)>")
-# Escaping: a literal tag inside a section's words becomes `<\s1>` / `</\s1>` on the way in
-# and is restored on the way out, so the boundary grammar cannot be forged by content.
-_ESCAPED = re.compile(r"<(/?)\\s(\d+)>")
+# Escaping adds ONE backslash before the `s` of any tag-shaped run, including a run that
+# already carries backslashes, and unescaping removes exactly one, so `<\s2>` in a speaker's
+# own words survives the round trip as `<\s2>` (Codex r1: a single-level escape turned it
+# into `<s2>`). The boundary grammar can therefore never be forged by content.
+_LITERAL = re.compile(r"<(/?)(\\*)s(\d+)>")
+_ESCAPED = re.compile(r"<(/?)(\\+)s(\d+)>")
 
 
 def escape_section(text: str) -> str:
-    return _TAG.sub(lambda m: m.group(0).replace("s", "\\s", 1), text)
+    return _LITERAL.sub(lambda m: "<" + m[1] + "\\" + m[2] + "s" + m[3] + ">", text)
 
 
 def unescape_section(text: str) -> str:
-    return _ESCAPED.sub(lambda m: f"<{m.group(1)}s{m.group(2)}>", text)
+    return _ESCAPED.sub(lambda m: "<" + m[1] + m[2][1:] + "s" + m[3] + ">", text)
 
 
 def wrap_sections(sections: list[str]) -> str:
@@ -66,18 +70,18 @@ def unwrap_sections(text: str, expected: int) -> list[str] | None:
     found = list(_SECTION.finditer(text))
     if len(found) != expected:
         return None
-    numbers = [int(m.group(1)) for m in found]
-    if numbers != list(range(1, expected + 1)):
+    # String compare, not int: `<s01>` is not `<s1>` (Codex r1).
+    if [m[1] for m in found] != [str(i) for i in range(1, expected + 1)]:
         return None
-    # Nothing but whitespace may sit outside the matched sections.
-    outside = _SECTION.sub("", text)
-    if outside.strip():
+    # Nothing but whitespace may sit outside the matched sections; a stray open or close
+    # tag with no partner is non-whitespace and fails here too.
+    if _SECTION.sub("", text).strip():
         return None
-    # An opening or closing tag that survived outside a matched pair (a stray `<s3>` with no
-    # close, or a close with no open) shows up here as a leftover tag in `outside`.
-    if _TAG.search(outside):
+    # A tag INSIDE a matched section (`<s1>a<s2>b</s1><s2>c</s2>` matches twice and would
+    # otherwise pass) is a miscount, not content: content tags arrive escaped.
+    if any(_TAG.search(m[2]) for m in found):
         return None
-    return [unescape_section(m.group(2)).strip() for m in found]
+    return [unescape_section(m[2]).strip() for m in found]
 
 
 @dataclass(frozen=True)
@@ -99,15 +103,35 @@ _INDIRECT = [
     "i was wondering if", "i'm wondering if", "wondering if", "whether we should",
     "do you know if", "is there a", "are we",
 ]
-_PUNCT = ".,;:!?\"'()[]{}"
+
+
+def _trim_punctuation(word: str) -> str:
+    """Swift `trimmingCharacters(in: .punctuationCharacters)`: every Unicode `P*` category,
+    so a dash after a filler ("um—") is trimmed like a comma (Codex r1)."""
+    while word and unicodedata.category(word[0]).startswith("P"):
+        word = word[1:]
+    while word and unicodedata.category(word[-1]).startswith("P"):
+        word = word[:-1]
+    return word
+
+
+def _characters(text: str) -> int:
+    """Swift `String.count` counts grapheme clusters; the stdlib has no segmenter, so this
+    counts code points after NFC normalisation. Known gap, stated: a combining sequence NFC
+    cannot compose (e.g. a base letter with several marks) counts more here than in Swift,
+    which can only make the expansion guard STRICTER on such text. Adding the `regex`
+    package would close it, but the CI step runs the eval tests under bare stdlib python3
+    (pr-check.yml, the eval-tests step), so the gap is documented rather than closed."""
+    return len(unicodedata.normalize("NFC", text))
 
 
 def looks_like_question(text: str) -> bool:
-    """Mirror of `LLMPolishStep.looksLikeQuestion` (:1139-1184)."""
+    """Mirror of `LLMPolishStep.looksLikeQuestion` (:1139-1184). `str.split()` splits on
+    Unicode whitespace like Swift's `isWhitespace`."""
     if "?" in text:
         return True
     words = text.lower().strip().split()
-    while words and words[0].strip(_PUNCT) in _FILLERS:
+    while words and _trim_punctuation(words[0]) in _FILLERS:
         words.pop(0)
     if not words:
         return False
@@ -127,7 +151,7 @@ def accept_section(original: str, candidate: str) -> SectionVerdict:
         return SectionVerdict("empty", "")
     if not original:
         return SectionVerdict("accepted", candidate)
-    if len(candidate) > max(len(original) * 3, 200):
+    if _characters(candidate) > max(_characters(original) * 3, 200):
         return SectionVerdict("rejectedExpansion", candidate)
     original_words = len(original.split())
     polished_words = len(candidate.split())
