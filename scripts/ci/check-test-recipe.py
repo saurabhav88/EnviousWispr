@@ -13,7 +13,9 @@ Usage (the `recipe-check` job in pr-check.yml):
 The PR body carries exactly one line starting with `Recipe:`, in one of three shapes:
 
     Recipe: #<N>                      an issue labelled test-hardening whose recipe VALIDATES
-                                      against the PR head (scripts/validate-mutation-recipe.py)
+                                      against the checkout, which on a pull_request event is the
+                                      PR merged with its base: the tree that lands
+                                      (scripts/validate-mutation-recipe.py)
     Recipe: parent-red <TestName>     the bug-fix route: the named test ran RED on the parent
                                       commit for the bug's reason (declared; no Xcode here)
     Recipe: resource-control <Test>   the non-Swift-subject route (#2693, #2749): a two-way
@@ -24,6 +26,7 @@ reason printed; 3 the check could not run (a gh or git failure), which is not a 
 """
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
@@ -35,7 +38,9 @@ import tempfile
 # rule's daytime route for a small bug-fix test is the parent-red proof the reviewer reads.
 FLOOR = 100
 LABEL = "test-hardening"
-RECIPE_LINE = re.compile(r"^\s*Recipe:\s*(.*?)\s*$", re.MULTILINE)
+# One physical line: `[ \t]` and never `\s`, which would swallow the newline after a bare
+# `Recipe:` and read the NEXT line as its value.
+RECIPE_LINE = re.compile(r"^[ \t]*Recipe:[ \t]*(.*?)[ \t]*$")
 # The PR template explains the shapes inside an HTML comment that itself contains `Recipe:` lines;
 # a body that keeps the comment must not count them.
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -63,10 +68,12 @@ def added_test_lines(checkout, base, head):
     """Lines ADDED under Tests/ between base and head, three-dot (what the PR introduces).
 
     `--numstat` prints `-` for a binary file; that counts as zero, since no recipe can bind a
-    binary. A diff that cannot resolve is a refusal to answer, never a zero: a zero would pass the
-    PR on the count with nothing measured.
+    binary. `-M` pins rename detection ON whatever `diff.renames` says on the machine, so a moved
+    test file adds nothing and the count does not depend on configuration. A diff that cannot
+    resolve is a refusal to answer, never a zero: a zero would pass the PR on the count with
+    nothing measured.
     """
-    rc, out = run(["git", "diff", "--numstat", f"{base}...{head}", "--", "Tests/"], cwd=checkout)
+    rc, out = run(["git", "diff", "--numstat", "-M", f"{base}...{head}", "--", "Tests/"], cwd=checkout)
     if rc != 0:
         raise Infrastructure(f"git diff --numstat {base}...{head} failed (rc={rc}): {out.strip()[:300]}")
     total = 0
@@ -93,7 +100,7 @@ def issue_labels(number, checkout):
     )
     if rc != 0:
         raise Infrastructure(f"could not read issue #{number}: {out.strip()[:300]}")
-    return out.split()
+    return [name for name in out.splitlines() if name]
 
 
 def validate_recipe(number, checkout):
@@ -109,7 +116,12 @@ def validate_recipe(number, checkout):
 
 
 def recipe_lines(body):
-    return [m.group(1) for m in RECIPE_LINE.finditer(HTML_COMMENT.sub("", body))]
+    found = []
+    for line in HTML_COMMENT.sub("", body).splitlines():
+        m = RECIPE_LINE.match(line)
+        if m:
+            found.append(m.group(1))
+    return found
 
 
 def check(checkout, base, head, pr, *, body=None, labels=issue_labels, validate=validate_recipe):
@@ -135,11 +147,11 @@ def check(checkout, base, head, pr, *, body=None, labels=issue_labels, validate=
             return 1, f"FAIL: `Recipe: #{number}` names an issue without the `{LABEL}` label.\n{need}"
         rc, out = validate(number, checkout)
         if rc != 0:
-            return 1, (f"FAIL: `Recipe: #{number}` does not validate against this PR's head "
+            return 1, (f"FAIL: `Recipe: #{number}` does not validate against this PR merged with its base "
                        f"(validate-mutation-recipe.py exit {rc}):\n{out.rstrip()}\n"
                        f"Every row must be runnable in the tree that is about to merge; a row that "
                        f"anchors on code this PR does not carry is dead on the night it is run.")
-        return 0, f"ok: {added} lines added under Tests/; `Recipe: #{number}` validates against this PR:\n{out.rstrip()}"
+        return 0, f"ok: {added} lines added under Tests/; `Recipe: #{number}` validates against this PR merged with its base:\n{out.rstrip()}"
 
     declared = DECLARED_SHAPE.match(value)
     if declared:
@@ -155,25 +167,38 @@ def check(checkout, base, head, pr, *, body=None, labels=issue_labels, validate=
 # against real issues on GitHub (#2868's kill criterion), never stubbed here beyond the seams.
 # ---------------------------------------------------------------------------
 
+# Fixtures ignore the machine's git configuration (signing, hooks, rename settings) so the
+# self-test measures the script and not the workstation.
+_GIT_ENV = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+
 def _git(repo, *args):
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *args],
+                   cwd=repo, check=True, capture_output=True, text=True, env=_GIT_ENV)
 
 
-def _repo_with_test_lines(lines, path="Tests/Probe/Probe.swift"):
-    repo = pathlib.Path(tempfile.mkdtemp(prefix="recipe-check-"))
+def _repo_with_test_lines(scratch, lines, path="Tests/Probe/Probe.swift"):
+    repo = pathlib.Path(tempfile.mkdtemp(prefix="recipe-check-", dir=scratch))
     _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
     base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
     target = repo / path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("".join(f"// line {i}\n" for i in range(lines)))
     _git(repo, "add", "-A")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "tests")
+    _git(repo, "commit", "-q", "-m", "tests")
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
     return repo, base, head
 
 
 def self_test():
+    with tempfile.TemporaryDirectory(prefix="recipe-check-selftest-") as scratch:
+        return _self_test(pathlib.Path(scratch))
+
+
+def _self_test(scratch):
     fails = 0
 
     def expect(label, got, want):
@@ -193,11 +218,11 @@ def self_test():
             return rc, text
         return fake
 
-    repo, base, head = _repo_with_test_lines(FLOOR)
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR)
     code, _ = check(repo, base, head, 1, body="", labels=labelled, validate=validator(1, "x"))
     expect("at the floor: no Recipe line needed", code, 0)
 
-    repo, base, head = _repo_with_test_lines(FLOOR + 1)
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR + 1)
     code, msg = check(repo, base, head, 1, body="## Summary\nno line here\n", labels=labelled, validate=validator(0, ""))
     expect("over the floor, no Recipe line: fails", (code, "0 `Recipe:` lines" in msg), (1, True))
 
@@ -229,6 +254,12 @@ def self_test():
     code, msg = check(repo, base, head, 1, body="Recipe: none, trust me\n", labels=labelled, validate=validator(1, "x"))
     expect("unrecognised shape: fails", code, 1)
 
+    code, msg = check(repo, base, head, 1, body="Recipe:\nparent-red FooTests/barFails\n", labels=labelled, validate=validator(1, "x"))
+    expect("bare Recipe: with the value on the next line: fails (value is that line, not the next)", (code, "`Recipe: ` is not" in msg), (1, True))
+
+    code, msg = check(repo, base, head, 1, body="Recipe: #9\n", labels=lambda n, c: ["not test-hardening"], validate=validator(0, ""))
+    expect("a label merely containing the word: fails", code, 1)
+
     template = pathlib.Path(__file__).resolve().parent.parent.parent / ".github" / "pull_request_template.md"
     kept = template.read_text().replace("Recipe:\n", "Recipe: #7\n")
     expect("the template names the shapes inside its comment", kept.count("Recipe:") > 2, True)
@@ -238,9 +269,17 @@ def self_test():
     expect("template left unfilled: fails", code, 1)
 
     # Binary and non-Tests additions do not count toward the floor.
-    repo, base, head = _repo_with_test_lines(FLOOR + 50, path="Sources/Probe.swift")
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR + 50, path="Sources/Probe.swift")
     code, _ = check(repo, base, head, 1, body="", labels=labelled, validate=validator(1, "x"))
     expect("lines outside Tests/ do not count", code, 0)
+
+    # A moved test file adds nothing, whatever diff.renames says on this machine.
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR + 50)
+    _git(repo, "mv", "Tests/Probe/Probe.swift", "Tests/Probe/Moved.swift")
+    _git(repo, "commit", "-q", "-m", "move")
+    moved = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    code, msg = check(repo, head, moved, 1, body="", labels=labelled, validate=validator(1, "x"))
+    expect("a renamed test file counts zero added lines", (code, "0 lines added" in msg), (0, True))
 
     # A diff that cannot resolve is not a zero.
     try:

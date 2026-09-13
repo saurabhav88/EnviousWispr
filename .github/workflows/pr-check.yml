@@ -538,7 +538,8 @@ jobs:
 
 
   # A PR adding more than a floor of test lines must name how those tests are
-  # bound (#2868): a `Recipe: #N` whose recipe VALIDATES against this PR's head,
+  # bound (#2868): a `Recipe: #N` whose recipe VALIDATES against the checkout,
+  # which on pull_request is this PR merged with its base (the tree that lands),
   # or one of the two substitutes testing-philosophy.md's ship condition names.
   # Measured 2026-09-13: 8 of 18 such PRs since 2026-09-10 carried none. Runs
   # on every PR (the count decides whether anything more is asked) and needs no
@@ -561,7 +562,7 @@ jobs:
           # cannot resolve it. Same reason as the build lanes.
           fetch-depth: 0
 
-      - name: Test ship condition (recipe named and runnable against this PR)
+      - name: Test ship condition (recipe named and runnable in the tree that lands)
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
