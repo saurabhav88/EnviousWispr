@@ -71,26 +71,23 @@ struct TurnAssemblerTests {
     let turns = TurnAssembler.assemble(entries: entries, segments: segments)
 
     // Every entry belongs to exactly one turn, under its expected speaker, in original order.
+    // With the fold shipped ON (#2851 follow-up, 2026-09-13): "to" folds back into B and B's
+    // halves coalesce; "Yeah," sits at 50 s while "likewise." is at 0.9 s, an out-of-order
+    // timing that is NOT closeness, so it folds to the previous turn, B, not forward.
     let bySpeaker = turns.map(\.speakerId)
-    #expect(bySpeaker == ["A", "B", "unknown", "B", "unknown", "A"])
-    // The A speaker (and B speaker) recurring later must NOT merge back into an earlier
-    // same-speaker turn once a different speaker (even "unknown") has intervened — no word
-    // moves across an established speaker change (addendum §3 C).
-    #expect(turns.count == 6)
+    #expect(bySpeaker == ["A", "B", "A"])
+    // The A speaker recurring later must NOT merge back into an earlier same-speaker turn
+    // once a different speaker has intervened — no word moves across an established speaker
+    // change (addendum §3 C).
+    #expect(turns.count == 3)
 
     // Each turn's raw-text slice equals exactly its member entries' span, whitespace
     // included, sliced from the SAME text the entries' ranges were computed against.
     #expect(slice(turns[0].originalTextRange, of: text) == "Hi, I'm 24.")
-    #expect(slice(turns[1].originalTextRange, of: text) == "Well, nice")
-    #expect(slice(turns[2].originalTextRange, of: text) == "to")
-    #expect(slice(turns[3].originalTextRange, of: text) == "meet you.")
-    #expect(slice(turns[4].originalTextRange, of: text) == "Yeah,")
-    #expect(slice(turns[5].originalTextRange, of: text) == "likewise.")
+    #expect(slice(turns[1].originalTextRange, of: text) == "Well, nice to meet you. Yeah,")
+    #expect(slice(turns[2].originalTextRange, of: text) == "likewise.")
 
-    // With the #2851 fold ON (the internal step, exercised directly since the shipped
-    // constant is off): "to" folds back into B and B's halves coalesce; "Yeah," sits at
-    // 50 s while "likewise." is at 0.9 s, an out-of-order timing that is NOT closeness, so
-    // it folds to the previous turn, B, not forward.
+    // The fold step on its own, from the resolver's groups:
     let groups = TurnAssembler.foldingTinyUnknownGroups([
       ("A", Array(entries[0..<3])), ("B", Array(entries[3..<5])), ("unknown", [entries[5]]),
       ("B", Array(entries[6..<8])), ("unknown", [entries[8]]), ("A", [entries[9]]),
@@ -338,15 +335,37 @@ struct TurnAssemblerTests {
     #expect(folded[0].entries.map(\.word) == ["one", "um", "two"])
   }
 
-  @Test("with the shipped constant off, assemble leaves unknown fragments untouched")
-  func shippedConstantIsOff() {
-    #expect(TurnAssembler.unknownFoldEnabled == false)
+  @Test("with the shipped constant on, assemble folds a stray word into the nearer neighbour")
+  func shippedConstantIsOn() {
+    #expect(TurnAssembler.unknownFoldEnabled == true)
     let entries = [entry("hello", 0, 5, 0, 500), entry("um", 6, 8, 1100, 1150), entry("yes", 9, 12, 1500, 2000)]
     let segments = [
       SpeakerSegment(speakerId: "A", startMs: 0, endMs: 500, quality: 1),
       SpeakerSegment(speakerId: "B", startMs: 1500, endMs: 2000, quality: 1),
     ]
-    #expect(TurnAssembler.assemble(entries: entries, segments: segments).map(\.speakerId) == ["A", "unknown", "B"])
+    let turns = TurnAssembler.assemble(entries: entries, segments: segments)
+    #expect(turns.map(\.speakerId) == ["A", "B"])
+    #expect(turns[1].originalTextRange == 6..<12, "\"um yes\" is B's")
+  }
+
+  @Test("a large unknown group between two turns of the same speaker folds into that speaker; between different speakers it stays")
+  func largeUnknownFoldsOnlyBetweenTheSameSpeaker() {
+    func words(_ n: Int, from lower: Int, at ms: Int) -> [ASRWordTiming] {
+      (0..<n).map { entry("w\($0)", lower + $0 * 3, lower + $0 * 3 + 2, ms + $0 * 300, ms + $0 * 300 + 200) }
+    }
+    let a1 = words(2, from: 0, at: 0)
+    let big = words(13, from: 10, at: 2000)   // over the cap, 3.9 s
+    let a2 = words(2, from: 60, at: 7000)
+    let sameSides = fold([("A", a1), ("unknown", big), ("A", a2)])
+    #expect(sameSides.map(\.speaker) == ["A"], "one speaker on both sides: the diarizer under-segmented")
+    #expect(sameSides[0].entries.count == 17)
+    let b2 = words(2, from: 60, at: 7000)
+    let differentSides = fold([("A", a1), ("unknown", big), ("B", b2)])
+    #expect(differentSides.map(\.speaker) == ["A", "unknown", "B"], "an exchange between two speakers stays unknown")
+    // Over the same-speaker ceiling the group stays, whoever the neighbours are.
+    let huge = words(TurnAssembler.unknownFoldSameSpeakerMaxEntries + 1, from: 10, at: 2000)
+    let a3 = words(2, from: 200, at: 12000)
+    #expect(fold([("A", a1), ("unknown", huge), ("A", a3)]).map(\.speaker) == ["A", "unknown", "A"])
   }
 
   @Test("empty input produces no turns")

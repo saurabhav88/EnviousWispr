@@ -317,6 +317,47 @@ struct TurnTextAlignerTests {
     #expect(text(within, "ab")?.processedText == "b a")
   }
 
+  @Test("a unique word moved across two turns fails both ends; a common word moved that far does not")
+  func uniqueWordMovedAcrossTwoTurnsFailsBothEnds() {
+    // Whole-diff review round 3's construction: A "red x" | B "y" | C "z", cleaned "x y z red".
+    // "red" occurs once on each side, so it anchors a move at any distance (Heckel).
+    let raw = "red x y z"
+    let turns = [
+      turn("a", "A", in: raw, from: "red", to: "x"),
+      turn("b", "B", in: raw, from: "y", to: "y"),
+      turn("c", "C", in: raw, from: "z", to: "z"),
+    ]
+    let out = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "x y z red")], turns: turns)
+    #expect(text(out, "a")?.processedText == nil)
+    #expect(text(out, "c")?.processedText == nil, "C must not receive A's word")
+    #expect(text(out, "b")?.processedText == "y")
+    // A common word (twice in the raw) dropped in A and added in C two turns away is an
+    // ordinary pair of edits, not a move: only a neighbour would be checked.
+    let raw2 = "the x the y z"
+    let turns2 = [
+      turn("a", "A", in: raw2, from: "the", to: "x"),
+      turn("b", "B", in: raw2, from: "the y", to: "y"),
+      turn("c", "C", in: raw2, from: "z", to: "z"),
+    ]
+    let out2 = TurnTextAligner.align(rawText: raw2, passages: [placed(raw2, cleaned: "x the y z the")], turns: turns2)
+    #expect(text(out2, "c")?.processedText == "z the")
+  }
+
+  @Test("known limit: a word moved and rewritten in the same move is not seen as a move")
+  func movedAndRewrittenWordIsTheStatedBlindSpot() {
+    // Codex review 2026-09-13: both reaches match on the key, so "nine" leaving A and "9"
+    // arriving in B look like an ordinary deletion and an ordinary insertion. Documented in
+    // the aligner header; this pins the limit so a change to it is a deliberate one.
+    let raw = "nine x y"
+    let turns = [
+      turn("a", "A", in: raw, from: "nine", to: "x"),
+      turn("b", "B", in: raw, from: "y", to: "y"),
+    ]
+    let out = TurnTextAligner.align(rawText: raw, passages: [placed(raw, cleaned: "x y 9")], turns: turns)
+    #expect(text(out, "a")?.processedText == "x")
+    #expect(text(out, "b")?.processedText == "y 9")
+  }
+
   @Test("a turn spanning a polished passage and a failed one reads unpolished, in either order")
   func turnSpanningSucceededAndFailedPassagesIsUnpolished() {
     let raw = "one two"

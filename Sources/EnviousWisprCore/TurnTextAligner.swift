@@ -8,10 +8,13 @@ import Foundation
 /// The contract that matters: a word is never shown under the wrong speaker where the
 /// alignment can see the move. It compares within ONE passage (each passage is cleaned on
 /// its own, so a cleanup cannot carry a word from one passage into another): every edit
-/// inside a turn, and a word one turn lost and a NEIGHBOURING turn gained. The one accepted
-/// blind spot is a word carried across two or more turns inside one passage (see the last
-/// rule). Wherever the alignment cannot say who a cleaned word belongs to, the turn keeps
-/// its raw words (`processedText` nil) and is disclosed, rather than guessed. The rules,
+/// inside a turn, a unique word moved anywhere in the passage, and a common word moved
+/// between neighbouring turns. Two accepted blind spots: a common word carried across two
+/// or more turns inside one passage, and a word that was moved AND rewritten in the move
+/// ("nine" to "9" under another speaker), since both reaches match on the word's key (see
+/// the last rule). Wherever the alignment cannot
+/// say who a cleaned word belongs to, the turn keeps its raw words (`processedText` nil)
+/// and is disclosed, rather than guessed. The rules,
 /// from the plan's §2.5 P3, P5, P6:
 /// - An equal word belongs to the turn its raw range lies in; a raw word whose range
 ///   straddles two turns is unassignable and fails both.
@@ -24,8 +27,9 @@ import Foundation
 /// - A turn whose cleaned words all vanished keeps its raw words, disclosed.
 /// - A pure insertion (no deletes) belongs to the turn of the nearest preceding raw word in
 ///   the passage that had an owner; at a passage start, the following one.
-/// - A word one turn lost and a NEIGHBOURING turn gained in the same passage was moved
-///   across their boundary: both turns fail. A move two or more turns away is not seen.
+/// - A word one turn lost and another turn gained in the same passage was moved: both
+///   turns fail. A word unique to the passage (once in the raw, once in the cleaned) is
+///   checked against every turn; a common word only against the neighbouring turns.
 /// - A passage the caller could not place in the raw text, and the raw interval up to the
 ///   next placed passage, are untrustworthy: turns overlapping them fall back.
 /// - A passage not yet cleaned leaves its turns raw. A passage whose part failed to polish
@@ -301,10 +305,23 @@ public enum TurnTextAligner {
         }
         lastOwner = ordered[indexByID[turnID]!]
       }
+      // Two reaches, from the diff literature (Heckel 1978; wikEd diff): a word that occurs
+      // exactly ONCE in the raw passage and once in the cleaned one anchors a move at any
+      // distance, the way a unique line anchors a moved block; a common word ("I", "the")
+      // is a move only between neighbouring turns, because comparing every common word
+      // against every turn read ordinary filler edits as moves (60 raw turns on the
+      // 48-minute row). Measured 2026-09-13 with both reaches: 306 aligned, 62 boundary,
+      // 4 emptied, the same as neighbour-only, so the unique reach costs nothing there.
+      var rawCount: [String: Int] = [:]
+      for t in a { rawCount[t.key, default: 0] += 1 }
+      var cleanedCount: [String: Int] = [:]
+      for t in b { cleanedCount[t.key, default: 0] += 1 }
       for (turnID, key) in insertedKeys {
+        let unique = rawCount[key] == 1 && cleanedCount[key] == 1
         for (owner, lostKey) in deletedWords
-        where lostKey == key
-          && (neighbour(of: owner, before: true)?.id == turnID
+        where lostKey == key && owner.id != turnID
+          && (unique
+            || neighbour(of: owner, before: true)?.id == turnID
             || neighbour(of: owner, before: false)?.id == turnID)
         {
           fail(turnID, .boundary)
