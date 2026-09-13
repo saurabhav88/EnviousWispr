@@ -84,7 +84,13 @@ struct TranscriptDetailView: View {
                 fallback: { EmptyView() }
               )
             }
-            .task(id: turnDiffInput) { await prepareTurnDiffs() }
+            .task(
+              id: FileImportCoordinator.TurnDiffRequest(
+                input: turnDiffInput, markedUp: documentView == .markedUp)
+            ) {
+              guard documentView == .markedUp else { return }
+              await prepareTurnDiffs()
+            }
             // Gives the WHOLE turn-rendering subtree — including every `TurnRowView`'s own
             // rename-popover `@State` — a fresh identity per document (found by chunk
             // review): `HistoryContentView` reuses this view across row selections at a

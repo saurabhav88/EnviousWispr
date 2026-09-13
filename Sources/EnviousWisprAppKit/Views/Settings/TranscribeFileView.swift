@@ -1271,7 +1271,13 @@ struct TranscribeFileView: View {
           onTurnsDisplayed: { coordinator.noteTurnsDisplayed() },
           fallback: { legacyTranscriptContent }
         )
-        .task(id: coordinator.turnDiffInput) { await coordinator.prepareTurnDiffs() }
+        .task(
+          id: FileImportCoordinator.TurnDiffRequest(
+            input: coordinator.turnDiffInput, markedUp: coordinator.documentView == .markedUp)
+        ) {
+          guard coordinator.documentView == .markedUp else { return }
+          await coordinator.prepareTurnDiffs()
+        }
       } else {
         legacyTranscriptContent
       }

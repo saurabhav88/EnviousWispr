@@ -1339,6 +1339,16 @@ final class FileImportCoordinator {
     let language: String?
   }
 
+  /// The id of both screens' diff task: the input AND whether Marked up is the selected view,
+  /// so the per-turn diffs are computed only while something would show them (found by
+  /// cloud review, round 7: a long labeled recording opened in Cleaned mode diffed every turn
+  /// at user-initiated priority for nothing). Switching to Marked up changes the id and starts
+  /// the work then; switching away cancels it.
+  struct TurnDiffRequest: Equatable, Sendable {
+    let input: TurnDiffInput
+    let markedUp: Bool
+  }
+
   /// The current turns' own original/cleaned pairs, mirroring `markedUpInput`'s role but for
   /// per-turn Marked-up rendering (#2811, phase 4 of #2807) — the presenter's `render` never
   /// computes `WordDiff` itself (chunk-1 review), so this is the CALLER-side preparation it
