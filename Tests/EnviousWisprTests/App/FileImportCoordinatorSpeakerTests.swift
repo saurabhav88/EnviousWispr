@@ -832,10 +832,12 @@ struct FileImportCoordinatorSpeakerTests {
   func rePolishRealignsStoredTurnsAndKeepsRename() async {
     let store = FakeHistoryStore()
     let cleaner = WordSwappingCleaner()
+    let telemetry = TurnTelemetryRecorder()
     let coordinator = makeStoreBackedCoordinator(
       store: store, wordTimings: Self.twoSpeakerWordTimings(),
       speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
-      processPart: { part, _ in cleaner.outcome(part) })
+      processPart: { part, _ in cleaner.outcome(part) },
+      emitTurnTelemetry: { telemetry.record($0, $1, $2) })
 
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
@@ -870,6 +872,8 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(realigned, "Clean it again must re-align the stored turns from the new cleanup: \(turnTexts(store.current(historyID)))")
     #expect(store.current(historyID)?.turns?.count == 2, "re-aligning must not change the turn set")
     #expect(store.current(historyID)?.speakerNames?["A"] == "Zach", "a rename must survive a re-clean")
+    for _ in 0..<20 { await Task.yield() }
+    #expect(telemetry.stored.count == 1, "file_import_turns is once per import; a re-clean is not a new import: \(telemetry.events)")
   }
 
   @MainActor private final class TurnTelemetryRecorder {
@@ -993,6 +997,74 @@ struct FileImportCoordinatorSpeakerTests {
       SpeakerSegment(speakerId: "B", startMs: split * 100, endMs: count * 100, quality: 1),
     ]
     return (text, timings, segments)
+  }
+
+  @Test("Clean it again keeps a turn's last cleaned text until the new cleanup reaches its passage (#2851)")
+  func rePolishKeepsPreviousTextUntilThePassageLandsAgain() async {
+    let store = FakeHistoryStore()
+    let secondRunGate = ManualGate()
+    let fixture = Self.manyWordFixture(count: 600, split: 300)
+    @MainActor final class RunTracker {
+      var secondRun = false
+      private(set) var partsInSecondRun = 0
+      func partSeen() -> Int {
+        guard secondRun else { return 0 }
+        partsInSecondRun += 1
+        return partsInSecondRun
+      }
+    }
+    let tracker = RunTracker()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: fixture.text, wordTimings: fixture.timings,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },
+      processPart: { part, _ in
+        let index = tracker.partSeen()
+        if index == 2 {
+          await secondRunGate.markArrived()
+          await secondRunGate.waitUntilOpen()
+        }
+        // The second run rewrites the first word of each part, so its text is told apart.
+        let cleaned = index == 0 ? part : "again " + part
+        return FileImportRunner.PartOutcome(text: part, polishedText: cleaned, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let firstRunAligned = await settleUntil {
+      coordinator.speakerStepState == .finished
+        && turnTexts(store.current(historyID)).allSatisfy { $0 != nil }
+    }
+    #expect(firstRunAligned)
+    let firstRunTexts = turnTexts(store.current(historyID))
+
+    tracker.secondRun = true
+    coordinator.rePolish()
+    await secondRunGate.waitUntilArrived()
+    // Part 1 of the second run has landed; part 2 is held. Turn A (inside part 1) carries
+    // the new words; turn B (spanning both parts) keeps its FIRST run's text, not raw.
+    let partOneRelanded = await settleUntil {
+      turnTexts(store.current(historyID)).first??.hasPrefix("again ") == true
+    }
+    #expect(partOneRelanded, "\(turnTexts(store.current(historyID)).map { $0?.prefix(12) })")
+    #expect(turnTexts(store.current(historyID)).count == 2)
+    #expect(
+      turnTexts(store.current(historyID)).last == firstRunTexts.last,
+      "an unreached turn keeps its last cleaned text: \(String(describing: turnTexts(store.current(historyID)).last??.prefix(12)))")
+
+    await secondRunGate.open()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    let texts = turnTexts(store.current(historyID))
+    #expect(texts.first??.hasPrefix("again w0 ") == true)
+    #expect(texts.last??.contains("again w500 ") == true, "part 2's new words reach turn B once it lands")
   }
 
   @Test("each cleanup part places its words as it lands; a turn the next part still owns stays raw until then (#2851)")

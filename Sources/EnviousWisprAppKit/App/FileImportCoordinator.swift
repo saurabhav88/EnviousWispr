@@ -1354,6 +1354,10 @@ final class FileImportCoordinator {
     let byID = Dictionary(uniqueKeysWithValues: outcome.texts.map { ($0.turnID, $0) })
     let patched = stored.map { turn -> Turn in
       guard let text = byID[turn.id] else { return turn }
+      // A passage the cleanup has not reached yet says nothing about its turns: on a
+      // "Clean it again" they keep their last cleaned text until the matching passage
+      // lands (plan §2.5; chunk 3 review). Every other fallback is this cleanup's verdict.
+      if outcome.fallbacks[turn.id] == .unreached { return turn }
       return Turn(
         id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
         originalTextRange: turn.originalTextRange, processedText: text.processedText,
@@ -1786,9 +1790,9 @@ final class FileImportCoordinator {
     generation += 1
     let generationAtStart = generation
     parts = []
-    // The turns follow the new cleanup part by part (#2851): a turn whose passage has not
-    // landed again shows its raw words, as the document does. This is a fresh cleanup, so
-    // its own completion is what the final alignment waits for.
+    // The turns follow the new cleanup part by part (#2851): a turn keeps its last cleaned
+    // text until its passage lands again (`alignAndCommit` leaves unreached turns alone).
+    // This is a fresh cleanup, so its own completion is what the final alignment waits for.
     cleanupComplete = false
     // #2772 finding 14: the OLD queue must not be shown as the current one while this run
     // is still preparing. Cleared here and republished by `polishAll` from the new split.
