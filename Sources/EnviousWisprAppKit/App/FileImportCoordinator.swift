@@ -1375,7 +1375,11 @@ final class FileImportCoordinator {
       turnDiffWorker = nil
     }
     let task: Task<[String: WordDiff.Result], Never>
-    if let inFlight = turnDiffWorker {
+    // A worker that was cancelled (the Done view left mid-batch) returns a PARTIAL dictionary;
+    // reusing it would cache that partial result for good, and the missing turns would show
+    // unmarked cleaned text forever (found by cloud review, round 6). Only a live worker is
+    // shared; a cancelled one is replaced.
+    if let inFlight = turnDiffWorker, !inFlight.task.isCancelled {
       task = inFlight.task
     } else {
       task = Task.detached(priority: .userInitiated) {
@@ -1400,8 +1404,10 @@ final class FileImportCoordinator {
       operation: { await task.value },
       onCancel: { task.cancel() }
     )
-    guard !Task.isCancelled, turnDiffInput == input else { return }
+    // Released on EVERY return path, cancelled included, so the next visit with the same
+    // input starts a fresh worker instead of adopting this one's partial result.
     if turnDiffWorker?.input == input { turnDiffWorker = nil }
+    guard !Task.isCancelled, turnDiffInput == input else { return }
     turnDiffCache = (input, result)
   }
 
