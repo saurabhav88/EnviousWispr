@@ -91,14 +91,10 @@ struct FileImportCoordinatorSpeakerTests {
 
   private static let anyURL = URL(fileURLWithPath: "/tmp/recording.m4a")
 
-  private func settleUntil(
-    limit: Int = 500, _ condition: @MainActor () async -> Bool
-  ) async -> Bool {
-    for _ in 0..<limit {
-      if await condition() { return true }
-      await Task.yield()
-    }
-    return await condition()
+  /// #2854: a deadline-bounded wait on the condition, never a yield count.
+  /// Owner: `FileImportSettle.swift`.
+  private func settleUntil(_ condition: @MainActor () async -> Bool) async -> Bool {
+    await settleUntilObserved(condition)
   }
 
   private func makeCoordinator(
