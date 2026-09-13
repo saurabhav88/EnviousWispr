@@ -96,6 +96,7 @@ public enum TurnTextAligner {
 
     var pieces: [String: [(passageIndex: Int, text: String)]] = [:]
     var leadingWhitespace: [Int: String] = [:]
+    var trailingWhitespace: [Int: String] = [:]
     var fallbacks: [String: Fallback] = [:]
     var polishedAll = Dictionary(uniqueKeysWithValues: turns.map { ($0.id, true) })
 
@@ -312,6 +313,11 @@ public enum TurnTextAligner {
       // token starts after it); the join below puts it BETWEEN a turn's pieces when the turn
       // continues from an earlier passage.
       leadingWhitespace[passageIndex] = String(original.prefix { $0.isWhitespace })
+      // And its trailing whitespace: `TranscriptSplitter`'s pieces carry the space after a
+      // sentence, the cleanup's text does not, so a turn continuing into the next passage
+      // would otherwise join "understand." and "Yeah," with nothing between (Live UAT,
+      // 2026-09-13, the 4-minute clip).
+      trailingWhitespace[passageIndex] = String(original.reversed().prefix { $0.isWhitespace }.reversed())
       var perTurn: [String: String] = [:]
       var order: [String] = []
       for (turnID, text) in attributed {
@@ -346,13 +352,16 @@ public enum TurnTextAligner {
           case .placed(let next, _) = passages[passageIndex].placement,
           prev.upperBound <= next.lowerBound
         {
-          // The separator is the raw text between the two placed ranges plus the next
+          // The separator is the previous passage's trailing whitespace (unless the piece
+          // already ends with it), the raw text between the two placed ranges, and the next
           // passage's own leading whitespace. Only whitespace crosses: content in the gap
           // means a passage in between produced no piece for this turn (its words were all
           // removed), and copying it would restore deleted words (chunk 1 review); a single
           // space stands in.
+          let carried = joined.last?.isWhitespace == true ? "" : (trailingWhitespace[previousIndex] ?? "")
           let gap =
-            String(decoding: raw[prev.upperBound..<next.lowerBound], as: UTF16.self)
+            carried
+            + String(decoding: raw[prev.upperBound..<next.lowerBound], as: UTF16.self)
             + (leadingWhitespace[passageIndex] ?? "")
           joined += gap.allSatisfy(\.isWhitespace) ? gap : " "
         }

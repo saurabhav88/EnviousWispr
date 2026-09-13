@@ -170,6 +170,28 @@ struct TurnTextAlignerTests {
     #expect(text(out, "b")?.processedText == "done.")
   }
 
+  @Test("a turn spanning two passages keeps the space the splitter left at the end of the first")
+  func turnSpanningTwoPassagesKeepsTrailingSpace() {
+    // `TranscriptSplitter` cuts "I understand. " WITH its trailing space; the cleanup returns
+    // "I understand." without it; the next piece starts at "Yeah". Live UAT 2026-09-13 showed
+    // "understand.Yeah" on the 4-minute clip.
+    let raw = "not so much. I understand. Yeah, but now it's good."
+    let turns = [
+      turn("u", "unknown", in: raw, from: "not", to: "I"),
+      turn("b", "B", in: raw, from: "understand.", to: "good."),
+    ]
+    let cut = "not so much. I understand. ".utf16.count
+    let p1 = TurnTextAligner.Passage(
+      placement: .placed(rawRange: 0..<cut, contentRange: 0..<cut),
+      cleaned: "not so much. I understand.", wasPolished: true)
+    let p2 = TurnTextAligner.Passage(
+      placement: .placed(rawRange: cut..<raw.utf16.count, contentRange: cut..<raw.utf16.count),
+      cleaned: "Yeah, but now it's good.", wasPolished: true)
+    let out = TurnTextAligner.align(rawText: raw, passages: [p1, p2], turns: turns)
+    #expect(text(out, "b")?.processedText == "understand. Yeah, but now it's good.")
+    #expect(text(out, "u")?.processedText == "not so much. I")
+  }
+
   @Test("an unplaceable passage poisons the raw interval up to the next placed one")
   func unplaceablePassageFallsBack() {
     let raw = "alpha beta. gamma delta. epsilon zeta."
