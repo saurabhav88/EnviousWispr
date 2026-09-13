@@ -36,9 +36,10 @@ on:
   issues:
     types: [opened, edited, labeled]
   # A recipe may be supplied in a COMMENT (the runner reads body and comments and requires
-  # exactly one block across both), so a comment can make or break the recipe too.
+  # exactly one block across both), so a comment can make or break the recipe too, and
+  # deleting one can remove the only recipe or cure a two-block refusal.
   issue_comment:
-    types: [created, edited]
+    types: [created, edited, deleted]
   workflow_dispatch:
     inputs:
       issue:
