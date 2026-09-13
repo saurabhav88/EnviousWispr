@@ -1343,7 +1343,11 @@ final class FileImportCoordinator {
       releaseRetryInputsIfNoLongerRetryable()
       return
     }
-    let final = Self.finalTurns(turns, parts: parts, cleanupCompleted: cleanupOutcome == .stored)
+    // Only a completed cleanup writes cleaned words. A Stop or a refused polisher writes the
+    // turns raw and disclosed (second-pass review: a partial write would disagree with the
+    // document's own saved status, and could truncate a long turn split into pieces).
+    let completed = cleanupOutcome == .stored
+    let final = Self.finalTurns(turns, parts: completed ? parts : [], cleanupCompleted: completed)
     let disclosed = final.filter { !$0.wasPolished }.count
     await mergeAndReport(
       historyID: historyID, analysis: result.analysis, turns: final, outcome: cleanupOutcome,
@@ -1723,7 +1727,7 @@ final class FileImportCoordinator {
     // `runTask` and `speakerStepTask` are both already cancelled unconditionally above,
     // before this guard.
     // #2851 follow-up: the labels found before the Stop are not thrown away. The turns are
-    // written with the sections that had finished; the rest keep their raw words, disclosed.
+    // written raw and disclosed; the cleaned sections stay on screen for Copy.
     if pendingSpeakerResult != nil, historyID != nil {
       let generationAtStop = generation
       Task { @MainActor [weak self] in
@@ -1737,7 +1741,10 @@ final class FileImportCoordinator {
   /// in memory. **The file is never read again**, which is the whole point of
   /// keeping the raw transcript.
   func rePolish() {
-    guard !rawTranscript.isEmpty, !isRunning else { return }
+    // Refused while a speaker pass is in flight too (second-pass review): a retry replaces
+    // `pendingSpeakerResult` when it lands, and a cleanup cut before that would finish
+    // against turns it never sectioned.
+    guard !rawTranscript.isEmpty, !isRunning, speakerStepState != .inProgress else { return }
 
     let token: EngineLease.Token
     switch engineAdmission.claim() {
@@ -2120,8 +2127,14 @@ final class FileImportCoordinator {
       // signals are required (found by chunk review): Stop cancels this task but leaves
       // `historyID` in place, so the identity check alone would read the untouched failed
       // row as "still failed" and blame the analyzer for a retry the user abandoned.
+      // The retry's write lands at the end of the re-clean it starts; report from the ROW
+      // after that, so a write that failed is not reported as a recovery (second-pass review).
       guard let self, !Task.isCancelled, historyIDAtStart == self.historyID else { return }
-      switch self.pendingSpeakerResult?.analysis {
+      if let running = self.runTask { await running.value }
+      guard !Task.isCancelled, historyIDAtStart == self.historyID,
+        let current = self.currentHistoryRow(historyIDAtStart)
+      else { return }
+      switch current.speakerAnalysis {
       // The same two outcomes that clear `speakerNoticeReason`: a one-voice result is a
       // successful analysis too, not a failure the user needs to retry.
       case .single, .labeled: self.emitSpeakerRetryTelemetry(.recovered)
@@ -2176,6 +2189,9 @@ final class FileImportCoordinator {
     // `rePolish` cuts the sections from `pendingSpeakerResult` and `finishRun` writes them.
     pendingSpeakerResult = SpeakerStepResult(
       analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+    // The step is done as far as `rePolish`'s guard is concerned; the `defer` above sets the
+    // same value again on the way out.
+    speakerStepState = .finished
     rePolish()
   }
 

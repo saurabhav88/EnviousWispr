@@ -1261,7 +1261,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(turns?.first?.processedText?.hasSuffix("w599") == true)
   }
 
-  @Test("Stop mid-cleanup keeps the finished sections, writes the turns as stopped, and reaches Done once (#2851 follow-up)")
+  @Test("Stop mid-cleanup keeps the finished sections on screen, writes the turns raw as stopped, and reaches Done once (#2851 follow-up)")
   func stopMidCleanupWritesTheTurnsAsStopped() async {
     let store = FakeHistoryStore()
     let secondPartGate = ManualGate()
@@ -1303,14 +1303,67 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.parts.count == 1, "the finished section stays")
     let written = await settleUntil { store.current(historyID)?.turns != nil }
     #expect(written, "the labels found before the Stop are written")
-    #expect(turnTexts(store.current(historyID)) == ["clean hello", nil])
-    #expect(store.current(historyID)?.turns?.map(\.wasPolished) == [true, false], "the unreached section is disclosed")
+    #expect(turnTexts(store.current(historyID)) == [nil, nil], "a Stop writes the turns raw")
+    #expect(store.current(historyID)?.turns?.map(\.wasPolished) == [false, false], "and disclosed")
     #expect(telemetry.events.map(\.outcome) == [.stopped], "\(telemetry.events)")
     #expect(store.current(historyID)?.polishedText == nil, "no polished document on a Stop")
     await secondPartGate.open()
     for _ in 0..<20 { await Task.yield() }
     #expect(coordinator.state == .stopped, "a late part cannot finish a stopped run")
     #expect(store.mergeCalls == 1)
+  }
+
+  @Test("Clean it again is refused while a retry's analysis is in flight, and the retry's re-clean still lands (#2851 follow-up)")
+  func rePolishIsRefusedDuringARetry() async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    @MainActor final class AttemptCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let attempts = AttemptCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        if attempts.next() == 1 { return .failed(.analyzerThrew("boom")) }
+        await speakerGate.markArrived()
+        await speakerGate.waitUntilOpen()
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      processPart: { part, _ in
+        FileImportRunner.PartOutcome(text: part, polishedText: "clean " + part, polishError: nil)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    _ = await settleUntil {
+      if case .failed = store.current(historyID)?.speakerAnalysis { return true }
+      return false
+    }
+    coordinator.retrySpeakerAnalysis()
+    await speakerGate.waitUntilArrived()
+    let generationBefore = coordinator.generation
+    coordinator.rePolish()
+    #expect(coordinator.generation == generationBefore, "refused while the retry's analysis runs")
+    #expect(!coordinator.isRunning)
+
+    await speakerGate.open()
+    let retried = await settleUntil {
+      store.current(historyID)?.speakerAnalysis == .labeled(count: 2) && coordinator.state == .finished
+    }
+    #expect(retried)
+    #expect(turnTexts(store.current(historyID)) == ["clean hello", "clean there friend"])
   }
 
   /// Drives one import to `state == .finished` plus a settled speaker step, and returns the
