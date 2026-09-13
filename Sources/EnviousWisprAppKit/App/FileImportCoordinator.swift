@@ -911,6 +911,7 @@ final class FileImportCoordinator {
     /// BEFORE the piece rides with it; the unplaceable case carries the piece itself.
     let original: String
     let cleaned: String?
+    /// False only when this passage's polish was attempted and failed.
     let wasPolished: Bool
   }
 
@@ -931,7 +932,11 @@ final class FileImportCoordinator {
     var passages: [PlacedPassage] = []
     for (index, piece) in pendingPieces.enumerated() {
       let cleaned = index < parts.count ? parts[index].text : nil
-      let wasPolished = index < parts.count ? parts[index].wasPolished : false
+      // `!isUnpolished`, not `wasPolished` (#2851 §3 D): the turns' flag drives the
+      // "Not fully polished" disclosure, and a document the user chose not to have polished
+      // is not a document with fourteen problems in it (`PartOutcome.isUnpolished`'s own
+      // rule). The header's credit reads `Part.wasPolished` and is unchanged.
+      let wasPolished = index < parts.count ? !parts[index].isUnpolished : false
       guard
         let found = rawTranscript.range(
           of: piece, options: .literal, range: cursor..<rawTranscript.endIndex)

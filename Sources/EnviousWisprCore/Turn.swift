@@ -28,8 +28,12 @@ public struct Turn: Sendable, Equatable, Codable {
   /// alignment could not say who a cleaned word belongs to (the turn shows its raw words,
   /// disclosed). Legacy rows carry the per-turn cleanup's text under the same field.
   public let processedText: String?
-  /// `true` when the text came from a passage the polisher handled; `false` when the
-  /// passage fell back to its deterministic floor, or the turn keeps its raw words.
+  /// `false` only when the turn shows words the cleanup did not polish: its passage's polish
+  /// was attempted and failed (every passage the turn spans must have succeeded), or the
+  /// alignment could not place the cleaned words and the turn keeps its raw ones. A document
+  /// the user chose not to have polished reads `true`: a bypass is not a failure
+  /// (`FileImportRunner.PartOutcome.isUnpolished`). Drives the per-turn "Not fully polished"
+  /// disclosure; the document header's credit reads the parts, never this.
   public let wasPolished: Bool
 
   public init(

@@ -90,6 +90,13 @@ private struct TurnRowView: View {
         }
       }
       content
+      // The same disclosure the document gives a passage the polisher could not clean, per
+      // turn (#2851 §3 D): the presenter decides, this only shows it, on both screens.
+      if turn.isUncleaned {
+        Text("Not fully polished")
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+      }
     }
   }
 

@@ -1322,12 +1322,15 @@ struct FileImportCoordinatorSpeakerTests {
       func record(_ part: String) { parts.append(part) }
     }
     let calls = CallRecorder()
+    // Two 300-word turns over two parts: long enough that a per-turn cleanup restricted to
+    // longer turns would show up too (chunk 4 review).
+    let fixture = Self.manyWordFixture(count: 600, split: 300)
     let coordinator = makeStoreBackedCoordinator(
-      store: store, wordTimings: Self.twoSpeakerWordTimings(),
-      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      store: store, transcribedText: fixture.text, wordTimings: fixture.timings,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },
       processPart: { part, _ in
         calls.record(part)
-        return WordSwappingCleaner().outcome(part)
+        return FileImportRunner.PartOutcome(text: part, polishedText: part, polishError: nil)
       })
 
     coordinator.choose(url: Self.anyURL)
@@ -1340,17 +1343,78 @@ struct FileImportCoordinatorSpeakerTests {
       Issue.record("no historyID after the visible run finished")
       return
     }
-    let first = Self.swappedTurnTexts(WordSwappingCleaner.first)
     let aligned = await settleUntil {
       coordinator.speakerStepState == .finished
-        && turnTexts(store.current(historyID)) == [first.a, first.b]
+        && turnTexts(store.current(historyID)).allSatisfy { $0 != nil }
     }
     #expect(aligned, "the turns must carry the cleanup's words")
+    #expect(store.current(historyID)?.turns?.count == 2)
     for _ in 0..<20 { await Task.yield() }
-    #expect(coordinator.pendingPieces.count == 1)
+    #expect(coordinator.pendingPieces.count == 2, "the fixture must split into two parts")
     #expect(
       calls.parts == coordinator.pendingPieces,
-      "one cleanup call per document part, none for the turns: \(calls.parts)")
+      "one cleanup call per document part, none for the turns: \(calls.parts.map(\.count))")
+  }
+
+  @Test("a document the user chose not to have polished is not disclosed as unpolished on its turns (#2851 §3 D)")
+  func bypassedPolishIsNotDisclosedOnTheTurns() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        FileImportRunner.PartOutcome(
+          text: part, polishedText: nil, polishError: nil, polishAttempted: false)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let aligned = await settleUntil {
+      coordinator.speakerStepState == .finished
+        && turnTexts(store.current(historyID)) == ["hello", "there friend"]
+    }
+    #expect(aligned, "\(turnTexts(store.current(historyID)))")
+    #expect(
+      store.current(historyID)?.turns?.map(\.wasPolished) == [true, true],
+      "a bypass is not a failure: no turn is disclosed")
+  }
+
+  @Test("a passage whose polish failed leaves its turns aligned to the floor text and disclosed (#2851 §3 D)")
+  func failedPolishIsDisclosedOnTheTurns() async {
+    let store = FakeHistoryStore()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        FileImportRunner.PartOutcome(text: part, polishedText: nil, polishError: "boom")
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the visible run finished")
+      return
+    }
+    let aligned = await settleUntil {
+      coordinator.speakerStepState == .finished
+        && turnTexts(store.current(historyID)) == ["hello", "there friend"]
+    }
+    #expect(aligned, "the floor text still places onto the turns: \(turnTexts(store.current(historyID)))")
+    #expect(
+      store.current(historyID)?.turns?.map(\.wasPolished) == [false, false],
+      "a failed polish is disclosed on every turn of its passage")
   }
 
   @Test("retrySpeakerAnalysis persists a labeled outcome without ever reaching cleanup")

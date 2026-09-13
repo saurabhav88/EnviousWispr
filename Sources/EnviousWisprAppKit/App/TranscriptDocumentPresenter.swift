@@ -32,6 +32,12 @@ enum TranscriptDocumentPresenter {
     /// `nil` when times are off, or the turn has no timing at all.
     let timeLabel: String?
     let content: Content
+    /// The turn shows words the cleanup did not polish, on a document that is finished
+    /// (#2851 §3 D): its passage's polish failed, or the alignment could not place the
+    /// cleaned words and the turn keeps its raw ones. Never true while the document is still
+    /// being cleaned (a turn the cleanup has not reached yet is not a problem), and never
+    /// true for a document the user chose not to have polished (`Turn.wasPolished`).
+    let isUncleaned: Bool
 
     enum Content: Equatable, Sendable {
       case plain(String)
@@ -54,7 +60,7 @@ enum TranscriptDocumentPresenter {
   /// falls back to that turn's cleaned text rather than blocking.
   static func render(
     turns: [Turn]?, rawText: String, speakerNames: [String: String], mode: ViewMode,
-    timesOn: Bool, diffLookup: (Turn) -> WordDiff.Result?
+    timesOn: Bool, documentFinished: Bool, diffLookup: (Turn) -> WordDiff.Result?
   ) -> [RenderedTurn]? {
     guard let turns, !turns.isEmpty else { return nil }
     return turns.map { turn in
@@ -75,7 +81,8 @@ enum TranscriptDocumentPresenter {
         speakerId: turn.speakerId,
         speakerName: displayName(for: turn.speakerId, in: speakerNames),
         timeLabel: timesOn ? timeLabel(for: turn) : nil,
-        content: content)
+        content: content,
+        isUncleaned: documentFinished && !turn.wasPolished)
     }
   }
 
