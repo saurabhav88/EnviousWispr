@@ -736,7 +736,9 @@ struct FileImportCoordinatorSpeakerTests {
     emitSpeakerRetryTelemetry: @escaping @MainActor (
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
-    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {}
+    emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
+    prepareLocalPolish: @escaping @MainActor (FileImportCoordinator.RunConfiguration) async ->
+      Bool = { _ in true }
   ) -> FileImportCoordinator {
     makeCoordinator(
       lease: lease, seconds: seconds, transcribedText: transcribedText,
@@ -748,7 +750,8 @@ struct FileImportCoordinatorSpeakerTests {
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
-      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry, processPart: processPart)
+      emitTurnsDisplayedTelemetry: emitTurnsDisplayedTelemetry,
+      prepareLocalPolish: prepareLocalPolish, processPart: processPart)
   }
 
   @Test(
@@ -1016,6 +1019,51 @@ struct FileImportCoordinatorSpeakerTests {
     let finished = await settleUntil { coordinator.state == .finished }
     #expect(finished)
     #expect(inProgress(historyID) == false, "Done: History may disclose")
+  }
+
+  @Test(
+    "a labeled import whose polisher cannot start reports polisher_not_ready once, with the turns raw, whichever lands first (#2851)",
+    arguments: [true, false])
+  func polisherNotReadyIsTheTurnsTerminalOutcome(speakersFirst: Bool) async {
+    let store = FakeHistoryStore()
+    let speakerGate = ManualGate()
+    let telemetry = TurnTelemetryRecorder()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in
+        if !speakersFirst {
+          await speakerGate.markArrived()
+          await speakerGate.waitUntilOpen()
+        }
+        return .labeled(count: 2, segments: Self.twoSpeakerSegments)
+      },
+      emitTurnTelemetry: { telemetry.record($0, $1, $2) },
+      prepareLocalPolish: { _ in false })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    let rejected = await settleUntil { coordinator.state == .rejected(.polisherNotReady) }
+    #expect(rejected)
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID after the rejection")
+      return
+    }
+    if !speakersFirst {
+      await speakerGate.waitUntilArrived()
+      #expect(telemetry.events.isEmpty, "nothing to report before the turns exist")
+      await speakerGate.open()
+    }
+    let reported = await settleUntil {
+      coordinator.speakerStepState == .finished && !telemetry.events.isEmpty
+    }
+    #expect(reported)
+    for _ in 0..<20 { await Task.yield() }
+    #expect(telemetry.events.map(\.outcome) == [.polisherNotReady], "\(telemetry.events)")
+    #expect(turnTexts(store.current(historyID)) == [nil, nil], "the turns keep their raw words")
+    #expect(coordinator.isRunning == false, "the rejection is terminal, so History may disclose")
   }
 
   @Test("turns landing after the cleanup already finished align at once and emit the one stored event (#2851)")

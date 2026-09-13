@@ -1259,6 +1259,7 @@ final class FileImportCoordinator {
     let language: String?
     let cleanupRevision: Int
     let cleanupComplete: Bool
+    let cleanupRejected: Bool
     let passages: [TurnTextAligner.Passage]
     let turns: [TurnKey]
   }
@@ -1270,6 +1271,12 @@ final class FileImportCoordinator {
   /// of `AlignInput`, so the worker's commit knows it is the final one (plan §3 B, grounded
   /// review round 3). Reset with the document.
   @ObservationIgnored private var cleanupComplete = false
+  /// The document's polisher could not start (`polishAll`'s `.polisherNotReady` rejection),
+  /// so no part will land: the turns' terminal outcome is `polisher_not_ready`, emitted by
+  /// the alignment commit that finds the turns present (cloud review of PR #2871, round 2).
+  /// Kept explicitly rather than read off `state`, which navigation can change before late
+  /// speakers land. Reset with the document and at each Clean it again.
+  @ObservationIgnored private var cleanupRejected = false
   /// `file_import_turns` is once per document: `mergeAndReport` emits the FIRST terminal
   /// outcome it reports for a document (`stored` at the alignment commit that finds the
   /// cleanup complete and the turns present, whichever landed last; or `save_failed`,
@@ -1284,6 +1291,7 @@ final class FileImportCoordinator {
     alignWorker?.job.cancel()
     alignWorker = nil
     cleanupComplete = false
+    cleanupRejected = false
     turnsTelemetryEmittedFor = nil
   }
 
@@ -1295,6 +1303,7 @@ final class FileImportCoordinator {
     return AlignInput(
       historyID: historyID, rawText: rawTranscript, language: engineReportedLanguage,
       cleanupRevision: generation, cleanupComplete: cleanupComplete,
+      cleanupRejected: cleanupRejected,
       passages: placedPassages().map {
         TurnTextAligner.Passage(
           placement: $0.placement, cleaned: $0.cleaned, wasPolished: $0.wasPolished)
@@ -1364,7 +1373,8 @@ final class FileImportCoordinator {
     }
     let uncut = outcome.texts.filter { !$0.cleanedCut }.count
     let changed = patched != stored
-    let emitsFinal = input.cleanupComplete && turnsTelemetryEmittedFor != input.historyID
+    let terminal = input.cleanupComplete || input.cleanupRejected
+    let emitsFinal = terminal && turnsTelemetryEmittedFor != input.historyID
     guard changed || emitsFinal else { return }
     let reasons = outcome.fallbacks.values
     await AppLogger.shared.log(
@@ -1374,7 +1384,8 @@ final class FileImportCoordinator {
     guard !Task.isCancelled, currentAlignInput() == input else { return }
     await mergeAndReport(
       historyID: input.historyID, analysis: .labeled(count: labeledCount),
-      turns: changed ? patched : stored, outcome: emitsFinal ? .stored : nil,
+      turns: changed ? patched : stored,
+      outcome: emitsFinal ? (input.cleanupRejected ? .polisherNotReady : .stored) : nil,
       turnCount: stored.count, fallbackTurnCount: uncut, passStart: CFAbsoluteTimeGetCurrent())
   }
 
@@ -1760,6 +1771,7 @@ final class FileImportCoordinator {
     // text until its passage lands again (`alignAndCommit` leaves unreached turns alone).
     // This is a fresh cleanup, so its own completion is what the final alignment waits for.
     cleanupComplete = false
+    cleanupRejected = false
     // #2772 finding 14: the OLD queue must not be shown as the current one while this run
     // is still preparing. Cleared here and republished by `polishAll` from the new split.
     pendingPieces = []
@@ -2363,6 +2375,11 @@ final class FileImportCoordinator {
     // cleanup is refused, so the refusal costs the cleanup and nothing else.
     guard localPolisherIsReady else {
       showRejection(.polisherNotReady)
+      // The turns' terminal outcome for a labeled import whose cleanup never starts
+      // (cloud review of PR #2871, round 2): emitted now if the turns exist, else by the
+      // speaker step's own refresh when they land.
+      cleanupRejected = true
+      await refreshTurnTexts()
       return
     }
     phase = "Cleaning it up"

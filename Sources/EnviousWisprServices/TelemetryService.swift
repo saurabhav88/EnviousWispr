@@ -3237,9 +3237,8 @@ public final class TelemetryService {
 
   /// Shape-only telemetry for the speaker turns of a file import. `turnCount` is present
   /// only when `outcome == .stored` — every other outcome has no valid count. Since #2851
-  /// the turns take their text from the one document cleanup by alignment, so the former
-  /// `admission_refused` and `polisher_not_ready` outcomes of a second cleanup pass have no
-  /// producer and are gone.
+  /// the turns take their text from the one document cleanup by alignment; the former
+  /// `admission_refused` outcome of a second cleanup pass has no producer and is gone.
   public enum FileImportTurnsOutcome: String {
     case stored
     case saveFailed = "save_failed"
@@ -3247,6 +3246,9 @@ public final class TelemetryService {
     case
       noWordTimings = "no_word_timings"
     case singleNoTurns = "single_no_turns"
+    /// The document's polisher could not start. Existing turn text is retained (a Clean it
+    /// again keeps the previous cleanup's words); newly assembled turns remain raw.
+    case polisherNotReady = "polisher_not_ready"
   }
 
   /// Since #2851 the turns' text comes from the ONE document cleanup by alignment, so
