@@ -8,7 +8,7 @@ keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
 ---
-When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/), the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
+When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. Each turn also shows the time in the recording where it starts. A recording with one voice comes back as plain text with no labels.
 
 The speakers are found on your Mac, by the same app, before the cleanup runs. Nothing about the recording is sent anywhere to work out who is talking.
 
@@ -28,7 +28,7 @@ If a recording comes back with many Both turns, the two voices were hard to sepa
 
 ### What "Not fully polished" means
 
-Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. When the cleanup could not be completed for one turn, that turn keeps the words exactly as they were spoken and shows **Not fully polished** beneath it. The turns around it are cleaned as usual.
+Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. When the cleanup could not be completed for one turn, that turn keeps the original transcription, the words as the speech engine heard them, and shows **Not fully polished** beneath it. The turns around it are cleaned as usual.
 
 To run the cleanup again:
 
@@ -44,13 +44,13 @@ You can press **Stop** at any point while the file is being worked on.
 
 - **Stop while the file is still being transcribed.** Nothing is kept, because no words exist yet. Choose the file again to start over.
 - **Stop while the speakers are being found.** You get the transcript as one block of text, with no labels. It is saved to History, and the page offers **Try again** to find the speakers on the kept audio.
-- **Stop while the cleanup is running.** You keep the speaker labels and every turn. Turns the cleanup reached are cleaned; the rest show their exact spoken words with **Not fully polished** beneath them. The page header reads **Stopped**, and the transcript is saved to History.
+- **Stop while the cleanup is running.** You keep the speaker labels and every turn, and every turn shows its original transcription with **Not fully polished** beneath it, including the turns the cleanup had already reached. The page header reads **Stopped**, and the labelled transcript is saved to History. **Clean it again** runs the cleanup over all of them.
 
 Once the words exist, Stop never throws them away. What was found is what you get.
 
 ### Where the recording goes
 
-The recording never leaves your Mac. Transcription, finding the speakers and any on-device cleanup all run locally. The sentence at the bottom of the page states this for the run you are looking at.
+The recording never leaves your Mac. Transcription, finding the speakers and any on-device cleanup all run locally. The sentence at the bottom of the page changes with the step and with the polisher you chose, and states where the text of this run went.
 
 If you chose a cloud polisher (your own OpenAI, Gemini or Claude key, or a hosted Ollama model), the text of the transcript goes to that provider for the cleanup and nothing else does. The page says so while the file is running and again when it is done: "Your audio stayed on this Mac. Only the text went to OpenAI, under your own key." How that works and what each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).
 
@@ -60,13 +60,13 @@ Both speech engines give you speaker labels. The labels are built from the time 
 
 | Engine | Speaker labels | Note |
 |---|---|---|
-| **Fast** | Yes | Recommended. English and the other languages listed in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
+| **Fast** | Yes | Recommended. Its language count is compared with All Languages in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
 | **All Languages** | Yes | Every language the engine supports, with one exception below. |
 
 **Languages written without spaces between words** (for example Chinese, Japanese and Thai) do not get speaker turns yet. The engine cannot report a time per word for those scripts, so the app has nothing to attach a speaker to. The transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### If the labels did not appear
 
-- **"Couldn't add speaker labels to this recording."** The app could not tell the voices apart, or could not attach the words it heard to them. Click **Try again** if it is offered. If it is not offered, a retry could not change the result (see the language note above). Your transcript is complete either way.
+- **"Couldn't add speaker labels to this recording."** The app could not tell the voices apart, or could not attach the words it heard to them. Click **Try again** if it is offered. It is offered only while the app still holds what it needs to retry and no cleanup is running; when a retry could not change the result (see the language note above) it is not offered. Your transcript is complete either way.
 - **"Speaker detection didn't finish for this recording."** The speaker step was stopped before it could finish. Click **Try again** if it is offered; it runs the speaker step on the kept audio without reading the file again. If it is not offered (for example after the app was quit), choose the file again.
-- **No labels and no message.** The recording has one voice, and there is nothing to label.
+- **No labels and no message.** The app heard the recording as one voice, so there was nothing to label.
