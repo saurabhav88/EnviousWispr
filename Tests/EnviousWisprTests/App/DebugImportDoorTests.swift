@@ -82,6 +82,7 @@
     private func makeCoordinator(
       decodeGate: ManualGate? = nil,
       transcribeGate: ManualGate? = nil,
+      transcribedText: String = "one two three",
       engineAdmission: EngineAdmissionAccess = .live(lease: EngineLease(), as: .fileImport),
       saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in }
     ) -> FileImportCoordinator {
@@ -93,7 +94,7 @@
         transcribe: { _ in
           if let transcribeGate { await transcribeGate.pass() }
           return ASRResult(
-            text: "one two three", language: "en", duration: 0, processingTime: 0,
+            text: transcribedText, language: "en", duration: 0, processingTime: 0,
             backendType: .parakeet, wordTimings: nil, wordTimingCoverage: nil)
         },
         engineAdmission: engineAdmission,
@@ -364,6 +365,19 @@
       #expect(refused["polisher"] == nil, "a refusal before beginRun names no polisher")
       #expect(refused["history"] == nil)
       #expect(refused["saved"] == nil)
+    }
+
+    @Test("a refusal raised after Start names THIS run's polisher; one raised before Start names none")
+    func polisherIsThisRunsOrAbsent() async {
+      // No speech found is raised after `beginRun()`: the polisher belongs to this run.
+      let silent = makeCoordinator(transcribedText: "")
+      let sink = ReplySink()
+      let door = makeDoor(silent, sink: sink)
+      door.handle(transcribeRequest(door))
+      let refused = await sink.reply(withStatus: "refused")
+      #expect(refused["reason"] == "noSpeechFound")
+      #expect(refused["polisher"] == "eg-1")
+      #expect(refused["history"] == nil, "nothing was persisted")
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")

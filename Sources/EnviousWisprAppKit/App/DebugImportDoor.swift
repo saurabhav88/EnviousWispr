@@ -169,10 +169,11 @@
           // so a refusal before any persist carries neither field.
           fields["saved"] = coordinator.isSavedToHistory ? "true" : "false"
         }
-        // `choose(url:)` does NOT clear `runConfiguration`: a request refused before this
-        // run's own `beginRun()` would read the PREVIOUS run's model. Only a finish is
-        // certainly past this run's `beginRun()` (cloud review, PR #2887).
-        if outcome.status == "finished", let model = coordinator.runConfiguration?.polishModel {
+        // `choose(url:)` clears `runConfiguration`, so a non-nil value here was minted by
+        // THIS run's `beginRun()`: present on a finish and on a refusal raised after
+        // Start (transcription threw, no speech, polisher not ready), absent on a refusal
+        // before it (unreadable file, engine busy). Cloud review, PR #2887, rounds 2-3.
+        if outcome.claimsRun, let model = coordinator.runConfiguration?.polishModel {
           fields["polisher"] = model
         }
         inFlight = nil
