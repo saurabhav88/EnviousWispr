@@ -27,13 +27,21 @@ public enum TurnAssembler {
   /// (#2851 §3 C). Measured on the founder's 48-minute interview, 2026-09-13: 105 of 372
   /// turns were `"unknown"`, 87 of them 1 to 4 words ("w", "too", "a", "Go on. We"), median
   /// 0.8 s, and on screen they cut sentences in two ("Very" / "Soon. Now by the time this
-  /// airs."). Five words and up stay unknown: those are real overlaps, not boundary jitter.
+  /// airs."). This is the practice the field settled on: WhisperX assigns a word no
+  /// diarization segment covers to the nearest segment by time (`assign_word_speakers`,
+  /// `fill_nearest`), and pyannote's own pipeline fills a non-speech gap shorter than
+  /// `min_duration_off` inside a speaker's speech. A larger group between two DIFFERENT
+  /// speakers stays unknown: on that row those were real exchanges ("Yeah? Been working on
+  /// it? Mm-hmm. Gonna be crazy?"), and naming one side would be a guess.
   public static let unknownFoldMaxEntries = 4
-  /// The fold is a GUESS by proximity where the diarizer had none; the plan's hand-check of
-  /// twenty folded fragments against the audio decides whether it ships on, and that check
-  /// has not been done yet (it needs a listener), so it ships OFF: every unknown group stays
-  /// its own turn, exactly as before #2851. Flipping this to true is the whole switch.
-  public static let unknownFoldEnabled = false
+  /// A group of ANY size between two groups of the SAME speaker folds into that speaker: the
+  /// diarizer under-segmented one person's speech, and both neighbours agree who was
+  /// talking (11 of the 18 five-plus-word unknown groups on the 48-minute row: "um oh my
+  /// god, what did I miss? What are we laughing at?" between two S2 turns).
+  /// Whether the fold runs at all. On since the research of 2026-09-13 (#2851 follow-up):
+  /// the two rules above are the diarization field's own, and on the 48-minute row they
+  /// fold 98 of the 105 unknown groups and keep the 7 real exchanges.
+  public static let unknownFoldEnabled = true
 
   public static func assemble(entries: [ASRWordTiming], segments: [SpeakerSegment]) -> [Turn] {
     guard !entries.isEmpty else { return [] }
@@ -76,13 +84,18 @@ public enum TurnAssembler {
     var i = 0
     while i < result.count {
       let group = result[i]
-      guard group.speaker == unknownSpeakerID, group.entries.count <= unknownFoldMaxEntries
+      let previous = i > 0 ? i - 1 : nil
+      let next = i + 1 < result.count ? i + 1 : nil
+      let sameSpeakerOnBothSides =
+        previous.map { result[$0].speaker } != nil
+        && previous.map { result[$0].speaker } == next.map { result[$0].speaker }
+        && previous.map { result[$0].speaker } != unknownSpeakerID
+      guard group.speaker == unknownSpeakerID,
+        group.entries.count <= unknownFoldMaxEntries || sameSpeakerOnBothSides
       else {
         i += 1
         continue
       }
-      let previous = i > 0 ? i - 1 : nil
-      let next = i + 1 < result.count ? i + 1 : nil
       guard previous != nil || next != nil else {
         i += 1
         continue
