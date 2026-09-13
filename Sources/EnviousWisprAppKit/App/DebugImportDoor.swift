@@ -289,7 +289,9 @@
       DistributedNotificationCenter.default().postNotificationName(
         replyName, object: nil, userInfo: fields, deliverImmediately: true)
       let line = fields.keys.sorted().map { "\($0)=\(fields[$0] ?? "")" }.joined(separator: " ")
-      Task { await AppLogger.shared.log("[DebugImportDoor] \(line)", category: "DebugImportDoor") }
+      // The category already renders as `[DebugImportDoor]`; the message carries only the
+      // fields, so the line the UAT reader greps is `[DebugImportDoor] request=… status=…`.
+      Task { await AppLogger.shared.log(line, category: "DebugImportDoor") }
     }
 
     nonisolated private static func strings(from userInfo: [AnyHashable: Any]?) -> [String: String] {

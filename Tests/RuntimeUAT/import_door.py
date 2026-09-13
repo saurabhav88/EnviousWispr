@@ -16,8 +16,8 @@ another process between resolve and post is never handed a file.
     from import_door import transcribe_file_backend
     reply = transcribe_file_backend(pid, "/abs/clip.m4a", timeout=600,
                                     worktree="/Users/x/EnviousWispr-feature")
-    reply["status"]   # finished | stopped | refused | superseded | timeout | busy ...
-    reply["history"]  # the row's UUID when status is finished/stopped/refused
+    reply["status"]   # finished | refused | superseded | timeout | busy ...
+    reply["history"]  # the row's UUID when status is finished/refused
     reply["saved"]    # "true" when the row was written; validate the JSON yourself
 """
 import os
@@ -31,8 +31,7 @@ from instance_guard import running_enviouswispr_instances
 
 REQUEST_NAME = "com.enviouswispr.dev.import.request"
 REPLY_NAME = "com.enviouswispr.dev.import.reply"
-TERMINAL = {"finished", "stopped", "refused", "superseded", "timeout", "unexpected",
-            "cancelled"}
+TERMINAL = {"finished", "refused", "superseded", "timeout", "unexpected", "cancelled"}
 REFUSALS = {"busy", "malformed", "wrongLaunch", "duplicate"}
 
 
@@ -76,8 +75,10 @@ def _wait(observer, request, statuses, timeout, echo):
             seen += 1
             if row.get("request") != request:
                 continue
-            if echo:
-                fields = " ".join(f"{k}={row[k]}" for k in sorted(row) if k != "_at")
+            if echo and not row.get("_echoed"):
+                row["_echoed"] = True
+                fields = " ".join(f"{k}={row[k]}" for k in sorted(row)
+                                  if not k.startswith("_"))
                 print(f"  door: {fields}")
             if row.get("status") in statuses:
                 return row
