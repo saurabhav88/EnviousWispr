@@ -325,6 +325,28 @@ def gemini_body(model: str, system: str, user: str,
     }
 
 
+def bedrock_body(model: str, system: str, user: str) -> dict:
+    """The exact `converse` keyword payload the live bedrock path sends; one builder so the
+    dry run and the call cannot drift (local Codex round 4 on PR #2902)."""
+    return {
+        "modelId": model,
+        "system": [{"text": system}],
+        "messages": [{"role": "user", "content": [{"text": user}]}],
+        # temperature OMITTED to match claude_body / the shipped ClaudeConnector, which
+        # sends no temperature at all.
+        "inferenceConfig": {"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
+        # State it rather than inherit it. claude_body sends thinking:{"type":"disabled"}
+        # explicitly and describe_shape() prints "thinking disabled" for this provider
+        # too, so omitting the field made that line a claim about the MODEL'S DEFAULT
+        # rather than about our request. Haiku 4.5 happens to default to no thinking
+        # (probed 2026-08-16: no reasoningContent block even on a prompt built to tempt
+        # one), so the arm generated before this line is still valid -- but a model that
+        # defaults the other way would have been benchmarked with thinking ON under a
+        # header saying OFF, and nothing would have caught it.
+        "additionalModelRequestFields": {"thinking": {"type": "disabled"}},
+    }
+
+
 def claude_body(model: str, system: str, user: str) -> dict:
     # Mirrors ClaudeConnector.makeRequestBody: fixed max_tokens, thinking
     # disabled unconditionally, and NO temperature (temperaturePolicy .omit —
@@ -457,25 +479,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         )
 
         try:
-            data = _bedrock_client().converse(
-                modelId=model,
-                system=[{"text": system}],
-                messages=[{"role": "user", "content": [{"text": user}]}],
-                # temperature OMITTED to match claude_body / the shipped
-                # ClaudeConnector, which sends no temperature at all.
-                inferenceConfig={"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
-                # State it rather than inherit it. claude_body sends
-                # thinking:{"type":"disabled"} explicitly and describe_shape()
-                # prints "thinking disabled" for this provider too, so omitting
-                # the field made that line a claim about the MODEL'S DEFAULT
-                # rather than about our request. Haiku 4.5 happens to default to
-                # no thinking (probed 2026-08-16: no reasoningContent block even
-                # on a prompt built to tempt one), so the arm generated before
-                # this line is still valid -- but a model that defaults the other
-                # way would have been benchmarked with thinking ON under a header
-                # saying OFF, and nothing would have caught it.
-                additionalModelRequestFields={"thinking": {"type": "disabled"}},
-            )
+            data = _bedrock_client().converse(**bedrock_body(model, system, user))
         except ClientError as e:
             # Re-raise as HTTPError so the retry loop's existing RETRYABLE set
             # classifies throttling and 5xx exactly as it does for every other
@@ -671,39 +675,63 @@ def load_packs(path: Path) -> list[dict]:
 
 def build_pack_request(
     provider: str, model: str, sections: list[str], prompt_body: str | None = None,
-    thinking: tuple[str, object] | None = None,
+    thinking: tuple[str, object] | None = None, prompt_mode: str = "production",
 ) -> tuple[str, str, dict]:
-    """(system, user, body) for one pack: the v7 system prompt sized by the pack's word
-    count, the addendum, and the wrapped sections as the transcript. The body is the
-    provider's real request shape (`openai_body`/`gemini_body`/`claude_body`), which is
-    what `--dry-run` writes."""
+    """(system, user, body) for one pack: the system prompt `polish_case` would send under
+    the same `prompt_mode` (production = the v7 composition sized by the pack's word count;
+    bare = the v7 file alone, the same control `--system-prompt bare` gives an isolated
+    arm), the addendum, and the wrapped sections as the transcript. The body is the
+    provider's real request shape, which is what `--dry-run` writes: `openai_body`,
+    `gemini_body`, `claude_body`, and for bedrock the exact `converse` keyword payload
+    `call_once` sends (cloud review of PR #2902: the Messages body is not what Bedrock
+    receives)."""
     word_count = sum(len(s.split()) for s in sections)
-    system = build_cloud_fixed_system(word_count, body=prompt_body) + pack_addendum(len(sections))
+    if prompt_mode == "bare":
+        system = BARE_PROMPT
+    else:
+        system = build_cloud_fixed_system(word_count, body=prompt_body)
+    system += pack_addendum(len(sections))
     user = f"Transcript to clean:\n\n{wrap_sections(sections)}"
-    if provider in ("openai",):
+    if provider == "openai":
         body = openai_body(model, system, user)
     elif provider == "gemini":
         body = gemini_body(model, system, user, thinking)
-    elif provider in ("claude", "bedrock"):
+    elif provider == "claude":
         body = claude_body(model, system, user)
+    elif provider == "bedrock":
+        body = bedrock_body(model, system, user)
     else:
         raise ValueError(f"unknown provider {provider}")
     return system, user, body
 
 
+def _is_truncation(message: str) -> bool:
+    """`call_once` raises on the provider's own stop reason: "truncated response rejected
+    (finish_reason=length)" for OpenAI, "non-STOP finishReason=MAX_TOKENS" for Gemini, and
+    the Claude/Bedrock max_tokens message. All three are the truncation the plan's
+    split-in-half answers (cloud review of PR #2902: Gemini's was landing as `error`)."""
+    return "truncated" in message or "MAX_TOKENS" in message or "max_tokens" in message
+
+
 def polish_pack(
     provider: str, model: str, api_key: str, pack: dict, texts: dict[str, str],
     azure_endpoint: str = "", prompt_body: str | None = None,
-    thinking: tuple[str, object] | None = None,
+    thinking: tuple[str, object] | None = None, prompt_mode: str = "production",
 ) -> tuple[dict, list[dict]]:
-    """One pack through the provider. Returns (pack summary, per-section rows). A pack that
-    the provider truncates (`call_once` raises on the provider's own finish reason) or that
-    comes back with the wrong tag count/order is `truncated` / `miscount`: every section in
-    it gets an empty candidate and that status, which is what the plan's split-in-half
-    would then retry; the measurement records the event rather than splitting."""
+    """One pack through the provider. Returns (pack summary, per-section rows).
+
+    A pack the provider truncates (`_is_truncation`) or that comes back with the wrong tag
+    count/order is `truncated` / `miscount`; the measurement records the event rather than
+    splitting. EVERY row carries the text a user would get: production's
+    `validatePolishOutput` returns the ORIGINAL on a rejection and the floor on a failed
+    pack, so a rejected, miscounted, truncated or errored section carries its original
+    words as `candidate` with the reason in `section_status`. An empty candidate would be
+    dropped by `behavior_judge.partition_candidates` as an infra skip and the packed arm
+    would be scored on fewer sections than the isolated one (cloud review of PR #2902)."""
     ids = pack["section_ids"]
     sections = [texts[i] for i in ids]
-    system, user, _ = build_pack_request(provider, model, sections, prompt_body, thinking)
+    system, user, _ = build_pack_request(
+        provider, model, sections, prompt_body, thinking, prompt_mode)
     start = time.monotonic()
     summary = {
         "file": pack.get("file"), "pack_index": pack.get("pack_index"),
@@ -715,13 +743,10 @@ def polish_pack(
             raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint, thinking)
             break
         except RuntimeError as e:
-            if "truncated" in str(e):
+            if _is_truncation(str(e)):
                 summary.update(outcome="truncated", error=str(e), attempts=attempt,
                                latencyMs=int((time.monotonic() - start) * 1000))
-                rows = [{"id": i, "candidate": "", "section_status": "truncated",
-                         "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
-                        for i in ids]
-                return summary, rows
+                return summary, _fallback_rows(pack, ids, sections, "truncated")
             last_err, retryable = str(e), False
         except urllib.error.HTTPError as e:
             last_err = f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"
@@ -735,9 +760,7 @@ def polish_pack(
             continue
         summary.update(outcome="error", error=last_err, attempts=attempt,
                        latencyMs=int((time.monotonic() - start) * 1000))
-        return summary, [{"id": i, "candidate": "", "section_status": "error",
-                          "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
-                         for i in ids]
+        return summary, _fallback_rows(pack, ids, sections, "error")
     summary.update(attempts=attempt, latencyMs=int((time.monotonic() - start) * 1000),
                    **{k: v for k, v in meta.items() if v is not None})
     # The preamble strip runs on the WHOLE answer before unwrap (an assistant wrapper line
@@ -747,10 +770,7 @@ def polish_pack(
     parts = unwrap_sections(raw, len(ids))
     if parts is None:
         summary["outcome"] = "miscount"
-        rows = [{"id": i, "candidate": "", "section_status": "miscount",
-                 "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
-                for i in ids]
-        return summary, rows
+        return summary, _fallback_rows(pack, ids, sections, "miscount")
     rows = []
     statuses: dict[str, int] = {}
     for section_id, original, candidate in zip(ids, sections, parts):
@@ -758,13 +778,40 @@ def polish_pack(
         statuses[verdict.status] = statuses.get(verdict.status, 0) + 1
         rows.append({
             "id": section_id,
-            "candidate": verdict.candidate if verdict.status == "accepted" else "",
+            # Production returns the ORIGINAL on a rejection; so does this row.
+            "candidate": verdict.candidate if verdict.status == "accepted" else original,
             "section_status": verdict.status,
             "pack_index": pack.get("pack_index"), "pack_file": pack.get("file"),
         })
     summary["outcome"] = "ok"
     summary["section_statuses"] = statuses
     return summary, rows
+
+
+def _fallback_rows(pack: dict, ids: list[str], sections: list[str], status: str) -> list[dict]:
+    """One row per section carrying its ORIGINAL words (the production fallback) and why."""
+    return [{"id": i, "candidate": original, "section_status": status,
+             "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
+            for i, original in zip(ids, sections)]
+
+
+def thinking_off_refusal(thinking: tuple[str, object] | None, reason_tok: int) -> str | None:
+    """The one hard refusal both paths share: an arm that ASKED for thinking off and got
+    reasoning tokens anyway must not be graded (the field did not reach the API, or the
+    vendor changed the level). `None` when there is nothing to refuse. The isolated path's
+    softer inert-level warning stays there; the pack path has no per-case count to judge it
+    by (cloud review of PR #2902: the pack early return bypassed this guard)."""
+    if thinking is None or not is_thinking_off(thinking) or not reason_tok:
+        return None
+    if thinking[0] == "thinkingBudget":
+        cause = ("a zero token budget cannot produce reasoning, so the field did not "
+                 "reach the API")
+    else:
+        cause = ("either the field did not reach the API, or the vendor changed what "
+                 "'minimal' does — 0 of 6,084 measured cases produced reasoning at "
+                 "this level, so check which before re-running")
+    return (f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
+            f"{cause}. Do not grade these candidates.")
 
 
 def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | None,
@@ -787,7 +834,8 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
             for p in packs:
                 sections = [texts[i] for i in p["section_ids"]]
                 system, user, body = build_pack_request(
-                    args.provider, args.model, sections, prompt_body, thinking)
+                    args.provider, args.model, sections, prompt_body, thinking,
+                    args.system_prompt)
                 f.write(json.dumps({
                     "provider": args.provider, "model": args.model,
                     "file": p.get("file"), "pack_index": p.get("pack_index"),
@@ -805,7 +853,7 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {
             pool.submit(polish_pack, args.provider, args.model, api_key, p, texts,
-                        azure_endpoint, prompt_body, thinking): p
+                        azure_endpoint, prompt_body, thinking, args.system_prompt): p
             for p in packs
         }
         for n, fut in enumerate(as_completed(futures), start=1):
@@ -831,10 +879,16 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
     statuses: dict[str, int] = {}
     for r in rows_by_id.values():
         statuses[r["section_status"]] = statuses.get(r["section_status"], 0) + 1
-    print(f"packs    : {outcomes}  sections: {statuses}  {int(time.monotonic() - t0)}s",
-          file=sys.stderr)
+    reason_tok = sum(s.get("reasoningTok") or 0 for s in summaries)
+    print(f"packs    : {outcomes}  sections: {statuses}  reasoning={reason_tok}  "
+          f"{int(time.monotonic() - t0)}s", file=sys.stderr)
     print(f"wrote    : {args.out} and {packs_out}", file=sys.stderr)
-    return 0
+    if (refusal := thinking_off_refusal(thinking, reason_tok)) is not None:
+        print(refusal, file=sys.stderr)
+        return 2
+    # Original text is graded either way; the exit status says the run was INCOMPLETE, the
+    # same contract the isolated path keeps (`return 0 if errors == 0 else 1`).
+    return 1 if any(s["outcome"] in {"error", "truncated"} for s in summaries) else 0
 
 
 def load_corpus(path: Path) -> list[dict]:
@@ -1125,7 +1179,7 @@ def main() -> int:
         f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} ({expectation})",
         file=sys.stderr,
     )
-    if asked_off and reason_tok:
+    if (refusal := thinking_off_refusal(thinking, reason_tok)) is not None:
         # The two off-values are NOT equally binding, and the refusal says which it is.
         # `thinkingBudget: 0` is a contract — a budget of zero tokens. `thinkingLevel:
         # minimal` is a LEVEL NAME, so zero is an observation rather than a guarantee:
@@ -1137,19 +1191,9 @@ def main() -> int:
         # `minimal` that actually ran the provider's default thinking, and silently
         # corrupts every comparison it appears in. The mutation control that set this
         # guard's scope depends on exactly this branch: with the field deleted, a
-        # `minimal` request returned 130 reasoning tokens.
-        if thinking[0] == "thinkingBudget":
-            cause = ("a zero token budget cannot produce reasoning, so the field did not "
-                     "reach the API")
-        else:
-            cause = ("either the field did not reach the API, or the vendor changed what "
-                     "'minimal' does — 0 of 6,084 measured cases produced reasoning at "
-                     "this level, so check which before re-running")
-        print(
-            f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
-            f"{cause}. Do not grade these candidates.",
-            file=sys.stderr,
-        )
+        # `minimal` request returned 130 reasoning tokens. The message and the cause
+        # live in `thinking_off_refusal`, shared with pack mode.
+        print(refusal, file=sys.stderr)
         return 2
     if not asked_off and thinking is not None and not reason_tok:
         # A zero here means "no case chose to think", which is only EVIDENCE of an

@@ -22,7 +22,7 @@ from section_envelope import (  # noqa: E402
 )
 import run_cloud_type_b as runner  # noqa: E402
 
-EXPECTED_TESTS = 9
+EXPECTED_TESTS = 12
 _failures = 0
 
 
@@ -154,15 +154,15 @@ def test_polish_pack_outcomes() -> None:
         check("one row per section in order", [r["id"] for r in rows] == ["a", "b", "c"])
         check("accepted section carries its candidate",
               rows[0]["section_status"] == "accepted" and rows[0]["candidate"].startswith("We went"))
-        check("question-to-answer section rejected inside a good pack",
-              rows[2]["section_status"] == "rejectedQuestionAnswer" and rows[2]["candidate"] == "")
+        check("a rejected section carries its ORIGINAL words (production's fallback), never empty",
+              rows[2]["section_status"] == "rejectedQuestionAnswer" and rows[2]["candidate"] == texts["c"])
         check("statuses counted", summary["section_statuses"].get("accepted") == 2)
 
         runner.call_once = lambda *a, **k: ("<s1>x</s1>\n<s2>y</s2>", {})
         summary, rows = runner.polish_pack("openai", "m", "k", pack, texts)
         check("miscount recorded", summary["outcome"] == "miscount")
-        check("miscount empties every section",
-              all(r["section_status"] == "miscount" and r["candidate"] == "" for r in rows))
+        check("miscount: every section keeps its original words with the reason",
+              all(r["section_status"] == "miscount" and r["candidate"] == texts[r["id"]] for r in rows))
 
         def truncated(*a, **k):
             raise RuntimeError("truncated response rejected (finish_reason=length)")
@@ -170,8 +170,74 @@ def test_polish_pack_outcomes() -> None:
         summary, rows = runner.polish_pack("openai", "m", "k", pack, texts)
         check("truncation recorded", summary["outcome"] == "truncated", str(summary))
         check("truncation never retried", summary["attempts"] == 1)
+        check("truncated sections keep their original words",
+              all(r["candidate"] == texts[r["id"]] for r in rows))
+
+        def gemini_max_tokens(*a, **k):
+            raise RuntimeError("non-STOP finishReason=MAX_TOKENS")
+        runner.call_once = gemini_max_tokens
+        summary, rows = runner.polish_pack("gemini", "m", "k", pack, texts)
+        check("Gemini MAX_TOKENS counts as truncation, not error", summary["outcome"] == "truncated")
     finally:
         runner.call_once = original
+
+
+def test_bare_prompt_and_bedrock_payload() -> None:
+    sections = ["one two three"]
+    system, _, _ = runner.build_pack_request("openai", "m", sections, prompt_mode="bare")
+    check("bare mode sends the v7 file alone plus the addendum",
+          system.startswith(runner.BARE_PROMPT) and "Never merge" in system
+          and "preferred spellings" not in system)
+    system, _, _ = runner.build_pack_request("openai", "m", sections)
+    check("production mode composes the full system prompt", "preferred spellings" in system)
+    _, user, body = runner.build_pack_request("bedrock", "anthropic.claude", sections)
+    check("the live bedrock call and the dry run share one builder",
+          body == runner.bedrock_body("anthropic.claude", body["system"][0]["text"], user))
+    check("bedrock dry-run body is the converse payload",
+          body.get("modelId") == "anthropic.claude"
+          and isinstance(body.get("system"), list)
+          and body["system"][0]["text"].endswith("add a section.")
+          and body["messages"][0]["content"][0]["text"] == user
+          and body["inferenceConfig"] == {"maxTokens": runner.CLAUDE_MAX_OUTPUT_TOKENS}
+          and body["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}},
+          str(body)[:200])
+
+
+def test_thinking_off_refusal() -> None:
+    check("no thinking field: nothing to refuse", runner.thinking_off_refusal(None, 50) is None)
+    off = ("thinkingBudget", 0)
+    check("off and zero reasoning: fine", runner.thinking_off_refusal(off, 0) is None)
+    msg = runner.thinking_off_refusal(off, 12)
+    check("off and reasoning tokens: refused", msg is not None and msg.startswith("FAIL: 12 reasoning tokens"))
+    on = ("thinkingBudget", 1024)
+    check("on with reasoning: not this guard's business", runner.thinking_off_refusal(on, 12) is None)
+
+
+def test_incomplete_pack_run_exits_nonzero() -> None:
+    """The isolated path returns 1 when any case errored; a pack run reports the same
+    (originals are still graded, the exit status says INCOMPLETE)."""
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "s.jsonl").write_text(json.dumps({"id": "f:1", "asr_input": "one two three"}) + "\n")
+        (d / "p.jsonl").write_text(
+            json.dumps({"file": "f", "pack_index": 0, "section_ids": ["f:1"], "words": 3}) + "\n")
+        original = runner.call_once
+
+        def truncated(*a, **k):
+            raise RuntimeError("non-STOP finishReason=MAX_TOKENS")
+        runner.call_once = truncated
+        try:
+            class Args:
+                provider, model = "gemini", "g"
+                corpus, pack, out = d / "s.jsonl", d / "p.jsonl", d / "o.jsonl"
+                dry_run, limit, workers, system_prompt = None, 0, 1, "production"
+            rc = runner.run_pack_mode(Args, api_key="k", azure_endpoint="", prompt_body=None, thinking=None)
+            check("truncated pack run exits 1", rc == 1)
+            row = json.loads((d / "o.jsonl").read_text().splitlines()[0])
+            check("the section still carries its original words",
+                  row["candidate"] == "one two three" and row["section_status"] == "truncated")
+        finally:
+            runner.call_once = original
 
 
 def test_dry_run_writes_bodies_and_calls_nobody() -> None:
@@ -192,6 +258,7 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
                 provider, model = "gemini", "gemini-x"
                 corpus, pack, out = d / "sections.jsonl", d / "packs.jsonl", d / "nested" / "out.jsonl"
                 dry_run, limit, workers = d / "dry.jsonl", 0, 1
+                system_prompt = "production"
             rc = runner.run_pack_mode(Args, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
             check("dry-run exits 0", rc == 0)
             lines = (d / "dry.jsonl").read_text().splitlines()
