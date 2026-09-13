@@ -1257,7 +1257,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(turns?.count == 1)
     #expect(turns?.first?.wasPolished == true)
     #expect(turns?.first?.processedText?.hasPrefix("clean w0 ") == true)
-    #expect(turns?.first?.processedText?.contains(" clean w") == true, "the parts are joined in order")
+    #expect(turns?.first?.processedText?.contains(" clean w") == true, "the parts are joined in order, with the raw gap between them")
     #expect(turns?.first?.processedText?.hasSuffix("w599") == true)
   }
 
@@ -1407,6 +1407,43 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(store.current(historyID)?.turns == nil, "the write threw")
     #expect(!coordinator.isSavedToHistory, "the cleaned section on screen is not on disk")
     await secondPartGate.open()
+  }
+
+  @Test("a space-free turn cut at character boundaries is rebuilt with no invented spaces; a spaced one keeps its real gaps (#2851 follow-up)")
+  func piecesRejoinWithTheirRealGaps() {
+    // A long space-free run past the byte ceiling: the splitter cuts it at characters.
+    let cjk = String(repeating: "日本語の長い文章です。", count: TranscriptSplitter.maximumBytesPerPart / 30 + 5)
+    let cjkTurn = Turn(id: "cjk", speakerId: "A", startMs: 0, endMs: 1, originalTextRange: 0..<cjk.utf16.count)
+    let cut = FileImportCoordinator.cleanupPieces(turns: [cjkTurn], rawText: cjk)
+    #expect(cut.pieces.count >= 2, "the fixture must split: \(cut.pieces.count)")
+    #expect(cut.gaps.allSatisfy { $0.isEmpty }, "no whitespace lies between character-boundary cuts")
+    let parts = zip(cut.pieces, cut.gaps).enumerated().map { index, pair in
+      FileImportCoordinator.Part(
+        id: index, text: pair.0, isUnpolished: false, wasPolished: true, turnID: "cjk",
+        trailingGap: pair.1)
+    }
+    let rebuilt = FileImportCoordinator.finalTurns([cjkTurn], parts: parts, cleanupCompleted: true)
+    #expect(rebuilt.first?.processedText == cjk, "identity cleanup must give the text back byte for byte")
+
+    // A spaced long turn keeps the space (or newline) that really sat between its pieces.
+    let words = (0..<700).map { "w\($0)" }
+    let spaced = words.prefix(350).joined(separator: " ") + "\n" + words.dropFirst(350).joined(separator: " ")
+    let spacedTurn = Turn(id: "sp", speakerId: "A", startMs: 0, endMs: 1, originalTextRange: 0..<spaced.utf16.count)
+    let cut2 = FileImportCoordinator.cleanupPieces(turns: [spacedTurn], rawText: spaced)
+    #expect(cut2.pieces.count >= 2)
+    let parts2 = zip(cut2.pieces, cut2.gaps).enumerated().map { index, pair in
+      FileImportCoordinator.Part(
+        id: index, text: pair.0, isUnpolished: false, wasPolished: true, turnID: "sp",
+        trailingGap: pair.1)
+    }
+    #expect(FileImportCoordinator.finalTurns([spacedTurn], parts: parts2, cleanupCompleted: true).first?.processedText == spaced)
+    // The document joins the same way inside a turn, and with a blank line between turns.
+    #expect(FileImportCoordinator.joinedDocument(parts) == cjk)
+    let twoTurns = [
+      FileImportCoordinator.Part(id: 0, text: "hello", isUnpolished: false, wasPolished: true, turnID: "a"),
+      FileImportCoordinator.Part(id: 1, text: "there", isUnpolished: false, wasPolished: true, turnID: "b"),
+    ]
+    #expect(FileImportCoordinator.joinedDocument(twoTurns) == "hello\n\nthere")
   }
 
   /// Drives one import to `state == .finished` plus a settled speaker step, and returns the

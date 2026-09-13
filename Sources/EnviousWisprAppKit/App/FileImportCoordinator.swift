@@ -178,6 +178,9 @@ final class FileImportCoordinator {
     /// The speaker turn this piece belongs to (#2851 follow-up), nil on a document with no
     /// turns. Several pieces share one id when a long turn was split.
     var turnID: String? = nil
+    /// The raw text that followed this piece inside its turn (a long turn cut into several
+    /// pieces), so the turn is rebuilt without an invented separator. "" otherwise.
+    var trailingGap: String = ""
   }
 
   private(set) var state: State = .idle
@@ -295,7 +298,26 @@ final class FileImportCoordinator {
   /// Codex. Reading the same value the page renders is what makes the two unable
   /// to disagree.
   var documentText: String {
-    parts.isEmpty ? rawTranscript : parts.map(\.text).joined(separator: "\n\n")
+    parts.isEmpty ? rawTranscript : Self.joinedDocument(parts)
+  }
+
+  /// The document as the parts make it: a blank line between parts (one paragraph per
+  /// passage, or per speaker section), but two pieces of ONE long turn rejoin with the raw
+  /// gap that lay between them, never an invented paragraph break (cloud review of PR #2898:
+  /// a space-free script cut at a character boundary has no gap at all).
+  static func joinedDocument(_ parts: [Part]) -> String {
+    var out = ""
+    for (index, part) in parts.enumerated() {
+      out += part.text
+      guard index + 1 < parts.count else { break }
+      let next = parts[index + 1]
+      if let id = part.turnID, next.turnID == id {
+        out += part.trailingGap
+      } else {
+        out += "\n\n"
+      }
+    }
+    return out
   }
 
   /// Whether a run is in flight AS THE SCREEN SEES IT. Drives the sidebar dot,
@@ -1083,7 +1105,7 @@ final class FileImportCoordinator {
     // TRANSCRIPT has them: each recovered original begins with the whitespace that preceded
     // it, so nothing is invented between them. Joining the split's pieces with a blank line
     // changed a single space or tab into a paragraph break. Found by the cloud review.
-    let cleaned = parts.map(\.text).joined(separator: "\n\n")
+    let cleaned = Self.joinedDocument(parts)
     let untouched = markedUpInput.passages.dropFirst(parts.count).map(\.original).joined()
     return cleaned + untouched
   }
@@ -1292,20 +1314,52 @@ final class FileImportCoordinator {
   /// same turn id), else the word-count passages of a single-speaker document. Each piece is
   /// a verbatim slice of `rawText`, in order, so `placedPassages()` finds it by literal search
   /// like any passage.
-  static func cleanupPieces(turns: [Turn]?, rawText: String) -> (pieces: [String], turnIDs: [String?]) {
+  static func cleanupPieces(turns: [Turn]?, rawText: String) -> Pieces {
     guard let turns, !turns.isEmpty else {
-      return (TranscriptSplitter.split(rawText), [])
+      return Pieces(pieces: TranscriptSplitter.split(rawText), turnIDs: [], gaps: [])
     }
     var pieces: [String] = []
     var ids: [String?] = []
+    var gaps: [String] = []
     for turn in turns {
       let text = TranscriptDocumentPresenter.slice(rawText, turn.originalTextRange)
-      for piece in TranscriptSplitter.split(text) {
+      let split = TranscriptSplitter.split(text)
+      // The raw text between consecutive pieces of ONE turn, so the turn is rebuilt with
+      // what really lay there: a space, a newline, or nothing at all when the splitter cut
+      // a space-free script at a character boundary (cloud review of PR #2898). Found by
+      // scanning forward, like `placedPassages()`.
+      var cursor = text.startIndex
+      var ends: [String.Index] = []
+      var starts: [String.Index] = []
+      for piece in split {
+        guard let found = text.range(of: piece, options: .literal, range: cursor..<text.endIndex)
+        else {
+          ends.append(cursor)
+          starts.append(cursor)
+          continue
+        }
+        starts.append(found.lowerBound)
+        ends.append(found.upperBound)
+        cursor = found.upperBound
+      }
+      for (n, piece) in split.enumerated() {
         pieces.append(piece)
         ids.append(turn.id)
+        let gap = n + 1 < split.count && ends[n] <= starts[n + 1]
+          ? String(text[ends[n]..<starts[n + 1]]) : ""
+        gaps.append(n + 1 < split.count ? gap : "")
       }
     }
-    return (pieces, ids)
+    return Pieces(pieces: pieces, turnIDs: ids, gaps: gaps)
+  }
+
+  /// The cleanup's input, cut from the raw text: the pieces in order, the turn each belongs
+  /// to (empty on a document with no turns), and the raw gap that follows each piece inside
+  /// its turn ("" after a turn's last piece).
+  struct Pieces: Equatable, Sendable {
+    let pieces: [String]
+    let turnIDs: [String?]
+    let gaps: [String]
   }
 
   /// The turns as the final write stores them: each turn's cleaned words are its own pieces
@@ -1322,10 +1376,12 @@ final class FileImportCoordinator {
           originalTextRange: turn.originalTextRange, processedText: nil,
           wasPolished: cleanupCompleted)
       }
+      // Rebuilt with each piece's own raw gap, never an invented space.
+      let joined = mine.map { $0.text + $0.trailingGap }.joined()
       return Turn(
         id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
         originalTextRange: turn.originalTextRange,
-        processedText: mine.map(\.text).joined(separator: " "),
+        processedText: joined,
         wasPolished: !mine.contains(where: \.isUnpolished))
     }
   }
@@ -1797,7 +1853,8 @@ final class FileImportCoordinator {
       let turns = pendingSpeakerResult?.turns
         ?? historyID.flatMap { currentHistoryRow($0)?.turns }
       let cut = Self.cleanupPieces(turns: turns, rawText: rawTranscript)
-      await polishAll(cut.pieces, turnIDs: cut.turnIDs, generationAtStart: generationAtStart)
+      await polishAll(
+        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     }
   }
 
@@ -1876,7 +1933,8 @@ final class FileImportCoordinator {
       guard generationAtStart == generation else { return }
       phase = "Dividing it up to clean"
       let cut = Self.cleanupPieces(turns: pendingSpeakerResult?.turns, rawText: result.text)
-      await polishAll(cut.pieces, turnIDs: cut.turnIDs, generationAtStart: generationAtStart)
+      await polishAll(
+        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     } catch is CancellationError {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
@@ -2362,7 +2420,9 @@ final class FileImportCoordinator {
   /// One at a time is not a simplification: the polish server has a single
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
-  private func polishAll(_ pieces: [String], turnIDs: [String?] = [], generationAtStart: Int) async {
+  private func polishAll(
+    _ pieces: [String], turnIDs: [String?] = [], gaps: [String] = [], generationAtStart: Int
+  ) async {
     // #2772 finding 14: the queue the Working step renders. Published here, at the one place
     // the split exists, so the rows on screen are the pieces that will actually be cleaned.
     pendingPieces = pieces
@@ -2405,7 +2465,8 @@ final class FileImportCoordinator {
           Part(
             id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
             wasPolished: outcome.polishedText != nil,
-            turnID: index < turnIDs.count ? turnIDs[index] : nil))
+            turnID: index < turnIDs.count ? turnIDs[index] : nil,
+            trailingGap: index < gaps.count ? gaps[index] : ""))
       } catch is CancellationError {
         return
       } catch {
@@ -2415,7 +2476,8 @@ final class FileImportCoordinator {
         parts.append(
           Part(
             id: index, text: piece, isUnpolished: true,
-            turnID: index < turnIDs.count ? turnIDs[index] : nil))
+            turnID: index < turnIDs.count ? turnIDs[index] : nil,
+            trailingGap: index < gaps.count ? gaps[index] : ""))
       }
       guard generationAtStart == generation else { return }
       state = .polishing(done: index + 1, total: pieces.count)
