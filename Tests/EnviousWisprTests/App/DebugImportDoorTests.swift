@@ -214,6 +214,11 @@
       let finished = await sink.reply(withStatus: "finished")
       #expect(finished["saved"] == "false")
       #expect(coordinator.historySaveFailure != nil)
+      // The words exist only on screen now; a second request must not discard them.
+      door.handle(transcribeRequest(door))
+      #expect(sink.replies.last?["status"] == "busy")
+      #expect(sink.replies.last?["reason"] == "unsavedDocument")
+      #expect(coordinator.hasDocument)
     }
 
     @Test(
@@ -418,6 +423,13 @@
       #expect(refused["reason"] == "polishNotReady:unsavedKey")
       #expect(late.step == .upload, "never advanced")
       #expect(refused["polisher"] == nil)
+      // The door's own decoded file is released, so the door is free again rather than
+      // blocked by a "file in hand" that is its own.
+      #expect(late.file == nil)
+      #expect(late.state == .idle)
+      lateBox.value = .ready
+      lateDoor.handle(["kind": "discover", "pid": String(Self.pid), "request": "r3"])
+      #expect(lateSink.replies.last?["acceptance"] == "accept")
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")

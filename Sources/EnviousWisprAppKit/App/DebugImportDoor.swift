@@ -219,6 +219,10 @@
       // review, PR #2887).
       if coordinator.isReadyToRun { return "fileInHand" }
       if case .reading = coordinator.state { return "fileInHand" }
+      // A finished document whose words are not in History (the raw write failed) exists
+      // only on screen; `choose(url:)` clears the transcript, so the door would discard the
+      // user's only copy. A saved document is replaceable exactly as the picker treats it.
+      if coordinator.hasDocument, !coordinator.isSavedToHistory { return "unsavedDocument" }
       return nil
     }
 
@@ -264,6 +268,13 @@
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
             if case .blocked(let block) = polishReadiness() {
+              // The decoded file is the DOOR's own; left in `.ready` it would read as a
+              // user's file in hand and block every later request. Cleared the way the
+              // screen clears its own (`startOver()`), which is safe because the
+              // generation guard above proved nobody else has touched the coordinator.
+              c.startOver()
+              // Our own write; the reply check must not read it as someone else's.
+              watchedGeneration = c.generation
               return Outcome(status: "refused", detail: "polishNotReady:\(block)")
             }
             for target in [FileImportCoordinator.Step.transcription, .polish, .review] {
