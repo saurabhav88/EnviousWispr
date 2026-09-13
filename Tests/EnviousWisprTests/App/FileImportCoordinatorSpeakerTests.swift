@@ -979,6 +979,45 @@ struct FileImportCoordinatorSpeakerTests {
       "one event per import, the first terminal one: \(telemetry.events)")
   }
 
+  @Test("History's import-in-progress question reads true for this row while the cleanup runs, false for another row, false after Done (#2851 §3 D)")
+  func importInProgressFollowsTheRunAndTheRow() async {
+    // The expression the bootstrapper installs on `TranscriptCoordinator.isImportInProgress`,
+    // against a real coordinator with its cleanup held at a gate.
+    let store = FakeHistoryStore()
+    let cleanupGate = ManualGate()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      processPart: { part, _ in
+        await cleanupGate.markArrived()
+        await cleanupGate.waitUntilOpen()
+        return WordSwappingCleaner().outcome(part)
+      })
+    let inProgress: @MainActor (UUID) -> Bool = { id in
+      coordinator.isRunning && coordinator.historyID == id
+    }
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    await cleanupGate.waitUntilArrived()
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID once the cleanup is in flight")
+      return
+    }
+    let rawLanded = await settleUntil { store.current(historyID)?.turns?.count == 2 }
+    #expect(rawLanded, "raw turns exist while the cleanup still runs: the transient this guards")
+    #expect(inProgress(historyID) == true, "this row's import is running")
+    #expect(inProgress(UUID()) == false, "another row is not")
+
+    await cleanupGate.open()
+    let finished = await settleUntil { coordinator.state == .finished }
+    #expect(finished)
+    #expect(inProgress(historyID) == false, "Done: History may disclose")
+  }
+
   @Test("turns landing after the cleanup already finished align at once and emit the one stored event (#2851)")
   func turnsLandingAfterTheCleanupAlignAtOnceAndEmitOnce() async {
     let store = FakeHistoryStore()

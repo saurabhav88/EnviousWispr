@@ -395,9 +395,9 @@ struct TranscriptDetailView: View {
     return TranscriptDocumentPresenter.render(
       turns: transcript.turns, rawText: transcript.text,
       speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
-      // A stored row is read as finished: the disclosure follows the stored turns, and a
-      // row still being imported clears it turn by turn as the cleanup lands (#2851 §3 D).
-      documentFinished: true,
+      // Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud
+      // review of PR #2871): a turn the cleanup has not reached yet is not "unpolished".
+      documentFinished: !(transcriptCoordinator.isImportInProgress?(transcript.id) ?? false),
       diffLookup: { diffs?[$0.id] })
   }
 
