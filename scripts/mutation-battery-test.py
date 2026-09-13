@@ -2733,6 +2733,43 @@ check_fix("a malformed row is refused without stopping the rows behind it",
                        "row 2: repairable — anchor re-cut at -2 spaces"],
           expect_runnable="1/1 rows runnable")
 
+# #2760. One test carries up to three spellings, so a prefix of two of them is a prefix of
+# ONE test and the repair is decidable; counting alias KEYS refused it while the refusal
+# message advertised the very completion. Two-way against a prefix of two different tests,
+# which stays refused — and the refusal now says so instead of suggesting the shortest.
+_pipeline_state_row = {
+    "label": "the active states answer inactive",
+    "file": "Sources/EnviousWisprCore/AppSettings.swift",
+    "anchor": "    case .loadingModel, .recording, .transcribing, .polishing:\n      return true",
+    "replacement": "    case .loadingModel, .recording, .transcribing, .polishing:\n      return false",
+    "suite": "EnviousWisprTests/PipelineStateTests",
+}
+check_fix("--fix completes a prefix shared by two spellings of the SAME test",
+          dict(_pipeline_state_row, expect_fail="compl"),
+          expect_text="repairable — must_fire: 'compl' -> 'completeIsNotActive()'",
+          expect_runnable="1/1 rows runnable")
+check_fix("--fix refuses a prefix shared by two DIFFERENT tests, and names them",
+          dict(_pipeline_state_row, expect_fail="error"),
+          expect_text=["PREFIX of 2 different tests",
+                       "'PipelineStateTests/errorEquality()', "
+                       "'PipelineStateTests/errorIsNotActive()'",
+                       "NOT mechanically repairable"],
+          expect_no_block=True)
+
+# #2761. The caller generates a provenance label AFTER the repair and BEFORE the whole-row
+# recheck, so an invalid label was replaced before anything could refuse it: a row with
+# drift and no label printed as repairable, with the authored description gone. The label
+# is neither class `--fix` repairs, so it is refused first. The drifted row WITH a label is
+# the control, already asserted repairable above.
+check_fix("--fix refuses a drifted row whose label is missing, rather than inventing one",
+          {k: v for k, v in _drifted.items() if k != "label"},
+          expect_text="NOT mechanically repairable — the row's label is missing",
+          expect_no_block=True)
+check_fix("--fix refuses a drifted row whose label is not a string",
+          dict(_drifted, label=42),
+          expect_text="NOT mechanically repairable — the row's label is missing",
+          expect_no_block=True)
+
 # #2672 review: `self_test_problems` accepted ANY `"--self-test"` constant that was not a bare
 # docstring statement, so a module constant, a help message or an unreachable branch made a
 # module "parse" a flag it never inspects, and the validator printed a command whose exit
