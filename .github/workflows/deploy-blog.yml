@@ -21,6 +21,12 @@ concurrency:
 
 jobs:
   deploy:
+    # Production only ever receives main. A workflow_dispatch from another ref
+    # (gh workflow run --ref <branch>) would publish that ref to Cloudflare's
+    # `main` branch, and the deployed-output hash it saved would sit in that
+    # ref's cache scope where the scheduled main run cannot see it, so the
+    # next unchanged day would skip and leave the foreign content live.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -63,11 +69,14 @@ jobs:
       # whether an upload would change anything. The hash of the last
       # SUCCESSFUL deploy lives in the Actions cache (saved after the deploy
       # step, never before it, so a failed upload is retried next run). The
-      # cache key is per RUN and restored by prefix, so the newest entry is
-      # always the last thing that reached production. A content-addressed
-      # key would exact-hit an older main entry after a workflow_dispatch from
-      # another ref deployed different content, and then suppress the upload
-      # that should have put main back (cloud review on #2892).
+      # cache key is per run AND attempt and restored by prefix, so the newest
+      # entry is always the last thing that reached production: a re-run of an
+      # older run keeps its run_id but gets a fresh attempt, deploys (push and
+      # dispatch always deploy) and can still record itself; with a run-only
+      # key the immutable old entry would have stayed and a later scheduled
+      # run could skip while the re-run's older content was live. A
+      # content-addressed key had the same hole via exact hits on older
+      # entries (cloud review on #2892, two rounds).
       # Only scheduled runs skip: a push or a manual dispatch always deploys.
       - name: Hash build output
         id: manifest
@@ -79,7 +88,7 @@ jobs:
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: website/.last-deployed-manifest
-          key: website-deploy-manifest-run-${{ github.run_id }}
+          key: website-deploy-manifest-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: website-deploy-manifest-run-
 
       - name: Decide whether to deploy
@@ -117,7 +126,7 @@ jobs:
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: website/.last-deployed-manifest
-          key: website-deploy-manifest-run-${{ github.run_id }}
+          key: website-deploy-manifest-run-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Tell IndexNow (Bing/Yandex/Naver) about posts that go live TODAY only.
       # Submitting just the newly-published URLs (not a daily blast of every URL)
