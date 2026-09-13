@@ -387,11 +387,20 @@ def prefix_successor(name, known_names):
     """
     if not name or name in known_names:
         return None
-    near = [
-        candidate for candidate in known_names
-        if candidate and candidate != name and candidate.startswith(name)
-    ]
-    return near[0] if len(near) == 1 else None
+    near = sorted(
+        (candidate for candidate in known_names
+         if candidate and candidate != name and candidate.startswith(name)),
+        key=len,
+    )
+    # Count TESTS, never alias keys. One test carries up to three spellings — its display
+    # name, `function()` and `Suite/function()` — and a prefix of two of them is still a
+    # prefix of ONE test (`compl` → `complete is not active` AND `completeIsNotActive()`).
+    # Counting keys refused that repair while `missing_test_problem` advertised it (#2760).
+    identities = set().union(*(known_names[candidate] for candidate in near)) if near else set()
+    if len(identities) != 1:
+        return None
+    # The same candidate the refusal suggested, so the sentence and the value agree.
+    return near[0]
 
 
 def repaired_row(row, index, default_suite, root, battery, names_by_suite):
@@ -414,6 +423,17 @@ def repaired_row(row, index, default_suite, root, battery, names_by_suite):
     """
     if not isinstance(row, dict):
         return None, "the row is not an object"
+    # The label is the author's description of what the row MEANS, and the runner refuses a
+    # row without one. The caller prefixes a provenance note onto it AFTER this repair, so an
+    # invalid label checked only by the whole-row recheck would already have been replaced
+    # by a generated one — a row with drift AND no label printed as repairable, and the
+    # authored description was silently discarded (#2761). Neither class this repairs is
+    # the label, so an invalid one is refused here, before anything is generated.
+    label_value = row.get("label")
+    if not isinstance(label_value, str) or not label_value:
+        return None, (
+            "the row's label is missing or not a non-empty string, and a description of "
+            "what the row means is the author's to write, not a repair's to invent")
 
     fixed = dict(row)
     notes = []
@@ -531,6 +551,14 @@ def missing_test_problem(name, known_names):
         key=len,
     )
     if near:
+        # A prefix of several spellings of ONE test has one answer; a prefix of several
+        # TESTS has none, and suggesting the shortest would be a guess dressed as a hint.
+        identities = set().union(*(known_names[candidate] for candidate in near))
+        if len(identities) > 1:
+            return (
+                f"expectation name is a PREFIX of {len(identities)} different tests, "
+                f"not a full test name: {name!r}; name one of "
+                f"{', '.join(repr(spelling) for spelling in sorted(identities))} in full")
         return (
             f"expectation name is a PREFIX, not a full test name; "
             f"did you mean {near[0]!r}")
