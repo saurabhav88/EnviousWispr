@@ -215,6 +215,38 @@ package final class TerminalResolutionBudget: Sendable {
     trace.withLock { $0.append((label, 0, true)) }
   }
 
+  /// The step whose cost first reached the cap, and the phase marker in force
+  /// when it ran — what a breaker trip NAMES (#2777).
+  ///
+  /// The trace already records both; this reads them back so the trip event can
+  /// carry "which labelled step exhausted the budget" without a second bookkeeping
+  /// path that could disagree with the log line.
+  ///
+  /// The FIRST step to reach the cap, never the last one recorded: the caret path
+  /// runs several reads against this budget and its caller tests exhaustion once,
+  /// afterwards, so reads keep being recorded after the one that crossed the line
+  /// and the last label would blame an innocent later read (local review r2).
+  /// When no traced step reaches the cap on its own — a cost charged with a nil
+  /// label is spent but not traced — the last recorded step is the best answer
+  /// available. Nil label when no step recorded itself; nil phase during the
+  /// initial resolution, before the first `mark`.
+  package var exhaustingStep: (label: String?, phase: String?) {
+    let samples = trace.withLock { $0 }
+    var phase: String?
+    var last: (label: String?, phase: String?) = (nil, nil)
+    var cumulative = 0.0
+    for sample in samples {
+      if sample.isMark {
+        phase = sample.label
+        continue
+      }
+      cumulative += sample.seconds
+      last = (sample.label, phase)
+      if cumulative >= total { return last }
+    }
+    return last
+  }
+
   /// The per-step costs, for one log line. Empty when no step ran.
   ///
   /// Reads as `focused=0.4ms screen=0.2ms |recheck| focused=97.1ms total=97.7ms`,
@@ -233,6 +265,30 @@ package final class TerminalResolutionBudget: Sendable {
 
 // MARK: - Circuit breaker
 
+/// One breaker trip, as reported from the trip site (#2777). Metadata only —
+/// a step label from the closed set the budget records (every
+/// `TerminalResolutionBudget.step` label: the resolver's `scan` and `screen`,
+/// and `PasteService.caretDerivedContext`'s `focused`, `role`, `count`,
+/// `range`, `range_read`, `browser_address_bar`), a phase marker, and a flag —
+/// never screen text, a path, or the derived line, the same boundary
+/// `TerminalContextRefusal` keeps.
+package struct TerminalBreakerTrip: Equatable, Sendable {
+  /// The labelled step that exhausted the budget, or nil when none recorded itself.
+  package let exhaustedStep: String?
+  /// The phase marker in force when that step ran (`recheck`), or nil during
+  /// the initial resolution.
+  package let phase: String?
+  /// True when this terminal was ALREADY latched — the same process tripping
+  /// again, which the resolver's entry check makes rare and this makes countable.
+  package let wasAlreadyOpen: Bool
+
+  package init(exhaustedStep: String?, phase: String?, wasAlreadyOpen: Bool) {
+    self.exhaustedStep = exhaustedStep
+    self.phase = phase
+    self.wasAlreadyOpen = wasAlreadyOpen
+  }
+}
+
 /// Latches a wedged terminal off for the rest of the process's life.
 ///
 /// Without this, repeated dictations against one wedged terminal each start
@@ -247,7 +303,23 @@ package final class TerminalResolutionBudget: Sendable {
 /// nothing ever cleared it, so once macOS recycled that PID an unrelated
 /// terminal would be refused forever with no way back. Identity, not a number.
 package final class TerminalCircuitBreaker: Sendable {
-  package static let shared = TerminalCircuitBreaker()
+  /// The production breaker reports every trip to telemetry (#2777). The trip
+  /// itself has already latched under the lock by the time the observer runs.
+  ///
+  /// `TelemetryService` is main-actor bound and every production trip already
+  /// happens there (the paste path reads the caret from `@MainActor` code), so
+  /// the event is emitted SYNCHRONOUSLY when the trip is on the main thread and
+  /// only hops when it is not. A synchronous emit is what lets a test observe
+  /// the `.shared` wiring with no suspension point — the process-wide test hook
+  /// is shared by every telemetry suite, and an `await` between installing it
+  /// and reading it is a window another suite can clobber (local review r1).
+  package static let shared = TerminalCircuitBreaker(onTrip: { trip in
+    if Thread.isMainThread {
+      MainActor.assumeIsolated { TelemetryService.shared.terminalBreakerTripped(trip) }
+    } else {
+      Task { @MainActor in TelemetryService.shared.terminalBreakerTripped(trip) }
+    }
+  })
 
   /// A process, not merely a PID.
   struct Key: Hashable {
@@ -259,7 +331,13 @@ package final class TerminalCircuitBreaker: Sendable {
 
   private let open = OSAllocatedUnfairLock(initialState: Set<Key>())
 
-  package init() {}
+  /// Told about every trip, from the trip site itself. Nil for a test breaker
+  /// that only wants the latch.
+  private let onTrip: (@Sendable (TerminalBreakerTrip) -> Void)?
+
+  package init(onTrip: (@Sendable (TerminalBreakerTrip) -> Void)? = nil) {
+    self.onTrip = onTrip
+  }
 
   private func key(_ pid: pid_t) -> Key {
     Key(pid: pid, startedAt: TerminalProcessScanner.startTime(of: pid))
@@ -270,9 +348,25 @@ package final class TerminalCircuitBreaker: Sendable {
     return open.withLock { $0.contains(key) }
   }
 
-  package func trip(for pid: pid_t) {
+  /// Latch this terminal off and REPORT it.
+  ///
+  /// Before #2777 a trip was recorded only indirectly: the take that tripped
+  /// reported `caret_context = terminal_deadline` and every later take reported
+  /// `terminal_breaker_open`. One production user showed 1,647 of the latter over
+  /// 25 days and none of the former, and the data could not say whether the
+  /// breaker had tripped once and outlived its cause or re-tripped on every
+  /// launch without recording it. A trip is now a fact of its own, emitted HERE,
+  /// so "tripped once" and "tripped forty times" are different counts.
+  /// - Parameter exhaustedStep: the labelled step that spent the budget, and the
+  ///   phase it ran in, read off `TerminalResolutionBudget.exhaustingStep`. Both
+  ///   nil for a trip with no budget behind it, which only a test does.
+  package func trip(for pid: pid_t, exhaustedStep: (label: String?, phase: String?) = (nil, nil)) {
     let key = key(pid)
-    open.withLock { _ = $0.insert(key) }
+    let inserted = open.withLock { $0.insert(key).inserted }
+    onTrip?(
+      TerminalBreakerTrip(
+        exhaustedStep: exhaustedStep.label, phase: exhaustedStep.phase,
+        wasAlreadyOpen: !inserted))
   }
 
   package func resetAll() {
@@ -340,7 +434,8 @@ package enum TerminalContextResolver {
   ) -> Bool {
     budget.charge(elapsed, label: label)
     guard budget.isExhausted else { return false }
-    breaker.trip(for: pid)
+    // The trace names the step, so the trip event can too (#2777).
+    breaker.trip(for: pid, exhaustedStep: budget.exhaustingStep)
     return true
   }
 

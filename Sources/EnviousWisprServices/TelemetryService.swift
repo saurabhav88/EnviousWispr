@@ -2409,6 +2409,43 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("paste.copies_observed", properties: props)
   }
 
+  /// #2777. The terminal circuit breaker TRIPPED, reported from the trip site.
+  ///
+  /// Until this event a trip was only inferable from `dictation.completed`'s
+  /// `caret_context`: `terminal_deadline` on the take that tripped, then
+  /// `terminal_breaker_open` on every take after it. That inference cannot count
+  /// trips — one production user carried 1,647 `terminal_breaker_open` rows over
+  /// 25 days with no `terminal_deadline` at all, and nothing in the data could say
+  /// whether the breaker tripped once or on every launch. One row per trip closes
+  /// that: `step` is which labelled read spent the budget, `phase` is `recheck`
+  /// when it happened at the commit boundary and absent during the initial
+  /// resolution, and `already_open` is true when the same terminal tripped again.
+  ///
+  /// `step` is the closed set of `TerminalResolutionBudget.step` labels, and
+  /// every site that charges the budget is one of these (cloud review of the
+  /// #2777 PR asked for the whole set, not the three the resolver alone uses):
+  /// `scan` (the process sweep), `focused`, `role`, `count`, `range`,
+  /// `range_read`, `browser_address_bar` (the caret reads in
+  /// `PasteService.caretDerivedContext`) and `screen` (the terminal screen
+  /// read). Adding a label is adding a value here. Names and shapes only, never
+  /// screen text.
+  package func terminalBreakerTripped(_ trip: TerminalBreakerTrip) {
+    var props: [String: Any] = ["already_open": trip.wasAlreadyOpen]
+    if let step = trip.exhaustedStep { props["step"] = step }
+    if let phase = trip.phase { props["phase"] = phase }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "terminal_breaker.tripped",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: [:],
+          doubleProps: [:],
+          boolProps: props.compactMapValues { $0 as? Bool }
+        ))
+    #endif
+    PostHogSDK.shared.capture("terminal_breaker.tripped", properties: props)
+  }
+
   public func pasteCompleted(
     tier: String, targetApp: String?, result: String, latencyMs: Int,
     insertion: PasteInsertionTelemetry = .init(),
