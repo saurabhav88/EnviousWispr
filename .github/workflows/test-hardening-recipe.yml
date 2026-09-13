@@ -13,19 +13,14 @@ name: Test-Hardening Recipe Check
 # every anchor exists exactly once and every expectation names a real test, which is
 # what the validator does locally in under a second.
 #
-# Two kinds of refusal, told apart by the validator's exit code, because they need
-# different readers:
-#   exit 2  REFUSED before any row was read: no fenced ```json block, two blocks, invalid
-#           JSON, a missing field. Always the filer's to fix, whatever the tree says.
-#   exit 1  the recipe was read but did not validate: an anchor not found or a test name
-#           that resolves to nothing (usually EXPECTED at filing time, because the recipe is
-#           filed while its PR is still open and the code it anchors on is not on main yet),
-#           OR a row missing a required field, an empty rows list, a document that is not an
-#           object (structural, the filer's to fix now). The validator reports both with the
-#           same exit code, so the comment quotes every refusal and says which reading applies
-#           to which; the run is not failed, because the common case is the expected one.
-#           Re-check after the merge with `workflow_dispatch`, and the night session's own
-#           validation catches real drift.
+# The validator's exit code is NOT a classifier this workflow can read. Exit 2 covers a
+# recipe that cannot be read (no fenced ```json block, two blocks, invalid JSON) AND a
+# failure to read the issue at all (gh, the API) AND a checkout or test-oracle error; exit 1
+# covers an anchor not on main (EXPECTED while the recipe's PR is open) AND a row missing a
+# required field. So this workflow never fails a run on the recipe and never tells the
+# filer what to do from the code alone: it quotes the validator's own output, which names
+# what it refused, under a short key to the four readings. The night session validates
+# again before every battery, so nothing here is the last line.
 #
 # Comment policy: one comment per issue, marked `<!-- test-hardening-recipe-check -->`,
 # EDITED on later runs rather than re-posted, so an issue that goes through three edits
@@ -99,17 +94,10 @@ jobs:
           rc=0
           python3 scripts/validate-mutation-recipe.py --issue "$ISSUE" --checkout "$PWD" \
             > validator.txt 2>&1 || rc=$?
-          # Exit 2 also covers the validator failing to READ the issue at all (a `gh` or API
-          # failure), which is nobody's recipe to fix. That refusal names itself; treat it as
-          # infrastructure: no verdict is posted and the run fails with its own message, so a
-          # transient outage never leaves a "fix your body" comment on a sound recipe.
-          kind=verdict
-          if [ "$rc" = "2" ] && grep -q "could not read issue" validator.txt; then kind=infra; fi
           # The commit actually validated against, never the event's sha: on an issue event
           # there is none that means anything, and on a dispatch it is the selected branch.
           {
             echo "rc=$rc"
-            echo "kind=$kind"
             echo "issue=$ISSUE"
             echo "sha=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
@@ -117,7 +105,6 @@ jobs:
           exit 0
 
       - name: Post or update the verdict on the issue
-        if: steps.validate.outputs.kind == 'verdict'
         env:
           GH_TOKEN: ${{ github.token }}
           RC: ${{ steps.validate.outputs.rc }}
@@ -127,8 +114,11 @@ jobs:
         run: |
           set -euo pipefail
           marker='<!-- test-hardening-recipe-check -->'
+          # The comment to edit is the one the Actions bot wrote: author AND marker, never the
+          # marker alone, or a user comment carrying the marker beside the only recipe would be
+          # overwritten into a verdict and the recipe lost (cloud review r2).
           existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" --paginate \
-            --jq "[.[] | select(.body | contains(\"$marker\"))] | last | .id // empty")
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\") | select(.body | contains(\"$marker\"))] | last | .id // empty")
 
           if [ "$RC" = "0" ] && [ -z "$existing" ]; then
             echo "recipe runnable and no prior verdict comment: nothing to post"
@@ -141,14 +131,15 @@ jobs:
               echo "## Recipe check: RUNNABLE"
               echo
               echo "Every row validates against main at \`${SHA}\`. The night session can hand this issue to \`scripts/mutation-battery.py --from-issue ${ISSUE}\` as filed."
-            elif [ "$RC" = "2" ]; then
-              echo "## Recipe check: REFUSED before any row was read"
-              echo
-              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` could not read a recipe out of this issue: no fenced \`json\` block, more than one, invalid JSON, or a missing field. This is independent of what is on main. Edit the BODY (the runner reads exactly one fenced \`json\` block across body and comments) and this check re-runs on the edit."
             else
-              echo "## Recipe check: the recipe was read but does not validate against main today"
+              echo "## Recipe check: not runnable as it stands (validator exit ${RC})"
               echo
-              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` read a recipe out of this issue but refused at least one row against main at \`${SHA}\`. Read each refusal below and sort it into one of two kinds. An anchor not found, a file that does not exist, or a test name that resolves to nothing is EXPECTED while this issue's PR is still open (the code the rows anchor on is not on main yet): re-check after the merge from the Actions tab (Test-Hardening Recipe Check, Run workflow, issue ${ISSUE}), and if the PR is already merged the row has drifted and needs re-pointing on a new issue. A missing required field, an empty rows list, or a document that is not an object is structural and yours to fix in the body now; no merge changes it."
+              echo "\`scripts/validate-mutation-recipe.py --issue ${ISSUE}\` against main at \`${SHA}\` printed the output below. It names what it refused; the exit code alone does not say whose problem it is, so read the text:"
+              echo
+              echo "- **No fenced \`json\` block, two blocks, or invalid JSON:** fix it WHERE THE BLOCK LIVES, the body or the comment that carries it (the runner reads exactly one block across both); this check re-runs on the edit."
+              echo "- **A row missing a required field, an empty rows list, a document that is not an object:** the same, in the block that carries it."
+              echo "- **An anchor not found, a file that does not exist, a test name that resolves to nothing:** EXPECTED while this issue's PR is still open, because the code the rows anchor on is not on main yet. Re-check after the merge from the Actions tab (Test-Hardening Recipe Check, Run workflow, issue ${ISSUE}). If the PR is already merged, the row has drifted and needs re-pointing on a new issue."
+              echo "- **\`could not read issue\`, or a checkout or test-oracle error:** nothing to do with this recipe. Re-run the workflow."
             fi
             echo
             echo '```text'
@@ -166,14 +157,9 @@ jobs:
             gh issue comment "$ISSUE" --body-file comment.md
           fi
 
-      - name: Fail the run when the issue could not be read at all
-        if: steps.validate.outputs.kind == 'infra'
+      # The run itself stays green whatever the validator said: its verdict lives on the
+      # issue, where the filer reads it. A red run here would be read as "the workflow is
+      # broken" by everyone but the filer, and the code cannot tell whose problem it is.
+      - name: Note the verdict in the run log
         run: |
-          echo "::error::Issue #${{ steps.validate.outputs.issue }} could not be read by the validator (gh or API failure); no verdict was posted. Re-run this workflow."
-          exit 1
-
-      - name: Fail the run only on a structural refusal
-        if: steps.validate.outputs.kind == 'verdict' && steps.validate.outputs.rc == '2'
-        run: |
-          echo "::error::Issue #${{ steps.validate.outputs.issue }}: no runnable recipe could be read from the issue (validator exit 2)"
-          exit 1
+          echo "issue #${{ steps.validate.outputs.issue }}: validator exit ${{ steps.validate.outputs.rc }} (0 runnable; anything else is explained on the issue)"
