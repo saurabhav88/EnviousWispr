@@ -131,8 +131,8 @@ struct MenuBarControllerTests {
         "",  // separator
         "Start Recording",
         "Add Selected Word  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
+        "Transcribe a File...",  // #2772, opens the window on that page; above the divider (#2811)
         "",  // separator
-        "Transcribe a File...",  // #2772, opens the window on that page
         "Settings...",
         "Appearance",  // #1047 submenu parent
         "",  // separator
@@ -145,7 +145,7 @@ struct MenuBarControllerTests {
     #expect(menu.items[1].isEnabled == false)
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
-    #expect(menu.items[5].isSeparatorItem)
+    #expect(menu.items[6].isSeparatorItem)
     #expect(menu.items[9].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
     #expect(item(menu, "Settings...")?.keyEquivalent == ",")

@@ -402,6 +402,17 @@ final class MenuBarController: NSObject {
       result: state.quickAdd.selectionResult, context: state.quickAddContext)
     menu.addItem(quickAddItem)
 
+    // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
+    // import wizard. Opens the unified window on that page; the page itself does the rest.
+    // Sits with the other two ways to get words in (#2811, founder 2026-09-12), above the
+    // divider, not with the Settings group below it.
+    let transcribeFileItem = NSMenuItem(
+      title: "Transcribe a File...", action: #selector(openTranscribeFileAction), keyEquivalent: "")
+    transcribeFileItem.image = NSImage(
+      systemSymbolName: "doc.badge.plus", accessibilityDescription: "Transcribe a File")
+    transcribeFileItem.target = self
+    menu.addItem(transcribeFileItem)
+
     // Auto-stop on silence indicator
     if state.vadAutoStop {
       let autoStopTitle =
@@ -446,15 +457,6 @@ final class MenuBarController: NSObject {
     }
 
     menu.addItem(.separator())
-
-    // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
-    // import wizard. Opens the unified window on that page; the page itself does the rest.
-    let transcribeFileItem = NSMenuItem(
-      title: "Transcribe a File...", action: #selector(openTranscribeFileAction), keyEquivalent: "")
-    transcribeFileItem.image = NSImage(
-      systemSymbolName: "doc.badge.plus", accessibilityDescription: "Transcribe a File")
-    transcribeFileItem.target = self
-    menu.addItem(transcribeFileItem)
 
     // Settings (opens unified window to Speech Engine tab)
     let settingsItem = NSMenuItem(
