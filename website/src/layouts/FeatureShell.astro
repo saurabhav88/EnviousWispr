@@ -10,14 +10,16 @@ interface Props {
   title: string;
   description: string;
   activePage?: string;
+  ogImage?: string;
+  ogImageAlt?: string;
 }
-const { path, title, description, activePage = 'features' } = Astro.props;
+const { path, title, description, activePage = 'features', ogImage, ogImageAlt } = Astro.props;
 const entry = entryFor(path);
 const ld = [webPage({ path, name: entry.name, description, updated: entry.updated }), breadcrumbs(path, entry.name)];
 if (path === '/features/') ld.push(featureItemList());
 ---
 
-<ThemedLayout title={title} description={description} canonicalPath={path} activePage={activePage}>
+<ThemedLayout title={title} description={description} canonicalPath={path} activePage={activePage} ogImage={ogImage} ogImageAlt={ogImageAlt}>
   <Fragment slot="head">
     {ld.map((block) => <script type="application/ld+json" set:html={JSON.stringify(block)} />)}
   </Fragment>
