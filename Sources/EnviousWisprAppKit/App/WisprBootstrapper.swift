@@ -36,6 +36,11 @@ package final class WisprBootstrapper {
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
+  #if DEBUG
+    /// #2885 — the DEBUG-only door through which Live UAT hands a file to
+    /// `fileImportCoordinator` without the screen. Installed after launch, removed at quit.
+    let debugImportDoor: DebugImportDoor
+  #endif
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
   let backendMetadata: BackendMetadata
@@ -1643,6 +1648,9 @@ package final class WisprBootstrapper {
     }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
+    #if DEBUG
+      self.debugImportDoor = DebugImportDoor(coordinator: fileImportCoordinator)
+    #endif
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -1830,6 +1838,11 @@ package final class WisprBootstrapper {
     // the whole reason this call exists instead of the demand-driven path's
     // existing `DispatchQueue.main.async` default.
     recordingOverlay.prewarmFirstRender()
+    #if DEBUG
+      // #2885: after launch, like `quickAdd.install()` above, and after the coordinator
+      // exists, which the initializer guarantees.
+      debugImportDoor.install()
+    #endif
   }
 
   package func applicationDidBecomeActive() {
@@ -1839,6 +1852,10 @@ package final class WisprBootstrapper {
   }
 
   package func applicationWillTerminate() {
+    #if DEBUG
+      // #2885: stop answering, and stop watching, before anything below tears down.
+      debugImportDoor.uninstall()
+    #endif
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.
