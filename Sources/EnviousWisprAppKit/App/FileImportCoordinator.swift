@@ -1242,11 +1242,27 @@ final class FileImportCoordinator {
 
   /// Frees the retained retry inputs once the CURRENT document's stored outcome is one no
   /// retry could change. Reads the stored field, never the in-memory analyzer property, so
-  /// a save that threw (row still at its previous retryable outcome) keeps them.
+  /// a save that threw (row still at its previous retryable outcome) keeps them. A row that
+  /// no longer exists is terminal too (cloud review of PR #2846, round 2): a retry has
+  /// nothing to write against, and `canRetrySpeakerAnalysis` already reads false for it.
   private func releaseRetryInputsIfNoLongerRetryable() {
-    guard let historyID, let current = currentHistoryRow(historyID),
-      !retryCouldChange(current.speakerAnalysis)
-    else { return }
+    guard let historyID else { return }
+    if let current = currentHistoryRow(historyID), retryCouldChange(current.speakerAnalysis) {
+      return
+    }
+    releaseRetryInputs()
+  }
+
+  /// History deleted a row (wired from `TranscriptCoordinator.onRowDeleted`). Only a deletion
+  /// AFTER the speaker pass settled needs this; one during the pass is caught by the pass's
+  /// own completion above. A row the user later resurrects with "Clean it again" comes back
+  /// without speaker fields and without a retry: the audio for it is gone, on purpose.
+  func noteHistoryRowDeleted(_ id: UUID) {
+    guard id == historyID else { return }
+    releaseRetryInputs()
+  }
+
+  private func releaseRetryInputs() {
     retainedAnalysisSamples = []
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil

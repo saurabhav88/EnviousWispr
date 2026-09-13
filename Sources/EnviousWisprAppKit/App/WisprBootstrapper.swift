@@ -1630,6 +1630,12 @@ package final class WisprBootstrapper {
       processPart: { [fileImportRunner] part, language in
         try await fileImportRunner.process(part: part, engineLanguage: language)
       })
+    // History announces a deleted row; the wizard drops the retry audio it holds for that
+    // row (#2811, cloud review of PR #2846). Late-bound because History's coordinator is
+    // built first.
+    transcriptCoordinator.onRowDeleted = { [weak fileImportCoordinator] id in
+      fileImportCoordinator?.noteHistoryRowDeleted(id)
+    }
     fileImportCoordinatorForGates = fileImportCoordinator
     self.fileImportCoordinator = fileImportCoordinator
     self.transcriptCoordinator = transcriptCoordinator

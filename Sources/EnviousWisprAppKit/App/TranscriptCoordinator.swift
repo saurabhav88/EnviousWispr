@@ -102,6 +102,11 @@ final class TranscriptCoordinator {
   private let emitTurnsDisplayedTelemetry: () -> Void
   /// Documents whose turn view History has already drawn this launch (#2811 §3e).
   private var displayedTurnIDs: Set<UUID> = []
+  /// Called after a row is deleted here, with its id. Set by the bootstrapper once both
+  /// coordinators exist, since this one is built first: the file-import coordinator uses it
+  /// to drop the audio it holds for a possible speaker retry on that row (#2811). Nothing
+  /// else observes a deletion; the coordinator's own deleted-row notice stays derived.
+  @ObservationIgnored var onRowDeleted: (@MainActor (UUID) -> Void)?
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -897,6 +902,7 @@ final class TranscriptCoordinator {
       let displayed = filteredTranscripts
       try store.delete(id: transcript.id)
       transcripts.removeAll { $0.id == transcript.id }
+      onRowDeleted?(transcript.id)
       if selectedTranscriptID == transcript.id {
         // The next row in the same filter, else the previous one, else nothing — and
         // nothing means the status view, never the live fallback (the setter arms that).

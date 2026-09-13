@@ -1248,6 +1248,24 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(failed.speakerNoticeReason == .failed)
   }
 
+  @Test("a deleted History row releases the retry audio, for that row only")
+  func deletedRowReleasesRetryInputs() async {
+    let store = FakeHistoryStore()
+    guard
+      let (coordinator, historyID) = await settledImport(
+        store: store, wordTimings: Self.twoSpeakerWordTimings(),
+        speakerLabeler: { _, _ in .failed(.modelsUnavailable) })
+    else { return }
+    #expect(coordinator.retainsRetryInputs)
+
+    coordinator.noteHistoryRowDeleted(UUID())
+    #expect(coordinator.retainsRetryInputs, "another row's deletion is not this document's")
+
+    coordinator.noteHistoryRowDeleted(historyID)
+    #expect(!coordinator.retainsRetryInputs, "a retry has nothing to write against")
+    #expect(!coordinator.canRetrySpeakerAnalysis)
+  }
+
   @Test("no word timings: the notice shows, Try again does not, and the audio is released")
   func missingTimingsIsNotRetryable() async {
     let store = FakeHistoryStore()

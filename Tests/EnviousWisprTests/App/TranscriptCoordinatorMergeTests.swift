@@ -218,6 +218,25 @@ struct TranscriptCoordinatorMergeTests {
     #expect(telemetry.outcomes == [.saved, .failed, .cancelled])
   }
 
+  @Test("delete announces the deleted row's id, and nothing on a failed delete (#2811)")
+  func deleteAnnouncesTheRow() throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    @MainActor final class Recorder {
+      private(set) var ids: [UUID] = []
+      func record(_ id: UUID) { ids.append(id) }
+    }
+    let recorder = Recorder()
+    coordinator.onRowDeleted = { recorder.record($0) }
+    let row = Self.makeTranscript()
+    try coordinator.saveAndShow(row)
+
+    coordinator.delete(row)
+    #expect(recorder.ids == [row.id])
+    #expect(coordinator.currentRow(id: row.id) == nil)
+  }
+
   @Test("noteTurnsDisplayed reports once per document per launch, never per re-selection (#2811)")
   func turnsDisplayedTelemetryOncePerDocument() throws {
     let dir = Self.makeTempDir()
