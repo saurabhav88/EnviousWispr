@@ -106,8 +106,11 @@ private struct TurnRowView: View {
     }
   }
 
-  /// On failure, the popover stays open (`isRenaming` was never cleared) showing the error and
-  /// the reverted name; on success it closes.
+  /// On failure, reopens (or keeps open) the popover showing the error and the reverted name;
+  /// on success it closes. `isRenaming = true` is required even when it is already true: an
+  /// outside-click commit has ALREADY dismissed the popover (SwiftUI cleared the binding before
+  /// `.onDisappear` fired), so without this the failure and restored name would land on an
+  /// already-gone view (found by chunk review r3).
   private func commitRename(_ name: String) {
     guard let id = renamingSpeakerId else {
       isRenaming = false
@@ -116,6 +119,7 @@ private struct TurnRowView: View {
     Task {
       if let failure = await onRename(id, name) {
         renameFailure = failure
+        isRenaming = true
       } else {
         renameFailure = nil
         isRenaming = false
@@ -161,12 +165,13 @@ private struct MarkedUpTurnText: View {
 /// dismiss through the same SwiftUI mechanism.
 ///
 /// `failure` renders inline when the caller's last commit attempt failed (plan §7) and reverts
-/// the field to the re-read current name (plan §9) — never the rejected input. Because a
-/// failure keeps `isRenaming` true, THIS SAME instance survives the failed attempt (found by
-/// chunk review r2: an instance that stayed alive kept `hasCommitted = true` from the failed
-/// Enter forever, so a following outside-click could never re-commit). `.onChange(of: failure)`
-/// resets both dismissal guards whenever a new failure arrives, so a retry behaves like a fresh
-/// attempt.
+/// the field to the re-read current name (plan §9) — never the rejected input. Two different
+/// recreation paths need two different fixes, both required (found across chunk review r2/r3):
+/// an Enter-triggered failure keeps `isRenaming` true, so THIS SAME instance survives and
+/// `.onChange(of: failure)` resets the dismissal guards on it; an outside-click-triggered
+/// failure has ALREADY dismissed the popover before the write's result comes back, so its retry
+/// reopens a BRAND NEW instance, for which `.onChange` never fires on the value it was created
+/// with — that path is covered instead by seeding `_name` from `failure.currentName` at `init`.
 private struct RenamePopoverView: View {
   let initialName: String
   let failure: RenameFailure?
@@ -185,7 +190,7 @@ private struct RenamePopoverView: View {
     self.failure = failure
     self.onCommit = onCommit
     self.onCancel = onCancel
-    self._name = State(initialValue: initialName)
+    self._name = State(initialValue: failure?.currentName ?? initialName)
   }
 
   var body: some View {
