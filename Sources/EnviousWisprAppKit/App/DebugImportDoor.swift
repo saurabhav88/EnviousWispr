@@ -35,7 +35,10 @@
     /// asked for the engine this import will use. The door walks the coordinator directly,
     /// which has no such gate of its own, so without this it would start a configuration
     /// the screen refuses and report `finished` over raw passages (cloud review, PR #2887).
-    private let polishReadiness: @MainActor () -> FileImportPolishReadiness
+    /// Async because the answer can need a probe the screen would have run on appear:
+    /// Ollama's state stays `.detecting` from launch until something calls `detectState`,
+    /// and the door has no screen (cloud review, PR #2887, round 7).
+    private let polishReadiness: @MainActor () async -> FileImportPolishReadiness
     private let pid: Int32
     private let pollInterval: Duration
     private let post: @MainActor ([String: String]) -> Void
@@ -57,7 +60,7 @@
     ///     log line; tests capture the dictionary.
     init(
       coordinator: FileImportCoordinator,
-      polishReadiness: @escaping @MainActor () -> FileImportPolishReadiness,
+      polishReadiness: @escaping @MainActor () async -> FileImportPolishReadiness,
       pid: Int32 = ProcessInfo.processInfo.processIdentifier,
       pollInterval: Duration = .milliseconds(100),
       post: (@MainActor ([String: String]) -> Void)? = nil
@@ -104,12 +107,16 @@
       let kind = info["kind"] ?? ""
       switch kind {
       case "discover":
-        reply(
-          request,
-          [
-            "status": "alive", "acceptance": acceptance() ?? "accept",
-            "polish": Self.name(of: polishReadiness()),
-          ])
+        Task { [weak self] in
+          guard let self else { return }
+          let polish = await polishReadiness()
+          reply(
+            request,
+            [
+              "status": "alive", "acceptance": acceptance() ?? "accept",
+              "polish": Self.name(of: polish),
+            ])
+        }
       case "transcribe":
         handleTranscribe(request: request, info: info)
       default:
@@ -152,26 +159,37 @@
         reply(request, ["status": "busy", "reason": reason])
         return
       }
-      // The screen's Continue is disabled for this; the door refuses the same way, before
-      // any file is chosen. Checked again before Start, because a key can be saved or a
-      // daemon can stop during the decode.
-      if case .blocked(let block) = polishReadiness() {
-        reply(request, ["status": "refused", "reason": "polishNotReady", "block": "\(block)"])
-        return
-      }
-      // Reserved before the reply so a second request arriving between the two reads busy.
+      // Reserved BEFORE the readiness probe suspends, so a second request arriving while
+      // the probe runs reads busy rather than racing it.
       inFlight = request
-      reply(request, ["status": "accepted"])
-      coordinator.choose(url: URL(fileURLWithPath: path))
-      // Captured HERE, synchronously after `choose(url:)`, never inside the task: the task
-      // runs after the caller's next suspension, and a user's own `choose(url:)` in
-      // between would be read as the door's generation, so the door would walk and
-      // start the USER's file. Found by `replacedDuringDecodeIsSuperseded`.
-      let generation = coordinator.generation
-      watchedGeneration = generation
       let deadline = ContinuousClock.now + .seconds(timeout)
       walkTask = Task { [weak self] in
         guard let self else { return }
+        // The screen's Continue is disabled for this; the door refuses the same way, before
+        // any file is chosen. Checked again before Start, because a key can be saved or a
+        // daemon can stop during the decode.
+        if case .blocked(let block) = await polishReadiness() {
+          inFlight = nil
+          walkTask = nil
+          reply(request, ["status": "refused", "reason": "polishNotReady", "block": "\(block)"])
+          return
+        }
+        // The probe suspended; the coordinator may have moved meanwhile (a user picked a
+        // file). Re-asked with the reservation excluded, since that reservation is ours.
+        if let reason = acceptance(ignoringReservation: true) {
+          inFlight = nil
+          walkTask = nil
+          reply(request, ["status": "busy", "reason": reason])
+          return
+        }
+        reply(request, ["status": "accepted"])
+        coordinator.choose(url: URL(fileURLWithPath: path))
+        // Captured HERE, synchronously after `choose(url:)`, before any suspension: a
+        // user's own `choose(url:)` after a suspension would be read as the door's
+        // generation, so the door would walk and start the USER's file. Found by
+        // `replacedDuringDecodeIsSuperseded`.
+        let generation = coordinator.generation
+        watchedGeneration = generation
         let observed = await walk(from: generation, deadline: deadline)
         guard !Task.isCancelled else { return }
         // The coordinator can move between the walk's last poll and this line; a reply
@@ -208,8 +226,8 @@
     /// navigation and `hasDocument` would refuse a FINISHED document, which is exactly the
     /// case `choose(url:)` replaces cleanly. What this refuses is a user's file in hand
     /// (`.reading`, `.ready`) that a second `choose` would silently supersede.
-    func acceptance() -> String? {
-      if inFlight != nil { return "requestInFlight" }
+    func acceptance(ignoringReservation: Bool = false) -> String? {
+      if !ignoringReservation, inFlight != nil { return "requestInFlight" }
       if coordinator.isRunning { return "running" }
       if coordinator.isSettlingTurns { return "settling" }
       // `isReadyToRun` is `.ready` OR a refusal about the ENGINE with the audio still in
@@ -267,7 +285,11 @@
           switch c.state {
           case .ready:
             guard c.step == .upload else { return .unexpected("step=\(c.step)") }
-            if case .blocked(let block) = polishReadiness() {
+            if case .blocked(let block) = await polishReadiness() {
+              // The probe suspended; if the user took the coordinator meanwhile the guard
+              // at the top of the next iteration answers, and `startOver()` below must not
+              // run on a file that is not ours.
+              guard c.generation == generation else { return .superseded }
               // The decoded file is the DOOR's own; left in `.ready` it would read as a
               // user's file in hand and block every later request. Cleared the way the
               // screen clears its own (`startOver()`), which is safe because the

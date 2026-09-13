@@ -90,13 +90,23 @@ def _wait(observer, request, statuses, timeout, echo):
 
 def _process_identity(pid):
     """(executable, start time) for `pid`, or None when it is gone. A PID can be reused
-    the moment its process exits; the start time is what tells the two apart."""
-    exe = running_enviouswispr_instances().get(str(pid))
-    if exe is None:
+    the moment its process exits; the start time is what tells the two apart.
+
+    ONE `ps` call answers both, so the pair can never mix the old process's executable
+    with a replacement's start time (cloud review, PR #2887, round 7). `comm` is the
+    executable alone on macOS (see `running_enviouswispr_instances`).
+    """
+    out = subprocess.run(["ps", "-o", "lstart=,comm=", "-p", str(pid)],
+                         capture_output=True, text=True).stdout.strip()
+    if not out:
         return None
-    started = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
-                             capture_output=True, text=True).stdout.strip()
-    if not started:
+    # lstart is five space-separated fields (e.g. `Sun Sep 13 12:25:07 2026`); the rest
+    # is the executable path, which may itself contain spaces.
+    parts = out.split(None, 5)
+    if len(parts) < 6:
+        return None
+    started, exe = " ".join(parts[:5]), parts[5]
+    if not exe.endswith(".app/Contents/MacOS/EnviousWispr"):
         return None
     return (exe, started)
 
@@ -147,10 +157,12 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
     try:
         discover = str(uuid.uuid4())
         _post({"kind": "discover", "pid": pid, "request": discover})
-        alive = _wait(observer, discover, {"alive"}, 5.0, echo)
+        # Up to 15 s: with Ollama selected the door probes the daemon first, the way the
+        # screen does on appear.
+        alive = _wait(observer, discover, {"alive"}, 15.0, echo)
         if alive is None:
             raise RuntimeError(
-                f"pid {pid} ({instances[pid]}) did not answer discover in 5 s: "
+                f"pid {pid} ({instances[pid]}) did not answer discover in 15 s: "
                 "is it a DEBUG build carrying #2885's door?")
         launch = alive["launch"]
         # The `alive` reply proves SOME EnviousWispr with this PID answered. If the one
@@ -169,9 +181,9 @@ def transcribe_file_backend(pid, path, timeout=900, worktree=None, echo=True):
         # chosen (the screen's polish gate, #2885 round 4): both come instead of
         # `accepted`, so both are terminal here. Found live: the first version waited only
         # for the busy family and timed out on a `polishNotReady` refusal.
-        first = _wait(observer, request, REFUSALS | TERMINAL | {"accepted"}, 5.0, echo)
+        first = _wait(observer, request, REFUSALS | TERMINAL | {"accepted"}, 15.0, echo)
         if first is None:
-            raise RuntimeError(f"pid {pid} did not answer the transcribe request in 5 s")
+            raise RuntimeError(f"pid {pid} did not answer the transcribe request in 15 s")
         if first["status"] != "accepted":
             return first
         final = _wait(observer, request, TERMINAL, timeout + 15, echo)

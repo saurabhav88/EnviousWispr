@@ -139,27 +139,31 @@
     }
 
     @Test("a request naming another PID gets no reply at all, not even a refusal")
-    func otherPIDIsIgnored() {
+    func otherPIDIsIgnored() async {
       let sink = ReplySink()
       let door = makeDoor(makeCoordinator(), sink: sink)
       door.handle(["kind": "discover", "pid": "1", "request": UUID().uuidString])
       var info = transcribeRequest(door)
       info["pid"] = "1"
       door.handle(info)
-      #expect(sink.replies.isEmpty)
+      // A positive control on the same door, so an empty sink cannot mean "nothing runs".
+      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "mine"])
+      let mine = await sink.reply(withStatus: "alive")
+      #expect(mine["request"] == "mine")
+      #expect(sink.replies.count == 1)
     }
 
     @Test("discover answers with the per-launch id and whether work would be accepted")
-    func discoverReportsLaunchAndAcceptance() {
+    func discoverReportsLaunchAndAcceptance() async {
       let sink = ReplySink()
       let door = makeDoor(makeCoordinator(), sink: sink)
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r1"])
-      let reply = sink.replies.first
-      #expect(reply?["status"] == "alive")
-      #expect(reply?["launch"] == door.launchID.uuidString)
-      #expect(reply?["acceptance"] == "accept")
-      #expect(reply?["pid"] == String(Self.pid))
-      #expect(reply?["request"] == "r1")
+      let reply = await sink.reply(withStatus: "alive")
+      #expect(reply["launch"] == door.launchID.uuidString)
+      #expect(reply["acceptance"] == "accept")
+      #expect(reply["polish"] == "ready")
+      #expect(reply["pid"] == String(Self.pid))
+      #expect(reply["request"] == "r1")
     }
 
     @Test(
@@ -303,8 +307,10 @@
       #expect(coordinator.file?.name == "users-own.m4a")
       #expect(coordinator.step == .upload)
       // And the door is free again.
+      let before = sink.replies.count
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r2"])
-      #expect(sink.replies.last?["acceptance"] == "fileInHand")
+      let alive = await sink.reply(withStatus: "alive", after: before)
+      #expect(alive["acceptance"] == "fileInHand")
     }
 
     @Test(
@@ -402,12 +408,18 @@
       let sink = ReplySink()
       let door = makeDoor(coordinator, sink: sink, readiness: readiness)
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r1"])
-      #expect(sink.replies.last?["polish"] == "needsSetup")
+      let alive = await sink.reply(withStatus: "alive")
+      #expect(alive["polish"] == "needsSetup")
       door.handle(transcribeRequest(door))
-      #expect(sink.replies.last?["status"] == "refused")
-      #expect(sink.replies.last?["reason"] == "polishNotReady")
-      #expect(sink.replies.last?["block"] == "needsSetup")
+      let refusedEarly = await sink.reply(withStatus: "refused")
+      #expect(refusedEarly["reason"] == "polishNotReady")
+      #expect(refusedEarly["block"] == "needsSetup")
       #expect(coordinator.state == .idle, "refused before choose(url:)")
+      // The reservation is released with the refusal: the next request is not busy.
+      let again = sink.replies.count
+      door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r2"])
+      let alive2 = await sink.reply(withStatus: "alive", after: again)
+      #expect(alive2["acceptance"] == "accept")
 
       // Open at the request, closed by the time the decode lands: refused before Start.
       let gate = ManualGate()
@@ -428,8 +440,10 @@
       #expect(late.file == nil)
       #expect(late.state == .idle)
       lateBox.value = .ready
+      let count = lateSink.replies.count
       lateDoor.handle(["kind": "discover", "pid": String(Self.pid), "request": "r3"])
-      #expect(lateSink.replies.last?["acceptance"] == "accept")
+      let alive3 = await lateSink.reply(withStatus: "alive", after: count)
+      #expect(alive3["acceptance"] == "accept")
     }
 
     @Test("a request after Done replaces the finished document exactly as the picker would")
