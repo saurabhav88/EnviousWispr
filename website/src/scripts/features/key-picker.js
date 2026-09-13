@@ -34,8 +34,10 @@ export function init(root, motion, scope) {
     elapsed += delta;
     // Reduced motion: the chosen key stays where it is, nothing moves on its own.
     if (motion.reduced.matches) return true;
+    // A demo press lasts DWELL; a tapped key holds for IDLE, then the demo
+    // moves on from it straight away.
     if (elapsed - since >= (auto ? DWELL : IDLE)) {
-      if (auto) chosen = (chosen + 1) % keys.length;
+      chosen = (chosen + 1) % keys.length;
       auto = true;
       since = elapsed;
       render();

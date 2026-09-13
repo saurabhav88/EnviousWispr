@@ -64,12 +64,12 @@ test('a tap chooses a key and holds it before the demo moves on', () => {
   const { root, keys, advance } = rig();
   keys[0].handlers.click();
   assert.equal(root.dataset.chosen, 'fn');
-  advance(5000);
+  advance(7900);
   assert.equal(root.dataset.chosen, 'fn');
-  advance(3100);
-  assert.equal(root.dataset.chosen, 'fn');
-  advance(2500);
+  advance(200);
   assert.equal(root.dataset.chosen, 'control');
+  advance(2500);
+  assert.equal(root.dataset.chosen, 'option');
 });
 
 test('reduced motion keeps the chosen key still but still takes a tap', () => {
