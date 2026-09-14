@@ -174,13 +174,13 @@ enum WhatsNewContent {
       description:
         "Eight fixes across dictation, paste and History.",
       bullets: [
-        "Stalled transcription recovery: Canceling a dictation that fails to finish now halts the process immediately while preserving your recorded audio.",
+        "Stalled transcription recovery: If a dictation never finishes transcribing, your cancel shortcut now ends the wait and keeps your recorded audio; until you restart the app, a new dictation tells you the previous one is still running.",
         "Decimal formatting: Numbers spoken digit by digit around a decimal point (e.g., \"two four oh seven point one two three\") now format properly as a single decimal number.",
         "Quick Add persistence: Quick Add continues to display the heard phrase on screen even when nothing in your list matches it.",
         "Shortcut conflict priority: When the cancel shortcut shares a key combination with Quick Add, cancel now reliably takes priority.",
-        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now aborts after 500 ms instead of freezing the app.",
+        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now gives up after 500 ms instead of waiting on it.",
         "Safer crash recovery: Crash recovery retains the key to a saved recording until the audio file itself is confirmed safely removed.",
-        "Process cleanup on launch: Any lingering background servers left over from an earlier session are automatically terminated on startup.",
+        "Process cleanup on launch: A cleanup server left over from an earlier launch is shut down on startup.",
         "History type filters: History now distinguishes between Dictations (live keybind speech) and Transcripts (imported files). A new filter switch at the top of the list lets you quickly toggle between All, Dictations, and Transcripts.",
       ],
       version: "2.5.0"
