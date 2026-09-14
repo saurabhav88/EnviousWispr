@@ -73,14 +73,31 @@ struct WorkingStepModel: Equatable {
   }
 }
 
+/// The one spelling of an estimate, before the run ("Ready in about 3 minutes") and during it
+/// ("about 3 minutes left"): rounded to the nearest minute, "under a minute" below 30 s.
+enum ImportEstimateWording {
+  static func text(seconds: Double) -> String {
+    let minutes = Int((seconds / 60).rounded())
+    switch minutes {
+    case ..<1: return "under a minute"
+    case 1: return "about a minute"
+    default: return "about \(minutes) minutes"
+    }
+  }
+}
+
 /// A rough time left, from the sections THIS view has watched land on THIS run.
 ///
 /// The first count seen is a baseline, not a measurement: a view created mid-run (the user
 /// opened the wizard at section 9) would otherwise credit nine sections to one instant. Three
-/// TIMED sections must land before a number is shown, and the per-section time is the MEDIAN so
-/// one slow section (a polish timeout at 15 s beside 12 s neighbours) does not swing it. There
-/// is no pre-run fallback: `estimateText` estimates the whole run, not what is left, and a
-/// wrong "left" is worse than none.
+/// TIMED sections must land before a number is shown, and the per-section time is the MEAN
+/// (elapsed since the first landing ÷ sections landed since). Not the median: on a document
+/// made of speaker turns the per-section time is skewed, not noisy (a 48-minute two-voice
+/// file polished with a median section of 0.27 s and a mean of 0.72 s), and remaining ×
+/// median read "about a minute left" while two minutes remained (#2817, measured 2026-09-13).
+/// A slow section's time is real waiting and counts in full. There is no pre-run fallback:
+/// `estimateText` estimates the whole run, not what is left, and a wrong "left" is worse
+/// than none.
 struct SectionPace: Equatable {
   private var baseline: Int?
   private var landings: [(count: Int, at: Date)] = []
@@ -106,41 +123,22 @@ struct SectionPace: Equatable {
 
   /// Seconds per section, or `nil` until enough have landed. The first landing only starts
   /// the clock (the baseline has no time of its own), so `sectionsNeeded` counts sections
-  /// with a MEASURED interval behind them.
+  /// with a MEASURED interval behind them. A landing may carry more than one section (two
+  /// parts finishing between two renders); elapsed ÷ sections weights each by its share.
   func secondsPerSection() -> Double? {
     guard let first = landings.first, let last = landings.last,
       last.count - first.count >= Self.sectionsNeeded
     else { return nil }
-    // Each landing may carry more than one section (two parts finishing between two
-    // renders), so an interval's rate is elapsed / sections, entered ONCE PER SECTION so a
-    // batch of three keeps three votes in the median (a batch with one vote let a single
-    // slow section triple the figure; found by Codex).
-    var rates: [Double] = []
-    var previous = first
-    for landing in landings.dropFirst() {
-      let sections = landing.count - previous.count
-      let seconds = landing.at.timeIntervalSince(previous.at)
-      if sections > 0, seconds > 0 {
-        rates.append(contentsOf: repeatElement(seconds / Double(sections), count: sections))
-      }
-      previous = landing
-    }
-    guard !rates.isEmpty else { return nil }
-    let sorted = rates.sorted()
-    let mid = sorted.count / 2
-    return sorted.count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+    let seconds = last.at.timeIntervalSince(first.at)
+    guard seconds > 0 else { return nil }
+    return seconds / Double(last.count - first.count)
   }
 
   /// "about 3 minutes left" / "about a minute left" / "under a minute left", or `nil`.
   func remainingText(sectionsDone: Int, sectionsTotal: Int) -> String? {
     guard let perSection = secondsPerSection(), sectionsTotal > sectionsDone else { return nil }
     let seconds = Double(sectionsTotal - sectionsDone) * perSection
-    let minutes = Int((seconds / 60).rounded())
-    switch minutes {
-    case ..<1: return "under a minute left"
-    case 1: return "about a minute left"
-    default: return "about \(minutes) minutes left"
-    }
+    return "\(ImportEstimateWording.text(seconds: seconds)) left"
   }
 
   static func == (lhs: SectionPace, rhs: SectionPace) -> Bool {
