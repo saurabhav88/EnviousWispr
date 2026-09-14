@@ -249,7 +249,10 @@ def cmd_preflight(args):
             level, detail = pf.door_present(app_path)
             print(f"{level.upper():5} {'import-door':17} {detail}")
             if level == "fail":
-                warnings.append(f"import-door: {detail} (only transcribe-file needs it)")
+                # With --file the caller is checking for transcribe-file, and a build without
+                # the door cannot run it: a FAIL, not a heads-up (cloud review of PR #2914).
+                (fails if args.file else warnings).append(
+                    f"import-door: {detail}" + ("" if args.file else " (only transcribe-file needs it)"))
             if args.file:
                 level, detail = pf.import_file_ok(args.file)
                 print(f"{level.upper():5} {'import-file':17} {detail}")

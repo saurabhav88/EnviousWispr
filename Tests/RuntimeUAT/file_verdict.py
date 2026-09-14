@@ -21,6 +21,7 @@ Transcript-ready has NO log line; the History row's `createdAt` (Cocoa epoch) is
 
 import datetime as dt
 import json
+import math
 import os
 import re
 import sys
@@ -36,9 +37,31 @@ ASSEMBLED = re.compile(r"\[TurnStorage\] (?:assembled|raw) turns=(?P<turns>\d+)(
 POLISHED = re.compile(r"LLM polish complete: (?P<chars>\d+) chars in (?P<secs>[0-9.]+)s")
 SKIPPED = re.compile(r"LLM polish skipped: transcript too short")
 ALIGN_FINAL = re.compile(r"\[TurnAlign\] turns=(?P<turns>\d+) aligned=(?P<aligned>\d+).* final=true")
-STORED = re.compile(r"\[TurnStorage\] outcome=(?P<outcome>stored|stopped) turns=(?P<turns>\d+) fallback=(?P<fallback>\d+) emitted=(?P<emitted>\w+) ms=(?P<ms>\d+)")
+STORED = re.compile(r"\[TurnStorage\] outcome=(?P<outcome>[a-z_]+) turns=(?P<turns>\d+) fallback=(?P<fallback>\d+) emitted=(?P<emitted>\w+) ms=(?P<ms>\d+)")
+DOOR_REASON = re.compile(r"reason=(?P<reason>[A-Za-z]+)")
 
-TERMINAL = ("stored", "stopped")
+# The coordinator's terminal outcomes, the CLOSED set `TelemetryService.FileImportTurnsOutcome`
+# (raw values), each with the verdict it earns. The self-test reads that enum from the Swift
+# source when the checkout is present and fails if a case is missing here, so a new outcome
+# cannot fall into a default.
+#   0 PASS: the product did what it promises for the file.
+#   1 FAIL: the product did not.
+#   2 INSTRUMENT: the run was interrupted or its environment was not ready; no claim either way.
+TERMINAL_OUTCOMES = {
+    "stored": (0, None),
+    "single_no_turns": (0, "one voice: a plain transcript, no turns, as designed"),
+    "stopped": (1, "stopped mid-cleanup"),
+    "save_failed": (1, "the History save failed"),
+    "no_word_timings": (1, "no usable word timings, so no speaker labels (expected only for a script written without spaces)"),
+    "row_deleted": (2, "the History row was deleted while the run was in flight"),
+    "polisher_not_ready": (2, "the polisher could not start; turns kept their raw words"),
+}
+# The door's terminal `refused` reasons (`FileImportRejection` names in DebugImportDoor.swift),
+# a run the door accepted and the app then rejected before any turn storage.
+REFUSED_REASONS = {
+    "cannotRead": 1, "noAudio": 1, "noSpeechFound": 1, "failed": 1,  # `failed:<message>` reads as `failed`
+    "engineBusy": 2, "engineNotInstalled": 2, "engineNotReady": 2, "polisherNotReady": 2,
+}
 
 
 CATEGORIES = {"FileImportCoordinator", "DebugImportDoor", "PipelineTiming", "LLM"}
@@ -63,7 +86,10 @@ def collect_import(lines, request=None):
                if m and m.group("cat") in CATEGORIES]
     idx = [i for i, (m, _l) in enumerate(stamped) if m and STORED.search(m.group("msg"))]
     if not idx:
-        return None
+        # No terminal row: the run may still have ENDED at the door (a refusal after accept,
+        # a timeout), which is graded on the reply alone.
+        door = _door_terminal(stamped, 0, request)
+        return {"outcome": None, "door": door} if door else None
     end = idx[-1]
     starts = [i for i, (m, _l) in enumerate(stamped[:end]) if m and SPEAKER.search(m.group("msg"))]
     start = starts[-1] if starts else 0
@@ -86,31 +112,66 @@ def collect_import(lines, request=None):
         elif f := ALIGN_FINAL.search(msg):
             rec["align_final"] = {"turns": int(f.group("turns")), "aligned": int(f.group("aligned"))}
     # The door's terminal reply lands a beat AFTER the stored row (the coordinator
-    # settles first), so look past `end` too, but only at door lines, and only at
-    # the caller's request when it names one (an earlier request's `finished` in
-    # the same window must not be attached to this run).
-    for m, _l in stamped[start:]:
-        if m and m.group("cat") == "DebugImportDoor":
-            msg = m.group("msg")
-            if request is not None and f"request={request}" not in msg:
-                continue
-            d, h = DOOR.search(msg), DOOR_HISTORY.search(msg)
-            if d and d.group("status") in ("finished", "refused", "superseded", "timeout", "unexpected", "cancelled"):
-                rec["door"] = {"status": d.group("status"), "history": h.group("history") if h else None}
+    # settles first), so look past `end` too.
+    rec["door"] = _door_terminal(stamped, start, request)
     t = STORED.search(stamped[end][0].group("msg"))
     rec.update(ts_stored=stamped[end][0].group("ts"), outcome=t.group("outcome"), stored_turns=int(t.group("turns")),
                fallback=int(t.group("fallback")), emitted=t.group("emitted") == "true")
     return rec
 
 
+def _door_terminal(stamped, start, request):
+    """The last terminal door reply at or after `start`, only for the caller's request when
+    it names one (an earlier request's `finished` in the same window must not be attached
+    to this run), or None."""
+    found = None
+    for m, _l in stamped[start:]:
+        if m and m.group("cat") == "DebugImportDoor":
+            msg = m.group("msg")
+            if request is not None and f"request={request}" not in msg:
+                continue
+            d, h, r = DOOR.search(msg), DOOR_HISTORY.search(msg), DOOR_REASON.search(msg)
+            if d and d.group("status") in ("finished", "refused", "superseded", "timeout", "unexpected", "cancelled"):
+                found = {"status": d.group("status"), "history": h.group("history") if h else None,
+                         "reason": r.group("reason") if r else None}
+    return found
+
+
 def _int(s):
     return int(s) if s is not None else None
+
+
+def row_is_malformed(row):
+    """Why a loaded History row cannot be read, or None. A syntactically valid but
+    incomplete row (no `createdAt`, a null stamp, a non-numeric duration, turns that
+    are not a list) is an INSTRUMENT condition, never a product verdict."""
+    if not isinstance(row, dict):
+        return "row is not an object"
+    if not isinstance(row.get("createdAt"), (int, float)) or isinstance(row.get("createdAt"), bool):
+        return "row has no numeric createdAt"
+    if row.get("duration") is not None and not isinstance(row.get("duration"), (int, float)):
+        return "row duration is not numeric"
+    if row.get("turns") is not None and not isinstance(row.get("turns"), list):
+        return "row turns is not a list"
+    if not isinstance(row.get("id"), str) or not row["id"]:
+        return "row has no id"
+    for key, kind in (("text", str), ("polishedText", str), ("speakerNames", dict), ("importedFileName", str)):
+        if row.get(key) is not None and not isinstance(row[key], kind):
+            return f"row {key} is not a {kind.__name__}"
+    try:
+        dt.datetime.fromtimestamp(row["createdAt"] + COCOA_EPOCH).astimezone()
+        if row.get("duration") is not None and (isinstance(row["duration"], bool) or not math.isfinite(float(row["duration"]))):
+            return "row duration is not a finite number"
+    except (OverflowError, ValueError, OSError):
+        return "row createdAt is out of range"
+    return None
 
 
 def row_facts(row):
     """The History row's own numbers: words from `text` (the raw transcript, what
     `estimateText` is about), sections = `turns`, file seconds, the transcript-ready
-    stamp, the file name. Tolerates a row saved before polish finished."""
+    stamp, the file name. Tolerates a row saved before polish finished; call
+    `row_is_malformed` first."""
     created = dt.datetime.fromtimestamp(row["createdAt"] + COCOA_EPOCH).astimezone()
     return {"words": len((row.get("text") or "").split()),
             "polished_words": len((row.get("polishedText") or "").split()),
@@ -125,16 +186,28 @@ def row_facts(row):
 def classify_import(rec, row, expect_door=True):
     """PURE. Returns (exit_code, note): 0 pass, 1 fail, 2 instrument.
 
-    PASS needs: a terminal `stored` row, `emitted=true`, the History row present,
+    PASS needs: a terminal `stored` (or `single_no_turns`) row, the History row present,
     and the row's section count equal to the stored count. When the run went
     through the door, the door must have said `finished` naming that row.
     FAIL is a `stopped` terminal, a door refusal, or a row that disagrees with the
     log. INSTRUMENT is no terminal row, no History row, or a `superseded` door
     (which claims nothing about the row)."""
     if rec is None:
-        return 2, "no `[TurnStorage] outcome=` row since the mark; the run has not finished or the log is not being written"
-    if rec["outcome"] == "stopped":
-        return 1, f"stopped mid-cleanup at {rec['stored_turns']} turns (fallback={rec['fallback']})"
+        return 2, "no `[TurnStorage] outcome=` row and no terminal door reply since the mark; the run has not finished or the log is not being written"
+    if rec["outcome"] is None:
+        # Ended at the door with no turn storage: a refusal after accept, or an interruption.
+        door = rec["door"]
+        if door["status"] == "refused":
+            code = REFUSED_REASONS.get(door["reason"] or "", 2)  # an unknown reason claims nothing
+            return code, f"the app refused the file after accepting it: {door['reason'] or 'no reason given'}"
+        return 2, f"door reply `{door['status']}` with no turn storage; the run did not complete"
+    if rec["outcome"] not in TERMINAL_OUTCOMES:
+        return 2, f"unknown terminal outcome `{rec['outcome']}`; add it to TERMINAL_OUTCOMES from FileImportTurnsOutcome"
+    code, note = TERMINAL_OUTCOMES[rec["outcome"]]
+    if code == 1:
+        return 1, f"{note} (turns={rec['stored_turns']}, fallback={rec['fallback']})"
+    if code == 2:
+        return 2, note
     if expect_door:
         door = rec["door"]
         if door is None:
@@ -143,18 +216,20 @@ def classify_import(rec, row, expect_door=True):
             return 2, "door reply `superseded` (a Stop or a new file on screen); the row is unattributable"
         if door["status"] != "finished":
             return 1, f"door reply `{door['status']}`; no row was produced"
-    if expect_door and not rec["door"]["history"]:
-        return 2, "door said finished but named no History row; the reply is malformed"
+        if not door["history"]:
+            return 2, "door said finished but named no History row; the reply is malformed"
     if row is None:
         return 2, "the History row named by the log is not on disk; `saved` was a claim, not a read"
+    if (why := row_is_malformed(row)):
+        return 2, f"the History row is malformed: {why}"
     facts = row_facts(row)
     if expect_door and rec["door"]["history"] and rec["door"]["history"].upper() != (facts["id"] or "").upper():
         return 1, f"door named row {rec['door']['history']} but the row read is {facts['id']}"
     if facts["sections"] != rec["stored_turns"]:
         return 1, f"row has {facts['sections']} turns, log stored {rec['stored_turns']}"
-    if not rec["emitted"]:
-        return 1, "stored row was not emitted to the screen (emitted=false)"
-    return 0, None
+    # `emitted` is the coordinator's telemetry flag (false on a Clean it again over the same
+    # row, `FileImportCoordinator.swift:2339`), reported and never graded.
+    return 0, note
 
 
 def file_verdict(lines, row, expect_door=True, request=None):
@@ -162,24 +237,25 @@ def file_verdict(lines, row, expect_door=True, request=None):
     Returns (exit_code, evidence dict)."""
     rec = collect_import(lines, request=request)
     code, note = classify_import(rec, row, expect_door)
-    ev = {"exit_code": code, "note": note, "outcome": rec["outcome"] if rec else None,
-          "stored_turns": rec["stored_turns"] if rec else None,
-          "fallback": rec["fallback"] if rec else None,
-          "both": (rec["assembled"] or {}).get("both") if rec else None,
-          "speaker_ms": (rec["speaker"] or {}).get("ms") if rec else None,
-          "speaker_outcome": (rec["speaker"] or {}).get("outcome") if rec else None,
-          "pieces": (rec["polished"] + rec["skipped"]) if rec else None,
-          "polished": rec["polished"] if rec else None,
-          "skipped": rec["skipped"] if rec else None,
-          "polish_secs": round(rec["polish_secs"], 1) if rec else None,
+    full = rec if rec and rec.get("outcome") is not None else None
+    ev = {"exit_code": code, "note": note, "outcome": full["outcome"] if full else None,
+          "stored_turns": full["stored_turns"] if full else None,
+          "fallback": full["fallback"] if full else None,
+          "both": (full["assembled"] or {}).get("both") if full else None,
+          "speaker_ms": (full["speaker"] or {}).get("ms") if full else None,
+          "speaker_outcome": (full["speaker"] or {}).get("outcome") if full else None,
+          "pieces": (full["polished"] + full["skipped"]) if full else None,
+          "polished": full["polished"] if full else None,
+          "skipped": full["skipped"] if full else None,
+          "polish_secs": round(full["polish_secs"], 1) if full else None,
           "door": rec["door"] if rec else None}
-    if row is not None:
+    if row is not None and not row_is_malformed(row):
         f = row_facts(row)
         ev.update(history=f["id"], file_name=f["file_name"], words=f["words"], polished_words=f["polished_words"],
                   sections=f["sections"], file_seconds=round(f["file_seconds"], 1), speakers=f["speakers"],
                   transcript_ready=f["created"].replace(microsecond=0).isoformat())
-        if rec:
-            stored_at = dt.datetime.fromisoformat(rec["ts_stored"])
+        if full:
+            stored_at = dt.datetime.fromisoformat(full["ts_stored"])
             ev["clean_wall_s"] = round((stored_at - f["created"]).total_seconds())
     return code, ev
 
@@ -199,7 +275,8 @@ def format_verdict(ev):
     if ev.get("clean_wall_s") is not None:
         out.append(f"   transcript ready {ev['transcript_ready']}  ->  stored {ev['clean_wall_s']} s later")
     if ev.get("door"):
-        out.append(f"   door: {ev['door']['status']} history={ev['door']['history']}")
+        out.append(f"   door: {ev['door']['status']} history={ev['door']['history']}"
+                   + (f" reason={ev['door']['reason']}" if ev['door'].get('reason') else ""))
     return "\n".join(out)
 
 
@@ -238,7 +315,7 @@ def _self_test():
     check("speaker ms read", rec["speaker"]["ms"] == 1072)
     check("both count read from the assembled row", rec["assembled"]["both"] == 1)
     check("pieces = polished + skipped = sections", rec["polished"] + rec["skipped"] == 17)
-    check("door terminal attached with the row id", rec["door"] == {"status": "finished", "history": row_id})
+    check("door terminal attached with the row id", rec["door"] == {"status": "finished", "history": row_id, "reason": None})
     code, ev = file_verdict(lines, row)
     check("the short run passes", code == 0)
     check("wall time from createdAt to the stored stamp", ev["clean_wall_s"] == 11)
@@ -266,6 +343,55 @@ def _self_test():
           file_verdict(lines[:-1] + [D.format(s=35) + "executable=/x/EnviousWispr launch=L pid=1 request=r1 status=finished"], row)[0] == 2)
     check("lines outside the four categories are ignored, so a cut fixture and the live log agree",
           collect_import(lines + ["[2026-09-13T18:51:36-04:00] [INFO] [CorrectionDebug] [TurnStorage] outcome=stopped turns=1 fallback=1 emitted=true ms=1"])["outcome"] == "stored")
+    # The outcome table is the CLOSED set the coordinator can write: read the enum's raw
+    # values from the Swift source when this checkout has it (CI does), and require every
+    # case in TERMINAL_OUTCOMES and nothing else.
+    swift = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                         "Sources", "EnviousWisprServices", "TelemetryService.swift")
+    if os.path.isfile(swift):
+        src = open(swift, encoding="utf-8").read()
+        body = src[src.index("enum FileImportTurnsOutcome"):]
+        body = body[:body.index("\n  }\n")]
+        cases = set(re.findall(r'case\s+(\w+)\s*=\s*"([a-z_]+)"', body))
+        raw = {v for _k, v in cases} | {k for k in re.findall(r"case\s+(\w+)\s*$", body, re.M)}
+        # bare cases (no raw value) use their name
+        raw |= {k for k in re.findall(r"case\s+(\w+)\s*\n", body) if "=" not in k}
+        check(f"TERMINAL_OUTCOMES matches FileImportTurnsOutcome {sorted(raw ^ set(TERMINAL_OUTCOMES))}",
+              raw == set(TERMINAL_OUTCOMES))
+    else:
+        check("TERMINAL_OUTCOMES checked against the Swift enum (checkout absent, skipped)", True)
+    unknown = [lines[1], C.format(s=30) + "[TurnStorage] outcome=teleported turns=0 fallback=0 emitted=true ms=3"]
+    check("an outcome the table does not know is INSTRUMENT, never a pass or a fail",
+          file_verdict(unknown, row, expect_door=False)[0] == 2)
+    single_row = dict(row, turns=[])
+    for outcome, code in (("single_no_turns", 0), ("save_failed", 1), ("no_word_timings", 1),
+                          ("row_deleted", 2), ("polisher_not_ready", 2)):
+        term = [lines[1], C.format(s=30) + f"[TurnStorage] outcome={outcome} turns=0 fallback=0 emitted=true ms=3"]
+        got = file_verdict(term, single_row, expect_door=False)[0]
+        check(f"outcome {outcome} exits {code}", got == code)
+    single = [lines[0], lines[1], C.format(s=30) + "[TurnStorage] outcome=single_no_turns turns=0 fallback=0 emitted=true ms=3",
+              D.format(s=31) + f"executable=/x/EnviousWispr history={row_id} launch=L pid=1 polisher=eg-1 request=r1 status=finished"]
+    check("a one-voice file passes through the door with a no-turn row", file_verdict(single, single_row)[0] == 0)
+    # The door accepted and the app then refused before any turn storage.
+    for reason, code in (("noAudio", 1), ("cannotRead", 1), ("noSpeechFound", 1), ("engineBusy", 2), ("polisherNotReady", 2)):
+        refused = [lines[0], D.format(s=23) + f"executable=/x/EnviousWispr launch=L pid=1 reason={reason} request=r1 saved=false status=refused"]
+        got, ev = file_verdict(refused, None, request="r1")
+        check(f"door refused {reason} exits {code} with the reason", got == code and reason in (ev["note"] or ""))
+    check("a timeout at the door with no turn storage is INSTRUMENT",
+          file_verdict([lines[0], D.format(s=23) + "executable=/x/EnviousWispr launch=L pid=1 request=r1 status=timeout"], None)[0] == 2)
+    check("door refused with an unknown reason is INSTRUMENT",
+          file_verdict([lines[0], D.format(s=23) + "executable=/x/EnviousWispr launch=L pid=1 reason=somethingNew request=r1 status=refused"], None)[0] == 2)
+    check("door refused failed:<message> is FAIL",
+          file_verdict([lines[0], D.format(s=23) + "executable=/x/EnviousWispr launch=L pid=1 reason=failed:decoder request=r1 status=refused"], None)[0] == 1)
+    # A Clean it again over the same row writes emitted=false: still a PASS.
+    again = lines[:-2] + [C.format(s=35) + "[TurnStorage] outcome=stored turns=17 fallback=0 emitted=false ms=11", lines[-1]]
+    check("emitted=false (a re-clean of the same row) is not a failure", file_verdict(again, row)[0] == 0)
+    # Malformed rows are the instrument, never a product verdict.
+    for bad in (dict(row, createdAt=None), {k: v for k, v in row.items() if k != "createdAt"},
+                dict(row, duration="long"), dict(row, turns="17"), dict(row, id=""),
+                dict(row, text=743), dict(row, speakerNames=["a"]), dict(row, duration=float("inf")),
+                dict(row, createdAt=1e300)):
+        check(f"malformed row is INSTRUMENT ({row_is_malformed(bad)})", file_verdict(lines, bad)[0] == 2)
     # A hand-driven run (no door) passes on the coordinator rows alone.
     check("no-door run passes with expect_door=False", file_verdict(lines[1:-1], row, expect_door=False)[0] == 0)
     # 05:33-build shape (`raw turns=`) still parses.
