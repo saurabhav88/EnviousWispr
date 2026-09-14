@@ -66,7 +66,7 @@ If a polisher needs setting up (a key, a download, Ollama not running), the same
 
 ### The time estimate
 
-The Review step shows an estimate such as "Ready in about 3 minutes" before you start. It is worked out from the length of your recording: about four seconds of work for every minute of audio, rounded to the nearest minute, or "under a minute" for a short file. On the Working step, once a few sections have finished, the card shows a time left measured from how fast they actually went.
+The Review step shows an estimate such as "Ready in about 3 minutes" before you start. It is worked out from the length of your recording and the engine you chose: about four seconds of work for every minute of audio with Fast, about six with All Languages, rounded to the nearest minute, or "under a minute" for a short file. On the Working step, once a few sections have finished, the card shows a time left measured from how fast they actually went.
 
 ### Stopping
 
