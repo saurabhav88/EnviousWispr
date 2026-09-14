@@ -402,6 +402,62 @@
       #expect(refused["saved"] == nil)
     }
 
+    /// After Start, the walk's loop-top generation guard is the ONLY in-loop check: the
+    /// post-probe guard belongs to the before-Start branch, and the reply-time check runs
+    /// only once the walk has returned. `stop()` bumps the generation before it sets
+    /// `.stopped`, and a replacement `choose(url:)` bumps it again, so the next poll must
+    /// read `superseded` and the door must claim nothing from either run. Night battery
+    /// 2026-09-14, #2886 row 5: no test drove this path, so loosening the guard survived.
+    @Test("a Stop after the door's own Start reads superseded on the next poll, with no history claimed")
+    func stopAfterStartIsSuperseded() async {
+      let sink = ReplySink()
+      let gate = ManualGate()
+      let coordinator = makeCoordinator(transcribeGate: gate)
+      let door = makeDoor(coordinator, sink: sink)
+      door.handle(transcribeRequest(door))
+      _ = await sink.reply(withStatus: "accepted")
+      let running = await settleUntilObserved { coordinator.isRunning }
+      #expect(running)
+      let generationAtStart = coordinator.generation
+
+      coordinator.stop()
+      #expect(coordinator.generation == generationAtStart + 1, "Stop bumps the generation")
+      let superseded = await sink.reply(withStatus: "superseded")
+      #expect(superseded["status"] == "superseded", "\(superseded)")
+      #expect(superseded["history"] == nil)
+      #expect(superseded["saved"] == nil)
+      #expect(!sink.statuses().contains("finished"), "a stopped run was reported as this request's")
+      await gate.open()
+    }
+
+    @Test("a replacement file chosen after the door's own Start is never claimed: superseded, and the user's file untouched")
+    func replacementAfterStartIsSuperseded() async {
+      let sink = ReplySink()
+      let gate = ManualGate()
+      let coordinator = makeCoordinator(transcribeGate: gate)
+      let door = makeDoor(coordinator, sink: sink)
+      door.handle(transcribeRequest(door))
+      _ = await sink.reply(withStatus: "accepted")
+      let running = await settleUntilObserved { coordinator.isRunning }
+      #expect(running)
+
+      // The coordinator refuses `choose(url:)` while running, so the user's replacement
+      // arrives the only way it can after Start: Stop, then a new file. Two bumps.
+      coordinator.stop()
+      coordinator.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
+      let usersReady = await settleUntilObserved {
+        if case .ready = coordinator.state { return true } else { return false }
+      }
+      #expect(usersReady)
+      let superseded = await sink.reply(withStatus: "superseded")
+      #expect(superseded["status"] == "superseded", "\(superseded)")
+      #expect(superseded["history"] == nil)
+      #expect(coordinator.file?.name == "users-own.m4a", "the door released the user's file")
+      #expect(coordinator.step == .upload, "the door advanced or started the user's file")
+      #expect(!sink.statuses().contains("finished"))
+      await gate.open()
+    }
+
     @Test("a refusal raised after Start names THIS run's polisher; one raised before Start names none")
     func polisherIsThisRunsOrAbsent() async {
       // No speech found is raised after `beginRun()`: the polisher belongs to this run.
