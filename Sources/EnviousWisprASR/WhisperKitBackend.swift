@@ -554,14 +554,21 @@ public actor WhisperKitBackend: ASRBackend {
     guard let kit = await readyKitAfterWarmupDrain() else { throw ASRError.notReady }
     let totalSeconds = Double(audioSamples.count) / Double(WhisperKit.sampleRate)
     let highWater = ProgressHighWater()
-    var segmentCallback: SegmentDiscoveryCallback? = nil
+    // The kit's INSTANCE property, not the per-call `segmentCallback:` parameter: on the
+    // chunked `.vad` path (every file over one window) `transcribeWithOptions` builds its
+    // per-chunk callback from `self.segmentDiscoveryCallback` and never reads the parameter
+    // (WhisperKit.swift:755-767, :896-903 at the pin); the parameter reaches only the
+    // single-window path. Measured 2026-09-14 on the 100-minute file: the parameter alone
+    // produced zero ticks. Set for this call, cleared on every exit; the import holds the
+    // engine claim, so no other decode shares the kit meanwhile.
     if let observer = progressObserver {
-      segmentCallback = { (segments: [TranscriptionSegment]) -> Void in
+      kit.segmentDiscoveryCallback = { (segments: [TranscriptionSegment]) -> Void in
         let ends: [Float] = segments.map { $0.end }
         let fraction = WhisperKitBackend.fractionReached(segmentEnds: ends, totalSeconds: totalSeconds)
         if let raised = highWater.raise(to: fraction) { observer(raised) }
       }
     }
+    defer { if progressObserver != nil { kit.segmentDiscoveryCallback = nil } }
 
     let paddedSamples = Self.padAudioWithSilence(audioSamples)
     let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
@@ -582,9 +589,7 @@ public actor WhisperKitBackend: ASRBackend {
       // TODO(#827): watchdog needs a decoder-step or token/segment progress
       // callback owned by WhisperKit; cancellation depends on this await
       // returning.
-      results = try await kit.transcribe(
-        audioArray: paddedSamples, decodeOptions: decodeOptions, callback: nil,
-        segmentCallback: segmentCallback)
+      results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)
     } catch {
       throw ASRError.transcriptionFailed(error.localizedDescription)
     }

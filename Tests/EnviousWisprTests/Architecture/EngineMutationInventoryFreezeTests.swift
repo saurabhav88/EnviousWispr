@@ -1052,9 +1052,8 @@ import Testing
     // this method does not currently have from any known caller.
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
-      // #2918: the call spans three lines (a `segmentCallback:` for the transcribing bar);
-      // the scanner reads the first. Same call, same gap.
-      text: "results = try await kit.transcribe(",
+      text:
+        "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -2122,7 +2121,8 @@ import Testing
         text: "result = try await activeEngine.transcribe(recovered.samples, options)"),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
-        text: "results = try await kit.transcribe("
+        text:
+          "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)"
       ),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",
