@@ -466,6 +466,8 @@ def cmd_run(args):
     if args.file and args.recipe != "transcribe-file":
         raise SystemExit(f"REFUSED: --file is read by transcribe-file only; {args.recipe} would ignore it and grade "
                          "a dictation instead")
+    if args.timeout is not None and args.recipe != "transcribe-file":
+        raise SystemExit(f"REFUSED: --timeout is read by transcribe-file only; {args.recipe} keeps its own timing")
     if args.recipe == "transcribe-file":
         # The door driver imports PyObjC at module level, so it is imported HERE, not at the
         # top of this file: `uat.py --self-test` runs on the hosted runner without PyObjC.
@@ -503,10 +505,11 @@ def cmd_run(args):
             print(f"INSTRUMENT: another EnviousWispr instance is running and shares app.log ({listing}); "
                   "the verdict would be unattributable. One dev app per Mac")
             return 2
+        timeout = 900 if args.timeout is None else args.timeout
         mark = dt.datetime.now().astimezone()
-        print(f"== RUN transcribe-file -> transcribe_file_backend(pid={pid}, {path!r}, timeout={args.timeout}) ==")
+        print(f"== RUN transcribe-file -> transcribe_file_backend(pid={pid}, {path!r}, timeout={timeout}) ==")
         try:
-            reply = w.transcribe_file_backend(pid, path, timeout=args.timeout, worktree=worktree, echo=True)
+            reply = w.transcribe_file_backend(pid, path, timeout=timeout, worktree=worktree, echo=True)
         except RuntimeError as e:
             # The door never answered (the app exited after PID resolution, a build without
             # the door, a wrong worktree): the instrument, not the product.
@@ -524,9 +527,18 @@ def cmd_run(args):
             print(f"INSTRUMENT: another EnviousWispr instance started during the run and shares app.log "
                   f"({listing}); the terminal row cannot be attributed to this build")
             return 2
-        # The stored row and the door's terminal reply land a beat apart; settle once
-        # BEFORE reading either the row or the log, so both snapshots are the same state.
-        time.sleep(0.5)
+        # The door posts its reply FIRST and schedules the matching log line in a Task after
+        # (DebugImportDoor.postLive), and the stored row lands a beat before either. Poll the
+        # log for THIS request's terminal line, up to 10 s, before reading anything; a fixed
+        # settle read a slow logger as INSTRUMENT (cloud round 4).
+        request_id = reply.get("request")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            recent = w.log_entries_since(mark)
+            if any("[DebugImportDoor]" in l and f"request={request_id}" in l
+                   and f"status={reply.get('status')}" in l for l in recent):
+                break
+            time.sleep(0.25)
         history = reply.get("history")
         row_path = os.path.expanduser(f"~/Library/Application Support/EnviousWispr/transcripts/{history}.json") if history else None
         row = None
@@ -697,7 +709,7 @@ def main(argv=None):
     run.add_argument("--expect")
     run.add_argument("--audio")
     run.add_argument("--file", help="transcribe-file: the audio/video file to hand through the door")
-    run.add_argument("--timeout", type=int, default=900, help="transcribe-file: seconds to wait for the door's terminal reply (cap 3600)")
+    run.add_argument("--timeout", type=int, default=None, help="transcribe-file: seconds to wait for the door's terminal reply (default 900, cap 3600)")
     run.add_argument("--run-dir")
     run.set_defaults(fn=cmd_run)
     v = sub.add_parser("verdict", help="dictation verdicts from app.log since the mark")
