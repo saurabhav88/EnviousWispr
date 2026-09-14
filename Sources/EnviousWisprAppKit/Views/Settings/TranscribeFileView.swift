@@ -1327,21 +1327,28 @@ struct TranscribeFileView: View {
       }
     }
     // The marked-up view (#2773): the original words with the cleanup on them, and the
-    // counts that are the point. The marks are one attributed text so selection and copy
-    // behave like the other two views.
+    // counts that are the point. One attributed `Text` PER PASSAGE in a lazy stack (#2817
+    // item 5), the shape the turn view already has, so the passages read as paragraphs
+    // like the Cleaned view's and only the visible ones are laid out. Measured on the
+    // 8,352-word solo memo (PR #2817 items 4+5): main-thread time during a 5 s scroll did
+    // not change against the one-text version; the two-hour case was not reproducible.
+    // The legend reads the fold; the passages come from the same worker, so the two
+    // cannot disagree.
     if coordinator.documentView == .markedUp, !coordinator.parts.isEmpty {
       Group {
-        if let markedUp = coordinator.markedUp {
-          VStack(alignment: .leading, spacing: 8) {
+        if let markedUp = coordinator.markedUp, let passages = coordinator.markedUpPassages {
+          LazyVStack(alignment: .leading, spacing: 12) {
             Text(markedUp.legend)
               .font(.stHelper)
               .foregroundStyle(Color.stTextSecondary)
               .accessibilityLabel("Cleanup summary: \(markedUp.legend)")
-            Text(Self.markedUpText(markedUp.segments))
-              .lineSpacing(6)
-              .textSelection(.enabled)
-              // The marks are visual; this is what a screen reader gets instead.
-              .accessibilityLabel(Self.markedUpAccessibilityText(markedUp.segments))
+            ForEach(Array(passages.enumerated()), id: \.offset) { _, passage in
+              Text(Self.markedUpText(passage.segments))
+                .lineSpacing(6)
+                .textSelection(.enabled)
+                // The marks are visual; this is what a screen reader gets instead.
+                .accessibilityLabel(Self.markedUpAccessibilityText(passage.segments))
+            }
           }
         } else {
           ProgressView("Comparing words")
@@ -1639,20 +1646,20 @@ struct TranscribeFileView: View {
   /// Change stays offered in every case: a document that was not polished is exactly the one
   /// a user wants to re-run.
   private var polishCredit: String {
-    guard let provider = coordinator.runConfiguration?.polishProvider, provider != LLMProvider.none
-    else { return "No AI polish" }
-    guard coordinator.parts.contains(where: \.wasPolished) else { return "No AI polish applied" }
-    let complete: Bool
-    if case .finished = coordinator.state {
-      // #2851 follow-up: a section the polisher declined for being too short is not a
-      // failure (`PartOutcome.isUnpolished`); with one part per speaker section, "Yeah." must
-      // not turn the credit into "Partly polished".
-      complete = coordinator.parts.allSatisfy { !$0.isUnpolished }
-    } else {
-      complete = false
-    }
-    return complete
-      ? "Polished by \(provider.displayName)" : "Partly polished by \(provider.displayName)"
+    Self.polishCredit(
+      provider: coordinator.runConfiguration?.polishProvider,
+      anyPartPolished: coordinator.parts.contains(where: \.wasPolished))
+  }
+
+  /// The rule behind the chip (#2817 item 4, founder 2026-09-12): "Polished by X" whenever
+  /// the polisher ran and any part was polished; the exception lives on the section that
+  /// kept its raw words ("Not fully polished" beneath it), never on the chip. No provider,
+  /// or the provider `None`, reads "No AI polish"; a provider that polished nothing reads
+  /// "No AI polish applied". There is no "Partly polished" any more.
+  static func polishCredit(provider: LLMProvider?, anyPartPolished: Bool) -> String {
+    guard let provider, provider != LLMProvider.none else { return "No AI polish" }
+    guard anyPartPolished else { return "No AI polish applied" }
+    return "Polished by \(provider.displayName)"
   }
 
   /// A readable name for the finished document, and the date under it.

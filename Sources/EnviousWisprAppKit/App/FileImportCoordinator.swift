@@ -1008,10 +1008,19 @@ final class FileImportCoordinator {
   /// during a body evaluation, and it is the mutation that replaces the placeholder with the
   /// result. Ignoring it left the view on "Comparing words" until an unrelated redraw. Codex,
   /// round 2.
-  private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result)?
+  private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result, passages: [WordDiff.Result])?
   var markedUp: WordDiff.Result? {
     guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
     return cached.result
+  }
+
+  /// The same comparison, one result per passage in order (#2817 item 5): the fallback
+  /// Marked up view draws one `Text` per passage from these, the legend reads `markedUp`.
+  /// Computed together with the aggregate by the SAME worker, off the main actor; never
+  /// folded in a getter and never cut out of the folded result.
+  var markedUpPassages: [WordDiff.Result]? {
+    guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
+    return cached.passages
   }
 
   /// Runs the comparison OFF the main actor. Cleanup-shaped inputs take milliseconds, but the
@@ -1031,23 +1040,31 @@ final class FileImportCoordinator {
       inFlight.task.cancel()
       markedUpWorker = nil
     }
-    let task: Task<WordDiff.Result, Never>
+    let task: Task<MarkedUpPayload, Never>
     if let inFlight = markedUpWorker {
       task = inFlight.task
     } else {
       task = Task.detached(priority: .userInitiated) {
-        WordDiff.compare(passages: input.passages, language: input.language)
+        let passages = WordDiff.comparePassages(input.passages, language: input.language)
+        return MarkedUpPayload(result: WordDiff.fold(passages), passages: passages)
       }
       markedUpWorker = (input, task)
     }
-    let result = await task.value
+    let payload = await task.value
     guard markedUpInput == input else { return }
     if markedUpWorker?.input == input { markedUpWorker = nil }
-    markedUpCache = (input, result)
+    markedUpCache = (input, payload.result, payload.passages)
+  }
+
+  /// What one comparison worker produces: the fold the legend reads and the per-passage
+  /// results the fallback view draws, from one pass so they cannot disagree.
+  struct MarkedUpPayload: Sendable {
+    let result: WordDiff.Result
+    let passages: [WordDiff.Result]
   }
 
   @ObservationIgnored private var markedUpWorker:
-    (input: MarkedUpInput, task: Task<WordDiff.Result, Never>)?
+    (input: MarkedUpInput, task: Task<MarkedUpPayload, Never>)?
 
   /// Whether the words on screen are the RAW ones: the user asked for them, or there is no
   /// cleaned part to show instead.

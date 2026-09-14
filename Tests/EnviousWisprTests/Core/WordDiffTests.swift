@@ -158,6 +158,28 @@ struct WordDiffTests {
     #expect(noSpaces.removedWords == 0 && noSpaces.changedWords == 0)
   }
 
+  /// #2817 item 5: the per-passage results ARE the aggregate, cut at the passage
+  /// boundaries. The view draws one `Text` per passage from the array and the legend reads
+  /// the fold; the two must never disagree.
+  @Test("comparePassages returns one result per passage whose fold is compare(passages:)")
+  func perPassageResultsFoldToTheAggregate() {
+    let passages: [WordDiff.Passage] = [
+      .init(original: "alpha beta gamma delta\n\n", cleaned: "Alpha, beta gamma."),
+      .init(original: "one two three four five ", cleaned: "One two three four five."),
+      .init(original: "six seven eight", cleaned: nil),
+    ]
+    let each = WordDiff.comparePassages(passages, language: "en")
+    let whole = WordDiff.compare(passages: passages, language: "en")
+    #expect(each.count == 3)
+    #expect(each.map(\.removedWords).reduce(0, +) == whole.removedWords)
+    #expect(each.map(\.changedWords).reduce(0, +) == whole.changedWords)
+    #expect(each.flatMap(\.segments) == whole.segments, "the segments concatenate in order")
+    #expect(each[2].segments.allSatisfy { $0.kind == .same }, "an unreached passage is all the same")
+    #expect(WordDiff.fold(each) == whole)
+    #expect(WordDiff.fold([]) == WordDiff.Result(segments: [], removedWords: 0, changedWords: 0))
+    #expect(WordDiff.comparePassages([], language: nil).isEmpty)
+  }
+
   // MARK: - The algorithm, against a reference
 
   /// Myers in linear space against a plain quadratic LCS, on random inputs: the edit
