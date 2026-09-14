@@ -74,7 +74,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/eval"))
 
+from section_envelope import (  # noqa: E402
+    accept_section, pack_addendum, unwrap_sections, wrap_sections,
+)
 from acceptance_gate import (  # noqa: E402
+    CLOUD_FIXED_SYSTEM,
     _key,
     _selftest_mirrors,
     _strip_llm_preamble_python,
@@ -322,6 +326,28 @@ def gemini_body(model: str, system: str, user: str,
     }
 
 
+def bedrock_body(model: str, system: str, user: str) -> dict:
+    """The exact `converse` keyword payload the live bedrock path sends; one builder so the
+    dry run and the call cannot drift (local Codex round 4 on PR #2902)."""
+    return {
+        "modelId": model,
+        "system": [{"text": system}],
+        "messages": [{"role": "user", "content": [{"text": user}]}],
+        # temperature OMITTED to match claude_body / the shipped ClaudeConnector, which
+        # sends no temperature at all.
+        "inferenceConfig": {"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
+        # State it rather than inherit it. claude_body sends thinking:{"type":"disabled"}
+        # explicitly and describe_shape() prints "thinking disabled" for this provider
+        # too, so omitting the field made that line a claim about the MODEL'S DEFAULT
+        # rather than about our request. Haiku 4.5 happens to default to no thinking
+        # (probed 2026-08-16: no reasoningContent block even on a prompt built to tempt
+        # one), so the arm generated before this line is still valid -- but a model that
+        # defaults the other way would have been benchmarked with thinking ON under a
+        # header saying OFF, and nothing would have caught it.
+        "additionalModelRequestFields": {"thinking": {"type": "disabled"}},
+    }
+
+
 def claude_body(model: str, system: str, user: str) -> dict:
     # Mirrors ClaudeConnector.makeRequestBody: fixed max_tokens, thinking
     # disabled unconditionally, and NO temperature (temperaturePolicy .omit —
@@ -454,25 +480,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
         )
 
         try:
-            data = _bedrock_client().converse(
-                modelId=model,
-                system=[{"text": system}],
-                messages=[{"role": "user", "content": [{"text": user}]}],
-                # temperature OMITTED to match claude_body / the shipped
-                # ClaudeConnector, which sends no temperature at all.
-                inferenceConfig={"maxTokens": CLAUDE_MAX_OUTPUT_TOKENS},
-                # State it rather than inherit it. claude_body sends
-                # thinking:{"type":"disabled"} explicitly and describe_shape()
-                # prints "thinking disabled" for this provider too, so omitting
-                # the field made that line a claim about the MODEL'S DEFAULT
-                # rather than about our request. Haiku 4.5 happens to default to
-                # no thinking (probed 2026-08-16: no reasoningContent block even
-                # on a prompt built to tempt one), so the arm generated before
-                # this line is still valid -- but a model that defaults the other
-                # way would have been benchmarked with thinking ON under a header
-                # saying OFF, and nothing would have caught it.
-                additionalModelRequestFields={"thinking": {"type": "disabled"}},
-            )
+            data = _bedrock_client().converse(**bedrock_body(model, system, user))
         except ClientError as e:
             # Re-raise as HTTPError so the retry loop's existing RETRYABLE set
             # classifies throttling and 5xx exactly as it does for every other
@@ -573,6 +581,7 @@ def polish_case(
     prompt_mode: str = "production", azure_endpoint: str = "",
     prompt_body: str | None = None,
     thinking: tuple[str, object] | None = None,
+    validate: bool = False,
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
@@ -591,13 +600,25 @@ def polish_case(
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
             candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
-            return {
+            row = {
                 "id": case["id"],
                 "candidate": candidate,
                 "latencyMs": int((time.monotonic() - start) * 1000),
                 "attempts": attempt,
                 **{k: v for k, v in meta.items() if v is not None},
             }
+            if validate:
+                # `--validate`: the ISOLATED arm of the #2851 packing measurement carries
+                # the same production fallback the packed arm carries (a rejected answer
+                # becomes the original, `section_status` says why), so the paired judge
+                # scores both arms on what a user would get. Off by default: every arm
+                # graded before this flag existed judged the raw model answer, and a
+                # historical number must stay reproducible (cloud review of PR #2902,
+                # round 2).
+                verdict = accept_section(transcript, candidate)
+                row["candidate"] = verdict.candidate if verdict.status == "accepted" else transcript
+                row["section_status"] = verdict.status
+            return row
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:300]
             last_err = f"HTTP {e.code}: {detail}"
@@ -630,13 +651,316 @@ def polish_case(
             time.sleep(min(2 ** attempt, 16))
             continue
         break
-    return {
+    failed = {
         "id": case["id"],
         "candidate": "",
         "error": last_err,
         "latencyMs": int((time.monotonic() - start) * 1000),
         "attempts": attempt,
     }
+    if validate:
+        # The packed arm's failed pack writes every section's original words with status
+        # `error` and no `error` key (`_fallback_rows`); the validated isolated arm gets the
+        # same row, so a provider failure costs both arms the same graded row.
+        # `behavior_judge.partition_candidates` skips any row whose `error` is truthy, so
+        # the message moves to `fallback_error`: the row is graded on the original words,
+        # as production would deliver them, and the reason stays on the row (cloud review
+        # of PR #2902, rounds 5 and 6).
+        failed["candidate"] = transcript
+        failed["section_status"] = "error"
+        failed["fallback_error"] = failed.pop("error")
+    return failed
+
+
+# --- #2851 phase 2: pack mode -------------------------------------------------------
+#
+# Several speaker sections in ONE call, wrapped by `section_envelope.wrap_sections`, the
+# v7 system prompt plus `pack_addendum`, and the answer cut back per section by
+# `unwrap_sections` with `accept_section` applied to each. The corpus is
+# `docs/feature-requests/2851-cloud-packing-corpus/` (sections.jsonl + packs-*.jsonl),
+# consumed unchanged. Output keeps one ROW PER SECTION (id = the section id) so
+# `behavior_judge.py` scores a packed arm exactly like an isolated one, plus a pack
+# summary file beside it. `--dry-run` writes the exact request bodies and calls nobody.
+
+
+def load_packs(path: Path) -> list[dict]:
+    packs = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if not d.get("section_ids"):
+                raise ValueError(f"pack {d.get('file')}:{d.get('pack_index')} has no section_ids")
+            packs.append(d)
+    if not packs:
+        raise ValueError(f"packs file {path} is empty")
+    return packs
+
+
+def build_pack_request(
+    provider: str, model: str, sections: list[str], prompt_body: str | None = None,
+    thinking: tuple[str, object] | None = None, prompt_mode: str = "production",
+) -> tuple[str, str, dict]:
+    """(system, user, body) for one pack: the system prompt `polish_case` would send under
+    the same `prompt_mode` (production = the v7 composition sized by the pack's word count;
+    bare = the v7 file alone, the same control `--system-prompt bare` gives an isolated
+    arm), the addendum, and the wrapped sections as the transcript. The body is the
+    provider's real request shape, which is what `--dry-run` writes: `openai_body`,
+    `gemini_body`, `claude_body`, and for bedrock the exact `converse` keyword payload
+    `call_once` sends (cloud review of PR #2902: the Messages body is not what Bedrock
+    receives)."""
+    word_count = sum(len(s.split()) for s in sections)
+    if prompt_mode == "bare":
+        system = BARE_PROMPT
+    else:
+        system = build_cloud_fixed_system(word_count, body=prompt_body)
+    system += pack_addendum(len(sections))
+    user = f"Transcript to clean:\n\n{wrap_sections(sections)}"
+    if provider == "openai":
+        body = openai_body(model, system, user)
+    elif provider == "gemini":
+        body = gemini_body(model, system, user, thinking)
+    elif provider == "claude":
+        body = claude_body(model, system, user)
+    elif provider == "bedrock":
+        body = bedrock_body(model, system, user)
+    else:
+        raise ValueError(f"unknown provider {provider}")
+    return system, user, body
+
+
+def _is_truncation(message: str) -> bool:
+    """`call_once` raises on the provider's own stop reason: "truncated response rejected
+    (finish_reason=length)" for OpenAI, "non-STOP finishReason=MAX_TOKENS" for Gemini, and
+    the Claude/Bedrock max_tokens message. All three are the truncation the plan's
+    split-in-half answers (cloud review of PR #2902: Gemini's was landing as `error`)."""
+    return "truncated" in message or "MAX_TOKENS" in message or "max_tokens" in message
+
+
+def polish_pack(
+    provider: str, model: str, api_key: str, pack: dict, texts: dict[str, str],
+    azure_endpoint: str = "", prompt_body: str | None = None,
+    thinking: tuple[str, object] | None = None, prompt_mode: str = "production",
+) -> tuple[dict, list[dict]]:
+    """One pack through the provider. Returns (pack summary, per-section rows).
+
+    A pack the provider truncates (`_is_truncation`) or that comes back with the wrong tag
+    count/order is `truncated` / `miscount`; the measurement records the event rather than
+    splitting. EVERY row carries the text a user would get: production's
+    `validatePolishOutput` returns the ORIGINAL on a rejection and the floor on a failed
+    pack, so a rejected, miscounted, truncated or errored section carries its original
+    words as `candidate` with the reason in `section_status`. An empty candidate would be
+    dropped by `behavior_judge.partition_candidates` as an infra skip and the packed arm
+    would be scored on fewer sections than the isolated one (cloud review of PR #2902)."""
+    ids = pack["section_ids"]
+    sections = [texts[i] for i in ids]
+    system, user, _ = build_pack_request(
+        provider, model, sections, prompt_body, thinking, prompt_mode)
+    start = time.monotonic()
+    summary = {
+        "file": pack.get("file"), "pack_index": pack.get("pack_index"),
+        "sections": len(ids), "words": sum(len(s.split()) for s in sections),
+    }
+    last_err = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint, thinking)
+            break
+        except RuntimeError as e:
+            if _is_truncation(str(e)):
+                summary.update(outcome="truncated", error=str(e), attempts=attempt,
+                               latencyMs=int((time.monotonic() - start) * 1000))
+                return summary, _fallback_rows(pack, ids, sections, "truncated")
+            last_err, retryable = str(e), False
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"
+            retryable = e.code in RETRYABLE
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            last_err, retryable = f"{type(e).__name__}: {e}", True
+        except (KeyError, json.JSONDecodeError) as e:
+            last_err, retryable = str(e), False
+        if attempt < MAX_ATTEMPTS and retryable:
+            time.sleep(min(2 ** attempt, 16))
+            continue
+        summary.update(outcome="error", error=last_err, attempts=attempt,
+                       latencyMs=int((time.monotonic() - start) * 1000))
+        return summary, _fallback_rows(pack, ids, sections, "error")
+    summary.update(attempts=attempt, latencyMs=int((time.monotonic() - start) * 1000),
+                   **{k: v for k, v in meta.items() if v is not None})
+    # The preamble strip runs on the WHOLE answer before unwrap (an assistant wrapper line
+    # before `<s1>` would otherwise fail the count), never per section, where it could
+    # remove a speaker's own words (Codex r1).
+    raw = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
+    parts = unwrap_sections(raw, len(ids))
+    if parts is None:
+        summary["outcome"] = "miscount"
+        return summary, _fallback_rows(pack, ids, sections, "miscount")
+    rows = []
+    statuses: dict[str, int] = {}
+    for section_id, original, candidate in zip(ids, sections, parts):
+        verdict = accept_section(original, candidate)
+        statuses[verdict.status] = statuses.get(verdict.status, 0) + 1
+        rows.append({
+            "id": section_id,
+            # Production returns the ORIGINAL on a rejection; so does this row.
+            "candidate": verdict.candidate if verdict.status == "accepted" else original,
+            "section_status": verdict.status,
+            "pack_index": pack.get("pack_index"), "pack_file": pack.get("file"),
+        })
+    summary["outcome"] = "unwrapped"
+    summary["section_statuses"] = statuses
+    return summary, rows
+
+
+def _fallback_rows(pack: dict, ids: list[str], sections: list[str], status: str) -> list[dict]:
+    """One row per section carrying its ORIGINAL words (the production fallback) and why."""
+    return [{"id": i, "candidate": original, "section_status": status,
+             "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
+            for i, original in zip(ids, sections)]
+
+
+def prompt_sha256(prompt_mode: str, prompt_body: str | None) -> str:
+    """Identity of the prompt BODY an arm ran with: the bare v7 prompt, the shipped v6 body,
+    or the `--system-prompt-file` text. Two arms with different custom bodies otherwise
+    print identical receipts (cloud review of PR #2902, round 5)."""
+    if prompt_mode == "bare":
+        body = BARE_PROMPT
+    elif prompt_body is not None:
+        body = prompt_body.strip()
+    else:
+        body = CLOUD_FIXED_SYSTEM
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def run_receipt(args, thinking: tuple[str, object] | None, prompt_body: str | None) -> dict:
+    """Provenance every candidate row of a run carries: what was run, on which route, with
+    which prompt, validated or not, packed or isolated. `compare_arms_paired.py
+    --packing-report` prints the two arms' receipts side by side for the operator to read;
+    it does not certify that two arms are the same experiment (PR #2902)."""
+    return {
+        "provider": args.provider, "model": args.model,
+        "prompt_mode": args.system_prompt,
+        "prompt_sha256": prompt_sha256(args.system_prompt, prompt_body),
+        "thinking": list(thinking) if thinking else None,
+        "validated": True if args.pack is not None else bool(getattr(args, "validate", False)),
+        "mode": "packed" if args.pack is not None else "isolated",
+        "pack_file": args.pack.name if args.pack is not None else None,
+    }
+
+
+def thinking_off_refusal(thinking: tuple[str, object] | None, reason_tok: int) -> str | None:
+    """The one hard refusal both paths share: an arm that ASKED for thinking off and got
+    reasoning tokens anyway must not be graded (the field did not reach the API, or the
+    vendor changed the level). `None` when there is nothing to refuse. The isolated path's
+    softer inert-level warning stays there; the pack path has no per-case count to judge it
+    by (cloud review of PR #2902: the pack early return bypassed this guard)."""
+    if thinking is None or not is_thinking_off(thinking) or not reason_tok:
+        return None
+    if thinking[0] == "thinkingBudget":
+        cause = ("a zero token budget cannot produce reasoning, so the field did not "
+                 "reach the API")
+    else:
+        cause = ("either the field did not reach the API, or the vendor changed what "
+                 "'minimal' does — 0 of 6,084 measured cases produced reasoning at "
+                 "this level, so check which before re-running")
+    return (f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
+            f"{cause}. Do not grade these candidates.")
+
+
+def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | None,
+                  thinking: tuple[str, object] | None) -> int:
+    cases = load_corpus(args.corpus)
+    texts = {c["id"]: c["text"] for c in cases}
+    packs = load_packs(args.pack)
+    missing = [i for p in packs for i in p["section_ids"] if i not in texts]
+    if missing:
+        print(f"{len(missing)} section ids in {args.pack.name} are not in {args.corpus.name}: "
+              f"{missing[:5]}", file=sys.stderr)
+        return 2
+    all_ids = [i for p in packs for i in p["section_ids"]]
+    dupes = sorted({i for i in all_ids if all_ids.count(i) > 1})
+    if dupes:
+        # A concatenated pack file would send a section twice and keep whichever pack
+        # finished last (cloud review of PR #2902, round 8; row "duplicate IDs" of #2904).
+        print(f"{len(dupes)} section ids appear in more than one pack of {args.pack.name}: "
+              f"{dupes[:5]}", file=sys.stderr)
+        return 2
+    if args.limit:
+        packs = packs[: args.limit]
+    print(f"packs    : {args.pack.name} ({len(packs)} packs, "
+          f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
+    print("validate : every section carries production's fallback on a rejection; run the "
+          "isolated arm with --validate and read both arms through "
+          "`compare_arms_paired.py --packing-report`, which refuses a plain arm and prints "
+          "both run receipts for you to hold to the same experiment", file=sys.stderr)
+
+    if args.dry_run is not None:
+        # The dry-run file's own parent, and nothing else: `--out`'s directory is created
+        # only by the live path (local review round 1).
+        args.dry_run.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.dry_run, "w") as f:
+            for p in packs:
+                sections = [texts[i] for i in p["section_ids"]]
+                system, user, body = build_pack_request(
+                    args.provider, args.model, sections, prompt_body, thinking,
+                    args.system_prompt)
+                f.write(json.dumps({
+                    "provider": args.provider, "model": args.model,
+                    "file": p.get("file"), "pack_index": p.get("pack_index"),
+                    "section_ids": p["section_ids"], "words": sum(len(s.split()) for s in sections),
+                    "system_chars": len(system), "user_chars": len(user), "body": body,
+                }) + "\n")
+        print(f"dry-run  : {len(packs)} request bodies written to {args.dry_run}; nothing called",
+              file=sys.stderr)
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    receipt = run_receipt(args, thinking, prompt_body)
+    summaries: list[dict] = []
+    rows_by_id: dict[str, dict] = {}
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {
+            pool.submit(polish_pack, args.provider, args.model, api_key, p, texts,
+                        azure_endpoint, prompt_body, thinking, args.system_prompt): p
+            for p in packs
+        }
+        for n, fut in enumerate(as_completed(futures), start=1):
+            summary, rows = fut.result()
+            summaries.append(summary)
+            for r in rows:
+                r["run"] = receipt
+                rows_by_id[r["id"]] = r
+            if summary["outcome"] != "unwrapped":
+                print(f"[{n}/{len(packs)}] {summary['outcome'].upper()} "
+                      f"{summary['file']}:{summary['pack_index']} {summary.get('error', '')}",
+                      file=sys.stderr)
+    with open(args.out, "w") as f:
+        for p in packs:
+            for i in p["section_ids"]:
+                f.write(json.dumps(rows_by_id[i]) + "\n")
+    packs_out = args.out.with_suffix(args.out.suffix + ".packs.jsonl")
+    with open(packs_out, "w") as f:
+        for s in sorted(summaries, key=lambda s: (str(s["file"]), s["pack_index"] or 0)):
+            f.write(json.dumps(s) + "\n")
+    outcomes: dict[str, int] = {}
+    for s in summaries:
+        outcomes[s["outcome"]] = outcomes.get(s["outcome"], 0) + 1
+    statuses: dict[str, int] = {}
+    for r in rows_by_id.values():
+        statuses[r["section_status"]] = statuses.get(r["section_status"], 0) + 1
+    reason_tok = sum(s.get("reasoningTok") or 0 for s in summaries)
+    print(f"packs    : {outcomes}  sections: {statuses}  reasoning={reason_tok}  "
+          f"{int(time.monotonic() - t0)}s", file=sys.stderr)
+    print(f"wrote    : {args.out} and {packs_out}", file=sys.stderr)
+    if (refusal := thinking_off_refusal(thinking, reason_tok)) is not None:
+        print(refusal, file=sys.stderr)
+        return 2
+    # Original text is graded either way; the exit status says the run was INCOMPLETE, the
+    # same contract the isolated path keeps (`return 0 if errors == 0 else 1`).
+    return 1 if any(s["outcome"] in {"error", "truncated"} for s in summaries) else 0
 
 
 def load_corpus(path: Path) -> list[dict]:
@@ -665,6 +989,23 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--limit", type=int, default=0, help="first N cases only (smoke)")
+    ap.add_argument(
+        "--pack", type=Path, default=None,
+        help="#2851 phase 2: a packs-*.jsonl beside --corpus (sections.jsonl); several "
+             "sections per call, one output row per section, plus <out>.packs.jsonl",
+    )
+    ap.add_argument(
+        "--validate", action="store_true",
+        help="#2851 phase 2, the ISOLATED arm: apply production's output validator to each "
+             "answer (a rejected answer becomes the original, section_status says why), the "
+             "treatment pack mode always applies. Required on the isolated arm of a "
+             "packed-vs-isolated comparison; off by default so earlier arms stay reproducible.",
+    )
+    ap.add_argument(
+        "--dry-run", type=Path, default=None,
+        help="with --pack: write every request body to this path and call no provider "
+             "(no key needed; GR-NO-CLOUD-SPEND)",
+    )
     ap.add_argument(
         "--system-prompt", choices=["production", "bare"], default="production",
         help="production = the full CloudFixedPromptBuilder composition the app "
@@ -729,11 +1070,24 @@ def main() -> int:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
         return 2
 
+    if args.dry_run is not None and args.pack is None:
+        print("--dry-run needs --pack", file=sys.stderr)
+        return 2
+    if args.azure and args.provider != "openai":
+        # The same refusal the live path makes below, BEFORE the dry-run return: a pre-spend
+        # approval must never bless a configuration the real run would refuse (cloud review
+        # of PR #2902, round 3).
+        print("--azure applies to --provider openai only", file=sys.stderr)
+        return 2
+    if args.pack is not None and args.dry_run is not None:
+        # No key, no endpoint, no call: the bodies are written from the same builders the
+        # live path uses, so what the founder approves for a real run is exactly what is
+        # on disk (GR-NO-CLOUD-SPEND).
+        return run_pack_mode(args, api_key="", azure_endpoint="", prompt_body=prompt_body,
+                             thinking=thinking)
+
     azure_endpoint = ""
     if args.provider == "bedrock":
-        if args.azure:
-            print("--azure applies to --provider openai only", file=sys.stderr)
-            return 2
         # boto3 reads the credential chain itself; there is no key to pass down.
         # Checked here so a 1,462-case run fails in a second rather than as 1,462
         # identical AccessDenied retries. Ask boto3 whether it can resolve
@@ -771,9 +1125,6 @@ def main() -> int:
             return 2
         api_key = ""
     elif args.azure:
-        if args.provider != "openai":
-            print("--azure applies to --provider openai only", file=sys.stderr)
-            return 2
         # Founders Hub credits instead of the direct key (founder 2026-08-01).
         api_key = _key("azure-openai-key")
         azure_endpoint = _key("azure-openai-endpoint")
@@ -785,6 +1136,9 @@ def main() -> int:
                 "claude": "anthropic-api-key",
             }[args.provider]
         )
+
+    if args.pack is not None:
+        return run_pack_mode(args, api_key, azure_endpoint, prompt_body, thinking)
 
     cases = load_corpus(args.corpus)
     corpus_total = len(cases)
@@ -846,22 +1200,26 @@ def main() -> int:
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
     results: dict[str, dict] = {}
+    receipt = run_receipt(args, thinking, prompt_body)
     errors = 0
     done = 0
     t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint, prompt_body, thinking)
+                        args.system_prompt, azure_endpoint, prompt_body, thinking,
+                        args.validate)
             for c in cases
         ]
         for fut in as_completed(futures):
             row = fut.result()
+            row["run"] = receipt
             results[row["id"]] = row
             done += 1
-            if row.get("error"):
+            err = row.get("error") or row.get("fallback_error")
+            if err:
                 errors += 1
-                print(f"[{done}/{len(cases)}] ERROR {row['id']}: {row['error']}", file=sys.stderr)
+                print(f"[{done}/{len(cases)}] ERROR {row['id']}: {err}", file=sys.stderr)
             elif done % 200 == 0:
                 el = int(time.monotonic() - t0)
                 print(f"[{done}/{len(cases)}] ok ({errors} errors, {el}s)", file=sys.stderr)
@@ -870,7 +1228,8 @@ def main() -> int:
         for case in cases:
             f.write(json.dumps(results[case["id"]]) + "\n")
 
-    lat = sorted(r["latencyMs"] for r in results.values() if not r.get("error"))
+    lat = sorted(r["latencyMs"] for r in results.values()
+                 if not (r.get("error") or r.get("fallback_error")))
     in_tok = sum(r.get("inTok") or 0 for r in results.values())
     out_tok = sum(r.get("outTok") or 0 for r in results.values())
     reason_tok = sum(r.get("reasoningTok") or 0 for r in results.values())
@@ -904,7 +1263,7 @@ def main() -> int:
         f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} ({expectation})",
         file=sys.stderr,
     )
-    if asked_off and reason_tok:
+    if (refusal := thinking_off_refusal(thinking, reason_tok)) is not None:
         # The two off-values are NOT equally binding, and the refusal says which it is.
         # `thinkingBudget: 0` is a contract — a budget of zero tokens. `thinkingLevel:
         # minimal` is a LEVEL NAME, so zero is an observation rather than a guarantee:
@@ -916,19 +1275,9 @@ def main() -> int:
         # `minimal` that actually ran the provider's default thinking, and silently
         # corrupts every comparison it appears in. The mutation control that set this
         # guard's scope depends on exactly this branch: with the field deleted, a
-        # `minimal` request returned 130 reasoning tokens.
-        if thinking[0] == "thinkingBudget":
-            cause = ("a zero token budget cannot produce reasoning, so the field did not "
-                     "reach the API")
-        else:
-            cause = ("either the field did not reach the API, or the vendor changed what "
-                     "'minimal' does — 0 of 6,084 measured cases produced reasoning at "
-                     "this level, so check which before re-running")
-        print(
-            f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
-            f"{cause}. Do not grade these candidates.",
-            file=sys.stderr,
-        )
+        # `minimal` request returned 130 reasoning tokens. The message and the cause
+        # live in `thinking_off_refusal`, shared with pack mode.
+        print(refusal, file=sys.stderr)
         return 2
     if not asked_off and thinking is not None and not reason_tok:
         # A zero here means "no case chose to think", which is only EVIDENCE of an
