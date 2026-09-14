@@ -55,7 +55,159 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.4.9
+    // MARK: - v2.5.0
+
+    // #2762 (the feature), #2786 (per-surface polisher choice, shared keys, the page as
+    // the approved prototype), #2803 (menu bar entry), #2801 (Review step layout). ONE
+    // story: the feature reaches users for the first time, so nothing about the cycle's
+    // repairs is narrated (RULE: first-time feature carries no repair copy). "does not
+    // change the one your dictation uses" is #2786's verified per-surface selection
+    // (one History row read llmProvider=egOne while dictation stayed s1Mini).
+    Entry(
+      id: "transcribe-a-file",
+      icon: "doc.badge.ellipsis",
+      title: "Introducing \"Transcribe a File\"",
+      description:
+        "Pick an audio or video file you already have and get clean text back. Voice memos, lectures, meetings. Open it from the sidebar or from the menu bar drop-down. You choose the speech engine and the polisher for files on their own screens, and the polisher you pick for files does not change the one your dictation uses. Stop at any time and keep what finished, then copy, save or share the result.",
+      version: "2.5.0"
+    ),
+
+    // #2846 (labels, rename, times, History), #2898 (speakers first, each section cleaned
+    // on its own, "Both" for overlaps, one write at Done). The alignment build (#2871) and
+    // its fold (#2894) never reached a release, so the rework is invisible and not
+    // narrated. "Both" is the rendered label per #2898's body; "Try again" per #2846.
+    Entry(
+      id: "speaker-labels",
+      icon: "person.2",
+      title: "Transcribe a File tells the speakers apart",
+      description:
+        "A recording with two people comes back as turns labelled Speaker 1 and Speaker 2, each with its time. Click a name to rename it and every turn with that speaker updates. Where two people talk at once, the turn is labelled Both. The same labels and names show when you open the transcript again in History. If the speakers could not be told apart, a notice says so and offers Try again.",
+      version: "2.5.0"
+    ),
+
+    // #2799 (the Marked up view and the counts) and #2897 (red strike-outs, green tint).
+    // The count line quotes #2799's body: "1,204 words removed · 318 changed".
+    Entry(
+      id: "marked-up-cleanup",
+      icon: "text.badge.checkmark",
+      title: "See exactly what the cleanup changed",
+      description:
+        "On the Done step of Transcribe a File there are three views: Cleaned, Original and Marked up. Marked up shows your original words with the cleanup on them. A removed word is red and struck through, a changed or added word is highlighted, and the counts sit above the text, like 1,204 words removed and 318 changed. Copy, Save and Share hand over the cleaned text from that view and say so on the button.",
+      version: "2.5.0"
+    ),
+
+    // #2897 (the Working card) and #2898 (the transcript appears once, at Done), then #2918
+    // (a bar per step, the transcribing fraction from the engine, the file summary and the
+    // live counts under the card) and #2927 (the estimate knows the engine). The time left is
+    // "rough": it is a per-engine rate before the run and the section pace once sections land.
+    Entry(
+      id: "working-step-one-card",
+      icon: "hourglass",
+      title: "While a file runs, every step shows its progress",
+      description:
+        "The Working step shows one card with a bar per step: Transcribing fills as the engine works through the audio, Finding who said what shows its own progress, and Cleaning counts sections, with a rough time left. Under the card: the file's length, the engine, the polisher, and live counts of minutes transcribed, speakers found and sections cleaned. Stop is right there. The finished transcript appears once, when it is done.",
+      version: "2.5.0"
+    ),
+
+    // #2794. The cancel shortcut stays armed through transcription; the audio is kept;
+    // the next launch reports where the take died (that last part is telemetry and is
+    // not narrated). "Restart the app" is the shipped copy quoted in the PR body.
+    Entry(
+      id: "escape-a-stuck-transcription",
+      icon: "escape",
+      title: "A stuck transcription can be cancelled",
+      description:
+        "If a dictation never finishes transcribing, press your cancel shortcut. The waiting bar goes away and your audio is kept. Until you restart the app, a new dictation tells you the previous one is still running.",
+      version: "2.5.0"
+    ),
+
+    // #2719 and #2724 (chunks 1 and 2 of #1946). The PR says "expect much rarer, not
+    // gone", so the copy says "much less often", never "no longer".
+    Entry(
+      id: "capitalization-stays-on",
+      icon: "textformat.abc",
+      title: "Improved capitalization when dictating into an existing sentence",
+      description:
+        "When you dictate after words you already typed, EnviousWispr matches your capitalization. If the app was busy, that matching could switch itself off until you relaunched. It now stays on in far more cases.",
+      version: "2.5.0"
+    ),
+
+    // #2740. Units: "mm", "mm Hg", "Ah" per the PR body.
+    Entry(
+      id: "measurements-keep-their-unit",
+      icon: "ruler",
+      title: "Dictated measurements keep their unit",
+      description:
+        "Say \"the gap is 5 mm\" or \"120 mm Hg\" and the unit now comes through with the number.",
+      version: "2.5.0"
+    ),
+
+    // #2782 (nine languages' own words for at and dot) and #2766 (26 country-code
+    // domains such as .de, .nl, .fr). SCOPE, from #2766's own body: a take the app
+    // resolves as a language other than English still skips the address formatter, so
+    // this reaches an English dictation that contains a foreign address; and .it, .at,
+    // .be, .no are deliberately excluded because they are English words. The copy
+    // therefore promises the words and the domains, not "every language".
+    Entry(
+      id: "spoken-addresses-more-languages",
+      icon: "at",
+      title: "Spoken email addresses convert in more languages' own words",
+      description:
+        "When you dictate in English and say an address with another language's words for at and dot, such as \"marco arroba esempio punto com\", it comes back as marco@esempio.com. Addresses ending in a country domain such as .de, .nl or .fr now convert too.",
+      version: "2.5.0"
+    ),
+
+    // #2796 (v39 prompt and six example turns on macOS 27; macOS 26 byte for byte
+    // unchanged) and #2836 (the card shows AFM 2 / AFM 3 and the live capacity; the
+    // preflight now reads the real 8,192 window on AFM 3 so long dictations are not
+    // skipped). The sealed-exam numbers stay here: 70.3% to 85.0% pass, fillers 55% to
+    // 95%, spoken lists 0% to 71.9%, self-corrections 21.5% to 44.7%.
+    Entry(
+      id: "apple-intelligence-macos-27",
+      icon: "apple.intelligence",
+      title: "Apple Intelligence polish improved on macOS 27",
+      description:
+        "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes.",
+      version: "2.5.0"
+    ),
+
+    // #2774. Founder quote in the PR: the alias box "is impossible to find".
+    Entry(
+      id: "custom-word-mishearings-easier",
+      icon: "character.book.closed",
+      title: "Adding a mishearing to a custom word is easier to find",
+      description:
+        "On the Custom Word sheet the field for a mishearing now looks like a field, Add is always ready, and clicking anywhere in the list of mishearings takes you to the field.",
+      version: "2.5.0"
+    ),
+
+    // #2767. The pill's breathe, the red flash and the pulsing lips stop; colours stay
+    // and the lips still follow your voice.
+    Entry(
+      id: "pill-reduce-motion",
+      icon: "figure.walk.motion",
+      title: "The recording pill honours Reduce Motion",
+      description:
+        "With Reduce Motion on in macOS, the recording pill no longer breathes, flashes or pulses. The colours stay so a warning still reads as a warning, and the lips still move with your voice.",
+      version: "2.5.0"
+    ),
+
+    // LAST entry, the narrow exception in RULE: whats-new-content-rules: every other
+    // entry above is specifically titled, this title is written fresh for 2.5.0, and no
+    // member's effect is something a user can watch happen. #2726 (Quick Add keeps
+    // naming the word when nothing matches), #2742 (cancel wins a chord it shares with
+    // Quick Add), #2707 (a frozen target app can no longer hold up a paste), #2717
+    // (crash recovery no longer loses the key to a saved recording), #2748 (an S1-mini
+    // server left over from a previous launch is cleaned up). Codex will flag the title
+    // as a generic bucket; adjudicate against the four conditions in that rule.
+    Entry(
+      id: "small-things-that-now-just-work",
+      icon: "wrench.and.screwdriver",
+      title: "Small things that now just work",
+      description:
+        "A number read out digit by digit and followed by point, like two four oh seven point one two three, converts as one decimal. Quick Add keeps showing the word it heard even when nothing in your list matches it. The cancel shortcut wins when it shares a key combination with Quick Add. Bringing the target app to the front before a paste gives up after half a second if that app has stopped responding, instead of waiting on it. Crash recovery keeps the key to a saved recording until the recording itself is safely gone. A cleanup server left over from an earlier launch is tidied up on start.",
+      version: "2.5.0"
+    ),
 
     // #1908, merged onto main after v2.4.8 shipped (tag v2.4.8 exists), so this
     // entry opens a new group per whats-new-protocol.md FACT: whats-new-grouping
@@ -76,7 +228,7 @@ enum WhatsNewContent {
       title: "No more freeze after sitting idle",
       description:
         "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone.",
-      version: "2.4.9"
+      version: "2.5.0"
     ),
 
     // #2808, phase 1 of #2807. The founder's vocabulary decision of 2026-09-11: a keybind
@@ -89,7 +241,7 @@ enum WhatsNewContent {
       title: "History tells a dictation from a transcript",
       description:
         "Everything you say with your keybind is a Dictation. Every file you put through Transcribe a File is a Transcript. History now labels each row, and a new All, Dictations, Transcripts switch above the list shows just the kind you want.",
-      version: "2.4.9"
+      version: "2.5.0"
     ),
 
     // MARK: - v2.4.8
