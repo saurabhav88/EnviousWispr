@@ -28,7 +28,7 @@ struct TranscribeFileDoneHeaderTests {
       ("Board Meeting.mov", "Board Meeting"),
     ])
   func areadableTitle(_ fileName: String, _ expected: String) {
-    #expect(TranscribeFileView.readableTitle(fromFileName: fileName) == expected)
+    #expect(TranscribeFileExport.readableTitle(fromFileName: fileName) == expected)
   }
 
   /// **Never blank, whatever the name looks like.** An unnamed document is worse than an ugly
@@ -38,7 +38,7 @@ struct TranscribeFileDoneHeaderTests {
     "a name that strips to nothing keeps the raw name",
     arguments: ["1.m4a", "---.wav", ".m4a", "2026.mp3"])
   func neverBlank(_ fileName: String) {
-    let title = TranscribeFileView.readableTitle(fromFileName: fileName)
+    let title = TranscribeFileExport.readableTitle(fromFileName: fileName)
     #expect(!title.isEmpty, "\(fileName) produced an empty title")
   }
 
@@ -49,14 +49,14 @@ struct TranscribeFileDoneHeaderTests {
   @Test("meaningful numbers survive, ordering prefixes do not")
   func meaningfulNumbersSurvive() {
     #expect(
-      TranscribeFileView.readableTitle(fromFileName: "q3-2026-review.m4a") == "Q3 2026 review")
-    #expect(TranscribeFileView.readableTitle(fromFileName: "1-standup.m4a") == "Standup")
+      TranscribeFileExport.readableTitle(fromFileName: "q3-2026-review.m4a") == "Q3 2026 review")
+    #expect(TranscribeFileExport.readableTitle(fromFileName: "1-standup.m4a") == "Standup")
     #expect(
-      TranscribeFileView.readableTitle(fromFileName: "2026-09-10-board-meeting.m4a")
+      TranscribeFileExport.readableTitle(fromFileName: "2026-09-10-board-meeting.m4a")
         == "2026 09 10 board meeting",
       "a date in the name is part of the name")
     #expect(
-      TranscribeFileView.readableTitle(fromFileName: "1984-book-club.wav") == "1984 book club",
+      TranscribeFileExport.readableTitle(fromFileName: "1984-book-club.wav") == "1984 book club",
       "a four-digit leading number is not an ordering prefix")
   }
 
@@ -64,7 +64,7 @@ struct TranscribeFileDoneHeaderTests {
   @Test("no title carries an em or en dash")
   func noDashes() {
     for name in ["import-demo.m4a", "a—b.wav", "a–b.wav"] {
-      let title = TranscribeFileView.readableTitle(fromFileName: name)
+      let title = TranscribeFileExport.readableTitle(fromFileName: name)
       #expect(!title.contains("\u{2014}") && !title.contains("\u{2013}"), "dash in \(title)")
     }
   }
@@ -74,7 +74,7 @@ struct TranscribeFileDoneHeaderTests {
   /// colour alone would pass a "looks different" check and fail a colour-blind reader.
   @Test("removed words are struck through; altered and added words are highlighted and heavier")
   func markedUpTreatments() {
-    let text = TranscribeFileView.markedUpText([
+    let text = TranscribeFileExport.markedUpText([
       .init(kind: .same, text: "the", trailing: " "),
       .init(kind: .removed, text: "um", trailing: " "),
       .init(kind: .changed, text: "gonna", trailing: " "),
@@ -100,7 +100,7 @@ struct TranscribeFileDoneHeaderTests {
     #expect(marked.allSatisfy { $0.font == nil }, "no run carries its own font")
     // What a screen reader gets, since the marks say nothing aloud.
     #expect(
-      TranscribeFileView.markedUpAccessibilityText([
+      TranscribeFileExport.markedUpAccessibilityText([
         .init(kind: .same, text: "the", trailing: " "),
         .init(kind: .removed, text: "um", trailing: " "),
       ]) == "the Removed: um. ")
