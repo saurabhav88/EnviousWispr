@@ -52,46 +52,11 @@ struct TranscribeFileView: View {
   var body: some View {
     VStack(spacing: 0) {
       stepBar
-      ScrollView {
-        // #2772 finding 3: the green bar sits DIRECTLY under the content, on every step.
-        // It used to be pinned to the window's bottom edge, which on a short step left a
-        // void the height of half the window between the last card and the sentence about
-        // where the audio goes. Founder: "the footer touches the tiles ... Applies to ALL
-        // SIX steps."
-        //
-        // TWO rules, because the two kinds of step behave differently, and Codex's read is
-        // that this justifies them rather than excusing them. On the four SETUP steps the
-        // content is short and a pinned bar leaves the void the founder reported, so the bar
-        // follows the content. On Working and Done the content is a transcript of any
-        // length, and there the bar carries "Safe to leave this page" — the one reassurance
-        // that step exists to give — so it stays pinned and visible, which is also what the
-        // prototype does.
-        VStack(spacing: 0) {
-          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-            switch coordinator.step {
-            case .upload: uploadStep
-            case .transcription: transcriptionStep
-            case .polish: polishStep
-            case .review: reviewStep
-            case .working: workingStep
-            case .done: doneStep
-            }
-          }
-          .padding(.top, SettingsLayout.contentTop)
-          .padding(.horizontal, SettingsLayout.contentH)
-          .padding(.bottom, SettingsLayout.contentBottom)
-          .frame(maxWidth: .infinity)
-          .background(Color.stPageBg)
-          if !pinsPrivacyFooter {
-            privacyFooter
-          }
-        }
+      if coordinator.step == .done {
+        doneLayout
+      } else {
+        stepPage
       }
-      // Whatever is left below the bar carries the bar's OWN tone, so a short step reads as
-      // a page that has ended rather than as a bar floating in the middle of one. Without
-      // it, moving the bar up to touch the content just moved the void from above it to
-      // below it, which looks less deliberate, not more.
-      .background(Color.stSidebarBg)
       if pinsPrivacyFooter {
         privacyFooter
       }
@@ -115,6 +80,108 @@ struct TranscribeFileView: View {
     // EG-1. Attached to the whole page rather than the Polish step, because the editor's
     // state must survive stepping forward to Review and back.
     .modifier(ProviderSetupLifecycle(model: setupModel, surface: .fileImport))
+  }
+
+  /// The five steps that scroll as one page. Done is not among them (#2817 item 7): its
+  /// document can be two hours long, and when the page scrolled as a whole the action row
+  /// sat under the last speaker turn, pages away ("unless you scroll all the way down you
+  /// can't see it", founder 2026-09-13). `doneLayout` gives the document its own scroll.
+  private var stepPage: some View {
+    ScrollView {
+      // #2772 finding 3: the green bar sits DIRECTLY under the content, on every step.
+      // It used to be pinned to the window's bottom edge, which on a short step left a
+      // void the height of half the window between the last card and the sentence about
+      // where the audio goes. Founder: "the footer touches the tiles ... Applies to ALL
+      // SIX steps."
+      //
+      // TWO rules, because the two kinds of step behave differently, and Codex's read is
+      // that this justifies them rather than excusing them. On the four SETUP steps the
+      // content is short and a pinned bar leaves the void the founder reported, so the bar
+      // follows the content. On Working and Done the content is a transcript of any
+      // length, and there the bar carries "Safe to leave this page" — the one reassurance
+      // that step exists to give — so it stays pinned and visible, which is also what the
+      // prototype does.
+      VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+          switch coordinator.step {
+          case .upload: uploadStep
+          case .transcription: transcriptionStep
+          case .polish: polishStep
+          case .review: reviewStep
+          case .working: workingStep
+          // Done never reaches this page (`body` routes it to `doneLayout`); the case is
+          // spelled out so the switch stays exhaustive over the step and a seventh step is
+          // decided rather than inherited.
+          case .done: EmptyView()
+          }
+        }
+        .padding(.top, SettingsLayout.contentTop)
+        .padding(.horizontal, SettingsLayout.contentH)
+        .padding(.bottom, SettingsLayout.contentBottom)
+        .frame(maxWidth: .infinity)
+        .background(Color.stPageBg)
+        if !pinsPrivacyFooter {
+          privacyFooter
+        }
+      }
+    }
+    // Whatever is left below the bar carries the bar's OWN tone, so a short step reads as
+    // a page that has ended rather than as a bar floating in the middle of one. Without
+    // it, moving the bar up to touch the content just moved the void from above it to
+    // below it, which looks less deliberate, not more.
+    .background(Color.stSidebarBg)
+  }
+
+  /// Done (#2817 item 7): the document is the one scrolling child. The action row and the
+  /// pinned footer never leave the screen, whatever the document's length. The heading, the
+  /// notices, the header card and the view switch stay fixed above the document too when the
+  /// window is tall enough for them, which is what the prototype does (`.doc{flex:1;
+  /// overflow-y:auto}` between two fixed cards).
+  ///
+  /// **Below `doneFixedHeaderMinimumHeight` the header scrolls with the document.** The
+  /// window's floor is 400 points (`WisprBootstrapper`), and the fixed chrome alone (heading,
+  /// header card, switch row, action row, footer, paddings) is near 300 before a single
+  /// notice; nothing outside the one `ScrollView` can be reached by scrolling, so at a short
+  /// window a fixed header would push the action row off the bottom, which is the exact
+  /// defect this layout exists to remove. Found by Codex. The threshold is a pure rule so a
+  /// test can pin it; the rendered result at 400 and 750 points is the Live UAT row.
+  private var doneLayout: some View {
+    GeometryReader { proxy in
+      let headerFixed = Self.doneHeaderIsFixed(availableHeight: proxy.size.height)
+      VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+        if headerFixed {
+          doneFixedTop
+        }
+        ScrollView {
+          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+            if !headerFixed {
+              doneFixedTop
+            }
+            doneDocument
+          }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        doneActions
+      }
+      .padding(.top, SettingsLayout.contentTop)
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, SettingsLayout.contentBottom)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .background(Color.stPageBg)
+  }
+
+  /// The window height below which Done's header scrolls with the document instead of
+  /// staying fixed above it. Sized for the tallest fixed set the step can show without a
+  /// notice (about 300 points of chrome) plus room for two notices and a Try again button
+  /// (about 130) plus a readable slice of document (about 170).
+  nonisolated static let doneFixedHeaderMinimumHeight: CGFloat = 600
+
+  /// Whether the heading, notices, header card and view switch stay fixed above the document
+  /// at `availableHeight` (the height handed to `doneLayout`, below the step bar and above
+  /// the pinned footer). Pure, so `TranscribeFileDoneLayoutTests` can pin the threshold.
+  nonisolated static func doneHeaderIsFixed(availableHeight: CGFloat) -> Bool {
+    availableHeight >= doneFixedHeaderMinimumHeight
   }
 
   /// Whether the privacy bar is pinned to the window's bottom edge rather than following
@@ -1288,8 +1355,10 @@ struct TranscribeFileView: View {
 
   // MARK: - 6. Done
 
+  /// Everything above the document on Done: heading, notices, the header card and the view
+  /// switch. Fixed on screen; `doneLayout` puts the document's own `ScrollView` under it.
   @ViewBuilder
-  private var doneStep: some View {
+  private var doneFixedTop: some View {
     stepHeading(coordinator.state == .stopped ? "Stopped" : "Your transcript is ready")
     // A refusal raised while a document exists lands HERE rather than on Upload,
     // because Upload's only offer is choosing another file, which clears it. The
@@ -1372,7 +1441,59 @@ struct TranscribeFileView: View {
       .padding(.horizontal, SettingsLayout.rowPaddingH)
       .padding(.vertical, SettingsLayout.rowPaddingV)
     }
-    doneDocument
+    documentControls
+  }
+
+  /// The view switch on its own row directly above the document, at the regular control
+  /// size (#2817 item 6). It was a small control among the header chips, where a caption-size
+  /// segmented control read as one more chip rather than as the control that changes what the
+  /// whole document shows. The Times toggle rides with it because it is the other control
+  /// that changes the document; the chips stay chips.
+  ///
+  /// Each control keeps the gate it had in the chip run: the picker needs parts (it chooses
+  /// between cleaned and original words), the toggle needs turns (it shows their times). A
+  /// labeled document can have turns and no parts, when the polisher never started or a
+  /// Stop landed before the first section; Times stays offered there. Found by the cloud
+  /// review of PR #2908.
+  @ViewBuilder
+  private var documentControls: some View {
+    if !coordinator.parts.isEmpty || coordinator.turns != nil {
+      HStack(spacing: 12) {
+        // The page promises the untouched words are kept. This is where the user reads them,
+        // and Copy, Save and Share follow Cleaned and Original; Marked up exports Cleaned.
+        // Three states want one picker rather than two links (#2773).
+        if !coordinator.parts.isEmpty {
+          Picker(
+            "View",
+            selection: Binding(
+              get: { coordinator.documentView }, set: { coordinator.documentView = $0 })
+          ) {
+            Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
+            Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
+            Text("Original").tag(FileImportCoordinator.DocumentView.original)
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .controlSize(.regular)
+          .accessibilityLabel("Which words to show")
+        }
+        Spacer(minLength: 12)
+        // Times on/off (#2811 §2.1) — only meaningful once there are turns to time.
+        if coordinator.turns != nil {
+          Toggle(
+            "Times",
+            isOn: Binding(get: { coordinator.timesOn }, set: { coordinator.timesOn = $0 })
+          )
+          .controlSize(.regular)
+          .toggleStyle(.switch)
+        }
+      }
+    }
+  }
+
+  /// The action row and the save message: fixed under the document's scroll on Done.
+  @ViewBuilder
+  private var doneActions: some View {
     BrandedSection {
       HStack(spacing: 10) {
         // **Offered only when there is something to hand over.** Stopping before
@@ -1462,34 +1583,6 @@ struct TranscribeFileView: View {
       }
       savedToHistoryChip
       polishedByChip
-      // The page promises the untouched words are kept. This is where the user reads them,
-      // and Copy, Save and Share follow Cleaned and Original; Marked up exports Cleaned.
-      // Three states want one picker rather than two links (#2773).
-      if !coordinator.parts.isEmpty {
-        Picker(
-          "View",
-          selection: Binding(
-            get: { coordinator.documentView }, set: { coordinator.documentView = $0 })
-        ) {
-          Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
-          Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
-          Text("Original").tag(FileImportCoordinator.DocumentView.original)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.small)
-        .fixedSize()
-        .accessibilityLabel("Which words to show")
-      }
-      // Times on/off (#2811 §2.1) — only meaningful once there are turns to time.
-      if coordinator.turns != nil {
-        Toggle(
-          "Times",
-          isOn: Binding(get: { coordinator.timesOn }, set: { coordinator.timesOn = $0 })
-        )
-        .controlSize(.small)
-        .toggleStyle(.switch)
-      }
     }
   }
 
