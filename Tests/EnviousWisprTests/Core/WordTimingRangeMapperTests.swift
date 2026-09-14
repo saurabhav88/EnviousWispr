@@ -269,4 +269,68 @@ struct WordTimingRangeMapperTests {
     #expect(bound.map(\.startMs) == [0, nil, nil, 300])
     #expect(coverage.timed == "alphadelta".utf16.count)
   }
+
+  // MARK: - Space-free scripts (#2838)
+
+  /// WhisperKit's own Japanese fixture (`testSplitToWordTokensJapanese`): the text has no
+  /// spaces, so it is one run; the engine's token groups laid end to end ARE the run, and each
+  /// group becomes one timed entry.
+  @Test("a Japanese run is carved into one timed entry per engine token group")
+  func japaneseRunIsCarvedPerEngineWord() {
+    let text = "こんにちは、世界！これはテストですよね？"
+    let groups = ["こんにちは", "、", "世界", "！", "これは", "テ", "スト", "です", "よね", "？"]
+    var words: [(word: String, startMs: Int?, endMs: Int?)] = []
+    for (i, g) in groups.enumerated() { words.append((g, i * 100, i * 100 + 100)) }
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 2_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(bound.map(\.word) == groups)
+    #expect(bound.map(\.startMs) == groups.indices.map { $0 * 100 })
+    #expect(bound.first?.range == 0..<5)
+    #expect(bound[1].range == 5..<6)
+    #expect(bound.last?.range == text.utf16.count - 1..<text.utf16.count)
+    #expect(coverage.timed == coverage.total)
+    #expect(coverage.total == text.utf16.count)
+  }
+
+  /// One group that does not match the text aborts the walk; the run falls through to the
+  /// forced binding, which times nothing on a single run, exactly as before.
+  @Test("a mismatched group aborts the carve and the run stays one untimed entry")
+  func mismatchedGroupAbortsTheCarve() {
+    let text = "こんにちは世界"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [
+      ("こんにちは", 0, 100), ("世畍", 100, 200),
+    ]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(bound.count == 1)
+    #expect(bound.first?.startMs == nil)
+    #expect(coverage.timed == 0)
+  }
+
+  /// A spaced script never reaches the carve: several runs, so the forced binding decides.
+  @Test("a spaced run set is never carved, even when the groups concatenate to it")
+  func spacedScriptIsNeverCarved() {
+    let text = "hello world"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [
+      ("hel", 0, 50), ("lo", 50, 100), ("world", 100, 200),
+    ]
+    let (bound, _) = WordTimingRangeMapper.map(text: text, audioDurationMs: 1_000, words: words)
+    #expect(bound.map(\.word) == ["hello", "world"])
+    #expect(bound.map(\.startMs) == [nil, 100])
+  }
+
+  /// A group with a leading space (WhisperKit's spaced-script tokens) still carves when the
+  /// piece is one run, and the ranges skip nothing.
+  @Test("groups with engine-side spaces carve by their non-space scalars")
+  func groupsWithSpacesCarveByScalars() {
+    let text = "世界です"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [(" 世界", 0, 100), (" です", 100, 200)]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(bound.map(\.range) == [0..<2, 2..<4])
+    #expect(coverage.timed == 4)
+  }
 }

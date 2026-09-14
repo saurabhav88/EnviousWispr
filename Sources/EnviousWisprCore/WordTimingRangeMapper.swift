@@ -65,8 +65,10 @@ public enum WordTimingRangeMapper {
 
     // Text word index → (piece index, engine word index within that piece). A text run
     // belongs to the first piece whose span contains its start; runs before the first span or
-    // between spans belong to none and stay untimed.
+    // between spans belong to none and stay untimed. A run a space-free piece SPLITS (#2838)
+    // is recorded in `splitRuns` instead: several entries carved from one run.
     var boundEngineWord: [Int: (piece: Int, word: Int)] = [:]
+    var splitRuns: [Int: [(range: Range<Int>, piece: Int, word: Int)]] = [:]
     var pieceStart = 0
     for (pieceIndex, piece) in pieces.enumerated() where !piece.words.isEmpty {
       while pieceStart < textWords.count, textWords[pieceStart].range.lowerBound < piece.span.lowerBound {
@@ -78,10 +80,16 @@ public enum WordTimingRangeMapper {
       }
       guard pieceEnd > pieceStart else { continue }
       let engineWords = piece.words.map { $0.word.trimmingCharacters(in: .whitespaces) }
-      let bound = forcedBinding(
-        engineWords: engineWords, textWords: textWords[pieceStart..<pieceEnd].map(\.text))
-      for (localJ, i) in bound {
-        boundEngineWord[pieceStart + localJ] = (pieceIndex, i)
+      let runs = textWords[pieceStart..<pieceEnd]
+      if runs.count == 1, engineWords.count > 1,
+        let carved = spaceFreeWalk(engineWords: engineWords, run: runs[runs.startIndex])
+      {
+        splitRuns[pieceStart] = carved.map { (range: $0.range, piece: pieceIndex, word: $0.word) }
+      } else {
+        let bound = forcedBinding(engineWords: engineWords, textWords: runs.map(\.text))
+        for (localJ, i) in bound {
+          boundEngineWord[pieceStart + localJ] = (pieceIndex, i)
+        }
       }
       pieceStart = pieceEnd
     }
@@ -89,29 +97,72 @@ public enum WordTimingRangeMapper {
     var result: [ASRWordTiming] = []
     result.reserveCapacity(textWords.count)
     var timed = 0
-    for (j, textWord) in textWords.enumerated() {
-      let length = textWord.range.upperBound - textWord.range.lowerBound
-      guard let hit = boundEngineWord[j] else {
-        result.append(
-          ASRWordTiming(
-            word: String(textWord.text), range: textWord.range, startMs: nil, endMs: nil))
-        continue
-      }
-      let engineWord = pieces[hit.piece].words[hit.word]
-      if let startMs = engineWord.startMs, let endMs = engineWord.endMs,
+    func append(word: String, range: Range<Int>, engineWord: (word: String, startMs: Int?, endMs: Int?)?) {
+      let length = range.upperBound - range.lowerBound
+      if let engineWord, let startMs = engineWord.startMs, let endMs = engineWord.endMs,
         startMs >= 0, endMs >= startMs, endMs <= audioDurationMs
       {
-        result.append(
-          ASRWordTiming(
-            word: String(textWord.text), range: textWord.range, startMs: startMs, endMs: endMs))
+        result.append(ASRWordTiming(word: word, range: range, startMs: startMs, endMs: endMs))
         timed += length
       } else {
-        result.append(
-          ASRWordTiming(
-            word: String(textWord.text), range: textWord.range, startMs: nil, endMs: nil))
+        result.append(ASRWordTiming(word: word, range: range, startMs: nil, endMs: nil))
       }
     }
+    for (j, textWord) in textWords.enumerated() {
+      if let carved = splitRuns[j] {
+        for entry in carved {
+          let lower = text.utf16.index(text.utf16.startIndex, offsetBy: entry.range.lowerBound)
+          let upper = text.utf16.index(text.utf16.startIndex, offsetBy: entry.range.upperBound)
+          append(
+            word: String(text[lower..<upper]), range: entry.range,
+            engineWord: pieces[entry.piece].words[entry.word])
+        }
+        continue
+      }
+      guard let hit = boundEngineWord[j] else {
+        append(word: String(textWord.text), range: textWord.range, engineWord: nil)
+        continue
+      }
+      append(
+        word: String(textWord.text), range: textWord.range,
+        engineWord: pieces[hit.piece].words[hit.word])
+    }
     return (result, ASRWordTimingCoverage(timed: timed, total: total))
+  }
+
+  // MARK: - Space-free scripts (#2838)
+
+  /// A script with no spaces (Chinese, Japanese, Thai) tokenizes into ONE run per piece, so
+  /// no run can equal an engine word and `forcedBinding` times nothing. WhisperKit splits
+  /// such text into token groups of one to five characters (its own `splitTokensOnUnicode`).
+  /// When those groups, laid end to end, ARE the run, the run is carved into one range per
+  /// group; each carries that group's timing. Any mismatch aborts the walk and returns `nil`,
+  /// so the run falls through to the forced binding exactly as before. Only reached for a
+  /// single-run piece with several engine words, never for a spaced script.
+  static func spaceFreeWalk(engineWords: [String], run: TextWord) -> [(range: Range<Int>, word: Int)]? {
+    let runText = run.text.unicodeScalars.filter { !$0.properties.isWhitespace }
+    let joined = engineWords.flatMap { $0.unicodeScalars.filter { !$0.properties.isWhitespace } }
+    guard !joined.isEmpty, runText.elementsEqual(joined) else { return nil }
+
+    var carved: [(range: Range<Int>, word: Int)] = []
+    carved.reserveCapacity(engineWords.count)
+    var cursor = run.range.lowerBound
+    var scalars = run.text.unicodeScalars.makeIterator()
+    for (i, engineWord) in engineWords.enumerated() {
+      let needed = engineWord.unicodeScalars.filter { !$0.properties.isWhitespace }.count
+      guard needed > 0 else { continue }
+      var consumed = 0
+      var units = 0
+      while consumed < needed, let scalar = scalars.next() {
+        units += scalar.utf16.count
+        if !scalar.properties.isWhitespace { consumed += 1 }
+      }
+      guard consumed == needed else { return nil }
+      carved.append((range: cursor..<cursor + units, word: i))
+      cursor += units
+    }
+    guard cursor == run.range.upperBound else { return nil }
+    return carved
   }
 
   // MARK: - Text tokenization
