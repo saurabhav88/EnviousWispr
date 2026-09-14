@@ -150,7 +150,7 @@ def test_polish_pack_outcomes() -> None:
             "<s1>We went to the store and bought some milk today.</s1>\n<s2>Yeah.</s2>\n"
             "<s3>We ship it today.</s3>", {"outTok": 12})
         summary, rows = runner.polish_pack("openai", "m", "k", pack, texts)
-        check("good pack ok", summary["outcome"] == "ok", str(summary))
+        check("good pack unwrapped", summary["outcome"] == "unwrapped", str(summary))
         check("one row per section in order", [r["id"] for r in rows] == ["a", "b", "c"])
         check("accepted section carries its candidate",
               rows[0]["section_status"] == "accepted" and rows[0]["candidate"].startswith("We went"))
@@ -262,26 +262,48 @@ def test_incomplete_pack_run_exits_nonzero() -> None:
             runner.call_once = original
 
 
-def test_paired_gate_is_tracked_and_refuses_a_plain_arm() -> None:
-    """The measurement's mechanical gate lives in the repo and refuses a candidate file
-    whose rows lack `section_status` (an isolated arm run without --validate)."""
+def test_packing_report_refuses_only_mechanical_mismatches() -> None:
+    """`compare_arms_paired.py --packing-report` lives beside the runner. It refuses a row
+    without `section_status`, a graded row whose text is not the supplied candidate, and a
+    duplicate id. It does NOT refuse arms whose receipts differ: it prints both receipts
+    and leaves that reading to the operator."""
     import subprocess
-    gate = Path(__file__).resolve().parents[1] / "compare_arms_paired.py"
-    check("compare_arms_paired.py is beside the runner", gate.exists())
+    report = Path(__file__).resolve().parents[1] / "compare_arms_paired.py"
+    check("compare_arms_paired.py is beside the runner", report.exists())
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
-        graded = json.dumps({"id": "x", "verdict": "pass"}) + "\n"
+        graded = json.dumps({"id": "x", "verdict": "pass", "candidate_output": "t"}) + "\n"
         (d / "a.jsonl").write_text(graded)
         (d / "b.jsonl").write_text(graded)
-        (d / "a_cand.jsonl").write_text(json.dumps({"id": "x", "candidate": "t"}) + "\n")
-        (d / "b_cand.jsonl").write_text(json.dumps({"id": "x", "candidate": "t", "section_status": "accepted"}) + "\n")
-        r = subprocess.run(
-            [sys.executable, str(gate), "--a", str(d / "a.jsonl"), "--b", str(d / "b.jsonl"),
-             "--packing-comparison", "--a-candidates", str(d / "a_cand.jsonl"),
-             "--b-candidates", str(d / "b_cand.jsonl")],
-            capture_output=True, text=True)
-        check("a plain isolated arm is refused", r.returncode != 0 and "section_status missing" in (r.stdout + r.stderr),
-              (r.stdout + r.stderr)[-300:])
+        receipt = {"provider": "openai", "model": "m", "prompt_mode": "production", "thinking": None,
+                   "validated": True, "mode": "isolated", "pack_file": None}
+        other_model = {**receipt, "model": "other", "mode": "packed", "pack_file": "packs-1500.jsonl"}
+        good = json.dumps({"id": "x", "candidate": "t", "section_status": "accepted", "run": receipt}) + "\n"
+        (d / "plain.jsonl").write_text(json.dumps({"id": "x", "candidate": "t", "run": receipt}) + "\n")
+        (d / "good.jsonl").write_text(good)
+        (d / "dup.jsonl").write_text(good + good)
+        (d / "othermodel.jsonl").write_text(json.dumps({"id": "x", "candidate": "t", "section_status": "rejectedExpansion", "run": other_model}) + "\n")
+        (d / "foreign.jsonl").write_text(json.dumps({"id": "x", "candidate": "OTHER", "section_status": "accepted", "run": receipt}) + "\n")
+
+        def run(a_cand, b_cand):
+            r = subprocess.run(
+                [sys.executable, str(report), "--a", str(d / "a.jsonl"), "--b", str(d / "b.jsonl"),
+                 "--packing-report", "--a-candidates", str(d / a_cand),
+                 "--b-candidates", str(d / b_cand)], capture_output=True, text=True)
+            return r.returncode, r.stdout + r.stderr
+        rc, out = run("plain.jsonl", "good.jsonl")
+        check("a plain isolated arm is refused", rc != 0 and "section_status missing" in out, out[-300:])
+        rc, out = run("foreign.jsonl", "good.jsonl")
+        check("a candidate file the scores did not come from is refused",
+              rc != 0 and "not the supplied candidate" in out, out[-300:])
+        rc, out = run("dup.jsonl", "good.jsonl")
+        check("a duplicate id is refused", rc != 0 and "duplicate id x" in out, out[-300:])
+        rc, out = run("good.jsonl", "othermodel.jsonl")
+        check("arms with different receipts are NOT refused; both receipts are printed",
+              rc == 0 and '"model": "other"' in out and '"model": "m"' in out
+              and "does not certify" in out, out[-500:])
+        check("the fallback count names the rejected row",
+              "B: 1 fallback rows of 1" in out and "rejectedExpansion" in out, out[-500:])
 
 
 def test_dry_run_writes_bodies_and_calls_nobody() -> None:

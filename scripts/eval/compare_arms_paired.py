@@ -50,6 +50,24 @@ def load(p: Path) -> dict[str, dict]:
     return out
 
 
+def load_unique(p: Path) -> dict[str, dict]:
+    """`load` plus a refusal of duplicate ids: a candidate file with one id twice would
+    let `load` keep whichever row came last, and the judge graded one of them."""
+    out: dict[str, dict] = {}
+    if not p.exists():
+        sys.exit(f"FATAL: missing {p}")
+    for line in p.read_text().splitlines():
+        if line.strip():
+            d = json.loads(line)
+            cid = str(d["id"])
+            if cid in out:
+                sys.exit(f"FATAL: {p}: duplicate id {cid}")
+            out[cid] = d
+    if not out:
+        sys.exit(f"FATAL: {p} has no rows")
+    return out
+
+
 def passed(row: dict) -> bool:
     return row.get("verdict") in PASSING
 
@@ -74,13 +92,20 @@ def main() -> int:
     ap.add_argument("--b-name", default="B")
     ap.add_argument("--json-out", type=Path, default=None)
     ap.add_argument("--show-flips", type=int, default=25)
-    # #2851 phase 2: the packed-versus-isolated measurement. Both arms must carry
-    # production's fallback treatment (`run_cloud_type_b.py --pack` always does; the
-    # isolated arm only with `--validate`), or the comparison is biased whenever a guard
-    # fires. The candidate files carry `section_status` on every validated row, so its
-    # absence is the mechanical tell, and the fallback reasons are reported per arm.
-    ap.add_argument("--packing-comparison", action="store_true",
-                    help="require --a-candidates/--b-candidates with section_status on every row")
+    # #2851 phase 2: the packed-versus-isolated measurement. `--packing-report` prints,
+    # per arm, how many rows carry production's fallback and why, and the two run
+    # receipts side by side. It exits nonzero only on three MECHANICAL mismatches: a row
+    # without `section_status` (an isolated arm run without `--validate`), a graded row
+    # whose `candidate_output` is not the supplied candidate (scores and candidates from
+    # different runs), and a duplicate id. Whether the two arms are the same experiment
+    # apart from packing is the OPERATOR's reading of the receipts; nothing here
+    # certifies it (PR #2902: four cloud rounds and a local enumeration each found a
+    # further axis such a check would have to cover, so the check was deleted rather than
+    # extended; #2904 carries the enumeration).
+    ap.add_argument("--packing-report", action="store_true",
+                    help="with --a-candidates/--b-candidates: print fallback counts and both run "
+                         "receipts; refuse only rows missing section_status, foreign "
+                         "candidate_output, or duplicate ids")
     ap.add_argument("--a-candidates", type=Path, default=None)
     ap.add_argument("--b-candidates", type=Path, default=None)
     args = ap.parse_args()
@@ -90,12 +115,13 @@ def main() -> int:
     if not shared:
         sys.exit("FATAL: the two score files share no case ids")
 
-    if args.packing_comparison:
+    if args.packing_report:
         if not args.a_candidates or not args.b_candidates:
-            ap.error("--packing-comparison requires both --a-candidates and --b-candidates")
+            ap.error("--packing-report requires both --a-candidates and --b-candidates")
+        receipts: dict[str, list[dict | None]] = {}
         for name, grades, path in ((args.a_name, A, args.a_candidates),
                                    (args.b_name, B, args.b_candidates)):
-            candidates = load(path)
+            candidates = load_unique(path)
             for cid, row in candidates.items():
                 if not row.get("section_status"):
                     sys.exit(f"FATAL: {name}/{cid}: section_status missing; rerun the isolated "
@@ -103,10 +129,28 @@ def main() -> int:
             missing = set(grades) - set(candidates)
             if missing:
                 sys.exit(f"FATAL: {name}: graded cases with no candidate row: {sorted(missing)[:10]}")
+            # PROVENANCE: the graded row carries the text the judge saw (`candidate_output`,
+            # behavior_judge.py per_case), so scores cannot be paired with a candidate
+            # file they did not come from.
+            foreign = [cid for cid in grades
+                       if (grades[cid].get("candidate_output") or "") != (candidates[cid].get("candidate") or "")]
+            if foreign:
+                sys.exit(f"FATAL: {name}: {len(foreign)} graded rows carry a candidate_output that is "
+                         f"not the supplied candidate (first: {foreign[:5]}); the scores and the "
+                         "candidate file are from different runs, or the judge wrote no "
+                         "candidate_output")
             fallbacks = {cid: row["section_status"] for cid, row in candidates.items()
                          if row["section_status"] != "accepted"}
             print(f"{name}: {len(fallbacks)} fallback rows of {len(candidates)}: "
                   f"{json.dumps(fallbacks)[:600]}", file=sys.stderr)
+            distinct = {json.dumps(row.get("run"), sort_keys=True) for row in candidates.values()}
+            receipts[name] = [json.loads(r) for r in sorted(distinct)]
+        print("run receipts, side by side (data for the operator; this report does not "
+              "certify that the two arms are the same experiment apart from packing):",
+              file=sys.stderr)
+        for name in (args.a_name, args.b_name):
+            for r in receipts[name]:
+                print(f"  {name}: {json.dumps(r, sort_keys=True)}", file=sys.stderr)
 
     both_pass = both_fail = 0
     a_only: list[str] = []   # A passed, B failed  -> candidate REGRESSED

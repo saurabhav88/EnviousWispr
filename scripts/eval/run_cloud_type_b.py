@@ -796,7 +796,7 @@ def polish_pack(
             "section_status": verdict.status,
             "pack_index": pack.get("pack_index"), "pack_file": pack.get("file"),
         })
-    summary["outcome"] = "ok"
+    summary["outcome"] = "unwrapped"
     summary["section_statuses"] = statuses
     return summary, rows
 
@@ -806,6 +806,21 @@ def _fallback_rows(pack: dict, ids: list[str], sections: list[str], status: str)
     return [{"id": i, "candidate": original, "section_status": status,
              "pack_index": pack.get("pack_index"), "pack_file": pack.get("file")}
             for i, original in zip(ids, sections)]
+
+
+def run_receipt(args, thinking: tuple[str, object] | None) -> dict:
+    """Provenance every candidate row of a run carries: what was run, on which route, with
+    which prompt, validated or not, packed or isolated. `compare_arms_paired.py
+    --packing-report` prints the two arms' receipts side by side for the operator to read;
+    it does not certify that two arms are the same experiment (PR #2902)."""
+    return {
+        "provider": args.provider, "model": args.model,
+        "prompt_mode": args.system_prompt,
+        "thinking": list(thinking) if thinking else None,
+        "validated": True if args.pack is not None else bool(getattr(args, "validate", False)),
+        "mode": "packed" if args.pack is not None else "isolated",
+        "pack_file": args.pack.name if args.pack is not None else None,
+    }
 
 
 def thinking_off_refusal(thinking: tuple[str, object] | None, reason_tok: int) -> str | None:
@@ -841,10 +856,10 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         packs = packs[: args.limit]
     print(f"packs    : {args.pack.name} ({len(packs)} packs, "
           f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
-    print("validate : every section carries production's fallback on a rejection; compare "
-          "against an isolated arm run with --validate through "
-          "`compare_arms_paired.py --packing-comparison`, which refuses a plain arm",
-          file=sys.stderr)
+    print("validate : every section carries production's fallback on a rejection; run the "
+          "isolated arm with --validate and read both arms through "
+          "`compare_arms_paired.py --packing-report`, which refuses a plain arm and prints "
+          "both run receipts for you to hold to the same experiment", file=sys.stderr)
 
     if args.dry_run is not None:
         with open(args.dry_run, "w") as f:
@@ -864,6 +879,7 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         return 0
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    receipt = run_receipt(args, thinking)
     summaries: list[dict] = []
     rows_by_id: dict[str, dict] = {}
     t0 = time.monotonic()
@@ -877,8 +893,9 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
             summary, rows = fut.result()
             summaries.append(summary)
             for r in rows:
+                r["run"] = receipt
                 rows_by_id[r["id"]] = r
-            if summary["outcome"] != "ok":
+            if summary["outcome"] != "unwrapped":
                 print(f"[{n}/{len(packs)}] {summary['outcome'].upper()} "
                       f"{summary['file']}:{summary['pack_index']} {summary.get('error', '')}",
                       file=sys.stderr)
@@ -1145,6 +1162,7 @@ def main() -> int:
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
     results: dict[str, dict] = {}
+    receipt = run_receipt(args, thinking)
     errors = 0
     done = 0
     t0 = time.monotonic()
@@ -1157,6 +1175,7 @@ def main() -> int:
         ]
         for fut in as_completed(futures):
             row = fut.result()
+            row["run"] = receipt
             results[row["id"]] = row
             done += 1
             if row.get("error"):
