@@ -49,6 +49,12 @@ struct TranscribeFileView: View {
   /// observed, reset with the document's generation.
   @State private var pace = SectionPace()
 
+  /// #2817 item 8: when Copy everything was last pressed, so the button can say "Copied"
+  /// for a moment. The founder, 2026-09-13: pressing it "doesn't give any feedback that it
+  /// worked. We need a copied pill so folks know it is actually copied." View-owned: it is a
+  /// fact about this screen's last press, cleared with the document's generation.
+  @State private var copiedAt: Date?
+
   var body: some View {
     VStack(spacing: 0) {
       stepBar
@@ -1079,7 +1085,7 @@ struct TranscribeFileView: View {
           text:
             """
             Dictation pauses while this runs. Your keybind will not record until the transcript \
-            is finished, \(coordinator.estimateText).
+            is finished, in \(coordinator.estimateText).
             """,
           systemImage: "mic.slash", tint: .orange)
         // The words change with what the action IS. After a refusal the file is
@@ -1505,9 +1511,22 @@ struct TranscribeFileView: View {
         // step", and copying, saving and starting over do not. Titles relabel while Marked
         // up is showing, disclosing that Copy/Save/Share hand over the CLEANED text instead
         // (#2811 §2.1, generalized from the founder's existing export-substitution rule).
+        // Copied for two seconds after a press, then the label again (item 8). The revert
+        // is a task keyed on the press time, so a second press restarts the clock and
+        // leaving the step cancels it; New transcription clears it with the generation.
+        let copy = Self.copyButtonPresentation(
+          label: coordinator.exportButtonLabels.copy, copiedAt: copiedAt, now: Date())
         wizardPrimary(
-          coordinator.exportButtonLabels.copy, isEnabled: coordinator.hasDocument,
-          systemImage: "doc.on.doc", showsArrow: false, action: { copyDocument() })
+          copy.title, isEnabled: coordinator.hasDocument,
+          systemImage: copy.systemImage, showsArrow: false, action: { copyDocument() }
+        )
+        .task(id: copiedAt) {
+          guard copiedAt != nil else { return }
+          try? await Task.sleep(for: .seconds(Self.copiedHoldSeconds))
+          guard !Task.isCancelled else { return }
+          copiedAt = nil
+        }
+        .onChange(of: coordinator.generation) { _, _ in copiedAt = nil }
         wizardSecondary(
           coordinator.exportButtonLabels.save, isEnabled: coordinator.hasDocument,
           systemImage: "square.and.arrow.down", action: { saveDocument() })
@@ -1941,9 +1960,36 @@ struct TranscribeFileView: View {
     .disabled(!coordinator.hasDocument || coordinator.exportText.isEmpty)
   }
 
+  /// One door for the clipboard (`PasteService`, the same one History's Copy uses), then
+  /// the on-screen and spoken feedback. The write returns nothing, so "Copied" reports the
+  /// press, not a verified board change; `copyToClipboardReturningChangeCount` exists if
+  /// that ever needs gating.
   private func copyDocument() {
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(coordinator.exportText, forType: .string)
+    PasteService.copyToClipboard(coordinator.exportText)
+    copiedAt = Date()
+    NSAccessibility.post(
+      element: NSApp.mainWindow as Any,
+      notification: .announcementRequested,
+      userInfo: [
+        .announcement: "Copied",
+        .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+      ])
+  }
+
+  /// How long the button says "Copied" after a press.
+  nonisolated static let copiedHoldSeconds: Double = 2
+
+  /// The button's title and symbol: "Copied" with a checkmark while a press is within
+  /// `holdSeconds` of `now`, else `label` (which follows the view: "Copy everything" on
+  /// Cleaned and Original, "Copy cleaned" on Marked up) with the copy symbol. Pure, so the
+  /// hold and the revert-to-the-right-label rule are pinned by `TranscribeFileCopiedTests`.
+  nonisolated static func copyButtonPresentation(
+    label: String, copiedAt: Date?, now: Date, holdSeconds: Double = copiedHoldSeconds
+  ) -> (title: String, systemImage: String) {
+    if let copiedAt, now.timeIntervalSince(copiedAt) < holdSeconds, now >= copiedAt {
+      return ("Copied", "checkmark")
+    }
+    return (label, "doc.on.doc")
   }
 
   private func saveDocument() {
