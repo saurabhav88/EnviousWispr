@@ -1351,7 +1351,23 @@ final class FileImportCoordinator {
 
   /// The speaker step's result for the document being cleaned, awaited by `run` before the
   /// sections are cut. Reset wherever the document is replaced.
-  @ObservationIgnored private var pendingSpeakerResult: SpeakerStepResult?
+  @ObservationIgnored private var pendingSpeakerResult: SpeakerStepResult? {
+    didSet { speakersFoundForDisplay = Self.speakersFound(in: pendingSpeakerResult?.analysis) }
+  }
+
+  /// The speaker count the Working page shows (#2918): from the POST-ASSEMBLY result, never
+  /// the analyzer's own outcome (`speakerAnalysis` is telemetry-only; assembly downgrades it
+  /// when timings are missing or every turn is unknown). Nil until the step has landed a
+  /// result with a count, and for a single voice 1; cleared with the result.
+  private(set) var speakersFoundForDisplay: Int?
+
+  nonisolated static func speakersFound(in analysis: TranscriptSpeakerAnalysis?) -> Int? {
+    switch analysis {
+    case .labeled(let count): return count
+    case .single: return 1
+    case .failed, .unanalyzed, nil: return nil
+    }
+  }
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
 
   private func resetSpeakerResult() {

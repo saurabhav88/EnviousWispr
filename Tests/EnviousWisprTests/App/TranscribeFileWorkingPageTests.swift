@@ -13,14 +13,14 @@ import Testing
 struct TranscribeFileWorkingPageTests {
 
   private func make(
-    fraction: Double? = nil, landed: Bool = false, speakers: SpeakerAnalysis? = nil,
+    fraction: Double? = nil, landed: Bool = false, speakers: Int? = nil,
     done: Int? = nil, total: Int? = nil, words: Int? = nil, polisher: LLMProvider? = .egOne,
     engine: ASRBackendType = .whisperKit
   ) -> WorkingPageModel {
     WorkingPageModel.make(
       fileName: "4-elon-musk-jre-1470.m4a", fileSeconds: 7_208.7, engine: engine, polisher: polisher,
       estimate: "about 8 minutes", transcribingFraction: fraction, transcriptLanded: landed,
-      speakers: speakers, sectionsDone: done, sectionsTotal: total, words: words)
+      speakersFound: speakers, sectionsDone: done, sectionsTotal: total, words: words)
   }
 
   private func value(_ model: WorkingPageModel, _ kind: WorkingPageModel.Count.Kind) -> String? {
@@ -57,11 +57,18 @@ struct TranscribeFileWorkingPageTests {
     #expect(value(make(fraction: nil), .transcribed) == nil)
   }
 
-  @Test("speakers come from the analysis: labeled gives the count, single is 1, a failure is unknown")
+  @Test("speakers come from the coordinator's post-assembly count, never the analyzer's own outcome")
   func speakers() {
-    #expect(value(make(speakers: .labeled(count: 2, segments: [])), .speakers) == "2")
-    #expect(value(make(speakers: .single(segments: [])), .speakers) == "1")
-    #expect(value(make(speakers: .timedOut(afterMs: 90_000)), .speakers) == nil)
+    #expect(value(make(speakers: 2), .speakers) == "2")
+    #expect(value(make(speakers: 1), .speakers) == "1")
+    #expect(value(make(speakers: nil), .speakers) == nil)
+    // The count the page is handed comes from the ASSEMBLED result: a labeled analysis
+    // that assembly downgraded (missing timings, every turn unknown) shows no count.
+    #expect(FileImportCoordinator.speakersFound(in: .labeled(count: 2)) == 2)
+    #expect(FileImportCoordinator.speakersFound(in: .single) == 1)
+    #expect(FileImportCoordinator.speakersFound(in: .failed(.noWordTimings)) == nil)
+    #expect(FileImportCoordinator.speakersFound(in: .unanalyzed) == nil)
+    #expect(FileImportCoordinator.speakersFound(in: nil) == nil)
   }
 
   @Test("sections and words are the cleaning counter and the raw word count, formatted")

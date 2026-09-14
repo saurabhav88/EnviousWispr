@@ -1276,7 +1276,7 @@ struct TranscribeFileView: View {
       estimate: coordinator.estimateText,
       transcribingFraction: coordinator.transcribingFraction,
       transcriptLanded: coordinator.hasDocument,
-      speakers: coordinator.speakerAnalysis,
+      speakersFound: coordinator.speakersFoundForDisplay,
       sectionsDone: sectionsDone, sectionsTotal: sectionsTotal,
       words: coordinator.hasDocument ? coordinator.wordCount : nil)
   }

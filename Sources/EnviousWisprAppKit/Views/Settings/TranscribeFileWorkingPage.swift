@@ -43,14 +43,14 @@ struct WorkingPageModel: Equatable {
   ///
   /// - `transcribedSeconds` / `fileSeconds`: minutes reached over the file's length, from the
   ///   transcribing fraction while the engine runs; the whole length once the transcript is in.
-  /// - `speakers`: from `SpeakerAnalysis` once the speaker step lands (`labeled(count:)`
-  ///   gives the count; `single` is 1; a failure or timeout leaves it unknown).
+  /// - `speakersFound`: the coordinator's post-assembly count (`speakersFoundForDisplay`:
+  ///   labeled gives the count, a single voice is 1, a failed or downgraded step is unknown).
   /// - `sectionsDone` / `sectionsTotal`: the cleaning counter.
   /// - `words`: the raw transcript's word count once it is in hand.
   static func make(
     fileName: String, fileSeconds: Double, engine: ASRBackendType, polisher: LLMProvider?,
     estimate: String, transcribingFraction: Double?, transcriptLanded: Bool,
-    speakers: SpeakerAnalysis?, sectionsDone: Int?, sectionsTotal: Int?, words: Int?
+    speakersFound: Int?, sectionsDone: Int?, sectionsTotal: Int?, words: Int?
   ) -> WorkingPageModel {
     let totalMinutes = max(1, Int((fileSeconds / 60).rounded()))
     let transcribed: String?
@@ -62,12 +62,7 @@ struct WorkingPageModel: Equatable {
     } else {
       transcribed = nil
     }
-    let speakerValue: String?
-    switch speakers {
-    case .labeled(let count, _): speakerValue = "\(count)"
-    case .single: speakerValue = "1"
-    case .failed, .timedOut, nil: speakerValue = nil
-    }
+    let speakerValue = speakersFound.map { "\($0)" }
     let sections: String?
     if let sectionsTotal, sectionsTotal > 0 {
       sections = "\(min(max(sectionsDone ?? 0, 0), sectionsTotal)) of \(sectionsTotal)"
