@@ -106,18 +106,21 @@ final class FileImportCoordinator {
     return "\(minutes / 60) hr \(minutes % 60) min"
   }
 
-  /// How long the run is expected to take, for "Ready in about 3 minutes".
-  ///
-  /// Measured shape rather than a guess: the fast engine transcribes about an
-  /// hour of audio in seven seconds, and the polish is what actually costs time
-  /// — roughly twelve seconds per 500-word part.
+  /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
+  /// per audio minute. Calibrated on four Parakeet + EG-1 runs on 2026-09-13 (4 to 120
+  /// audio minutes; 3.25 to 3.89 s per audio minute from Start to stored; the 48-minute
+  /// run's Start is approximate). The run is one polish call per speaker section, except
+  /// sections too short to polish, and the section count is unknown until the transcript
+  /// lands; this line is shown before it does (#2817).
+  nonisolated static let secondsPerAudioMinute: Double = 3.8
+
   var estimateText: String {
     guard let file else { return "" }
-    // Rounded UP: 1,100 words is three parts, not two, and an estimate that
-    // truncates gets shorter exactly as the file gets longer.
-    let parts = max(1, Int(((file.seconds / 60.0 * 150.0) / 500.0).rounded(.up)))
-    let minutes = max(1, Int((Double(parts) * 12.0 / 60.0).rounded()))
-    return minutes == 1 ? "about a minute" : "about \(minutes) minutes"
+    return Self.estimateText(audioSeconds: file.seconds)
+  }
+
+  nonisolated static func estimateText(audioSeconds: Double) -> String {
+    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute)
   }
 
   // MARK: - What the screen is showing
