@@ -83,7 +83,7 @@ enum WhatsNewContent {
     // 95%, spoken lists 0% to 71.9%, self-corrections 21.5% to 44.7%.
     Entry(
       id: "apple-intelligence-macos-27",
-      icon: "apple.intelligence",
+      icon: "sparkles",  // "apple.intelligence" needs macOS 15; the floor is 14 (cloud review)
       title: "Apple Intelligence polish improved on macOS 27",
       description:
         "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes.",
