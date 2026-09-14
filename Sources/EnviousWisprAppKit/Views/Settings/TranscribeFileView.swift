@@ -175,12 +175,12 @@ struct TranscribeFileView: View {
   /// staying fixed above it. Sized for the tallest fixed set the step can show without a
   /// notice (about 300 points of chrome) plus room for two notices and a Try again button
   /// (about 130) plus a readable slice of document (about 170).
-  static let doneFixedHeaderMinimumHeight: CGFloat = 600
+  nonisolated static let doneFixedHeaderMinimumHeight: CGFloat = 600
 
   /// Whether the heading, notices, header card and view switch stay fixed above the document
   /// at `availableHeight` (the height handed to `doneLayout`, below the step bar and above
   /// the pinned footer). Pure, so `TranscribeFileDoneLayoutTests` can pin the threshold.
-  static func doneHeaderIsFixed(availableHeight: CGFloat) -> Bool {
+  nonisolated static func doneHeaderIsFixed(availableHeight: CGFloat) -> Bool {
     availableHeight >= doneFixedHeaderMinimumHeight
   }
 
