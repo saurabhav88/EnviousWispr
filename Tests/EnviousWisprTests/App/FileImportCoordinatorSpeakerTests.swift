@@ -20,40 +20,56 @@ struct FileImportCoordinatorSpeakerTests {
 
   /// A one-shot "entered" signal plus a manual release, so a test can prove a fake speaker
   /// step is actually RUNNING (not skipped) before acting on it.
+  ///
+  /// The test-side wait is BOUNDED and returns whether the signal came. A bare continuation
+  /// wait passes instantly on the happy path and, when the coordinator's completion path is
+  /// broken, parks the whole lane: the night battery of 2026-09-14 killed two #2896 lanes at
+  /// 1800 s on exactly that (`~/.claude/knowledge/dev/test-timing.md`). Callers `#expect` the
+  /// result, so a signal that never arrives is a red test with a name.
   private actor Gate {
-    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
     private var entered = false
 
     func markEntered() {
       entered = true
-      for waiter in enteredWaiters { waiter.resume() }
-      enteredWaiters = []
     }
 
-    func waitUntilEntered() async {
-      if entered { return }
-      await withCheckedContinuation { enteredWaiters.append($0) }
+    func waitUntilEntered(deadline: Duration = .seconds(10)) async -> Bool {
+      let clock = ContinuousClock()
+      let end = clock.now + deadline
+      while !entered, clock.now < end {
+        // settle: poll the gate's own flag until the deadline; a cancelled waiter gives up
+        // rather than spinning on sleeps that throw at once.
+        do { try await Task.sleep(for: .milliseconds(2)) } catch { return false }
+      }
+      return entered
     }
   }
 
   /// A gate a test controls from outside: a call can wait to be told to proceed, and the
   /// test can wait to know a call has arrived. Used to prove ORDERING between the speaker
   /// step and the document cleanup (#2851: either may land first).
+  ///
+  /// `waitUntilOpen()` stays a plain continuation: it is awaited INSIDE the fake step, on the
+  /// coordinator's side; a test that returns early must still open it. `waitUntilArrived()`
+  /// is the TEST-side wait and is bounded for the reason `Gate` states above.
   private actor ManualGate {
     private var openWaiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
-    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
     private var hasArrived = false
 
     func markArrived() {
       hasArrived = true
-      for waiter in arrivalWaiters { waiter.resume() }
-      arrivalWaiters = []
     }
 
-    func waitUntilArrived() async {
-      if hasArrived { return }
-      await withCheckedContinuation { arrivalWaiters.append($0) }
+    func waitUntilArrived(deadline: Duration = .seconds(10)) async -> Bool {
+      let clock = ContinuousClock()
+      let end = clock.now + deadline
+      while !hasArrived, clock.now < end {
+        // settle: poll the gate's own flag until the deadline; a cancelled waiter gives up
+        // rather than spinning on sleeps that throw at once.
+        do { try await Task.sleep(for: .milliseconds(2)) } catch { return false }
+      }
+      return hasArrived
     }
 
     func arrivedSoFar() -> Bool { hasArrived }
@@ -259,7 +275,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await gate.waitUntilEntered()
+    #expect(await gate.waitUntilEntered(), "gate: the fake step never entered")
 
     #expect(coordinator.phase == "Finding who said what")
     #expect(coordinator.parts.isEmpty, "no cleanup before the sections exist")
@@ -293,7 +309,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilEntered()
+    #expect(await speakerGate.waitUntilEntered(), "speakerGate: the fake step never entered")
 
     // The run task holds the claim through the awaited step.
     #expect(coordinator.isEngineHeld)
@@ -634,7 +650,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
 
     // "Clean it again" while the run is still on the awaited speaker step: refused, since
     // the run is in progress (#2851 follow-up); nothing about the step is disturbed.
@@ -888,7 +904,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await cleanupGate.waitUntilArrived()
+    #expect(await cleanupGate.waitUntilArrived(), "cleanupGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the cleanup is in flight")
       return
@@ -932,7 +948,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await cleanupGate.waitUntilArrived()
+    #expect(await cleanupGate.waitUntilArrived(), "cleanupGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the cleanup is in flight")
       return
@@ -966,7 +982,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the speaker step is in flight")
       return
@@ -1005,7 +1021,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await cleanupGate.waitUntilArrived()
+    #expect(await cleanupGate.waitUntilArrived(), "cleanupGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the cleanup is in flight")
       return
@@ -1076,7 +1092,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the speaker step is in flight")
       return
@@ -1166,7 +1182,7 @@ struct FileImportCoordinatorSpeakerTests {
 
     tracker.secondRun = true
     coordinator.rePolish()
-    await secondRunGate.waitUntilArrived()
+    #expect(await secondRunGate.waitUntilArrived(), "secondRunGate: the gated call never arrived")
     // Section 1 of the second run has landed in memory; section 2 is held. Nothing has
     // been written: the row still shows the first run's document.
     #expect(coordinator.state == .polishing(done: 1, total: 2))
@@ -1209,7 +1225,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await secondPartGate.waitUntilArrived()
+    #expect(await secondPartGate.waitUntilArrived(), "secondPartGate: the gated call never arrived")
     #expect(coordinator.pendingPieces.count == 2, "two turns, two sections")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the second part is in flight")
@@ -1323,7 +1339,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await secondPartGate.waitUntilArrived()
+    #expect(await secondPartGate.waitUntilArrived(), "secondPartGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the second section is in flight")
       return
@@ -1385,7 +1401,7 @@ struct FileImportCoordinatorSpeakerTests {
       return false
     }
     coordinator.retrySpeakerAnalysis()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     let generationBefore = coordinator.generation
     coordinator.rePolish()
     #expect(coordinator.generation == generationBefore, "refused while the retry's analysis runs")
@@ -1428,7 +1444,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await secondPartGate.waitUntilArrived()
+    #expect(await secondPartGate.waitUntilArrived(), "secondPartGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the second section is in flight")
       return
@@ -1563,7 +1579,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     #expect(coordinator.speakerStatusLabel == "Finding speakers")
     #expect(coordinator.phase == "Finding who said what")
 
@@ -1608,7 +1624,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     guard let historyID = coordinator.historyID else {
       Issue.record("no historyID once the speaker step is in flight")
       return
@@ -1923,7 +1939,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.canRetrySpeakerAnalysis)
 
     coordinator.retrySpeakerAnalysis()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
 
     // The user moves on to a DIFFERENT file while the retry's own analyzer call is still
     // blocked — `choose(url:)` cancels `speakerStepTask` (which now owns the retry, per the
@@ -1986,7 +2002,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.canRetrySpeakerAnalysis)
 
     coordinator.retrySpeakerAnalysis()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
 
     // Stop is unconditional, before `isRunning` (the visible screen already reads Done) —
     // this is exactly the "background pass can outlive Done" case the retry task must now
@@ -2026,7 +2042,7 @@ struct FileImportCoordinatorSpeakerTests {
       if case .ready = coordinator.state { return true } else { return false }
     }
     coordinator.start()
-    await speakerGate.waitUntilArrived()
+    #expect(await speakerGate.waitUntilArrived(), "speakerGate: the gated call never arrived")
     #expect(
       !coordinator.canRetrySpeakerAnalysis, "must not be retry-eligible while still in progress")
 
