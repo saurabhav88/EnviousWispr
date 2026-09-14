@@ -806,7 +806,9 @@ public struct InverseTextNormalizer: Sendable {
   /// converts. That is the same shape as the third sentence above and it is not closed — it is
   /// narrower, because it needs the reader to be discussing the French term by name. Dropping
   /// `point` would remove French entirely, since `point` is the French word for the dot.
-  /// #2781 tracks the equivalent hole in the shipped `at`/`dot` pair.
+  /// The equivalent hole in the shipped `at`/`dot` pair is narrowed by `englishProseDomainWords`
+  /// (#2781): a function word in the DOMAIN slot refuses the frame; a name-shaped domain in prose
+  /// still converts.
   static let addressWordPairs: [String: Set<String>] = [
     "at": ["dot", "punkt"],                          // English, and German which borrowed "at"
     "klammeraffe": ["punkt"], "affenschwanz": ["punkt"],  // German
@@ -836,6 +838,27 @@ public struct InverseTextNormalizer: Sendable {
     return dots.contains(dotWord.lowercased())
   }
 
+  /// #2781: English words that fill the DOMAIN slot when an ordinary sentence happens to carry
+  /// `at <word> dot <tld>` — "we left because at one dot me and John got tired" became
+  /// `because@one.me`, "he stared at the dot net" became `stared@the.net`. The frame's domain
+  /// slot is open (any letter-led token); the TLD slot is not the discriminator, because a real
+  /// address ("casey at proton dot me", "bob at example dot net") shares the TLD and differs
+  /// only here. So the guard sits on the domain: the English function words and small number
+  /// words that the measured and pinned false positives put in the slot, plus their siblings.
+  /// Applied to the English pair only (`at` … `dot`) and to `urls`' spoken host slot, which
+  /// would otherwise take "one dot me" the moment `emails` stops consuming it.
+  ///
+  /// This is data, not a judgement about English: the falsification condition is one real
+  /// dictated address whose domain label is one of these words. None exists in `parity.jsonl`
+  /// (`InverseTextNormalizerDottedEmailTests` pins that mechanically); if one ever appears,
+  /// that word leaves the list. Left open on purpose: a NAME-shaped domain in prose ("the shop
+  /// at corner dot net") still converts, the same residual the country-code list carries.
+  static let englishProseDomainWords: Set<String> = [
+    "the", "a", "an", "this", "that", "these", "those",
+    "my", "your", "our", "his", "her", "its", "their",
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  ]
+
   private func emails(_ t: String) -> String {
     // Fully spoken: "name <at-word> domain <dot-word> tld", where the at-word and the dot-word
     // must belong to ONE language. The pair is checked in the closure rather than by running a
@@ -846,9 +869,16 @@ public struct InverseTextNormalizer: Sendable {
       + #"(?<dom>[a-z][a-z0-9-]*)\s+(?<dotw>"# + Self.addressDotAlt + #")\s+"#
       + #"(?<tld>"# + Self.emailTLDAlt + #")\b"#
     return reSub(pat, t) { m in
-      guard Self.isPairedAddressWording(m.g("atw") ?? "", m.g("dotw") ?? "") else { return nil }
+      let atw = (m.g("atw") ?? "").lowercased()
+      let dotw = (m.g("dotw") ?? "").lowercased()
+      guard Self.isPairedAddressWording(atw, dotw) else { return nil }
+      let dom = m.g("dom") ?? ""
+      // #2781: on the English pair, a function word in the domain slot is prose, not a host.
+      if atw == "at", dotw == "dot", Self.englishProseDomainWords.contains(dom.lowercased()) {
+        return nil
+      }
       let name = (m.g("name") ?? "").replacingOccurrences(of: " ", with: "")
-      return "\(name)@\(m.g("dom") ?? "").\(m.g("tld") ?? "")"
+      return "\(name)@\(dom).\(m.g("tld") ?? "")"
     }
   }
 
@@ -1073,11 +1103,19 @@ public struct InverseTextNormalizer: Sendable {
       // pre-existing "h t t p colon slash slash w w w dot ... n e w s dot com dot s m"
       // shape, where "s.com" converts and "dot s m" that follows is unconnected text.
       let hasPath = !(m.g("path") ?? "").isEmpty
+      let host = m.g("host") ?? ""
       guard
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
-        !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m))
+        !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m)),
+        // #2781: "the score was one dot me nothing" is prose; a single-label host that is an
+        // English function word is refused here as `emails` refuses it in the domain slot.
+        // One-letter hosts are exempt: a spelled-out URL ends in a single letter before "dot"
+        // ("a l l a f r i c a dot com" → `a l l a f r i c a.com`, parity holdout, gtn), and the
+        // article "a" is the only one-letter entry on the list. Residual: "he laughed at a dot
+        // me" is refused by `emails` and then converts here to `a.me`.
+        !(host.count > 1 && Self.englishProseDomainWords.contains(host.lowercased()))
       else { return nil }
-      return withPath("\(m.g("host") ?? "").\(m.g("tld") ?? "")", m.g("path")) + trailerSuffix(m)
+      return withPath("\(host).\(m.g("tld") ?? "")", m.g("path")) + trailerSuffix(m)
     }
 
     // Pass 2: recognizer already pre-joined the host into `word.tld`; only a trailing

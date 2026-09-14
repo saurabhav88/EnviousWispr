@@ -124,6 +124,117 @@ struct InverseTextNormalizerDottedEmailTests {
     #expect(!Self.run(input).contains("@"))
   }
 
+  /// #2781: the English pair with an English FUNCTION WORD in the domain slot. Measured
+  /// 2026-09-13 through `apple_runner --preclean-only` before the guard: every one of these
+  /// converted ("We left because at one dot me" → `because@one.me`, "he stared at the dot net" →
+  /// `stared@the.net`), one per word-like TLD the frame keeps (`me`, `net`, `co`, `dev`). The
+  /// TLD is not the discriminator — a real address shares it — so the guard is on the domain.
+  @Test(
+    "an English function word in the domain slot is prose, not a host",
+    arguments: [
+      "We left because at one dot me and John got tired.",
+      "she pointed at one dot me on the map",
+      "he stared at the dot net",
+      "look at the dot co and tell me",
+      "we met at the dot dev conference",
+      "aim at this dot net you will hit it",
+      "glance at my dot co worker said",
+      "look at our dot dev team will fix it",
+      "meet at two dot me and the kids will come",
+      "point at that dot me too",
+    ])
+  func englishFunctionWordInDomainSlotIsProse(input: String) {
+    let out = Self.run(input)
+    #expect(!out.contains("@"), "\(out)")
+    #expect(!out.contains(".me") && !out.contains(".net") && !out.contains(".co") && !out.contains(".dev"), "\(out)")
+  }
+
+  /// The URL twin: once `emails` stops consuming "one dot me", `urls`' spoken pass would take it
+  /// as a host. Same list, same refusal, no at-word needed. One-letter hosts are exempt there,
+  /// because a spelled-out URL ends in a single letter ("a l l a f r i c a dot com", parity
+  /// holdout), so "he laughed at a dot me" still yields `a.me` from the URL pass: a residual
+  /// recorded here, not a refusal.
+  @Test(
+    "the spoken URL pass refuses the same function words as a host",
+    arguments: [
+      ("the score was one dot me nothing", ".me"),
+      ("see the dot net beside it", ".net"),
+      ("that dot co is what I said", ".co"),
+    ])
+  func spokenURLPassRefusesFunctionWordHosts(input: String, suffix: String) {
+    let out = Self.run(input)
+    #expect(!out.contains(suffix), "\(out)")
+  }
+
+  /// The guard is on the ENGLISH pair only. A German speaker's "at … punkt" and a real English
+  /// address with a name-shaped domain and a word-like TLD both still convert.
+  @Test(
+    "real addresses with word-like TLDs and the German pair still convert",
+    arguments: [
+      ("write to casey at proton dot me", "casey@proton.me"),
+      ("write to bob at example dot net", "bob@example.net"),
+      ("tom at example dot co", "tom@example.co"),
+      ("ping sam at nvidia dot dev", "sam@nvidia.dev"),
+      ("schreib an anna at beispiel punkt de", "anna@beispiel.de"),
+      // A German pair with a LISTED word as the domain: the guard is English-only, so this
+      // converts. `beispiel` alone could not tell a German-scoped guard from a global one.
+      ("schreib an anna at one punkt de", "anna@one.de"),
+    ])
+  func wordLikeTLDAddressesStillConvert(input: String, expected: String) {
+    #expect(Self.run(input).contains(expected))
+  }
+
+  /// The URL side's two positives that bound the refusal: a one-letter host (the spelled-out
+  /// shape the parity holdout carries) and a pre-joined multi-label host whose LAST label is
+  /// a listed word, which is not the whole host and so is not refused. (A fully spoken
+  /// "www dot one dot com" never converted, before or after: `spokenPat` takes a literal
+  /// dot between labels, and a spoken "dot" before the host is an unresolved connector.)
+  @Test(
+    "the spoken URL pass still converts a one-letter host and a multi-label host",
+    arguments: [
+      ("go to a dot com", "a.com"),
+      ("go to www.one dot com", "www.one.com"),
+    ])
+  func spokenURLPositivesStillConvert(input: String, expected: String) {
+    #expect(Self.run(input).contains(expected), "\(Self.run(input))")
+  }
+
+  /// The falsification condition, mechanised: no real address in the parity corpus has a
+  /// function word as its domain. If a row ever does, the word must leave
+  /// `englishProseDomainWords`, and this row says so before the parity suite reports a mismatch
+  /// it cannot explain. Reads the domain slot of every converted `<name>@<dom>.<tld>` in the
+  /// corpus's EXPECTED column, so the oracle is the baked output, not the guard under test.
+  /// The slot is the WHOLE host between `@` and the TLD, exactly as the frame's `dom` group is
+  /// one label: `alice@a.b.example.com` has host `a.b.example`, which is not a function word.
+  /// Scoped to rows whose INPUT is the English spoken frame (`at <word> dot <tld>`): an
+  /// already-dotted address or a foreign pair says nothing about this guard and must not
+  /// force a word off the list.
+  @Test("no parity address has a function word in its domain slot")
+  func parityCorpusDomainsAvoidTheStopwordList() throws {
+    let rows = try InverseTextNormalizerParityTests.loadRows()
+    let englishFrame = try NSRegularExpression(
+      pattern: #"\bat\s+[a-z0-9-]+\s+dot\s+[a-z]+\b"#, options: [.caseInsensitive])
+    let addressRows = rows.filter { row in
+      row.expected.contains("@")
+        && englishFrame.firstMatch(
+          in: row.input, range: NSRange(location: 0, length: (row.input as NSString).length))
+          != nil
+    }
+    #expect(addressRows.count > 30, "the parity corpus lost its spoken English address rows")
+    let re = try NSRegularExpression(pattern: #"@([a-z0-9.-]+)\.[a-z]+\b"#, options: [.caseInsensitive])
+    var offenders: [String] = []
+    for row in addressRows {
+      let ns = row.expected as NSString
+      for m in re.matches(in: row.expected, range: NSRange(location: 0, length: ns.length)) {
+        let dom = ns.substring(with: m.range(at: 1)).lowercased()
+        if InverseTextNormalizer.englishProseDomainWords.contains(dom) {
+          offenders.append(row.expected)
+        }
+      }
+    }
+    #expect(offenders.isEmpty, "\(offenders)")
+  }
+
   /// The spoken-form pass is the one that ships, and it is self-limiting: the speaker has to SAY
   /// the dot, which prose does not do.
   @Test(
