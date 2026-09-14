@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -40,6 +41,13 @@ struct LLMDiscoveryAttributionTests {
       keychainManager: KeychainManager(), cacheDefaults: defaults)
   }
 
+  /// A settings store of its own, so a cache-load repair (#2884) can never touch the
+  /// founder's real selection.
+  private static func settings() -> SettingsManager {
+    SettingsManager(
+      defaults: UserDefaults(suiteName: "ew.tests.discovery-attribution.settings.\(UUID().uuidString)")!)
+  }
+
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
     LLMModelInfo(
       id: id, displayName: id, provider: provider, isAvailable: true, isRemote: false)
@@ -50,11 +58,11 @@ struct LLMDiscoveryAttributionTests {
   @Test("taking a new owner drops the previous owner's models and verdict")
   func aNewOwnerLabelsNothing() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .gemini)
+    c.loadCachedModels(for: .gemini, settings: Self.settings(), surface: .dictation)
     c.discoveredModels = [Self.row("gemini-3-flash", provider: .gemini)]
     c.keyValidationState = .valid
 
-    c.loadCachedModels(for: .openAI)
+    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
 
     #expect(c.stateProvider == .openAI)
     #expect(c.discoveredModels.isEmpty, "Gemini's catalog is sitting under OpenAI's name")
@@ -68,10 +76,10 @@ struct LLMDiscoveryAttributionTests {
   @Test("re-loading the same owner keeps a verdict it already reached")
   func aSameProviderReloadKeepsItsVerdict() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .openAI)
+    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
     c.keyValidationState = .valid
 
-    c.loadCachedModels(for: .openAI)
+    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
 
     #expect(c.keyValidationState == .valid, "a completed verdict was discarded by a refresh")
   }
@@ -82,13 +90,13 @@ struct LLMDiscoveryAttributionTests {
   @Test("dismissing a request in flight also drops the verdict it was going to reach")
   func aDismissedRequestLeavesNoPendingVerdict() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .openAI)
+    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
     c.keyValidationState = .validating
     c.isDiscoveringModels = true
 
     // Same provider, so the owner does NOT change: this is the case a rule keyed on the
     // owner alone cannot see.
-    c.loadCachedModels(for: .openAI)
+    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
 
     #expect(c.keyValidationState == .idle, "the gate is stuck on Checking with nothing running")
     #expect(!c.isDiscoveringModels, "the spinner outlived the request that raised it")
@@ -97,7 +105,7 @@ struct LLMDiscoveryAttributionTests {
   @Test("reset leaves no owner and nothing labelled")
   func resetClearsEverything() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .claude)
+    c.loadCachedModels(for: .claude, settings: Self.settings(), surface: .dictation)
     c.discoveredModels = [Self.row("claude-haiku-4-5", provider: .claude)]
     c.keyValidationState = .validating
     c.isDiscoveringModels = true
@@ -108,5 +116,87 @@ struct LLMDiscoveryAttributionTests {
     #expect(c.discoveredModels.isEmpty)
     #expect(c.keyValidationState == .idle)
     #expect(!c.isDiscoveringModels)
+  }
+}
+
+/// #2884: a catalog cached before "transcribe"/"audio" joined `excludePatterns` still holds
+/// the dead id, and a plain Settings open reaches only the cache path. When this fails, the
+/// user sees `gemini-3.5-transcribe` in the picker after upgrading, and a polish armed on it
+/// keeps returning 400 until they re-save the key.
+@MainActor
+@Suite("Cached catalog pruning and repair (#2884)", .tags(.productOutcome))
+struct LLMDiscoveryCachePruneTests {
+  private static func fixture() -> (LLMModelDiscoveryCoordinator, UserDefaults, SettingsManager) {
+    let cache = UserDefaults(suiteName: "ew.tests.2884.cache.\(UUID().uuidString)")!
+    let settings = SettingsManager(
+      defaults: UserDefaults(suiteName: "ew.tests.2884.settings.\(UUID().uuidString)")!)
+    return (
+      LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), cacheDefaults: cache),
+      cache, settings
+    )
+  }
+
+  private static func cache(_ ids: [String], provider: LLMProvider, in defaults: UserDefaults) {
+    let rows = ids.map {
+      LLMModelInfo(id: $0, displayName: $0, provider: provider, isAvailable: true, isRemote: false)
+    }
+    defaults.set(try! JSONEncoder().encode(rows), forKey: "cachedModels_\(provider.rawValue)")
+  }
+
+  private static func cachedIDs(_ provider: LLMProvider, in defaults: UserDefaults) -> [String] {
+    guard let data = defaults.data(forKey: "cachedModels_\(provider.rawValue)"),
+      let rows = try? JSONDecoder().decode([LLMModelInfo].self, from: data)
+    else { return [] }
+    return rows.map(\.id)
+  }
+
+  @Test("a stale Gemini cache loses its audio-input ids, on screen and on disk")
+  func staleCacheIsPrunedAndRewritten() {
+    let (c, cache, settings) = Self.fixture()
+    Self.cache(
+      ["gemini-3.7-flash", "gemini-3.5-transcribe", "gemini-2.5-flash-native-audio-preview"],
+      provider: .gemini, in: cache)
+
+    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+
+    #expect(c.discoveredModels.map(\.id) == ["gemini-3.7-flash"])
+    #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
+  }
+
+  @Test("a polish armed on the pruned id is repaired to a model that polishes text")
+  func armedDeadIDIsRepaired() {
+    let (c, cache, settings) = Self.fixture()
+    settings.llmProvider = .gemini
+    settings.llmModel = "gemini-3.5-transcribe"
+    Self.cache(["gemini-3.5-transcribe", "gemini-3.7-flash"], provider: .gemini, in: cache)
+
+    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+
+    #expect(settings.llmModel == "gemini-3.7-flash")
+  }
+
+  @Test("a clean cache is left alone: no rewrite, no repair")
+  func cleanCacheIsUntouched() {
+    let (c, cache, settings) = Self.fixture()
+    settings.llmProvider = .gemini
+    settings.llmModel = "gemini-3.7-pro"
+    Self.cache(["gemini-3.7-flash", "gemini-3.7-pro"], provider: .gemini, in: cache)
+    let before = cache.data(forKey: "cachedModels_gemini")
+
+    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+
+    #expect(c.discoveredModels.map(\.id) == ["gemini-3.7-flash", "gemini-3.7-pro"])
+    #expect(cache.data(forKey: "cachedModels_gemini") == before, "a clean cache was rewritten")
+    #expect(settings.llmModel == "gemini-3.7-pro")
+  }
+
+  @Test("an Ollama cache is never pruned: discovery does not filter it either")
+  func ollamaCacheIsNotPruned() {
+    let (c, cache, settings) = Self.fixture()
+    Self.cache(["whisper-audio-tts:latest"], provider: .ollama, in: cache)
+
+    c.loadCachedModels(for: .ollama, settings: settings, surface: .dictation)
+
+    #expect(c.discoveredModels.map(\.id) == ["whisper-audio-tts:latest"])
   }
 }

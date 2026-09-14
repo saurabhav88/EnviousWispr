@@ -218,7 +218,18 @@ final class LLMModelDiscoveryCoordinator {
   }
 
   /// Load cached models from UserDefaults for the given provider.
-  func loadCachedModels(for provider: LLMProvider) {
+  ///
+  /// #2884: a catalog cached before an exclusion pattern existed still carries the excluded
+  /// id (`gemini-3.5-transcribe`), and the cloud panes' `onAppear` reaches only this path —
+  /// discovery re-runs on a key save or a provider switch, never on a plain open. So the
+  /// cache is pruned through discovery's own predicate here, re-written, and when a row
+  /// was dropped the armed model goes through the same repair discovery applies, on the
+  /// surface that opened the pane. `settings` is REQUIRED, not defaulted: a defaulted nil
+  /// would let a call site skip the repair with no token at the call (the twin of the
+  /// discovery path's own `settings` parameter).
+  func loadCachedModels(
+    for provider: LLMProvider, settings: SettingsManager, surface: ProviderSetupSurface
+  ) {
     // #2772 chunk 3: a cache load says nothing about whether THIS provider's key works, so
     // a validation verdict earned by a different provider must not survive the switch.
     // A cache load is a new owner of the published state, so an in-flight discovery must not
@@ -234,7 +245,24 @@ final class LLMModelDiscoveryCoordinator {
       discoveredModels = []
       return
     }
-    discoveredModels = models
+    // Mirrors `LLMModelDiscovery.discoverModels`: the three cloud catalogs are filtered,
+    // Ollama's is not, and the bundled engines never reach this path.
+    let pruned: [LLMModelInfo]
+    switch provider {
+    case .openAI, .gemini, .claude:
+      pruned = models.filter { !LLMModelDiscovery.isExcludedModelID($0.id) }
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      pruned = models
+    }
+    discoveredModels = pruned
+    guard pruned.count != models.count else { return }
+    cacheModels(pruned, for: provider)
+    switch surface {
+    case .dictation:
+      settings.applyDiscoveredModels(pruned, for: provider)
+    case .fileImport:
+      settings.applyDiscoveredModelsForFileImport(pruned, for: provider)
+    }
   }
 
   private func cacheModels(_ models: [LLMModelInfo], for provider: LLMProvider) {

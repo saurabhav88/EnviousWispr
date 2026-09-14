@@ -557,6 +557,15 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
+  /// #2884: the one reader of `excludePatterns`. Discovery calls it through
+  /// `filterModels`; `LLMModelDiscoveryCoordinator.loadCachedModels` calls it on a
+  /// catalog cached BEFORE a pattern was added, so an already-cached dead id
+  /// leaves the picker on the next Settings open rather than on the next key save.
+  public static func isExcludedModelID(_ id: String) -> Bool {
+    let lowered = id.lowercased()
+    return excludePatterns.contains { lowered.contains($0) }
+  }
+
   /// `internal`, not `private`, so the pure exclusion decision is directly
   /// testable (#2884) — same reasoning as `DiscoveryCandidate` above.
   func filterModels(_ models: [(id: String, displayName: String)]) -> [(
@@ -565,10 +574,7 @@ public struct LLMModelDiscovery: Sendable {
     models.filter { model in
       let lowered = model.id.lowercased()
 
-      // Exclude by pattern
-      for pattern in Self.excludePatterns {
-        if lowered.contains(pattern) { return false }
-      }
+      if Self.isExcludedModelID(model.id) { return false }
 
       // Exclude versioned duplicates (-001, -002, etc.)
       for suffix in Self.versionedSuffixes {

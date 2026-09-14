@@ -2229,7 +2229,7 @@ struct ProviderSetupLifecycle: ViewModifier {
     .onAppear {
       ProviderSetupKeys.load(into: model, using: keychainManager)
       if provider == .ollama {
-        llmDiscovery.loadCachedModels(for: .ollama)
+        llmDiscovery.loadCachedModels(for: .ollama, settings: settings, surface: surface)
         setup.startOllamaStatusWatch()
         Task {
           await FileImportPolishGate.armImport(
@@ -2264,7 +2264,7 @@ struct ProviderSetupLifecycle: ViewModifier {
         // engine"; without this arm S1-mini fell through to model discovery.
         if surface == .dictation { localPolishRuntimes.s1Mini.activateAndProbe() }
       } else if provider != .none {
-        llmDiscovery.loadCachedModels(for: provider)
+        llmDiscovery.loadCachedModels(for: provider, settings: settings, surface: surface)
       }
     }
     .onDisappear {
@@ -2343,7 +2343,7 @@ struct ProviderSetupLifecycle: ViewModifier {
       // engine fell into a `default:`. Twice is the argument for the compiler
       // asking instead.
       case .openAI, .gemini, .claude:
-        llmDiscovery.loadCachedModels(for: newProvider)
+        llmDiscovery.loadCachedModels(for: newProvider, settings: settings, surface: surface)
         Task {
           await llmDiscovery.validateKeyAndDiscoverModels(
             provider: newProvider, settings: settings, surface: surface)
