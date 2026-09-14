@@ -37,22 +37,10 @@ from pathlib import Path
 PASSING = {"pass", "minor"}
 
 
-def load(p: Path) -> dict[str, dict]:
-    out: dict[str, dict] = {}
-    if not p.exists():
-        sys.exit(f"FATAL: missing {p}")
-    for line in p.read_text().splitlines():
-        if line.strip():
-            d = json.loads(line)
-            out[str(d["id"])] = d
-    if not out:
-        sys.exit(f"FATAL: {p} has no rows")
-    return out
-
-
 def load_unique(p: Path) -> dict[str, dict]:
-    """`load` plus a refusal of duplicate ids: a candidate file with one id twice would
-    let `load` keep whichever row came last, and the judge graded one of them."""
+    """One row per id, or refuse: a score or candidate file with one id twice (an appended
+    rerun, a concatenation) would otherwise keep whichever row came last, and the
+    concordance counts would depend on row order while exiting 0."""
     out: dict[str, dict] = {}
     if not p.exists():
         sys.exit(f"FATAL: missing {p}")
@@ -110,7 +98,7 @@ def main() -> int:
     ap.add_argument("--b-candidates", type=Path, default=None)
     args = ap.parse_args()
 
-    A, B = load(args.a), load(args.b)
+    A, B = load_unique(args.a), load_unique(args.b)
     shared = sorted(set(A) & set(B))
     if not shared:
         sys.exit("FATAL: the two score files share no case ids")

@@ -315,7 +315,12 @@ def test_packing_report_refuses_only_mechanical_mismatches() -> None:
         check("a candidate file the scores did not come from is refused",
               rc != 0 and "not the supplied candidate" in out, out[-300:])
         rc, out = run("dup.jsonl", "good.jsonl")
-        check("a duplicate id is refused", rc != 0 and "duplicate id x" in out, out[-300:])
+        check("a duplicate id in a candidate file is refused", rc != 0 and "duplicate id x" in out, out[-300:])
+        (d / "a-dup.jsonl").write_text(graded + graded)
+        r = subprocess.run([sys.executable, str(report), "--a", str(d / "a-dup.jsonl"), "--b", str(d / "b.jsonl")],
+                           capture_output=True, text=True)
+        check("a duplicate id in a score file is refused, packing report or not",
+              r.returncode != 0 and "duplicate id x" in r.stdout + r.stderr, (r.stdout + r.stderr)[-300:])
         rc, out = run("good.jsonl", "othermodel.jsonl")
         check("arms with different receipts are NOT refused; both receipts are printed",
               rc == 0 and '"model": "other"' in out and '"model": "m"' in out
@@ -342,12 +347,12 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
             class Args:
                 provider, model = "gemini", "gemini-x"
                 corpus, pack, out = d / "sections.jsonl", d / "packs.jsonl", d / "nested" / "out.jsonl"
-                dry_run, limit, workers = d / "dry.jsonl", 0, 1
+                dry_run, limit, workers = d / "dry-dir" / "dry.jsonl", 0, 1
                 system_prompt = "production"
             rc = runner.run_pack_mode(Args, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
             check("dry-run exits 0", rc == 0)
-            lines = (d / "dry.jsonl").read_text().splitlines()
-            check("one body per pack", len(lines) == 1)
+            lines = (d / "dry-dir" / "dry.jsonl").read_text().splitlines()
+            check("one body per pack, in a directory the dry run created for its own file", len(lines) == 1)
             body = json.loads(lines[0])
             check("body carries the section ids", body["section_ids"] == ["f:1", "f:2"])
             check("gemini body shape", "contents" in body["body"] and "systemInstruction" in body["body"])

@@ -889,6 +889,9 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
           "both run receipts for you to hold to the same experiment", file=sys.stderr)
 
     if args.dry_run is not None:
+        # The dry-run file's own parent, and nothing else: `--out`'s directory is created
+        # only by the live path (local review round 1).
+        args.dry_run.parent.mkdir(parents=True, exist_ok=True)
         with open(args.dry_run, "w") as f:
             for p in packs:
                 sections = [texts[i] for i in p["section_ids"]]
