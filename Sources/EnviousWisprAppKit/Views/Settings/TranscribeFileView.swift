@@ -580,7 +580,7 @@ struct TranscribeFileView: View {
   private var fileChecksRow: some View {
     HStack(spacing: 20) {
       check("Audio found").frame(maxWidth: .infinity, alignment: .leading)
-      check("Ready in \(coordinator.estimateText)").frame(maxWidth: .infinity, alignment: .leading)
+      check("Ready in \(coordinator.estimateText(backend: settings.selectedBackend))").frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -1073,7 +1073,7 @@ struct TranscribeFileView: View {
                 Spacer(minLength: 0)
               }
               check("Audio found")
-              check("Ready in \(coordinator.estimateText)")
+              check("Ready in \(coordinator.estimateText(backend: settings.selectedBackend))")
             }
           }
           .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -1085,7 +1085,7 @@ struct TranscribeFileView: View {
           text:
             """
             Dictation pauses while this runs. Your keybind will not record until the transcript \
-            is finished, in \(coordinator.estimateText).
+            is finished, in \(coordinator.estimateText(backend: settings.selectedBackend)).
             """,
           systemImage: "mic.slash", tint: .orange)
         // The words change with what the action IS. After a refusal the file is

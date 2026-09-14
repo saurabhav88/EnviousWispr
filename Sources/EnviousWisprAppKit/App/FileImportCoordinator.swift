@@ -107,20 +107,33 @@ final class FileImportCoordinator {
   }
 
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
-  /// per audio minute. Calibrated on four Parakeet + EG-1 runs on 2026-09-13 (4 to 120
-  /// audio minutes; 3.25 to 3.89 s per audio minute from Start to stored; the 48-minute
-  /// run's Start is approximate). The run is one polish call per speaker section, except
-  /// sections too short to polish, and the section count is unknown until the transcript
-  /// lands; this line is shown before it does (#2817).
-  nonisolated static let secondsPerAudioMinute: Double = 3.8
-
-  var estimateText: String {
-    guard let file else { return "" }
-    return Self.estimateText(audioSeconds: file.seconds)
+  /// per audio minute, per engine. Parakeet: calibrated on four Parakeet + EG-1 runs on
+  /// 2026-09-13 (4 to 120 audio minutes; 3.25 to 3.89 s per audio minute from Start to
+  /// stored; the 48-minute run's Start is approximate). WhisperKit decodes in 30-second
+  /// windows and is the slower engine by a wide margin: the 120-minute file took 741 s from
+  /// Start to stored on the same night (6.2 s per audio minute; #2919's run), against 467 s
+  /// on Parakeet. The run is one polish call per speaker section, except sections too short
+  /// to polish, and the section count is unknown until the transcript lands; this line is
+  /// shown before it does (#2817).
+  nonisolated static func secondsPerAudioMinute(for backend: ASRBackendType) -> Double {
+    switch backend {
+    case .parakeet: return 3.8
+    case .whisperKit: return 6.2
+    }
   }
 
-  nonisolated static func estimateText(audioSeconds: Double) -> String {
-    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute)
+  /// The Parakeet constant, kept as the name the calibration comment and the tests use.
+  nonisolated static let secondsPerAudioMinute: Double = secondsPerAudioMinute(for: .parakeet)
+
+  func estimateText(backend: ASRBackendType) -> String {
+    guard let file else { return "" }
+    return Self.estimateText(audioSeconds: file.seconds, backend: backend)
+  }
+
+  nonisolated static func estimateText(audioSeconds: Double, backend: ASRBackendType = .parakeet)
+    -> String
+  {
+    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute(for: backend))
   }
 
   // MARK: - What the screen is showing
