@@ -351,6 +351,15 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
                 system_prompt = "production"
             rc = runner.run_pack_mode(Args, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
             check("dry-run exits 0", rc == 0)
+            (d / "packs-dup.jsonl").write_text(
+                json.dumps({"section_ids": ["f:1", "f:2"]}) + "\n" + json.dumps({"section_ids": ["f:2"]}) + "\n")
+
+            class DupArgs(Args):
+                pack = d / "packs-dup.jsonl"
+                dry_run = d / "dry-dup.jsonl"
+            rc = runner.run_pack_mode(DupArgs, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            check("a section id in two packs is refused before anything is written",
+                  rc == 2 and not (d / "dry-dup.jsonl").exists())
             lines = (d / "dry-dir" / "dry.jsonl").read_text().splitlines()
             check("one body per pack, in a directory the dry run created for its own file", len(lines) == 1)
             body = json.loads(lines[0])

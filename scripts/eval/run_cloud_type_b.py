@@ -879,6 +879,14 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         print(f"{len(missing)} section ids in {args.pack.name} are not in {args.corpus.name}: "
               f"{missing[:5]}", file=sys.stderr)
         return 2
+    all_ids = [i for p in packs for i in p["section_ids"]]
+    dupes = sorted({i for i in all_ids if all_ids.count(i) > 1})
+    if dupes:
+        # A concatenated pack file would send a section twice and keep whichever pack
+        # finished last (cloud review of PR #2902, round 8; row "duplicate IDs" of #2904).
+        print(f"{len(dupes)} section ids appear in more than one pack of {args.pack.name}: "
+              f"{dupes[:5]}", file=sys.stderr)
+        return 2
     if args.limit:
         packs = packs[: args.limit]
     print(f"packs    : {args.pack.name} ({len(packs)} packs, "
