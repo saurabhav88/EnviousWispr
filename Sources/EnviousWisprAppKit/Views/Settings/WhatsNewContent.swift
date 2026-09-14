@@ -55,7 +55,61 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.4.9
+    // MARK: - v2.5.0
+
+    // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.
+    // Their code shipped; the cards are not narrated.
+
+    // #2762 (the feature), #2786 (per-surface polisher choice), #2803 (menu bar entry),
+    // #2851/#2898 (speaker sections), #2801 (the three Done views), #2897/#2918 (the
+    // Working card). ONE card, the founder's copy verbatim (2026-09-14, his decision after
+    // the cloud reviewer's scoping notes; he owns the product copy). Two claims he was told
+    // reach past the code: the app takes one file at a time (`allowsMultipleSelection =
+    // false`), and with a cloud polisher the TEXT leaves the Mac (the project's privacy
+    // section: audio always stays, text goes to the user's chosen provider).
+    Entry(
+      id: "transcribe-a-file",
+      icon: "doc.badge.ellipsis",
+      title: "Introducing \"Transcribe a File\"",
+      description:
+        "Historically, transcribing audio locally meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to cloud servers. Transcribe a File changes that by running both speech transcription and intelligent AI polishing entirely offline. Drop in a single voice memo or queue up a massive archive of files to get back clean, structured text complete with speaker detection, automatic lists, and full edit history. You get publication-ready transcripts at scale without a single byte ever leaving your machine.",
+      version: "2.5.0"
+    ),
+
+    // #2796 (v39 prompt and six example turns on macOS 27; macOS 26 byte for byte
+    // unchanged) and #2836 (the card shows AFM 2 / AFM 3 and the live capacity; the
+    // preflight now reads the real 8,192 window on AFM 3 so long dictations are not
+    // skipped). The sealed-exam numbers stay here: 70.3% to 85.0% pass, fillers 55% to
+    // 95%, spoken lists 0% to 71.9%, self-corrections 21.5% to 44.7%.
+    Entry(
+      id: "apple-intelligence-macos-27",
+      icon: "sparkles",  // "apple.intelligence" needs macOS 15; the floor is 14 (cloud review)
+      title: "Apple Intelligence polish improved on macOS 27",
+      description:
+        "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes.",
+      version: "2.5.0"
+    ),
+
+    // #2719 and #2724 (chunks 1 and 2 of #1946). The PR says "expect much rarer, not
+    // gone", so the copy says "much less often", never "no longer".
+    Entry(
+      id: "capitalization-stays-on",
+      icon: "textformat.abc",
+      title: "Improved capitalization when dictating into an existing sentence",
+      description:
+        "When you dictate after words you already typed, EnviousWispr matches your capitalization. If the app was busy, that matching could switch itself off until you relaunched. It now stays on in far more cases.",
+      version: "2.5.0"
+    ),
+
+    // #2740. Units: "mm", "mm Hg", "Ah" per the PR body.
+    Entry(
+      id: "measurements-keep-their-unit",
+      icon: "ruler",
+      title: "Dictated measurements keep their unit",
+      description:
+        "Say \"the gap is 5 mm\" or \"120 mm Hg\" and the unit now comes through with the number.",
+      version: "2.5.0"
+    ),
 
     // #1908, merged onto main after v2.4.8 shipped (tag v2.4.8 exists), so this
     // entry opens a new group per whats-new-protocol.md FACT: whats-new-grouping
@@ -76,20 +130,60 @@ enum WhatsNewContent {
       title: "No more freeze after sitting idle",
       description:
         "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone.",
-      version: "2.4.9"
+      version: "2.5.0"
     ),
 
-    // #2808, phase 1 of #2807. The founder's vocabulary decision of 2026-09-11: a keybind
-    // take is a Dictation, a file import is a Transcript, History holds both. The cancel
-    // pill's noun changed with it ("Dictation cancelled"); that is the same vocabulary, not
-    // a repair, so it is not narrated separately.
+    // #2782 (nine languages' own words for at and dot) and #2766 (26 country-code
+    // domains such as .de, .nl, .fr). SCOPE, from #2766's own body: a take the app
+    // resolves as a language other than English still skips the address formatter, so
+    // this reaches an English dictation that contains a foreign address; and .it, .at,
+    // .be, .no are deliberately excluded because they are English words. The copy
+    // therefore promises the words and the domains, not "every language".
     Entry(
-      id: "history-dictations-and-transcripts",
-      icon: "line.3.horizontal.decrease.circle",
-      title: "History tells a dictation from a transcript",
+      id: "spoken-addresses-more-languages",
+      icon: "at",
+      title: "Spoken email addresses convert in more languages' own words",
       description:
-        "Everything you say with your keybind is a Dictation. Every file you put through Transcribe a File is a Transcript. History now labels each row, and a new All, Dictations, Transcripts switch above the list shows just the kind you want.",
-      version: "2.4.9"
+        "When you dictate in English and say an address with another language's words for at and dot, such as \"marco arroba esempio punto com\", it comes back as marco@esempio.com. Addresses ending in a country domain such as .de, .nl or .fr now convert too.",
+      version: "2.5.0"
+    ),
+
+    // #2767. The pill's breathe, the red flash and the pulsing lips stop; colours stay
+    // and the lips still follow your voice.
+    Entry(
+      id: "pill-reduce-motion",
+      icon: "figure.walk.motion",
+      title: "The recording pill honours Reduce Motion",
+      description:
+        "With Reduce Motion on in macOS, the recording pill no longer breathes, flashes or pulses. The colours stay so a warning still reads as a warning, and the lips still move with your voice.",
+      version: "2.5.0"
+    ),
+
+    // LAST entry, the narrow exception in RULE: whats-new-content-rules: every other
+    // entry above is specifically titled, this title is written fresh for 2.5.0, and no
+    // member's effect is something a user can watch happen. #2726 (Quick Add keeps
+    // naming the word when nothing matches), #2742 (cancel wins a chord it shares with
+    // Quick Add), #2707 (a frozen target app can no longer hold up a paste), #2717
+    // (crash recovery no longer loses the key to a saved recording), #2748 (an S1-mini
+    // server left over from a previous launch is cleaned up). Codex will flag the title
+    // as a generic bucket; adjudicate against the four conditions in that rule.
+    Entry(
+      id: "small-things-that-now-just-work",
+      icon: "wrench.and.screwdriver",
+      title: "Small things that now just work",
+      description:
+        "Eight fixes across dictation, paste and History.",
+      bullets: [
+        "Stalled transcription recovery: Canceling a dictation that fails to finish now halts the process immediately while preserving your recorded audio.",
+        "Decimal formatting: Numbers spoken digit by digit around a decimal point (e.g., \"two four oh seven point one two three\") now format properly as a single decimal number.",
+        "Quick Add persistence: Quick Add continues to display the heard phrase on screen even when nothing in your list matches it.",
+        "Shortcut conflict priority: When the cancel shortcut shares a key combination with Quick Add, cancel now reliably takes priority.",
+        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now aborts after 500 ms instead of freezing the app.",
+        "Safer crash recovery: Crash recovery retains the key to a saved recording until the audio file itself is confirmed safely removed.",
+        "Process cleanup on launch: Any lingering background servers left over from an earlier session are automatically terminated on startup.",
+        "History type filters: History now distinguishes between Dictations (live keybind speech) and Transcripts (imported files). A new filter switch at the top of the list lets you quickly toggle between All, Dictations, and Transcripts.",
+      ],
+      version: "2.5.0"
     ),
 
     // MARK: - v2.4.8
