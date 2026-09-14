@@ -363,9 +363,9 @@ struct FileImportCoordinatorSpeakerTests {
   func pcmDigestIsDeterministicAndDistinguishing() {
     let samplesA: [Float] = [0.1, 0.2, 0.3, 0.4]
     let samplesB: [Float] = [0.1, 0.2, 0.3, 0.5]
-    let digestA1 = FileImportCoordinator.pcmDigestHex(samplesA)
-    let digestA2 = FileImportCoordinator.pcmDigestHex(samplesA)
-    let digestB = FileImportCoordinator.pcmDigestHex(samplesB)
+    let digestA1 = FileImportDocumentMath.pcmDigestHex(samplesA)
+    let digestA2 = FileImportDocumentMath.pcmDigestHex(samplesA)
+    let digestB = FileImportDocumentMath.pcmDigestHex(samplesB)
 
     #expect(digestA1 == digestA2)
     #expect(digestA1 != digestB)
@@ -374,7 +374,7 @@ struct FileImportCoordinatorSpeakerTests {
 
   @Test("an empty buffer still produces a stable digest, not a crash")
   func pcmDigestHandlesEmptyBuffer() {
-    #expect(FileImportCoordinator.pcmDigestHex([]) == FileImportCoordinator.pcmDigestHex([]))
+    #expect(FileImportDocumentMath.pcmDigestHex([]) == FileImportDocumentMath.pcmDigestHex([]))
   }
 
   // MARK: - Turn storage (#2810 phase 3)
@@ -1239,24 +1239,24 @@ struct FileImportCoordinatorSpeakerTests {
     let cloud = FileImportCoordinator.RunConfiguration(
       polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
       ollamaModel: nil, polishModel: "gpt-4o-mini", backendType: .parakeet)
-    #expect(FileImportCoordinator.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
-    #expect(FileImportCoordinator.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
-    #expect(FileImportCoordinator.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
+    #expect(FileImportDocumentMath.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
+    #expect(FileImportDocumentMath.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
+    #expect(FileImportDocumentMath.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
     let none = FileImportCoordinator.RunConfiguration(
       polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
       ollamaModel: nil, polishModel: "", backendType: .parakeet)
-    #expect(FileImportCoordinator.partCeiling(none) == TranscriptSplitter.maximumWordsPerPart)
+    #expect(FileImportDocumentMath.partCeiling(none) == TranscriptSplitter.maximumWordsPerPart)
   }
 
   /// With no turns and a local polisher, a 600-word memo is cut at the local ceiling.
   @Test("a single-speaker memo is cut at the local ceiling for an on-device polisher")
   func singleSpeakerMemoUsesTheLocalCeiling() {
     let text = (0..<600).map { "w\($0)" }.joined(separator: " ")
-    let cut = FileImportCoordinator.cleanupPieces(
+    let cut = FileImportDocumentMath.cleanupPieces(
       turns: nil, rawText: text, maximumWords: TranscriptSplitter.maximumWordsPerLocalPart)
     #expect(cut.pieces.count == 3)
     #expect(cut.pieces.map { TranscriptSplitter.wordCount(in: $0) } == [200, 200, 200])
-    let wide = FileImportCoordinator.cleanupPieces(turns: nil, rawText: text)
+    let wide = FileImportDocumentMath.cleanupPieces(turns: nil, rawText: text)
     #expect(wide.pieces.count == 2)
   }
 
@@ -1446,7 +1446,7 @@ struct FileImportCoordinatorSpeakerTests {
     // A long space-free run past the byte ceiling: the splitter cuts it at characters.
     let cjk = String(repeating: "日本語の長い文章です。", count: TranscriptSplitter.maximumBytesPerPart / 30 + 5)
     let cjkTurn = Turn(id: "cjk", speakerId: "A", startMs: 0, endMs: 1, originalTextRange: 0..<cjk.utf16.count)
-    let cut = FileImportCoordinator.cleanupPieces(turns: [cjkTurn], rawText: cjk)
+    let cut = FileImportDocumentMath.cleanupPieces(turns: [cjkTurn], rawText: cjk)
     #expect(cut.pieces.count >= 2, "the fixture must split: \(cut.pieces.count)")
     #expect(cut.gaps.allSatisfy { $0.isEmpty }, "no whitespace lies between character-boundary cuts")
     let parts = zip(cut.pieces, cut.gaps).enumerated().map { index, pair in
@@ -1454,28 +1454,28 @@ struct FileImportCoordinatorSpeakerTests {
         id: index, text: pair.0, isUnpolished: false, wasPolished: true, turnID: "cjk",
         trailingGap: pair.1)
     }
-    let rebuilt = FileImportCoordinator.finalTurns([cjkTurn], parts: parts, cleanupCompleted: true)
+    let rebuilt = FileImportDocumentMath.finalTurns([cjkTurn], parts: parts, cleanupCompleted: true)
     #expect(rebuilt.first?.processedText == cjk, "identity cleanup must give the text back byte for byte")
 
     // A spaced long turn keeps the space (or newline) that really sat between its pieces.
     let words = (0..<700).map { "w\($0)" }
     let spaced = words.prefix(350).joined(separator: " ") + "\n" + words.dropFirst(350).joined(separator: " ")
     let spacedTurn = Turn(id: "sp", speakerId: "A", startMs: 0, endMs: 1, originalTextRange: 0..<spaced.utf16.count)
-    let cut2 = FileImportCoordinator.cleanupPieces(turns: [spacedTurn], rawText: spaced)
+    let cut2 = FileImportDocumentMath.cleanupPieces(turns: [spacedTurn], rawText: spaced)
     #expect(cut2.pieces.count >= 2)
     let parts2 = zip(cut2.pieces, cut2.gaps).enumerated().map { index, pair in
       FileImportCoordinator.Part(
         id: index, text: pair.0, isUnpolished: false, wasPolished: true, turnID: "sp",
         trailingGap: pair.1)
     }
-    #expect(FileImportCoordinator.finalTurns([spacedTurn], parts: parts2, cleanupCompleted: true).first?.processedText == spaced)
+    #expect(FileImportDocumentMath.finalTurns([spacedTurn], parts: parts2, cleanupCompleted: true).first?.processedText == spaced)
     // The document joins the same way inside a turn, and with a blank line between turns.
-    #expect(FileImportCoordinator.joinedDocument(parts) == cjk)
+    #expect(FileImportDocumentMath.joinedDocument(parts) == cjk)
     let twoTurns = [
       FileImportCoordinator.Part(id: 0, text: "hello", isUnpolished: false, wasPolished: true, turnID: "a"),
       FileImportCoordinator.Part(id: 1, text: "there", isUnpolished: false, wasPolished: true, turnID: "b"),
     ]
-    #expect(FileImportCoordinator.joinedDocument(twoTurns) == "hello\n\nthere")
+    #expect(FileImportDocumentMath.joinedDocument(twoTurns) == "hello\n\nthere")
   }
 
   /// Drives one import to `state == .finished` plus a settled speaker step, and returns the
