@@ -82,6 +82,7 @@ public enum WordTimingRangeMapper {
       let engineWords = piece.words.map { $0.word.trimmingCharacters(in: .whitespaces) }
       let runs = textWords[pieceStart..<pieceEnd]
       if runs.count == 1, engineWords.count > 1,
+        isSpaceFreeScript(runs[runs.startIndex].text),
         let carved = spaceFreeWalk(engineWords: engineWords, run: runs[runs.startIndex])
       {
         splitRuns[pieceStart] = carved.map { (range: $0.range, piece: pieceIndex, word: $0.word) }
@@ -139,23 +140,51 @@ public enum WordTimingRangeMapper {
   /// group; each carries that group's timing. Any mismatch aborts the walk and returns `nil`,
   /// so the run falls through to the forced binding exactly as before. Only reached for a
   /// single-run piece with several engine words, never for a spaced script.
+  /// Whether a run holds at least one scalar from a script written without word spaces: the
+  /// languages WhisperKit splits on Unicode rather than on spaces (zh, ja, th, lo, my, yue).
+  /// A spaced-language window that happens to hold ONE word ("don't" alone) is not carved:
+  /// its engine groups are sub-word pieces of a spaced word, and the forced binding is the
+  /// right reader (cloud review of PR #2930).
+  static func isSpaceFreeScript(_ text: Substring) -> Bool {
+    text.unicodeScalars.contains { scalar in
+      switch scalar.value {
+      case 0x0E00...0x0E7F,  // Thai
+        0x0E80...0x0EFF,  // Lao
+        0x1000...0x109F,  // Myanmar
+        0x1780...0x17FF,  // Khmer
+        0x3040...0x309F,  // Hiragana
+        0x30A0...0x30FF,  // Katakana
+        0x3400...0x4DBF,  // CJK Extension A
+        0x4E00...0x9FFF,  // CJK Unified Ideographs
+        0xF900...0xFAFF,  // CJK Compatibility Ideographs
+        0x20000...0x2FA1F:  // CJK Extensions B and beyond
+        return true
+      default:
+        return false
+      }
+    }
+  }
+
   static func spaceFreeWalk(engineWords: [String], run: TextWord) -> [(range: Range<Int>, word: Int)]? {
     let runText = run.text.unicodeScalars.filter { !$0.properties.isWhitespace }
     let joined = engineWords.flatMap { $0.unicodeScalars.filter { !$0.properties.isWhitespace } }
     guard !joined.isEmpty, runText.elementsEqual(joined) else { return nil }
 
+    // Walk by grapheme cluster, never by scalar: a group boundary that falls INSIDE a
+    // cluster (a base kana and its combining dakuten in separate groups) would carve a range
+    // that bisects a Character, so such a boundary aborts the walk (cloud review of PR #2930).
     var carved: [(range: Range<Int>, word: Int)] = []
     carved.reserveCapacity(engineWords.count)
     var cursor = run.range.lowerBound
-    var scalars = run.text.unicodeScalars.makeIterator()
+    var clusters = run.text.makeIterator()
     for (i, engineWord) in engineWords.enumerated() {
       let needed = engineWord.unicodeScalars.filter { !$0.properties.isWhitespace }.count
       guard needed > 0 else { continue }
       var consumed = 0
       var units = 0
-      while consumed < needed, let scalar = scalars.next() {
-        units += scalar.utf16.count
-        if !scalar.properties.isWhitespace { consumed += 1 }
+      while consumed < needed, let cluster = clusters.next() {
+        units += cluster.utf16.count
+        consumed += cluster.unicodeScalars.filter { !$0.properties.isWhitespace }.count
       }
       guard consumed == needed else { return nil }
       carved.append((range: cursor..<cursor + units, word: i))

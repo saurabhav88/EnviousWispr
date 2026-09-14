@@ -333,4 +333,45 @@ struct WordTimingRangeMapperTests {
     #expect(bound.map(\.range) == [0..<2, 2..<4])
     #expect(coverage.timed == 4)
   }
+
+  /// A spaced-language window holding ONE word is not carved, even though its groups
+  /// concatenate to the run: WhisperKit's "don" + "'t" are sub-word pieces of a spaced word
+  /// (cloud review of PR #2930).
+  @Test("a one-word English window is not carved")
+  func oneWordEnglishWindowIsNotCarved() {
+    let text = "don't"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [("don", 0, 50), ("'t", 50, 100)]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(bound.map(\.word) == ["don't"])
+    #expect(bound.first?.startMs == nil)
+    #expect(coverage.timed == 0)
+    #expect(!WordTimingRangeMapper.isSpaceFreeScript("don't"))
+    #expect(WordTimingRangeMapper.isSpaceFreeScript("東京"))
+    #expect(WordTimingRangeMapper.isSpaceFreeScript("สวัสดี"))
+  }
+
+  /// A group boundary inside a grapheme cluster (a base kana and its combining dakuten in
+  /// separate groups) must not carve a range that bisects a Character: the walk aborts.
+  @Test("a group boundary inside a grapheme cluster aborts the carve")
+  func groupBoundaryInsideAClusterAborts() {
+    // か + U+3099 (combining dakuten) is one grapheme cluster of two scalars.
+    let text = "か\u{3099}き"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [
+      ("か", 0, 50), ("\u{3099}き", 50, 100),
+    ]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(bound.count == 1)
+    #expect(coverage.timed == 0)
+    // The same text with the boundary ON the cluster edge carves.
+    let aligned: [(word: String, startMs: Int?, endMs: Int?)] = [("か\u{3099}", 0, 50), ("き", 50, 100)]
+    let (bound2, coverage2) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: aligned)])
+    #expect(bound2.map(\.range) == [0..<2, 2..<3])
+    #expect(coverage2.timed == coverage2.total)
+  }
 }
