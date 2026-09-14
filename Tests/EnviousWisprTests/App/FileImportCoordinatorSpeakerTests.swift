@@ -135,7 +135,7 @@ struct FileImportCoordinatorSpeakerTests {
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded(seconds: seconds) },
-      transcribe: { _ in
+      transcribe: { _, _ in
         ASRResult(
           text: transcribedText, language: "en", duration: 0, processingTime: 0,
           backendType: .parakeet, wordTimings: wordTimings, wordTimingCoverage: wordTimingCoverage)

@@ -31,6 +31,13 @@ public protocol ASRBackend: Actor {
   /// existential dispatches to the backend's own implementation.
   func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async
 
+  /// #2918: observation only, same terms as `setDecodeChunkObserver`. A backend that can say
+  /// how far a decode is (WhisperKit per finished window, Parakeet per scheduled chunk)
+  /// reports a 0...1 fraction of the input's audio reached, for the duration of the next
+  /// `transcribe`; the caller installs it per call and the backend clears it on exit. It
+  /// never changes what is transcribed.
+  func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async
+
   /// Release model resources.
   func unload() async
 
@@ -62,6 +69,10 @@ extension ASRBackend {
   /// signal (WhisperKit has none), which is honest — the checkpoint simply
   /// carries no chunk count for that engine.
   public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async {}
+
+  /// #2918: default no signal. The Working card then shows the transcribing step as
+  /// indeterminate with its elapsed seconds, which is honest for an engine that cannot say.
+  public func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async {}
 
   public func startStreaming(options _: TranscriptionOptions) async throws {
     throw ASRError.streamingNotSupported

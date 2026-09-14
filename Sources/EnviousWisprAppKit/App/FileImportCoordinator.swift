@@ -101,9 +101,16 @@ final class FileImportCoordinator {
   nonisolated static func durationText(_ seconds: Double) -> String {
     let total = Int(seconds.rounded())
     if total < 60 { return "\(total) sec" }
-    let minutes = total / 60
+    let minutes = wholeMinutes(seconds)
     if minutes < 60 { return "\(minutes) min" }
     return "\(minutes / 60) hr \(minutes % 60) min"
+  }
+
+  /// The file's length in whole minutes, truncated, the one number every "N of M minutes"
+  /// on the Working step shares with `durationText` (#2918, cloud review): a 90-second
+  /// file is "1 min" long, so its progress counts to 1, never to 2. Zero under a minute.
+  nonisolated static func wholeMinutes(_ seconds: Double) -> Int {
+    Int(seconds.rounded()) / 60
   }
 
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
@@ -143,6 +150,20 @@ final class FileImportCoordinator {
     case reading(fileName: String)
     case ready(fileName: String, seconds: Double)
     case transcribing(fileName: String)
+    /// The case alone, for "did the STEP change" (#2918): `.polishing` counts move every
+    /// section and are not a step change.
+    var stepKey: String {
+      switch self {
+      case .idle: return "idle"
+      case .reading: return "reading"
+      case .ready: return "ready"
+      case .transcribing: return "transcribing"
+      case .polishing: return "polishing"
+      case .finished: return "finished"
+      case .rejected: return "rejected"
+      case .stopped: return "stopped"
+      }
+    }
     /// `done` parts of `total` have finished.
     ///
     /// **These numbers ARE user-facing (#2772 finding 14, kept by #2817).** The comment here
@@ -198,7 +219,11 @@ final class FileImportCoordinator {
     var trailingGap: String = ""
   }
 
-  private(set) var state: State = .idle
+  private(set) var state: State = .idle {
+    // A step change, not a count change: `.polishing(done:total:)` moves with every section
+    // and must not restart the step clock (#2918 grounded review).
+    didSet { if state.stepKey != oldValue.stepKey { markStepStart() } }
+  }
   private(set) var parts: [Part] = []
 
   /// A sentence about the last Save, or nil. Shown on Done, beside the buttons.
@@ -232,7 +257,45 @@ final class FileImportCoordinator {
 
   /// What the Working step's phase label says. The words describe the JOB, never
   /// the mechanism: the user is never told about parts or chunks.
-  private(set) var phase: String = ""
+  private(set) var phase: String = "" {
+    didSet { if phase != oldValue { markStepStart() } }
+  }
+
+  // MARK: - Progress the Working card can draw (#2918)
+
+  /// How far transcription is, 0...1, from the engine's own report (WhisperKit: the max
+  /// segment end over the file's length, one tick per finished window; Parakeet: its chunk
+  /// stream), or nil before the first tick and outside the transcribing step. Only ever moves
+  /// up within a run (windows finish out of order); reset where the run's other per-run
+  /// fields reset.
+  private(set) var transcribingFraction: Double?
+
+  /// When the step the card shows started: refreshed whenever `state`, `phase` or
+  /// `speakerStepState` changes. The card shows the elapsed seconds beside a step that has no
+  /// honest fraction, so a 36-second speaker pass reads as work, not a hang.
+  private(set) var stepStartedAt = Date()
+
+  private func markStepStart() { stepStartedAt = Date() }
+
+  /// A tick from the engine for the run `generationAtStart` belongs to. Late ticks from a
+  /// stopped run are dropped by the same generation guard every other late arrival takes;
+  /// a tick below the current value is dropped (the fraction never decreases); one log line
+  /// per whole percent so the UAT reader can see the bar move.
+  func noteTranscribing(fraction: Double, generationAtStart: Int) {
+    guard generationAtStart == generation, isRunning else { return }
+    let clamped = min(max(fraction, 0), 1)
+    guard clamped > (transcribingFraction ?? -1) else { return }
+    let before = Int((transcribingFraction ?? 0) * 100)
+    transcribingFraction = clamped
+    if Int(clamped * 100) > before, let seconds = file?.seconds {
+      let reached = Int((clamped * seconds).rounded())
+      Task {
+        await AppLogger.shared.log(
+          "[Transcribing] reached=\(reached) of \(Int(seconds.rounded()))",
+          level: .info, category: "FileImportCoordinator")
+      }
+    }
+  }
 
   /// The raw pieces this run cleans, in order: what `placedPassages()` locates in the raw
   /// text for the Marked up view. No longer a screen surface (#2817 replaced the Working
@@ -345,7 +408,11 @@ final class FileImportCoordinator {
   /// cleanup chain's language ladder prefers the engine's own answer over
   /// identifying one from the text. Reducing this to a bare `String` discarded
   /// the better source at the only place it existed.
-  private let transcribe: @MainActor ([Float]) async throws -> ASRResult
+  /// The engine call. The second argument is the run's progress sink (#2918): the engine
+  /// reports a 0...1 fraction through it while decoding, and the wiring installs it on the
+  /// engine for this call only.
+  private let transcribe:
+    @MainActor ([Float], @escaping @MainActor @Sendable (Double) -> Void) async throws -> ASRResult
   /// The dormant, phase-2 speaker step (#2809). Runs after ASR on the same PCM, bounded
   /// and cancellable — see `run(generationAtStart:)`. Defaults to reporting the models as
   /// unavailable rather than silently doing nothing, so a coordinator built without this
@@ -636,7 +703,8 @@ final class FileImportCoordinator {
 
   init(
     decode: @escaping @Sendable (URL) async throws -> AudioFileDecoder.Decoded,
-    transcribe: @escaping @MainActor ([Float]) async throws -> ASRResult,
+    transcribe: @escaping @MainActor ([Float], @escaping @MainActor @Sendable (Double) -> Void)
+      async throws -> ASRResult,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis = {
       _, _ in .failed(.modelsUnavailable)
     },
@@ -724,6 +792,7 @@ final class FileImportCoordinator {
     // #2811, phase 4: same reason, and the same points `decodedSamples` itself resets — a
     // retained retry from the LAST file must never fire against this one.
     speakerStepState = .notStarted
+    transcribingFraction = nil
     retainedAnalysisSamples = []
     retainedWordTimings = nil
     retainedWordTimingCoverage = nil
@@ -1280,7 +1349,9 @@ final class FileImportCoordinator {
   /// Stop all reach `.finished`); reset to `.notStarted` at the same points `speakerAnalysis`
   /// itself resets.
   enum SpeakerStepState: Equatable, Sendable { case notStarted, inProgress, finished }
-  private(set) var speakerStepState: SpeakerStepState = .notStarted
+  private(set) var speakerStepState: SpeakerStepState = .notStarted {
+    didSet { if speakerStepState != oldValue { markStepStart() } }
+  }
 
   /// The ONE line the Done step shows for background speaker work, or nil for none: the
   /// analysis itself. Since #2851 nothing runs behind Done: the speaker step finishes before
@@ -1304,7 +1375,23 @@ final class FileImportCoordinator {
 
   /// The speaker step's result for the document being cleaned, awaited by `run` before the
   /// sections are cut. Reset wherever the document is replaced.
-  @ObservationIgnored private var pendingSpeakerResult: SpeakerStepResult?
+  @ObservationIgnored private var pendingSpeakerResult: SpeakerStepResult? {
+    didSet { speakersFoundForDisplay = Self.speakersFound(in: pendingSpeakerResult?.analysis) }
+  }
+
+  /// The speaker count the Working page shows (#2918): from the POST-ASSEMBLY result, never
+  /// the analyzer's own outcome (`speakerAnalysis` is telemetry-only; assembly downgrades it
+  /// when timings are missing or every turn is unknown). Nil until the step has landed a
+  /// result with a count, and for a single voice 1; cleared with the result.
+  private(set) var speakersFoundForDisplay: Int?
+
+  nonisolated static func speakersFound(in analysis: TranscriptSpeakerAnalysis?) -> Int? {
+    switch analysis {
+    case .labeled(let count): return count
+    case .single: return 1
+    case .failed, .unanalyzed, nil: return nil
+    }
+  }
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
 
   private func resetSpeakerResult() {
@@ -1766,6 +1853,7 @@ final class FileImportCoordinator {
 
       let configuration = beginRun()
       runConfiguration = configuration
+      transcribingFraction = nil
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
       heldLocalPolishProvider = configuration.localPolishProvider
       heldOllamaModel = configuration.ollamaModel
@@ -1800,6 +1888,7 @@ final class FileImportCoordinator {
     // already been pressed.
     step = .done
     phase = ""
+    transcribingFraction = nil
     // **Released HERE, because the run task can no longer do it.** Every
     // `releaseDecodedAudio()` sits behind the generation guard — deliberately,
     // so a late task cannot erase a file the user has since chosen — and `stop()`
@@ -1845,7 +1934,20 @@ final class FileImportCoordinator {
       return
     }
 
-    let configuration = beginRun()
+    // The polisher is frozen afresh (that is what Clean it again is for); the ENGINE stays
+    // the one that produced these words. No transcription runs here, and the Working page's
+    // Transcription row reads this configuration, so a live freeze would name whatever
+    // engine is selected now for a transcript Fast made (#2918, local review). History is
+    // unaffected: its row was built once from the first run's freeze (`saveRawToHistory`).
+    let transcriptionEngine = runConfiguration?.backendType
+    let selected = beginRun()
+    let configuration = RunConfiguration(
+      polishIsCloud: selected.polishIsCloud,
+      localPolishProvider: selected.localPolishProvider,
+      polishProvider: selected.polishProvider,
+      ollamaModel: selected.ollamaModel,
+      polishModel: selected.polishModel,
+      backendType: transcriptionEngine ?? selected.backendType)
     runConfiguration = configuration
     // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
     heldLocalPolishProvider = configuration.localPolishProvider
@@ -1901,7 +2003,13 @@ final class FileImportCoordinator {
     // coordinator's variable, or it would receive an empty buffer.
     let analysisSamples = decodedSamples
     do {
-      let result = try await transcribe(decodedSamples)
+      transcribingFraction = nil
+      let result = try await transcribe(decodedSamples) { [weak self] fraction in
+        self?.noteTranscribing(fraction: fraction, generationAtStart: generationAtStart)
+      }
+      // The engine's last word may land below 1 (a trailing window under the padded tail):
+      // the transcript is in hand, so the row is done.
+      if generationAtStart == generation { transcribingFraction = 1 }
       // **The generation guard comes FIRST, before any shared write.** A slow
       // transcription that returns after the user stopped and chose another file
       // belongs to a run nobody is watching; clearing `decodedSamples` on the way

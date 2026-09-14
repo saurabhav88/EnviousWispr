@@ -81,6 +81,7 @@ final class RouterTestASRManager: ASRManagerInterface {
   var isModelLoaded: Bool = false
   let vendorDecodeOccupancy = VendorDecodeOccupancy()
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
+  var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming: Bool = false
   var downloadProgress: Double = 0
   var downloadPhase: String = "idle"

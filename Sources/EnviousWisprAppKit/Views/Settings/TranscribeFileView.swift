@@ -1230,30 +1230,92 @@ struct TranscribeFileView: View {
     // step is one of the card's own steps, and Stop cancels it with the rest.
     if let model = WorkingStepModel.make(
       state: coordinator.state, phase: coordinator.phase,
-      speakerStepState: coordinator.speakerStepState)
+      speakerStepState: coordinator.speakerStepState,
+      transcribingFraction: coordinator.transcribingFraction,
+      fileSeconds: coordinator.file?.seconds ?? 0)
     {
       BrandedSection {
         TranscribeFileWorkingCard(
           model: model,
           remainingText: remainingText(for: model),
+          stepStartedAt: coordinator.stepStartedAt,
           onStop: { coordinator.stop() }
         )
         .padding(.horizontal, SettingsLayout.rowPaddingH)
         .padding(.vertical, SettingsLayout.rowPaddingV)
       }
-      // The pace watches sections land through this view instance, and starts over when the
-      // document does (a re-polish restarts the numbering).
+      // Each step has its own pace (#2918): the transcribing row lands audio seconds, the
+      // cleaning row lands sections. The pace starts over when the active step changes and
+      // when the document does (a re-polish restarts the numbering).
       .onChange(of: coordinator.generation, initial: true) { _, _ in pace = SectionPace() }
-      .onChange(of: model.step, initial: true) { _, step in
-        if case .cleaning(let done, _) = step { pace.observe(sectionsDone: done, at: Date()) }
+      .onChange(of: model.active?.kind, initial: true) { _, kind in
+        pace = SectionPace(minimumLandings: kind == .transcribing ? 3 : 1)
       }
+      .onChange(of: paceUnits(for: model), initial: true) { _, units in
+        if let units { pace.observe(sectionsDone: units, at: Date()) }
+      }
+      // #2918 (founder, 23:16): the rest of the page is the run's own numbers, never its
+      // words: the file summary, then the live counts as the run learns them.
+      TranscribeFileWorkingPage(model: workingPageModel)
     }
   }
 
-  /// "about 3 minutes left", once three timed sections have landed on this run; nil before.
+  /// The page below the step card, from values the coordinator already holds.
+  private var workingPageModel: WorkingPageModel {
+    var sectionsDone: Int?
+    var sectionsTotal: Int?
+    if case .polishing(let done, let total) = coordinator.state, total > 0 {
+      sectionsDone = done
+      sectionsTotal = total
+    }
+    // Before the run freezes its configuration (the engine switch or warm-up after Start
+    // can take a while) the page shows what Review chose, read from the same settings the
+    // freeze reads (`FileImportSettingsFreeze.snapshot`). Cloud review, #2918.
+    let engine = coordinator.runConfiguration?.backendType ?? settings.selectedBackend
+    return WorkingPageModel.make(
+      fileName: coordinator.file?.name ?? "",
+      fileSeconds: coordinator.file?.seconds ?? 0,
+      engine: engine,
+      polisher: coordinator.runConfiguration?.polishProvider
+        ?? settings.effectiveFileImportLLMProvider,
+      // The estimate is per engine since #2927; the Working page's is for the engine it names.
+      estimate: coordinator.estimateText(backend: engine),
+      transcribingFraction: coordinator.transcribingFraction,
+      transcriptLanded: coordinator.hasDocument,
+      speakersFound: coordinator.speakersFoundForDisplay,
+      sectionsDone: sectionsDone, sectionsTotal: sectionsTotal,
+      words: coordinator.hasDocument ? coordinator.wordCount : nil)
+  }
+
+  /// What the active row has landed, in its own unit: sections cleaned, or audio seconds
+  /// transcribed. Nil when the row has no honest number.
+  private func paceUnits(for model: WorkingStepModel) -> Int? {
+    guard let row = model.active, let fraction = row.fraction else { return nil }
+    switch row.kind {
+    case .cleaning:
+      if case .polishing(let done, _) = coordinator.state { return done }
+      return nil
+    case .transcribing:
+      guard let seconds = coordinator.file?.seconds, seconds > 0 else { return nil }
+      return Int(fraction * seconds)
+    case .findingSpeakers:
+      return nil
+    }
+  }
+
+  /// "about 3 minutes left" for the active row once its pace has enough landings; nil before.
   private func remainingText(for model: WorkingStepModel) -> String? {
-    guard case .cleaning(let done, let total) = model.step else { return nil }
-    return pace.remainingText(sectionsDone: done, sectionsTotal: total)
+    guard let row = model.active, let units = paceUnits(for: model) else { return nil }
+    switch row.kind {
+    case .cleaning:
+      guard case .polishing(_, let total) = coordinator.state else { return nil }
+      return pace.remainingText(sectionsDone: units, sectionsTotal: total)
+    case .transcribing:
+      guard let seconds = coordinator.file?.seconds else { return nil }
+      return pace.remainingText(sectionsDone: units, sectionsTotal: Int(seconds))
+    case .findingSpeakers:
+      return nil
+    }
   }
 
   /// The document on Done (#2817: the transcript appears once, here; Working shows only its

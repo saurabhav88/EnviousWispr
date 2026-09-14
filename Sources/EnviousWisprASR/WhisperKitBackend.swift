@@ -510,10 +510,65 @@ public actor WhisperKitBackend: ASRBackend {
     return kit as? WhisperKit
   }
 
+  // MARK: - Transcription progress (#2918)
+
+  /// The fraction of the input reached, given the `end` seconds of every segment discovered
+  /// so far: the MAX over them, over the unpadded duration, clamped to 0...1. The max and
+  /// not the last value: on the chunked file path up to 16 windows decode in parallel and
+  /// finish out of order, so "last segment end" would jump backwards.
+  static func fractionReached(segmentEnds: [Float], totalSeconds: Double) -> Double {
+    guard totalSeconds > 0, let maxEnd = segmentEnds.max() else { return 0 }
+    return min(1, max(0, Double(maxEnd) / totalSeconds))
+  }
+
+  private var transcriptionProgressObserver: (@Sendable (Double) -> Void)?
+
+  public func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async {
+    transcriptionProgressObserver = observer
+  }
+
+  /// The running max a `@Sendable` segment callback can keep across windows that finish out
+  /// of order: the value it reports never decreases.
+  private final class ProgressHighWater: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Double = 0
+    /// Returns the new high-water mark when `fraction` raised it, else nil.
+    func raise(to fraction: Double) -> Double? {
+      lock.lock()
+      defer { lock.unlock() }
+      guard fraction > value else { return nil }
+      value = fraction
+      return fraction
+    }
+  }
+
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
+    // #2918: captured and cleared BEFORE the readiness guard suspends, so a refused call
+    // leaves nothing installed for a later caller's decode and a replacement during the
+    // suspension cannot be picked up (grounded round 2). The denominator is the UNPADDED
+    // input (the padding below adds 500 ms a segment can report an end inside).
+    let progressObserver = transcriptionProgressObserver
+    transcriptionProgressObserver = nil
     guard let kit = await readyKitAfterWarmupDrain() else { throw ASRError.notReady }
+    let totalSeconds = Double(audioSamples.count) / Double(WhisperKit.sampleRate)
+    let highWater = ProgressHighWater()
+    // The kit's INSTANCE property, not the per-call `segmentCallback:` parameter: on the
+    // chunked `.vad` path (every file over one window) `transcribeWithOptions` builds its
+    // per-chunk callback from `self.segmentDiscoveryCallback` and never reads the parameter
+    // (WhisperKit.swift:755-767, :896-903 at the pin); the parameter reaches only the
+    // single-window path. Measured 2026-09-14 on the 100-minute file: the parameter alone
+    // produced zero ticks. Set for this call, cleared on every exit; the import holds the
+    // engine claim, so no other decode shares the kit meanwhile.
+    if let observer = progressObserver {
+      kit.segmentDiscoveryCallback = { (segments: [TranscriptionSegment]) -> Void in
+        let ends: [Float] = segments.map { $0.end }
+        let fraction = WhisperKitBackend.fractionReached(segmentEnds: ends, totalSeconds: totalSeconds)
+        if let raised = highWater.raise(to: fraction) { observer(raised) }
+      }
+    }
+    defer { if progressObserver != nil { kit.segmentDiscoveryCallback = nil } }
 
     let paddedSamples = Self.padAudioWithSilence(audioSamples)
     let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)

@@ -14,54 +14,97 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct TranscribeFileWorkingCardTests {
 
-  // MARK: - The step mapping
+  // MARK: - The step mapping (#2918: three rows, one per step)
 
   private func make(
     _ state: FileImportCoordinator.State, phase: String = "",
-    speakers: FileImportCoordinator.SpeakerStepState = .notStarted
+    speakers: FileImportCoordinator.SpeakerStepState = .notStarted,
+    fraction: Double? = nil, fileSeconds: Double = 0
   ) -> WorkingStepModel? {
-    WorkingStepModel.make(state: state, phase: phase, speakerStepState: speakers)
+    WorkingStepModel.make(
+      state: state, phase: phase, speakerStepState: speakers,
+      transcribingFraction: fraction, fileSeconds: fileSeconds)
   }
 
-  @Test("the set-up phases read Preparing, the engine's own work reads Transcribing")
-  func transcribingPhases() {
-    for phase in ["Getting the engine ready", "Preparing cleanup", "Dividing it up to clean"] {
-      let model = make(.transcribing(fileName: "a.m4a"), phase: phase)
-      #expect(model?.step == .preparing, "\(phase)")
-      #expect(model?.title == "Preparing")
-      #expect(model?.fraction == nil)
-    }
-    let model = make(.transcribing(fileName: "a.m4a"), phase: "Writing down what was said")
-    #expect(model?.step == .transcribing)
-    #expect(model?.title == "Transcribing")
-    #expect(model?.fraction == nil)
+  private func states(_ model: WorkingStepModel?) -> [WorkingStepModel.RowState] {
+    model?.rows.map(\.state) ?? []
   }
 
-  @Test("the speaker step wins over a preparing phase while transcribing, by state or by phase")
+  @Test("three rows in run order; the engine phase sits on the transcribing row, indeterminate")
+  func transcribingRows() {
+    let warming = make(.transcribing(fileName: "a.m4a"), phase: "Getting the engine ready")
+    #expect(warming?.rows.map(\.kind) == [.transcribing, .findingSpeakers, .cleaning])
+    #expect(states(warming) == [.active, .pending, .pending])
+    #expect(warming?.active?.title == "Getting the engine ready")
+    #expect(warming?.active?.fraction == nil)
+    let bare = make(.transcribing(fileName: "a.m4a"), phase: "Writing down what was said")
+    #expect(bare?.active?.title == "Transcribing")
+    #expect(bare?.active?.fraction == nil, "no tick yet: indeterminate, elapsed seconds only")
+  }
+
+  @Test("a fraction names the minutes reached over the file's length and fills the bar")
+  func transcribingFraction() {
+    let model = make(
+      .transcribing(fileName: "a.m4a"), phase: "Writing down what was said",
+      fraction: 0.12, fileSeconds: 6000)
+    #expect(model?.active?.title == "Transcribing 12 of 100 minutes")
+    #expect(model?.active?.fraction == 0.12)
+    let floored = make(
+      .transcribing(fileName: "a.m4a"), phase: "Writing down what was said",
+      fraction: 0.999, fileSeconds: 6000)
+    #expect(floored?.active?.title == "Transcribing 99 of 100 minutes", "never ahead of the total")
+    let clamped = make(
+      .transcribing(fileName: "a.m4a"), phase: "Writing down what was said",
+      fraction: 1.4, fileSeconds: 240)
+    #expect(clamped?.active?.fraction == 1)
+    #expect(clamped?.active?.title == "Transcribing 4 of 4 minutes")
+    #expect(
+      WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 0) == "Transcribing",
+      "no length, no count")
+    // Cloud review, #2918: the total is the Length row's whole minutes (truncated), never a
+    // rounded-up one; under a minute the title carries no count.
+    #expect(WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 90) == "Transcribing 0 of 1 minutes")
+    #expect(WorkingStepModel.transcribingTitle(fraction: 1, fileSeconds: 90) == "Transcribing 1 of 1 minutes")
+    #expect(WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 45) == "Transcribing", "under a minute")
+  }
+
+  @Test("the speaker step marks transcribing done, by state or by phase, with no fraction")
   func findingSpeakers() {
     let byState = make(
-      .transcribing(fileName: "a.m4a"), phase: "Dividing it up to clean", speakers: .inProgress)
-    #expect(byState?.step == .findingSpeakers)
-    #expect(byState?.title == "Finding who said what")
+      .transcribing(fileName: "a.m4a"), phase: "Writing down what was said", speakers: .inProgress)
+    #expect(states(byState) == [.done, .active, .pending])
+    #expect(byState?.active?.title == "Finding who said what")
+    #expect(byState?.active?.fraction == nil)
+    #expect(byState?.rows[0].fraction == 1, "a done row keeps its full bar")
     let byPhase = make(.transcribing(fileName: "a.m4a"), phase: "Finding who said what")
-    #expect(byPhase?.step == .findingSpeakers)
-    #expect(byPhase?.fraction == nil)
+    #expect(states(byPhase) == [.done, .active, .pending])
+  }
+
+  @Test("the cleanup-preparing phases sit on the cleaning row with both earlier rows done")
+  func preparingCleanup() {
+    for phase in ["Preparing cleanup", "Dividing it up to clean"] {
+      let model = make(.transcribing(fileName: "a.m4a"), phase: phase, speakers: .finished)
+      #expect(states(model) == [.done, .done, .active], Comment(rawValue: phase))
+      #expect(model?.active?.title == phase)
+      #expect(model?.active?.fraction == nil)
+    }
+    #expect(states(make(.polishing(done: 0, total: 0))) == [.done, .done, .active], "no count yet")
+    #expect(make(.polishing(done: 0, total: 0))?.active?.title == "Preparing cleanup")
   }
 
   @Test("cleaning names the CURRENT section and measures the completed ones")
   func cleaning() {
     let first = make(.polishing(done: 0, total: 14), speakers: .inProgress)
-    #expect(first?.step == .cleaning(done: 0, total: 14), "polishing wins over the speaker task")
-    #expect(first?.title == "Cleaning section 1 of 14")
-    #expect(first?.fraction == 0)
+    #expect(states(first) == [.done, .done, .active], "polishing wins over the speaker task")
+    #expect(first?.active?.title == "Cleaning section 1 of 14")
+    #expect(first?.active?.fraction == 0)
     let mid = make(.polishing(done: 8, total: 14))
-    #expect(mid?.title == "Cleaning section 9 of 14")
-    #expect(mid?.fraction == 8.0 / 14.0)
+    #expect(mid?.active?.title == "Cleaning section 9 of 14")
+    #expect(mid?.active?.fraction == 8.0 / 14.0)
     let last = make(.polishing(done: 14, total: 14))
-    #expect(last?.title == "Cleaning section 14 of 14", "never a 15th")
-    #expect(last?.fraction == 1)
-    #expect(make(.polishing(done: 0, total: 0))?.step == .preparing, "no count yet")
-    #expect(make(.polishing(done: 20, total: 14))?.fraction == 1, "clamped")
+    #expect(last?.active?.title == "Cleaning section 14 of 14", "never a 15th")
+    #expect(last?.active?.fraction == 1)
+    #expect(make(.polishing(done: 20, total: 14))?.active?.fraction == 1, "clamped")
   }
 
   @Test("the six non-running states show no card")
@@ -75,6 +118,39 @@ struct TranscribeFileWorkingCardTests {
     }
   }
 
+  @Test("each row reads as one sentence: title, then percent or elapsed, then the time left")
+  func rowAccessibility() {
+    let start = Date(timeIntervalSinceReferenceDate: 1_000)
+    let now = start.addingTimeInterval(36)
+    let sweep = TranscribeFileWorkingCard.StepRow(
+      row: .init(kind: .findingSpeakers, title: "Finding who said what", state: .active, fraction: nil),
+      detail: nil, stepStartedAt: start, showsSweep: true)
+    #expect(sweep.accessibilityText(now: now) == "Finding who said what, in progress, 36 s")
+    let filling = TranscribeFileWorkingCard.StepRow(
+      row: .init(kind: .transcribing, title: "Transcribing 12 of 100 minutes", state: .active, fraction: 0.12),
+      detail: "about 3 minutes left", stepStartedAt: start, showsSweep: true)
+    #expect(filling.accessibilityText(now: now) == "Transcribing 12 of 100 minutes, 12 percent, about 3 minutes left")
+    let done = TranscribeFileWorkingCard.StepRow(
+      row: .init(kind: .transcribing, title: "Transcribing", state: .done, fraction: 1),
+      detail: nil, stepStartedAt: start, showsSweep: true)
+    #expect(done.accessibilityText(now: now) == "Transcribing, done")
+    let pending = TranscribeFileWorkingCard.StepRow(
+      row: .init(kind: .cleaning, title: "Cleaning", state: .pending, fraction: nil),
+      detail: nil, stepStartedAt: start, showsSweep: true)
+    #expect(pending.accessibilityText(now: now) == "Cleaning, not started")
+    #expect(TranscribeFileWorkingCard.elapsedText(since: now, now: start) == "0 s", "never negative")
+  }
+
+  @Test("the sweep glides once per 1.4 s and wraps; Reduce Motion is the pulse's own switch")
+  func sweep() {
+    #expect(TranscribeFileWorkingCard.StepBar.sweepOffset(at: 0) == 0)
+    #expect(abs(TranscribeFileWorkingCard.StepBar.sweepOffset(at: 0.7) - 0.5) < 1e-9)
+    #expect(abs(TranscribeFileWorkingCard.StepBar.sweepOffset(at: 1.4) - 0) < 1e-9)
+    #expect(TranscribeFileWorkingCard.StepBar.sweepOffset(at: -0.35) > 0.7, "wraps for a negative time")
+    #expect(WorkingPulseMark.showsPulse(reduceMotion: true) == false)
+    #expect(WorkingPulseMark.showsPulse(reduceMotion: false) == true)
+  }
+
   // MARK: - Time left
 
   private func pace(_ counts: [(Int, TimeInterval)]) -> SectionPace {
@@ -84,6 +160,21 @@ struct TranscribeFileWorkingCardTests {
       pace.observe(sectionsDone: count, at: start.addingTimeInterval(seconds))
     }
     return pace
+  }
+
+  @Test("the transcribing pace lands audio seconds and needs three landings, not three units (#2918)")
+  func paceInAudioSeconds() {
+    var p = SectionPace(minimumLandings: 3)
+    let start = Date(timeIntervalSinceReferenceDate: 1_000)
+    p.observe(sectionsDone: 0, at: start)
+    p.observe(sectionsDone: 30, at: start.addingTimeInterval(5))
+    #expect(p.secondsPerSection() == nil, "one landing clears the unit count but not the landing count")
+    p.observe(sectionsDone: 60, at: start.addingTimeInterval(10))
+    #expect(p.secondsPerSection() == nil, "two landings")
+    p.observe(sectionsDone: 90, at: start.addingTimeInterval(15))
+    #expect(p.secondsPerSection() == 1.0 / 6.0, "10 wall seconds over 60 audio seconds")
+    #expect(p.remainingText(sectionsDone: 90, sectionsTotal: 6000) == "about 16 minutes left")
+    #expect(SectionPace(minimumLandings: 3) != SectionPace(), "the unit is part of the identity")
   }
 
   @Test("no figure until three TIMED sections have landed; the first sight is only a baseline")

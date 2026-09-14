@@ -19,6 +19,13 @@ public actor ParakeetBackend: ASRBackend {
   private var fluidAsrManager: AsrManager?
   /// #2787: see `setDecodeChunkObserver`.
   private var decodeChunkObserver: (@Sendable () -> Void)?
+  /// #2918: FluidAudio's `transcriptionProgressStream` value IS a fraction
+  /// (`chunkEnd / totalSamples` per scheduled chunk), forwarded as-is beside the wedge tick.
+  private var transcriptionProgressObserver: (@Sendable (Double) -> Void)?
+
+  public func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async {
+    transcriptionProgressObserver = observer
+  }
 
   public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async {
     decodeChunkObserver = observer
@@ -305,6 +312,10 @@ public actor ParakeetBackend: ASRBackend {
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
+    // #2918: captured and cleared before the readiness guard, so a refused call leaves
+    // nothing installed for the next caller (same ordering as WhisperKit).
+    let progressObserver = transcriptionProgressObserver
+    transcriptionProgressObserver = nil
     guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 
     // #2787: forward the fork's per-chunk progress to the observer for exactly
@@ -318,13 +329,17 @@ public actor ParakeetBackend: ASRBackend {
     // cannot finish the emitter before the subscription exists. The count is
     // therefore "observed non-final chunk-scheduling reports", not chunks.
     var chunkForwarder: Task<Void, Never>?
-    if audioSamples.count > 240_000, let observer = decodeChunkObserver {
+    if audioSamples.count > 240_000, decodeChunkObserver != nil || progressObserver != nil {
+      let observer = decodeChunkObserver
       let stream = await manager.transcriptionProgressStream
       chunkForwarder = Task {
         do {
           for try await progress in stream {
             guard !Task.isCancelled else { return }
-            if progress > 0, progress < 1 { observer() }
+            if progress > 0, progress < 1 {
+              observer?()
+              progressObserver?(progress)  // #2918: the same report, as the fraction it is
+            }
           }
         } catch {
           // Observation failure does not change transcription.

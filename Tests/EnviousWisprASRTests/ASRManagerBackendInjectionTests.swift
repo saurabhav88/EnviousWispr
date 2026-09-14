@@ -45,6 +45,31 @@ struct ASRManagerBackendInjectionTests {
     }
   }
 
+  // MARK: - #2918 transcription progress travels through the manager
+
+  @Test("the manager installs the progress observer per call, hops it to the MainActor, and the backend clears it")
+  func transcriptionProgressTravels() async throws {
+    let backend = FakeASRBackend(initiallyReady: true)
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting, parakeetBackendFactory: { backend })
+    try await manager.loadModel()
+    let received = OSAllocatedUnfairLock(initialState: [Double]())
+    manager.onTranscriptionProgress = { fraction in
+      received.withLock { $0.append(fraction) }
+    }
+    _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
+    // The hop is a Task on the MainActor; let it land.
+    for _ in 0..<50 where received.withLock({ $0.count }) < 2 {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(received.withLock { $0 } == [0.25, 0.75])
+    #expect(await backend.progressObserverIsInstalled == false, "cleared by the backend on exit")
+    // Without a consumer nothing is installed: dictation pays nothing for the bar.
+    manager.onTranscriptionProgress = nil
+    _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
+    #expect(received.withLock { $0 } == [0.25, 0.75], "no consumer, no ticks")
+  }
+
   // MARK: - switchBackend reset branch
 
   @Test("switchBackend from a loaded state resets isModelLoaded to false")
@@ -418,9 +443,22 @@ final actor FakeASRBackend: ASRBackend {
         for waiter in waiters { waiter.continuation.resume(returning: true) }
       }
     }
+    // #2918: a backend that can say how far it is reports through the installed observer,
+    // then clears it, exactly as the real backends do.
+    if let observer = progressObserver {
+      observer(0.25)
+      observer(0.75)
+    }
+    progressObserver = nil
     return ASRResult(
       text: "ok", language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
   }
+
+  private var progressObserver: (@Sendable (Double) -> Void)?
+  func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async {
+    progressObserver = observer
+  }
+  var progressObserverIsInstalled: Bool { progressObserver != nil }
 
   func unload() async {
     unloadCount += 1

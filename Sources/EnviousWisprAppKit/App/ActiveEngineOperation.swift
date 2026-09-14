@@ -69,6 +69,12 @@ struct ActiveEngineOperation {
   let transcribe:
     (_ audioSamples: [Float], _ options: TranscriptionOptions) async throws ->
       ASRResult
+  /// #2918: install a 0...1 transcription-progress observer on whichever engine the next
+  /// `transcribe` drives (the backend clears it on exit). Defaulted to a no-op so the tests
+  /// that build the operation by hand keep their shape; the production wiring routes it
+  /// exactly as `transcribe` routes.
+  var setTranscriptionProgressObserver:
+    (_ observer: (@MainActor @Sendable (Double) -> Void)?) async -> Void = { _ in }
   /// Hard-cancel whatever the active engine holds in flight (#445 Discard).
   /// Best-effort by the same physics as the engines themselves: generation
   /// bumps + task drops land instantly; a running Core ML load/decode cannot
@@ -100,7 +106,7 @@ struct ActiveEngineOperation {
       asrManager.activeBackendType == .whisperKit
         ? await whisperKitBackend.isReady : asrManager.isModelLoaded
     }
-    return ActiveEngineOperation(
+    var operation = ActiveEngineOperation(
       isLoaded: readiness,
       load: {
         if asrManager.activeBackendType == .whisperKit {
@@ -139,5 +145,21 @@ struct ActiveEngineOperation {
           asrManager.cancelInFlightLoad()
         }
       })
+    // #2918: routed exactly as `transcribe` is. The file path calls WhisperKit directly, so
+    // the observer goes straight on that backend (hopping to the MainActor here, as
+    // `ASRManager.transcribe` does for its own backends); every other engine goes through
+    // the manager, which installs it per call.
+    operation.setTranscriptionProgressObserver = { observer in
+      if asrManager.activeBackendType == .whisperKit {
+        var hopped: (@Sendable (Double) -> Void)? = nil
+        if let observer {
+          hopped = { @Sendable fraction in Task { @MainActor in observer(fraction) } }
+        }
+        await whisperKitBackend.setTranscriptionProgressObserver(hopped)
+      } else {
+        asrManager.onTranscriptionProgress = observer
+      }
+    }
+    return operation
   }
 }

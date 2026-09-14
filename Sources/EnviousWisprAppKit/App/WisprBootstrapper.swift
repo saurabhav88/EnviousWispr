@@ -1430,7 +1430,7 @@ package final class WisprBootstrapper {
       // the claim precisely so the switch it may trigger is not deferred by the
       // claim. A second loader here would be a second answer to the same
       // question, which is the shape that produced this feature's first defect.
-      transcribe: { [activeEngine, settings] samples in
+      transcribe: { [activeEngine, settings] samples, onProgress in
         var options = TranscriptionOptions.default
         if case .locked(let code) = settings.languageMode { options.language = code }
         // The engine's own language answer travels with the words. Reducing this
@@ -1439,7 +1439,17 @@ package final class WisprBootstrapper {
         // the ASR output.
         // #2809: widened to the full ASRResult so `wordTimings`/`wordTimingCoverage` reach
         // the coordinator — the only consumer today is the speaker step's telemetry.
-        return try await activeEngine.transcribe(samples, options)
+        // #2918: the Working card's transcribing bar. Installed for THIS call and cleared
+        // on both exits, so a dictation that follows never inherits the import's sink.
+        await activeEngine.setTranscriptionProgressObserver(onProgress)
+        do {
+          let result = try await activeEngine.transcribe(samples, options)
+          await activeEngine.setTranscriptionProgressObserver(nil)
+          return result
+        } catch {
+          await activeEngine.setTranscriptionProgressObserver(nil)
+          throw error
+        }
       },
       // #2809: the dormant speaker step. Loads the bundled models fresh per call (see
       // `SpeakerLabeler`) and never touches the network — a phase-2 limb that runs after
