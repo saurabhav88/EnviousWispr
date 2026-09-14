@@ -5,12 +5,12 @@ category: "features"
 section: "History"
 order: 1
 keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log"]
-related: ["clipboard-preservation", "escape-recovery"]
+related: ["transcribe-a-file", "transcribe-a-file-speaker-labels", "clipboard-preservation", "escape-recovery"]
 updated: 2026-09-13
 ---
-EnviousWispr saves everything it transcribes so you can find it again later. History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with Transcribe a File. To see them, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
+EnviousWispr saves everything it transcribes so you can find it again later. History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/). To see them, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 
-Each row says which kind it is. The **All**, **Dictations** and **Transcripts** buttons above the list show one kind or both. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on; click a name to rename it.
+Each row says which kind it is. The **All**, **Dictations** and **Transcripts** buttons above the list show one kind or both. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on; click a name to rename it. What the labels mean, and what **Both** and **Not fully polished** mean, is in [speaker labels in Transcribe a File](/help/transcribe-a-file-speaker-labels/).
 
 Recordings where no speech was found are not saved. A dictation you cancel with your keybind IS saved, because [Escape Recovery](/help/escape-recovery/) is on unless you switch it off: it is kept here for 24 hours with a **Kept** badge and a countdown, and press **Keep** to make it permanent. Switch that setting off, or use the Cancel button in the recording bar, and nothing is saved. Until you do, it stays out of search and out of your counts. If saving fails for a storage reason, EnviousWispr tells you.
 
