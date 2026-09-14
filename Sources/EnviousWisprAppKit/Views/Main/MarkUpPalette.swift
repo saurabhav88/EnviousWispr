@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// The one colour table for the Marked up view (#2817 finding 5), read by BOTH renderers: the
-/// wizard's whole-document `TranscribeFileView.markedUpText` and the per-turn
+/// wizard's whole-document `TranscribeFileExport.markedUpText` and the per-turn
 /// `MarkedUpTurnText` in `TurnDocumentView`. Two readers, one table, so the two views can
 /// never disagree about what a removed word looks like.
 ///

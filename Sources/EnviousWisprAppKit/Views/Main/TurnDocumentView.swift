@@ -177,7 +177,7 @@ private struct TurnRowView: View {
         .textSelection(.enabled)
         // The marks are visual; a screen reader gets the wizard's own spoken form instead,
         // the same helper its whole-document marked-up view uses (found by whole-diff review).
-        .accessibilityLabel(TranscribeFileView.markedUpAccessibilityText(diff.segments))
+        .accessibilityLabel(TranscribeFileExport.markedUpAccessibilityText(diff.segments))
     }
   }
 }
@@ -192,7 +192,7 @@ private struct MarkedUpTurnText: View {
   let result: WordDiff.Result
 
   var body: some View {
-    Text(TranscribeFileView.markedUpText(result.segments))
+    Text(TranscribeFileExport.markedUpText(result.segments))
   }
 }
 

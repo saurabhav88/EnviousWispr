@@ -312,7 +312,7 @@ struct TranscribeFileWorkingCardTests {
       .init(kind: .changed, text: "better", trailing: " "),
       .init(kind: .added, text: "new", trailing: ""),
     ]
-    let text = TranscribeFileView.markedUpText(segments)
+    let text = TranscribeFileExport.markedUpText(segments)
     struct Marks {
       let fg: Color?
       let bg: Color?
