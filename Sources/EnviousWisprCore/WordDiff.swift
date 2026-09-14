@@ -202,15 +202,26 @@ public enum WordDiff {
   /// `language` is the engine's code for the transcript ("tr", "en"); it decides the case
   /// fold, see `key(for:locale:)`. Nil folds locale-neutrally.
   public static func compare(passages: [Passage], language: String? = nil) -> Result {
+    fold(comparePassages(passages, language: language))
+  }
+
+  /// Per-passage results in reading order, as one: counts add, segments concatenate. The
+  /// app folds the per-passage results it keeps for the Marked up view into the aggregate
+  /// the legend reads (#2817 item 5), from the same array, so the two cannot disagree.
+  public static func fold(_ results: [Result]) -> Result {
+    results.reduce(Result(segments: [], removedWords: 0, changedWords: 0)) { $0.appending($1) }
+  }
+
+  /// One result PER PASSAGE, in order (#2817 item 5): the Marked up view draws a document
+  /// of passages as one `Text` per passage, the shape the turn view already has, instead of
+  /// one `Text` over every segment of the document. `compare(passages:)` is the fold.
+  public static func comparePassages(_ passages: [Passage], language: String? = nil) -> [Result] {
     let locale = language.map { Locale(identifier: $0) }
-    var result = Result(segments: [], removedWords: 0, changedWords: 0)
-    for passage in passages {
-      result = result.appending(
-        compare(
-          original: passage.original, cleaned: passage.cleaned ?? passage.original,
-          locale: locale))
+    return passages.map { passage in
+      compare(
+        original: passage.original, cleaned: passage.cleaned ?? passage.original,
+        locale: locale)
     }
-    return result
   }
 
   public static func compare(original: String, cleaned: String, language: String? = nil)
