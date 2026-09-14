@@ -634,6 +634,40 @@ public struct InverseTextNormalizer: Sendable {
   /// Parse number-words into an Int as a STRICT cardinal. Returns nil for any sequence that
   /// is not a single valid English cardinal so the caller leaves it untouched rather than
   /// summing wrongly. This kills 'two zero three'->5, 'twenty twenty'->40, 'one twenty'->21.
+  /// `whole.fraction` times a power of ten (`scales`), computed on the digits so the answer is
+  /// exact: the point moves `zeros` places right, and what remains past it rounds half to even,
+  /// as the old `Double` path rounded. Nil when the integer does not fit an `Int`.
+  static func scaleDecimal(whole: String, fraction: String, by scale: Int) -> Int? {
+    let digitsOfScale = String(scale)
+    guard digitsOfScale.first == "1", digitsOfScale.dropFirst().allSatisfy({ $0 == "0" }) else {
+      return nil
+    }
+    let zeros = digitsOfScale.count - 1
+    let padded = fraction + String(repeating: "0", count: max(0, zeros - fraction.count))
+    let intDigits = whole + padded.prefix(zeros)
+    let rest = padded.dropFirst(zeros)
+    guard var value = Int(intDigits) else { return nil }
+    if let first = rest.first {
+      let tail = rest.dropFirst()
+      let roundUp: Bool
+      if first > "5" {
+        roundUp = true
+      } else if first < "5" {
+        roundUp = false
+      } else if tail.contains(where: { $0 != "0" }) {
+        roundUp = true
+      } else {
+        roundUp = value % 2 == 1  // exactly half: to even
+      }
+      if roundUp {
+        let (sum, overflow) = value.addingReportingOverflow(1)
+        guard overflow == false else { return nil }
+        value = sum
+      }
+    }
+    return value
+  }
+
   /// Two or more words that are each a single spoken digit ("two four oh seven"), read as the
   /// digits they spell, leading zeros kept ("oh seven" is "07", as the digit-read pass writes
   /// it). Nil for anything else: one word, a teen or a ten, a scale word.
@@ -1243,15 +1277,14 @@ public struct InverseTextNormalizer: Sendable {
       let digs = digsOf(m.g("d") ?? "")
       let scale = (m.g("scale") ?? "").trimmingCharacters(in: .whitespaces).lowercased()
       if !scale.isEmpty, let sv = Self.scales[scale] {
-        let value = ((Double("\(whole).\(digs)") ?? 0) * Double(sv)).rounded(.toNearestOrEven)
-        // A digit string has no length cap, so "nine" ten times "point one billion" scales past
-        // what `Int` holds and `Int(_:)` would trap in the heart path (local Codex, round 1);
-        // below that, past 2^53 a `Double` no longer holds every integer, so the digits it
-        // returns are not the digits spoken (cloud review). The one arithmetic in this pass is
-        // this multiplication, so the exact range is the whole class: decline beyond it and
-        // leave the match as spoken.
-        guard value.isFinite, abs(value) < 9_007_199_254_740_992 else { return nil }
-        return " \(comma(Int(value))) "
+        // Scaled in DECIMAL, never through a Double: a digit string has no length cap, and a
+        // Double past 2^53 hands back digits that were not spoken (three review rounds, PR
+        // #2948, each a new value of the same class). Nil when the product does not fit an Int;
+        // the match is then left as spoken.
+        guard let scaled = Self.scaleDecimal(whole: whole, fraction: digs, by: sv) else {
+          return nil
+        }
+        return " \(comma(scaled)) "
       }
       return " \(whole).\(digs) "
     }

@@ -61,14 +61,20 @@ struct InverseTextNormalizerDigitStringDecimalTests {
       "nine nine nine nine nine nine nine nine nine nine point one billion",
       "999-999-9999 point 1 billion"
     ),
-    // and past 2^53 a Double no longer holds every integer, so a value that would round to the
-    // wrong digits (9,007,199,254,740,994 for a spoken ...993) is declined the same way (cloud
-    // review of PR #2948); what remains is the leading-decimal rule's own reading of the tail,
-    // unchanged by this fix
+    // scaling is done on the digits, so a value a Double cannot hold exactly still comes out
+    // as spoken (cloud review and local round 3 of PR #2948: a Double gave ...994 and ...902)
     (
       "nine zero zero seven one nine nine two five four point seven four zero nine nine three million",
-      "nine zero zero seven one nine nine two five four 0.740993 million"
+      "9,007,199,254,740,993"
     ),
+    (
+      "nine zero zero seven one nine nine two five four point seven four zero nine zero one million",
+      "9,007,199,254,740,901"
+    ),
+    // what remains past the moved point rounds half to even, as before
+    ("one two point three four five six seven thousand", "12,346"),
+    ("one two point three four five five thousand", "12,346"),
+    ("one two point three four four five thousand", "12,344"),
   ]
 
   @Test("what must not move", arguments: controls)
