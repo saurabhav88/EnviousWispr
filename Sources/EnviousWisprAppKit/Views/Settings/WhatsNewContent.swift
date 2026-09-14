@@ -72,7 +72,7 @@ enum WhatsNewContent {
       icon: "doc.badge.ellipsis",
       title: "Introducing \"Transcribe a File\"",
       description:
-        "Historically, transcribing audio on your own Mac meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to a cloud server. Transcribe a File changes that: speech transcription and intelligent AI polishing both run right on your Mac. Drop in a voice memo, a lecture or a meeting recording and get back clean, structured text, with the speakers told apart and a marked-up view of every change the cleanup made. Your audio never leaves your Mac; with the built-in polishers, neither does a single word.",
+        "Historically, transcribing audio on your own Mac meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to a cloud server. Transcribe a File changes that: speech transcription runs right on your Mac, and so does the intelligent AI polishing with any of the built-in polishers. Drop in a voice memo, a lecture or a meeting recording and get back clean, structured text, with the speakers told apart and a marked-up view of every change the cleanup made. Your audio never leaves your Mac; with a built-in polisher, neither does a single word.",
       version: "2.5.0"
     ),
 
