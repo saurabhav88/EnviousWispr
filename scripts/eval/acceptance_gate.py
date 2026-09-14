@@ -156,9 +156,10 @@ BATCH_PASS_THRESHOLD = 0.90  # >=90% of cases must pass.
 # block different from what users actually ship with. Filed in #359 as part of
 # the broader "extract prompts to shared source" refactor; until that lands,
 # PRs touching `CustomWordsManager.builtinDefaults` MUST also update this list.
-# The expanded path filter on polish-eval-smoke.yml fires on any change under
-# Sources/EnviousWisprLLM/ or LLMPolishStep.swift — but NOT CustomWordsManager
-# today, so this mirror relies on dev discipline.
+# `scripts/eval/tests/test_custom_vocab_mirror.py` checks this list's rendering
+# sort order inside `build-check` (#2609); it is not a production list-parity
+# guarantee, so a change to `builtinDefaults` still needs this list updated by hand.
+# The cloud polish CI workflow that fired on the LLM paths was retired in #2789.
 #
 # Format: (canonical, aliases). Matches CustomVocabularyFormatter output.
 
