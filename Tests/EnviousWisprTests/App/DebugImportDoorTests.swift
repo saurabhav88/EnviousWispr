@@ -305,17 +305,23 @@
       _ = await sink.reply(withStatus: "accepted")
       // The user's own pick, before the door's decode returns.
       coordinator.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
-      let superseded = await sink.reply(withStatus: "superseded")
-      #expect(superseded["history"] == nil)
-      #expect(superseded["saved"] == nil)
+      // The user's file becomes READY while the door is still walking. This ordering is
+      // the binding one: with the walk's generation guard loosened, a `.ready` coordinator
+      // under the user's generation is what the door would advance and Start (night
+      // battery 2026-09-14, #2886 row 5 survived while the file was still `.reading`,
+      // because `advance()` on a reading coordinator is refused and the outer guard still
+      // reported `superseded`).
       await gate.open()
-      // The user's import is untouched by the door standing down.
       let ready = await settleUntilObserved {
         if case .ready = coordinator.state { return true } else { return false }
       }
       #expect(ready)
+      let superseded = await sink.reply(withStatus: "superseded")
+      #expect(superseded["history"] == nil)
+      #expect(superseded["saved"] == nil)
+      // The user's import is untouched by the door standing down.
       #expect(coordinator.file?.name == "users-own.m4a")
-      #expect(coordinator.step == .upload)
+      #expect(coordinator.step == .upload, "the door advanced or started the user's file")
       // And the door is free again.
       let before = sink.replies.count
       door.handle(["kind": "discover", "pid": String(Self.pid), "request": "r2"])
@@ -486,14 +492,17 @@
       let secondProbe = await settleUntilObserved { box2.probes == 2 }
       #expect(secondProbe)
       c2.choose(url: URL(fileURLWithPath: "/tmp/users-own.m4a"))
-      await box2.gate!.open()
-      let superseded = await sink2.reply(withStatus: "superseded")
-      #expect(superseded["history"] == nil)
-      await decodeGate.open()
+      // The decode gate is already open, so the user's file becomes READY before the probe
+      // is released: the post-probe generation guard is the only thing between the door
+      // and advancing this ready file (night battery 2026-09-14, #2886 row 13 survived
+      // while the probe was released first and the file was still `.reading`).
       let usersReady = await settleUntilObserved {
         if case .ready = c2.state { return true } else { return false }
       }
       #expect(usersReady)
+      await box2.gate!.open()
+      let superseded = await sink2.reply(withStatus: "superseded")
+      #expect(superseded["history"] == nil)
       #expect(c2.file?.name == "users-own.m4a")
       #expect(c2.step == .upload, "never started")
 
