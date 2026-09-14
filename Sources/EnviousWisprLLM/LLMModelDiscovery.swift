@@ -11,10 +11,14 @@ public struct LLMModelDiscovery: Sendable {
   public init() {}
 
   /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
-  private static let excludePatterns = [
+  /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
+  /// the native-audio Live models) that advertise `generateContent` and so pass
+  /// `fetchGeminiModels`, then reject a text polish request with 400. The OpenAI
+  /// branch's `isOpenAIChatCompletionCandidate` already skipped both.
+  static let excludePatterns = [
     "tts", "image", "robotics", "computer-use", "deep-research",
     "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
-    "lyria",
+    "lyria", "transcribe", "audio",
   ]
 
   /// Suffixes that indicate versioned duplicates (keep only the base model).
@@ -553,16 +557,24 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
-  private func filterModels(_ models: [(id: String, displayName: String)]) -> [(
+  /// #2884: the one reader of `excludePatterns`. Discovery calls it through
+  /// `filterModels`; `LLMModelDiscoveryCoordinator.loadCachedModels` calls it on a
+  /// catalog cached BEFORE a pattern was added, so an already-cached dead id
+  /// leaves the picker on the next Settings open rather than on the next key save.
+  public static func isExcludedModelID(_ id: String) -> Bool {
+    let lowered = id.lowercased()
+    return excludePatterns.contains { lowered.contains($0) }
+  }
+
+  /// `internal`, not `private`, so the pure exclusion decision is directly
+  /// testable (#2884) — same reasoning as `DiscoveryCandidate` above.
+  func filterModels(_ models: [(id: String, displayName: String)]) -> [(
     id: String, displayName: String
   )] {
     models.filter { model in
       let lowered = model.id.lowercased()
 
-      // Exclude by pattern
-      for pattern in Self.excludePatterns {
-        if lowered.contains(pattern) { return false }
-      }
+      if Self.isExcludedModelID(model.id) { return false }
 
       // Exclude versioned duplicates (-001, -002, etc.)
       for suffix in Self.versionedSuffixes {

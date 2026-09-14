@@ -229,3 +229,43 @@ struct LLMModelDiscoveryTests {
       "a row with no name cannot be armed, so it must not become a candidate")
   }
 }
+
+/// #2884: `filterModels` is the shared exclusion gate every cloud catalog passes
+/// after its provider-specific fetch filter. Production 400s on Gemini were every time
+/// `gemini-3.5-transcribe`, an audio-input id that advertises `generateContent`
+/// and so passed `fetchGeminiModels`. When this fails, the user sees a model in
+/// the picker that rejects every polish.
+@Suite("Cloud model-discovery exclusion (#2884)", .tags(.productOutcome))
+struct LLMModelDiscoveryExclusionTests {
+
+  private func survivingIDs(_ ids: [String]) -> [String] {
+    // A fixed display name, never the id: the filter reads the id, and a fixture
+    // whose two fields agree cannot tell which one production consulted.
+    LLMModelDiscovery().filterModels(ids.map { (id: $0, displayName: "Text model") }).map(\.id)
+  }
+
+  @Test(
+    "audio-input ids never reach the picker",
+    arguments: [
+      "gemini-3.5-transcribe",
+      "gemini-2.5-flash-native-audio-preview",
+      "gemini-3.5-flash-preview-tts",
+    ])
+  func audioInputIDsAreExcluded(id: String) {
+    #expect(survivingIDs([id]).isEmpty)
+  }
+
+  @Test(
+    "text polish ids survive the same filter",
+    arguments: ["gemini-3.7-flash", "gemini-3.7-pro", "gemini-2.5-flash"])
+  func textModelsSurvive(id: String) {
+    #expect(survivingIDs([id]) == [id])
+  }
+
+  @Test("one catalog: the transcribe id is dropped and the flash id kept, in order")
+  func mixedCatalogKeepsOnlyTextModels() {
+    #expect(
+      survivingIDs(["gemini-3.7-flash", "gemini-3.5-transcribe", "gemini-3.7-pro"])
+        == ["gemini-3.7-flash", "gemini-3.7-pro"])
+  }
+}

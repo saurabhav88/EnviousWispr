@@ -312,8 +312,19 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         : "couldn't reach \(name). Check your internet connection, VPN, or proxy."
     case .providerServerError:
       return "\(name) is having problems right now. Try again shortly."
+    // #2884: every retrievable production Gemini 400 carried a model the picker
+    // let through that cannot polish text (gemini-3.5-transcribe). Name who
+    // rejected it and the fix for the three key-holding providers. The sentence
+    // does not blame the model: `.badRequest` also covers any unclassified 4xx
+    // and the legacy `.requestFailed` shapes below, which prove no model choice.
+    // #2884 measured Gemini only, so the other arms keep the prior sentence.
     case .badRequest:
-      return "a configuration problem stopped it. Your original text was pasted unchanged."
+      switch provider {
+      case .openAI, .gemini, .claude:
+        return "\(name) rejected the request. Pick another model in Settings."
+      case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+        return "a configuration problem stopped it. Your original text was pasted unchanged."
+      }
     case .emptyResponse:
       return "\(name) returned no cleanup text. Try again."
     // #2093: was "the dictation took too long", which blamed the user's input for
