@@ -175,6 +175,26 @@ struct LLMDiscoveryCachePruneTests {
     #expect(settings.llmModel == "gemini-3.7-flash")
   }
 
+  /// Both surfaces armed on the dead id share one cache. Dictation's pane opens first and
+  /// prunes it; the import's pane then loads an already-clean cache and must still repair
+  /// its own armed model.
+  @Test("a second surface armed on the dead id is repaired from an already-pruned cache")
+  func secondSurfaceIsRepairedWithoutPruning() {
+    let (c, cache, settings) = Self.fixture()
+    settings.llmProvider = .gemini
+    settings.llmModel = "gemini-3.5-transcribe"
+    settings.fileImportLLMProvider = .gemini
+    settings.fileImportLLMModel = "gemini-3.5-transcribe"
+    Self.cache(["gemini-3.5-transcribe", "gemini-3.7-flash"], provider: .gemini, in: cache)
+
+    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
+    #expect(settings.fileImportLLMModel == "gemini-3.5-transcribe", "the import was repaired by dictation's load")
+
+    c.loadCachedModels(for: .gemini, settings: settings, surface: .fileImport)
+    #expect(settings.fileImportLLMModel == "gemini-3.7-flash")
+  }
+
   @Test("a clean cache is left alone: no rewrite, no repair")
   func cleanCacheIsUntouched() {
     let (c, cache, settings) = Self.fixture()

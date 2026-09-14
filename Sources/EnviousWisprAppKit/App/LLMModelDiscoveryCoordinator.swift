@@ -255,8 +255,22 @@ final class LLMModelDiscoveryCoordinator {
       pruned = models
     }
     discoveredModels = pruned
-    guard pruned.count != models.count else { return }
-    cacheModels(pruned, for: provider)
+    if pruned.count != models.count { cacheModels(pruned, for: provider) }
+    // The repair runs when THIS surface is armed on an excluded id, whether or not this load
+    // was the one that pruned the cache: the cache is shared by both surfaces, so the first
+    // pane to open rewrites it and a second pane armed on the same dead id would otherwise
+    // find nothing to prune and keep it (second pass, ad4fbf48).
+    let armedID: String
+    switch surface {
+    case .dictation: armedID = settings.llmModel
+    case .fileImport: armedID = settings.effectiveFileImportLLMModel
+    }
+    let armedIsExcluded: Bool
+    switch provider {
+    case .openAI, .gemini, .claude: armedIsExcluded = LLMModelDiscovery.isExcludedModelID(armedID)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: armedIsExcluded = false
+    }
+    guard pruned.count != models.count || armedIsExcluded else { return }
     switch surface {
     case .dictation:
       settings.applyDiscoveredModels(pruned, for: provider)
