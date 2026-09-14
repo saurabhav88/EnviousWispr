@@ -1242,6 +1242,10 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(FileImportCoordinator.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
     #expect(FileImportCoordinator.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
     #expect(FileImportCoordinator.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
+    let none = FileImportCoordinator.RunConfiguration(
+      polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
+      ollamaModel: nil, polishModel: "", backendType: .parakeet)
+    #expect(FileImportCoordinator.partCeiling(none) == TranscriptSplitter.maximumWordsPerPart)
   }
 
   /// With no turns and a local polisher, a 600-word memo is cut at the local ceiling.

@@ -1307,8 +1307,11 @@ final class FileImportCoordinator {
   /// The part ceiling for a run's polisher (see `cleanupPieces`). Pure, pinned by
   /// `FileImportCoordinatorSpeakerTests`.
   static func partCeiling(_ configuration: RunConfiguration?) -> Int {
-    // No frozen run (a cleanup asked for outside one) keeps the wider default.
-    guard let configuration, !configuration.polishIsCloud else {
+    // No frozen run (a cleanup asked for outside one), a cloud polisher, or NO polisher (the
+    // smaller part exists for a polish budget that a run without polish never spends; cloud
+    // review of PR #2927) keeps the wider default.
+    guard let configuration, !configuration.polishIsCloud, configuration.polishProvider != .none
+    else {
       return TranscriptSplitter.maximumWordsPerPart
     }
     return TranscriptSplitter.maximumWordsPerLocalPart
