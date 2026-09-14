@@ -851,8 +851,12 @@ public struct InverseTextNormalizer: Sendable {
   /// This is data, not a judgement about English: the falsification condition is one real
   /// dictated address whose domain label is one of these words. None exists in `parity.jsonl`
   /// (`InverseTextNormalizerDottedEmailTests` pins that mechanically); if one ever appears,
-  /// that word leaves the list. Left open on purpose: a NAME-shaped domain in prose ("the shop
-  /// at corner dot net") still converts, the same residual the country-code list carries.
+  /// that word leaves the list. The cost is stated, not hidden: `one.com` is a real hosting
+  /// domain, so "bob at one dot com" is left as spoken (readable, and polish can still make
+  /// it an address), because the measured production corruption put "one" in this slot and
+  /// corrupted prose has no recovery path. Left open on purpose: a NAME-shaped domain in
+  /// prose ("the shop at corner dot net") still converts, the same residual the country-code
+  /// list carries.
   static let englishProseDomainWords: Set<String> = [
     "the", "a", "an", "this", "that", "these", "those",
     "my", "your", "our", "his", "her", "its", "their",

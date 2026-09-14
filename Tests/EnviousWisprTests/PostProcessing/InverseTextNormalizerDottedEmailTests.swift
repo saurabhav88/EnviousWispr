@@ -221,12 +221,23 @@ struct InverseTextNormalizerDottedEmailTests {
           != nil
     }
     #expect(addressRows.count > 30, "the parity corpus lost its spoken English address rows")
-    let re = try NSRegularExpression(pattern: #"@([a-z0-9.-]+)\.[a-z]+\b"#, options: [.caseInsensitive])
+    let re = try NSRegularExpression(
+      pattern: #"@([a-z0-9.-]+)\.([a-z]+)\b"#, options: [.caseInsensitive])
     var offenders: [String] = []
     for row in addressRows {
       let ns = row.expected as NSString
+      let input = row.input as NSString
       for m in re.matches(in: row.expected, range: NSRange(location: 0, length: ns.length)) {
         let dom = ns.substring(with: m.range(at: 1)).lowercased()
+        let tld = ns.substring(with: m.range(at: 2))
+        // Only an address THIS row dictated through the English frame is evidence; a row can
+        // also carry an already-dotted address the frame never touched.
+        let frame = try NSRegularExpression(
+          pattern: #"\b[a-z][a-z0-9_]*\s+at\s+"# + NSRegularExpression.escapedPattern(for: dom)
+            + #"\s+dot\s+"# + NSRegularExpression.escapedPattern(for: tld) + #"\b"#,
+          options: [.caseInsensitive])
+        guard frame.firstMatch(in: row.input, range: NSRange(location: 0, length: input.length)) != nil
+        else { continue }
         if InverseTextNormalizer.englishProseDomainWords.contains(dom) {
           offenders.append(row.expected)
         }
