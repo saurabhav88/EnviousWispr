@@ -62,17 +62,17 @@ enum WhatsNewContent {
 
     // #2762 (the feature), #2786 (per-surface polisher choice), #2803 (menu bar entry),
     // #2851/#2898 (speaker sections), #2801 (the three Done views), #2897/#2918 (the
-    // Working card). ONE card in the founder's own words (2026-09-14), scoped to what the
-    // code does: one file at a time (`allowsMultipleSelection = false`), so no batch claim;
-    // the audio never leaves the Mac while the TEXT goes to a cloud polisher when one is
-    // chosen (CLAUDE.md § Privacy), so "neither does a single word" is scoped to the
-    // built-in polishers; lists are a model behaviour, so the promise is the Marked up view.
+    // Working card). ONE card, the founder's copy verbatim (2026-09-14, his decision after
+    // the cloud reviewer's scoping notes; he owns the product copy). Two claims he was told
+    // reach past the code: the app takes one file at a time (`allowsMultipleSelection =
+    // false`), and with a cloud polisher the TEXT leaves the Mac (the project's privacy
+    // section: audio always stays, text goes to the user's chosen provider).
     Entry(
       id: "transcribe-a-file",
       icon: "doc.badge.ellipsis",
       title: "Introducing \"Transcribe a File\"",
       description:
-        "Historically, transcribing audio on your own Mac meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to a cloud server. Transcribe a File changes that: speech transcription runs right on your Mac, and so does the intelligent AI polishing with any of the built-in polishers. Drop in a voice memo, a lecture or a meeting recording and get back clean, structured text, with the speakers told apart and a marked-up view of every change the cleanup made. Your audio never leaves your Mac; with a built-in polisher, neither does a single word.",
+        "Historically, transcribing audio locally meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to cloud servers. Transcribe a File changes that by running both speech transcription and intelligent AI polishing entirely offline. Drop in a single voice memo or queue up a massive archive of files to get back clean, structured text complete with speaker detection, automatic lists, and full edit history. You get publication-ready transcripts at scale without a single byte ever leaving your machine.",
       version: "2.5.0"
     ),
 
@@ -174,13 +174,13 @@ enum WhatsNewContent {
       description:
         "Eight fixes across dictation, paste and History.",
       bullets: [
-        "Stalled transcription recovery: If a dictation never finishes transcribing, your cancel shortcut now ends the wait and keeps your recorded audio; until you restart the app, a new dictation tells you the previous one is still running.",
+        "Stalled transcription recovery: Canceling a dictation that fails to finish now halts the process immediately while preserving your recorded audio.",
         "Decimal formatting: Numbers spoken digit by digit around a decimal point (e.g., \"two four oh seven point one two three\") now format properly as a single decimal number.",
         "Quick Add persistence: Quick Add continues to display the heard phrase on screen even when nothing in your list matches it.",
         "Shortcut conflict priority: When the cancel shortcut shares a key combination with Quick Add, cancel now reliably takes priority.",
-        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now gives up after 500 ms instead of waiting on it.",
+        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now aborts after 500 ms instead of freezing the app.",
         "Safer crash recovery: Crash recovery retains the key to a saved recording until the audio file itself is confirmed safely removed.",
-        "Process cleanup on launch: A cleanup server left over from an earlier launch is shut down on startup.",
+        "Process cleanup on launch: Any lingering background servers left over from an earlier session are automatically terminated on startup.",
         "History type filters: History now distinguishes between Dictations (live keybind speech) and Transcripts (imported files). A new filter switch at the top of the list lets you quickly toggle between All, Dictations, and Transcripts.",
       ],
       version: "2.5.0"
