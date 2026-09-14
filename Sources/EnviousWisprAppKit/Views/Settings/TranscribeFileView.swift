@@ -1448,28 +1448,35 @@ struct TranscribeFileView: View {
   /// size (#2817 item 6). It was a small control among the header chips, where a caption-size
   /// segmented control read as one more chip rather than as the control that changes what the
   /// whole document shows. The Times toggle rides with it because it is the other control
-  /// that changes the document; the chips stay chips. Present only when there is a document
-  /// with parts, the same guard the chip row used.
+  /// that changes the document; the chips stay chips.
+  ///
+  /// Each control keeps the gate it had in the chip run: the picker needs parts (it chooses
+  /// between cleaned and original words), the toggle needs turns (it shows their times). A
+  /// labeled document can have turns and no parts, when the polisher never started or a
+  /// Stop landed before the first section; Times stays offered there. Found by the cloud
+  /// review of PR #2908.
   @ViewBuilder
   private var documentControls: some View {
-    if !coordinator.parts.isEmpty {
+    if !coordinator.parts.isEmpty || coordinator.turns != nil {
       HStack(spacing: 12) {
         // The page promises the untouched words are kept. This is where the user reads them,
         // and Copy, Save and Share follow Cleaned and Original; Marked up exports Cleaned.
         // Three states want one picker rather than two links (#2773).
-        Picker(
-          "View",
-          selection: Binding(
-            get: { coordinator.documentView }, set: { coordinator.documentView = $0 })
-        ) {
-          Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
-          Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
-          Text("Original").tag(FileImportCoordinator.DocumentView.original)
+        if !coordinator.parts.isEmpty {
+          Picker(
+            "View",
+            selection: Binding(
+              get: { coordinator.documentView }, set: { coordinator.documentView = $0 })
+          ) {
+            Text("Cleaned").tag(FileImportCoordinator.DocumentView.cleaned)
+            Text("Marked up").tag(FileImportCoordinator.DocumentView.markedUp)
+            Text("Original").tag(FileImportCoordinator.DocumentView.original)
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .controlSize(.regular)
+          .accessibilityLabel("Which words to show")
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.regular)
-        .accessibilityLabel("Which words to show")
         Spacer(minLength: 12)
         // Times on/off (#2811 §2.1) — only meaningful once there are turns to time.
         if coordinator.turns != nil {

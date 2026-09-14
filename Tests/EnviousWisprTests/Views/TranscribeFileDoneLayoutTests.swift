@@ -141,7 +141,14 @@ struct TranscribeFileDoneLayoutTests {
       Issue.record("`documentControls` or `doneMetadata` is gone")
       return
     }
-    #expect(controls.contains("Picker(\n          \"View\""), "the picker left `documentControls`")
+    #expect(controls.contains("Picker(\n            \"View\""), "the picker left `documentControls`")
+    // Each control keeps its own gate (cloud review of PR #2908): the row shows for turns OR
+    // parts, the picker needs parts, the toggle needs turns.
+    #expect(
+      controls.contains("if !coordinator.parts.isEmpty || coordinator.turns != nil {")
+        && controls.contains("if !coordinator.parts.isEmpty {\n          Picker(")
+        && controls.contains("if coordinator.turns != nil {\n          Toggle("),
+      "the picker and the Times toggle must keep their separate gates")
     #expect(controls.contains(".controlSize(.regular)"), "the picker is not at the regular size")
     #expect(!controls.contains(".fixedSize()"), "the picker takes its natural width on its own row")
     #expect(!metadata.contains("Picker("), "the picker is back among the header chips")
