@@ -67,6 +67,18 @@ RECIPES = {
         # route through `run_silent_probe`, which feeds a real silent wav so the
         # hold stays 6 s and no speech service is invoked.
     },
+    "transcribe-file": {
+        "function": "transcribe_file_backend",
+        "purpose": "Hand a file to THIS worktree's running dev build through the DEBUG import door "
+                   "(#2885) and wait for the History row. No screen, no typing: the founder keeps his "
+                   "keyboard. The Code-lane Live UAT for anything under Transcribe a File.",
+        "verdict": "app.log: door status=finished + `[TurnStorage] outcome=stored`; the History row on "
+                   "disk with as many turns as the stored count (file_verdict.py). Words and sections "
+                   "are reported, never judged",
+        "audio": False,
+        "needs": "one DEBUG instance of THIS worktree's build (the door is #if DEBUG); --file <path>; "
+                 "the polisher the app is set to must be ready (else the door refuses polisherNotReady)",
+    },
 }
 
 # --------------------------------------------------------------------------
@@ -84,6 +96,8 @@ HARNESS_STATUS = {
     "test_recording":  {"status": "recipe", "issue": None, "note": "menu-driven; log verdict, clipboard fallback only when Debug Mode is off"},
     "test_ptt":        {"status": "recipe", "issue": None, "note": "needs run_in_background (CGEvent); FAIL with `asr_empty_despite_audio` usually means TTS went to a Bluetooth output"},
     "record_tts":      {"status": "recipe", "issue": "#2547", "note": "`polished` is ONE LINE; read multi-line output with uat.py verdict. focus_app takes an APP NAME, not a bundle id"},
+    "transcribe_file_backend": {"status": "recipe", "issue": None, "note": "the #2885 door; MAIN thread only (it pumps the run loop); answers only its own PID and worktree; a Stop or a new file on screen makes the reply `superseded`, which claims nothing about the row"},
+    "resolve_pid":             {"status": "primitive", "issue": None, "note": "the one dev app built under a worktree, by executable path; REFUSES unless exactly one (never picks)"},
     "test_cancel":     {"status": "broken", "issue": "code-tooling", "note": "cancels via a synthetic Escape, which does NOT reach the Carbon hotkey (code-tooling.md FACT: synthetic-escape-does-not-reach-a-carbon-hotkey), so it reports FAIL on a working app. Not a runnable recipe; cancel needs a human press until a real driver exists"},
     # broken / unreliable
     "test_hands_free": {"status": "broken", "issue": "#2409", "note": "drives the MENU and cannot engage hands-free lock; returns PASS for a gesture that never fired. Use double_press_record_key"},
@@ -196,11 +210,19 @@ def doc_index(main_root=None, scenarios_md=SCENARIOS_MD):
 
 
 def public_names(path=WISPR_EYES):
-    """Top-level public def/class names of wispr_eyes.py by STATIC parse."""
+    """Top-level public names of wispr_eyes.py by STATIC parse: every def/class,
+    plus every name it re-exports from `import_door` (`from import_door import
+    resolve_pid, transcribe_file_backend`, #2885), which callers reach as
+    `wispr_eyes.<name>` exactly like a def. Other imports stay private to the
+    module and are not harness surface."""
     tree = ast.parse(open(path, encoding="utf-8").read(), filename=path)
-    return sorted(n.name for n in tree.body
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                  and not n.name.startswith("_"))
+    names = [n.name for n in tree.body
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+             and not n.name.startswith("_")]
+    names += [a.asname or a.name for n in tree.body
+              if isinstance(n, ast.ImportFrom) and n.module == "import_door"
+              for a in n.names if not (a.asname or a.name).startswith("_")]
+    return sorted(names)
 
 
 # ---------------------------------------------------------------- printing --
@@ -253,6 +275,8 @@ def _self_test():
           all(HARNESS_STATUS.get(r["function"], {}).get("status") == "recipe" for r in RECIPES.values()))
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
     check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
+    check("the door re-export is harness surface (#2885)", "transcribe_file_backend" in names)
+    check("transcribe-file is a no-audio recipe", RECIPES["transcribe-file"]["audio"] is False)
 
     with tempfile.TemporaryDirectory() as tmp:
         for rel in DOC_FILES:

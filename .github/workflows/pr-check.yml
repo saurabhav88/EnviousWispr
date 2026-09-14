@@ -665,6 +665,7 @@ jobs:
           # self-test fails if a public wispr_eyes function has no trust-status row.
           python3 Tests/RuntimeUAT/uat_catalog.py --self-test
           python3 Tests/RuntimeUAT/log_verdict.py --self-test
+          python3 Tests/RuntimeUAT/file_verdict.py --self-test
           python3 Tests/RuntimeUAT/preflight.py --self-test
           # uat.py imports no PyObjC at module level, so its verdict-classifier
           # self-test (the contract Codex diff review hammered) runs here too.

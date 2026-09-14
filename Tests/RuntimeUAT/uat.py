@@ -33,6 +33,8 @@ sys.path.insert(0, HERE)
 import uat_catalog as cat  # noqa: E402
 import preflight as pf  # noqa: E402
 import log_verdict as lv  # noqa: E402
+import file_verdict as fv  # noqa: E402
+from import_door import REFUSALS as DOOR_REFUSALS  # noqa: E402  (the door's immediate refusals, #2885)
 from instance_guard import running_enviouswispr_instances  # noqa: E402
 
 MARK = "/tmp/.ew-uat-mark"
@@ -245,6 +247,15 @@ def cmd_preflight(args):
                          "the worktree that owns that build")
         else:
             print(f"OK    app               pid {pid}, this worktree's build")
+            level, detail = pf.door_present(app_path)
+            print(f"{level.upper():5} {'import-door':17} {detail}")
+            if level == "fail":
+                warnings.append(f"import-door: {detail} (only transcribe-file needs it)")
+            if args.file:
+                level, detail = pf.import_file_ok(args.file)
+                print(f"{level.upper():5} {'import-file':17} {detail}")
+                if level == "fail":
+                    fails.append(f"import-file: {detail}")
 
     # 3. Debug build with Debug Mode on: a launch banner at or after the process start.
     app_start = None
@@ -446,6 +457,76 @@ def cmd_run(args):
 
     # The silent probe is not a generic recipe: it must play TRUE silence, not a
     # TTS clip, and its verdict is a word count gated on a completed take.
+    # transcribe-file is not a dictation: no audio plays, no CGEvent is posted, and the
+    # verdict is structural (door finished, coordinator stored, row on disk), read by
+    # file_verdict.py rather than log_verdict.py. It runs on THIS thread on purpose:
+    # the door pumps the run loop of the calling thread (import_door.py:64-66).
+    if args.recipe == "transcribe-file":
+        if args.audio or args.sentence or args.expect:
+            raise SystemExit("REFUSED: transcribe-file takes --file, not --audio / --sentence / --expect")
+        if not args.file:
+            raise SystemExit("REFUSED: transcribe-file needs --file <path>")
+        path = os.path.abspath(os.path.expanduser(args.file))
+        if not os.path.isfile(path) or not os.access(path, os.R_OK):
+            raise SystemExit(f"REFUSED: --file {args.file!r} is not a readable file")
+        if os.path.getsize(path) == 0:
+            raise SystemExit(f"REFUSED: --file {args.file!r} is empty (0 bytes)")
+        # The one dev app built under THIS worktree, by executable path (never by app
+        # name: every dev build shares one bundle id). resolve_pid REFUSES on any
+        # count but one, which is the peer-occupancy rule, not a guess.
+        try:
+            pid = w.resolve_pid(worktree)
+        except RuntimeError as e:
+            raise SystemExit(f"REFUSED: {e}")
+        mark = dt.datetime.now().astimezone()
+        print(f"== RUN transcribe-file -> transcribe_file_backend(pid={pid}, {path!r}, timeout={args.timeout}) ==")
+        reply = w.transcribe_file_backend(pid, path, timeout=args.timeout, worktree=worktree, echo=True)
+        # An immediate refusal (busy, malformed, wrongLaunch, duplicate) means the run never
+        # started: an INSTRUMENT exit, with the door's own reason, before any log is read.
+        if reply.get("status") in DOOR_REFUSALS:
+            print(f"INSTRUMENT: the door refused before starting: status={reply.get('status')} "
+                  f"reason={reply.get('reason', '')}")
+            return 2
+        # The stored row and the door's terminal reply land a beat apart; settle once
+        # BEFORE reading either the row or the log, so both snapshots are the same state.
+        time.sleep(0.5)
+        history = reply.get("history")
+        row_path = os.path.expanduser(f"~/Library/Application Support/EnviousWispr/transcripts/{history}.json") if history else None
+        row = None
+        if row_path and os.path.isfile(row_path):
+            with open(row_path, encoding="utf-8") as fh:
+                row = json.load(fh)
+        exit_code, ev = fv.file_verdict(w.log_entries_since(mark), row, expect_door=True,
+                                        request=reply.get("request"))
+        print(fv.format_verdict(ev))
+        if ev.get("note"):
+            print(("INSTRUMENT: " if exit_code == 2 else "") + ev["note"])
+        evidence = {
+            "recipe": args.recipe,
+            "function": recipe["function"],
+            "file": path,
+            "door_reply": {k: v for k, v in reply.items() if not k.startswith("_")},
+            "history": history,
+            "row_path": row_path if row is not None else None,
+            "exit_code": exit_code,
+            # The one field a consumer may read alone: the reader's verdict, never the
+            # door's word (the door can say finished while the row disagrees with the log).
+            "harness_verdict": exit_code == 0,
+            "head_sha": full_head,
+            "build_matches_head": build_matches_head,
+            "skipped": False,
+            "verdict": ev,
+            "ran_at": now_iso(),
+        }
+        print(f"exit_code={exit_code} status={reply.get('status')} history={history}")
+        if run_dir:
+            out = os.path.join(run_dir, "live-uat.json")
+            tmp = out + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(evidence, fh, indent=2)
+            os.replace(tmp, out)
+            print(f"written: {out}")
+        return exit_code
     if args.recipe == "silent-probe":
         print("== RUN silent-probe -> 6 s of true silence ==")
         state, words, newest = run_silent_probe(w)
@@ -563,12 +644,15 @@ def main(argv=None):
     r.set_defaults(fn=cmd_recipes)
     pre = sub.add_parser("preflight", help="check this machine and write the receipt the gates read")
     pre.add_argument("--silent-probe", action="store_true", help="also record 6 s of silence to detect an occupied room")
+    pre.add_argument("--file", help="transcribe-file: also check the file the door will be handed")
     pre.set_defaults(fn=cmd_preflight)
     run = sub.add_parser("run", help="run a recipe and write live-uat.json")
     run.add_argument("recipe", choices=list(cat.RECIPES))
     run.add_argument("--sentence")
     run.add_argument("--expect")
     run.add_argument("--audio")
+    run.add_argument("--file", help="transcribe-file: the audio/video file to hand through the door")
+    run.add_argument("--timeout", type=int, default=900, help="transcribe-file: seconds to wait for the door's terminal reply (cap 3600)")
     run.add_argument("--run-dir")
     run.set_defaults(fn=cmd_run)
     v = sub.add_parser("verdict", help="dictation verdicts from app.log since the mark")
