@@ -78,6 +78,7 @@ from section_envelope import (  # noqa: E402
     accept_section, pack_addendum, unwrap_sections, wrap_sections,
 )
 from acceptance_gate import (  # noqa: E402
+    CLOUD_FIXED_SYSTEM,
     _key,
     _selftest_mirrors,
     _strip_llm_preamble_python,
@@ -650,13 +651,21 @@ def polish_case(
             time.sleep(min(2 ** attempt, 16))
             continue
         break
-    return {
+    failed = {
         "id": case["id"],
         "candidate": "",
         "error": last_err,
         "latencyMs": int((time.monotonic() - start) * 1000),
         "attempts": attempt,
     }
+    if validate:
+        # The packed arm's failed pack writes every section's original words with status
+        # `error` (`_fallback_rows`); the validated isolated arm gets the same treatment,
+        # so a provider failure costs both arms the same row and the report does not
+        # refuse the file for a missing `section_status` (cloud review of PR #2902, round 5).
+        failed["candidate"] = transcript
+        failed["section_status"] = "error"
+    return failed
 
 
 # --- #2851 phase 2: pack mode -------------------------------------------------------
@@ -808,7 +817,20 @@ def _fallback_rows(pack: dict, ids: list[str], sections: list[str], status: str)
             for i, original in zip(ids, sections)]
 
 
-def run_receipt(args, thinking: tuple[str, object] | None) -> dict:
+def prompt_sha256(prompt_mode: str, prompt_body: str | None) -> str:
+    """Identity of the prompt BODY an arm ran with: the bare v7 prompt, the shipped v6 body,
+    or the `--system-prompt-file` text. Two arms with different custom bodies otherwise
+    print identical receipts (cloud review of PR #2902, round 5)."""
+    if prompt_mode == "bare":
+        body = BARE_PROMPT
+    elif prompt_body is not None:
+        body = prompt_body.strip()
+    else:
+        body = CLOUD_FIXED_SYSTEM
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def run_receipt(args, thinking: tuple[str, object] | None, prompt_body: str | None) -> dict:
     """Provenance every candidate row of a run carries: what was run, on which route, with
     which prompt, validated or not, packed or isolated. `compare_arms_paired.py
     --packing-report` prints the two arms' receipts side by side for the operator to read;
@@ -816,6 +838,7 @@ def run_receipt(args, thinking: tuple[str, object] | None) -> dict:
     return {
         "provider": args.provider, "model": args.model,
         "prompt_mode": args.system_prompt,
+        "prompt_sha256": prompt_sha256(args.system_prompt, prompt_body),
         "thinking": list(thinking) if thinking else None,
         "validated": True if args.pack is not None else bool(getattr(args, "validate", False)),
         "mode": "packed" if args.pack is not None else "isolated",
@@ -879,7 +902,7 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         return 0
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    receipt = run_receipt(args, thinking)
+    receipt = run_receipt(args, thinking, prompt_body)
     summaries: list[dict] = []
     rows_by_id: dict[str, dict] = {}
     t0 = time.monotonic()
@@ -1162,7 +1185,7 @@ def main() -> int:
     print(f"corpus   : {args.corpus.name} ({len(cases)} cases, {args.workers} workers)", file=sys.stderr)
 
     results: dict[str, dict] = {}
-    receipt = run_receipt(args, thinking)
+    receipt = run_receipt(args, thinking, prompt_body)
     errors = 0
     done = 0
     t0 = time.monotonic()

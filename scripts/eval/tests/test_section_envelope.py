@@ -221,6 +221,18 @@ def test_isolated_arm_validate_flag() -> None:
         accepted = runner.polish_case("openai", "m", "k", case, validate=True)
         check("with --validate an accepted answer is kept and marked accepted",
               accepted["candidate"] == "Should we ship it today?" and accepted["section_status"] == "accepted")
+
+        def boom(*a, **k):
+            raise RuntimeError("provider down")
+        runner.call_once = boom
+        failed_plain = runner.polish_case("openai", "m", "k", case)
+        check("without --validate a failed call is an empty candidate with an error and no status",
+              failed_plain["candidate"] == "" and failed_plain["error"] == "provider down"
+              and "section_status" not in failed_plain)
+        failed = runner.polish_case("openai", "m", "k", case, validate=True)
+        check("with --validate a failed call keeps the original words with status error, like a failed pack",
+              failed["candidate"] == case["text"] and failed["section_status"] == "error"
+              and failed["error"] == "provider down", str(failed))
     finally:
         runner.call_once = original
 
@@ -275,8 +287,8 @@ def test_packing_report_refuses_only_mechanical_mismatches() -> None:
         graded = json.dumps({"id": "x", "verdict": "pass", "candidate_output": "t"}) + "\n"
         (d / "a.jsonl").write_text(graded)
         (d / "b.jsonl").write_text(graded)
-        receipt = {"provider": "openai", "model": "m", "prompt_mode": "production", "thinking": None,
-                   "validated": True, "mode": "isolated", "pack_file": None}
+        receipt = {"provider": "openai", "model": "m", "prompt_mode": "production", "prompt_sha256": "a" * 64,
+                   "thinking": None, "validated": True, "mode": "isolated", "pack_file": None}
         other_model = {**receipt, "model": "other", "mode": "packed", "pack_file": "packs-1500.jsonl"}
         good = json.dumps({"id": "x", "candidate": "t", "section_status": "accepted", "run": receipt}) + "\n"
         (d / "plain.jsonl").write_text(json.dumps({"id": "x", "candidate": "t", "run": receipt}) + "\n")
@@ -301,7 +313,8 @@ def test_packing_report_refuses_only_mechanical_mismatches() -> None:
         rc, out = run("good.jsonl", "othermodel.jsonl")
         check("arms with different receipts are NOT refused; both receipts are printed",
               rc == 0 and '"model": "other"' in out and '"model": "m"' in out
-              and "does not certify" in out, out[-500:])
+              and "does not certify" in out and "not in the receipt" in out
+              and "#2904" in out, out[-600:])
         check("the fallback count names the rejected row",
               "B: 1 fallback rows of 1" in out and "rejectedExpansion" in out, out[-500:])
 

@@ -151,6 +151,9 @@ def main() -> int:
         for name in (args.a_name, args.b_name):
             for r in receipts[name]:
                 print(f"  {name}: {json.dumps(r, sort_keys=True)}", file=sys.stderr)
+        print("  not in the receipt: key route and endpoint, corpus file and --limit, --workers "
+              "and retries, pack contents beyond the file name, the judge's own inputs; hold "
+              "those equal yourself (#2904 lists the open axes)", file=sys.stderr)
 
     both_pass = both_fail = 0
     a_only: list[str] = []   # A passed, B failed  -> candidate REGRESSED
