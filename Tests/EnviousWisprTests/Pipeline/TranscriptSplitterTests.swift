@@ -251,4 +251,40 @@ struct TranscriptSplitterTests {
     #expect(TranscriptSplitter.wordCount(in: "don't") == 1)
     #expect(TranscriptSplitter.wordCount(in: "  two   words  ") == 2)
   }
+
+  // MARK: - Per-polisher ceiling
+
+  /// A local polisher's time grows with the words in a part, and the polish budget is 15 s
+  /// (`LLMPolishStep`): 470-word parts took a mean 11.3 s on the founder's Mac and one of 39
+  /// timed out. The ceiling is a parameter so the file import can cut smaller parts for an
+  /// on-device polisher without changing what everything else gets.
+  @Test("a smaller ceiling cuts smaller parts, and the parts are still the whole transcript")
+  func smallerCeilingCutsSmallerParts() {
+    let transcript = Self.prose(sentences: 400, seed: 7)
+    let local = TranscriptSplitter.split(
+      transcript, maximumWords: TranscriptSplitter.maximumWordsPerLocalPart)
+    let cloud = TranscriptSplitter.split(transcript)
+    #expect(local.count > cloud.count)
+    for part in local {
+      let count = TranscriptSplitter.wordCount(in: part)
+      #expect(count >= 1 && count <= TranscriptSplitter.maximumWordsPerLocalPart)
+    }
+    #expect(local.flatMap(Self.words) == Self.words(transcript))
+    #expect(local.flatMap(Self.kept) == Self.kept(transcript))
+  }
+
+  @Test("the local ceiling is 200 words and the default stays 500")
+  func ceilingsAreNumbers() {
+    #expect(TranscriptSplitter.maximumWordsPerLocalPart == 200)
+    #expect(TranscriptSplitter.maximumWordsPerPart == 500)
+  }
+
+  /// A run-on sentence longer than the ceiling is cut at word boundaries at THAT ceiling.
+  @Test("an overlong run-on is cut at the ceiling it was given")
+  func overlongRunOnHonoursTheGivenCeiling() {
+    let runOn = (0..<450).map { "w\($0)" }.joined(separator: " ")
+    let parts = TranscriptSplitter.split(runOn, maximumWords: 200)
+    #expect(parts.count == 3)
+    #expect(parts.map { TranscriptSplitter.wordCount(in: $0) } == [200, 200, 50])
+  }
 }

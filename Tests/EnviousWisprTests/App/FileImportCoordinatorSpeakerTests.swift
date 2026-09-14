@@ -1096,9 +1096,10 @@ struct FileImportCoordinatorSpeakerTests {
   }
 
   /// `count` words "w0 w1 ...", one every 100 ms, speaker A for the first `split` words and
-  /// B for the rest: two turns, one cleanup section each while both stay under
-  /// `TranscriptSplitter.maximumWordsPerPart`; a `split` over the ceiling makes A's turn
-  /// several sections sharing one turn id.
+  /// B for the rest: two turns, one cleanup section each while both stay under the run's
+  /// part ceiling (`TranscriptSplitter.maximumWordsPerLocalPart` for the fixtures' EG-1
+  /// polisher); a `split` over the ceiling makes A's turn several sections sharing one turn
+  /// id.
   private static func manyWordFixture(count: Int, split: Int) -> (
     text: String, timings: [ASRWordTiming], segments: [SpeakerSegment]
   ) {
@@ -1125,7 +1126,7 @@ struct FileImportCoordinatorSpeakerTests {
   func rePolishKeepsThePreviousDocumentUntilDone() async {
     let store = FakeHistoryStore()
     let secondRunGate = ManualGate()
-    let fixture = Self.manyWordFixture(count: 600, split: 300)
+    let fixture = Self.manyWordFixture(count: 300, split: 150)
     @MainActor final class RunTracker {
       var secondRun = false
       private(set) var partsInSecondRun = 0
@@ -1176,14 +1177,14 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(finished)
     let texts = turnTexts(store.current(historyID))
     #expect(texts.first??.hasPrefix("again w0 ") == true)
-    #expect(texts.last??.hasPrefix("again w300 ") == true, "each section is its own part")
+    #expect(texts.last??.hasPrefix("again w150 ") == true, "each section is its own part")
   }
 
   @Test("each section is one cleanup part carrying its turn id; the turns are written once at Done (#2851 follow-up)")
   func eachSectionIsOnePartCarryingItsTurnID() async {
     let store = FakeHistoryStore()
     let secondPartGate = ManualGate()
-    let fixture = Self.manyWordFixture(count: 600, split: 300)
+    let fixture = Self.manyWordFixture(count: 300, split: 150)
     @MainActor final class PartCounter {
       private(set) var count = 0
       func next() -> Int {
@@ -1224,8 +1225,35 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(finished)
     let texts = turnTexts(store.current(historyID))
     #expect(texts.count == 2)
-    #expect(texts[0] == (0..<300).map { "w\($0)" }.joined(separator: " "))
-    #expect(texts[1] == (300..<600).map { "w\($0)" }.joined(separator: " "))
+    #expect(texts[0] == (0..<150).map { "w\($0)" }.joined(separator: " "))
+    #expect(texts[1] == (150..<300).map { "w\($0)" }.joined(separator: " "))
+  }
+
+  /// The part ceiling follows the run's polisher: a cloud polisher is bound by the request,
+  /// an on-device one by the words (15 s budget; 470-word parts timed out on a fast Mac).
+  @Test("the part ceiling is the local one for an on-device polisher and the default for cloud")
+  func partCeilingFollowsThePolisher() {
+    let local = FileImportCoordinator.RunConfiguration(
+      polishIsCloud: false, localPolishProvider: .egOne, polishProvider: .egOne,
+      ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+    let cloud = FileImportCoordinator.RunConfiguration(
+      polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
+      ollamaModel: nil, polishModel: "gpt-4o-mini", backendType: .parakeet)
+    #expect(FileImportCoordinator.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
+    #expect(FileImportCoordinator.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
+    #expect(FileImportCoordinator.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
+  }
+
+  /// With no turns and a local polisher, a 600-word memo is cut at the local ceiling.
+  @Test("a single-speaker memo is cut at the local ceiling for an on-device polisher")
+  func singleSpeakerMemoUsesTheLocalCeiling() {
+    let text = (0..<600).map { "w\($0)" }.joined(separator: " ")
+    let cut = FileImportCoordinator.cleanupPieces(
+      turns: nil, rawText: text, maximumWords: TranscriptSplitter.maximumWordsPerLocalPart)
+    #expect(cut.pieces.count == 3)
+    #expect(cut.pieces.map { TranscriptSplitter.wordCount(in: $0) } == [200, 200, 200])
+    let wide = FileImportCoordinator.cleanupPieces(turns: nil, rawText: text)
+    #expect(wide.pieces.count == 2)
   }
 
   @Test("a turn over the splitter's ceiling becomes several parts sharing its id, joined back into one turn (#2851 follow-up)")
@@ -1665,7 +1693,7 @@ struct FileImportCoordinatorSpeakerTests {
     let calls = CallRecorder()
     // Two 300-word turns, one section each: long enough that a per-turn second pass
     // restricted to longer turns would show up as extra calls too (chunk 4 review).
-    let fixture = Self.manyWordFixture(count: 600, split: 300)
+    let fixture = Self.manyWordFixture(count: 300, split: 150)
     let coordinator = makeStoreBackedCoordinator(
       store: store, transcribedText: fixture.text, wordTimings: fixture.timings,
       speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },

@@ -1291,21 +1291,39 @@ final class FileImportCoordinator {
     case unplaceable
   }
 
+  /// The part ceiling for a run's polisher (see `cleanupPieces`). Pure, pinned by
+  /// `FileImportCoordinatorSpeakerTests`.
+  static func partCeiling(_ configuration: RunConfiguration?) -> Int {
+    // No frozen run (a cleanup asked for outside one) keeps the wider default.
+    guard let configuration, !configuration.polishIsCloud else {
+      return TranscriptSplitter.maximumWordsPerPart
+    }
+    return TranscriptSplitter.maximumWordsPerLocalPart
+  }
+
   /// Cuts the raw transcript into the pieces the cleanup runs on: one per speaker turn when
   /// the turns exist (a turn over the splitter's ceilings becomes several pieces carrying the
   /// same turn id), else the word-count passages of a single-speaker document. Each piece is
   /// a verbatim slice of `rawText`, in order, so `placedPassages()` finds it by literal search
   /// like any passage.
-  static func cleanupPieces(turns: [Turn]?, rawText: String) -> Pieces {
+  ///
+  /// `maximumWords` is the part ceiling for this run's polisher: `TranscriptSplitter.
+  /// maximumWordsPerLocalPart` for an on-device polisher, whose time grows with the words,
+  /// `maximumWordsPerPart` for a cloud one, whose cost grows with the calls.
+  static func cleanupPieces(
+    turns: [Turn]?, rawText: String, maximumWords: Int = TranscriptSplitter.maximumWordsPerPart
+  ) -> Pieces {
     guard let turns, !turns.isEmpty else {
-      return Pieces(pieces: TranscriptSplitter.split(rawText), turnIDs: [], gaps: [])
+      return Pieces(
+        pieces: TranscriptSplitter.split(rawText, maximumWords: maximumWords), turnIDs: [],
+        gaps: [])
     }
     var pieces: [String] = []
     var ids: [String?] = []
     var gaps: [String] = []
     for turn in turns {
       let text = TranscriptDocumentPresenter.slice(rawText, turn.originalTextRange)
-      let split = TranscriptSplitter.split(text)
+      let split = TranscriptSplitter.split(text, maximumWords: maximumWords)
       // The raw text between consecutive pieces of ONE turn, so the turn is rebuilt with
       // what really lay there: a space, a newline, or nothing at all when the splitter cut
       // a space-free script at a character boundary (cloud review of PR #2898). Found by
@@ -1834,7 +1852,8 @@ final class FileImportCoordinator {
       // second speaker pass.
       let turns = pendingSpeakerResult?.turns
         ?? historyID.flatMap { currentHistoryRow($0)?.turns }
-      let cut = Self.cleanupPieces(turns: turns, rawText: rawTranscript)
+      let cut = Self.cleanupPieces(
+        turns: turns, rawText: rawTranscript, maximumWords: Self.partCeiling(configuration))
       await polishAll(
         cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     }
@@ -1914,7 +1933,9 @@ final class FileImportCoordinator {
       await stepTask.value
       guard generationAtStart == generation else { return }
       phase = "Dividing it up to clean"
-      let cut = Self.cleanupPieces(turns: pendingSpeakerResult?.turns, rawText: result.text)
+      let cut = Self.cleanupPieces(
+        turns: pendingSpeakerResult?.turns, rawText: result.text,
+        maximumWords: Self.partCeiling(runConfiguration))
       await polishAll(
         cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     } catch is CancellationError {
