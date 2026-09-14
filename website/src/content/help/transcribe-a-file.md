@@ -66,7 +66,7 @@ If a polisher needs setting up (a key, a download, Ollama not running), the same
 
 ### The time estimate
 
-The Review step shows an estimate such as "Ready in about 3 minutes" before you start. It is worked out from the length of your recording: the cleanup is what takes the time, about twelve seconds for every five hundred words, rounded to whole minutes. On the Working step, once a few sections have finished, the card shows a time left measured from how fast they actually went.
+The Review step shows an estimate such as "Ready in about 3 minutes" before you start. It is worked out from the length of your recording: about four seconds of work for every minute of audio, rounded to the nearest minute, or "under a minute" for a short file. On the Working step, once a few sections have finished, the card shows a time left measured from how fast they actually went.
 
 ### Stopping
 
@@ -78,7 +78,7 @@ The Done step shows your transcript with a row of chips above it: the word count
 
 - **Cleaned, Marked up, Original.** Three views of the same transcript, offered once at least one turn has been through the cleanup. **Cleaned** is the text after cleanup, with the automatic fixes and, where the polisher rewrote a turn, its rewrite. **Original** is the original transcription, the words as the speech engine heard them. **Marked up** shows the original with the cleanup drawn on it: a removed word is red and struck through, a changed or added word is highlighted, and the counts sit above the text, like "1,204 words removed · 318 changed".
 - **Times.** When the transcript has speaker turns, this switch shows or hides the time each turn starts.
-- **Copy everything.** Puts the text you are looking at on your clipboard. **Save as...** writes it to a plain text file. **Share...** opens the macOS share sheet, so you can send it to Messages, Mail, Notes, AirDrop or any app that accepts text. In the Marked up view the three buttons read Copy cleaned, Save cleaned as... and Share cleaned..., because they hand over the cleaned text, not the marks.
+- **Copy everything.** Puts the text you are looking at on your clipboard and says Copied for a moment. **Save as...** writes it to a plain text file. **Share...** opens the macOS share sheet, so you can send it to Messages, Mail, Notes, AirDrop or any app that accepts text. In the Marked up view the three buttons read Copy cleaned, Save cleaned as... and Share cleaned..., because they hand over the cleaned text, not the marks.
 - **New transcription.** Clears the page for the next file. Check the chip first: **Saved to History** means it is kept; **This version is not saved** means copy or save it before you move on.
 
 ### Where it goes
