@@ -37,7 +37,9 @@ struct FileImportCoordinatorSpeakerTests {
       let clock = ContinuousClock()
       let end = clock.now + deadline
       while !entered, clock.now < end {
-        try? await Task.sleep(for: .milliseconds(2))  // settle: poll the gate's own flag until the deadline
+        // settle: poll the gate's own flag until the deadline; a cancelled waiter gives up
+        // rather than spinning on sleeps that throw at once.
+        do { try await Task.sleep(for: .milliseconds(2)) } catch { return false }
       }
       return entered
     }
@@ -48,8 +50,8 @@ struct FileImportCoordinatorSpeakerTests {
   /// step and the document cleanup (#2851: either may land first).
   ///
   /// `waitUntilOpen()` stays a plain continuation: it is awaited INSIDE the fake step, on the
-  /// coordinator's side, and the test always opens it. `waitUntilArrived()` is the TEST-side
-  /// wait and is bounded for the reason `Gate` states above.
+  /// coordinator's side; a test that returns early must still open it. `waitUntilArrived()`
+  /// is the TEST-side wait and is bounded for the reason `Gate` states above.
   private actor ManualGate {
     private var openWaiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
@@ -63,7 +65,9 @@ struct FileImportCoordinatorSpeakerTests {
       let clock = ContinuousClock()
       let end = clock.now + deadline
       while !hasArrived, clock.now < end {
-        try? await Task.sleep(for: .milliseconds(2))  // settle: poll the gate's own flag until the deadline
+        // settle: poll the gate's own flag until the deadline; a cancelled waiter gives up
+        // rather than spinning on sleeps that throw at once.
+        do { try await Task.sleep(for: .milliseconds(2)) } catch { return false }
       }
       return hasArrived
     }

@@ -317,6 +317,7 @@
       }
       #expect(ready)
       let superseded = await sink.reply(withStatus: "superseded")
+      #expect(superseded["status"] == "superseded", "\(superseded)")
       #expect(superseded["history"] == nil)
       #expect(superseded["saved"] == nil)
       // The user's import is untouched by the door standing down.
@@ -502,6 +503,7 @@
       #expect(usersReady)
       await box2.gate!.open()
       let superseded = await sink2.reply(withStatus: "superseded")
+      #expect(superseded["status"] == "superseded", "\(superseded)")
       #expect(superseded["history"] == nil)
       #expect(c2.file?.name == "users-own.m4a")
       #expect(c2.step == .upload, "never started")
