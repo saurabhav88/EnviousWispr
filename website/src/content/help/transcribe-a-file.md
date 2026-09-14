@@ -83,7 +83,7 @@ The Done step shows your transcript with a row of chips above it: the word count
 
 ### Where it goes
 
-A finished transcript is saved in [History](/help/transcript-history/) with a readable title taken from the file name and the date it was made; the **Saved to History** chip on the Done step confirms it was kept. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
+A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. Its row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
 
 ### Where the recording goes
 

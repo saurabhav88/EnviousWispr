@@ -28,7 +28,7 @@ Several Both turns mean several stretches remained unassigned to a single speake
 
 ### What "Not fully polished" means
 
-Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. When the cleanup could not be completed for one turn, that turn keeps the original transcription, the words as the speech engine heard them, and shows **Not fully polished** beneath it. The turns around it are cleaned as usual.
+Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. **Not fully polished** beneath a turn means the polisher's rewrite did not land on that turn. When the cleanup finished but could not complete one turn, that turn keeps the words as they stood before the polisher: the transcription with your saved words, filler removal and number formatting already applied, but with no AI rewrite. The turns around it are cleaned as usual. After **Stop**, the label sits on every turn and each shows the original transcription (see below).
 
 To run the cleanup again:
 
