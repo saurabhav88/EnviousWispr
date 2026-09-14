@@ -107,20 +107,33 @@ final class FileImportCoordinator {
   }
 
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
-  /// per audio minute. Calibrated on four Parakeet + EG-1 runs on 2026-09-13 (4 to 120
-  /// audio minutes; 3.25 to 3.89 s per audio minute from Start to stored; the 48-minute
-  /// run's Start is approximate). The run is one polish call per speaker section, except
-  /// sections too short to polish, and the section count is unknown until the transcript
-  /// lands; this line is shown before it does (#2817).
-  nonisolated static let secondsPerAudioMinute: Double = 3.8
-
-  var estimateText: String {
-    guard let file else { return "" }
-    return Self.estimateText(audioSeconds: file.seconds)
+  /// per audio minute, per engine. Parakeet: calibrated on four Parakeet + EG-1 runs on
+  /// 2026-09-13 (4 to 120 audio minutes; 3.25 to 3.89 s per audio minute from Start to
+  /// stored; the 48-minute run's Start is approximate). WhisperKit decodes in 30-second
+  /// windows and is the slower engine by a wide margin: the 120-minute file took 741 s from
+  /// Start to stored on the same night (6.2 s per audio minute; #2919's run), against 467 s
+  /// on Parakeet. The run is one polish call per speaker section, except sections too short
+  /// to polish, and the section count is unknown until the transcript lands; this line is
+  /// shown before it does (#2817).
+  nonisolated static func secondsPerAudioMinute(for backend: ASRBackendType) -> Double {
+    switch backend {
+    case .parakeet: return 3.8
+    case .whisperKit: return 6.2
+    }
   }
 
-  nonisolated static func estimateText(audioSeconds: Double) -> String {
-    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute)
+  /// The Parakeet constant, kept as the name the calibration comment and the tests use.
+  nonisolated static let secondsPerAudioMinute: Double = secondsPerAudioMinute(for: .parakeet)
+
+  func estimateText(backend: ASRBackendType) -> String {
+    guard let file else { return "" }
+    return Self.estimateText(audioSeconds: file.seconds, backend: backend)
+  }
+
+  nonisolated static func estimateText(audioSeconds: Double, backend: ASRBackendType = .parakeet)
+    -> String
+  {
+    ImportEstimateWording.text(seconds: audioSeconds / 60.0 * secondsPerAudioMinute(for: backend))
   }
 
   // MARK: - What the screen is showing
@@ -1291,21 +1304,42 @@ final class FileImportCoordinator {
     case unplaceable
   }
 
+  /// The part ceiling for a run's polisher (see `cleanupPieces`). Pure, pinned by
+  /// `FileImportCoordinatorSpeakerTests`.
+  static func partCeiling(_ configuration: RunConfiguration?) -> Int {
+    // No frozen run (a cleanup asked for outside one), a cloud polisher, or NO polisher (the
+    // smaller part exists for a polish budget that a run without polish never spends; cloud
+    // review of PR #2927) keeps the wider default.
+    guard let configuration, !configuration.polishIsCloud, configuration.polishProvider != .none
+    else {
+      return TranscriptSplitter.maximumWordsPerPart
+    }
+    return TranscriptSplitter.maximumWordsPerLocalPart
+  }
+
   /// Cuts the raw transcript into the pieces the cleanup runs on: one per speaker turn when
   /// the turns exist (a turn over the splitter's ceilings becomes several pieces carrying the
   /// same turn id), else the word-count passages of a single-speaker document. Each piece is
   /// a verbatim slice of `rawText`, in order, so `placedPassages()` finds it by literal search
   /// like any passage.
-  static func cleanupPieces(turns: [Turn]?, rawText: String) -> Pieces {
+  ///
+  /// `maximumWords` is the part ceiling for this run's polisher: `TranscriptSplitter.
+  /// maximumWordsPerLocalPart` for an on-device polisher, whose time grows with the words,
+  /// `maximumWordsPerPart` for a cloud one, whose cost grows with the calls.
+  static func cleanupPieces(
+    turns: [Turn]?, rawText: String, maximumWords: Int = TranscriptSplitter.maximumWordsPerPart
+  ) -> Pieces {
     guard let turns, !turns.isEmpty else {
-      return Pieces(pieces: TranscriptSplitter.split(rawText), turnIDs: [], gaps: [])
+      return Pieces(
+        pieces: TranscriptSplitter.split(rawText, maximumWords: maximumWords), turnIDs: [],
+        gaps: [])
     }
     var pieces: [String] = []
     var ids: [String?] = []
     var gaps: [String] = []
     for turn in turns {
       let text = TranscriptDocumentPresenter.slice(rawText, turn.originalTextRange)
-      let split = TranscriptSplitter.split(text)
+      let split = TranscriptSplitter.split(text, maximumWords: maximumWords)
       // The raw text between consecutive pieces of ONE turn, so the turn is rebuilt with
       // what really lay there: a space, a newline, or nothing at all when the splitter cut
       // a space-free script at a character boundary (cloud review of PR #2898). Found by
@@ -1834,7 +1868,8 @@ final class FileImportCoordinator {
       // second speaker pass.
       let turns = pendingSpeakerResult?.turns
         ?? historyID.flatMap { currentHistoryRow($0)?.turns }
-      let cut = Self.cleanupPieces(turns: turns, rawText: rawTranscript)
+      let cut = Self.cleanupPieces(
+        turns: turns, rawText: rawTranscript, maximumWords: Self.partCeiling(configuration))
       await polishAll(
         cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     }
@@ -1914,7 +1949,9 @@ final class FileImportCoordinator {
       await stepTask.value
       guard generationAtStart == generation else { return }
       phase = "Dividing it up to clean"
-      let cut = Self.cleanupPieces(turns: pendingSpeakerResult?.turns, rawText: result.text)
+      let cut = Self.cleanupPieces(
+        turns: pendingSpeakerResult?.turns, rawText: result.text,
+        maximumWords: Self.partCeiling(runConfiguration))
       await polishAll(
         cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
     } catch is CancellationError {

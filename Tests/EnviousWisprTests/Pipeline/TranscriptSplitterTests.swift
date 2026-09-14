@@ -251,4 +251,58 @@ struct TranscriptSplitterTests {
     #expect(TranscriptSplitter.wordCount(in: "don't") == 1)
     #expect(TranscriptSplitter.wordCount(in: "  two   words  ") == 2)
   }
+
+  // MARK: - Per-polisher ceiling
+
+  /// A local polisher's time grows with the words in a part, and the polish budget is 15 s
+  /// (`LLMPolishStep`): 470-word parts took a mean 11.3 s on the founder's Mac and one of 39
+  /// timed out. The ceiling is a parameter so the file import can cut smaller parts for an
+  /// on-device polisher without changing what everything else gets.
+  @Test("a smaller ceiling cuts smaller parts, and the parts are still the whole transcript")
+  func smallerCeilingCutsSmallerParts() {
+    let transcript = Self.prose(sentences: 400, seed: 7)
+    let local = TranscriptSplitter.split(
+      transcript, maximumWords: TranscriptSplitter.maximumWordsPerLocalPart)
+    let cloud = TranscriptSplitter.split(transcript)
+    #expect(local.count > cloud.count)
+    for part in local {
+      let count = TranscriptSplitter.wordCount(in: part)
+      #expect(count >= 1 && count <= TranscriptSplitter.maximumWordsPerLocalPart)
+    }
+    #expect(local.flatMap(Self.words) == Self.words(transcript))
+    #expect(local.flatMap(Self.kept) == Self.kept(transcript))
+  }
+
+  /// A space-free script counts as one "word" per run, so the WORD ceiling never binds it;
+  /// the byte ceiling must shrink with the word ceiling or a Japanese memo keeps 7 KB parts
+  /// for an on-device polisher (cloud review of PR #2927).
+  @Test("a space-free transcript is cut by a byte ceiling scaled to the word ceiling")
+  func spaceFreeTranscriptScalesTheByteCeiling() {
+    let sentence = String(repeating: "これはテストです。", count: 40)  // 40 × 27 bytes
+    let transcript = String(repeating: sentence, count: 6)  // about 6,480 bytes
+    let localBytes = TranscriptSplitter.maximumBytes(forWords: TranscriptSplitter.maximumWordsPerLocalPart)
+    #expect(localBytes == TranscriptSplitter.maximumBytesPerPart * 200 / 500)
+    let local = TranscriptSplitter.split(
+      transcript, maximumWords: TranscriptSplitter.maximumWordsPerLocalPart)
+    let wide = TranscriptSplitter.split(transcript)
+    #expect(local.count > wide.count)
+    for part in local { #expect(part.utf8.count <= localBytes) }
+    #expect(local.joined() == transcript, "the parts are the transcript, nothing dropped")
+    #expect(TranscriptSplitter.maximumBytes(forWords: TranscriptSplitter.maximumWordsPerPart) == TranscriptSplitter.maximumBytesPerPart)
+  }
+
+  @Test("the local ceiling is 200 words and the default stays 500")
+  func ceilingsAreNumbers() {
+    #expect(TranscriptSplitter.maximumWordsPerLocalPart == 200)
+    #expect(TranscriptSplitter.maximumWordsPerPart == 500)
+  }
+
+  /// A run-on sentence longer than the ceiling is cut at word boundaries at THAT ceiling.
+  @Test("an overlong run-on is cut at the ceiling it was given")
+  func overlongRunOnHonoursTheGivenCeiling() {
+    let runOn = (0..<450).map { "w\($0)" }.joined(separator: " ")
+    let parts = TranscriptSplitter.split(runOn, maximumWords: 200)
+    #expect(parts.count == 3)
+    #expect(parts.map { TranscriptSplitter.wordCount(in: $0) } == [200, 200, 50])
+  }
 }

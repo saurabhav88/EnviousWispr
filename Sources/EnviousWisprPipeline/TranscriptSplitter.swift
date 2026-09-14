@@ -35,6 +35,16 @@ public enum TranscriptSplitter {
   /// there is one place to re-read before changing it.
   public static let maximumWordsPerPart = 500
 
+  /// The ceiling for a part an ON-DEVICE polisher cleans (EG-1, Apple Intelligence, Ollama).
+  /// The polish budget for a long input is 15 s (`LLMPolishStep`), and EG-1 on the founder's
+  /// M4 Pro took a mean 11.3 s and a max 14.7 s per 470-word part, with one of 39 parts timing
+  /// out and coming back "Not fully polished"; the slowest supported Mac is far slower
+  /// (`user-profile.md`), so a 500-word part cannot finish there. Speaker turns average 50 to
+  /// 60 words and clean in under a second each, so a smaller part costs quality nothing that
+  /// the per-section design has not already accepted (#2898). A cloud polisher is bound by
+  /// the request, not the words, and keeps `maximumWordsPerPart`.
+  public static let maximumWordsPerLocalPart = 200
+
   /// The ceiling that binds for a language WITHOUT spaces, in UTF-8 bytes.
   ///
   /// **A word ceiling cannot bound Japanese, Chinese or Thai**, because those
@@ -65,13 +75,25 @@ public enum TranscriptSplitter {
   public static let maximumBytesPerPart = LLMPolishStep.localPolishTranscriptCeiling(
     contextTokens: 16_384)
 
+  /// The byte ceiling for a given word ceiling: `maximumBytesPerPart` at the default, and
+  /// proportionally less for a smaller one, never under a single character's worth.
+  static func maximumBytes(forWords maximumWords: Int) -> Int {
+    max(4, maximumBytesPerPart * min(maximumWords, maximumWordsPerPart) / maximumWordsPerPart)
+  }
+
   /// Splits `transcript` into parts of 1...`maximumWordsPerPart` words.
   ///
   /// Returns an empty array for a transcript with no words at all, which is the
   /// honest answer: there is nothing to clean. A caller that wants to say "no
   /// speech found" reads that from the empty result rather than from a part
   /// containing only whitespace.
-  public static func split(_ transcript: String) -> [String] {
+  public static func split(
+    _ transcript: String, maximumWords: Int = maximumWordsPerPart
+  ) -> [String] {
+    precondition(maximumWords > 0, "a part must hold at least one word")
+    // The byte ceiling scales with the word ceiling, so a space-free script (one "word" per
+    // run) gets the same smaller part an on-device polisher needs (cloud review of PR #2927).
+    let maximumBytes = maximumBytes(forWords: maximumWords)
     let sentences = sentenceRanges(in: transcript)
     var parts: [String] = []
     var pending: [Substring] = []
@@ -97,18 +119,20 @@ public enum TranscriptSplitter {
       guard words > 0 else { continue }
       let bytes = sentence.utf8.count
 
-      if words > maximumWordsPerPart || bytes > maximumBytesPerPart {
+      if words > maximumWords || bytes > maximumBytes {
         // A single sentence over a ceiling. Everything already packed goes
         // first, so the run-on's own cuts do not swallow the sentences before
         // it, and the run-on is then cut as small as it has to be.
         flushPending()
         pendingBytes = 0
-        parts.append(contentsOf: splitOverlongSentence(sentence))
+        parts.append(
+          contentsOf: splitOverlongSentence(
+            sentence, maximumWords: maximumWords, maximumBytes: maximumBytes))
         continue
       }
 
-      if pendingWords + words > maximumWordsPerPart
-        || pendingBytes + bytes > maximumBytesPerPart
+      if pendingWords + words > maximumWords
+        || pendingBytes + bytes > maximumBytes
       {
         flushPending()
         pendingBytes = 0
@@ -152,7 +176,9 @@ public enum TranscriptSplitter {
   ///
   /// Slices the ORIGINAL text between the first and last word of each piece, so
   /// the pieces stay verbatim rather than becoming a space-joined rebuild.
-  private static func splitOverlongSentence(_ sentence: Substring) -> [String] {
+  private static func splitOverlongSentence(
+    _ sentence: Substring, maximumWords: Int, maximumBytes: Int
+  ) -> [String] {
     var pieces: [String] = []
     var wordRanges: [Range<Substring.Index>] = []
 
@@ -174,9 +200,9 @@ public enum TranscriptSplitter {
       // Take as many whole words as both ceilings allow, never fewer than one.
       var end = cursor
       var bytes = 0
-      while end < wordRanges.count, end - cursor < maximumWordsPerPart {
+      while end < wordRanges.count, end - cursor < maximumWords {
         let next = sentence[wordRanges[end]].utf8.count + (end > cursor ? 1 : 0)
-        if end > cursor, bytes + next > maximumBytesPerPart { break }
+        if end > cursor, bytes + next > maximumBytes { break }
         bytes += next
         end += 1
       }
@@ -185,8 +211,8 @@ public enum TranscriptSplitter {
       let piece = sentence[lower..<upper]
       // One word can still be over on its own, which is the unsegmented-script
       // case: cut it by characters.
-      if piece.utf8.count > maximumBytesPerPart {
-        pieces.append(contentsOf: splitAtCharacterBoundaries(piece))
+      if piece.utf8.count > maximumBytes {
+        pieces.append(contentsOf: splitAtCharacterBoundaries(piece, maximumBytes: maximumBytes))
       } else {
         pieces.append(String(piece))
       }
@@ -201,13 +227,13 @@ public enum TranscriptSplitter {
   /// and no part is ever mojibake. A part may come in slightly under the ceiling
   /// because the character that would have crossed it is carried to the next
   /// one, which is the safe direction.
-  private static func splitAtCharacterBoundaries(_ run: Substring) -> [String] {
+  private static func splitAtCharacterBoundaries(_ run: Substring, maximumBytes: Int) -> [String] {
     var pieces: [String] = []
     var current = ""
     var bytes = 0
     for character in run {
       let size = String(character).utf8.count
-      if bytes + size > maximumBytesPerPart, !current.isEmpty {
+      if bytes + size > maximumBytes, !current.isEmpty {
         pieces.append(current)
         current = ""
         bytes = 0
