@@ -57,19 +57,36 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.5.0
 
+    // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.
+    // Their code shipped; the cards are not narrated.
+
     // #2762 (the feature), #2786 (per-surface polisher choice), #2803 (menu bar entry),
     // #2851/#2898 (speaker sections), #2801 (the three Done views), #2897/#2918 (the
-    // Working card). ONE card (founder, 2026-09-14: the speakers, the Marked up view and
-    // the Working page are parts of the introduction, not separate news): the feature
-    // reaches users for the first time, so nothing about the cycle's repairs is narrated
-    // (RULE: first-time feature carries no repair copy). "separate from dictation" is
-    // #2786's verified per-surface selection.
+    // Working card). ONE card in the founder's own words (2026-09-14), scoped to what the
+    // code does: one file at a time (`allowsMultipleSelection = false`), so no batch claim;
+    // the audio never leaves the Mac while the TEXT goes to a cloud polisher when one is
+    // chosen (CLAUDE.md § Privacy), so "neither does a single word" is scoped to the
+    // built-in polishers; lists are a model behaviour, so the promise is the Marked up view.
     Entry(
       id: "transcribe-a-file",
       icon: "doc.badge.ellipsis",
       title: "Introducing \"Transcribe a File\"",
       description:
-        "Pick an audio or video file you already have and get clean text back: voice memos, lectures, meetings. Open it from the sidebar or the menu bar. A recording with two people comes back as turns labelled Speaker 1 and Speaker 2, each with its time; rename a speaker once and every turn updates. Then see exactly what the cleanup changed: Cleaned, Original, or Marked up, where a removed word is struck through and a changed word is highlighted. You choose the speech engine and the polisher for files on their own screens, separate from dictation. Stop at any time and keep what finished, then copy, save or share.",
+        "Historically, transcribing audio on your own Mac meant settling for messy, raw text full of filler words and false starts, unless you uploaded your private recordings to a cloud server. Transcribe a File changes that: speech transcription and intelligent AI polishing both run right on your Mac. Drop in a voice memo, a lecture or a meeting recording and get back clean, structured text, with the speakers told apart and a marked-up view of every change the cleanup made. Your audio never leaves your Mac; with the built-in polishers, neither does a single word.",
+      version: "2.5.0"
+    ),
+
+    // #2796 (v39 prompt and six example turns on macOS 27; macOS 26 byte for byte
+    // unchanged) and #2836 (the card shows AFM 2 / AFM 3 and the live capacity; the
+    // preflight now reads the real 8,192 window on AFM 3 so long dictations are not
+    // skipped). The sealed-exam numbers stay here: 70.3% to 85.0% pass, fillers 55% to
+    // 95%, spoken lists 0% to 71.9%, self-corrections 21.5% to 44.7%.
+    Entry(
+      id: "apple-intelligence-macos-27",
+      icon: "apple.intelligence",
+      title: "Apple Intelligence polish improved on macOS 27",
+      description:
+        "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes.",
       version: "2.5.0"
     ),
 
@@ -94,6 +111,28 @@ enum WhatsNewContent {
       version: "2.5.0"
     ),
 
+    // #1908, merged onto main after v2.4.8 shipped (tag v2.4.8 exists), so this
+    // entry opens a new group per whats-new-protocol.md FACT: whats-new-grouping
+    // rather than joining the closed 2.4.8 group, where it would never surface an
+    // unread badge. currentContentVersion bumped to match.
+    //
+    // "so that freeze is gone" is a structural claim, not a best-effort one: the
+    // separate ASR helper process macOS could reclaim while idle is deleted, not
+    // merely made less likely to be reclaimed. There is nothing left for macOS to
+    // shut down behind the app's back. Measured cause before this fix, production
+    // 14 days: 1.54 idle reclaims per active user-day, 48.1% of active user-days
+    // affected, recovery p50 459ms / p95 1,881ms / p99 12,783ms with no on-screen
+    // indicator during the wait (`capability-map.md` FACT: retired-do-not-repropose,
+    // "Parakeet ASR over XPC" row).
+    Entry(
+      id: "no-more-freeze-after-idle",
+      icon: "bolt.fill",
+      title: "No more freeze after sitting idle",
+      description:
+        "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone.",
+      version: "2.5.0"
+    ),
+
     // #2782 (nine languages' own words for at and dot) and #2766 (26 country-code
     // domains such as .de, .nl, .fr). SCOPE, from #2766's own body: a take the app
     // resolves as a language other than English still skips the address formatter, so
@@ -106,30 +145,6 @@ enum WhatsNewContent {
       title: "Spoken email addresses convert in more languages' own words",
       description:
         "When you dictate in English and say an address with another language's words for at and dot, such as \"marco arroba esempio punto com\", it comes back as marco@esempio.com. Addresses ending in a country domain such as .de, .nl or .fr now convert too.",
-      version: "2.5.0"
-    ),
-
-    // #2796 (v39 prompt and six example turns on macOS 27; macOS 26 byte for byte
-    // unchanged) and #2836 (the card shows AFM 2 / AFM 3 and the live capacity; the
-    // preflight now reads the real 8,192 window on AFM 3 so long dictations are not
-    // skipped). The sealed-exam numbers stay here: 70.3% to 85.0% pass, fillers 55% to
-    // 95%, spoken lists 0% to 71.9%, self-corrections 21.5% to 44.7%.
-    Entry(
-      id: "apple-intelligence-macos-27",
-      icon: "apple.intelligence",
-      title: "Apple Intelligence polish improved on macOS 27",
-      description:
-        "On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections. Long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity. On macOS 26 nothing changes.",
-      version: "2.5.0"
-    ),
-
-    // #2774. Founder quote in the PR: the alias box "is impossible to find".
-    Entry(
-      id: "custom-word-mishearings-easier",
-      icon: "character.book.closed",
-      title: "Adding a mishearing to a custom word is easier to find",
-      description:
-        "On the Custom Word sheet the field for a mishearing now looks like a field, Add is always ready, and clicking anywhere in the list of mishearings takes you to the field.",
       version: "2.5.0"
     ),
 
@@ -157,42 +172,17 @@ enum WhatsNewContent {
       icon: "wrench.and.screwdriver",
       title: "Small things that now just work",
       description:
-        "If a dictation never finishes transcribing, your cancel shortcut now stops it and keeps the audio. A number read out digit by digit and followed by point, like two four oh seven point one two three, converts as one decimal. Quick Add keeps showing the word it heard even when nothing in your list matches it. The cancel shortcut wins when it shares a key combination with Quick Add. Bringing the target app to the front before a paste gives up after half a second if that app has stopped responding, instead of waiting on it. Crash recovery keeps the key to a saved recording until the recording itself is safely gone. A cleanup server left over from an earlier launch is tidied up on start.",
-      version: "2.5.0"
-    ),
-
-    // #1908, merged onto main after v2.4.8 shipped (tag v2.4.8 exists), so this
-    // entry opens a new group per whats-new-protocol.md FACT: whats-new-grouping
-    // rather than joining the closed 2.4.8 group, where it would never surface an
-    // unread badge. currentContentVersion bumped to match.
-    //
-    // "so that freeze is gone" is a structural claim, not a best-effort one: the
-    // separate ASR helper process macOS could reclaim while idle is deleted, not
-    // merely made less likely to be reclaimed. There is nothing left for macOS to
-    // shut down behind the app's back. Measured cause before this fix, production
-    // 14 days: 1.54 idle reclaims per active user-day, 48.1% of active user-days
-    // affected, recovery p50 459ms / p95 1,881ms / p99 12,783ms with no on-screen
-    // indicator during the wait (`capability-map.md` FACT: retired-do-not-repropose,
-    // "Parakeet ASR over XPC" row).
-    Entry(
-      id: "no-more-freeze-after-idle",
-      icon: "bolt.fill",
-      title: "No more freeze after sitting idle",
-      description:
-        "If EnviousWispr sat idle for a while, pressing the dictate key could silently freeze for a few seconds before anything happened. The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so that freeze is gone.",
-      version: "2.5.0"
-    ),
-
-    // #2808, phase 1 of #2807. The founder's vocabulary decision of 2026-09-11: a keybind
-    // take is a Dictation, a file import is a Transcript, History holds both. The cancel
-    // pill's noun changed with it ("Dictation cancelled"); that is the same vocabulary, not
-    // a repair, so it is not narrated separately.
-    Entry(
-      id: "history-dictations-and-transcripts",
-      icon: "line.3.horizontal.decrease.circle",
-      title: "History tells a dictation from a transcript",
-      description:
-        "Everything you say with your keybind is a Dictation. Every file you put through Transcribe a File is a Transcript. History now labels each row, and a new All, Dictations, Transcripts switch above the list shows just the kind you want.",
+        "Eight fixes across dictation, paste and History.",
+      bullets: [
+        "Stalled transcription recovery: Canceling a dictation that fails to finish now halts the process immediately while preserving your recorded audio.",
+        "Decimal formatting: Numbers spoken digit by digit around a decimal point (e.g., \"two four oh seven point one two three\") now format properly as a single decimal number.",
+        "Quick Add persistence: Quick Add continues to display the heard phrase on screen even when nothing in your list matches it.",
+        "Shortcut conflict priority: When the cancel shortcut shares a key combination with Quick Add, cancel now reliably takes priority.",
+        "Paste timeout protection: Bringing an unresponsive target app to the front before pasting now aborts after 500 ms instead of freezing the app.",
+        "Safer crash recovery: Crash recovery retains the key to a saved recording until the audio file itself is confirmed safely removed.",
+        "Process cleanup on launch: Any lingering background servers left over from an earlier session are automatically terminated on startup.",
+        "History type filters: History now distinguishes between Dictations (live keybind speech) and Transcripts (imported files). A new filter switch at the top of the list lets you quickly toggle between All, Dictations, and Transcripts.",
+      ],
       version: "2.5.0"
     ),
 
