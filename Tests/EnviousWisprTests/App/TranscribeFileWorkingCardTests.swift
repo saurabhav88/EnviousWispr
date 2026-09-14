@@ -61,6 +61,11 @@ struct TranscribeFileWorkingCardTests {
     #expect(
       WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 0) == "Transcribing",
       "no length, no count")
+    // Cloud review, #2918: the total is the Length row's whole minutes (truncated), never a
+    // rounded-up one; under a minute the title carries no count.
+    #expect(WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 90) == "Transcribing 0 of 1 minutes")
+    #expect(WorkingStepModel.transcribingTitle(fraction: 1, fileSeconds: 90) == "Transcribing 1 of 1 minutes")
+    #expect(WorkingStepModel.transcribingTitle(fraction: 0.5, fileSeconds: 45) == "Transcribing", "under a minute")
   }
 
   @Test("the speaker step marks transcribing done, by state or by phase, with no fraction")

@@ -1,4 +1,5 @@
 import EnviousWisprASR
+import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 import Testing
@@ -1192,6 +1193,38 @@ struct FileImportCoordinatorTests {
     // provider switch tear the server down under work still inside it.
     await settleUntil { coordinator.isEngineHeld == false }
     #expect(coordinator.pinnedLocalPolishProvider == nil, "a released run pins nothing")
+  }
+
+  /// **Clean it again freezes a new polisher and keeps the engine that made the words.**
+  ///
+  /// #2918: the Working page names the transcription engine from the frozen configuration.
+  /// A re-polish runs no transcription, so freezing the engine selected NOW would let the
+  /// page say All Languages over a transcript Fast produced.
+  @Test("a re-polish freezes the new polisher but keeps the transcript's engine")
+  func rePolishKeepsTheTranscriptsEngine() async {
+    let lease = EngineLease()
+    var engine = ASRBackendType.parakeet
+    var polisher = LLMProvider.egOne
+    let coordinator = makeCoordinator(
+      lease: lease,
+      beginRun: {
+        FileImportCoordinator.RunConfiguration(
+          polishIsCloud: false, localPolishProvider: nil, polishProvider: polisher,
+          ollamaModel: nil, polishModel: polisher.rawValue, backendType: engine)
+      })
+    coordinator.choose(url: Self.anyURL)
+    await settleUntil { if case .ready = coordinator.state { return true } else { return false } }
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.runConfiguration?.backendType == .parakeet)
+
+    // The user switches the shared engine and picks another polisher, then cleans again.
+    engine = .whisperKit
+    polisher = .ollama
+    coordinator.rePolish()
+    await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.runConfiguration?.polishProvider == .ollama, "the new polisher is frozen")
+    #expect(coordinator.runConfiguration?.backendType == .parakeet, "the engine that made the words")
   }
 
   // MARK: - Changing the polisher

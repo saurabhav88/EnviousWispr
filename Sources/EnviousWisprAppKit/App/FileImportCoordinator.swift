@@ -101,9 +101,16 @@ final class FileImportCoordinator {
   nonisolated static func durationText(_ seconds: Double) -> String {
     let total = Int(seconds.rounded())
     if total < 60 { return "\(total) sec" }
-    let minutes = total / 60
+    let minutes = wholeMinutes(seconds)
     if minutes < 60 { return "\(minutes) min" }
     return "\(minutes / 60) hr \(minutes % 60) min"
+  }
+
+  /// The file's length in whole minutes, truncated, the one number every "N of M minutes"
+  /// on the Working step shares with `durationText` (#2918, cloud review): a 90-second
+  /// file is "1 min" long, so its progress counts to 1, never to 2. Zero under a minute.
+  nonisolated static func wholeMinutes(_ seconds: Double) -> Int {
+    Int(seconds.rounded()) / 60
   }
 
   /// How long the run is expected to take, for "Ready in about 3 minutes": one constant
@@ -1910,7 +1917,20 @@ final class FileImportCoordinator {
       return
     }
 
-    let configuration = beginRun()
+    // The polisher is frozen afresh (that is what Clean it again is for); the ENGINE stays
+    // the one that produced these words. No transcription runs here, and the Working page's
+    // Transcription row reads this configuration, so a live freeze would name whatever
+    // engine is selected now for a transcript Fast made (#2918, local review). History is
+    // unaffected: its row was built once from the first run's freeze (`saveRawToHistory`).
+    let transcriptionEngine = runConfiguration?.backendType
+    let selected = beginRun()
+    let configuration = RunConfiguration(
+      polishIsCloud: selected.polishIsCloud,
+      localPolishProvider: selected.localPolishProvider,
+      polishProvider: selected.polishProvider,
+      ollamaModel: selected.ollamaModel,
+      polishModel: selected.polishModel,
+      backendType: transcriptionEngine ?? selected.backendType)
     runConfiguration = configuration
     // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
     heldLocalPolishProvider = configuration.localPolishProvider

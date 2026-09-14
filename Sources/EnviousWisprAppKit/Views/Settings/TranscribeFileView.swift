@@ -1271,8 +1271,12 @@ struct TranscribeFileView: View {
     return WorkingPageModel.make(
       fileName: coordinator.file?.name ?? "",
       fileSeconds: coordinator.file?.seconds ?? 0,
+      // Before the run freezes its configuration (the engine switch or warm-up after Start
+      // can take a while) the page shows what Review chose, read from the same settings the
+      // freeze reads (`FileImportSettingsFreeze.snapshot`). Cloud review, #2918.
       engine: coordinator.runConfiguration?.backendType ?? settings.selectedBackend,
-      polisher: coordinator.runConfiguration?.polishProvider,
+      polisher: coordinator.runConfiguration?.polishProvider
+        ?? settings.effectiveFileImportLLMProvider,
       estimate: coordinator.estimateText,
       transcribingFraction: coordinator.transcribingFraction,
       transcriptLanded: coordinator.hasDocument,

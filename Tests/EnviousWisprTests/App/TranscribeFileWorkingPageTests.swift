@@ -14,11 +14,11 @@ struct TranscribeFileWorkingPageTests {
 
   private func make(
     fraction: Double? = nil, landed: Bool = false, speakers: Int? = nil,
-    done: Int? = nil, total: Int? = nil, words: Int? = nil, polisher: LLMProvider? = .egOne,
-    engine: ASRBackendType = .whisperKit
+    done: Int? = nil, total: Int? = nil, words: Int? = nil, polisher: LLMProvider = .egOne,
+    engine: ASRBackendType = .whisperKit, fileSeconds: Double = 7_208.7
   ) -> WorkingPageModel {
     WorkingPageModel.make(
-      fileName: "4-elon-musk-jre-1470.m4a", fileSeconds: 7_208.7, engine: engine, polisher: polisher,
+      fileName: "4-elon-musk-jre-1470.m4a", fileSeconds: fileSeconds, engine: engine, polisher: polisher,
       estimate: "about 8 minutes", transcribingFraction: fraction, transcriptLanded: landed,
       speakersFound: speakers, sectionsDone: done, sectionsTotal: total, words: words)
   }
@@ -36,7 +36,6 @@ struct TranscribeFileWorkingPageTests {
     #expect(model.summary.polisher == "EG-1")
     #expect(model.summary.estimate == "about 8 minutes")
     #expect(make(polisher: LLMProvider.none).summary.polisher == "None")
-    #expect(make(polisher: nil).summary.polisher == "None", "no run frozen yet")
     #expect(make(engine: .parakeet).summary.engine == "Fast")
   }
 
@@ -55,6 +54,22 @@ struct TranscribeFileWorkingPageTests {
     #expect(value(make(fraction: 1.4), .transcribed) == "120 of 120 min", "clamped")
     #expect(value(make(landed: true), .transcribed) == "120 of 120 min", "the transcript is in")
     #expect(value(make(fraction: nil), .transcribed) == nil)
+  }
+
+  /// Cloud review, #2918: the total is the SAME whole minutes the Length row shows, so a
+  /// 90-second file never reads "1 min" long and "2 min" to transcribe. Under a minute there
+  /// is no minute count at all.
+  @Test("the minute total is the Length row's own whole minutes, truncated, and zero has no count")
+  func minutesAgreeWithLength() {
+    let ninety = make(fraction: 0.5, fileSeconds: 90)
+    #expect(ninety.summary.length == "1 min")
+    #expect(value(ninety, .transcribed) == "0 of 1 min")
+    #expect(value(make(landed: true, fileSeconds: 90), .transcribed) == "1 of 1 min")
+    #expect(value(make(fraction: 0.99, fileSeconds: 119), .transcribed) == "1 of 1 min")
+    let short = make(fraction: 0.5, fileSeconds: 45)
+    #expect(short.summary.length == "45 sec")
+    #expect(value(short, .transcribed) == nil, "no whole minute to count")
+    #expect(value(make(landed: true, fileSeconds: 45), .transcribed) == "45 sec")
   }
 
   @Test("speakers come from the coordinator's post-assembly count, never the analyzer's own outcome")

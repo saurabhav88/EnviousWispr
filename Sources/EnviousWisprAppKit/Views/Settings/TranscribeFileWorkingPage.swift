@@ -48,15 +48,20 @@ struct WorkingPageModel: Equatable {
   /// - `sectionsDone` / `sectionsTotal`: the cleaning counter.
   /// - `words`: the raw transcript's word count once it is in hand.
   static func make(
-    fileName: String, fileSeconds: Double, engine: ASRBackendType, polisher: LLMProvider?,
+    fileName: String, fileSeconds: Double, engine: ASRBackendType, polisher: LLMProvider,
     estimate: String, transcribingFraction: Double?, transcriptLanded: Bool,
     speakersFound: Int?, sectionsDone: Int?, sectionsTotal: Int?, words: Int?
   ) -> WorkingPageModel {
-    let totalMinutes = max(1, Int((fileSeconds / 60).rounded()))
+    // The same whole minutes the Length row shows (`durationText`), so "1 of 1 min" sits
+    // under "1 min" for a 90-second file. Under a minute the count is the length itself
+    // once the transcript is in, and nothing before.
+    let totalMinutes = FileImportCoordinator.wholeMinutes(fileSeconds)
     let transcribed: String?
     if transcriptLanded {
-      transcribed = "\(totalMinutes) of \(totalMinutes) min"
-    } else if let fraction = transcribingFraction, fileSeconds > 0 {
+      transcribed =
+        totalMinutes > 0
+        ? "\(totalMinutes) of \(totalMinutes) min" : FileImportCoordinator.durationText(fileSeconds)
+    } else if let fraction = transcribingFraction, totalMinutes > 0 {
       let reached = min(totalMinutes, Int(min(max(fraction, 0), 1) * fileSeconds / 60))
       transcribed = "\(reached) of \(totalMinutes) min"
     } else {
@@ -74,7 +79,7 @@ struct WorkingPageModel: Equatable {
       summary: Summary(
         fileName: fileName, length: FileImportCoordinator.durationText(fileSeconds),
         engine: engineNames[engine] ?? engine.rawValue,
-        polisher: (polisher ?? LLMProvider.none).displayName,
+        polisher: polisher.displayName,
         estimate: estimate),
       counts: [
         Count(kind: .transcribed, label: "Transcribed", value: transcribed),

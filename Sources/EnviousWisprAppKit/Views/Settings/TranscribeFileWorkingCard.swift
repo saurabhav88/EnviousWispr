@@ -58,7 +58,9 @@ struct WorkingStepModel: Equatable {
   /// are floored so the reached count never reads ahead of the total.
   static func transcribingTitle(fraction: Double?, fileSeconds: Double) -> String {
     guard let fraction, fileSeconds > 0 else { return "Transcribing" }
-    let total = max(1, Int((fileSeconds / 60).rounded()))
+    // The same whole minutes the summary's Length shows; under a minute there is no count.
+    let total = FileImportCoordinator.wholeMinutes(fileSeconds)
+    guard total > 0 else { return "Transcribing" }
     let reached = min(total, Int(fraction * fileSeconds / 60))
     return "Transcribing \(reached) of \(total) minutes"
   }
