@@ -1268,16 +1268,18 @@ struct TranscribeFileView: View {
       sectionsDone = done
       sectionsTotal = total
     }
+    // Before the run freezes its configuration (the engine switch or warm-up after Start
+    // can take a while) the page shows what Review chose, read from the same settings the
+    // freeze reads (`FileImportSettingsFreeze.snapshot`). Cloud review, #2918.
+    let engine = coordinator.runConfiguration?.backendType ?? settings.selectedBackend
     return WorkingPageModel.make(
       fileName: coordinator.file?.name ?? "",
       fileSeconds: coordinator.file?.seconds ?? 0,
-      // Before the run freezes its configuration (the engine switch or warm-up after Start
-      // can take a while) the page shows what Review chose, read from the same settings the
-      // freeze reads (`FileImportSettingsFreeze.snapshot`). Cloud review, #2918.
-      engine: coordinator.runConfiguration?.backendType ?? settings.selectedBackend,
+      engine: engine,
       polisher: coordinator.runConfiguration?.polishProvider
         ?? settings.effectiveFileImportLLMProvider,
-      estimate: coordinator.estimateText,
+      // The estimate is per engine since #2927; the Working page's is for the engine it names.
+      estimate: coordinator.estimateText(backend: engine),
       transcribingFraction: coordinator.transcribingFraction,
       transcriptLanded: coordinator.hasDocument,
       speakersFound: coordinator.speakersFoundForDisplay,
