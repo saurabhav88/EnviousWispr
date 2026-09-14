@@ -8,7 +8,7 @@ keywords: ["speaker labels", "speakers", "who said what", "Speaker 1", "Speaker 
 related: ["transcribe-a-file", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "ai-polish-and-cloud-data"]
 updated: 2026-09-13
 ---
-When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. A turn also shows the time in the recording where it starts, when the app has a time for it. A recording with one voice comes back as plain text with no labels.
+When you put a recording with more than one voice through [Transcribe a File](/help/transcribe-a-file/) and the app can tell the voices apart and match the words to them, the finished transcript comes back as turns, and each turn is labelled with the person who said it. The labels start as **Speaker 1**, **Speaker 2** and so on, in the order the voices first appear. A turn also shows the time in the recording where it starts, when the app has a time for it and **Times** is on. A recording with one voice comes back as plain text with no labels.
 
 The speakers are found on your Mac, by the same app, before the cleanup runs. Nothing about the recording is sent anywhere to work out who is talking.
 
@@ -28,12 +28,12 @@ Several Both turns mean several stretches remained unassigned to a single speake
 
 ### What "Not fully polished" means
 
-Transcribe a File cleans the transcript one speaker turn at a time: it removes filler, fixes punctuation and capitalisation, and leaves each person's words under their own name. **Not fully polished** beneath a turn means the polisher's rewrite did not land on that turn. When the cleanup finished but could not complete one turn, that turn keeps the words as they stood before the polisher: the transcription with your saved words, filler removal and number formatting already applied, but with no AI rewrite. The turns around it are cleaned as usual. After **Stop**, the label sits on every turn and each shows the original transcription (see below).
+Transcribe a File cleans the transcript one speaker turn at a time: the automatic fixes (numbers, your custom words, filler removal when that setting is on) and then the polisher's rewrite for punctuation and capitalisation, leaving each person's words under their own name. **Not fully polished** beneath a turn means the polisher's rewrite did not land on all of that turn. When the cleanup finished but could not complete a turn, the part it could not complete keeps the words as they stood before the polisher: the transcription with the automatic fixes already applied, but with no AI rewrite. A long turn is cleaned in pieces, so a marked turn can hold rewritten pieces beside an unrewritten one. The turns around it are cleaned as usual. After **Stop**, the label sits on every turn and each shows the original transcription (see below).
 
 To run the cleanup again:
 
 - **Click Change next to the polisher's name.** It is in the row of chips above the transcript, for example "Polished by EG-1 · Change". You land on the polisher step.
-- **Keep or change the polisher, then click Continue.** You land on the Review step.
+- **Keep or change the polisher, complete any setup it asks for, then click Continue.** You land on the Review step.
 - **Click Clean it again.** Only the cleanup runs. The recording is not read again, and the speaker labels and any names you gave them are kept.
 
 If the turn still shows **Not fully polished**, its cleanup did not complete. You can choose a different polisher on the polisher step and clean it again.
@@ -63,7 +63,7 @@ Both speech engines give you speaker labels. The labels are built from the time 
 | **Fast** | Yes | Recommended. Its language count is compared with All Languages in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
 | **All Languages** | Yes | Every language the engine supports, with one exception below. |
 
-**Text written without spaces between words** (for example Chinese, Japanese and Thai) can prevent the app from matching the transcript's words to the engine's timings. When usable timings are unavailable, speaker labels are unavailable too: the transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+**Text written without spaces between words** (for example Chinese, Japanese and Thai) can prevent the app from matching the transcript's words to the engine's timings. When usable timings are unavailable for a recording with more than one voice, speaker labels are unavailable too: the transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### If the labels did not appear
 

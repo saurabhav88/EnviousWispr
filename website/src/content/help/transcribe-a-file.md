@@ -51,7 +51,7 @@ More on the two engines, including how their language counts compare, is in [cho
 
 ### Choosing the polisher
 
-The polisher is what turns the raw words into clean text: filler removed, punctuation and capitalisation fixed, lists laid out. Numbers, dates, your saved words and filler removal run whichever polisher you pick. **The polisher you choose here is separate from the one your dictation uses**, so you can clean files with one and dictations with another. A link on the step, **Use dictation's polish settings**, makes files follow your dictation choice again.
+Two kinds of cleanup run on a file. The automatic fixes run first, whichever polisher you pick, including **None**: numbers and dates are written as figures, your custom words are applied when **Enable Dictionary** is on under **Settings** \> **Dictionary**, and filler words are removed when **Remove filler words** is on in Speech Engine settings (spoken emoji has its own switch there). With a polisher selected, it then rewrites the text for punctuation, capitalisation and flow, and lays out lists. **The polisher you choose here is separate from the one your dictation uses**, so you can clean files with one and dictations with another. When you have made a separate choice for files, a link on the step, **Use dictation's polish settings**, makes files follow your dictation choice again.
 
 | Polisher | Where it runs | What the card says |
 |---|---|---|
@@ -74,16 +74,16 @@ Press **Stop** on the Working card at any time. What you keep depends on how far
 
 ### What Done offers
 
-The Done step shows your transcript with a row of chips above it: the word count, the length of the recording, whether it is saved to History, and which polisher cleaned it. **Change** next to the polisher's name takes you back to the Polish step; **Clean it again** on the Review step then runs only the cleanup, without reading the file again.
+The Done step shows your transcript with a row of chips above it: the word count, the length of the recording, whether it is saved to History, and the polish credit: **Polished by** and the polisher's name, **Partly polished by** when a turn was left unpolished, **No AI polish** when you chose **None**, or **No AI polish applied** when the polisher did not rewrite anything. **Change** next to the credit takes you back to the Polish step; **Clean it again** on the Review step then runs only the cleanup, without reading the file again.
 
-- **Cleaned, Marked up, Original.** Three views of the same transcript. **Cleaned** is the polished text. **Original** is the original transcription, the words as the speech engine heard them. **Marked up** shows the original with the cleanup drawn on it: a removed word is red and struck through, a changed or added word is highlighted, and the counts sit above the text, like "1,204 words removed · 318 changed".
+- **Cleaned, Marked up, Original.** Three views of the same transcript, offered once at least one turn has been through the cleanup. **Cleaned** is the text after cleanup, with the automatic fixes and, where the polisher rewrote a turn, its rewrite. **Original** is the original transcription, the words as the speech engine heard them. **Marked up** shows the original with the cleanup drawn on it: a removed word is red and struck through, a changed or added word is highlighted, and the counts sit above the text, like "1,204 words removed · 318 changed".
 - **Times.** When the transcript has speaker turns, this switch shows or hides the time each turn starts.
 - **Copy everything.** Puts the text you are looking at on your clipboard. **Save as...** writes it to a plain text file. **Share...** opens the macOS share sheet, so you can send it to Messages, Mail, Notes, AirDrop or any app that accepts text. In the Marked up view the three buttons read Copy cleaned, Save cleaned as... and Share cleaned..., because they hand over the cleaned text, not the marks.
 - **New transcription.** Clears the page for the next file. Check the chip first: **Saved to History** means it is kept; **This version is not saved** means copy or save it before you move on.
 
 ### Where it goes
 
-A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. Its row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
+A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. If the save did not go through, the Done step says **This version is not saved** instead, and Copy, Save and Share still work on the text in front of you. Its row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
 
 ### Where the recording goes
 
