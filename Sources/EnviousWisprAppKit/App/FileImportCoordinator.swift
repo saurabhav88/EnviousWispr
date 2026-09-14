@@ -2093,6 +2093,12 @@ final class FileImportCoordinator {
           && $0.speakerId != TurnAssembler.bothSpeakersID
       })
     else {
+      // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
+      // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
+      let coverage = retainedWordTimingCoverage
+      await AppLogger.shared.log(
+        "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
+        level: .info, category: "FileImportCoordinator")
       pendingSpeakerResult = SpeakerStepResult(
         analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
       return nil
