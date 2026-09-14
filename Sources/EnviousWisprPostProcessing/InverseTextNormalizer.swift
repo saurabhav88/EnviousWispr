@@ -1243,8 +1243,12 @@ public struct InverseTextNormalizer: Sendable {
       let digs = digsOf(m.g("d") ?? "")
       let scale = (m.g("scale") ?? "").trimmingCharacters(in: .whitespaces).lowercased()
       if !scale.isEmpty, let sv = Self.scales[scale] {
-        let value = (Double("\(whole).\(digs)") ?? 0) * Double(sv)
-        return " \(comma(Int(value.rounded(.toNearestOrEven)))) "
+        let value = ((Double("\(whole).\(digs)") ?? 0) * Double(sv)).rounded(.toNearestOrEven)
+        // A digit string has no length cap, so "nine" ten times "point one billion" scales past
+        // what `Int` holds and `Int(_:)` would trap in the heart path (local Codex, round 1).
+        // Leave such a match as spoken.
+        guard value.isFinite, abs(value) < 9.0e18 else { return nil }
+        return " \(comma(Int(value))) "
       }
       return " \(whole).\(digs) "
     }

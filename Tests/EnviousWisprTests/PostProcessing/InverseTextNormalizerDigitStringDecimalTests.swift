@@ -54,6 +54,13 @@ struct InverseTextNormalizerDigitStringDecimalTests {
     ("at this point one thing matters", "at this point one thing matters"),
     // a multi-dot chain is shielded from the decimal pass
     ("one nine two dot one six eight dot one dot one", "one nine two dot one six eight dot one dot one"),
+    // a digit string has no length cap, so a scale word can push it past what Int holds; the
+    // decimal pass leaves the match alone instead of trapping in the heart path (local Codex,
+    // round 1), and the later digit-read pass then formats the ten digits as a phone number
+    (
+      "nine nine nine nine nine nine nine nine nine nine point one billion",
+      "999-999-9999 point 1 billion"
+    ),
   ]
 
   @Test("what must not move", arguments: controls)
