@@ -34,7 +34,6 @@ import uat_catalog as cat  # noqa: E402
 import preflight as pf  # noqa: E402
 import log_verdict as lv  # noqa: E402
 import file_verdict as fv  # noqa: E402
-from import_door import REFUSALS as DOOR_REFUSALS  # noqa: E402  (the door's immediate refusals, #2885)
 from instance_guard import running_enviouswispr_instances  # noqa: E402
 
 MARK = "/tmp/.ew-uat-mark"
@@ -461,7 +460,13 @@ def cmd_run(args):
     # verdict is structural (door finished, coordinator stored, row on disk), read by
     # file_verdict.py rather than log_verdict.py. It runs on THIS thread on purpose:
     # the door pumps the run loop of the calling thread (import_door.py:64-66).
+    if args.file and args.recipe != "transcribe-file":
+        raise SystemExit(f"REFUSED: --file is read by transcribe-file only; {args.recipe} would ignore it and grade "
+                         "a dictation instead")
     if args.recipe == "transcribe-file":
+        # The door driver imports PyObjC at module level, so it is imported HERE, not at the
+        # top of this file: `uat.py --self-test` runs on the hosted runner without PyObjC.
+        from import_door import REFUSALS as door_refusals
         if args.audio or args.sentence or args.expect:
             raise SystemExit("REFUSED: transcribe-file takes --file, not --audio / --sentence / --expect")
         if not args.file:
@@ -477,13 +482,33 @@ def cmd_run(args):
         try:
             pid = w.resolve_pid(worktree)
         except RuntimeError as e:
-            raise SystemExit(f"REFUSED: {e}")
+            # No single instance of THIS worktree's build: the instrument, not the product.
+            print(f"INSTRUMENT: {e}")
+            return 2
+        # Every dev app writes the SAME app.log, and the reader grades the last run in it.
+        # A second instance from another worktree would make that run unattributable, so
+        # the count of ALL instances must be one, not only the count under this worktree
+        # (resolve_pid checks the latter; cloud review of PR #2914). The guard keys by the
+        # pid STRING from `ps`; resolve_pid returns an int. Known limit: an instance that
+        # starts after this check and before the door's terminal reply is not seen.
+        others = {p: path for p, path in running_enviouswispr_instances().items() if str(p) != str(pid)}
+        if others:
+            listing = ", ".join(f"{p} {path}" for p, path in others.items())
+            print(f"INSTRUMENT: another EnviousWispr instance is running and shares app.log ({listing}); "
+                  "the verdict would be unattributable. One dev app per Mac")
+            return 2
         mark = dt.datetime.now().astimezone()
         print(f"== RUN transcribe-file -> transcribe_file_backend(pid={pid}, {path!r}, timeout={args.timeout}) ==")
-        reply = w.transcribe_file_backend(pid, path, timeout=args.timeout, worktree=worktree, echo=True)
+        try:
+            reply = w.transcribe_file_backend(pid, path, timeout=args.timeout, worktree=worktree, echo=True)
+        except RuntimeError as e:
+            # The door never answered (the app exited after PID resolution, a build without
+            # the door, a wrong worktree): the instrument, not the product.
+            print(f"INSTRUMENT: the door did not answer: {e}")
+            return 2
         # An immediate refusal (busy, malformed, wrongLaunch, duplicate) means the run never
         # started: an INSTRUMENT exit, with the door's own reason, before any log is read.
-        if reply.get("status") in DOOR_REFUSALS:
+        if reply.get("status") in door_refusals:
             print(f"INSTRUMENT: the door refused before starting: status={reply.get('status')} "
                   f"reason={reply.get('reason', '')}")
             return 2
@@ -494,8 +519,12 @@ def cmd_run(args):
         row_path = os.path.expanduser(f"~/Library/Application Support/EnviousWispr/transcripts/{history}.json") if history else None
         row = None
         if row_path and os.path.isfile(row_path):
-            with open(row_path, encoding="utf-8") as fh:
-                row = json.load(fh)
+            try:
+                with open(row_path, encoding="utf-8") as fh:
+                    row = json.load(fh)
+            except (OSError, ValueError) as e:
+                print(f"INSTRUMENT: the History row {history} could not be read: {e}")
+                return 2
         exit_code, ev = fv.file_verdict(w.log_entries_since(mark), row, expect_door=True,
                                         request=reply.get("request"))
         print(fv.format_verdict(ev))
@@ -522,9 +551,13 @@ def cmd_run(args):
         if run_dir:
             out = os.path.join(run_dir, "live-uat.json")
             tmp = out + ".tmp"
-            with open(tmp, "w") as fh:
-                json.dump(evidence, fh, indent=2)
-            os.replace(tmp, out)
+            try:
+                with open(tmp, "w") as fh:
+                    json.dump(evidence, fh, indent=2)
+                os.replace(tmp, out)
+            except OSError as e:
+                print(f"INSTRUMENT: the receipt could not be written to {out}: {e}")
+                return 2
             print(f"written: {out}")
         return exit_code
     if args.recipe == "silent-probe":
@@ -752,6 +785,17 @@ def _self_test():
     with wave.open(p) as wv:
         check("silent wav is ~6 s mono 16-bit", abs(wv.getnframes() / wv.getframerate() - 6.0) < 0.01
               and wv.getnchannels() == 1 and wv.getsampwidth() == 2)
+
+    # The hosted runner has no PyObjC, and this self-test runs there: no module-level import
+    # of a module that loads it (import_door, wispr_eyes, objc, Foundation, AppKit). The
+    # transcribe-file branch imports the door's refusal set inside the branch for this reason
+    # (cloud review of PR #2914).
+    import ast as _ast
+    tree = _ast.parse(open(__file__, encoding="utf-8").read(), filename=__file__)
+    heavy = {"import_door", "wispr_eyes", "objc", "Foundation", "AppKit", "Quartz"}
+    top = {n.module for n in tree.body if isinstance(n, _ast.ImportFrom)} | \
+          {a.name for n in tree.body if isinstance(n, _ast.Import) for a in n.names}
+    check(f"no module-level import loads PyObjC (the hosted self-test) {sorted(top & heavy)}", not (top & heavy))
 
     # Counted from the rows that RAN, never a literal (a hardcoded total drifts
     # the first time a check is added and reports N/N+1 as a pass).
