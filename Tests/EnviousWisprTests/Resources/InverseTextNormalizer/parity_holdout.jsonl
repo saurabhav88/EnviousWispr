@@ -1741,7 +1741,7 @@
 {"input": "at ten o'clock", "expected": "at 10:00", "category": "time", "slice": "gtn"}
 {"input": "p ten o one", "expected": "p 10 01", "category": "time", "slice": "gtn"}
 {"input": "news ten p m edition", "expected": "news 10:00 PM edition", "category": "time", "slice": "gtn"}
-{"input": "report six o three point o eight", "expected": "report 603 point 08", "category": "time", "slice": "gtn"}
+{"input": "report six o three point o eight", "expected": "report 603.08", "category": "time", "slice": "gtn"}
 {"input": "by twelve twenty", "expected": "by twelve twenty", "category": "time", "slice": "gtn"}
 {"input": "about nine o'clock", "expected": "about 9:00", "category": "time", "slice": "gtn"}
 {"input": "from six p m to", "expected": "from 6:00 PM to", "category": "time", "slice": "gtn"}
