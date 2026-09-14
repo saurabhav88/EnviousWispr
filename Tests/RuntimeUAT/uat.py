@@ -492,9 +492,12 @@ def cmd_run(args):
         # A second instance from another worktree would make that run unattributable, so
         # the count of ALL instances must be one, not only the count under this worktree
         # (resolve_pid checks the latter; cloud review of PR #2914). The guard keys by the
-        # pid STRING from `ps`; resolve_pid returns an int. Known limit: an instance that
-        # starts after this check and before the door's terminal reply is not seen.
-        others = {p: path for p, path in running_enviouswispr_instances().items() if str(p) != str(pid)}
+        # pid STRING from `ps`; resolve_pid returns an int. Checked again after the run: an
+        # instance that started during an hour-long import wrote untagged rows to the same
+        # log, and the reader anchors on the LAST terminal row (cloud round 3).
+        def peers():
+            return {p: path for p, path in running_enviouswispr_instances().items() if str(p) != str(pid)}
+        others = peers()
         if others:
             listing = ", ".join(f"{p} {path}" for p, path in others.items())
             print(f"INSTRUMENT: another EnviousWispr instance is running and shares app.log ({listing}); "
@@ -514,6 +517,12 @@ def cmd_run(args):
         if reply.get("status") in door_refusals:
             print(f"INSTRUMENT: the door refused before starting: status={reply.get('status')} "
                   f"reason={reply.get('reason', '')}")
+            return 2
+        others = peers()
+        if others:
+            listing = ", ".join(f"{p} {path}" for p, path in others.items())
+            print(f"INSTRUMENT: another EnviousWispr instance started during the run and shares app.log "
+                  f"({listing}); the terminal row cannot be attributed to this build")
             return 2
         # The stored row and the door's terminal reply land a beat apart; settle once
         # BEFORE reading either the row or the log, so both snapshots are the same state.
