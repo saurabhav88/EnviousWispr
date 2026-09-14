@@ -63,7 +63,7 @@ Both speech engines give you speaker labels. The labels are built from the time 
 | **Fast** | Yes | Recommended. Its language count is compared with All Languages in [choosing a speech engine](/help/choosing-a-speech-engine-parakeet-vs-whisperkit/). |
 | **All Languages** | Yes | Every language the engine supports, with one exception below. |
 
-**Text written without spaces between words** (for example Chinese, Japanese and Thai) can prevent the app from matching the transcript's words to the engine's timings. When usable timings are unavailable for a recording with more than one voice, speaker labels are unavailable too: the transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
+**Text written without spaces between words** (for example Chinese, Japanese and Thai) is matched to the engine's timings by the engine's own character groups, one 30-second window at a time. When a window's groups do not line up with its text, the words in that window keep no timings and the rest of the recording is unaffected. If no words at all can be timed on a recording with more than one voice, speaker labels are unavailable: the transcript still comes back complete, as one block, and the page shows "Couldn't add speaker labels to this recording." without a Try again button, because trying again would give the same result.
 
 ### If the labels did not appear
 
