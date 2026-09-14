@@ -232,7 +232,13 @@ def test_isolated_arm_validate_flag() -> None:
         failed = runner.polish_case("openai", "m", "k", case, validate=True)
         check("with --validate a failed call keeps the original words with status error, like a failed pack",
               failed["candidate"] == case["text"] and failed["section_status"] == "error"
-              and failed["error"] == "provider down", str(failed))
+              and failed["fallback_error"] == "provider down" and "error" not in failed, str(failed))
+        from behavior_judge import partition_candidates
+        judged, skipped = partition_candidates({"q": {}}, {"q": failed})
+        check("the judge grades the validated fallback row instead of skipping it",
+              judged == ["q"] and not skipped, f"{judged} {skipped}")
+        judged, skipped = partition_candidates({"q": {}}, {"q": failed_plain})
+        check("the judge still skips the plain failed row", judged == [] and len(skipped) == 1, f"{judged} {skipped}")
     finally:
         runner.call_once = original
 

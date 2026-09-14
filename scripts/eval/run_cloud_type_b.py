@@ -660,11 +660,15 @@ def polish_case(
     }
     if validate:
         # The packed arm's failed pack writes every section's original words with status
-        # `error` (`_fallback_rows`); the validated isolated arm gets the same treatment,
-        # so a provider failure costs both arms the same row and the report does not
-        # refuse the file for a missing `section_status` (cloud review of PR #2902, round 5).
+        # `error` and no `error` key (`_fallback_rows`); the validated isolated arm gets the
+        # same row, so a provider failure costs both arms the same graded row.
+        # `behavior_judge.partition_candidates` skips any row whose `error` is truthy, so
+        # the message moves to `fallback_error`: the row is graded on the original words,
+        # as production would deliver them, and the reason stays on the row (cloud review
+        # of PR #2902, rounds 5 and 6).
         failed["candidate"] = transcript
         failed["section_status"] = "error"
+        failed["fallback_error"] = failed.pop("error")
     return failed
 
 
@@ -1201,9 +1205,10 @@ def main() -> int:
             row["run"] = receipt
             results[row["id"]] = row
             done += 1
-            if row.get("error"):
+            err = row.get("error") or row.get("fallback_error")
+            if err:
                 errors += 1
-                print(f"[{done}/{len(cases)}] ERROR {row['id']}: {row['error']}", file=sys.stderr)
+                print(f"[{done}/{len(cases)}] ERROR {row['id']}: {err}", file=sys.stderr)
             elif done % 200 == 0:
                 el = int(time.monotonic() - t0)
                 print(f"[{done}/{len(cases)}] ok ({errors} errors, {el}s)", file=sys.stderr)
@@ -1212,7 +1217,8 @@ def main() -> int:
         for case in cases:
             f.write(json.dumps(results[case["id"]]) + "\n")
 
-    lat = sorted(r["latencyMs"] for r in results.values() if not r.get("error"))
+    lat = sorted(r["latencyMs"] for r in results.values()
+                 if not (r.get("error") or r.get("fallback_error")))
     in_tok = sum(r.get("inTok") or 0 for r in results.values())
     out_tok = sum(r.get("outTok") or 0 for r in results.values())
     reason_tok = sum(r.get("reasoningTok") or 0 for r in results.values())
