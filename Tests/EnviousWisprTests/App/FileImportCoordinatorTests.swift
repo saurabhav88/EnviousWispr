@@ -203,15 +203,29 @@ struct FileImportCoordinatorTests {
   /// a stale run's tick is dropped, and the run's end reads as 1 before the speaker step.
   @Test("ticks only move the fraction up, a stale generation's tick is dropped, the end reads 1")
   func transcribingFractionFollowsTheEngine() async {
+    // The fake needs the coordinator it is driving; the box breaks the construction cycle.
+    final class Box: @unchecked Sendable { var coordinator: FileImportCoordinator? }
+    let box = Box()
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       decode: { _ in Self.decoded(seconds: 600) },
       transcribeWithProgress: { _, onProgress in
         onProgress(0.25)
+        // A tick from the PREVIOUS run, HIGHER than the live fraction, while the run is in
+        // flight: only the generation guard can drop it. The monotone rule cannot, which is
+        // what let a loosened guard survive the 2026-09-14 night battery (#2924 row 7): the
+        // old stale tick was 0.5 against a finished run pinned at 1.
+        if let c = box.coordinator {
+          c.noteTranscribing(fraction: 0.9, generationAtStart: c.generation - 1)
+          #expect(c.transcribingFraction == 0.25, "a stale generation's tick moved the bar")
+        } else {
+          Issue.record("the fake ran before the coordinator was boxed")
+        }
         onProgress(0.10)  // a window that finished late: never moves the bar back
         onProgress(0.60)
         return "One. Two. Three."
       })
+    box.coordinator = coordinator
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
       if case .ready = coordinator.state { return true } else { return false }
