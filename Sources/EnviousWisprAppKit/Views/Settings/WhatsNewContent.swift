@@ -57,67 +57,19 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.5.0
 
-    // #2762 (the feature), #2786 (per-surface polisher choice, shared keys, the page as
-    // the approved prototype), #2803 (menu bar entry), #2801 (Review step layout). ONE
-    // story: the feature reaches users for the first time, so nothing about the cycle's
-    // repairs is narrated (RULE: first-time feature carries no repair copy). "does not
-    // change the one your dictation uses" is #2786's verified per-surface selection
-    // (one History row read llmProvider=egOne while dictation stayed s1Mini).
+    // #2762 (the feature), #2786 (per-surface polisher choice), #2803 (menu bar entry),
+    // #2851/#2898 (speaker sections), #2801 (the three Done views), #2897/#2918 (the
+    // Working card). ONE card (founder, 2026-09-14: the speakers, the Marked up view and
+    // the Working page are parts of the introduction, not separate news): the feature
+    // reaches users for the first time, so nothing about the cycle's repairs is narrated
+    // (RULE: first-time feature carries no repair copy). "separate from dictation" is
+    // #2786's verified per-surface selection.
     Entry(
       id: "transcribe-a-file",
       icon: "doc.badge.ellipsis",
       title: "Introducing \"Transcribe a File\"",
       description:
-        "Pick an audio or video file you already have and get clean text back. Voice memos, lectures, meetings. Open it from the sidebar or from the menu bar drop-down. You choose the speech engine and the polisher for files on their own screens, and the polisher you pick for files does not change the one your dictation uses. Stop at any time and keep what finished, then copy, save or share the result.",
-      version: "2.5.0"
-    ),
-
-    // #2846 (labels, rename, times, History), #2898 (speakers first, each section cleaned
-    // on its own, "Both" for overlaps, one write at Done). The alignment build (#2871) and
-    // its fold (#2894) never reached a release, so the rework is invisible and not
-    // narrated. "Both" is the rendered label per #2898's body; "Try again" per #2846.
-    Entry(
-      id: "speaker-labels",
-      icon: "person.2",
-      title: "Transcribe a File tells the speakers apart",
-      description:
-        "A recording with two people comes back as turns labelled Speaker 1 and Speaker 2, each with its time. Click a name to rename it and every turn with that speaker updates. Where two people talk at once, the turn is labelled Both. The same labels and names show when you open the transcript again in History. If the speakers could not be told apart, a notice says so and offers Try again.",
-      version: "2.5.0"
-    ),
-
-    // #2799 (the Marked up view and the counts) and #2897 (red strike-outs, green tint).
-    // The count line quotes #2799's body: "1,204 words removed · 318 changed".
-    Entry(
-      id: "marked-up-cleanup",
-      icon: "text.badge.checkmark",
-      title: "See exactly what the cleanup changed",
-      description:
-        "On the Done step of Transcribe a File there are three views: Cleaned, Original and Marked up. Marked up shows your original words with the cleanup on them. A removed word is red and struck through, a changed or added word is highlighted, and the counts sit above the text, like 1,204 words removed and 318 changed. Copy, Save and Share hand over the cleaned text from that view and say so on the button.",
-      version: "2.5.0"
-    ),
-
-    // #2897 (the Working card) and #2898 (the transcript appears once, at Done), then #2918
-    // (a bar per step, the transcribing fraction from the engine, the file summary and the
-    // live counts under the card) and #2927 (the estimate knows the engine). The time left is
-    // "rough": it is a per-engine rate before the run and the section pace once sections land.
-    Entry(
-      id: "working-step-one-card",
-      icon: "hourglass",
-      title: "While a file runs, every step shows its progress",
-      description:
-        "The Working step shows one card with a bar per step: Transcribing fills as the engine works through the audio, Finding who said what shows its own progress, and Cleaning counts sections, with a rough time left. Under the card: the file's length, the engine, the polisher, and live counts of minutes transcribed, speakers found and sections cleaned. Stop is right there. The finished transcript appears once, when it is done.",
-      version: "2.5.0"
-    ),
-
-    // #2794. The cancel shortcut stays armed through transcription; the audio is kept;
-    // the next launch reports where the take died (that last part is telemetry and is
-    // not narrated). "Restart the app" is the shipped copy quoted in the PR body.
-    Entry(
-      id: "escape-a-stuck-transcription",
-      icon: "escape",
-      title: "A stuck transcription can be cancelled",
-      description:
-        "If a dictation never finishes transcribing, press your cancel shortcut. The waiting bar goes away and your audio is kept. Until you restart the app, a new dictation tells you the previous one is still running.",
+        "Pick an audio or video file you already have and get clean text back: voice memos, lectures, meetings. Open it from the sidebar or the menu bar. A recording with two people comes back as turns labelled Speaker 1 and Speaker 2, each with its time; rename a speaker once and every turn updates. Then see exactly what the cleanup changed: Cleaned, Original, or Marked up, where a removed word is struck through and a changed word is highlighted. You choose the speech engine and the polisher for files on their own screens, separate from dictation. Stop at any time and keep what finished, then copy, save or share.",
       version: "2.5.0"
     ),
 
@@ -205,7 +157,7 @@ enum WhatsNewContent {
       icon: "wrench.and.screwdriver",
       title: "Small things that now just work",
       description:
-        "A number read out digit by digit and followed by point, like two four oh seven point one two three, converts as one decimal. Quick Add keeps showing the word it heard even when nothing in your list matches it. The cancel shortcut wins when it shares a key combination with Quick Add. Bringing the target app to the front before a paste gives up after half a second if that app has stopped responding, instead of waiting on it. Crash recovery keeps the key to a saved recording until the recording itself is safely gone. A cleanup server left over from an earlier launch is tidied up on start.",
+        "If a dictation never finishes transcribing, your cancel shortcut now stops it and keeps the audio. A number read out digit by digit and followed by point, like two four oh seven point one two three, converts as one decimal. Quick Add keeps showing the word it heard even when nothing in your list matches it. The cancel shortcut wins when it shares a key combination with Quick Add. Bringing the target app to the front before a paste gives up after half a second if that app has stopped responding, instead of waiting on it. Crash recovery keeps the key to a saved recording until the recording itself is safely gone. A cleanup server left over from an earlier launch is tidied up on start.",
       version: "2.5.0"
     ),
 
