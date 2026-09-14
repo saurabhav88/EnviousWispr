@@ -56,6 +56,25 @@ struct TranscribeFileDoneLayoutTests {
     return String(rest[..<end])
   }
 
+  /// The index of the `}` that closes the `{` at `open`, or `nil` when the braces do not
+  /// balance before the end of `text`.
+  static func closingBrace(of text: String, openingAt open: String.Index) -> String.Index? {
+    guard text[open] == "{" else { return nil }
+    var depth = 0
+    var i = open
+    while i < text.endIndex {
+      switch text[i] {
+      case "{": depth += 1
+      case "}":
+        depth -= 1
+        if depth == 0 { return i }
+      default: break
+      }
+      i = text.index(after: i)
+    }
+    return nil
+  }
+
   @Test("the scanner can see its subject")
   func theScannerCanSeeItsSubject() {
     let source = Self.viewSource
@@ -80,15 +99,19 @@ struct TranscribeFileDoneLayoutTests {
     }
     #expect(stepPage.contains("ScrollView {"), "the five page steps lost their scroll")
     guard let scroll = doneLayout.range(of: "ScrollView {"),
-      let actions = doneLayout.range(of: "doneActions")
+      let actions = doneLayout.range(of: "doneActions"),
+      let blockEnd = Self.closingBrace(of: doneLayout, openingAt: doneLayout.index(before: scroll.upperBound))
     else {
-      Issue.record("Done's ScrollView or its action row is gone")
+      Issue.record("Done's ScrollView, its closing brace, or its action row is gone")
       return
     }
-    let inside = doneLayout[scroll.upperBound..<actions.lowerBound]
+    // The ScrollView's BODY is the text up to its matching brace (found by brace matching,
+    // never by slicing to the first `doneActions`: that slice could never contain the word it
+    // was asserting the absence of; found by the #2906 night battery).
+    let inside = doneLayout[scroll.upperBound..<blockEnd]
     #expect(inside.contains("doneDocument"), "Done's ScrollView must hold the document")
     #expect(
-      actions.lowerBound > scroll.upperBound && !inside.contains("doneActions"),
+      actions.lowerBound > blockEnd && !inside.contains("doneActions"),
       "the action row must follow the document scroll as a sibling, never sit inside it")
     // The header appears twice on purpose: fixed above the scroll when the window is tall,
     // inside it when the window is short. Both spellings must be guarded by the same rule.
