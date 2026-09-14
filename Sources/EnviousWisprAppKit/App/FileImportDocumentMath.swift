@@ -60,9 +60,6 @@ enum FileImportDocumentMath {
     /// BEFORE the piece rides with it; the unplaceable case carries the piece itself.
     let original: String
     let cleaned: String?
-    /// False when this passage's polish was attempted and failed; also false, and unread,
-    /// while the cleanup has not reached it (`cleaned == nil`).
-    let wasPolished: Bool
   }
 
   /// The split's pieces are the passages the cleanup ran on, in order; `parts[i]` is what it
@@ -84,18 +81,16 @@ enum FileImportDocumentMath {
     var passages: [PlacedPassage] = []
     for (index, piece) in pendingPieces.enumerated() {
       let cleaned = index < parts.count ? parts[index].text : nil
-      // `!isUnpolished`, not `wasPolished` (#2851 §3 D): the turns' flag drives the
-      // "Not fully polished" disclosure, and a document the user chose not to have polished
-      // is not a document with fourteen problems in it (`PartOutcome.isUnpolished`'s own
-      // rule). The header's credit reads `Part.wasPolished` and is unchanged.
-      let wasPolished = index < parts.count ? !parts[index].isUnpolished : false
+      // No per-passage polish flag here (#2851 §3 D retired it with the aligner): the turns'
+      // `isUnpolished` drives the "Not fully polished" disclosure, and the header's credit reads
+      // `Part.wasPolished`; the Marked up view reads only `original` and `cleaned` (found by the
+      // #2864 night battery, 2026-09-14: the field had no production reader).
       guard
         let found = rawTranscript.range(
           of: piece, options: .literal, range: cursor..<rawTranscript.endIndex)
       else {
         passages.append(
-          PlacedPassage(
-            placement: .unplaceable, original: piece, cleaned: cleaned, wasPolished: wasPolished))
+          PlacedPassage(placement: .unplaceable, original: piece, cleaned: cleaned))
         continue
       }
       let end = index == pendingPieces.count - 1 ? rawTranscript.endIndex : found.upperBound
@@ -105,8 +100,7 @@ enum FileImportDocumentMath {
       passages.append(
         PlacedPassage(
           placement: .placed(rawRange: rawRange, contentRange: contentRange),
-          original: String(rawTranscript[cursor..<end]), cleaned: cleaned,
-          wasPolished: wasPolished))
+          original: String(rawTranscript[cursor..<end]), cleaned: cleaned))
       cursor = end
     }
     return passages

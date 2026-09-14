@@ -31,7 +31,6 @@ struct FileImportDocumentMathTests {
       placed.map(\.original) == ["alpha beta", "  gamma delta", "\n\nepsilon zeta."],
       "the last passage runs to the transcript's end")
     #expect(placed.map(\.cleaned) == ["Alpha beta.", "Gamma delta.", nil])
-    #expect(placed.map(\.wasPolished) == [true, false, false])
     #expect(placed.allSatisfy { if case .placed = $0.placement { true } else { false } })
     if case .placed(let rawRange, let contentRange) = placed[1].placement {
       #expect(rawRange == 10..<23 && contentRange == 12..<23, "UTF-16 offsets of the gap and the piece")
