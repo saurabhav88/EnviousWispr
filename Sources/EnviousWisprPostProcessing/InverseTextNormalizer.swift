@@ -634,6 +634,19 @@ public struct InverseTextNormalizer: Sendable {
   /// Parse number-words into an Int as a STRICT cardinal. Returns nil for any sequence that
   /// is not a single valid English cardinal so the caller leaves it untouched rather than
   /// summing wrongly. This kills 'two zero three'->5, 'twenty twenty'->40, 'one twenty'->21.
+  /// Two or more words that are each a single spoken digit ("two four oh seven"), read as the
+  /// digits they spell, leading zeros kept ("oh seven" is "07", as the digit-read pass writes
+  /// it). Nil for anything else: one word, a teen or a ten, a scale word.
+  static func digitString(_ words: [String]) -> String? {
+    guard words.count >= 2 else { return nil }
+    var digits = ""
+    for w in words {
+      guard let v = units[w], v < 10 else { return nil }
+      digits.append(String(v))
+    }
+    return digits
+  }
+
   static func wordsToInt(_ words: [String]) -> Int? {
     if words.isEmpty { return nil }
     if words.count == 1, words[0].lowercased() == "zero" || words[0] == "0" { return 0 }
@@ -1214,7 +1227,17 @@ public struct InverseTextNormalizer: Sendable {
       + #"(?:\s+(?<scale>million|billion|thousand))?"# + endB
     t = reSub(pat, t) { m in
       // 'point'/'dot' anchors numeric intent, so lowercasing the captured amount is corruption-safe.
-      guard let whole = Self.wordsToInt(Self.splitWords((m.g("w") ?? "").lowercased())) else {
+      let wholeWords = Self.splitWords((m.g("w") ?? "").lowercased())
+      // The whole part is a cardinal ("twenty five") OR a digit STRING read out one digit at a
+      // time ("two four oh seven", "one two"). `wordsToInt` refuses the second shape (a unit after
+      // a unit, and `oh`), and the earliest match holds the WHOLE run, so refusing it here handed
+      // the run to later, shorter matches: "two four oh seven point one two three" became
+      // "7.123" beside a separate "2407", pasted as 24070.123 (#2874). Read a digit string the
+      // way the digit-read pass does; a lone "oh" is never a string (two words minimum), so
+      // "oh point five is fine" stays prose.
+      guard
+        let whole = Self.wordsToInt(wholeWords).map(String.init) ?? Self.digitString(wholeWords)
+      else {
         return nil
       }
       let digs = digsOf(m.g("d") ?? "")
