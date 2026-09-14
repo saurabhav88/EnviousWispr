@@ -204,7 +204,9 @@ struct FileImportCoordinatorTests {
   @Test("ticks only move the fraction up, a stale generation's tick is dropped, the end reads 1")
   func transcribingFractionFollowsTheEngine() async {
     // The fake needs the coordinator it is driving; the box breaks the construction cycle.
-    final class Box: @unchecked Sendable { var coordinator: FileImportCoordinator? }
+    // `weak`: the test's own `let` holds the coordinator for the test's lifetime, and a
+    // strong box would close a cycle (coordinator → fake → box → coordinator).
+    final class Box: @unchecked Sendable { weak var coordinator: FileImportCoordinator? }
     let box = Box()
     let coordinator = makeCoordinator(
       lease: EngineLease(),
