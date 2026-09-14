@@ -132,26 +132,56 @@ struct TranscribeFileView: View {
     .background(Color.stSidebarBg)
   }
 
-  /// Done (#2817 item 7): the document is the one scrolling child. The heading, the notices,
-  /// the header card, the view switch, the action row and the pinned footer never leave the
-  /// screen, which is what the prototype does (`.doc{flex:1; overflow-y:auto}` between two
-  /// fixed cards). The document keeps a floor so a short window still shows some of it
-  /// rather than a zero-height box under the header.
+  /// Done (#2817 item 7): the document is the one scrolling child. The action row and the
+  /// pinned footer never leave the screen, whatever the document's length. The heading, the
+  /// notices, the header card and the view switch stay fixed above the document too when the
+  /// window is tall enough for them, which is what the prototype does (`.doc{flex:1;
+  /// overflow-y:auto}` between two fixed cards).
+  ///
+  /// **Below `doneFixedHeaderMinimumHeight` the header scrolls with the document.** The
+  /// window's floor is 400 points (`WisprBootstrapper`), and the fixed chrome alone (heading,
+  /// header card, switch row, action row, footer, paddings) is near 300 before a single
+  /// notice; nothing outside the one `ScrollView` can be reached by scrolling, so at a short
+  /// window a fixed header would push the action row off the bottom, which is the exact
+  /// defect this layout exists to remove. Found by Codex. The threshold is a pure rule so a
+  /// test can pin it; the rendered result at 400 and 750 points is the Live UAT row.
   private var doneLayout: some View {
-    VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-      doneFixedTop
-      ScrollView {
-        doneDocument
+    GeometryReader { proxy in
+      let headerFixed = Self.doneHeaderIsFixed(availableHeight: proxy.size.height)
+      VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+        if headerFixed {
+          doneFixedTop
+        }
+        ScrollView {
+          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+            if !headerFixed {
+              doneFixedTop
+            }
+            doneDocument
+          }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        doneActions
       }
+      .padding(.top, SettingsLayout.contentTop)
+      .padding(.horizontal, SettingsLayout.contentH)
+      .padding(.bottom, SettingsLayout.contentBottom)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .frame(minHeight: 120)
-      doneActions
     }
-    .padding(.top, SettingsLayout.contentTop)
-    .padding(.horizontal, SettingsLayout.contentH)
-    .padding(.bottom, SettingsLayout.contentBottom)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
+  }
+
+  /// The window height below which Done's header scrolls with the document instead of
+  /// staying fixed above it. Sized for the tallest fixed set the step can show without a
+  /// notice (about 300 points of chrome) plus room for two notices and a Try again button
+  /// (about 130) plus a readable slice of document (about 170).
+  static let doneFixedHeaderMinimumHeight: CGFloat = 600
+
+  /// Whether the heading, notices, header card and view switch stay fixed above the document
+  /// at `availableHeight` (the height handed to `doneLayout`, below the step bar and above
+  /// the pinned footer). Pure, so `TranscribeFileDoneLayoutTests` can pin the threshold.
+  static func doneHeaderIsFixed(availableHeight: CGFloat) -> Bool {
+    availableHeight >= doneFixedHeaderMinimumHeight
   }
 
   /// Whether the privacy bar is pinned to the window's bottom edge rather than following

@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 
+@testable import EnviousWisprAppKit
+
 /// #2817 items 6 and 7: on Done the document owns the scroll, and the view switch sits on
 /// its own row above it at the regular control size.
 ///
@@ -77,12 +79,38 @@ struct TranscribeFileDoneLayoutTests {
       return
     }
     #expect(stepPage.contains("ScrollView {"), "the five page steps lost their scroll")
+    guard let scroll = doneLayout.range(of: "ScrollView {"),
+      let actions = doneLayout.range(of: "doneActions")
+    else {
+      Issue.record("Done's ScrollView or its action row is gone")
+      return
+    }
+    let inside = doneLayout[scroll.upperBound..<actions.lowerBound]
+    #expect(inside.contains("doneDocument"), "Done's ScrollView must hold the document")
     #expect(
-      doneLayout.contains("ScrollView {\n        doneDocument\n      }"),
-      "Done's ScrollView must hold exactly `doneDocument`; the fixed parts sit outside it")
+      actions.lowerBound > scroll.upperBound && !inside.contains("doneActions"),
+      "the action row must follow the document scroll as a sibling, never sit inside it")
+    // The header appears twice on purpose: fixed above the scroll when the window is tall,
+    // inside it when the window is short. Both spellings must be guarded by the same rule.
     #expect(
-      doneLayout.contains("doneFixedTop") && doneLayout.contains("doneActions"),
-      "the fixed top and the action row must be siblings of the document scroll, not inside it")
+      doneLayout.contains("if headerFixed {\n          doneFixedTop")
+        && inside.contains("if !headerFixed {\n              doneFixedTop"),
+      "the header must be fixed OR scroll with the document, decided by `doneHeaderIsFixed`")
+  }
+
+  /// The threshold is a pure rule: a short window scrolls the header with the document so
+  /// the action row can never be pushed off the bottom (Codex, review round 1).
+  @Test(
+    "the header is fixed only when the layout has room for it",
+    arguments: [
+      (CGFloat(300), false),  // the 400-point window floor, less the step bar and footer
+      (CGFloat(599), false),
+      (CGFloat(600), true),
+      (CGFloat(650), true),  // a 750-point window, the size the evidence screenshots use
+    ])
+  func headerIsFixedOnlyWithRoom(height: CGFloat, fixed: Bool) {
+    #expect(TranscribeFileView.doneHeaderIsFixed(availableHeight: height) == fixed)
+    #expect(TranscribeFileView.doneFixedHeaderMinimumHeight == 600)
   }
 
   /// `body` routes Done to its own layout; the page scroll never draws it.
