@@ -1997,7 +1997,7 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     speakerAnalysis = outcome
     await AppLogger.shared.log(
-      "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs)",
+      "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs) timed=\(wordTimingCoverage?.timed ?? -1) total=\(wordTimingCoverage?.total ?? -1)",
       level: .info, category: "FileImportCoordinator")
     // The log line above is itself a suspension point; re-check rather than assume the
     // first guard still holds by the time telemetry fires. Found by Codex.
@@ -2252,7 +2252,7 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     speakerAnalysis = outcome
     await AppLogger.shared.log(
-      "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs) retry=true",
+      "[SpeakerLabeler] outcome=\(Self.speakerLogOutcome(outcome)) speakers=\(Self.speakerLogCount(outcome)) ms=\(analysisMs) timed=\(wordTimingCoverage?.timed ?? -1) total=\(wordTimingCoverage?.total ?? -1) retry=true",
       level: .info, category: "FileImportCoordinator")
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
     emitSpeakerTelemetry(outcome, durationSeconds, analysisMs, wordTimingCoverage)
