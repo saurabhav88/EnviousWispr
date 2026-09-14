@@ -432,6 +432,10 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async"),
+        // #2918: a requirement for the same reason, so the file import's observer reaches the backend.
+        MemberSignature(
+          condition: nil,
+          signature: "func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async"),
         MemberSignature(
           condition: nil,
           signature: "func startStreaming(options: TranscriptionOptions) async throws"
@@ -448,6 +452,9 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "public func setDecodeChunkObserver(_ observer: (@Sendable () -> Void)?) async"),
+        MemberSignature(
+          condition: nil,
+          signature: "public func setTranscriptionProgressObserver(_ observer: (@Sendable (Double) -> Void)?) async"),
         MemberSignature(
           condition: nil,
           signature: "public func startStreaming(options _: TranscriptionOptions) async throws"),
@@ -495,6 +502,10 @@ import Testing
         MemberSignature(
           condition: nil,
           signature: "var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)? { get set }"),
+        // #2918: observation-only transcription progress (a 0...1 fraction) for the file import.
+        MemberSignature(
+          condition: nil,
+          signature: "var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)? { get set }"),
         MemberSignature(
           condition: nil,
           signature:

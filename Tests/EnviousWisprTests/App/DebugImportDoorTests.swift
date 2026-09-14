@@ -91,7 +91,7 @@
           if let decodeGate { await decodeGate.pass() }
           return Self.decoded(seconds: 1.0)
         },
-        transcribe: { _ in
+        transcribe: { _, _ in
           if let transcribeGate { await transcribeGate.pass() }
           return ASRResult(
             text: transcribedText, language: "en", duration: 0, processingTime: 0,
@@ -359,7 +359,7 @@
           }
           return Self.decoded(seconds: 1.0)
         },
-        transcribe: { _ in
+        transcribe: { _, _ in
           ASRResult(
             text: "one two three", language: "en", duration: 0, processingTime: 0,
             backendType: .parakeet, wordTimings: nil, wordTimingCoverage: nil)

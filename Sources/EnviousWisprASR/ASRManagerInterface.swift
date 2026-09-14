@@ -177,6 +177,8 @@ public protocol ASRManagerInterface: AnyObject {
 
   /// #2787: observation only — see `ASRManager.onVendorDecodeChunkScheduled`.
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)? { get set }
+  /// #2918: observation only — see `ASRManager.onTranscriptionProgress`.
+  var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)? { get set }
 
   // Streaming transcription
   /// Create a fresh `attemptID` before scheduling the call and its deadline —

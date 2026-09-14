@@ -70,6 +70,10 @@ public final class ASRManager: ASRManagerInterface {
   /// reports as scheduled during a batch `transcribe`. The adapter turns it
   /// into an `.observation` finalize tick for the kernel's checkpoint.
   public var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
+  /// #2918: the active backend's 0...1 transcription progress for the NEXT `transcribe` call,
+  /// installed per call beside the chunk observer and cleared by the backend on exit. The
+  /// file import's Working card is the consumer; dictation installs none.
+  public var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   /// This attempt's identity, supplied by the caller (`ParakeetEngineAdapter`
   /// mints a fresh one per `beginSession()`) rather than an internal counter,
   /// so `cancelInFlightStreamingStart(attemptID:)` can name exactly the
@@ -476,10 +480,23 @@ public final class ASRManager: ASRManagerInterface {
     // idle count, and its decode would then run under a new take's session.
     try Task.checkCancellation()
     let chunkObserver = onVendorDecodeChunkScheduled
+    let progressObserver = onTranscriptionProgress
     return try await vendorDecodeOccupancy.track {
       await activeBackend.setDecodeChunkObserver { Task { @MainActor in chunkObserver?() } }
-      try Task.checkCancellation()
-      return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+      // #2918: installed unconditionally (nil clears a stale one) and cleared again if the
+      // decode never starts, so a cancelled call cannot leave it for the next caller.
+      var sink: (@Sendable (Double) -> Void)?
+      if let progressObserver {
+        sink = { fraction in Task { @MainActor in progressObserver(fraction) } }
+      }
+      await activeBackend.setTranscriptionProgressObserver(sink)
+      do {
+        try Task.checkCancellation()
+        return try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+      } catch {
+        await activeBackend.setTranscriptionProgressObserver(nil)
+        throw error
+      }
     }
   }
 

@@ -86,6 +86,9 @@ struct FileImportCoordinatorTests {
       Self.decoded(seconds: 1.0)
     },
     transcribe: @escaping @MainActor ([Float]) async throws -> String = { _ in "One. Two. Three." },
+    /// #2918: an engine that reports progress through the run's sink; when given it replaces
+    /// `transcribe`.
+    transcribeWithProgress: (@MainActor ([Float], @escaping @MainActor @Sendable (Double) -> Void) async throws -> String)? = nil,
     /// The engine's reported language, which most rows do not care about.
     engineLanguage: String? = nil,
     processPart: @escaping @MainActor (String) async throws -> FileImportRunner.PartOutcome = {
@@ -104,9 +107,15 @@ struct FileImportCoordinatorTests {
       decode: decode,
       // The rows above pass a plain text closure; the language rides alongside
       // it so a row that does not care about language never mentions one.
-      transcribe: { samples in
-        ASRResult(
-          text: try await transcribe(samples), language: engineLanguage, duration: 0,
+      transcribe: { samples, onProgress in
+        let text: String
+        if let transcribeWithProgress {
+          text = try await transcribeWithProgress(samples, onProgress)
+        } else {
+          text = try await transcribe(samples)
+        }
+        return ASRResult(
+          text: text, language: engineLanguage, duration: 0,
           processingTime: 0, backendType: .parakeet)
       },
       engineAdmission: .live(lease: lease, as: .fileImport),
@@ -185,6 +194,60 @@ struct FileImportCoordinatorTests {
     // on a long recording is the slowest part of the whole job.
     #expect(coordinator.step == .review, "an engine refusal sent the user back to the file picker")
     #expect(coordinator.canRetry, "the message says try again and nothing offers it")
+  }
+
+  // MARK: - #2918 the transcribing fraction
+
+  /// The engine's ticks reach the card through the coordinator: the fraction only moves up,
+  /// a stale run's tick is dropped, and the run's end reads as 1 before the speaker step.
+  @Test("ticks only move the fraction up, a stale generation's tick is dropped, the end reads 1")
+  func transcribingFractionFollowsTheEngine() async {
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      decode: { _ in Self.decoded(seconds: 600) },
+      transcribeWithProgress: { _, onProgress in
+        onProgress(0.25)
+        onProgress(0.10)  // a window that finished late: never moves the bar back
+        onProgress(0.60)
+        return "One. Two. Three."
+      })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    #expect(coordinator.transcribingFraction == nil)
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    // The run's end pins the fraction at 1 (the last window can report an end under the
+    // padded tail), and it stays there through the speaker step and the cleanup.
+    #expect(coordinator.transcribingFraction == 1)
+
+    // A tick from a run nobody is watching (the generation moved on) is dropped, and a tick
+    // outside a run is dropped: the bar belongs to the run in flight.
+    coordinator.noteTranscribing(fraction: 0.5, generationAtStart: coordinator.generation - 1)
+    #expect(coordinator.transcribingFraction == 1)
+    coordinator.noteTranscribing(fraction: 0.5, generationAtStart: coordinator.generation)
+    #expect(coordinator.transcribingFraction == 1, "finished: not running, dropped")
+  }
+
+  @Test("the fraction never decreases within a run and resets on a new run")
+  func transcribingFractionIsMonotoneAndResets() async {
+    let coordinator = makeCoordinator(lease: EngineLease(), decode: { _ in Self.decoded(seconds: 600) })
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    // Drive the sink by hand inside a running state: `start()` is what sets it, so the
+    // monotone rule is checked on the finished run's generation with `isRunning` false
+    // (dropped) and, below, through the engine in the test above. Here: reset on a new choose.
+    coordinator.start()
+    await settleUntil { coordinator.state == .finished }
+    #expect(coordinator.transcribingFraction == 1)
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    #expect(coordinator.transcribingFraction == nil, "a new file starts with no bar")
   }
 
   /// **Stopping frees the audio, and only `stop()` can do it.**

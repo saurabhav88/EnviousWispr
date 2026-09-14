@@ -433,15 +433,19 @@ import Testing
       // #2809: widened again to the full `ASRResult` (word timings/coverage for
       // the speaker step) and the intermediate `let result` binding dropped —
       // the closure now returns the call's value directly. Same call site.
-      text: "return try await activeEngine.transcribe(samples, options)",
+      // #2918: bound to `let result` again so the progress observer installed for this
+      // call is cleared before the value is returned (and on a throw). Same call site.
+      text: "let result = try await activeEngine.transcribe(samples, options)",
       classification: .structurallySafe),
     // #2809: `transcribe` now hands back the full `ASRResult` (word timings and
     // coverage ride alongside the text) rather than a `(text, language)` tuple,
     // so this call site no longer destructures. Same call, same claim covering
     // it — only the local binding shape changed.
+    // #2918: the call now hands the engine the run's progress sink as a trailing closure.
+    // Same call, same claim covering it.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/FileImportCoordinator.swift", matcher: "transcribe",
-      text: "let result = try await transcribe(decodedSamples)",
+      text: "let result = try await transcribe(decodedSamples) { [weak self] fraction in",
       classification: .structurallySafe),
     // Not a call at all: the initializer storing the injected closure. Matched
     // because the scanner reads NAMES, which is the right trade — a scanner that
@@ -1048,8 +1052,9 @@ import Testing
     // this method does not currently have from any known caller.
     CallSite(
       file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
-      text:
-        "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)",
+      // #2918: the call spans three lines (a `segmentCallback:` for the transcribing bar);
+      // the scanner reads the first. Same call, same gap.
+      text: "results = try await kit.transcribe(",
       classification: .knownGap(
         issue: 1749,
         reason:
@@ -2117,8 +2122,7 @@ import Testing
         text: "result = try await activeEngine.transcribe(recovered.samples, options)"),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitBackend.swift", matcher: "transcribe",
-        text:
-          "results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)"
+        text: "results = try await kit.transcribe("
       ),
       SiteKey(
         file: "Sources/EnviousWisprASR/WhisperKitStreamingSession.swift", matcher: "transcribe",

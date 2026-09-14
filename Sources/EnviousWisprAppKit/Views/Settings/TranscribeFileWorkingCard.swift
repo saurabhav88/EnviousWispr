@@ -7,68 +7,122 @@ import SwiftUI
 // No live document, no queue, no text that changes on screen. The transcript appears once, at
 // Done.
 
-/// What the card says, derived from the coordinator's state on every render.
+/// What the card says, derived from the coordinator's state on every render: three rows, one per
+/// step the founder named (#2918, 2026-09-13: "each step should have its own progress bar"),
+/// each with its own bar and state. A finished step keeps a full bar and a check; the current
+/// step moves; a step not yet reached shows its empty track. Set-up work sits on the row it
+/// precedes ("Getting the engine ready" on Transcribing; "Preparing cleanup" and "Dividing it
+/// up to clean" on Cleaning), indeterminate, titled by the coordinator's phase.
 ///
 /// A pure value so the mapping is testable without a coordinator. `nil` means no run is
 /// showing (the six non-running states), which the wizard never renders on Working anyway:
 /// `stop()` moves the step to Done in the same synchronous call that sets `.stopped`.
 struct WorkingStepModel: Equatable {
-  enum Step: Equatable {
-    case preparing
-    case transcribing
-    case findingSpeakers
-    case cleaning(done: Int, total: Int)
+  enum Kind: CaseIterable, Equatable {
+    case transcribing, findingSpeakers, cleaning
+  }
+  enum RowState: Equatable { case pending, active, done }
+
+  struct Row: Equatable {
+    let kind: Kind
+    /// "Transcribing", "Transcribing 12 of 100 minutes", "Getting the engine ready",
+    /// "Finding who said what", "Cleaning section 3 of 14", "Preparing cleanup".
+    let title: String
+    let state: RowState
+    /// 0...1 for the bar. `nil` on an active row means no honest number exists: the track
+    /// carries the indeterminate sweep and the title carries the elapsed seconds (finding 1
+    /// of #2897 was a bar sitting at 0% for thirty seconds; the sweep is motion without a
+    /// false number). A done row is drawn full whatever its fraction.
+    let fraction: Double?
   }
 
-  let step: Step
-  /// "Preparing", "Transcribing", "Finding who said what", "Cleaning section 3 of 14".
-  let title: String
-  /// 0...1 for the bar, or `nil` when there is no honest number: the track is drawn alone,
-  /// with no fill, no percentage and no shimmer, because a bar sitting at 0% for thirty
-  /// seconds is what read as "stuck" (finding 1).
-  let fraction: Double?
+  let rows: [Row]
+  /// The current step, or nil when the run has no active row (never, while running).
+  var active: Row? { rows.first { $0.state == .active } }
+  /// The old one-line title, kept for the accessibility sentence and the tests: the active
+  /// row's title.
+  var title: String { active?.title ?? "" }
 
   /// The coordinator names these phases while `state` is `.transcribing`; each is set-up
-  /// work, not transcription (`FileImportCoordinator` sets them before the engine warms, before
-  /// a re-polish, and while the split runs).
-  static let preparingPhases: Set<String> = [
-    "Getting the engine ready", "Preparing cleanup", "Dividing it up to clean",
-  ]
+  /// work, not transcription. The first precedes transcribing, the other two precede cleaning.
+  static let enginePhase = "Getting the engine ready"
+  static let cleanupPreparingPhases: Set<String> = ["Preparing cleanup", "Dividing it up to clean"]
+  static let preparingPhases: Set<String> = cleanupPreparingPhases.union([enginePhase])
 
   /// The phase the coordinator names while the speaker step is awaited before cleanup
   /// (#2817 pipeline half). Read alongside `speakerStepState` so the card reads the same on
   /// the build that still starts the speaker task beside the split.
   static let speakerPhase = "Finding who said what"
 
-  /// Precedence: cleaning (a count exists) > finding who said what (the speaker pass is
-  /// running and nothing is being cleaned) > a preparing phase > transcribing. The engine name
-  /// is not on the card: the pinned footer and the Done chip already carry it.
+  /// "Transcribing 12 of 100 minutes" once a fraction exists, else the bare word. Minutes
+  /// are floored so the reached count never reads ahead of the total.
+  static func transcribingTitle(fraction: Double?, fileSeconds: Double) -> String {
+    guard let fraction, fileSeconds > 0 else { return "Transcribing" }
+    let total = max(1, Int((fileSeconds / 60).rounded()))
+    let reached = min(total, Int(fraction * fileSeconds / 60))
+    return "Transcribing \(reached) of \(total) minutes"
+  }
+
+  /// Precedence: cleaning (a count exists) > cleanup-preparing phases > finding who said what
+  /// (the speaker pass is running and nothing is being cleaned) > the engine phase >
+  /// transcribing. The engine name is not on the card: the pinned footer and the Done chip
+  /// already carry it.
   static func make(
     state: FileImportCoordinator.State, phase: String,
-    speakerStepState: FileImportCoordinator.SpeakerStepState
+    speakerStepState: FileImportCoordinator.SpeakerStepState,
+    transcribingFraction: Double? = nil, fileSeconds: Double = 0
   ) -> WorkingStepModel? {
+    func rows(activeKind: Kind, title: String, fraction: Double?) -> WorkingStepModel {
+      let order = Kind.allCases
+      let activeIndex = order.firstIndex(of: activeKind)!
+      return WorkingStepModel(rows: order.enumerated().map { index, kind in
+        if index < activeIndex {
+          return Row(kind: kind, title: Self.doneTitle(kind), state: .done, fraction: 1)
+        }
+        if index == activeIndex {
+          return Row(kind: kind, title: title, state: .active, fraction: fraction)
+        }
+        return Row(kind: kind, title: Self.doneTitle(kind), state: .pending, fraction: nil)
+      })
+    }
     switch state {
     case .transcribing:
+      if cleanupPreparingPhases.contains(phase) {
+        return rows(activeKind: .cleaning, title: phase, fraction: nil)
+      }
       if speakerStepState == .inProgress || phase == speakerPhase {
-        return WorkingStepModel(step: .findingSpeakers, title: speakerPhase, fraction: nil)
+        return rows(activeKind: .findingSpeakers, title: speakerPhase, fraction: nil)
       }
-      if preparingPhases.contains(phase) {
-        return WorkingStepModel(step: .preparing, title: "Preparing", fraction: nil)
+      if phase == enginePhase {
+        return rows(activeKind: .transcribing, title: enginePhase, fraction: nil)
       }
-      return WorkingStepModel(step: .transcribing, title: "Transcribing", fraction: nil)
+      let fraction = transcribingFraction.map { min(max($0, 0), 1) }
+      return rows(
+        activeKind: .transcribing,
+        title: transcribingTitle(fraction: fraction, fileSeconds: fileSeconds),
+        fraction: fraction)
     case .polishing(let done, let total):
       guard total > 0 else {
-        return WorkingStepModel(step: .preparing, title: "Preparing", fraction: nil)
+        return rows(activeKind: .cleaning, title: "Preparing cleanup", fraction: nil)
       }
       let completed = min(max(done, 0), total)
       // The CURRENT section, `min(done + 1, total)`, so "section 14 of 14" is the last one
       // being cleaned, never a 15th.
-      return WorkingStepModel(
-        step: .cleaning(done: completed, total: total),
+      return rows(
+        activeKind: .cleaning,
         title: "Cleaning section \(min(completed + 1, total)) of \(total)",
         fraction: Double(completed) / Double(total))
     case .idle, .reading, .ready, .finished, .rejected, .stopped:
       return nil
+    }
+  }
+
+  /// The resting title of a row that is done or not yet reached.
+  static func doneTitle(_ kind: Kind) -> String {
+    switch kind {
+    case .transcribing: return "Transcribing"
+    case .findingSpeakers: return speakerPhase
+    case .cleaning: return "Cleaning"
     }
   }
 }
@@ -101,6 +155,13 @@ enum ImportEstimateWording {
 struct SectionPace: Equatable {
   private var baseline: Int?
   private var landings: [(count: Int, at: Date)] = []
+  /// Landings (not units) needed before a figure is shown. Sections land one at a time, so
+  /// the count difference below is the count that matters there; the transcribing step
+  /// lands 30-second windows in audio seconds (#2918), where one landing would clear the
+  /// count difference at once, so that step asks for three landings.
+  let minimumLandings: Int
+
+  init(minimumLandings: Int = 1) { self.minimumLandings = minimumLandings }
 
   static let sectionsNeeded = 3
 
@@ -113,7 +174,7 @@ struct SectionPace: Equatable {
     }
     let last = landings.last?.count ?? baseline
     if sectionsDone < last {
-      self = SectionPace()
+      self = SectionPace(minimumLandings: minimumLandings)
       self.baseline = sectionsDone
       return
     }
@@ -127,7 +188,8 @@ struct SectionPace: Equatable {
   /// parts finishing between two renders); elapsed ÷ sections weights each by its share.
   func secondsPerSection() -> Double? {
     guard let first = landings.first, let last = landings.last,
-      last.count - first.count >= Self.sectionsNeeded
+      last.count - first.count >= Self.sectionsNeeded,
+      landings.count >= minimumLandings
     else { return nil }
     let seconds = last.at.timeIntervalSince(first.at)
     guard seconds > 0 else { return nil }
@@ -142,7 +204,7 @@ struct SectionPace: Equatable {
   }
 
   static func == (lhs: SectionPace, rhs: SectionPace) -> Bool {
-    lhs.baseline == rhs.baseline
+    lhs.minimumLandings == rhs.minimumLandings && lhs.baseline == rhs.baseline
       && lhs.landings.map(\.count) == rhs.landings.map(\.count)
       && lhs.landings.map(\.at) == rhs.landings.map(\.at)
   }
@@ -185,73 +247,156 @@ struct WorkingPulseMark: View {
   }
 }
 
-/// The card itself: mark · title and time left · bar · Stop.
+/// The card itself: mark · three step rows (title, detail, bar) · Stop.
 ///
 /// The Stop button is the wizard's own quiet button (`SettingsActionButton`, `.quiet`,
 /// rounded rect), the same treatment every other button on these six steps carries, and it
-/// stays a real button for VoiceOver; only the status half is read as one element.
+/// stays a real button for VoiceOver; each row is read as one element.
 struct TranscribeFileWorkingCard: View {
   let model: WorkingStepModel
+  /// "about 3 minutes left" for the active row when a pace exists, else nil.
   let remainingText: String?
+  /// When the active step started (the coordinator's `stepStartedAt`); the elapsed seconds
+  /// shown on an active row that has no fraction ("Finding who said what · 36 s").
+  let stepStartedAt: Date
   let onStop: () -> Void
 
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
   var body: some View {
-    HStack(spacing: 14) {
-      status
+    HStack(alignment: .top, spacing: 14) {
+      WorkingPulseMark(size: 28)
+        .padding(.top, 2)
+      VStack(alignment: .leading, spacing: 10) {
+        ForEach(model.rows, id: \.kind) { row in
+          StepRow(
+            row: row,
+            detail: row.state == .active ? remainingText : nil,
+            stepStartedAt: stepStartedAt,
+            showsSweep: WorkingPulseMark.showsPulse(reduceMotion: reduceMotion))
+        }
+      }
       SettingsActionButton(
         title: "Stop", isEnabled: true, emphasis: .quiet, shape: .roundedRect,
         size: .medium, systemImage: nil, action: onStop)
     }
   }
 
-  /// Mark, title, time left and the bar, read to a screen reader as one sentence: the title,
-  /// then the percent only when the fraction is known, then the time left only when known.
-  private var status: some View {
-    HStack(spacing: 14) {
-      WorkingPulseMark(size: 28)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(model.title)
-          .font(.system(size: 14, weight: .semibold))
-          .foregroundStyle(Color.stTextBody)
-        if let remainingText {
-          Text(remainingText)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-      }
-      .fixedSize(horizontal: true, vertical: false)
-      Spacer(minLength: 12)
-      bar
-        .frame(maxWidth: 220)
-    }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(accessibilityText)
+  /// "Finding who said what · 36 s": the elapsed seconds an active row with no honest
+  /// fraction shows beside its title, so a 36-second wait reads as work, not a hang.
+  static func elapsedText(since start: Date, now: Date) -> String {
+    let seconds = max(0, Int(now.timeIntervalSince(start)))
+    return "\(seconds) s"
   }
 
-  /// The one overall bar (finding 3: a per-section bar that resets reads as a loop). With no
-  /// honest number the track is drawn alone.
-  private var bar: some View {
-    GeometryReader { geo in
-      ZStack(alignment: .leading) {
-        Capsule().fill(Color.stAccentLight.opacity(0.6))
-        if let fraction = model.fraction {
-          Capsule()
-            .fill(
-              LinearGradient(
-                colors: [Color.stAccent, Color.stAccentSolid],
-                startPoint: .leading, endPoint: .trailing)
-            )
-            .frame(width: max(6, geo.size.width * fraction))
+  /// One row: title (plus elapsed seconds while indeterminate), the time left, the bar.
+  struct StepRow: View {
+    let row: WorkingStepModel.Row
+    let detail: String?
+    let stepStartedAt: Date
+    let showsSweep: Bool
+
+    private var indeterminate: Bool { row.state == .active && row.fraction == nil }
+
+    var body: some View {
+      TimelineView(.periodic(from: stepStartedAt, by: 1)) { timeline in
+        HStack(spacing: 12) {
+          VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+              Text(row.title)
+                .font(.system(size: 14, weight: row.state == .active ? .semibold : .regular))
+                .foregroundStyle(row.state == .pending ? Color.stTextSecondary : Color.stTextBody)
+              if indeterminate {
+                Text("· \(TranscribeFileWorkingCard.elapsedText(since: stepStartedAt, now: timeline.date))")
+                  .font(.stHelper)
+                  .foregroundStyle(Color.stTextSecondary)
+              }
+              if row.state == .done {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 12))
+                  .foregroundStyle(Color.stSuccess)
+              }
+            }
+            if let detail {
+              Text(detail)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextSecondary)
+            }
+          }
+          .fixedSize(horizontal: true, vertical: false)
+          Spacer(minLength: 12)
+          StepBar(fraction: row.state == .done ? 1 : row.fraction, sweeping: indeterminate && showsSweep)
+            .frame(maxWidth: 220)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(now: timeline.date))
       }
     }
-    .frame(height: 9)
+
+    func accessibilityText(now: Date) -> String {
+      var parts = [row.title]
+      switch row.state {
+      case .done: parts.append("done")
+      case .pending: parts.append("not started")
+      case .active:
+        if let fraction = row.fraction {
+          parts.append("\(Int(fraction * 100)) percent")
+        } else {
+          parts.append("in progress, \(TranscribeFileWorkingCard.elapsedText(since: stepStartedAt, now: now))")
+        }
+        if let detail { parts.append(detail) }
+      }
+      return parts.joined(separator: ", ")
+    }
   }
 
-  private var accessibilityText: String {
-    var parts = [model.title]
-    if let fraction = model.fraction { parts.append("\(Int(fraction * 100)) percent") }
-    if let remainingText { parts.append(remainingText) }
-    return parts.joined(separator: ", ")
+  /// A row's bar: the fill for a fraction, a full fill for a done row, an empty track for a
+  /// pending one, and for an active row with no honest number a sweep, a third of the track
+  /// gliding across once every 1.4 s (the pulse mark's own period). Under Reduce Motion the
+  /// track is drawn alone and the elapsed seconds beside the title carry the "still working".
+  struct StepBar: View {
+    let fraction: Double?
+    let sweeping: Bool
+
+    /// Where the sweep's leading edge sits, 0...1, for a time: one pass per 1.4 s, then wrap.
+    static func sweepOffset(at time: TimeInterval) -> Double {
+      let phase = (time / 1.4).truncatingRemainder(dividingBy: 1)
+      return phase < 0 ? phase + 1 : phase
+    }
+
+    var body: some View {
+      GeometryReader { geo in
+        ZStack(alignment: .leading) {
+          Capsule().fill(Color.stAccentLight.opacity(0.6))
+          if let fraction {
+            Capsule()
+              .fill(
+                LinearGradient(
+                  colors: [Color.stAccent, Color.stAccentSolid],
+                  startPoint: .leading, endPoint: .trailing)
+              )
+              .frame(width: max(6, geo.size.width * min(max(fraction, 0), 1)))
+          } else if sweeping {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+              let width = geo.size.width / 3
+              let travel = geo.size.width + width
+              let x = Self.sweepOffset(at: timeline.date.timeIntervalSinceReferenceDate) * travel - width
+              Capsule()
+                .fill(
+                  LinearGradient(
+                    colors: [Color.stAccent.opacity(0), Color.stAccent, Color.stAccent.opacity(0)],
+                    startPoint: .leading, endPoint: .trailing)
+                )
+                .frame(width: width)
+                .offset(x: x)
+            }
+            .clipShape(Capsule())
+          }
+        }
+      }
+      .frame(height: 9)
+    }
   }
 }
