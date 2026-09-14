@@ -374,4 +374,21 @@ struct WordTimingRangeMapperTests {
     #expect(bound2.map(\.range) == [0..<2, 2..<3])
     #expect(coverage2.timed == coverage2.total)
   }
+
+  /// A piece WITH words whose span holds no text run (it covers the space between two runs)
+  /// is skipped and the pieces after it still bind. Found by the #2920 night battery: the
+  /// earlier rows only had an empty-WORDS piece, which the loop skips before that guard.
+  @Test("a piece with words but no text run is skipped, and later pieces still bind")
+  func pieceWithWordsButNoRunIsSkipped() {
+    let text = "alpha beta"
+    let pieces = [
+      WordTimingRangeMapper.Piece(span: 0..<5, words: [("alpha", 0, 100)]),
+      WordTimingRangeMapper.Piece(span: 5..<6, words: [("ghost", 100, 150)]),
+      WordTimingRangeMapper.Piece(span: 6..<10, words: [("beta", 150, 300)]),
+    ]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1_000, pieces: pieces)
+    #expect(bound.map(\.startMs) == [0, 150])
+    #expect(coverage.timed == coverage.total)
+  }
 }
