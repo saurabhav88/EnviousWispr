@@ -182,14 +182,43 @@ struct PolishFailureReasonTests {
       PolishFailureReason.timedOut.composedMessage(provider: .openAI)
         == "AI cleanup skipped: OpenAI did not answer in time. Your original text was pasted unchanged."
     )
+    // #2884: the generic badRequest sentence now belongs to the non-cloud arms
+    // only; the cloud copy is pinned per provider in `badRequestNamesTheProvider`.
     #expect(
-      PolishFailureReason.badRequest.composedMessage(provider: .openAI)
+      PolishFailureReason.badRequest.composedMessage(provider: .ollama)
         == "AI polish failed: a configuration problem stopped it. Your original text was pasted unchanged."
     )
     #expect(
       PolishFailureReason.unknown.composedMessage(provider: .openAI)
         == "AI polish failed: an unexpected error stopped it. Your original text was pasted unchanged."
     )
+  }
+
+  // #2884: a production Gemini 400 was every time a picker-admitted model that
+  // cannot polish text. The copy names the provider and the fix for the three
+  // key-holding providers; the local and bundled arms keep the generic sentence.
+  @Test(
+    "badRequest names the provider and points at the model picker for cloud providers",
+    arguments: [
+      (LLMProvider.gemini, "Gemini"),
+      (.openAI, "OpenAI"),
+      (.claude, "Claude"),
+    ])
+  func badRequestNamesTheProvider(provider: LLMProvider, name: String) {
+    #expect(
+      PolishFailureReason.badRequest.composedMessage(provider: provider)
+        == "AI polish failed: \(name) rejected the request. Pick another model in Settings.")
+  }
+
+  @Test(
+    "badRequest keeps the generic sentence for every non-cloud provider",
+    arguments: [
+      LLMProvider.ollama, .appleIntelligence, .egOne, .s1Mini, .none,
+    ])
+  func badRequestStaysGenericOffCloud(provider: LLMProvider) {
+    #expect(
+      PolishFailureReason.badRequest.message(provider: provider)
+        == "a configuration problem stopped it. Your original text was pasted unchanged.")
   }
 
   @Test("composedMessage is exactly '<leadIn> <message>'")

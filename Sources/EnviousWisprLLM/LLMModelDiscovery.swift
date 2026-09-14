@@ -11,10 +11,14 @@ public struct LLMModelDiscovery: Sendable {
   public init() {}
 
   /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
-  private static let excludePatterns = [
+  /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
+  /// the native-audio Live models) that advertise `generateContent` and so pass
+  /// `fetchGeminiModels`, then reject a text polish request with 400. The OpenAI
+  /// branch's `isOpenAIChatCompletionCandidate` already skipped both.
+  static let excludePatterns = [
     "tts", "image", "robotics", "computer-use", "deep-research",
     "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
-    "lyria",
+    "lyria", "transcribe", "audio",
   ]
 
   /// Suffixes that indicate versioned duplicates (keep only the base model).
@@ -553,7 +557,9 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
-  private func filterModels(_ models: [(id: String, displayName: String)]) -> [(
+  /// `internal`, not `private`, so the pure exclusion decision is directly
+  /// testable (#2884) — same reasoning as `DiscoveryCandidate` above.
+  func filterModels(_ models: [(id: String, displayName: String)]) -> [(
     id: String, displayName: String
   )] {
     models.filter { model in
