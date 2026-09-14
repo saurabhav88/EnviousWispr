@@ -521,24 +521,30 @@ def cmd_run(args):
             print(f"INSTRUMENT: the door refused before starting: status={reply.get('status')} "
                   f"reason={reply.get('reason', '')}")
             return 2
-        others = peers()
-        if others:
-            listing = ", ".join(f"{p} {path}" for p, path in others.items())
-            print(f"INSTRUMENT: another EnviousWispr instance started during the run and shares app.log "
-                  f"({listing}); the terminal row cannot be attributed to this build")
-            return 2
         # The door posts its reply FIRST and schedules the matching log line in a Task after
         # (DebugImportDoor.postLive), and the stored row lands a beat before either. Poll the
-        # log for THIS request's terminal line, up to 10 s, before reading anything; a fixed
-        # settle read a slow logger as INSTRUMENT (cloud round 4).
+        # log for THIS request's terminal line, up to 10 s; a fixed settle read a slow logger
+        # as INSTRUMENT (cloud round 4). The snapshot that satisfies the poll is the one
+        # graded below: nothing written after it can reach the verdict.
         request_id = reply.get("request")
         deadline = time.monotonic() + 10
+        recent = []
         while time.monotonic() < deadline:
             recent = w.log_entries_since(mark)
             if any("[DebugImportDoor]" in l and f"request={request_id}" in l
                    and f"status={reply.get('status')}" in l for l in recent):
                 break
             time.sleep(0.25)
+        # Peer check AFTER the snapshot is taken: a peer that started at any point up to the
+        # snapshot is running now and is caught here; a peer that starts after the snapshot
+        # cannot have written into it (cloud rounds 3 and 5: a check before a read leaves the
+        # read's own window open; a check after the read closes it).
+        others = peers()
+        if others:
+            listing = ", ".join(f"{p} {path}" for p, path in others.items())
+            print(f"INSTRUMENT: another EnviousWispr instance started during the run and shares app.log "
+                  f"({listing}); the terminal row cannot be attributed to this build")
+            return 2
         history = reply.get("history")
         row_path = os.path.expanduser(f"~/Library/Application Support/EnviousWispr/transcripts/{history}.json") if history else None
         row = None
@@ -549,8 +555,7 @@ def cmd_run(args):
             except (OSError, ValueError) as e:
                 print(f"INSTRUMENT: the History row {history} could not be read: {e}")
                 return 2
-        exit_code, ev = fv.file_verdict(w.log_entries_since(mark), row, expect_door=True,
-                                        request=reply.get("request"))
+        exit_code, ev = fv.file_verdict(recent, row, expect_door=True, request=request_id)
         print(fv.format_verdict(ev))
         if ev.get("note"):
             print(("INSTRUMENT: " if exit_code == 2 else "") + ev["note"])
