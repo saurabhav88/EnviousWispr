@@ -168,4 +168,105 @@ struct WordTimingRangeMapperTests {
     #expect(bound.isEmpty)
     #expect(coverage.timed == 0 && coverage.total == 0)
   }
+
+  // MARK: - Piecewise binding (#2919)
+
+  /// The one-piece entry and the piecewise entry with one span are the same computation.
+  @Test("one piece spanning the whole text equals the whole-text map")
+  func onePieceEqualsWholeTextMap() {
+    let text = "the cat sat on the mat"
+    let words: [(word: String, startMs: Int?, endMs: Int?)] = [
+      ("the", 0, 100), ("cat", 100, 300), ("sat", 300, 500),
+      ("on", 500, 600), ("the", 600, 700), ("mat", 700, 900),
+    ]
+    let whole = WordTimingRangeMapper.map(text: text, audioDurationMs: 1000, words: words)
+    let piecewise = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1000,
+      pieces: [WordTimingRangeMapper.Piece(span: 0..<text.utf16.count, words: words)])
+    #expect(whole.words == piecewise.words)
+    #expect(whole.coverage == piecewise.coverage)
+  }
+
+  /// A token the engine split differently in ONE window ("don't" as "don" + "'t") must not
+  /// cost the other window a single timing. Whole-text binding on this input also binds the
+  /// first window (the LCS is exact below the cap); the piecewise row pins that the second
+  /// window's mismatch is confined to itself.
+  @Test("a split token in one window leaves the other window fully timed")
+  func splitTokenInOneWindowIsConfinedToIt() {
+    let first = "we left early"
+    let second = "they don't mind"
+    let text = first + " " + second
+    let secondStart = first.utf16.count + 1
+    let pieces = [
+      WordTimingRangeMapper.Piece(
+        span: 0..<first.utf16.count,
+        words: [("we", 0, 100), ("left", 100, 300), ("early", 300, 600)]),
+      WordTimingRangeMapper.Piece(
+        span: secondStart..<text.utf16.count,
+        words: [("they", 600, 700), ("don", 700, 800), ("'t", 800, 850), ("mind", 850, 1000)]),
+    ]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1000, pieces: pieces)
+    #expect(bound.map(\.word) == ["we", "left", "early", "they", "don't", "mind"])
+    #expect(bound.map(\.startMs) == [0, 100, 300, 600, nil, 850])
+    #expect(bound[4].range == secondStart + 5..<secondStart + 10)
+    #expect(coverage.timed == coverage.total - "don't".utf16.count)
+  }
+
+  /// The failure the founder hit (#2919): a transcript long enough that engine words × text
+  /// words passes the search cap. Whole-text binding gives up on the whole file once a single
+  /// token differs; piecewise binding never sees more than one window.
+  @Test("a long transcript with one split token stays timed when bound per window")
+  func longTranscriptStaysTimedPerWindow() {
+    let windowWords = 80
+    let windows = 40  // 3,200 words: 3,200² > forcedAlignmentSearchCap
+    var text = ""
+    var pieces: [WordTimingRangeMapper.Piece] = []
+    var wholeWords: [(word: String, startMs: Int?, endMs: Int?)] = []
+    var ms = 0
+    for w in 0..<windows {
+      var pieceWords: [(word: String, startMs: Int?, endMs: Int?)] = []
+      let start = text.utf16.count
+      for k in 0..<windowWords {
+        let token = "w\(w)x\(k)"
+        if !text.isEmpty { text += " " }
+        text += token
+        // One window carries the engine's own split of one token.
+        if w == 17, k == 3 {
+          pieceWords.append((token.dropLast(2).description, ms, ms + 5))
+          pieceWords.append((token.suffix(2).description, ms + 5, ms + 10))
+        } else {
+          pieceWords.append((token, ms, ms + 10))
+        }
+        ms += 10
+      }
+      wholeWords += pieceWords
+      pieces.append(WordTimingRangeMapper.Piece(span: start..<text.utf16.count, words: pieceWords))
+    }
+    #expect(
+      wholeWords.count * (windows * windowWords) > WordTimingRangeMapper.forcedAlignmentSearchCap)
+
+    let whole = WordTimingRangeMapper.map(text: text, audioDurationMs: ms, words: wholeWords)
+    #expect(whole.coverage.timed == 0, "the whole-text search gives up past the cap")
+
+    let piecewise = WordTimingRangeMapper.map(text: text, audioDurationMs: ms, pieces: pieces)
+    let untimed = piecewise.words.filter { $0.startMs == nil }
+    #expect(untimed.map(\.word) == ["w17x3"])
+    #expect(piecewise.coverage.timed == piecewise.coverage.total - "w17x3".utf16.count)
+  }
+
+  /// Text runs outside every span stay untimed; a window with no words times nothing.
+  @Test("runs outside every span and windows without words stay untimed")
+  func runsOutsideSpansStayUntimed() {
+    let text = "alpha beta gamma delta"
+    let pieces = [
+      WordTimingRangeMapper.Piece(span: 0..<5, words: [("alpha", 0, 100)]),
+      WordTimingRangeMapper.Piece(span: 6..<10, words: []),
+      WordTimingRangeMapper.Piece(span: 17..<22, words: [("delta", 300, 400)]),
+    ]
+    let (bound, coverage) = WordTimingRangeMapper.map(
+      text: text, audioDurationMs: 1000, pieces: pieces)
+    #expect(bound.map(\.startMs) == [0, nil, nil, 300])
+    #expect(coverage.timed == "alphadelta".utf16.count)
+  }
 }

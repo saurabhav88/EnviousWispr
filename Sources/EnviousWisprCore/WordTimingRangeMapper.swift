@@ -10,11 +10,27 @@ import Foundation
 public enum WordTimingRangeMapper {
 
   /// Above this many candidate (engine word × text word) pairs, the exact forced-alignment
-  /// search is skipped in favor of returning no bound words for the mismatched region: real
-  /// divergence between an engine's words and its own `text` is not expected at this pin (no
-  /// CTC rescoring is wired in `EnviousWisprASR`), so this only ever bounds the cost of an
-  /// unexpected future mismatch on a very long file, never the common case below.
+  /// search is skipped in favor of returning no bound words for the mismatched region. The
+  /// cap bounds the O(m × n) tables; it is never meant to decide a real file. #2919: WhisperKit's
+  /// words are its own tokens, which split differently from whitespace runs on a few words per
+  /// window, so the identity fast path fails and one 18,351-word file put the WHOLE transcript
+  /// (m × n ≈ 337 M) over this cap, leaving every word untimed and the speaker labels lost.
+  /// Callers with a natural seam (WhisperKit's one result per decode window) bind PER PIECE
+  /// through `map(text:audioDurationMs:pieces:)`, so a piece is a few hundred words and the
+  /// cap is out of reach; a whole-transcript call is the one-piece case.
   static let forcedAlignmentSearchCap = 4_000_000
+
+  /// One engine result's share of `text`: the UTF-16 span its words may bind into, and the
+  /// words the engine reported for it (#2919). Spans are ascending and non-overlapping; a
+  /// text run whose start falls in no span is untimed.
+  public struct Piece {
+    public let span: Range<Int>
+    public let words: [(word: String, startMs: Int?, endMs: Int?)]
+    public init(span: Range<Int>, words: [(word: String, startMs: Int?, endMs: Int?)]) {
+      self.span = span
+      self.words = words
+    }
+  }
 
   /// One text run with its UTF-16 range in the source `text`.
   struct TextWord {
@@ -27,34 +43,61 @@ public enum WordTimingRangeMapper {
     audioDurationMs: Int,
     words: [(word: String, startMs: Int?, endMs: Int?)]
   ) -> (words: [ASRWordTiming], coverage: ASRWordTimingCoverage) {
+    map(
+      text: text, audioDurationMs: audioDurationMs,
+      pieces: [Piece(span: 0..<text.utf16.count, words: words)])
+  }
+
+  /// Binds each piece's words into the text runs that start inside that piece's span, so the
+  /// forced alignment runs on one decode window at a time (#2919). Ranges, ordering and the
+  /// coverage arithmetic are exactly the one-piece `map`'s; only the search is partitioned.
+  public static func map(
+    text: String,
+    audioDurationMs: Int,
+    pieces: [Piece]
+  ) -> (words: [ASRWordTiming], coverage: ASRWordTimingCoverage) {
     let textWords = tokenize(text)
     let total = textWords.reduce(0) { $0 + ($1.range.upperBound - $1.range.lowerBound) }
 
     guard !textWords.isEmpty else {
       return ([], ASRWordTimingCoverage(timed: 0, total: 0))
     }
-    guard !words.isEmpty else {
-      let untimed = textWords.map {
-        ASRWordTiming(word: String($0.text), range: $0.range, startMs: nil, endMs: nil)
-      }
-      return (untimed, ASRWordTimingCoverage(timed: 0, total: total))
-    }
 
-    let engineWords = words.map { $0.word.trimmingCharacters(in: .whitespaces) }
-    let boundTextIndex = forcedBinding(engineWords: engineWords, textWords: textWords.map(\.text))
+    // Text word index → (piece index, engine word index within that piece). A text run
+    // belongs to the first piece whose span contains its start; runs before the first span or
+    // between spans belong to none and stay untimed.
+    var boundEngineWord: [Int: (piece: Int, word: Int)] = [:]
+    var pieceStart = 0
+    for (pieceIndex, piece) in pieces.enumerated() where !piece.words.isEmpty {
+      while pieceStart < textWords.count, textWords[pieceStart].range.lowerBound < piece.span.lowerBound {
+        pieceStart += 1
+      }
+      var pieceEnd = pieceStart
+      while pieceEnd < textWords.count, textWords[pieceEnd].range.lowerBound < piece.span.upperBound {
+        pieceEnd += 1
+      }
+      guard pieceEnd > pieceStart else { continue }
+      let engineWords = piece.words.map { $0.word.trimmingCharacters(in: .whitespaces) }
+      let bound = forcedBinding(
+        engineWords: engineWords, textWords: textWords[pieceStart..<pieceEnd].map(\.text))
+      for (localJ, i) in bound {
+        boundEngineWord[pieceStart + localJ] = (pieceIndex, i)
+      }
+      pieceStart = pieceEnd
+    }
 
     var result: [ASRWordTiming] = []
     result.reserveCapacity(textWords.count)
     var timed = 0
     for (j, textWord) in textWords.enumerated() {
       let length = textWord.range.upperBound - textWord.range.lowerBound
-      guard let i = boundTextIndex[j] else {
+      guard let hit = boundEngineWord[j] else {
         result.append(
           ASRWordTiming(
             word: String(textWord.text), range: textWord.range, startMs: nil, endMs: nil))
         continue
       }
-      let engineWord = words[i]
+      let engineWord = pieces[hit.piece].words[hit.word]
       if let startMs = engineWord.startMs, let endMs = engineWord.endMs,
         startMs >= 0, endMs >= startMs, endMs <= audioDurationMs
       {

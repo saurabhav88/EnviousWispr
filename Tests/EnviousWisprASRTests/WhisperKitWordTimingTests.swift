@@ -126,4 +126,42 @@ struct WhisperKitWordTimingTests {
     let coverage = try! #require(asrResult.wordTimingCoverage)
     #expect(coverage.timed == coverage.total)
   }
+
+  /// #2919: the founder's 120-minute WhisperKit file lost every speaker label because one
+  /// window's words differed from the whitespace runs of its text and the whole-file forced
+  /// alignment gave up past its cap. Words now bind per decode window; a mismatch in one
+  /// window cannot untime another.
+  @Test("a split token in one window keeps the other windows timed")
+  func splitTokenInOneWindowKeepsOthersTimed() {
+    let first = TranscriptionSegment(
+      start: 0, end: 0.6, text: "we left early",
+      words: [
+        WordTiming(word: " we", tokens: [], start: 0, end: 0.1, probability: 1),
+        WordTiming(word: " left", tokens: [], start: 0.1, end: 0.3, probability: 1),
+        WordTiming(word: " early", tokens: [], start: 0.3, end: 0.6, probability: 1),
+      ])
+    let second = TranscriptionSegment(
+      start: 0.6, end: 1.0, text: "they don't mind",
+      words: [
+        WordTiming(word: " they", tokens: [], start: 0.6, end: 0.7, probability: 1),
+        WordTiming(word: " don", tokens: [], start: 0.7, end: 0.8, probability: 1),
+        WordTiming(word: "'t", tokens: [], start: 0.8, end: 0.85, probability: 1),
+        WordTiming(word: " mind", tokens: [], start: 0.85, end: 1.0, probability: 1),
+      ])
+    let results = [
+      makeResult(segments: [first], text: " we left early"),
+      makeResult(segments: [second], text: " they don't mind"),
+    ]
+    let asrResult = WhisperKitBackend.mapResults(
+      results, processingTime: 1, enableTimestamps: true, audioDurationMs: 1000)
+    #expect(asrResult.text == "we left early  they don't mind")
+    let bound = try! #require(asrResult.wordTimings)
+    #expect(bound.map(\.word) == ["we", "left", "early", "they", "don't", "mind"])
+    #expect(bound.map(\.startMs) == [0, 100, 300, 600, nil, 850])
+    // The ranges index the TRIMMED joined text: "they" starts after "we left early" + two
+    // spaces (the join plus the second result's own leading space).
+    #expect(bound[3].range == 15..<19)
+    let coverage = try! #require(asrResult.wordTimingCoverage)
+    #expect(coverage.timed == coverage.total - "don't".utf16.count)
+  }
 }

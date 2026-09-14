@@ -2095,6 +2095,15 @@ final class FileImportCoordinator {
     else {
       pendingSpeakerResult = SpeakerStepResult(
         analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
+      // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
+      // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
+      // Logged AFTER the assignment, like the success path: an await between the staleness
+      // guard above and the assignment would let a replaced document's failure land on the
+      // next one (found by Codex).
+      let coverage = retainedWordTimingCoverage
+      await AppLogger.shared.log(
+        "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
+        level: .info, category: "FileImportCoordinator")
       return nil
     }
     return (assembledTurns, labeledCount)

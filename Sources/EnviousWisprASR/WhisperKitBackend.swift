@@ -776,7 +776,19 @@ public actor WhisperKitBackend: ASRBackend {
   )
     -> ASRResult
   {
-    let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    // The joined text and, per result, the UTF-16 span its text occupies in it (#2919): each
+    // decode window's words bind only inside its own span, so the forced alignment never sees
+    // the whole file at once. Kept in one place with the join so the spans cannot drift from
+    // the text they index.
+    let pieceTexts = results.map(\.text)
+    let joined = pieceTexts.joined(separator: " ")
+    // The same set `trimmingCharacters(in: .whitespaces)` removes below, so the spans index
+    // the trimmed text exactly.
+    let leadingTrim =
+      joined.utf16.count
+      - joined.drop(while: { $0.unicodeScalars.allSatisfy(CharacterSet.whitespaces.contains) })
+        .utf16.count
+    let text = joined.trimmingCharacters(in: .whitespaces)
     let language = results.first?.language
 
     let duration: TimeInterval =
@@ -793,20 +805,29 @@ public actor WhisperKitBackend: ASRBackend {
     var wordTimings: [ASRWordTiming]?
     var wordTimingCoverage: ASRWordTimingCoverage?
     if enableTimestamps {
-      let segments: [TranscriptionSegment] = results.flatMap(\.segments)
-      let rawWords: [WordTiming] = segments.flatMap { $0.words ?? [] }
-      var words: [(word: String, startMs: Int?, endMs: Int?)] = []
-      words.reserveCapacity(rawWords.count)
-      for rawWord in rawWords {
-        // `Int(exactly:)`, never the trapping `Int(_:)`: a non-finite or out-of-range
-        // engine time (seen from a vendor edge case, never assumed impossible) becomes
-        // `nil` here, which the mapper already treats as an untimed span — never a crash.
-        let startMs = Int(exactly: (rawWord.start * 1000).rounded())
-        let endMs = Int(exactly: (rawWord.end * 1000).rounded())
-        words.append((word: rawWord.word, startMs: startMs, endMs: endMs))
+      var pieces: [WordTimingRangeMapper.Piece] = []
+      pieces.reserveCapacity(results.count)
+      var cursor = 0
+      for (result, pieceText) in zip(results, pieceTexts) {
+        let length = pieceText.utf16.count
+        let lower = max(0, cursor - leadingTrim)
+        let upper = max(lower, cursor + length - leadingTrim)
+        cursor += length + 1  // the joining space
+        let rawWords: [WordTiming] = result.segments.flatMap { $0.words ?? [] }
+        var words: [(word: String, startMs: Int?, endMs: Int?)] = []
+        words.reserveCapacity(rawWords.count)
+        for rawWord in rawWords {
+          // `Int(exactly:)`, never the trapping `Int(_:)`: a non-finite or out-of-range
+          // engine time (seen from a vendor edge case, never assumed impossible) becomes
+          // `nil` here, which the mapper already treats as an untimed span — never a crash.
+          let startMs = Int(exactly: (rawWord.start * 1000).rounded())
+          let endMs = Int(exactly: (rawWord.end * 1000).rounded())
+          words.append((word: rawWord.word, startMs: startMs, endMs: endMs))
+        }
+        pieces.append(WordTimingRangeMapper.Piece(span: lower..<upper, words: words))
       }
       let mapped = WordTimingRangeMapper.map(
-        text: text, audioDurationMs: audioDurationMs, words: words)
+        text: text, audioDurationMs: audioDurationMs, pieces: pieces)
       wordTimings = mapped.words
       wordTimingCoverage = mapped.coverage
     }
