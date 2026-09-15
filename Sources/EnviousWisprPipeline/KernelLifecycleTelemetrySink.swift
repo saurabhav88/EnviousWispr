@@ -968,15 +968,17 @@ final class KernelLifecycleTelemetrySink {
         .audioCaptureFailed, "recording",
         captureFailureExtra(error: error, failureMode: "thrown_start"))
     case .noMicrophoneFound:
-      // #1558: no usable input device on the toggle/menu start path. Keeps the
-      // `audio_capture_failed` cluster populated (distinct `failureMode`) so the
-      // held-release drop can still be watched post-ship.
+      // #2968: no usable input device is the user's hardware, not our defect,
+      // the same posture as `.permissionDenied` below. Countable in PostHog
+      // (`dictation.terminal` / `pipeline.failed` carry `no_microphone_found`)
+      // and present as Sentry context; never an alerting handled-error event.
+      // (#1558 kept it alerting to watch the held-release drop post-ship; that
+      // watch closed 2026-07-15.)
       let error =
         telemetryState.captureFailureError
         ?? KernelFallbackSentryError.noMicrophoneFound
-      emitCaptureError(
-        error,
-        .audioCaptureFailed, "recording",
+      breadcrumb(
+        "recording", "No microphone found",
         captureFailureExtra(error: error, failureMode: "no_microphone_found"))
     case .asrEmpty:
       // #1920: UNREACHABLE — `RecordingFailureReason.asrEmpty` has no production
