@@ -650,8 +650,8 @@ let project = Project(
         // #2108: the preview-engine tests import the adapter directly. Xcode
         // test targets need every direct import as a declared edge (#1174).
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
-        // HelperObservabilityConfigTests imports the module directly; Xcode test
-        // targets need every direct import as a declared edge (#1174).
+        // SentryEventSanitizerTests / TelemetryJoinKeyTests import the module
+        // directly; Xcode test targets need every direct import as a declared edge (#1174).
         .target(name: "EnviousWisprObservabilityCore"),
         // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
         // ParakeetModelLoadSentryErrorTests import this directly.
