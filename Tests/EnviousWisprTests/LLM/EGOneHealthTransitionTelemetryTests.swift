@@ -69,10 +69,8 @@ import Testing
       recorded.events == [.healthChanged(from: "yellow", to: "red", reason: "download_required")])
   }
 
-  @Test(
-    "a reason change inside one colour does not emit; a colour change does, carrying the new reason"
-  )
-  func colourChangeIsTheTransition() throws {
+  @Test("only the three suppressed reasons stay silent within one colour")
+  func sameColourSuppressionIsSelective() throws {
     let (runtime, recorded, cleanup) = try makeRuntime()
     defer { cleanup() }
 
