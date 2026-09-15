@@ -380,7 +380,7 @@ public final class TelemetryService {
 
   // MARK: - Escape Recovery (#2087)
   //
-  // Five take-keyed, content-free events. They exist because
+  // Take-keyed, content-free events. They exist because
   // `dictation.canceled` deliberately keeps its current meaning and emission
   // point: redefining a long-running production series from "requested" to
   // "actually discarded" would silently rewrite externally saved PostHog
@@ -1315,7 +1315,7 @@ public final class TelemetryService {
 
   /// A dictation ENDED, and this is what happened to it.
   ///
-  /// `result` is one of the seven terminal labels the app already uses
+  /// `result` is one of the terminal labels the app already uses
   /// internally; `reason` is a `TerminalNoticeReason` raw value, present only
   /// when `result` is `failed`. Neither vocabulary is invented here — both ship
   /// today, which is the whole point (founder 2026-07-31: "the backend system
@@ -1361,8 +1361,8 @@ public final class TelemetryService {
     // #2087: ADDITIVE and defaulted, so every existing call site and every
     // existing query keeps working. An Escape Recovery session concludes
     // `.completed`, so without this the ordinary terminal row would report it as
-    // a normal dictation; minting a ninth `result` label would instead break the
-    // eight-label vocabulary every existing chart reads.
+    // a normal dictation; minting another `result` label would instead change
+    // the vocabulary every existing chart reads.
     deliveryDisposition: String? = nil,
     // #2184: ADDITIVE and defaulted. All four omit when nil, and nil is the
     // correct reading rather than a gap — a take that concluded before the
@@ -2539,9 +2539,9 @@ public final class TelemetryService {
   /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921,
   /// #1980).
   ///
-  /// A separate value rather than eight more parameters so the projection has
+  /// A separate value rather than individual parameters so the projection has
   /// one owner and one test surface: `paste.completed` is emitted from a
-  /// metrics projection, and eight loose optionals threaded through it is how
+  /// metrics projection, and loose optionals threaded through it is how
   /// one of them eventually gets dropped without any test noticing. #1921 and
   /// #1980 each added two of them, which is exactly the growth this shape was
   /// chosen to absorb.
@@ -2749,7 +2749,7 @@ public final class TelemetryService {
 
   /// Telemetry Bible Phase 4 (#1173): `config` carries the comprehensive
   /// per-setting projection block (all OTHER user-facing settings, privacy-
-  /// projected as low-cardinality strings — see `SettingsProjection`). The ten
+  /// projected as low-cardinality strings — see `SettingsProjection`). The
   /// pre-existing fields stay byte-identical (Phase 0/3 contract); `config` adds
   /// the rest as flat `properties` keys so the holistic per-user config can be
   /// reconstructed query-side from this baseline overlaid with `settings.changed`
@@ -3308,7 +3308,7 @@ public final class TelemetryService {
 
   // MARK: - File import turn labels: rename, retry, displayed (#2811, phase 4 of #2807)
 
-  /// Three sibling events under the `file_import_turns_` prefix, never new fields on
+  /// Sibling events under the `file_import_turns_` prefix, never new fields on
   /// `file_import_turns` itself: that event fires exactly once per import from the storage
   /// pass, before any screen draws a turn, so a per-attempt or render-time fact cannot ride
   /// on it without inflating every count of it (plan §3e, chunk 4 correction). Shape only,
@@ -3445,8 +3445,8 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("update.relocation_failed", properties: props)
   }
 
-  /// A usable destination copy was OBSERVED. Two legitimate emitters, because
-  /// there are two successful routes: the healthy child after its own health
+  /// A usable destination copy was OBSERVED. Legitimate emission routes include
+  /// the healthy child after its own health
   /// check, and the parent after an `.existingRunning` activation, which
   /// launches no child at all (#2006 §3.4a).
   public func updateRelocationCompleted(
