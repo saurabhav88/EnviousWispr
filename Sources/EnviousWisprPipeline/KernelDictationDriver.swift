@@ -633,7 +633,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           let classified: any Error = ModelLoadWatchdog.WedgeError()
           TelemetryService.shared.coldStartWarmupFailed(
             engine: engine, reason: reason.telemetryToken,
-            error: String(describing: classified))
+            error: SentryBreadcrumb.structuredDescriptor(classified))
           if reason == .launch {
             TelemetryService.shared.launchModelPreloadCompleted(
               backend: engine, result: "failed", durationMs: ms)
@@ -657,7 +657,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           // path actually resume; before #1388 it hung with no outcome).
           TelemetryService.shared.coldStartWarmupFailed(
             engine: engine, reason: reason.telemetryToken,
-            error: String(describing: error))
+            error: SentryBreadcrumb.structuredDescriptor(error))
           if reason == .launch {
             TelemetryService.shared.launchModelPreloadCompleted(
               backend: engine, result: "failed", durationMs: ms)

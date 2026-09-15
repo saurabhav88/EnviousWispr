@@ -1887,7 +1887,9 @@ public final class TelemetryService {
   }
 
   /// Cold-boot warm-up failed — the engine stays not-ready and the next press
-  /// re-kicks it. `error` is the error's description (no audio/text).
+  /// re-kicks it. `error` is `SentryBreadcrumb.structuredDescriptor` (`Domain#code`,
+  /// #2965); before that release it was `String(describing:)`, which the sanitizer
+  /// blanked on half the rows. Split any trend on `error` at that release.
   public func coldStartWarmupFailed(engine: String, reason: String, error: String) {
     PostHogSDK.shared.capture(
       "coldstart.warmup_failed",

@@ -129,14 +129,39 @@ public enum SentryEventSanitizer {
     )
   }
 
+  /// Keys whose String value is content-free BY CONSTRUCTION and would otherwise
+  /// trip a heuristic below (#2965). Each is named by what produces it, so a
+  /// reader can check the value cannot carry user text:
+  /// - `trace_id`, `span_id`, `parent_span_id`: Sentry SDK trace context, 32/16
+  ///   hex. Blanking `trace_id` made the server discard the value and record two
+  ///   `invalid_data` ingestion errors on EVERY event.
+  /// - `kernel_version`: Sentry SDK OS context, the Darwin kernel banner (>100
+  ///   chars).
+  /// - `device_app_hash`: Sentry SDK app context, a 40-hex hash; the `app.device`
+  ///   tag Sentry derives from it arrived `[REDACTED]`.
+  /// - `revision`: the model delivery manifest's git SHA
+  ///   (`ModelDeliveryTelemetryBridge`), a 40-hex value on ~5,000 PostHog rows a
+  ///   month.
+  /// The exemption is by KEY only and only for a String value; a nested container
+  /// under one of these keys is still walked. A future emitter that reuses one of
+  /// these names for free text gets no scrubbing, so the names stay this specific.
+  public static let contentFreeKeys: Set<String> = [
+    "trace_id", "span_id", "parent_span_id", "kernel_version", "device_app_hash", "revision",
+  ]
+
   /// Redact every String value in a `[String: Any]` dictionary recursively,
   /// leaving non-string scalar values untouched. Shared by Sentry beforeSend redaction
   /// of `event.extra`, `breadcrumb.data`, `event.context`, and
-  /// `exception.mechanism.data`.
+  /// `exception.mechanism.data`, and by the PostHog property bag. Key-aware: a
+  /// String under a `contentFreeKeys` name passes through verbatim.
   public static func redactDict(_ input: [String: Any]) -> [String: Any] {
     var output: [String: Any] = [:]
     for (key, value) in input {
-      output[key] = redactValue(value)
+      if contentFreeKeys.contains(key), let str = value as? String {
+        output[key] = str
+      } else {
+        output[key] = redactValue(value)
+      }
     }
     return output
   }
@@ -158,14 +183,32 @@ public enum SentryEventSanitizer {
   /// - Long strings (> 100 chars) that are not URLs (likely transcript content)
   /// - API key patterns: sk-*, phc_*, sntrys_*, key_*, or >= 32 contiguous hex chars
   /// - Email-like patterns
-  /// Returns the original string if it matches no pattern, or `[REDACTED]` if it does.
-  /// Never throws — any regex failure is silently ignored and the original value returned.
-  public static func redactString(_ input: String) -> String {
+  /// Returns `[REDACTED]` if EITHER the raw input or its username-scrubbed form
+  /// matches a pattern, else the scrubbed form (#2965). Both forms are judged
+  /// because the scrub changes the length: a short username grows to
+  /// `[REDACTED]` and a long one shrinks, and either direction could flip the
+  /// length or hex verdict on its own. Judging both keeps every pre-#2965
+  /// redaction and keeps the function idempotent (a second pass sees an
+  /// already-scrubbed string whose two forms are identical). The scrub exists
+  /// because the frame/debug-image scrub covers only the native-crash surfaces,
+  /// and a short `String(describing:)` in an extra or a PostHog property can
+  /// carry a home path.
+  /// Never throws — any regex failure is silently ignored.
+  public static func redactString(_ raw: String) -> String {
+    let scrubbed = redactUserPath(raw)
+    if matchesDenylist(raw) || matchesDenylist(scrubbed) {
+      return "[REDACTED]"
+    }
+    return scrubbed
+  }
+
+  /// The pattern set behind `redactString`; pure, no rewriting.
+  private static func matchesDenylist(_ input: String) -> Bool {
     // Long non-URL strings (transcript content heuristic)
     if input.count > 100 {
       let lower = input.lowercased()
       if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
-        return "[REDACTED]"
+        return true
       }
     }
 
@@ -173,7 +216,7 @@ public enum SentryEventSanitizer {
     let apiKeyPrefixes = ["sk-", "phc_", "sntrys_", "key_"]
     for prefix in apiKeyPrefixes {
       if input.lowercased().hasPrefix(prefix) && input.count >= 20 {
-        return "[REDACTED]"
+        return true
       }
     }
 
@@ -181,7 +224,7 @@ public enum SentryEventSanitizer {
     if let hexRange = input.range(of: "[0-9a-fA-F]{32,}", options: .regularExpression),
       hexRange == input.startIndex..<input.endIndex || input.count <= input[hexRange].count + 8
     {
-      return "[REDACTED]"
+      return true
     }
 
     // Email pattern: something@something.something
@@ -189,9 +232,9 @@ public enum SentryEventSanitizer {
       of: #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#,
       options: .regularExpression) != nil
     {
-      return "[REDACTED]"
+      return true
     }
 
-    return input
+    return false
   }
 }
