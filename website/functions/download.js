@@ -1,13 +1,22 @@
 // Cloudflare Pages Function — the /download doorway.
-// Records where an OFF-SITE download came from (server-side, ad-blocker-proof),
-// then 302-redirects to the latest GitHub .dmg.
+// Records where a download came from (server-side, ad-blocker-proof), then
+// 302-redirects to the latest GitHub .dmg.
 //
 // HEART PATH = the redirect. It ALWAYS happens, even if telemetry throws.
 // Telemetry is a fire-and-forget limb (ctx.waitUntil + swallowed errors).
 //
-// Plan: docs/feature-requests/plan-2026-06-29-download-attribution.md (§3, §3d).
-// On-site download buttons keep their own download_clicked event; this doorway is
-// ONLY for off-site owned links (README, directories, profile bios, social posts).
+// Plan: docs/feature-requests/plan-2026-06-29-download-attribution.md (§3, §3d)
+// for the off-site buckets; #2953 for the on-site path.
+//
+// Since #2953 EVERY download passes through here. Off-site owned links (README,
+// directories, profile bios, social posts) carry ?source=<bucket>; every on-site
+// button carries ?source=onsite. An on-site click ALSO fires the browser's
+// download_clicked event, so consumers count the click and treat the on-site
+// redirect as its server-side twin (workers/shared/download-intent.js). What the
+// twin adds that the click cannot: it fires even when the tracker never loaded,
+// it carries the real IP for country, and when the visitor's first-party
+// PostHog cookie is present it carries the SAME distinct_id and session id as
+// the page views, so a download joins the visit that produced it.
 
 const DMG_URL =
   "https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg";
@@ -23,6 +32,7 @@ const KNOWN_BUCKETS = new Set([
   "linkedin", "reddit", "x", "youtube", "medium", "facebook", "hackernews",
   "producthunt", "discord", "ai_assistant", "newsletter",
   "direct_or_dark", "unknown_referrer", "bot_filtered",
+  "onsite", // #2953: every on-site button; the click's server-side twin, never a second intent
 ]);
 
 // Link-preview scanners, crawlers, and non-browser agents. GET hits from these are
@@ -43,6 +53,64 @@ const BOT_UA =
 // Exported for unit testing the bot heuristic without the Cloudflare runtime.
 export function isLikelyBot(ua) {
   return BOT_UA.test(ua || "");
+}
+
+// PostHog's browser SDK persists `{distinct_id, $sesid: [lastActivityMs,
+// sessionId, startMs], ...}` as encodeURIComponent(JSON) in the first-party
+// cookie `ph_<project key>_posthog` (posthog-js storage.ts / sessionid.ts).
+// A same-origin request to /download carries it, so the doorway can stamp the
+// redirect with the visitor and session the page views already use (#2953).
+//
+// The cookie is client-writable, so every value is treated as an opaque id:
+// bounded in length, never branched on, never logged. Identity and session are
+// independent: a visitor whose session idled out still keeps their distinct id;
+// the session id is dropped when its tuple is missing, malformed, idle for more
+// than the SDK's 30-minute timeout, or older than its 24-hour ceiling. Any
+// failure at all returns null and the caller falls back to the anonymous id.
+const SESSION_IDLE_MS = 30 * 60_000;
+const SESSION_MAX_MS = 24 * 60 * 60_000;
+const COOKIE_MAX_LENGTH = 4096;
+const ID_MAX_LENGTH = 256;
+
+export function identityFromCookie(cookieHeader, key, nowMs) {
+  try {
+    const prefix = `ph_${key}_posthog=`;
+    const entry = (cookieHeader || "")
+      .split(";")
+      .map((v) => v.trim())
+      .find((v) => v.startsWith(prefix));
+    if (!entry) return null;
+    const raw = entry.slice(prefix.length);
+    if (raw.length === 0 || raw.length > COOKIE_MAX_LENGTH) return null;
+    const value = JSON.parse(decodeURIComponent(raw));
+    const validId = (v) => typeof v === "string" && v.length > 0 && v.length <= ID_MAX_LENGTH;
+    if (!validId(value?.distinct_id)) return null;
+    const s = value.$sesid;
+    const start = s?.[2] ?? s?.[0];
+    const validTime = (v) => Number.isFinite(v) && v > 0;
+    const validSession =
+      Array.isArray(s) &&
+      validId(s[1]) &&
+      validTime(nowMs) &&
+      validTime(s[0]) &&
+      validTime(start) &&
+      Math.abs(nowMs - s[0]) <= SESSION_IDLE_MS &&
+      Math.abs(nowMs - start) <= SESSION_MAX_MS;
+    return { distinctId: value.distinct_id, sessionId: validSession ? s[1] : null };
+  } catch {
+    return null;
+  }
+}
+
+// The page a same-origin click came from, as a pathname, so a session can put
+// the redirect beside the browser's download_clicked (whose `page` is
+// window.location.pathname). null when there is no usable Referer.
+export function pageFromReferer(referer) {
+  try {
+    return referer ? new URL(referer).pathname : null;
+  } catch {
+    return null;
+  }
 }
 
 function refHost(referer) {
@@ -129,10 +197,15 @@ export async function onRequest(context) {
       referrerHost,
     });
 
+    // #2953: the visitor's own id and session when the first-party cookie is
+    // present; the anonymous fallback otherwise. Profile processing follows the
+    // identity: an anonymous fallback must never create a person.
+    const identity = identityFromCookie(request.headers.get("Cookie"), POSTHOG_PUBLIC_KEY, Date.now());
+
     const event = {
       api_key: POSTHOG_PUBLIC_KEY,
       event: "download_redirect",
-      distinct_id: "anon-" + crypto.randomUUID(),
+      distinct_id: identity ? identity.distinctId : "anon-" + crypto.randomUUID(),
       properties: {
         app: "enviouswispr",
         source: explicit || null,
@@ -147,8 +220,12 @@ export async function onRequest(context) {
         $referrer: referer || "$direct",
         $referring_domain: referrerHost || "$direct",
         $current_url: url.toString(),
+        page: pageFromReferer(referer), // #2953: joins the browser's download_clicked.page
         $ip: request.headers.get("CF-Connecting-IP") || undefined, // real user IP for GeoIP, not CF egress
-        $process_person_profile: false, // anonymous; matches our identified_only posture
+        // #2953: attach to the visitor's person when we have their id (the site
+        // runs person_profiles:'always'); never mint a person for an anon hit.
+        $process_person_profile: Boolean(identity),
+        ...(identity?.sessionId ? { $session_id: identity.sessionId } : {}),
       },
     };
 

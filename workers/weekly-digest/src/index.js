@@ -42,6 +42,7 @@ import {
   windowClause,
 } from "../../shared/posthog.js";
 import { deliverReport } from "../../shared/discord.js";
+import { DOWNLOAD_INTENT_SQL, OFFSITE_REDIRECT_SQL } from "../../shared/download-intent.js";
 import {
   fetchSentrySection,
   formatSentrySection,
@@ -436,9 +437,11 @@ export function websiteSql(win) {
  * doorway worker emits it server-side. A host filter here would silently drop
  * every off-site redirect. */
 export function downloadsSql(win) {
+  // The intent predicate is owned by workers/shared/download-intent.js (#2953):
+  // one on-site click now produces a client event AND an on-site redirect, and
+  // only the shared rule knows to count that once.
   return `SELECT
-      countIf(event = 'download_clicked'
-              OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '')) AS intents,
+      countIf(${DOWNLOAD_INTENT_SQL}) AS intents,
       countIf(event = 'download_redirect'
               AND coalesce(properties.excluded_reason, '') != '') AS bots_excluded
     FROM events
@@ -452,7 +455,7 @@ export function downloadsSql(win) {
 export function downloadSourcesSql(win) {
   return `SELECT properties.source_bucket AS bucket, count() AS n
     FROM events
-    WHERE event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND ${win}
+    WHERE ${OFFSITE_REDIRECT_SQL} AND ${win}
     GROUP BY bucket
     ORDER BY n DESC
     LIMIT 8`;

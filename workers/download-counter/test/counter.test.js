@@ -143,6 +143,16 @@ test("off-site download_redirect with non-empty excludedReason is excluded", asy
   assert.equal(storage.map.get("counter"), undefined);
 });
 
+test("an on-site download_redirect (source_bucket=onsite) is excluded: the client click already counted it (#2953)", async () => {
+  const { counter, storage } = makeCounter();
+  const res = await counter.fetch(
+    countRequest({ eventId: "evt-onsite", event: "download_redirect", excludedReason: "", ip: "5.6.7.8", sourceBucket: "onsite" }),
+  );
+  const body = await res.json();
+  assert.deepEqual(body, { counted: false, reason: "excluded" });
+  assert.equal(storage.map.get("counter"), undefined);
+});
+
 test("off-site download_redirect with empty excludedReason qualifies", async () => {
   const { counter } = makeCounter();
   const mock = mockFetch(() => new Response(null, { status: 200 }));

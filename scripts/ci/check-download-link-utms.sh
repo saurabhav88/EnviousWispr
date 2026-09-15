@@ -24,9 +24,14 @@
 # are a finite enumerable space the parser handles in one pass, where a substring
 # regex leaks one new shape per review round.
 #
-# On-site download BUTTONS in Astro (Nav/Footer/hero/compare CTAs) deliberately
-# keep their raw .dmg href + data-download-source attribute; the page JS fires
-# download_clicked on click. They are out of scope here by design (plan §2.1).
+# On-site download BUTTONS in Astro (Nav/Footer/hero/compare CTAs) point at the
+# on-site doorway `/download?source=onsite` since #2953 (website/src/data/
+# site-navigation.js `downloadUrl` and the compare-page CTAs), keeping their
+# data-download-source attribute; the page JS still fires download_clicked on
+# click, and the doorway tags the server-side twin `onsite` so consumers count
+# it once (workers/shared/download-intent.js). Astro files are outside this
+# guard's directories by design (plan §2.1); rule (b) below is about blog
+# PROSE, which keeps pointing at /#download.
 #
 # Accepted scope (deliberately NOT enforced — these are not realistic authoring
 # mistakes in our own tracked files, and covering them needs a real Markdown/URL
