@@ -1615,12 +1615,18 @@ public final class TelemetryService {
       "input_mode": inputMode,
       "asr_backend": asrBackend,
       "filler_removal": fillerRemoval,
-      "e2e_seconds": String(format: "%.3f", e2eSeconds),
+      // #2970: the four `*_seconds` on this event travel as Double, the same type
+      // as `$value`. They were `String(format: "%.3f")`, which typed the PostHog
+      // property as String on first sight, so the insight builder offered no
+      // numeric aggregation and every HogQL reader wrapped it in `toFloat`
+      // (`toFloat` accepts a number, so those readers keep working across the
+      // release boundary). Split any trend on the raw property at that release.
+      "e2e_seconds": e2eSeconds,
       "$value": e2eSeconds,
     ]
     // #1060: how long the user actually spoke (distinct from e2e processing time)
     // + why the recording stopped. Metadata only (telemetry-privacy-boundary).
-    if let rec = recordingSeconds { props["recording_seconds"] = String(format: "%.3f", rec) }
+    if let rec = recordingSeconds { props["recording_seconds"] = rec }
     if let sr = stopReason { props["stop_reason"] = sr }
     // #1408: which interruption cut this dictation short. Present only when the
     // recording was salvaged after the mic died or the duration cap fired.
@@ -1648,8 +1654,8 @@ public final class TelemetryService {
     if let p = llmProvider { props["llm_provider"] = p }
     if let a = targetApp { props["target_app"] = a }
     if let pr = pasteResult { props["paste_result"] = pr }
-    if let asr = asrSeconds { props["asr_seconds"] = String(format: "%.3f", asr) }
-    if let llm = llmSeconds { props["llm_seconds"] = String(format: "%.3f", llm) }
+    if let asr = asrSeconds { props["asr_seconds"] = asr }
+    if let llm = llmSeconds { props["llm_seconds"] = llm }
     // #145: deterministic ITN facts (metadata only — `telemetry-privacy-boundary`).
     if let r = itnRan { props["itn_ran"] = r }
     if let c = itnChanged { props["itn_changed"] = c }

@@ -46,6 +46,36 @@ struct DictationCompletedRouteFieldsTests {
       #expect(props?["route_fallback_reason"] == nil)
     }
 
+    // MARK: - #2970 seconds travel as numbers
+
+    /// The four `*_seconds` properties are Double on the wire, the same type as
+    /// `$value`; none of them is a formatted String. Observed through the DEBUG
+    /// hook, which derives from the payload PostHog receives.
+    @Test("e2e, recording, asr and llm seconds are Double, not formatted Strings")
+    func secondsAreDouble() throws {
+      let box = Box()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated {
+          if event.name == "dictation.completed" { box.event = event }
+        }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Self.transcriptOpeningAllFourGates(), inputMode: "ptt",
+        recordingSeconds: 2.5)
+
+      let event = try #require(box.event)
+      #expect(event.doubleProps["e2e_seconds"] == 1.0)
+      #expect(event.doubleProps["$value"] == 1.0)
+      #expect(event.doubleProps["recording_seconds"] == 2.5)
+      #expect(event.doubleProps["asr_seconds"] == 0.4)
+      #expect(event.doubleProps["llm_seconds"] == 0.3)
+      for key in ["e2e_seconds", "recording_seconds", "asr_seconds", "llm_seconds"] {
+        #expect(event.stringProps[key] == nil, "\(key) must not travel as a String")
+      }
+    }
+
     // MARK: - #1846 take key on all four completion events
 
     /// ONE argument to `reportDictationCompleted` has to reach all FOUR events it
@@ -454,7 +484,8 @@ struct DictationCompletedRouteFieldsTests {
 
     // MARK: - #2614 cleanup-language telemetry, end to end
 
-    @Test("#2614 the cleanup language, source and bucket reach the real dictation.completed payload")
+    @Test(
+      "#2614 the cleanup language, source and bucket reach the real dictation.completed payload")
     func cleanupLanguageReachesDictationCompleted() throws {
       let log = EventLog()
       TelemetryService.shared.testEventHook = { @Sendable event in
