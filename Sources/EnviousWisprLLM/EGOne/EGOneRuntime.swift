@@ -96,25 +96,47 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   public private(set) var installState: EGOneInstallState = .notInstalled
   public private(set) var health: EGOneHealth = .red(reason: "not_running") {
     didSet {
-      // #2966: a health TRANSITION is a colour change. The reason rides on the
-      // row as a property; a reason change inside one colour (`downloading` ->
-      // `verifying`, `not_started` -> `starting`) is the delivery funnel or
-      // the server lifecycle, both counted elsewhere. Measured 30d to
-      // 2026-09-15: 12,900 of 20,192 rows were same-colour, 6,478 of them the
-      // seed below firing once per launch on every install without the model.
+      // #2966: a health TRANSITION is a colour change, or a same-colour reason
+      // change whose new reason is a RUNTIME DIAGNOSIS. A same-colour change
+      // INTO a delivery-funnel or server-lifecycle reason is silent: the
+      // delivery funnel records those moments (`model_delivery.*`, the paused
+      // entry/exit event), and `not_started -> starting` is every activation.
+      // Measured 30d to 2026-09-15: 12,900 of 20,192 rows were same-colour,
+      // 6,478 of them the seed below firing once per launch on every install
+      // without the model. Probe and memory-pressure diagnoses
+      // (`probe_slow`, `probe_output_unexpected`, `paused_for_memory`) have no
+      // other PostHog record, so a same-colour change into one still emits.
       //
       // The first resolved value is not a transition either: the initialiser's
       // `.red(not_running)` is a placeholder, and `placeholder -> whatever the
       // install state is` describes the launch, not a change.
       defer { healthResolvedOnce = true }
-      guard healthResolvedOnce, Self.healthLabel(oldValue) != Self.healthLabel(health)
-      else { return }
+      guard healthResolvedOnce else { return }
+      let reason = Self.healthReason(health)
+      let colourChanged = Self.healthLabel(oldValue) != Self.healthLabel(health)
+      if !colourChanged {
+        guard let reason, reason != Self.healthReason(oldValue),
+          !Self.reasonsCountedElsewhere.contains(reason)
+        else { return }
+      }
       onEvent?(
         .healthChanged(
-          from: Self.healthLabel(oldValue), to: Self.healthLabel(health),
-          reason: Self.healthReason(health)))
+          from: Self.healthLabel(oldValue), to: Self.healthLabel(health), reason: reason))
     }
   }
+  /// Reasons a same-colour `health` change may land on WITHOUT a row (#2966):
+  /// every delivery-funnel reason `recomputeHealth` derives from
+  /// `EGOneInstallState` (the funnel's own events carry them) plus the two
+  /// server-lifecycle steps every activation walks. Anything not listed, a
+  /// probe verdict or a memory-pressure pause, has no other record and emits.
+  static let reasonsCountedElsewhere: Set<String> = {
+    var reasons: Set<String> = [
+      "download_required", "update_required", "downloading", "verifying", "download_paused",
+      "not_started", "starting",
+    ]
+    for failure in EGOneDownloadFailure.allCases { reasons.insert(failure.rawValue) }
+    return reasons
+  }()
   /// False until `health` has been assigned once (#2966). See `health.didSet`.
   private var healthResolvedOnce = false
   /// Why the manifest cannot activate on this app build (empty = fine).
@@ -292,6 +314,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// about a NEW process seeing persisted state.
   func applyInstallStateForTesting(_ state: EGOneInstallState) {
     applyInstallState(state)
+  }
+
+  /// Test seam for the server-lifecycle leg of `recomputeHealth` (#2966): a
+  /// same-colour change into a runtime diagnosis is reachable only through
+  /// the server state, and no delivery fixture produces one.
+  func applyServerStateForTesting(_ state: EGOneServerManager.ServerState) {
+    applyServerState(state)
   }
 
   /// Display version of an upgrade whose download is currently in flight, or

@@ -203,6 +203,9 @@ import Testing
     let runtime = h.runtime
     let settled = await withDeadline(seconds: 5) {
       while true {
+        // `withDeadline` abandons a loser; without this the loop would outlive
+        // the deadline and keep scheduling main-actor work (Codex r1).
+        if Task.isCancelled { return false }
         if await MainActor.run(body: {
           EGOneRuntime.healthReason(runtime.health) == "not_started"
         }) {
@@ -237,6 +240,9 @@ import Testing
     let runtime = h.runtime
     let settled = await withDeadline(seconds: 5) {
       while true {
+        // `withDeadline` abandons a loser; without this the loop would outlive
+        // the deadline and keep scheduling main-actor work (Codex r1).
+        if Task.isCancelled { return false }
         if await MainActor.run(body: {
           EGOneRuntime.healthReason(runtime.health) == "not_started"
         }) {

@@ -110,7 +110,7 @@ public enum EGOneInstallState: Sendable, Equatable {
 /// the adapter maps the shared engine's `DeliveryFailureClass` onto these
 /// buckets so the existing copy is preserved (limb: every failure is a RED
 /// row + retry, never a dictation block).
-public enum EGOneDownloadFailure: String, Error, Sendable, Equatable {
+public enum EGOneDownloadFailure: String, Error, Sendable, Equatable, CaseIterable {
   case network = "network"
   case checksum = "checksum"
   case disk = "disk"

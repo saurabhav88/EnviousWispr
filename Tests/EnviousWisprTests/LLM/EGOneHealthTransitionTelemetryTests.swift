@@ -11,7 +11,7 @@ import Testing
 /// without the model. Driven through the install-state seam with no delivery
 /// adapter, so the only thing moving is `health`.
 @MainActor
-@Suite struct EGOneHealthTransitionTelemetryTests {
+@Suite(.tags(.observabilityContract)) struct EGOneHealthTransitionTelemetryTests {
 
   private final class Recorded: @unchecked Sendable {
     private let lock = NSLock()
@@ -102,5 +102,34 @@ import Testing
     #expect(
       recorded.events.last == .healthChanged(from: "red", to: "yellow", reason: "downloading"))
     #expect(recorded.events.count == 2)
+  }
+
+  /// The delivery funnel and the server lifecycle are the ONLY same-colour
+  /// changes that go silent; a probe verdict or a memory-pressure pause has no
+  /// other PostHog record, so it still emits inside one colour (Codex r1).
+  @Test("a same-colour change into a runtime diagnosis still emits")
+  func runtimeDiagnosisEmitsInsideOneColour() throws {
+    let (runtime, recorded, cleanup) = try makeRuntime()
+    defer { cleanup() }
+
+    runtime.applyInstallStateForTesting(.installed(version: nil))  // seed: yellow(not_started)
+    runtime.applyServerStateForTesting(.starting)  // yellow(starting): lifecycle, silent
+    #expect(EGOneRuntime.healthReason(runtime.health) == "starting")
+    #expect(recorded.events.isEmpty)
+
+    runtime.applyServerStateForTesting(.pausedForMemoryPressure)
+    #expect(
+      recorded.events == [.healthChanged(from: "yellow", to: "yellow", reason: "paused_for_memory")]
+    )
+
+    // The set is derived from the producers, never retyped: every download
+    // failure is in it, every reason the runtime can land on inside one
+    // colour from the install state is in it.
+    for failure in EGOneDownloadFailure.allCases {
+      #expect(EGOneRuntime.reasonsCountedElsewhere.contains(failure.rawValue))
+    }
+    #expect(!EGOneRuntime.reasonsCountedElsewhere.contains("probe_slow"))
+    #expect(!EGOneRuntime.reasonsCountedElsewhere.contains("probe_output_unexpected"))
+    #expect(!EGOneRuntime.reasonsCountedElsewhere.contains("paused_for_memory"))
   }
 }
