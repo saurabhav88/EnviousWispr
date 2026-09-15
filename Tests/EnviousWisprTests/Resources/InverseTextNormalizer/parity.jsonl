@@ -1050,7 +1050,7 @@
 {"input": "and we will just continue to harden the new conductor system based on our experienced learnings to date.", "expected": "and we will just continue to harden the new conductor system based on our experienced learnings to date.", "category": "negative", "slice": "negative"}
 {"input": "And it's just about expanding the natural scope of this build and finding where to insert these additional hardening or or gotchas that we're finding along this journey.", "expected": "And it's just about expanding the natural scope of this build and finding where to insert these additional hardening or or gotchas that we're finding along this journey.", "category": "negative", "slice": "negative"}
 {"input": "Also, guys, we have not released or cut this feature for anyone. The only user any of this work is ever reaching is me.", "expected": "Also, guys, we have not released or cut this feature for anyone. The only user any of this work is ever reaching is me.", "category": "negative", "slice": "negative"}
-{"input": "So we need to stop worrying about oh don't worry it hasn't reached any users yet. No shit. We are we've not cut a release. We're just building in our sandbox slash dev environment.", "expected": "So we need to stop worrying about oh don't worry it hasn't reached any users yet. No shit. We are we've not cut a release. We're just building in our sandbox slash dev environment.", "category": "negative", "slice": "negative"}
+{"input": "So we need to stop worrying about oh don't worry it hasn't reached any users yet. No shit. We are we've not cut a release. We're just building in our sandbox slash dev environment.", "expected": "So we need to stop worrying about oh don't worry it hasn't reached any users yet. No shit. We are we've not cut a release. We're just building in our sandbox/dev environment.", "category": "negative", "slice": "negative"}
 {"input": "Test, test, test.", "expected": "Test, test, test.", "category": "negative", "slice": "negative"}
 {"input": "Can we ask Codex to look at the results and also draw its own conclusions?", "expected": "Can we ask Codex to look at the results and also draw its own conclusions?", "category": "negative", "slice": "negative"}
 {"input": "Can you also give me the data set and downloads so I can ask Gemini and GPT directly to analyze it and see what they say?", "expected": "Can you also give me the data set and downloads so I can ask Gemini and GPT directly to analyze it and see what they say?", "category": "negative", "slice": "negative"}
@@ -1574,11 +1574,11 @@
 {"input": "dot three at g mail dot com", "expected": "dot three at g mail.com", "category": "email", "slice": "public"}
 {"input": "one three at g mail dot com", "expected": "one three at g mail.com", "category": "email", "slice": "public"}
 {"input": "a b three hyphen s d d dash three at g mail dot com", "expected": "a b three hyphen s d d dash three at g mail.com", "category": "email", "slice": "public"}
-{"input": "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m", "expected": "h t t p: slash slash w w w dot o u r d a i l y n e w s.com dot s m", "category": "url", "slice": "public"}
-{"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "expected": "h t t p: slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "category": "url", "slice": "public"}
-{"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "h t t p: slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "category": "url", "slice": "public"}
-{"input": "w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "w w w dot c o m d a i l y n e w s dot a b slash s m", "category": "url", "slice": "public"}
-{"input": "c o m d a i l y n e w s dot a b slash s m", "expected": "c o m d a i l y n e w s dot a b slash s m", "category": "url", "slice": "public"}
+{"input": "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m", "expected": "h t t p://w w w dot o u r d a i l y n e w s.com dot s m", "category": "url", "slice": "public"}
+{"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m", "expected": "h t t p://w w w dot c o m d a i l y n e w s dot a b dot s m", "category": "url", "slice": "public"}
+{"input": "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "h t t p://w w w dot c o m d a i l y n e w s dot a b/s m", "category": "url", "slice": "public"}
+{"input": "w w w dot c o m d a i l y n e w s dot a b slash s m", "expected": "w w w dot c o m d a i l y n e w s dot a b/s m", "category": "url", "slice": "public"}
+{"input": "c o m d a i l y n e w s dot a b slash s m", "expected": "c o m d a i l y n e w s dot a b/s m", "category": "url", "slice": "public"}
 {"input": "n vidia dot com", "expected": "n vidia.com", "category": "url", "slice": "public"}
 {"input": "abc at gmail dot com", "expected": "abc@gmail.com", "category": "email", "slice": "public"}
 {"input": "athreed at gmail dot com", "expected": "athreed@gmail.com", "category": "email", "slice": "public"}
@@ -2065,11 +2065,11 @@
 {"input": "a five-foot-tall person", "expected": "a 5-foot-tall person", "category": "numeric", "slice": "ap_gold"}
 {"input": "example.com slash blog", "expected": "example.com/blog", "category": "url", "slice": "gold"}
 {"input": "example.com/blog", "expected": "example.com/blog", "category": "url", "slice": "idempotence"}
-{"input": "example dot ai slash docs", "expected": "example dot ai slash docs", "category": "negative", "slice": "negative"}
+{"input": "example dot ai slash docs", "expected": "example dot ai/docs", "category": "negative", "slice": "negative"}
 {"input": "example.ai/docs", "expected": "example.ai/docs", "category": "url", "slice": "idempotence"}
-{"input": "example dot app slash download", "expected": "example dot app slash download", "category": "negative", "slice": "negative"}
+{"input": "example dot app slash download", "expected": "example dot app/download", "category": "negative", "slice": "negative"}
 {"input": "example.app/download", "expected": "example.app/download", "category": "url", "slice": "idempotence"}
-{"input": "docs-2 dot xyz slash page-4", "expected": "docs-2 dot xyz slash page-4", "category": "negative", "slice": "negative"}
+{"input": "docs-2 dot xyz slash page-4", "expected": "docs-2 dot xyz/page-4", "category": "negative", "slice": "negative"}
 {"input": "docs-2.xyz/page-4", "expected": "docs-2.xyz/page-4", "category": "url", "slice": "idempotence"}
 {"input": "docs-2.xyz slash page-4", "expected": "docs-2.xyz/page-4", "category": "url", "slice": "gold"}
 {"input": "example.io slash docs", "expected": "example.io/docs", "category": "url", "slice": "gold"}
@@ -2079,34 +2079,34 @@
 {"input": "he scored a 10-9 dot com", "expected": "he scored a 10-9.com", "category": "url", "slice": "gold"}
 {"input": "she works at example.com", "expected": "she works at example.com", "category": "negative", "slice": "negative"}
 {"input": "the site is example two four.com", "expected": "the site is example two four.com", "category": "negative", "slice": "negative"}
-{"input": "alice at startup dot ai slash docs", "expected": "alice at startup dot ai slash docs", "category": "negative", "slice": "negative"}
-{"input": "alice@sub.example.com slash docs", "expected": "alice@sub.example.com slash docs", "category": "negative", "slice": "negative"}
-{"input": "alice@a.b.example.com slash docs", "expected": "alice@a.b.example.com slash docs", "category": "negative", "slice": "negative"}
+{"input": "alice at startup dot ai slash docs", "expected": "alice at startup dot ai/docs", "category": "negative", "slice": "negative"}
+{"input": "alice@sub.example.com slash docs", "expected": "alice@sub.example.com/docs", "category": "negative", "slice": "negative"}
+{"input": "alice@a.b.example.com slash docs", "expected": "alice@a.b.example.com/docs", "category": "negative", "slice": "negative"}
 {"input": "learn more at startup dot ai", "expected": "learn more at startup dot ai", "category": "negative", "slice": "negative"}
-{"input": "find it at docs dot xyz slash page", "expected": "find it at docs dot xyz slash page", "category": "negative", "slice": "negative"}
+{"input": "find it at docs dot xyz slash page", "expected": "find it at docs dot xyz/page", "category": "negative", "slice": "negative"}
 {"input": "check it out at cursor dot ai", "expected": "check it out at cursor dot ai", "category": "negative", "slice": "negative"}
 {"input": "docs at company dot xyz", "expected": "docs at company dot xyz", "category": "negative", "slice": "negative"}
-{"input": "bob at example dot com slash unsubscribe", "expected": "bob@example.com slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "bob at example dot com slash unsubscribe", "expected": "bob@example.com/unsubscribe", "category": "negative", "slice": "negative"}
 {"input": "I use X dot XYZ coordinates", "expected": "I use X dot XYZ coordinates", "category": "negative", "slice": "negative"}
-{"input": "bob at example.com slash unsubscribe", "expected": "bob at example.com slash unsubscribe", "category": "negative", "slice": "negative"}
-{"input": "bob at  example.com slash unsubscribe", "expected": "bob at example.com slash unsubscribe", "category": "negative", "slice": "negative"}
-{"input": "alice@example dot ai slash unsubscribe", "expected": "alice@example dot ai slash unsubscribe", "category": "negative", "slice": "negative"}
-{"input": "alice@sub.example dot ai slash unsubscribe", "expected": "alice@sub.example dot ai slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "bob at example.com slash unsubscribe", "expected": "bob at example.com/unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "bob at  example.com slash unsubscribe", "expected": "bob at example.com/unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "alice@example dot ai slash unsubscribe", "expected": "alice@example dot ai/unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "alice@sub.example dot ai slash unsubscribe", "expected": "alice@sub.example dot ai/unsubscribe", "category": "negative", "slice": "negative"}
 {"input": "www.example dot com slash docs", "expected": "www.example.com/docs", "category": "url", "slice": "gold"}
 {"input": "find it at docs.xyz slash page", "expected": "find it at docs.xyz/page", "category": "url", "slice": "gold"}
-{"input": "look inside the dot app slash Contents slash MacOS folder", "expected": "look inside the dot app slash Contents slash MacOS folder", "category": "negative", "slice": "negative"}
-{"input": "plot the X dot XYZ slash Y coordinates", "expected": "plot the X dot XYZ slash Y coordinates", "category": "negative", "slice": "negative"}
-{"input": "https colon slash slash example.com slash docs", "expected": "https: slash slash example.com slash docs", "category": "url", "slice": "negative"}
-{"input": "example.com slash search question mark q equals test", "expected": "example.com slash search? Q equals test", "category": "url", "slice": "negative"}
-{"input": "www dot example.com slash docs", "expected": "www dot example.com slash docs", "category": "url", "slice": "negative"}
-{"input": "my dash site.com slash docs", "expected": "my dash site.com slash docs", "category": "url", "slice": "negative"}
-{"input": "alice @ example.com slash unsubscribe", "expected": "alice @ example.com slash unsubscribe", "category": "negative", "slice": "negative"}
-{"input": "example.com slash docs dot html", "expected": "example.com slash docs dot html", "category": "negative", "slice": "negative"}
-{"input": "example.com slash user underscore settings", "expected": "example.com slash user underscore settings", "category": "negative", "slice": "negative"}
-{"input": "https: slash slash example.com slash docs", "expected": "https: slash slash example.com slash docs", "category": "negative", "slice": "negative"}
+{"input": "look inside the dot app slash Contents slash MacOS folder", "expected": "look inside the dot app/Contents/MacOS folder", "category": "negative", "slice": "negative"}
+{"input": "plot the X dot XYZ slash Y coordinates", "expected": "plot the X dot XYZ/Y coordinates", "category": "negative", "slice": "negative"}
+{"input": "https colon slash slash example.com slash docs", "expected": "https://example.com/docs", "category": "url", "slice": "negative"}
+{"input": "example.com slash search question mark q equals test", "expected": "example.com/search? Q equals test", "category": "url", "slice": "negative"}
+{"input": "www dot example.com slash docs", "expected": "www dot example.com/docs", "category": "url", "slice": "negative"}
+{"input": "my dash site.com slash docs", "expected": "my dash site.com/docs", "category": "url", "slice": "negative"}
+{"input": "alice @ example.com slash unsubscribe", "expected": "alice @ example.com/unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "example.com slash docs dot html", "expected": "example.com/docs dot html", "category": "negative", "slice": "negative"}
+{"input": "example.com slash user underscore settings", "expected": "example.com/user underscore settings", "category": "negative", "slice": "negative"}
+{"input": "https: slash slash example.com slash docs", "expected": "https://example.com/docs", "category": "negative", "slice": "negative"}
 {"input": "example.com slash search? q equals test", "expected": "example.com/search? Q equals test", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs- slash next", "expected": "example.com/docs-/next", "category": "url", "slice": "gold"}
-{"input": "example.com slash docs slash", "expected": "example.com slash docs slash", "category": "negative", "slice": "negative"}
+{"input": "example.com slash docs slash", "expected": "example.com/docs/", "category": "negative", "slice": "negative"}
 {"input": "example.com slash docs:", "expected": "example.com/docs:", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs?", "expected": "example.com/docs?", "category": "url", "slice": "gold"}
 {"input": "3m dot com slash products", "expected": "3m.com/products", "category": "url", "slice": "gold"}

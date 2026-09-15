@@ -266,7 +266,10 @@ struct InverseTextNormalizerParityTests {
   // on `spokenPat` warns about.
   //
   // Expected values are ITN-ONLY output (this test calls `normalize(_:)` directly, not the
-  // full pipeline): ITN converts spoken dot/slash into real punctuation and strips the
+  // full pipeline) with the spoken-punctuation setting OFF: these rows measure the URL
+  // passes, which run whatever the setting says, and since #2955 a bare "slash" the URL
+  // passes leave behind follows the setting (see `SpokenPunctuationToggleTests`), so running
+  // them ON would fold that rule into every expectation. ITN converts spoken dot/slash into real punctuation and strips the
   // recognizer's own trailing-period/stray-dot artifacts, but it does not materialize a
   // spoken "slash slash" protocol connector into "://" — that reconstruction is LLM polish's
   // job downstream, unchanged by this fix.
@@ -325,10 +328,76 @@ struct InverseTextNormalizerParityTests {
       // unrelated trailing "dot s m" continuation untouched — this fix must not reopen it.
       (
         "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m",
-        "h t t p: slash slash w w w dot o u r d a i l y n e w s.com dot s m"
+        "h t t p colon slash slash w w w dot o u r d a i l y n e w s.com dot s m"
       ),
     ])
   func issue2315SpokenURLCleanup(input: String, expected: String) {
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: false) == expected)
+  }
+
+  // #2955: "slash" / "forward slash" and "backslash" / "back slash" are spoken-punctuation
+  // commands, gated like the rest. Each row is an oracle-verified output of the mirrored
+  // Python normalizer. The joiners consume the spaces on both sides; a contextual conversion
+  // that already owned the word (a date, a spoken URL path) runs first and is unchanged.
+  @Test(
+    "#2955 spoken slash and backslash join their neighbours when the setting is on",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/2955", "spoken slash and backslash"),
+    arguments: [
+      ("and slash or", "and/or"),
+      ("the pros slash cons list", "the pros/cons list"),
+      ("forward slash home slash user", "/home/user"),
+      ("C colon backslash Users backslash saurabh", "C:\\Users\\saurabh"),
+      ("back slash temp", "\\temp"),
+      ("a backslash b slash c", "a\\b/c"),
+      // "slash slash" matches twice, which is what the star (not `\s+`) buys.
+      ("h t t p colon slash slash w w w dot x", "h t t p://w w w dot x"),
+      // the word itself, not the command
+      ("the slasher film", "the slasher film"),
+      ("slashing prices", "slashing prices"),
+      // contextual owners run first and are unchanged
+      ("four slash six slash two thousand twenty one", "4/6/2021"),
+      ("visit stackoverflow dot io slash blog", "visit stackoverflow.io/blog"),
+      // a refused partial URL conversion still gets its bare "slash" joined under the setting
+      ("example dot ai slash docs", "example dot ai/docs"),
+      // an already-written path segment named "slash" is not a spoken command (cloud review
+      // PR #2960): glued to punctuation on either side, the word stays, and the pass is idempotent
+      ("https://example.com/slash/docs", "https://example.com/slash/docs"),
+      ("C:\\backslash\\Users", "C:\\backslash\\Users"),
+      ("(slash) means divide", "(slash) means divide"),
+      // ... and glued on the RIGHT through a suffix (cloud review round 2): a hostname or a
+      // basename literally named slash / backslash is a written token too
+      ("slash.com", "slash.com"),
+      ("open backslash.txt", "open backslash.txt"),
+      // sentence punctuation after the spoken word is fine when it ends the clause
+      ("the pros slash cons list.", "the pros/cons list."),
+      ("say slash, then", "say/, then"),
+      // adjacent MIXED joiners are one pass, so the second still sees its whitespace (local
+      // review r2)
+      ("backslash slash", "\\/"),
+      ("slash backslash", "/\\"),
+    ])
+  func issue2955SpokenJoiners(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
+  }
+
+  /// The contextual owners must do their own work: with the setting OFF the joiner rule is not
+  /// there to repair a "slash" the date or URL pass failed to consume (second-pass review).
+  @Test(
+    "#2955 contextual slash conversions do not depend on the setting",
+    arguments: [
+      ("four slash six slash two thousand twenty one", "4/6/2021"),
+      ("visit stackoverflow dot io slash blog", "visit stackoverflow.io/blog"),
+    ])
+  func issue2955ContextualOwnersRunWithTheSettingOff(input: String, expected: String) {
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: false) == expected)
+  }
+
+  @Test(
+    "#2955 spoken slash and backslash stay words when the setting is off",
+    arguments: ["and slash or", "C colon backslash Users", "forward slash home", "back slash temp"])
+  func issue2955JoinersStayWordsOff(input: String) {
+    let out = InverseTextNormalizer().normalize(input, spokenPunctuation: false)
+    #expect(out.contains("slash"), "expected the word to survive, got \(out.debugDescription)")
+    #expect(out.contains("/") == false && out.contains("\\") == false, "got \(out.debugDescription)")
   }
 }

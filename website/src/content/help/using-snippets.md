@@ -6,7 +6,7 @@ section: "Text Processing"
 order: 7
 keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text"]
 related: ["adding-custom-words", "ai-polish-and-cloud-data"]
-updated: 2026-09-05
+updated: 2026-09-15
 ---
 A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. An email address, a sign-off, a link you send people every week.
 
@@ -61,6 +61,8 @@ The same is true if you say the keyword and nothing after it matches a snippet y
 The keyword field is at the top of the Snippets screen. Pick a word you would not say by accident. `backslash` is the default because most people rarely say it out loud.
 
 Clearing the field puts the default back rather than switching snippets off.
+
+If you turn on **Convert spoken punctuation**, a `backslash` that no snippet claims types the `\` symbol instead. A saved snippet always wins when its words follow the keyword, even in the middle of a file path, so if you dictate paths that collide with your snippet names, pick a different keyword.
 
 ### What EnviousWispr will not do to your snippet
 
