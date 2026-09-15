@@ -22,7 +22,8 @@ public protocol EGOneEndpointProviding: AnyObject {
 /// the delivery funnel reports moments (a cancel happened), never how long a
 /// user then sat unable to polish.
 /// Transition-only, by two different mechanisms: health is guarded in its
-/// `didSet`, paused residency by its projection tracker in
+/// `didSet` (a colour change, never the launch seed, #2966), paused residency
+/// by its projection tracker in
 /// `applyInstallState`. Naming both matters — a reader who assumes the didSet
 /// guard covers everything would conclude paused telemetry is debounced by
 /// construction, when it is debounced by a tracker that deliberately skips
@@ -95,9 +96,18 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   public private(set) var installState: EGOneInstallState = .notInstalled
   public private(set) var health: EGOneHealth = .red(reason: "not_running") {
     didSet {
-      guard
-        Self.healthLabel(oldValue) != Self.healthLabel(health)
-          || Self.healthReason(oldValue) != Self.healthReason(health)
+      // #2966: a health TRANSITION is a colour change. The reason rides on the
+      // row as a property; a reason change inside one colour (`downloading` ->
+      // `verifying`, `not_started` -> `starting`) is the delivery funnel or
+      // the server lifecycle, both counted elsewhere. Measured 30d to
+      // 2026-09-15: 12,900 of 20,192 rows were same-colour, 6,478 of them the
+      // seed below firing once per launch on every install without the model.
+      //
+      // The first resolved value is not a transition either: the initialiser's
+      // `.red(not_running)` is a placeholder, and `placeholder -> whatever the
+      // install state is` describes the launch, not a change.
+      defer { healthResolvedOnce = true }
+      guard healthResolvedOnce, Self.healthLabel(oldValue) != Self.healthLabel(health)
       else { return }
       onEvent?(
         .healthChanged(
@@ -105,6 +115,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
           reason: Self.healthReason(health)))
     }
   }
+  /// False until `health` has been assigned once (#2966). See `health.didSet`.
+  private var healthResolvedOnce = false
   /// Why the manifest cannot activate on this app build (empty = fine).
   /// Non-empty reads RED in the UI ("app update required" for an unknown
   /// prompt template).

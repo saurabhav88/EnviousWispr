@@ -2356,8 +2356,9 @@ public final class TelemetryService {
   /// #1271: EG-1 native model download funnel + health transitions. Content-
   /// free by construction: model identity comes from OUR manifest, reasons
   /// are a closed string set, and no transcript or prompt content exists on
-  /// this path. `eg1.health_changed` is emitted on TRANSITION ONLY (the
-  /// runtime debounces identical states by construction).
+  /// this path. `eg1.health_changed` is emitted on a COLOUR change only, and
+  /// never for the first resolved value at launch (`EGOneRuntime.health`
+  /// `didSet`, #2966); `reason` names the new state's cause.
   public func egOneDownloadEvent(name: String, properties: [String: String]) {
     let event = "eg1.\(name)"
     #if DEBUG
