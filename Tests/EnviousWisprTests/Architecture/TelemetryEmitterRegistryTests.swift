@@ -15,19 +15,22 @@ import Testing
 /// set (so `per_chunk` cannot be written down at all), a `sampled` treatment that
 /// `TelemetryVolumePolicy.swift` does not implement, and a grandfather count that rises.
 ///
-/// Same shape as `TestInventoryFreezeTests`: `SwiftParser` over the one file that calls
-/// `PostHogSDK.shared.capture`, a text registry under `scripts/`, an equality invariant in
+/// Same shape as `TestInventoryFreezeTests`: `SwiftParser` over every file under `Sources/`
+/// (so a capture added outside `TelemetryService.swift` is seen), a text registry under `scripts/`, an equality invariant in
 /// both directions, and a ceiling that only ratchets down.
 @Suite("Telemetry emitter registry (#2987)", .tags(.driftGuard))
 struct TelemetryEmitterRegistryTests {
 
   // MARK: - Model
 
-  static let emitterFile = "Sources/EnviousWisprServices/TelemetryService.swift"
+  /// Every Swift file under here is scanned. `TelemetryService.swift` is the only caller
+  /// today; scanning the tree is what keeps a capture added elsewhere from going unseen.
+  static let sourcesDir = "Sources"
   static let policyFile = "Sources/EnviousWisprServices/TelemetryVolumePolicy.swift"
   static let registryFile = "scripts/telemetry-emitter-registry.txt"
 
-  /// Grandfathered rows at the freeze. ONLY EVER DECREASES: grade a row, lower the number.
+  /// Grandfathered rows at the freeze. The count must EQUAL this: grade a row, lower the
+  /// number in the same change. Slack here is a free `ungraded` slot for a new emitter.
   static let ungradedCeiling = 110
 
   /// The closed cadence vocabulary. Deliberately no `per_chunk`, `per_buffer`, `per_frame`,
@@ -50,6 +53,7 @@ struct TelemetryEmitterRegistryTests {
   struct Emitter: Hashable {
     /// Exact event name, or `prefix.*` for an interpolated name.
     let name: String
+    let file: String
     let line: Int
   }
 
@@ -60,6 +64,7 @@ struct TelemetryEmitterRegistryTests {
   /// capture with a resolvable name plus every call to a forwarder with a literal name.
   final class CaptureVisitor: SyntaxVisitor {
     let converter: SourceLocationConverter
+    let file: String
     /// Function names whose capture argument is one of their own parameters, with the
     /// POSITION of that parameter, so a caller's argument at the same position is read.
     var forwarders: [String: Int]
@@ -68,8 +73,11 @@ struct TelemetryEmitterRegistryTests {
     var emitters: Set<Emitter> = []
     var unresolved: [(what: String, line: Int)] = []
 
-    init(converter: SourceLocationConverter, forwarders: [String: Int], collect: Bool) {
+    init(
+      converter: SourceLocationConverter, file: String, forwarders: [String: Int], collect: Bool
+    ) {
       self.converter = converter
+      self.file = file
       self.forwarders = forwarders
       self.collect = collect
       super.init(viewMode: .sourceAccurate)
@@ -94,7 +102,7 @@ struct TelemetryEmitterRegistryTests {
       {
         let arguments = Array(node.arguments)
         if position < arguments.count, let name = Self.literalName(arguments[position].expression) {
-          emitters.insert(Emitter(name: name, line: line))
+          emitters.insert(Emitter(name: name, file: file, line: line))
         } else {
           unresolved.append(("forwarder \(callee) called with a non-literal event name", line))
         }
@@ -104,7 +112,7 @@ struct TelemetryEmitterRegistryTests {
 
     private func handleCaptureArgument(_ argument: ExprSyntax, line: Int) {
       if let name = Self.literalName(argument) {
-        if collect { emitters.insert(Emitter(name: name, line: line)) }
+        if collect { emitters.insert(Emitter(name: name, file: file, line: line)) }
         return
       }
       guard let reference = argument.as(DeclReferenceExprSyntax.self),
@@ -121,7 +129,7 @@ struct TelemetryEmitterRegistryTests {
       }
       switch Self.localLiteral(named: identifier, in: function) {
       case .one(let name):
-        if collect { emitters.insert(Emitter(name: name, line: line)) }
+        if collect { emitters.insert(Emitter(name: name, file: file, line: line)) }
       case .none:
         if collect {
           unresolved.append(("`\(identifier)` is not a local `let` string literal", line))
@@ -228,25 +236,79 @@ struct TelemetryEmitterRegistryTests {
     }
   }
 
-  static func scan(source: String, fileName: String) -> (
-    emitters: Set<Emitter>, unresolved: [(what: String, line: Int)]
-  ) {
-    let tree = Parser.parse(source: source)
-    let converter = SourceLocationConverter(fileName: fileName, tree: tree)
-    let discovery = CaptureVisitor(converter: converter, forwarders: [:], collect: false)
-    discovery.walk(tree)
-    let collector = CaptureVisitor(
-      converter: converter, forwarders: discovery.forwarders, collect: true)
-    collector.walk(tree)
-    return (collector.emitters, collector.unresolved)
+  struct Unresolved {
+    let file: String
+    let line: Int
+    let what: String
   }
 
-  static func scanEmitterFile() throws -> (
-    emitters: Set<Emitter>, unresolved: [(what: String, line: Int)]
+  /// Pass 1 over every file learns the forwarders; pass 2 over every file collects with the
+  /// union, so a forwarder declared in one file and called from another still resolves.
+  static func scan(sources: [(file: String, source: String)]) -> (
+    emitters: Set<Emitter>, unresolved: [Unresolved]
   ) {
-    let url = RepoRoot.sourceURL(emitterFile)
-    let source = try String(contentsOf: url, encoding: .utf8)
-    return scan(source: source, fileName: emitterFile)
+    let parsed = sources.map { (file: $0.file, tree: Parser.parse(source: $0.source)) }
+    var forwarders: [String: Int] = [:]
+    for (file, tree) in parsed {
+      let discovery = CaptureVisitor(
+        converter: SourceLocationConverter(fileName: file, tree: tree), file: file,
+        forwarders: [:], collect: false)
+      discovery.walk(tree)
+      forwarders.merge(discovery.forwarders) { current, _ in current }
+    }
+    var emitters: Set<Emitter> = []
+    var unresolved: [Unresolved] = []
+    for (file, tree) in parsed {
+      let collector = CaptureVisitor(
+        converter: SourceLocationConverter(fileName: file, tree: tree), file: file,
+        forwarders: forwarders, collect: true)
+      collector.walk(tree)
+      emitters.formUnion(collector.emitters)
+      unresolved.append(
+        contentsOf: collector.unresolved.map {
+          Unresolved(file: file, line: $0.line, what: $0.what)
+        })
+    }
+    return (emitters, unresolved)
+  }
+
+  static func scanSources() throws -> (emitters: Set<Emitter>, unresolved: [Unresolved]) {
+    let root = RepoRoot.url.path
+    let dir = RepoRoot.sourceURL(sourcesDir)
+    guard
+      let walker = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)
+    else {
+      Issue.record("cannot enumerate \(dir.path)")
+      return ([], [])
+    }
+    var sources: [(file: String, source: String)] = []
+    for case let url as URL in walker where url.pathExtension == "swift" {
+      let relative = String(url.path.dropFirst(root.count + 1))
+      sources.append((relative, try String(contentsOf: url, encoding: .utf8)))
+    }
+    return scan(sources: sources.sorted { $0.file < $1.file })
+  }
+
+  /// The event names `TelemetryVolumePolicy.sampledDecision` switches on: string literals
+  /// used as `case` patterns anywhere in the policy file. A name in a comment or an unrelated
+  /// constant is not a case and does not count.
+  static func policyCaseNames() throws -> Set<String> {
+    let source = try String(contentsOf: RepoRoot.sourceURL(policyFile), encoding: .utf8)
+    let finder = CaseLiteralFinder(viewMode: .sourceAccurate)
+    finder.walk(Parser.parse(source: source))
+    return finder.names
+  }
+
+  final class CaseLiteralFinder: SyntaxVisitor {
+    var names: Set<String> = []
+    override func visit(_ node: SwitchCaseItemSyntax) -> SyntaxVisitorContinueKind {
+      if let expression = node.pattern.as(ExpressionPatternSyntax.self),
+        let name = CaptureVisitor.literalName(expression.expression)
+      {
+        names.insert(name)
+      }
+      return .visitChildren
+    }
   }
 
   // MARK: - Registry
@@ -311,36 +373,47 @@ struct TelemetryEmitterRegistryTests {
         }
       }
       """
-    let result = Self.scan(source: source, fileName: "Fixture.swift")
+    let other = """
+      enum Elsewhere {
+        func k() { self.forward("nine.cross_file", v: "x") }
+        func l() { PostHogSDK.shared.capture("ten.other_file") }
+      }
+      """
+    let result = Self.scan(sources: [
+      (file: "Fixture.swift", source: source), (file: "Elsewhere.swift", source: other),
+    ])
     #expect(
       Set(result.emitters.map(\.name)) == [
         "one.literal", "two.local", "three.*", "four.forwarded", "five.self_forwarded",
-        "six.second_position",
+        "six.second_position", "nine.cross_file", "ten.other_file",
       ])
+    #expect(
+      result.emitters.first { $0.name == "ten.other_file" }?.file == "Elsewhere.swift",
+      "an emitter reports the file it lives in")
     let unresolvedMessage =
       "`forward(dynamic)`, the shadowed `event` and the `var event` must be reported, not "
       + "dropped or guessed: \(result.unresolved)"
     #expect(result.unresolved.count == 3, Comment(rawValue: unresolvedMessage))
   }
 
-  @Test("every capture name in the emitter file resolves")
+  @Test("every capture name under Sources resolves")
   func everyCaptureNameResolves() throws {
-    let result = try Self.scanEmitterFile()
+    let result = try Self.scanSources()
     #expect(
       result.unresolved.isEmpty,
       """
       \(result.unresolved.count) capture(s) whose event name this suite cannot read. Pass a \
       string literal, a local `let` literal, or a forwarder parameter:
-      \(result.unresolved.map { "  \(Self.emitterFile):\($0.line) \($0.what)" }.joined(separator: "\n"))
+      \(result.unresolved.map { "  \($0.file):\($0.line) \($0.what)" }.joined(separator: "\n"))
       """)
     #expect(
       result.emitters.count > 80,
-      "found \(result.emitters.count) emitters; refusing to treat that as the whole file")
+      "found \(result.emitters.count) emitters; refusing to treat that as the whole tree")
   }
 
   @Test("every emitter has a registry row, and every row names a live emitter")
   func registryMatchesEmitters() throws {
-    let emitters = try Self.scanEmitterFile().emitters
+    let emitters = try Self.scanSources().emitters
     let rows = try Self.registryRows()
     let emitted = Set(emitters.map(\.name))
     let registered = Set(rows.map(\.event))
@@ -352,7 +425,7 @@ struct TelemetryEmitterRegistryTests {
       unregistered.isEmpty,
       """
       \(unregistered.count) emitter(s) with no registry row:
-      \(unregistered.map { "  \(Self.emitterFile):\($0.line) \($0.name)" }.joined(separator: "\n"))
+      \(unregistered.map { "  \($0.file):\($0.line) \($0.name)" }.joined(separator: "\n"))
 
       \(Self.checklist)
       """)
@@ -373,7 +446,10 @@ struct TelemetryEmitterRegistryTests {
   @Test("every row is well formed and its treatment is real")
   func rowsAreWellFormed() throws {
     let rows = try Self.registryRows()
-    let policy = try String(contentsOf: RepoRoot.sourceURL(Self.policyFile), encoding: .utf8)
+    let policyCases = try Self.policyCaseNames()
+    #expect(
+      policyCases.contains("hotkey.pressed"),
+      "positive control: the policy's own `case \"hotkey.pressed\"` must be readable")
     for row in rows {
       let at = "\(Self.registryFile):\(row.line) \(row.event)"
       let cadenceMessage =
@@ -395,8 +471,8 @@ struct TelemetryEmitterRegistryTests {
       }
       if row.treatment == "sampled" {
         #expect(
-          policy.contains("\"\(row.event)\""),
-          "\(at): declared sampled, but \(Self.policyFile) never names it")
+          policyCases.contains(row.event),
+          "\(at): declared sampled, but \(Self.policyFile) has no `case` for it")
       }
       #expect(
         row.event.hasSuffix(".*") || !row.event.contains("*"),
@@ -404,15 +480,15 @@ struct TelemetryEmitterRegistryTests {
     }
   }
 
-  @Test("the grandfathered count only ratchets down")
+  @Test("the grandfathered count equals its ceiling, which only ratchets down")
   func ungradedOnlyRatchetsDown() throws {
     let ungraded = try Self.registryRows().filter { $0.cadence == "ungraded" }.count
     #expect(
-      ungraded <= Self.ungradedCeiling,
+      ungraded == Self.ungradedCeiling,
       """
       \(ungraded) ungraded rows, ceiling \(Self.ungradedCeiling). A NEW emitter is never \
       ungraded: give it a cadence, a treatment, a reader and its issue. When you grade an old \
-      row, lower `ungradedCeiling` to match.
+      row, lower `ungradedCeiling` to match in the same change; slack is a free slot.
       """)
   }
 }
