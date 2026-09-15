@@ -60,14 +60,15 @@ struct TelemetryEmitterRegistryTests {
   /// capture with a resolvable name plus every call to a forwarder with a literal name.
   final class CaptureVisitor: SyntaxVisitor {
     let converter: SourceLocationConverter
-    /// Function names whose capture argument is one of their own parameters.
-    var forwarders: Set<String>
+    /// Function names whose capture argument is one of their own parameters, with the
+    /// POSITION of that parameter, so a caller's argument at the same position is read.
+    var forwarders: [String: Int]
     let collect: Bool
     private var functionStack: [FunctionDeclSyntax] = []
     var emitters: Set<Emitter> = []
     var unresolved: [(what: String, line: Int)] = []
 
-    init(converter: SourceLocationConverter, forwarders: Set<String>, collect: Bool) {
+    init(converter: SourceLocationConverter, forwarders: [String: Int], collect: Bool) {
       self.converter = converter
       self.forwarders = forwarders
       self.collect = collect
@@ -88,13 +89,14 @@ struct TelemetryEmitterRegistryTests {
       guard let first = node.arguments.first?.expression else { return .visitChildren }
       if Self.isPostHogCapture(node.calledExpression) {
         handleCaptureArgument(first, line: line)
-      } else if let callee = node.calledExpression.as(DeclReferenceExprSyntax.self),
-        forwarders.contains(callee.baseName.text), collect
+      } else if collect, let callee = Self.forwarderName(node.calledExpression),
+        let position = forwarders[callee]
       {
-        if let name = Self.literalName(first) {
+        let arguments = Array(node.arguments)
+        if position < arguments.count, let name = Self.literalName(arguments[position].expression) {
           emitters.insert(Emitter(name: name, line: line))
         } else {
-          unresolved.append(("forwarder \(callee.baseName.text) called with a non-literal", line))
+          unresolved.append(("forwarder \(callee) called with a non-literal event name", line))
         }
       }
       return .visitChildren
@@ -112,18 +114,38 @@ struct TelemetryEmitterRegistryTests {
         return
       }
       let identifier = reference.baseName.text
-      if Self.parameterNames(of: function).contains(identifier) {
+      if let position = Self.parameterNames(of: function).firstIndex(of: identifier) {
         // A forwarder: its callers carry the literal and are counted in pass 2.
-        forwarders.insert(function.name.text)
+        forwarders[function.name.text] = position
         return
       }
-      if let name = Self.localLiteral(named: identifier, in: function) {
+      switch Self.localLiteral(named: identifier, in: function) {
+      case .one(let name):
         if collect { emitters.insert(Emitter(name: name, line: line)) }
-        return
+      case .none:
+        if collect {
+          unresolved.append(("`\(identifier)` is not a local `let` string literal", line))
+        }
+      case .ambiguous:
+        if collect {
+          unresolved.append(("`\(identifier)` is bound more than once, or is a `var`", line))
+        }
       }
-      if collect {
-        unresolved.append(("`\(identifier)` is not a local `let` string literal", line))
+    }
+
+    /// A call to a forwarder, bare (`emitUpdateStage(...)`) or on `self` / `Self`
+    /// (`self.emitUpdateStage(...)`). Any other receiver is not a forwarder call.
+    static func forwarderName(_ callee: ExprSyntax) -> String? {
+      if let reference = callee.as(DeclReferenceExprSyntax.self) {
+        return reference.baseName.text
       }
+      if let member = callee.as(MemberAccessExprSyntax.self) {
+        let base = member.base?.trimmedDescription
+        if base == nil || base == "self" || base == "Self" {
+          return member.declName.baseName.text
+        }
+      }
+      return nil
     }
 
     /// `PostHogSDK.shared.capture`, spelled exactly as the sanitizer seam expects.
@@ -153,35 +175,53 @@ struct TelemetryEmitterRegistryTests {
       return prefix.isEmpty ? nil : prefix
     }
 
-    static func parameterNames(of function: FunctionDeclSyntax) -> Set<String> {
-      Set(
-        function.signature.parameterClause.parameters.map {
-          ($0.secondName ?? $0.firstName).text
-        })
+    /// Positional, in declaration order, so an index here is an argument index at a call.
+    static func parameterNames(of function: FunctionDeclSyntax) -> [String] {
+      function.signature.parameterClause.parameters.map {
+        ($0.secondName ?? $0.firstName).text
+      }
     }
 
-    /// `let <identifier> = "<literal>"` anywhere in the function body.
-    static func localLiteral(named identifier: String, in function: FunctionDeclSyntax) -> String? {
-      guard let body = function.body else { return nil }
+    enum LocalBinding: Equatable {
+      case one(String)
+      case none
+      /// Bound more than once in the function, or bound with `var`: which value reaches the
+      /// capture is a data-flow question this syntax-only scan refuses to guess.
+      case ambiguous
+    }
+
+    /// Exactly one `let <identifier> = "<literal>"` in the function body.
+    static func localLiteral(named identifier: String, in function: FunctionDeclSyntax)
+      -> LocalBinding
+    {
+      guard let body = function.body else { return .none }
       let finder = LocalLiteralFinder(identifier: identifier)
       finder.walk(body)
-      return finder.found
+      if finder.bindings > 1 || finder.mutable { return .ambiguous }
+      return finder.found.map { .one($0) } ?? .none
     }
 
     final class LocalLiteralFinder: SyntaxVisitor {
       let identifier: String
       var found: String?
+      var bindings = 0
+      var mutable = false
       init(identifier: String) {
         self.identifier = identifier
         super.init(viewMode: .sourceAccurate)
       }
-      override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
-        if let pattern = node.pattern.as(IdentifierPatternSyntax.self),
-          pattern.identifier.text == identifier,
-          let value = node.initializer?.value,
-          let name = CaptureVisitor.literalName(value)
-        {
-          found = name
+      override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+        for binding in node.bindings {
+          guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self),
+            pattern.identifier.text == identifier
+          else { continue }
+          bindings += 1
+          if node.bindingSpecifier.tokenKind != .keyword(.let) { mutable = true }
+          if let value = binding.initializer?.value,
+            let name = CaptureVisitor.literalName(value)
+          {
+            found = name
+          }
         }
         return .visitChildren
       }
@@ -193,7 +233,7 @@ struct TelemetryEmitterRegistryTests {
   ) {
     let tree = Parser.parse(source: source)
     let converter = SourceLocationConverter(fileName: fileName, tree: tree)
-    let discovery = CaptureVisitor(converter: converter, forwarders: [], collect: false)
+    let discovery = CaptureVisitor(converter: converter, forwarders: [:], collect: false)
     discovery.walk(tree)
     let collector = CaptureVisitor(
       converter: converter, forwarders: discovery.forwarders, collect: true)
@@ -257,14 +297,30 @@ struct TelemetryEmitterRegistryTests {
         func d() { forward("four.forwarded", v: "x") }
         func e() { forward(dynamic, v: "x") }
         func f() { Other.shared.capture("not.posthog") }
+        func g() { self.forward("five.self_forwarded", v: "x") }
+        func second(v: String, event: String) { PostHogSDK.shared.capture(event) }
+        func h() { second(v: "not_the_event", event: "six.second_position") }
+        func i() {
+          let event = "seven.shadowed"
+          if true { let event = "seven.other" }
+          PostHogSDK.shared.capture(event)
+        }
+        func j() {
+          var event = "eight.mutable"
+          PostHogSDK.shared.capture(event)
+        }
       }
       """
     let result = Self.scan(source: source, fileName: "Fixture.swift")
     #expect(
       Set(result.emitters.map(\.name)) == [
-        "one.literal", "two.local", "three.*", "four.forwarded",
+        "one.literal", "two.local", "three.*", "four.forwarded", "five.self_forwarded",
+        "six.second_position",
       ])
-    #expect(result.unresolved.count == 1, "`forward(dynamic)` must be reported, not dropped")
+    let unresolvedMessage =
+      "`forward(dynamic)`, the shadowed `event` and the `var event` must be reported, not "
+      + "dropped or guessed: \(result.unresolved)"
+    #expect(result.unresolved.count == 3, Comment(rawValue: unresolvedMessage))
   }
 
   @Test("every capture name in the emitter file resolves")
