@@ -27,9 +27,9 @@
 # On-site download BUTTONS in Astro (Nav/Footer/hero/compare CTAs) point at the
 # on-site doorway `/download?source=onsite` since #2953 (website/src/data/
 # site-navigation.js `downloadUrl` and the compare-page CTAs), keeping their
-# data-download-source attribute; the page JS still fires download_clicked on
-# click, and the doorway tags the server-side twin `onsite` so consumers count
-# it once (workers/shared/download-intent.js). Astro files are outside this
+# data-download-source attribute, which the page JS writes into the link as
+# &placement= on click; the doorway's download_redirect is the one download
+# record (workers/shared/download-intent.js). Astro files are outside this
 # guard's directories by design (plan §2.1); rule (b) below is about blog
 # PROSE, which keeps pointing at /#download.
 #

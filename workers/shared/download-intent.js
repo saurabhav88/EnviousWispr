@@ -1,18 +1,17 @@
 /**
  * The ONE definition of a "download intent" (#2953).
  *
- * Two events describe a download: `download_clicked` (the browser, fired by the
- * on-site button listener in website/src/components/SiteServices.astro) and
- * `download_redirect` (the server, fired by the /download doorway in
- * website/functions/download.js). Since #2953 every on-site button ALSO passes
- * through the doorway, so one on-site click produces BOTH events. The doorway
- * tags those `source_bucket = 'onsite'`, and this file is where every consumer
- * agrees to count an intent exactly once:
+ * Since #2953 every download, on-site or off-site, passes through the /download
+ * doorway (website/functions/download.js), which records `download_redirect`
+ * server-side: it fires even when the browser blocks the tracker, carries the
+ * real IP for country, the placement of the on-site button, and, when the
+ * visitor's first-party PostHog cookie is present, the same distinct_id and
+ * session id as the page views. The browser no longer emits its own event.
  *
- *   - on-site: the client click counts; the on-site redirect is the richer
- *     record (referrer, country, cookie-bound visitor and session ids) and is
- *     NOT an intent.
- *   - off-site: the redirect counts, unless the doorway excluded it as a bot.
+ *   - `download_redirect` counts unless the doorway excluded it as a bot.
+ *   - `download_clicked` is the browser event the on-site buttons emitted
+ *     BEFORE #2953, when they linked straight to GitHub and no redirect
+ *     existed. Those historical rows still count; nothing emits it any more.
  *
  * Three consumers used to spell this predicate by hand (weekly digest SQL,
  * daily download-source SQL, the download-counter's qualification). A rule
@@ -22,28 +21,31 @@
 export const DOWNLOAD_INTENT = Object.freeze({
   click: "download_clicked",
   redirect: "download_redirect",
-  excludedBucket: "onsite",
+  onsiteBucket: "onsite",
 });
 
 const p = DOWNLOAD_INTENT;
 
-/** HogQL: an off-site redirect that counts. Null-safe on both properties so a
- * pre-#2953 row (no `source_bucket`) and a row with no `excluded_reason` keep
- * counting exactly as they did. */
-export const OFFSITE_REDIRECT_SQL =
-  `(event = '${p.redirect}' AND ` +
-  `coalesce(properties.excluded_reason, '') = '' AND ` +
-  `coalesce(properties.source_bucket, '') != '${p.excludedBucket}')`;
+/** HogQL: a redirect that counts. Null-safe so a row with no `excluded_reason`
+ * keeps counting exactly as it did. */
+export const REDIRECT_INTENT_SQL =
+  `(event = '${p.redirect}' AND coalesce(properties.excluded_reason, '') = '')`;
 
-/** HogQL: every download intent, on-site or off-site, counted once. */
-export const DOWNLOAD_INTENT_SQL = `(event = '${p.click}' OR ${OFFSITE_REDIRECT_SQL})`;
+/** HogQL: every download intent, counted once. */
+export const DOWNLOAD_INTENT_SQL = `(event = '${p.click}' OR ${REDIRECT_INTENT_SQL})`;
+
+/** HogQL: a counting redirect that came from an off-site owned link, for the
+ * source breakdown. Null-safe on `source_bucket` so a pre-#2953 row (no bucket)
+ * stays off-site, which is all it could have been. */
+export const OFFSITE_REDIRECT_SQL =
+  `(${REDIRECT_INTENT_SQL} AND coalesce(properties.source_bucket, '') != '${p.onsiteBucket}')`;
 
 /** The same rule for a single relayed event (download-counter). */
-export function qualifiesDownloadIntent({ event, excludedReason, sourceBucket }) {
-  return (
-    event === p.click ||
-    (event === p.redirect &&
-      (excludedReason ?? "") === "" &&
-      sourceBucket !== p.excludedBucket)
-  );
+export function qualifiesDownloadIntent({ event, excludedReason }) {
+  return event === p.click || (event === p.redirect && (excludedReason ?? "") === "");
+}
+
+/** Same split as OFFSITE_REDIRECT_SQL for a single relayed event. */
+export function isOffsiteRedirect({ event, sourceBucket }) {
+  return event === p.redirect && (sourceBucket ?? "") !== p.onsiteBucket;
 }

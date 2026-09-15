@@ -1,6 +1,7 @@
 ---
-// "Download for Mac" with the Apple mark (#2816). Raw .dmg href plus a
-// data-download-source, the shape SiteServices' download_clicked listener reads.
+// "Download for Mac" with the Apple mark (#2816). Doorway href plus a
+// data-download-source, which SiteServices' click handler writes into the link
+// as &placement= so the doorway's download_redirect records the button (#2953).
 import { downloadUrl } from '../../data/site-navigation.js';
 interface Props {
   source: string;

@@ -20,7 +20,7 @@
  * bursts (grounded review round 1).
  */
 
-import { qualifiesDownloadIntent } from "../../shared/download-intent.js";
+import { isOffsiteRedirect, qualifiesDownloadIntent } from "../../shared/download-intent.js";
 
 const REQUIRED_EVENT_TYPES = ["download_clicked", "download_redirect"];
 const MAX_EVENT_ID_LEN = 200;
@@ -228,10 +228,9 @@ export class DownloadCounter {
     } = payload;
 
     // Qualification (#1243's definition; since #2953 owned by
-    // workers/shared/download-intent.js): on-site clicks always qualify;
-    // off-site redirects qualify only when not bot-excluded; the on-site
-    // redirect is the click's server-side twin and never counts twice.
-    const qualifies = qualifiesDownloadIntent({ event, excludedReason, sourceBucket });
+    // workers/shared/download-intent.js): every redirect qualifies unless the
+    // doorway bot-excluded it; a historical browser click always qualifies.
+    const qualifies = qualifiesDownloadIntent({ event, excludedReason });
     if (!qualifies) {
       return Response.json({ counted: false, reason: "excluded" });
     }
@@ -313,7 +312,7 @@ export class DownloadCounter {
 
     let content = formatMessage({
       total: record.total,
-      isOffsite: event === "download_redirect",
+      isOffsite: isOffsiteRedirect({ event, sourceBucket }),
       city,
       country,
       countryCode,

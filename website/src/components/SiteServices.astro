@@ -1,4 +1,4 @@
-<!-- PostHog Analytics (loaded at once, #2953) and Crisp chat (deferred until after LCP) -->
+<!-- PostHog Analytics (loaded at once, #2953) and Crisp chat (deferred: first interaction or 5 s) -->
 <script>
   let postHogLoaded = false;
   function loadPostHog() {
@@ -91,8 +91,9 @@
   // stub and the init call run here.
   loadPostHog();
   // Crisp keeps the deferral: first user interaction OR a 5-second backstop,
-  // whichever comes first, so its 400 KB never contends with the page's own
-  // stylesheet, fonts and hero image on a cold visit.
+  // whichever comes first. Either can fire before the page's own stylesheet,
+  // fonts and hero image have finished; the deferral only keeps its 400 KB
+  // out of the first paint on a cold visit that does nothing yet.
   const events = ['pointermove', 'scroll', 'touchstart', 'keydown'];
   function trigger() {
     events.forEach((e) => window.removeEventListener(e, trigger));
@@ -101,18 +102,16 @@
   events.forEach((e) => window.addEventListener(e, trigger, { once: true, passive: true }));
   setTimeout(loadCrisp, 5000);
 
-  // Download click tracking with placement attribution. Every on-site button
-  // now points at the /download doorway (#2953), which records the same
-  // download server-side with the visitor's cookie; this browser event keeps
-  // the placement (`source`) and stays the on-site intent every consumer
-  // counts (workers/shared/download-intent.js). The PostHog snippet installs
-  // a queueing stub synchronously, so a click before the library arrives is
-  // still recorded once it does.
-  document.addEventListener('click', (e) => {
+  // Download placement (#2953). Every on-site button points at the /download
+  // doorway, which records the download server-side with the visitor's cookie,
+  // whether or not the tracker loaded. The only thing the server cannot see is
+  // WHICH button was pressed, so this handler writes the placement into the
+  // link before the browser follows it. There is no browser-side download
+  // event any more; workers/shared/download-intent.js counts the redirect.
+  function stampPlacement(e) {
     const link = e.target.closest('a[href^="/download"]');
     if (!link) return;
-    if (typeof window.posthog === 'undefined') loadPostHog();
-    const source =
+    const placement =
       link.dataset.downloadSource ||
       (link.closest('nav') && 'nav') ||
       (link.closest('.hero-section') && 'hero') ||
@@ -120,9 +119,12 @@
       (link.closest('footer') && 'footer') ||
       (link.closest('.blog-cta') && 'blog-post') ||
       'unknown';
-    window.posthog.capture('download_clicked', {
-      source: source,
-      page: window.location.pathname,
-    });
-  });
+    const target = new URL(link.href, window.location.href);
+    target.searchParams.set('placement', placement);
+    link.href = target.pathname + target.search;
+  }
+  // auxclick is the middle button (open in new tab); the browser follows the
+  // href as it stands when the handler returns.
+  document.addEventListener('click', stampPlacement);
+  document.addEventListener('auxclick', stampPlacement);
 </script>

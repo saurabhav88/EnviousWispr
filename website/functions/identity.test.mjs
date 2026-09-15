@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { identityFromCookie, pageFromReferer, resolveSourceBucket } from "./download.js";
+import {
+  identityFromCookie,
+  languageFromHeader,
+  pageFromReferer,
+  placementFromQuery,
+  platformFromUserAgent,
+  resolveSourceBucket,
+} from "./download.js";
 
 const KEY = "phc_test";
 const NOW = 1_800_000_000_000;
@@ -65,15 +72,58 @@ test("the cookie is found among others and a bad nowMs never grants a session", 
   assert.equal(identityFromCookie(c, KEY, NaN).sessionId, null);
 });
 
-test("redirect page matches the client path: Referer pathname, query dropped", () => {
-  assert.equal(pageFromReferer("https://enviouswispr.com/compare/voiceink/?utm_source=x"), "/compare/voiceink/");
-  assert.equal(pageFromReferer("https://enviouswispr.com/"), "/");
+const REQ = "https://enviouswispr.com/download?source=onsite";
+
+test("redirect page is the same-origin Referer pathname, query dropped", () => {
+  assert.equal(pageFromReferer("https://enviouswispr.com/compare/voiceink/?utm_source=x", REQ), "/compare/voiceink/");
+  assert.equal(pageFromReferer("https://enviouswispr.com/", REQ), "/");
 });
 
-test("missing referer produces null page", () => {
-  assert.equal(pageFromReferer(""), null);
-  assert.equal(pageFromReferer(undefined), null);
-  assert.equal(pageFromReferer("not a url"), null);
+test("an off-site Referer is not one of our pages: null, never its own path", () => {
+  assert.equal(pageFromReferer("https://reddit.com/r/macapps/", REQ), null);
+  assert.equal(pageFromReferer("https://www.enviouswispr.com/", REQ), null);
+  assert.equal(pageFromReferer("http://enviouswispr.com/", REQ), null);
+});
+
+test("missing or malformed referer produces null page", () => {
+  assert.equal(pageFromReferer("", REQ), null);
+  assert.equal(pageFromReferer(undefined, REQ), null);
+  assert.equal(pageFromReferer("not a url", REQ), null);
+  assert.equal(pageFromReferer("https://enviouswispr.com/", "not a url"), null);
+});
+
+test("placement is a plain token or nothing", () => {
+  assert.equal(placementFromQuery("hero"), "hero");
+  assert.equal(placementFromQuery("wisprflow-alternatives-bottom"), "wisprflow-alternatives-bottom");
+  assert.equal(placementFromQuery(null), null);
+  assert.equal(placementFromQuery(""), null);
+  assert.equal(placementFromQuery("Hero"), null);
+  assert.equal(placementFromQuery("a b"), null);
+  assert.equal(placementFromQuery("<script>"), null);
+  assert.equal(placementFromQuery("x".repeat(41)), null);
+});
+
+test("platform from User-Agent: the common Mac browsers, and nulls for the unknown", () => {
+  const safari = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+  const chrome = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  const edge = chrome + " Edg/124.0.0.0";
+  const firefox = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0";
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+  assert.deepEqual(platformFromUserAgent(safari), { os: "Mac OS X", browser: "Safari" });
+  assert.deepEqual(platformFromUserAgent(chrome), { os: "Mac OS X", browser: "Chrome" });
+  assert.deepEqual(platformFromUserAgent(edge), { os: "Mac OS X", browser: "Microsoft Edge" });
+  assert.deepEqual(platformFromUserAgent(firefox), { os: "Mac OS X", browser: "Firefox" });
+  assert.deepEqual(platformFromUserAgent(iphone), { os: "iOS", browser: "Safari" });
+  assert.deepEqual(platformFromUserAgent("curl/8.4.0"), { os: null, browser: null });
+  assert.deepEqual(platformFromUserAgent(""), { os: null, browser: null });
+});
+
+test("language is the first Accept-Language tag or nothing", () => {
+  assert.equal(languageFromHeader("en-US,en;q=0.9,fr;q=0.8"), "en-US");
+  assert.equal(languageFromHeader("de"), "de");
+  assert.equal(languageFromHeader("*"), null);
+  assert.equal(languageFromHeader(""), null);
+  assert.equal(languageFromHeader(null), null);
 });
 
 test("onsite is an explicit bucket and never falls through to a referrer class", () => {
