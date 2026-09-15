@@ -249,7 +249,7 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Public entry point
 
-  /// - Parameter spokenPunctuation: gates ONLY the nine bare spoken-punctuation
+  /// - Parameter spokenPunctuation: gates ONLY the bare spoken-punctuation
   ///   commands (see `punct`). Every other conversion — numbers, currency, dates,
   ///   times, phone, email, URL, ordinals, ranges — and the sentence-capitalization
   ///   pass run regardless. Defaults to `false`, matching the shipped product default
@@ -1686,17 +1686,21 @@ public struct InverseTextNormalizer: Sendable {
     // A spoken-punctuation COMMAND is a pending delimiter: once `applyPunct` rewrites it, the
     // capital after it is positional. "Note colon A one time fee applies." became
     // "Note: A1 time fee applies." (Codex diff review r5). The trigger set is the LAST word of
-    // each of the nine commands that pass owns — a closed table, not a list to extend.
+    // each delimiter command that pass owns — a closed table, not a list to extend.
     let (tok, _) = adjacentTokenBefore(ns, start)
     return punctCommandTails.contains(tok.lowercased())
   }
 
-  /// Last word of each of the nine spoken-punctuation commands `punct` rewrites ("new
-  /// paragraph", "new line", "comma", "period", "full stop", "question mark", "exclamation
-  /// mark/point", "colon", "semicolon"). `punct` is the authority; if a command is added there,
-  /// add its last word here. Applied unconditionally rather than gated on `spokenPunctuation`,
-  /// so this port and the Python oracle stay identical — with the setting off the cost is an
-  /// under-conversion after a rare phrase ("the finish line A one"), which is the safe direction.
+  /// Last word of each DELIMITER command `punct` rewrites ("new paragraph", "new line", "comma",
+  /// "period", "full stop", "question mark", "exclamation mark/point", "colon", "semicolon").
+  /// `punct` is the authority; a command added there that becomes a delimiter adds its last word
+  /// here. The joiners "slash" and "backslash" (#2955) are deliberately ABSENT: `/` and `\` glue
+  /// words rather than end a clause, so "docs slash A one" keeps the reading a spoken word gets
+  /// ("docs/A1" with the setting on, "docs slash A1" off), and leaving this set alone is what keeps
+  /// the setting-off output byte-identical. Applied unconditionally rather than gated on
+  /// `spokenPunctuation`, so this port and the Python oracle stay identical — with the setting off
+  /// the cost is an under-conversion after a rare phrase ("the finish line A one"), which is the
+  /// safe direction.
   static let punctCommandTails: Set<String> = [
     "paragraph", "line", "comma", "period", "stop", "mark", "point", "colon", "semicolon",
   ]
@@ -2153,8 +2157,9 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Punctuation
 
-  /// The nine bare spoken-punctuation commands, gated by the user setting (#1794).
-  /// Nine tuples, TEN phrases: `exclamation (mark|point)` yields two.
+  /// The bare spoken-punctuation commands, gated by the user setting (#1794). One tuple can
+  /// yield more than one spoken phrase: `exclamation (mark|point)` and the optional "forward" /
+  /// two-word "back slash" aliases (#2955).
   ///
   /// Matching is case-INSENSITIVE (`reSub` defaults `caseInsensitive: true` and the
   /// loop below does not override it), so "Period" at a sentence start converts too.
@@ -2170,9 +2175,19 @@ public struct InverseTextNormalizer: Sendable {
     (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
+    // #2955: joiners. Whitespace on BOTH sides is consumed ("and slash or" -> "and/or"), but only
+    // horizontal whitespace, so a line break "new line" just inserted survives (CR and LF; other
+    // Unicode line separators are ordinary whitespace to this class; neither recogniser has been
+    // observed emitting one).
+    // The star, not `\s+`, is what lets "slash slash" match twice ("://"). Backslash FIRST, or a
+    // two-word "back slash" would half-match the slash rule, and the alias gap is a run (not one
+    // character) for the same reason (second-pass review). `\b` keeps "backslash", "slashing" and
+    // "slasher" intact.
+    (#"[^\S\r\n]*\bback[^\S\r\n]*slash\b[^\S\r\n]*"#, "\\"),
+    (#"[^\S\r\n]*\b(?:forward[^\S\r\n]+)?slash\b[^\S\r\n]*"#, "/"),
   ]
 
-  /// - Parameter spokenPunctuation: when false, the nine command rewrites are skipped
+  /// - Parameter spokenPunctuation: when false, the command rewrites are skipped
   ///   and their trigger words survive as ordinary text. Sentence capitalization below
   ///   runs REGARDLESS: it keys off `.!?` whoever produced them, including the marks
   ///   the speech recognizer adds on its own, so it is general formatting rather than

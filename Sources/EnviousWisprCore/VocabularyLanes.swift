@@ -74,9 +74,11 @@ public struct SnippetVocabulary: Sendable, Equatable {
 
   public static let empty = SnippetVocabulary(snippets: [], keyword: "", generation: 0)
 
-  /// The default keyword (founder, 2026-09-01). Chosen because nothing in the text pipeline
-  /// consumes a spoken "backslash" — unlike "slash", which `InverseTextNormalizer` already
-  /// converts contextually for URLs, dates and ranges, so it has a second owner.
+  /// The default keyword (founder, 2026-09-01), kept after #2955 made "backslash" a spoken
+  /// punctuation command too. The two coexist because `SnippetExpansionStep` runs FIRST in the
+  /// chain: a keyword followed by a saved snippet's words is masked before the normalizer ever
+  /// sees it, and only a bare "backslash" no snippet claims reaches `InverseTextNormalizer`,
+  /// where it becomes `\` when the user has the spoken-punctuation setting on (off by default).
   public static let defaultKeyword = "backslash"
 
   /// Nothing can fire without both halves, so the expansion step is disabled rather than run

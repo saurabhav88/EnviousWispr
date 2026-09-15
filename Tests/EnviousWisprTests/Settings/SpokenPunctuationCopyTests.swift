@@ -5,12 +5,13 @@ import Testing
 /// #1794: the in-app help panel's word list is a HAND-MAINTAINED mirror of
 /// `InverseTextNormalizer.punct`. Nothing derives one from the other at runtime, so this
 /// freeze test is the guard: if someone edits the copy, it must be a conscious act, and if
-/// someone edits the nine rules the mismatch shows up here rather than in a panel that
+/// someone edits the rules the mismatch shows up here rather than in a panel that
 /// quietly lies to users about what the app does.
 struct SpokenPunctuationCopyTests {
 
-  /// Nine rule tuples, TEN phrases: `exclamation (mark|point)` yields two.
-  @Test("The help panel lists exactly the ten spoken phrases, verbatim and in order")
+  /// One tuple can yield more than one phrase (`exclamation (mark|point)`, optional "forward");
+  /// the two-word "back slash" alias is deliberately not a row.
+  @Test("The help panel lists exactly the spoken phrases, verbatim and in order")
   func phrasesAreFrozen() {
     let expected: [(String, String)] = [
       ("comma", ","),
@@ -21,6 +22,9 @@ struct SpokenPunctuationCopyTests {
       ("exclamation point", "!"),
       ("colon", ":"),
       ("semicolon", ";"),
+      ("slash", "/"),
+      ("forward slash", "/"),
+      ("backslash", "\\"),
       ("new line", "a line break"),
       ("new paragraph", "a blank line"),
     ]

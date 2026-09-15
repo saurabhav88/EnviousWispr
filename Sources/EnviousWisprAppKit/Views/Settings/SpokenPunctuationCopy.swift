@@ -2,8 +2,9 @@ import Foundation
 
 /// #1794: canonical copy for the spoken-punctuation setting and its in-app help panel.
 ///
-/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` (nine rule
-/// tuples, ten spoken phrases — `exclamation (mark|point)` yields two). The regex table
+/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` (one rule tuple can
+/// yield more than one spoken phrase: `exclamation (mark|point)` and the optional "forward" on
+/// slash both do; the two-word "back slash" alias is accepted but not listed). The regex table
 /// is `private` and deliberately stays that way: deriving this list from it at runtime
 /// would mean widening the engine's internals across a module boundary to render a
 /// static help panel. The cost of the mirror is drift; the guard is
@@ -45,6 +46,9 @@ enum SpokenPunctuationCopy {
     Phrase(spoken: "exclamation point", result: "!"),
     Phrase(spoken: "colon", result: ":"),
     Phrase(spoken: "semicolon", result: ";"),
+    Phrase(spoken: "slash", result: "/"),
+    Phrase(spoken: "forward slash", result: "/"),
+    Phrase(spoken: "backslash", result: "\\"),
     Phrase(spoken: "new line", result: "a line break"),
     Phrase(spoken: "new paragraph", result: "a blank line"),
   ]

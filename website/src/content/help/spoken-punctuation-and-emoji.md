@@ -4,10 +4,10 @@ description: "Saying punctuation and emoji out loud, and why one is on and the o
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-08-06
+updated: 2026-09-15
 ---
 Two transcription settings let you speak a phrase and get a symbol or a line break instead of the words you said. Both live under **Settings** \> **Transcription**.
 
@@ -35,8 +35,13 @@ EnviousWispr can convert spoken words like "comma" into punctuation marks. This 
 | exclamation point | ! |
 | colon | : |
 | semicolon | ; |
+| slash | / |
+| forward slash | / |
+| backslash | \ |
 | new line | a line break |
 | new paragraph | a blank line |
+
+Slash and backslash join the words on both sides, so "and slash or" becomes "and/or" and "C colon backslash Users" becomes "C:\Users".
 
 **Understand the trade-off before turning it on.** EnviousWispr already punctuates for you, so spoken punctuation competes with that. It also cannot tell when you meant the word itself: saying "the grace period expires" puts a full stop in the middle of your sentence.
 
