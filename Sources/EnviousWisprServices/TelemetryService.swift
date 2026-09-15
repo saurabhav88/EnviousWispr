@@ -3936,21 +3936,12 @@ public final class TelemetryService {
   // data in these events. Only counts, booleans, category labels, latency
   // buckets. Bible §14.3.
 
-  /// Phase 0 (#640) — fired by `CustomWordsPropagator.update(corrector:polish:)`
-  /// once per atomic broadcast. `lane` is "corrector" or "polish".
-  public func customWordsPropagatorBroadcast(
-    lane: String, generation: UInt64, consumerCount: Int, termCount: Int
-  ) {
-    PostHogSDK.shared.capture(
-      "custom_words.propagator_broadcast",
-      properties: [
-        "lane": lane,
-        "generation": Int(generation),
-        "consumer_count": consumerCount,
-        "term_count": termCount,
-      ]
-    )
-  }
+  // #2972: `customWordsPropagatorBroadcast` (`custom_words.propagator_broadcast`,
+  // Phase 0 #640) was deleted here. It fired two rows per custom-words change
+  // (one per lane): 10,975 production rows from 235 installs in the 30 days to
+  // 2026-09-15, and nothing read it (no worker, script, or saved insight). The
+  // question it answered, whether a broadcast reaches both consumers, is a
+  // property `CustomWordsPropagatorTests` owns.
 
   // #2066: `customWordsAfmAliasFilled` (`custom_words.afm_alias_filled`) was
   // deleted here. Its doc named a real producer — `WordSuggestionService
