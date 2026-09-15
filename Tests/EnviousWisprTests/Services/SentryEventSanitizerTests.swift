@@ -416,6 +416,17 @@ struct SentryEventSanitizerTests {
     let once = SentryEventSanitizer.redactString(boundary)
     #expect(once == "[REDACTED]")
     #expect(SentryEventSanitizer.redactString(once) == once)
+
+    // Codex r2: the scrub must never LIFT a redaction the raw string earned.
+    // Growing: 32 hex + 8 others trips the hex rule raw; scrubbed it is 49 chars
+    // and the "within 8 of the whole string" clause would stop matching.
+    let hexThenPath = String(repeating: "a", count: 32) + "/Users/b"
+    #expect(SentryEventSanitizer.redactString(hexThenPath) == "[REDACTED]")
+    // Shrinking: 108 chars raw trips the length rule; scrubbed it is 98.
+    let longUserThenText =
+      "/Users/abcdefghijklmnopqrst/" + String(repeating: "private ", count: 10)
+    #expect(longUserThenText.count > 100)
+    #expect(SentryEventSanitizer.redactString(longUserThenText) == "[REDACTED]")
   }
 
   // MARK: - Helpers
