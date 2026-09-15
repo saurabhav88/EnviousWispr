@@ -239,6 +239,15 @@ test("only the pageview query is host-scoped; download queries must NOT be", () 
   assert.match(websiteSql(win), /properties\.\$host IN \('enviouswispr\.com', 'www\.enviouswispr\.com'\)/);
   // download_redirect is emitted server-side with no $host, so a host filter
   // here would silently drop every off-site redirect.
+  // #2953: every download is a redirect now, on-site included, so the intent
+  // count must NOT exclude the on-site bucket; only the off-site source
+  // breakdown does, null-safely, so pre-#2953 rows stay off-site.
+  assert.equal(
+    downloadsSql(win).includes("countIf((event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = ''))) AS intents"),
+    true,
+  );
+  assert.doesNotMatch(downloadsSql(win), /onsite/);
+  assert.match(downloadSourcesSql(win), /coalesce\(properties\.source_bucket, ''\) != 'onsite'/);
   assert.doesNotMatch(downloadsSql(win), /\$host/);
   assert.doesNotMatch(downloadSourcesSql(win), /\$host/);
 });

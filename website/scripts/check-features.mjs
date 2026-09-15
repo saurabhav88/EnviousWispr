@@ -87,6 +87,19 @@ function resolve(href, baseRoute) {
   }
   return { url, external, pathname: url.pathname, hash };
 }
+/** Routes served by a Cloudflare Pages Function rather than a built page.
+ * Derived from the functions/ directory so a new function is a new route
+ * without touching this list, and a deleted one stops being one (#2953:
+ * every download button now links to /download, which is functions/download.js). */
+const functionsDir = path.join(root, 'functions');
+const functionRoutes = new Set(
+  fs.existsSync(functionsDir)
+    ? fs
+        .readdirSync(functionsDir)
+        .filter((f) => /^[a-z0-9-]+\.js$/.test(f))
+        .map((f) => `/${f.replace(/\.js$/, '')}`)
+    : [],
+);
 /** Built HTML for a pathname, whether a route (dir index) or a file. */
 function pageFor(pathname) {
   if (pages.has(pathname)) return pages.get(pathname);
@@ -108,6 +121,7 @@ function checkLinks(route, html, label = route) {
     }
     if (r.external) continue;
     checked++;
+    if (functionRoutes.has(r.pathname)) continue;
     const target = pageFor(r.pathname);
     if (target) {
       if (r.hash && !hasId(target, r.hash)) problems.push(`${label}: ${href} points at a fragment the target lacks`);

@@ -97,7 +97,7 @@ both post (the one check an in-memory mock can't reproduce).
 
 **Then, in immediate succession — measuring and cutting over are two ends of the SAME race window** (a real download landing between "measure" and "PATCH" would be counted by the old script but never reach the new counter's seed, permanently undercounting by one). Minimizing the gap between these three steps is the actual mitigation; do not do anything else between them:
 
-1. Measure the live true count (the exact query the old Hog script ran):
+1. Measure the live true count (the intent rule from `workers/shared/download-intent.js`; since #2953 the on-site redirect is the click's twin and is excluded):
    ```bash
    ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- python3 -c "
    import os, json, urllib.request

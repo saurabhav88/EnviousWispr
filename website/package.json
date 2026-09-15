@@ -10,9 +10,10 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "prebuild": "node scripts/check-help-content.mjs && node scripts/check-language-count.mjs && npm run test:home",
+    "prebuild": "node scripts/check-help-content.mjs && node scripts/check-language-count.mjs && npm run test:home && npm run test:functions",
     "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs && node scripts/check-features.mjs && node scripts/check-dist-weight.mjs",
-    "test:home": "node --test tests/home/*.test.mjs"
+    "test:home": "node --test tests/home/*.test.mjs",
+    "test:functions": "node --test functions/*.test.mjs"
   },
   "overrides": {
     "devalue": ">=5.8.1",

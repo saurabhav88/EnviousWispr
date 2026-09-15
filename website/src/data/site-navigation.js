@@ -9,7 +9,12 @@
 // publish a false freshness signal).
 
 export const githubUrl = 'https://github.com/saurabhav88/EnviousWispr';
-export const downloadUrl = `${githubUrl}/releases/latest/download/EnviousWispr.dmg`;
+// #2953: every on-site download goes through the /download doorway, which
+// records the download server-side (with the visitor's own cookie id and the
+// page it came from) and then redirects to the latest GitHub DMG. The raw DMG
+// URL is no longer a click target anywhere on the site; the JSON-LD in
+// StructuredData.astro keeps it as the schema's downloadUrl.
+export const downloadUrl = '/download?source=onsite';
 
 export const catalog = [
   {

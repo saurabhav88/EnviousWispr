@@ -1,4 +1,4 @@
-<!-- PostHog Analytics and Crisp chat (both deferred until after LCP to avoid contention) -->
+<!-- PostHog Analytics (loaded at once, #2953) and Crisp chat (deferred: first interaction or 5 s) -->
 <script>
   let postHogLoaded = false;
   function loadPostHog() {
@@ -48,10 +48,24 @@
     })(document, window.posthog || []);
     posthog.init('phc_W1N51z2mqKZGo8UxBYQ5avkpjpJ3npT8retNQUaRSKk', {
       api_host: 'https://us.i.posthog.com',
-      person_profiles: 'identified_only',
+      // #2953: anonymous visitors get a person too, so first-touch source
+      // ($initial_referring_domain, $initial_utm_*) exists beside the last one.
+      person_profiles: 'always',
       capture_pageview: true,
       capture_pageleave: true,
       autocapture: true,
+      // #2953: defaults made explicit so a reader can see what is on.
+      capture_dead_clicks: true,
+      rageclick: true,
+      // #2953: replay is switched on project-side (sampled, minimum duration);
+      // the client side masks every input and any editable text, and blocks
+      // the whole Crisp chat surface so a typed or rendered message is never
+      // in a recording. The marketing site holds no user content otherwise.
+      session_recording: {
+        maskAllInputs: true,
+        maskTextSelector: '[contenteditable]',
+        blockSelector: '.crisp-client',
+      },
     });
   }
   // Crisp chat: its loader pulls ~400 KB of script and opens a socket, so it
@@ -69,31 +83,35 @@
     s.async = true;
     document.head.appendChild(s);
   }
-  function loadServices() {
-    loadPostHog();
-    loadCrisp();
-  }
-  // Wait for first user interaction OR a 5-second backstop, whichever comes first.
-  // This guarantees third-party initialization happens AFTER LCP on cold visits
-  // while still firing reliably on visitors who never scroll or move (e.g. bounce).
+  // #2953: PostHog loads at once. It used to share Crisp's deferred trigger
+  // (first interaction or a 5-second backstop), which meant a visitor who
+  // left inside 5 seconds without moving the mouse sent NOTHING, not even a
+  // page view, and those are exactly the "landed and left" visitors worth
+  // counting. The library download itself stays async; only the queueing
+  // stub and the init call run here.
+  loadPostHog();
+  // Crisp keeps the deferral: first user interaction OR a 5-second backstop,
+  // whichever comes first. Either can fire before the page's own stylesheet,
+  // fonts and hero image have finished; the deferral only keeps its 400 KB
+  // out of the first paint on a cold visit that does nothing yet.
   const events = ['pointermove', 'scroll', 'touchstart', 'keydown'];
   function trigger() {
     events.forEach((e) => window.removeEventListener(e, trigger));
-    loadServices();
+    loadCrisp();
   }
   events.forEach((e) => window.addEventListener(e, trigger, { once: true, passive: true }));
-  setTimeout(loadServices, 5000);
+  setTimeout(loadCrisp, 5000);
 
-  // Download click tracking with source attribution. A visitor who lands and
-  // taps Download before the deferred load has fired is the best visitor we
-  // get, so the click must never be dropped: the PostHog snippet installs a
-  // queueing stub synchronously, so loading it here and capturing on the stub
-  // records the event once the real library arrives.
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('a[href*="EnviousWispr.dmg"]');
+  // Download placement (#2953). Every on-site button points at the /download
+  // doorway, which records the download server-side with the visitor's cookie,
+  // whether or not the tracker loaded. The only thing the server cannot see is
+  // WHICH button was pressed, so this handler writes the placement into the
+  // link before the browser follows it. There is no browser-side download
+  // event any more; workers/shared/download-intent.js counts the redirect.
+  function stampPlacement(e) {
+    const link = e.target.closest('a[href^="/download"]');
     if (!link) return;
-    if (typeof window.posthog === 'undefined') loadPostHog();
-    const source =
+    const placement =
       link.dataset.downloadSource ||
       (link.closest('nav') && 'nav') ||
       (link.closest('.hero-section') && 'hero') ||
@@ -101,9 +119,12 @@
       (link.closest('footer') && 'footer') ||
       (link.closest('.blog-cta') && 'blog-post') ||
       'unknown';
-    window.posthog.capture('download_clicked', {
-      source: source,
-      page: window.location.pathname,
-    });
-  });
+    const target = new URL(link.href, window.location.href);
+    target.searchParams.set('placement', placement);
+    link.href = target.pathname + target.search;
+  }
+  // auxclick is the middle button (open in new tab); the browser follows the
+  // href as it stands when the handler returns.
+  document.addEventListener('click', stampPlacement);
+  document.addEventListener('auxclick', stampPlacement);
 </script>
