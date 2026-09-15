@@ -364,8 +364,13 @@ struct InverseTextNormalizerParityTests {
       ("https://example.com/slash/docs", "https://example.com/slash/docs"),
       ("C:\\backslash\\Users", "C:\\backslash\\Users"),
       ("(slash) means divide", "(slash) means divide"),
-      // sentence punctuation after the spoken word is fine
+      // ... and glued on the RIGHT through a suffix (cloud review round 2): a hostname or a
+      // basename literally named slash / backslash is a written token too
+      ("slash.com", "slash.com"),
+      ("open backslash.txt", "open backslash.txt"),
+      // sentence punctuation after the spoken word is fine when it ends the clause
       ("the pros slash cons list.", "the pros/cons list."),
+      ("say slash, then", "say/, then"),
       // adjacent MIXED joiners are one pass, so the second still sees its whitespace (local
       // review r2)
       ("backslash slash", "\\/"),

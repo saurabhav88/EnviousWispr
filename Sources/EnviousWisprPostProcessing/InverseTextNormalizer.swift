@@ -2185,15 +2185,22 @@ public struct InverseTextNormalizer: Sendable {
   /// "new line" just inserted survives (CR and LF; other Unicode line separators are ordinary
   /// whitespace to this class; neither recogniser has been observed emitting one). The star, not
   /// `\s+`, is what lets "slash slash" match twice ("://"); the alias gap is a run (not one
-  /// character) for the same reason (second-pass review). The word must be a SPOKEN word:
-  /// `(?<!\S)` refuses one glued to what precedes it and the lookahead allows only whitespace,
-  /// the end, or sentence punctuation after it, so an already-written path segment
-  /// ("example.com/slash/docs", "C:\backslash\Users") is left alone and the pass stays
-  /// idempotent (cloud review PR #2960). "slashing" and "slasher" fail the lookahead. The
-  /// backslash alternative is listed first so "back slash" is one command, never "back" + `/`.
-  /// User-facing copy mirrors these in `SpokenPunctuationCopy` beside the `punct` rows.
+  /// character) for the same reason (second-pass review).
+  ///
+  /// The word must be a SPOKEN word, and that is a closed question about its two neighbours
+  /// (cloud review PR #2960, two rounds, one on each side): on the LEFT only whitespace or the
+  /// start (`(?<!\S)`); on the RIGHT only whitespace, the end, or sentence punctuation that is
+  /// itself followed by whitespace or the end (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other
+  /// neighbour means the letters are part of a written token, so "example.com/slash/docs",
+  /// "C:\backslash\Users", "slash.com" and "backslash.txt" are left alone and the pass stays
+  /// idempotent, while "and slash." and "slash, then" still convert. A third finding of this
+  /// shape would have to name a neighbour that is neither whitespace, the end, nor terminal
+  /// punctuation followed by one of those, and there is no such character. "slashing" and
+  /// "slasher" fail the right-hand check. The backslash alternative is listed first so
+  /// "back slash" is one command, never "back" + `/`. User-facing copy mirrors these in
+  /// `SpokenPunctuationCopy` beside the `punct` rows.
   static let joinerCommands =
-    #"[^\S\r\n]*(?<!\S)(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])[^\S\r\n]*"#
+    #"[^\S\r\n]*(?<!\S)(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
 
   /// - Parameter spokenPunctuation: when false, the command rewrites are skipped
   ///   and their trigger words survive as ordinary text. Sentence capitalization below
