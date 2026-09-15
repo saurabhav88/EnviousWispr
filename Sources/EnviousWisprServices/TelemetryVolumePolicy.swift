@@ -6,8 +6,10 @@ import Foundation
 /// `ObservabilityBootstrap.processPostHogEvent`), BEFORE the privacy sanitizer, so every
 /// row, including the SDK's own lifecycle events, passes through it exactly once.
 ///
-/// Why one boundary and not per-emitter guards: 112 emitters share one wire, and the
-/// question "does this row leave" must have one reader. An emitter keeps describing what
+/// Why one boundary and not per-emitter guards: every emitter shares one wire (count them
+/// with `grep -c "PostHogSDK.shared.capture(" Sources/EnviousWisprServices/TelemetryService.swift`,
+/// never from a number written here), and the question "does this row leave" must have
+/// one reader. An emitter keeps describing what
 /// happened; this type keeps deciding what is worth a billed row.
 ///
 /// The policy is PURE: no SDK calls, no clock, no random source, no shared state. A sampled
@@ -52,8 +54,8 @@ public enum TelemetryVolumePolicy {
 
   /// The common `hotkey.pressed` actions: `start` for push-to-talk and `toggle`, which
   /// covers BOTH edges of a toggle, so these presses are not one-to-one with accepted
-  /// recordings. Every other action (lock, stop, cancel, ignored_processing, quick_add)
-  /// is the signal and stays whole.
+  /// recordings. Every other action (`HotkeyService`'s private `PressAction` minus these
+  /// two; a new case there needs no edit here) is the signal and stays whole.
   static let happyPathPressActions: Set<String> = ["start", "toggle"]
 
   // MARK: - Decision
