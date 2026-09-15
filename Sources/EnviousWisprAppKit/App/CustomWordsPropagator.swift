@@ -1,5 +1,4 @@
 import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 /// Phase 0 (#640) — broadcasts the active vocabulary to consumers via two
@@ -86,31 +85,9 @@ final class CustomWordsPropagator {
     for box in polishConsumers {
       box.value?.polishVocabulary = polish
     }
-    // Phase 8a (#620): emit one event per lane per atomic broadcast.
-    // Privacy-safe: counts only, no term strings. Bible §14.1 + §14.3.
-    //
-    // Codex audit P2 fix: skip emission when no consumers are registered.
-    // `wireCustomWords` calls `update(...)` BEFORE registering consumers
-    // (the seed step) so `register()`'s initial-sync sees the right value;
-    // emitting during that pre-registration seed would produce misleading
-    // `consumer_count=0` events on every app launch. Live broadcasts from
-    // `coordinator.onWordsChanged` always have consumers and emit normally.
-    if !correctorConsumers.isEmpty {
-      TelemetryService.shared.customWordsPropagatorBroadcast(
-        lane: "corrector",
-        generation: corrector.generation,
-        consumerCount: correctorConsumers.count,
-        termCount: corrector.terms.count
-      )
-    }
-    if !polishConsumers.isEmpty {
-      TelemetryService.shared.customWordsPropagatorBroadcast(
-        lane: "polish",
-        generation: polish.generation,
-        consumerCount: polishConsumers.count,
-        termCount: polish.terms.count
-      )
-    }
+    // #2972: the per-lane `custom_words.propagator_broadcast` rows that used to
+    // fire here were retired (two rows per change, nothing read them). The
+    // broadcast itself is unchanged.
   }
 }
 
