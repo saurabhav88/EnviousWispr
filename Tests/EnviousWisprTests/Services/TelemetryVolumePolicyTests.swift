@@ -245,7 +245,9 @@ struct TelemetryVolumePolicyTests {
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
     #expect(out["telemetry_policy_version"] as? Int == 1)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
-    #expect(out["$sample_threshold"] as? Int == 10)
+    // A FRACTION, as posthog-js stores it: a percentage here would make the standard
+    // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
+    #expect(out["$sample_threshold"] as? Double == 0.1)
     #expect(out["$sampled_events"] as? [String] == ["hotkey.pressed"])
     #expect(out["press_action"] as? String == "start")
   }

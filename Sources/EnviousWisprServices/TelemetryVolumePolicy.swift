@@ -19,8 +19,9 @@ import Foundation
 ///
 /// Reading sampled data: a kept sampled row carries PostHog's own sampling vocabulary
 /// (`$sample_type`, `$sample_threshold`, `$sampled_events`, the names posthog-js stamps
-/// from `sampleByEvent`). An estimated total is `sum(100 / $sample_threshold)` with
-/// unsampled rows weighted one. Owner of the reading rules:
+/// from `sampleByEvent`). `$sample_threshold` is the RETAINED FRACTION (0.1 for one in
+/// ten), exactly as posthog-js stores it, so an estimated total is
+/// `sum(1 / $sample_threshold)` with unsampled rows weighted one. Owner of the reading rules:
 /// `.claude/knowledge/analytics-operations.md` RULE: weight-sampled-rows-by-their-threshold.
 public enum TelemetryVolumePolicy {
 
@@ -89,7 +90,9 @@ public enum TelemetryVolumePolicy {
       var out = properties
       out[policyVersionKey] = policyVersion
       out["$sample_type"] = ["sampleByEvent"]
-      out["$sample_threshold"] = threshold
+      // posthog-js stores the retained FRACTION (its `percent` parameter is 0...1), so
+      // the standard `1 / $sample_threshold` weight works unchanged on our rows.
+      out["$sample_threshold"] = Double(threshold) / 100.0
       out["$sampled_events"] = [event]
       return out
     }
