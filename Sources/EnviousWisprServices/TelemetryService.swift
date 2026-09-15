@@ -41,7 +41,7 @@ import PostHog
 
 /// Telemetry Bible Phase 4 (#1173): which user action triggered an API-key
 /// validation pass. Threaded into `validateKeyAndDiscoverModels` (defaulted to
-/// `.modelDiscovery`); only the two Save buttons pass `.save`.
+/// `.modelDiscovery`); only Save-button validation passes `.save`.
 public enum ApiKeyValidationSource: String, Sendable {
   case save
   case modelDiscovery = "model_discovery"
@@ -145,10 +145,10 @@ public enum RecoveryFailureClass: String, Sendable {
   case xpcUnreachable = "xpc_unreachable"
   case cancelled
   case notReady = "not_ready"
-  // #2132: the six below fill a residual that was 100% of genuine recovery
-  // failures (18 events / 30d to 2026-08-19). They are produced by
-  // `recoveryFailureClass(for:)` in `EnviousWisprASR`, which is the only module
-  // that can see the four `internal` error families D-028 keeps isolated.
+  // #2132: ASR classification filled a residual that was 100% of genuine recovery
+  // failures (18 events / 30d to 2026-08-19). Historical classifications remain
+  // declared; current mappings live in `recoveryFailureClass(for:)` in
+  // `EnviousWisprASR`, which can inspect its module-internal error families.
   // VERSION FLOOR: installs below the release carrying this keep emitting
   // `other`, so any query spanning the boundary needs an `app_version`
   // dimension — `analytics-operations.md` RULE:
@@ -173,7 +173,7 @@ public enum RecoveryFailureClass: String, Sendable {
   /// still false. Distinct from `notReady`, which is a DETERMINISTIC refusal at
   /// the load site with no model admitted — conflating the two restores the #2132
   /// deletion, because only this one is transient enough to earn a retry. Same
-  /// version floor as the six above.
+  /// version floor as the classifications introduced by #2132.
   case loadReturnedNotReady = "load_returned_not_ready"
   case managerNotOwned = "manager_not_owned"
   case other
@@ -2481,7 +2481,7 @@ public final class TelemetryService {
   ///
   /// `step` is the closed set of `TerminalResolutionBudget.step` labels, and
   /// every site that charges the budget is one of these (cloud review of the
-  /// #2777 PR asked for the whole set, not the three the resolver alone uses):
+  /// #2777 PR asked for the whole set, not just the resolver's labels):
   /// `scan` (the process sweep), `focused`, `role`, `count`, `range`,
   /// `range_read`, `browser_address_bar` (the caret reads in
   /// `PasteService.caretDerivedContext`) and `screen` (the terminal screen
@@ -3127,7 +3127,7 @@ public final class TelemetryService {
   // behaviour, which `observability-operations.md`
   // RULE: instrumentation-stays-observation-only forbids adding to expose a
   // metric. If that observation is ever wanted, it needs its own ticket and the
-  // emitter is eight lines to restore.
+  // emitter can be restored as part of that work.
 
   /// Emitted when LID abstains (returned nil language).
   /// `reason` is one of: "too_short", "low_confidence", "narrow_margin".
