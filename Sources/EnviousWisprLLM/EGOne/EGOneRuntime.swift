@@ -22,8 +22,9 @@ public protocol EGOneEndpointProviding: AnyObject {
 /// the delivery funnel reports moments (a cancel happened), never how long a
 /// user then sat unable to polish.
 /// Transition-only, by two different mechanisms: health is guarded in its
-/// `didSet` (a colour change, never the launch seed, #2966), paused residency
-/// by its projection tracker in
+/// `didSet` (a colour change or an unsuppressed same-colour reason change,
+/// never the launch seed, #2966), paused residency by its projection tracker
+/// in
 /// `applyInstallState`. Naming both matters — a reader who assumes the didSet
 /// guard covers everything would conclude paused telemetry is debounced by
 /// construction, when it is debounced by a tracker that deliberately skips
@@ -97,15 +98,14 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   public private(set) var health: EGOneHealth = .red(reason: "not_running") {
     didSet {
       // #2966: a health TRANSITION is a colour change, or a same-colour reason
-      // change whose new reason is a RUNTIME DIAGNOSIS. A same-colour change
-      // INTO a delivery-funnel or server-lifecycle reason is silent: the
-      // delivery funnel records those moments (`model_delivery.*`, the paused
-      // entry/exit event), and `not_started -> starting` is every activation.
-      // Measured 30d to 2026-09-15: 12,900 of 20,192 rows were same-colour,
-      // 6,478 of them the seed below firing once per launch on every install
-      // without the model. Probe and memory-pressure diagnoses
-      // (`probe_slow`, `probe_output_unexpected`, `paused_for_memory`) have no
-      // other PostHog record, so a same-colour change into one still emits.
+      // change whose new reason is not one of the three launch shapes in
+      // `reasonsCountedElsewhere`. Measured 30d to 2026-09-15: 12,900 of
+      // 20,192 rows were same-colour; 6,478 were the seed below resolving to
+      // `red(download_required)` once per launch on every install without the
+      // model, and 3,771 were `not_started`/`starting`, which every activation
+      // walks. Every other same-colour change (a download phase, a probe
+      // verdict, a memory-pressure pause, a removal failure) may be the only
+      // record of that moment and still emits.
       //
       // The first resolved value is not a transition either: the initialiser's
       // `.red(not_running)` is a placeholder, and `placeholder -> whatever the
@@ -124,19 +124,17 @@ public final class EGOneRuntime: EGOneEndpointProviding {
           from: Self.healthLabel(oldValue), to: Self.healthLabel(health), reason: reason))
     }
   }
-  /// Reasons a same-colour `health` change may land on WITHOUT a row (#2966):
-  /// every delivery-funnel reason `recomputeHealth` derives from
-  /// `EGOneInstallState` (the funnel's own events carry them) plus the two
-  /// server-lifecycle steps every activation walks. Anything not listed, a
-  /// probe verdict or a memory-pressure pause, has no other record and emits.
-  static let reasonsCountedElsewhere: Set<String> = {
-    var reasons: Set<String> = [
-      "download_required", "update_required", "downloading", "verifying", "download_paused",
-      "not_started", "starting",
-    ]
-    for failure in EGOneDownloadFailure.allCases { reasons.insert(failure.rawValue) }
-    return reasons
-  }()
+  /// Same-colour destination reasons that never earn a row (#2966): the two
+  /// launch shapes measured live. `download_required` is where every install
+  /// without the model lands at launch; `not_started` then `starting` is every
+  /// activation. Deliberately NOT "everything the delivery funnel covers":
+  /// `verifying` has no entry event and a removal failure publishes no
+  /// attempt row, so a wider set silenced moments with no other record
+  /// (Codex r2 on this change). Membership here is a decision, not a claim
+  /// that another event exists.
+  static let reasonsCountedElsewhere: Set<String> = [
+    "download_required", "not_started", "starting",
+  ]
   /// False until `health` has been assigned once (#2966). See `health.didSet`.
   private var healthResolvedOnce = false
   /// Why the manifest cannot activate on this app build (empty = fine).
