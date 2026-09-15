@@ -2175,17 +2175,25 @@ public struct InverseTextNormalizer: Sendable {
     (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
-    // #2955: joiners. Whitespace on BOTH sides is consumed ("and slash or" -> "and/or"), but only
-    // horizontal whitespace, so a line break "new line" just inserted survives (CR and LF; other
-    // Unicode line separators are ordinary whitespace to this class; neither recogniser has been
-    // observed emitting one).
-    // The star, not `\s+`, is what lets "slash slash" match twice ("://"). Backslash FIRST, or a
-    // two-word "back slash" would half-match the slash rule, and the alias gap is a run (not one
-    // character) for the same reason (second-pass review). `\b` keeps "backslash", "slashing" and
-    // "slasher" intact.
-    (#"[^\S\r\n]*\bback[^\S\r\n]*slash\b[^\S\r\n]*"#, "\\"),
-    (#"[^\S\r\n]*\b(?:forward[^\S\r\n]+)?slash\b[^\S\r\n]*"#, "/"),
   ]
+
+  /// #2955: the joiner commands "slash" / "forward slash" -> `/` and "backslash" / "back slash"
+  /// -> `\`, gated with `punct` and applied right after it in ONE pass, because a joiner that
+  /// follows another joiner has already lost its separating whitespace once the first is
+  /// rewritten ("backslash slash" must read `\/`, local review r2). Whitespace on BOTH sides is
+  /// consumed ("and slash or" -> "and/or"), but only horizontal whitespace, so a line break
+  /// "new line" just inserted survives (CR and LF; other Unicode line separators are ordinary
+  /// whitespace to this class; neither recogniser has been observed emitting one). The star, not
+  /// `\s+`, is what lets "slash slash" match twice ("://"); the alias gap is a run (not one
+  /// character) for the same reason (second-pass review). The word must be a SPOKEN word:
+  /// `(?<!\S)` refuses one glued to what precedes it and the lookahead allows only whitespace,
+  /// the end, or sentence punctuation after it, so an already-written path segment
+  /// ("example.com/slash/docs", "C:\backslash\Users") is left alone and the pass stays
+  /// idempotent (cloud review PR #2960). "slashing" and "slasher" fail the lookahead. The
+  /// backslash alternative is listed first so "back slash" is one command, never "back" + `/`.
+  /// User-facing copy mirrors these in `SpokenPunctuationCopy` beside the `punct` rows.
+  static let joinerCommands =
+    #"[^\S\r\n]*(?<!\S)(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])[^\S\r\n]*"#
 
   /// - Parameter spokenPunctuation: when false, the command rewrites are skipped
   ///   and their trigger words survive as ordinary text. Sentence capitalization below
@@ -2197,6 +2205,9 @@ public struct InverseTextNormalizer: Sendable {
     if spokenPunctuation {
       for (pat, rep) in Self.punct {
         t = reSub(pat, t) { _ in rep }
+      }
+      t = reSub(Self.joinerCommands, t) { m in
+        (m.g(1) ?? "").lowercased().hasPrefix("back") ? "\\" : "/"
       }
     }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)

@@ -16,7 +16,7 @@ struct SpokenPunctuationToggleTests {
 
   private static let itn = InverseTextNormalizer()
 
-  /// The spoken phrases the `punct` tuples produce, line breaks aside. Mirrors
+  /// The spoken phrases `punct` and `joinerCommands` produce, line breaks aside. Mirrors
   /// `SpokenPunctuationCopy.phrases` plus the two-word "back slash" alias the panel does not list;
   /// the copy-freeze test in the AppKit suite pins the user-facing side.
   static let triggers: [(spoken: String, mark: String)] = [

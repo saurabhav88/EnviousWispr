@@ -2,9 +2,10 @@ import Foundation
 
 /// #1794: canonical copy for the spoken-punctuation setting and its in-app help panel.
 ///
-/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` (one rule tuple can
-/// yield more than one spoken phrase: `exclamation (mark|point)` and the optional "forward" on
-/// slash both do; the two-word "back slash" alias is accepted but not listed). The regex table
+/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` plus its
+/// `joinerCommands` sibling (one rule can yield more than one spoken phrase: `exclamation
+/// (mark|point)` and the optional "forward" on slash both do; the two-word "back slash" alias
+/// is accepted but not listed). The regex table
 /// is `private` and deliberately stays that way: deriving this list from it at runtime
 /// would mean widening the engine's internals across a module boundary to render a
 /// static help panel. The cost of the mirror is drift; the guard is

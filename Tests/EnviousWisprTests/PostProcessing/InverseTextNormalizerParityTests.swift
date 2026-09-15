@@ -359,6 +359,17 @@ struct InverseTextNormalizerParityTests {
       ("visit stackoverflow dot io slash blog", "visit stackoverflow.io/blog"),
       // a refused partial URL conversion still gets its bare "slash" joined under the setting
       ("example dot ai slash docs", "example dot ai/docs"),
+      // an already-written path segment named "slash" is not a spoken command (cloud review
+      // PR #2960): glued to punctuation on either side, the word stays, and the pass is idempotent
+      ("https://example.com/slash/docs", "https://example.com/slash/docs"),
+      ("C:\\backslash\\Users", "C:\\backslash\\Users"),
+      ("(slash) means divide", "(slash) means divide"),
+      // sentence punctuation after the spoken word is fine
+      ("the pros slash cons list.", "the pros/cons list."),
+      // adjacent MIXED joiners are one pass, so the second still sees its whitespace (local
+      // review r2)
+      ("backslash slash", "\\/"),
+      ("slash backslash", "/\\"),
     ])
   func issue2955SpokenJoiners(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
