@@ -1,0 +1,134 @@
+# PostHog emitter registry (#2987). Read by TelemetryEmitterRegistryTests, which fails
+# closed on: an emitter in TelemetryService.swift with no row here; a row naming no live
+# emitter (retire an event = delete its row); a cadence outside the closed set; a `sampled`
+# treatment for a name TelemetryVolumePolicy.swift does not mention; an empty reader on a
+# graded row; more `ungraded` rows than the ceiling in the test (it only ratchets down).
+#
+# Columns (tab-separated): event  cadence  treatment  reader  since
+#   event      exact name, or a family `prefix.*` for an interpolated name (a smell: a reader
+#              cannot enumerate it; grade the family, never add a new one without a closed enum).
+#   cadence    per_launch | per_take | per_user_action | per_change | rare_failure | periodic
+#              | ungraded (grandfathered before #2987 only). Anything finer than per_take
+#              (per chunk, per buffer, per frame, per second) is NOT a value: fold it into the
+#              take's terminal row (`takeStages` -> `dictation.terminal`) or a session summary.
+#   treatment  keep | sampled | folded | ungraded. `sampled` = named in TelemetryVolumePolicy.
+#              `folded` = the row itself is the fold target and its inputs are markers that no
+#              longer emit.
+#   reader     the insight, worker file, script or question that reads it. `none: <why>` is
+#              allowed only with a reason (an event nothing reads is #2972's shape and gets
+#              retired at the next audit).
+#   since      the issue that added or graded the row.
+#
+# Budget the graded rows against: about 1.14M rows / month after policy 1 (2026-09-15
+# simulation), 8.9 events per started take, about 976 rows per install per month. A new
+# per_take row is +1 event per take (+11%). Owner of the numbers: analytics-operations.md.
+ai_diagnostics.run_completed	ungraded	ungraded	-	pre-#2987
+api_key.changed	ungraded	ungraded	-	pre-#2987
+api_key.validation_completed	ungraded	ungraded	-	pre-#2987
+app.launched	ungraded	ungraded	-	pre-#2987
+asr.completed	ungraded	ungraded	-	pre-#2987
+asr.retry_deadline_observed	ungraded	ungraded	-	pre-#2987
+audio.capture_interrupted	ungraded	ungraded	-	pre-#2987
+audio.dead_mic_recovery	ungraded	ungraded	-	pre-#2987
+audio.dead_mic_retire_attempted	ungraded	ungraded	-	pre-#2987
+audio.input_resolution	ungraded	ungraded	-	pre-#2987
+audio.system_event_during_recording	ungraded	ungraded	-	pre-#2987
+audio.vad_gate_no_speech	ungraded	ungraded	-	pre-#2987
+audio.zero_signal_refused	ungraded	ungraded	-	pre-#2987
+bt_awareness.*	ungraded	ungraded	-	pre-#2987
+coldstart.press_blocked	ungraded	ungraded	-	pre-#2987
+coldstart.warmup_completed	ungraded	ungraded	-	pre-#2987
+coldstart.warmup_failed	ungraded	ungraded	-	pre-#2987
+coldstart.warmup_started	ungraded	ungraded	-	pre-#2987
+contacts_imported	ungraded	ungraded	-	pre-#2987
+custom_words.replacement_applied	ungraded	ungraded	-	pre-#2987
+custom_words.timeout_fired	ungraded	ungraded	-	pre-#2987
+dictation.canceled	ungraded	ungraded	-	pre-#2987
+dictation.completed	ungraded	ungraded	-	pre-#2987
+dictation.invoked	ungraded	ungraded	-	pre-#2987
+dictation.started	ungraded	ungraded	-	pre-#2987
+dictation.terminal	ungraded	ungraded	-	pre-#2987
+eg1.*	ungraded	ungraded	-	pre-#2987
+engine.abandoned_decode_hold_settled	ungraded	ungraded	-	pre-#2987
+engine.abandoned_decode_hold_started	ungraded	ungraded	-	pre-#2987
+engine.switch_failed	ungraded	ungraded	-	pre-#2987
+engine.switch_superseded	ungraded	ungraded	-	pre-#2987
+engine.warm	ungraded	ungraded	-	pre-#2987
+escape_recovery.completed	ungraded	ungraded	-	pre-#2987
+escape_recovery.expired	ungraded	ungraded	-	pre-#2987
+escape_recovery.kept	ungraded	ungraded	-	pre-#2987
+escape_recovery.restored	ungraded	ungraded	-	pre-#2987
+escape_recovery.started	ungraded	ungraded	-	pre-#2987
+file_import_speakers	ungraded	ungraded	-	pre-#2987
+file_import_turns	ungraded	ungraded	-	pre-#2987
+file_import_turns_displayed	ungraded	ungraded	-	pre-#2987
+file_import_turns_rename	ungraded	ungraded	-	pre-#2987
+file_import_turns_retry	ungraded	ungraded	-	pre-#2987
+hotkey.lock_resolved	ungraded	ungraded	-	pre-#2987
+hotkey.pressed	ungraded	ungraded	-	pre-#2987
+hotkey.registration	ungraded	ungraded	-	pre-#2987
+install_cancelled	ungraded	ungraded	-	pre-#2987
+language.detected	ungraded	ungraded	-	pre-#2987
+language.flip	ungraded	ungraded	-	pre-#2987
+language.lid_abstained	ungraded	ungraded	-	pre-#2987
+language.manual_lock_used	ungraded	ungraded	-	pre-#2987
+language.transcription_latency	ungraded	ungraded	-	pre-#2987
+launch.model_preload_completed	ungraded	ungraded	-	pre-#2987
+limb.failure_observed	ungraded	ungraded	-	pre-#2987
+live_preview.outcome	ungraded	ungraded	-	pre-#2987
+llm.polish_completed	ungraded	ungraded	-	pre-#2987
+llm.polish_failed	ungraded	ungraded	-	pre-#2987
+llm.polish_skipped	ungraded	ungraded	-	pre-#2987
+llm.prewarm_started	ungraded	ungraded	-	pre-#2987
+llm.retry_completed	ungraded	ungraded	-	pre-#2987
+model_delivery.*	ungraded	ungraded	-	pre-#2987
+onboarding.abandoned	ungraded	ungraded	-	pre-#2987
+onboarding.completed	ungraded	ungraded	-	pre-#2987
+onboarding.started	ungraded	ungraded	-	pre-#2987
+onboarding.step_blocked	ungraded	ungraded	-	pre-#2987
+onboarding.step_completed	ungraded	ungraded	-	pre-#2987
+paste.completed	ungraded	ungraded	-	pre-#2987
+paste.copies_observed	ungraded	ungraded	-	pre-#2987
+permission.status	ungraded	ungraded	-	pre-#2987
+pipeline.failed	ungraded	ungraded	-	pre-#2987
+provider.changed	ungraded	ungraded	-	pre-#2987
+quick_add.opened	ungraded	ungraded	-	pre-#2987
+quick_add.resolved	ungraded	ungraded	-	pre-#2987
+recording.cap_warning_shown	ungraded	ungraded	-	pre-#2987
+recovery.cleanup	ungraded	ungraded	-	pre-#2987
+recovery.completed	ungraded	ungraded	-	pre-#2987
+recovery.deletion_failed	ungraded	ungraded	-	pre-#2987
+recovery.engine_action_deferred	ungraded	ungraded	-	pre-#2987
+recovery.found	ungraded	ungraded	-	pre-#2987
+recovery.marker_persistence_failed	ungraded	ungraded	-	pre-#2987
+recovery.press_blocked	ungraded	ungraded	-	pre-#2987
+recovery.press_unblocked	ungraded	ungraded	-	pre-#2987
+settings.change_applied	ungraded	ungraded	-	pre-#2987
+settings.change_blocked	ungraded	ungraded	-	pre-#2987
+settings.changed	ungraded	ungraded	-	pre-#2987
+settings.model_preparing_impression	ungraded	ungraded	-	pre-#2987
+settings.snapshot	ungraded	ungraded	-	pre-#2987
+telemetry.flush_requested	ungraded	ungraded	-	pre-#2987
+terminal_breaker.tripped	ungraded	ungraded	-	pre-#2987
+transcription.interrupted_at_quit	ungraded	ungraded	-	pre-#2987
+update.banner_clicked	ungraded	ungraded	-	pre-#2987
+update.banner_shown	ungraded	ungraded	-	pre-#2987
+update.cycle_failed	ungraded	ungraded	-	pre-#2987
+update.download_completed	ungraded	ungraded	-	pre-#2987
+update.download_started	ungraded	ungraded	-	pre-#2987
+update.install_cancelled	ungraded	ungraded	-	pre-#2987
+update.install_completed	ungraded	ungraded	-	pre-#2987
+update.install_failed	ungraded	ungraded	-	pre-#2987
+update.install_started	ungraded	ungraded	-	pre-#2987
+update.proactive_check_triggered	ungraded	ungraded	-	pre-#2987
+update.relocation_accepted	ungraded	ungraded	-	pre-#2987
+update.relocation_completed	ungraded	ungraded	-	pre-#2987
+update.relocation_declined	ungraded	ungraded	-	pre-#2987
+update.relocation_failed	ungraded	ungraded	-	pre-#2987
+update.relocation_offered	ungraded	ungraded	-	pre-#2987
+update.relocation_relaunched	ungraded	ungraded	-	pre-#2987
+update.sparkle_cycle_finished	ungraded	ungraded	-	pre-#2987
+update.sparkle_default_shown	ungraded	ungraded	-	pre-#2987
+update.verify_completed	ungraded	ungraded	-	pre-#2987
+update.verify_started	ungraded	ungraded	-	pre-#2987
+wedge_detected	ungraded	ungraded	-	pre-#2987
