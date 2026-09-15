@@ -99,6 +99,7 @@ test("placement is a plain token or nothing", () => {
   assert.equal(placementFromQuery(""), null);
   assert.equal(placementFromQuery("Hero"), null);
   assert.equal(placementFromQuery("a b"), null);
+  assert.equal(placementFromQuery("hero\n"), null);
   assert.equal(placementFromQuery("<script>"), null);
   assert.equal(placementFromQuery("x".repeat(41)), null);
 });
@@ -112,6 +113,8 @@ test("platform from User-Agent: the common Mac browsers, and nulls for the unkno
   assert.deepEqual(platformFromUserAgent(safari), { os: "Mac OS X", browser: "Safari" });
   assert.deepEqual(platformFromUserAgent(chrome), { os: "Mac OS X", browser: "Chrome" });
   assert.deepEqual(platformFromUserAgent(edge), { os: "Mac OS X", browser: "Microsoft Edge" });
+  const edgeAndroid = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 EdgA/124.0.0.0";
+  assert.deepEqual(platformFromUserAgent(edgeAndroid), { os: "Android", browser: "Microsoft Edge" });
   assert.deepEqual(platformFromUserAgent(firefox), { os: "Mac OS X", browser: "Firefox" });
   assert.deepEqual(platformFromUserAgent(iphone), { os: "iOS", browser: "Safari" });
   assert.deepEqual(platformFromUserAgent("curl/8.4.0"), { os: null, browser: null });

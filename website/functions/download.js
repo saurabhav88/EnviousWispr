@@ -136,7 +136,7 @@ export function platformFromUserAgent(ua) {
   else if (/CrOS/.test(s)) os = "Chrome OS";
   else if (/Linux/.test(s)) os = "Linux";
   let browser = null;
-  if (/Edg\//.test(s)) browser = "Microsoft Edge";
+  if (/(?:Edg|EdgA|EdgiOS)\//.test(s)) browser = "Microsoft Edge";
   else if (/OPR\/|Opera/.test(s)) browser = "Opera";
   else if (/Firefox\//.test(s)) browser = "Firefox";
   else if (/Chrome\/|CriOS\//.test(s)) browser = "Chrome";
