@@ -235,9 +235,11 @@ public enum ObservabilityBootstrap {
     return sanitizePostHogProperties(kept)
   }
 
-  /// Redact every value in a PostHog event's property bag. PostHog is app-only, so this
-  /// stays in Services, but it shares the one value redactor so the tripwire (#1095)
-  /// covers both pipelines through a single seam.
+  /// Walk a PostHog event's property bag through `SentryEventSanitizer.redactDict`:
+  /// String values under `contentFreeKeys` survive unchanged, everything else is
+  /// sanitized recursively. PostHog is app-only, so this stays in Services, but it
+  /// shares the one redactor so the tripwire (#1095) covers both pipelines through
+  /// a single seam.
   static func sanitizePostHogProperties(_ properties: [String: Any]) -> [String: Any] {
     // Key-aware (`SentryEventSanitizer.contentFreeKeys`, #2965) so a top-level
     // `revision` survives the same way a Sentry context value does.

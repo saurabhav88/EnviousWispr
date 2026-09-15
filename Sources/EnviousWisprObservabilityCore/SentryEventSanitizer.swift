@@ -183,13 +183,17 @@ public enum SentryEventSanitizer {
   /// - Long strings (> 100 chars) that are not URLs (likely transcript content)
   /// - API key patterns: sk-*, phc_*, sntrys_*, key_*, or >= 32 contiguous hex chars
   /// - Email-like patterns
-  /// Returns the original string if it matches no pattern, or `[REDACTED]` if it does.
-  /// A string that passes every pattern still has any `/Users/<name>/` username
-  /// segment scrubbed (#2965): the frame/debug-image scrub covers only the
-  /// native-crash surfaces, and a short `String(describing:)` in an extra or a
-  /// PostHog property can carry a home path.
+  /// Returns the input with any `/Users/<name>/` username segment scrubbed if it
+  /// matches no pattern, or `[REDACTED]` if it does. The username scrub runs FIRST
+  /// (#2965): the frame/debug-image scrub covers only the native-crash surfaces, a
+  /// short `String(describing:)` in an extra or a PostHog property can carry a
+  /// home path, and scrubbing before the length rule keeps the function idempotent
+  /// (a 100-char path with a short username grows past 100 once scrubbed; judged
+  /// after the scrub, both passes see the same string).
   /// Never throws — any regex failure is silently ignored and the original value returned.
-  public static func redactString(_ input: String) -> String {
+  public static func redactString(_ raw: String) -> String {
+    let input = redactUserPath(raw)
+
     // Long non-URL strings (transcript content heuristic)
     if input.count > 100 {
       let lower = input.lowercased()
@@ -221,6 +225,6 @@ public enum SentryEventSanitizer {
       return "[REDACTED]"
     }
 
-    return redactUserPath(input)
+    return input
   }
 }

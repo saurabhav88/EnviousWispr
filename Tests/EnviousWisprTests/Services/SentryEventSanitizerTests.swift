@@ -407,6 +407,15 @@ struct SentryEventSanitizerTests {
     #expect(
       SentryEventSanitizer.redactString(props["error"] as? String ?? "") == props["error"]
         as? String)
+
+    // Boundary (Codex r1): a 100-char path whose username is SHORTER than
+    // `[REDACTED]` grows past 100 once scrubbed. The scrub runs before the length
+    // rule, so the first pass and the second pass agree.
+    let boundary = "/Users/a/" + String(repeating: "z", count: 91)
+    #expect(boundary.count == 100)
+    let once = SentryEventSanitizer.redactString(boundary)
+    #expect(once == "[REDACTED]")
+    #expect(SentryEventSanitizer.redactString(once) == once)
   }
 
   // MARK: - Helpers
