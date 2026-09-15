@@ -1,0 +1,171 @@
+[2026-09-13T18:51:22-04:00] [INFO] [DebugImportDoor] executable=/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-2817-dead/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr launch=42A93FE8-BB23-469B-80AA-C57EC1E76C33 pid=53097 request=dcb79b9f-a11c-470e-a798-026df5aa8184 status=accepted
+[2026-09-13T18:51:25-04:00] [INFO] [FileImportCoordinator] [SpeakerLabeler] outcome=labeled speakers=2 ms=1072
+[2026-09-13T18:51:25-04:00] [INFO] [FileImportCoordinator] [TurnStorage] assembled turns=17 both=1 ms=2
+[2026-09-13T18:51:25-04:00] [INFO] [PipelineTiming] Word Correction completed in 547.2ms (budget: 3000ms)
+[2026-09-13T18:51:25-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.5ms (budget: 50ms)
+[2026-09-13T18:51:25-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:25-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 5.6ms (budget: 2000ms)
+[2026-09-13T18:51:25-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:25-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(1096), thinking=none
+[2026-09-13T18:51:25-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] LLM polish complete: 1096 chars in 2.201s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] LLM Polish completed in 2201.7ms (budget: 15000ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Word Correction completed in 7.6ms (budget: 3000ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.3ms (budget: 2000ms)
+[2026-09-13T18:51:27-04:00] [INFO] [LLM] LLM polish skipped: transcript too short (3 words, minimum 4)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] LLM Polish completed in 0.0ms (budget: 15000ms)
+[2026-09-13T18:51:27-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Word Correction completed in 113.0ms (budget: 3000ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.9ms (budget: 2000ms)
+[2026-09-13T18:51:28-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:28-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:28-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] LLM polish complete: 212 chars in 0.558s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] LLM Polish completed in 558.1ms (budget: 15000ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Word Correction completed in 63.8ms (budget: 3000ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:28-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.6ms (budget: 2000ms)
+[2026-09-13T18:51:28-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:28-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:28-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM polish complete: 135 chars in 0.411s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM Polish completed in 410.8ms (budget: 15000ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Word Correction completed in 116.2ms (budget: 3000ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.9ms (budget: 2000ms)
+[2026-09-13T18:51:29-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:29-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:29-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM polish complete: 184 chars in 0.448s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM Polish completed in 448.0ms (budget: 15000ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Word Correction completed in 23.7ms (budget: 3000ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.4ms (budget: 2000ms)
+[2026-09-13T18:51:29-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:29-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:29-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM polish complete: 44 chars in 0.173s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:29-04:00] [INFO] [PipelineTiming] LLM Polish completed in 173.1ms (budget: 15000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Word Correction completed in 25.8ms (budget: 3000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.4ms (budget: 2000ms)
+[2026-09-13T18:51:30-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM polish complete: 50 chars in 0.182s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM Polish completed in 182.4ms (budget: 15000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Word Correction completed in 11.5ms (budget: 3000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.3ms (budget: 2000ms)
+[2026-09-13T18:51:30-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM polish complete: 23 chars in 0.114s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM Polish completed in 114.3ms (budget: 15000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Word Correction completed in 114.8ms (budget: 3000ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.9ms (budget: 2000ms)
+[2026-09-13T18:51:30-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:30-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM polish complete: 198 chars in 0.436s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:30-04:00] [INFO] [PipelineTiming] LLM Polish completed in 436.2ms (budget: 15000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Word Correction completed in 13.8ms (budget: 3000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.3ms (budget: 2000ms)
+[2026-09-13T18:51:31-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM polish complete: 17 chars in 0.091s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM Polish completed in 91.4ms (budget: 15000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Word Correction completed in 102.8ms (budget: 3000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.8ms (budget: 2000ms)
+[2026-09-13T18:51:31-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM polish complete: 164 chars in 0.369s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM Polish completed in 369.1ms (budget: 15000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Word Correction completed in 52.6ms (budget: 3000ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.5ms (budget: 2000ms)
+[2026-09-13T18:51:31-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:31-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM polish complete: 91 chars in 0.240s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:31-04:00] [INFO] [PipelineTiming] LLM Polish completed in 240.5ms (budget: 15000ms)
+[2026-09-13T18:51:32-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:32-04:00] [INFO] [PipelineTiming] Word Correction completed in 219.9ms (budget: 3000ms)
+[2026-09-13T18:51:32-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.2ms (budget: 50ms)
+[2026-09-13T18:51:32-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:32-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 1.5ms (budget: 2000ms)
+[2026-09-13T18:51:32-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:32-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(426), thinking=none
+[2026-09-13T18:51:32-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] LLM polish complete: 287 chars in 0.745s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] LLM Polish completed in 744.8ms (budget: 15000ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Word Correction completed in 47.8ms (budget: 3000ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.5ms (budget: 2000ms)
+[2026-09-13T18:51:33-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:33-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:33-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] LLM polish complete: 97 chars in 0.267s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] LLM Polish completed in 266.7ms (budget: 15000ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Word Correction completed in 182.6ms (budget: 3000ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.2ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:33-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 1.1ms (budget: 2000ms)
+[2026-09-13T18:51:33-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:33-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(352), thinking=none
+[2026-09-13T18:51:33-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] LLM polish complete: 308 chars in 0.665s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] LLM Polish completed in 665.3ms (budget: 15000ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Word Correction completed in 26.2ms (budget: 3000ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 0.4ms (budget: 2000ms)
+[2026-09-13T18:51:34-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:34-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(256), thinking=none
+[2026-09-13T18:51:34-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] LLM polish complete: 48 chars in 0.142s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] LLM Polish completed in 142.2ms (budget: 15000ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Emoji Restore completed in 0.0ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Word Correction completed in 245.5ms (budget: 3000ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Filler Removal completed in 0.3ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Emoji Formatter completed in 0.1ms (budget: 50ms)
+[2026-09-13T18:51:34-04:00] [INFO] [PipelineTiming] Inverse Text Normalization completed in 1.7ms (budget: 2000ms)
+[2026-09-13T18:51:34-04:00] [VERBOSE] [LLM] LLM polish requested: provider=egOne, model=eg-1
+[2026-09-13T18:51:34-04:00] [INFO] [LLM] LLM request budget: provider=egOne, model=eg-1, output_tokens=capped(485), thinking=none
+[2026-09-13T18:51:34-04:00] [INFO] [LLM] LLM prompt route: provider=egOne, model=eg-1, prompt_family=egOneEnvelope, system_chars=1060
+[2026-09-13T18:51:35-04:00] [INFO] [PipelineTiming] LLM polish complete: 409 chars in 0.894s (provider=egOne, model=eg-1)
+[2026-09-13T18:51:35-04:00] [INFO] [PipelineTiming] LLM Polish completed in 894.5ms (budget: 15000ms)
+[2026-09-13T18:51:35-04:00] [INFO] [FileImportCoordinator] [TurnStorage] outcome=stored turns=17 fallback=0 emitted=true ms=11
+[2026-09-13T18:51:35-04:00] [INFO] [DebugImportDoor] executable=/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-2817-dead/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr history=88F0B7E7-75B6-420B-805D-D546CC75B71A launch=42A93FE8-BB23-469B-80AA-C57EC1E76C33 pid=53097 polisher=eg-1 request=dcb79b9f-a11c-470e-a798-026df5aa8184 saved=true status=finished

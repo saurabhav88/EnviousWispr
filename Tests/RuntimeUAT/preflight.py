@@ -179,6 +179,47 @@ def proc_start_epoch(pid):
         return None
 
 
+DOOR_MARKER = b"com.enviouswispr.dev.import.request"
+
+
+def door_present(app_path):
+    """Whether the running build carries the #2885 door (`#if DEBUG` around the whole of
+    DebugImportDoor.swift): the request name is a string literal in the code of a DEBUG
+    build and absent from a Release build. A Debug build keeps its code in
+    `EnviousWispr.debug.dylib` beside the 59 KB launcher executable (measured 2026-09-13),
+    so the search covers `app_path` and every `*.debug.dylib` next to it, chunked so a
+    large binary is never read into memory whole."""
+    import glob
+    candidates = [app_path] + sorted(glob.glob(os.path.join(os.path.dirname(app_path), "*.debug.dylib")))
+    searched = 0
+    for path in candidates:
+        try:
+            with open(path, "rb") as fh:
+                tail = b""
+                while chunk := fh.read(1 << 16):
+                    if DOOR_MARKER in tail + chunk:
+                        return "ok", f"import door marker found in {os.path.basename(path)}"
+                    tail = chunk[-(len(DOOR_MARKER) - 1):]
+            searched += 1
+        except OSError as e:
+            if path == app_path:
+                return "fail", f"cannot read the running executable ({e})"
+    return "fail", (f"no import door marker in {searched} binaries beside the executable (a Release build); "
+                    "transcribe-file needs /wispr-rebuild-debug")
+
+
+def import_file_ok(path):
+    """A readable, non-empty file the door can be handed."""
+    if not path:
+        return "fail", "transcribe-file needs --file <path>"
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p) or not os.access(p, os.R_OK):
+        return "fail", f"not a readable file: {p}"
+    if os.path.getsize(p) == 0:
+        return "fail", f"empty file: {p}"
+    return "ok", f"{p} ({os.path.getsize(p) // 1024} KB)"
+
+
 ALL_PROBES = (
     ("output-volume", lambda: output_volume()[:2]),
     ("output-device", default_output_transport),
@@ -236,6 +277,28 @@ def _self_test():
     check("parse_default_output on garbage", parse_default_output("not json") == (None, None))
     check("parse_default_output on empty items",
           parse_default_output(json.dumps({"SPAudioDataType": [{"_items": []}]})) == (None, None))
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        debug = os.path.join(tmp, "d", "EnviousWispr"); release = os.path.join(tmp, "r", "EnviousWispr")
+        os.makedirs(os.path.dirname(debug)); os.makedirs(os.path.dirname(release))
+        # A Debug bundle: a small launcher plus the code in EnviousWispr.debug.dylib, with the
+        # marker straddling a 64 KB chunk boundary so the chunked search is exercised.
+        with open(debug, "wb") as fh:
+            fh.write(b"\x00mach-o launcher\x00")
+        with open(os.path.join(tmp, "d", "EnviousWispr.debug.dylib"), "wb") as fh:
+            fh.write(b"\x00" * ((1 << 16) - 5) + DOOR_MARKER + b"\x00")
+        with open(release, "wb") as fh:
+            fh.write(b"\x00mach-o\x00com.enviouswispr.app\x00")
+        check("door_present: a Debug bundle carries the request name in its debug dylib", door_present(debug)[0] == "ok")
+        check("door_present: a Release binary does not", door_present(release)[0] == "fail")
+        check("door_present: an unreadable path is fail", door_present(os.path.join(tmp, "missing"))[0] == "fail")
+        clip = os.path.join(tmp, "clip.m4a"); empty = os.path.join(tmp, "empty.m4a")
+        open(clip, "wb").write(b"\x00" * 2048); open(empty, "wb").close()
+        check("import_file_ok: a readable non-empty file is ok", import_file_ok(clip)[0] == "ok")
+        check("import_file_ok: an empty file is fail", import_file_ok(empty)[0] == "fail")
+        check("import_file_ok: no path is fail", import_file_ok(None)[0] == "fail")
+        check("import_file_ok: a missing path is fail", import_file_ok(os.path.join(tmp, "nope.m4a"))[0] == "fail")
 
     # The probe table is closed and every probe returns a two-tuple with a known level.
     levels = {"ok", "warn", "fail", "info"}
