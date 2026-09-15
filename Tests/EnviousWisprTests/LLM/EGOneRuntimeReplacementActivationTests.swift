@@ -198,10 +198,23 @@ import Testing
     let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
     #expect(activation == nil)
 
-    _ = await h.signal.next { event in
-      if case .healthChanged(_, "yellow", "not_started") = event { return true }
-      return false
+    // #2966: the placeholder -> yellow(not_started) resolution at launch is the
+    // seed and no longer emits, so wait on the STATE it produces, not the row.
+    let runtime = h.runtime
+    let settled = await withDeadline(seconds: 5) {
+      while true {
+        // `withDeadline` abandons a loser; without this the loop would outlive
+        // the deadline and keep scheduling main-actor work (Codex r1).
+        if Task.isCancelled { return false }
+        if await MainActor.run(body: {
+          EGOneRuntime.healthReason(runtime.health) == "not_started"
+        }) {
+          return true
+        }
+        await Task.yield()
+      }
     }
+    try #require(settled == true, "the installed, server-stopped state was never reached")
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)
@@ -222,10 +235,23 @@ import Testing
     let activation = h.runtime.activateAfterAutomaticReplacementIfNeeded()
     #expect(activation == nil)
 
-    _ = await h.signal.next { event in
-      if case .healthChanged(_, "yellow", "not_started") = event { return true }
-      return false
+    // #2966: the placeholder -> yellow(not_started) resolution at launch is the
+    // seed and no longer emits, so wait on the STATE it produces, not the row.
+    let runtime = h.runtime
+    let settled = await withDeadline(seconds: 5) {
+      while true {
+        // `withDeadline` abandons a loser; without this the loop would outlive
+        // the deadline and keep scheduling main-actor work (Codex r1).
+        if Task.isCancelled { return false }
+        if await MainActor.run(body: {
+          EGOneRuntime.healthReason(runtime.health) == "not_started"
+        }) {
+          return true
+        }
+        await Task.yield()
+      }
     }
+    try #require(settled == true, "the installed, server-stopped state was never reached")
 
     #expect(h.runtime.installState == .installed(version: "v2-sharded"))
     #expect(!h.signal.sawServerBinaryMissing)

@@ -22,7 +22,9 @@ public protocol EGOneEndpointProviding: AnyObject {
 /// the delivery funnel reports moments (a cancel happened), never how long a
 /// user then sat unable to polish.
 /// Transition-only, by two different mechanisms: health is guarded in its
-/// `didSet`, paused residency by its projection tracker in
+/// `didSet` (a colour change or an unsuppressed same-colour reason change,
+/// never the launch seed, #2966), paused residency by its projection tracker
+/// in
 /// `applyInstallState`. Naming both matters — a reader who assumes the didSet
 /// guard covers everything would conclude paused telemetry is debounced by
 /// construction, when it is debounced by a tracker that deliberately skips
@@ -95,16 +97,60 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   public private(set) var installState: EGOneInstallState = .notInstalled
   public private(set) var health: EGOneHealth = .red(reason: "not_running") {
     didSet {
-      guard
-        Self.healthLabel(oldValue) != Self.healthLabel(health)
-          || Self.healthReason(oldValue) != Self.healthReason(health)
-      else { return }
+      // #2966: a health TRANSITION is a colour change, or a same-colour reason
+      // change whose new reason is not one of the three launch shapes in
+      // `reasonsCountedElsewhere`. Measured 30d to 2026-09-15: 12,900 of
+      // 20,192 rows were same-colour; 6,478 were the seed below resolving to
+      // `red(download_required)` once per launch on every install without the
+      // model, and 3,771 were `not_started`/`starting`, which every activation
+      // walks. Every other same-colour change (a download phase, a probe
+      // verdict, a memory-pressure pause, a removal failure) may be the only
+      // record of that moment and still emits.
+      //
+      // Nothing before the INSTALL seed is a transition either: the
+      // initialiser's `.red(not_running)` is a placeholder, and the two launch
+      // observers (server state, install state) are separate unstructured
+      // tasks with no ordering. If the server's `.stopped` seed lands first,
+      // health resolves against the default `.notInstalled`, and the install
+      // seed that follows would read as `red -> yellow` for an installed
+      // model. So the gate opens when the install-state stream has delivered
+      // its first value (`installSeedResolved`, set in `applyInstallState`),
+      // never on the first health assignment (cloud review P1 on #2974).
+      //
+      // KNOWN RESIDUAL: a server result that lands BEFORE the install seed is
+      // folded into the seed and earns no row. Reaching it needs a spawn and a
+      // failure to outrun a disk stat scheduled at init (`observeInstallState`
+      // seeds first, `startServerIfInstalled` awaits admission before
+      // `bootServer`), so it is the narrow window of a launch, not a state.
+      guard installSeedResolved else { return }
+      let reason = Self.healthReason(health)
+      let colourChanged = Self.healthLabel(oldValue) != Self.healthLabel(health)
+      if !colourChanged {
+        guard let reason, reason != Self.healthReason(oldValue),
+          !Self.reasonsCountedElsewhere.contains(reason)
+        else { return }
+      }
       onEvent?(
         .healthChanged(
-          from: Self.healthLabel(oldValue), to: Self.healthLabel(health),
-          reason: Self.healthReason(health)))
+          from: Self.healthLabel(oldValue), to: Self.healthLabel(health), reason: reason))
     }
   }
+  /// Same-colour destination reasons that never earn a row (#2966): the two
+  /// launch shapes measured live. `download_required` is where every install
+  /// without the model lands at launch; `not_started` then `starting` is every
+  /// activation. Deliberately NOT "everything the delivery funnel covers":
+  /// `verifying` has no entry event and a removal failure publishes no
+  /// attempt row, so a wider set silenced moments with no other record
+  /// (Codex r2 on this change). Membership here is a decision, not a claim
+  /// that another event exists.
+  static let reasonsCountedElsewhere: Set<String> = [
+    "download_required", "not_started", "starting",
+  ]
+  /// False until the install-state stream has delivered its first value
+  /// (#2966). Set at the end of `applyInstallState`, AFTER that value's own
+  /// health recompute, so the install seed and anything the server seed did
+  /// before it are silent. See `health.didSet`.
+  private var installSeedResolved = false
   /// Why the manifest cannot activate on this app build (empty = fine).
   /// Non-empty reads RED in the UI ("app update required" for an unknown
   /// prompt template).
@@ -282,6 +328,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     applyInstallState(state)
   }
 
+  /// Test seam for the server-lifecycle leg of `recomputeHealth` (#2966): a
+  /// same-colour change into a runtime diagnosis is reachable only through
+  /// the server state, and no delivery fixture produces one.
+  func applyServerStateForTesting(_ state: EGOneServerManager.ServerState) {
+    applyServerState(state)
+  }
+
   /// Display version of an upgrade whose download is currently in flight, or
   /// nil when the download in flight is a FIRST install (#2109, founder
   /// 2026-08-17).
@@ -296,6 +349,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   private var upgradeDownloadInFlight: EGOneUpgradeContext?
 
   private func applyInstallState(_ rawState: EGOneInstallState) {
+    // #2966: the first install-state value is the launch seed; the health
+    // gate opens once it has been applied (the dedupe guard below may skip
+    // the recompute for a seed equal to the default, so this runs on exit,
+    // not inside the guarded path).
+    defer { installSeedResolved = true }
     // ENRICH BEFORE ANYTHING ELSE READS THE STATE, including the dedupe guard
     // below — otherwise the first tick and the enriched second tick differ only
     // in a field the guard does not compare, and the row keeps the unenriched
@@ -380,7 +438,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // both converge here. This guard makes a republish of the SAME state a
     // no-op for the UI, and that is ALL it does. Telemetry above deliberately
     // sits outside it.
-    guard installState != state else { return }
+    guard installState != state else {
+      // #2966: a seed equal to the default still has to resolve health, or a
+      // manifest blocker stays on the placeholder until the server seed lands
+      // and that lands as a `not_running -> app_update_required` row.
+      if !installSeedResolved { recomputeHealth() }
+      return
+    }
     installState = state
     recomputeHealth()
   }
