@@ -648,15 +648,22 @@ public final class TelemetryService {
   {
     var props: [String: Any] = ["step": step, "result": result]
     if let d = durationSeconds {
-      props["duration_seconds"] = String(format: "%.3f", d)
+      // #2980: Double, the same type as `$value`. This and the fifteen other
+      // numbers below travelled as `String(format:)`, which typed each PostHog
+      // property as String on first sight (no numeric aggregation in the insight
+      // builder, `toFloat` in every reader). Split any trend on the raw property
+      // at the first release carrying this change.
+      props["duration_seconds"] = d
       props["$value"] = d
     }
     #if DEBUG
-      // #1176: mirror so the E2 `duration_seconds` plumbing is unit-verifiable.
-      var stringProps = ["step": step, "result": result]
-      if let d = durationSeconds { stringProps["duration_seconds"] = String(format: "%.3f", d) }
+      // #1176: mirror so the E2 `duration_seconds` plumbing is unit-verifiable;
+      // #1846: derived from the emitted payload, never a parallel dictionary.
       testEventHook?(
-        CapturedTelemetryEvent(name: "onboarding.step_completed", stringProps: stringProps))
+        CapturedTelemetryEvent(
+          name: "onboarding.step_completed",
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
     PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
   }
@@ -680,15 +687,15 @@ public final class TelemetryService {
     var props: [String: Any] = ["step": step, "reason": reason]
     if let permission { props["permission"] = permission }
     if let d = durationSeconds {
-      props["duration_seconds"] = String(format: "%.3f", d)
+      props["duration_seconds"] = d  // #2980: Double
       props["$value"] = d  // raw numeric for PostHog aggregation (matches step_completed)
     }
     #if DEBUG
-      var stringProps = ["step": step, "reason": reason]
-      if let permission { stringProps["permission"] = permission }
-      if let d = durationSeconds { stringProps["duration_seconds"] = String(format: "%.3f", d) }
       testEventHook?(
-        CapturedTelemetryEvent(name: "onboarding.step_blocked", stringProps: stringProps))
+        CapturedTelemetryEvent(
+          name: "onboarding.step_blocked",
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
     PostHogSDK.shared.capture("onboarding.step_blocked", properties: props)
   }
@@ -709,18 +716,15 @@ public final class TelemetryService {
       "source": source,
     ]
     if let e = elapsedSeconds {
-      props["elapsed_seconds"] = String(format: "%.3f", e)
+      props["elapsed_seconds"] = e  // #2980: Double
       props["$value"] = e  // raw numeric for PostHog aggregation (matches step_completed)
     }
     #if DEBUG
-      var stringProps = [
-        "screen": screen, "step": step, "mic_status": micStatus,
-        "accessibility_status": accessibilityStatus, "abandon_reason": abandonReason,
-        "source": source,
-      ]
-      if let e = elapsedSeconds { stringProps["elapsed_seconds"] = String(format: "%.3f", e) }
       testEventHook?(
-        CapturedTelemetryEvent(name: "onboarding.abandoned", stringProps: stringProps))
+        CapturedTelemetryEvent(
+          name: "onboarding.abandoned",
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
     PostHogSDK.shared.capture("onboarding.abandoned", properties: props)
   }
@@ -1661,7 +1665,7 @@ public final class TelemetryService {
     if let c = itnChanged { props["itn_changed"] = c }
     if let fd = itnFloorDelivered { props["itn_floor_delivered"] = fd }
     if let sr = itnSkipReason { props["itn_skip_reason"] = sr }
-    if let lat = itnLatencyMs { props["itn_latency_ms"] = String(format: "%.3f", lat) }
+    if let lat = itnLatencyMs { props["itn_latency_ms"] = lat }  // #2980: Double
     if let lb = itnLenBefore { props["itn_len_before"] = lb }
     if let la = itnLenAfter { props["itn_len_after"] = la }
     // #2614: the language the cleanup chain ran under, its source and bucket
@@ -1677,7 +1681,7 @@ public final class TelemetryService {
     if let ed = emojiDropped { props["emoji_dropped"] = ed }
     if let er = emojiRestored { props["emoji_restored"] = er }
     if let inc = emojiRestoreIncomplete { props["emoji_restore_incomplete"] = inc }
-    if let elat = emojiLatencyMs { props["emoji_latency_ms"] = String(format: "%.3f", elat) }
+    if let elat = emojiLatencyMs { props["emoji_latency_ms"] = elat }  // #2980: Double
     // #1167: degraded-save dimension. `succeeded` | `failed`; on failure a
     // normalized class (`full_disk`/`permission_denied`/`read_only`/`unknown`).
     // The top-line success metric is "completed AND history_save_status != failed".
@@ -1722,7 +1726,7 @@ public final class TelemetryService {
   public func dictationCanceled(stage: String, reason: String, durationSeconds: Double?) {
     var props: [String: Any] = ["stage": stage, "reason": reason]
     if let d = durationSeconds {
-      props["duration_seconds"] = String(format: "%.3f", d)
+      props["duration_seconds"] = d  // #2980: Double
       props["$value"] = d
     }
     PostHogSDK.shared.capture("dictation.canceled", properties: props)
@@ -2201,7 +2205,7 @@ public final class TelemetryService {
       "backend": backend,
       "result": result,
       "cold_start": coldStart,
-      "latency_seconds": String(format: "%.3f", latencySeconds),
+      "latency_seconds": latencySeconds,  // #2980: Double
       "char_count": charCount,
       "$value": latencySeconds,
     ]
@@ -2268,7 +2272,7 @@ public final class TelemetryService {
     var props: [String: Any] = [
       "provider": provider,
       "result": result,
-      "latency_seconds": String(format: "%.3f", latencySeconds),
+      "latency_seconds": latencySeconds,  // #2980: Double
       "$value": latencySeconds,
     ]
     if let m = model { props["model"] = m }
@@ -2298,6 +2302,7 @@ public final class TelemetryService {
         CapturedTelemetryEvent(
           name: "llm.polish_completed",
           stringProps: stringProps,
+          doubleProps: props.compactMapValues { $0 as? Double },
           boolProps: boolProps))
     #endif
     PostHogSDK.shared.capture("llm.polish_completed", properties: props)
@@ -3077,10 +3082,11 @@ public final class TelemetryService {
   ) {
     var props: [String: Any] = [
       "lang": lang ?? "nil",
-      "confidence": String(format: "%.3f", confidence),
-      "margin": String(format: "%.3f", margin),
+      // #2980: the three numbers travel as Double (see `onboardingStepCompleted`).
+      "confidence": confidence,
+      "margin": margin,
       "duration_bucket": Self.durationBucket(voicedDuration),
-      "voiced_duration_s": String(format: "%.2f", voicedDuration),
+      "voiced_duration_s": voicedDuration,
       "abstained": abstained,
       "used_sticky": usedSticky,
       "lid_window_count": lidWindowCount,
@@ -3117,7 +3123,7 @@ public final class TelemetryService {
       properties: [
         "from_lang": fromLang,
         "to_lang": toLang,
-        "confidence_both": String(format: "%.3f", confidenceBoth),
+        "confidence_both": confidenceBoth,  // #2980: Double
       ])
   }
 
@@ -3146,8 +3152,8 @@ public final class TelemetryService {
     reason: String
   ) {
     var props: [String: Any] = [
-      "voiced_duration": String(format: "%.2f", voicedDuration),
-      "top1_prob": String(format: "%.3f", top1Prob),
+      "voiced_duration": voicedDuration,  // #2980: Double
+      "top1_prob": top1Prob,
       "reason": reason,
     ]
     if let l = top1Lang { props["top1_lang"] = l }
@@ -3174,8 +3180,8 @@ public final class TelemetryService {
   ) {
     var props: [String: Any] = [
       "model": model,
-      "duration_s": String(format: "%.3f", durationSeconds),
-      "ms_per_audio_s": String(format: "%.1f", msPerAudioSecond),
+      "duration_s": durationSeconds,  // #2980: Double
+      "ms_per_audio_s": msPerAudioSecond,
       "$value": msPerAudioSecond,
     ]
     if let l = lang { props["lang"] = l }
