@@ -80,15 +80,24 @@ TAKE_TAG = "dictation.take_id"
 TAKE_PROPERTY = "take_id"
 
 # The events Phase 2 routes the take key to. MEASURED from the emitter, not
-# remembered: every name here has a `["take_id"] = takeID` assignment in
+# remembered: every name here has a `"take_id"` key in its payload in
 # `TelemetryService.swift`, or is listed in `RETIRED_TAKE_KEYED_EVENTS` below
 # with the release that stopped emitting it. Match the FIELD, not a
 # `props`/`properties` variable name — a pattern pinned to `props[...]`
-# structurally cannot match the `asr.completed` emitter and silently reports 12.
+# structurally cannot match the `asr.completed` emitter and silently reports 12,
+# and a pattern pinned to the `["take_id"] = takeID` assignment shape cannot
+# match a dictionary LITERAL (`"take_id": takeID`), which is how
+# `asr.retry_deadline_observed` went unlisted from v2.5.0 to #2979. Measure with
+# `grep -n '"take_id"' Sources/EnviousWisprServices/TelemetryService.swift` and
+# name the `capture(...)` each hit feeds.
 # A name absent from this tuple is not measured, and a name here that the app
 # never emits reads `not observed` (or `retired`, for the names below).
 TAKE_KEYED_EVENTS = (
     "asr.completed",
+    # #2979. Both halves (`phase` started/resolved) carry the key. Zero production
+    # rows to 2026-09-15 because the retry deadline has not fired in the field,
+    # so its cell reads `not observed` until the first one does.
+    "asr.retry_deadline_observed",
     # #2087. Registered only now that the durable-id contract exists: `take_id`
     # is ephemeral, and `restored`/`kept`/`expired` can fire hours later or after
     # a relaunch, so the originating id is persisted on the pending row
@@ -683,13 +692,16 @@ def canonical_take_id(raw: object) -> str | None:
     the whole reason.
 
     The two identities are produced by different code and differ in CASE:
-      - `analytics.distinct_id` comes from the PostHog SDK and is LOWERCASE.
+      - `analytics.distinct_id` comes from the PostHog SDK and is USUALLY
+        lowercase; `canonical_join_key` accepts either case verbatim (18 of
+        1,165 live installs were uppercase on 2026-09-15).
       - `dictation.take_id` / `take_id` is Swift `UUID.uuidString`, which
         Foundation renders UPPERCASE (measured: `D3B6682C-A4F7-47DB-...`).
 
-    Reusing the lowercase-only join-key matcher here would reject every real take
-    ID and report take coverage as 0% — a confident, silent wrong answer of
-    exactly the kind this instrument exists to prevent. Accept both cases.
+    The join-key matcher rejects MIXED case and never folds, so it cannot be the
+    one to fold here: a case-sensitive comparison between the two vendors would
+    report take coverage as 0% — a confident, silent wrong answer of exactly the
+    kind this instrument exists to prevent. Accept both cases and fold.
 
     Returns the UPPERCASED form so set membership across the two vendors cannot
     fail on case alone. Both sides serialize the same `uuidString` today, so this
