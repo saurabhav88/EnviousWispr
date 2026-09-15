@@ -128,6 +128,31 @@ import Testing
     #expect(recorded.events == [.healthChanged(from: "yellow", to: "red", reason: "spawn_failed")])
   }
 
+  /// A seed equal to the default is deduplicated for the UI but must still
+  /// resolve health, or a manifest blocker sits on the placeholder until the
+  /// server seed lands and that reads as a red-to-red transition (Codex r5).
+  @Test("a default-equal install seed still resolves health under a manifest blocker")
+  func defaultEqualSeedResolvesHealth() throws {
+    let suite = "eg1-health-blocker-\(UUID().uuidString)"
+    let store = try #require(UserDefaults(suiteName: suite))
+    defer { store.removePersistentDomain(forName: suite) }
+    // No manifest: `activationBlockers == ["manifest_missing"]` from init.
+    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    let recorded = Recorded()
+    runtime.onEvent = { event in
+      if case .healthChanged = event { recorded.append(event) }
+    }
+    #expect(EGOneRuntime.healthReason(runtime.health) == "not_running")  // placeholder
+
+    runtime.applyInstallStateForTesting(.notInstalled)  // equals the default
+    #expect(EGOneRuntime.healthReason(runtime.health) == "manifest_missing")
+    #expect(recorded.events.isEmpty)
+
+    runtime.applyServerStateForTesting(.stopped)  // the server seed, after the gate opened
+    #expect(EGOneRuntime.healthReason(runtime.health) == "manifest_missing")
+    #expect(recorded.events.isEmpty)
+  }
+
   /// Only the launch shapes go silent; a probe verdict or a memory-pressure
   /// pause may be the only record of that moment, so it still emits inside one
   /// colour (Codex r1, r2).

@@ -116,6 +116,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // model. So the gate opens when the install-state stream has delivered
       // its first value (`installSeedResolved`, set in `applyInstallState`),
       // never on the first health assignment (cloud review P1 on #2974).
+      //
+      // KNOWN RESIDUAL: a server result that lands BEFORE the install seed is
+      // folded into the seed and earns no row. Reaching it needs a spawn and a
+      // failure to outrun a disk stat scheduled at init (`observeInstallState`
+      // seeds first, `startServerIfInstalled` awaits admission before
+      // `bootServer`), so it is the narrow window of a launch, not a state.
       guard installSeedResolved else { return }
       let reason = Self.healthReason(health)
       let colourChanged = Self.healthLabel(oldValue) != Self.healthLabel(health)
@@ -432,7 +438,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // both converge here. This guard makes a republish of the SAME state a
     // no-op for the UI, and that is ALL it does. Telemetry above deliberately
     // sits outside it.
-    guard installState != state else { return }
+    guard installState != state else {
+      // #2966: a seed equal to the default still has to resolve health, or a
+      // manifest blocker stays on the placeholder until the server seed lands
+      // and that lands as a `not_running -> app_update_required` row.
+      if !installSeedResolved { recomputeHealth() }
+      return
+    }
     installState = state
     recomputeHealth()
   }
