@@ -127,10 +127,10 @@ internal enum VADMonitorLoop {
           // processing it exists to localise.
           //
           // `chunkStartedAt` is read AFTER the started callback on purpose. That
-          // callback synchronously writes a Sentry breadcrumb and a PostHog
-          // event; timing from before it would fold that telemetry cost into
-          // `chunk_processing_latency_ms`, which claims to measure chunk
-          // processing. One extra clock read is the honest trade.
+          // callback synchronously writes a Sentry breadcrumb and updates the
+          // take summary (#2958); timing from before it would fold that
+          // observation cost into `vad_first_chunk_latency_ms`, which claims to
+          // measure chunk processing. One extra clock read is the honest trade.
           let isFirstChunk = !firstChunkObserved
           var chunkStartedAt: TimeInterval = 0
           if isFirstChunk {

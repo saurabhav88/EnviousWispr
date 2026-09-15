@@ -81,10 +81,12 @@ TAKE_PROPERTY = "take_id"
 
 # The events Phase 2 routes the take key to. MEASURED from the emitter, not
 # remembered: every name here has a `["take_id"] = takeID` assignment in
-# `TelemetryService.swift`. Match the FIELD, not a `props`/`properties` variable
-# name — a pattern pinned to `props[...]` structurally cannot match the
-# `asr.completed` emitter and silently reports 12. A name absent from this tuple
-# is not measured, and a name here that the app never emits reads `not observed`.
+# `TelemetryService.swift`, or is listed in `RETIRED_TAKE_KEYED_EVENTS` below
+# with the release that stopped emitting it. Match the FIELD, not a
+# `props`/`properties` variable name — a pattern pinned to `props[...]`
+# structurally cannot match the `asr.completed` emitter and silently reports 12.
+# A name absent from this tuple is not measured, and a name here that the app
+# never emits reads `not observed` (or `retired`, for the names below).
 TAKE_KEYED_EVENTS = (
     "asr.completed",
     # #2087. Registered only now that the durable-id contract exists: `take_id`
@@ -120,6 +122,35 @@ TAKE_KEYED_EVENTS = (
     "paste.copies_observed",
     "recording.cap_warning_shown",
 )
+
+# #2958: names kept for HISTORICAL queries whose rows stopped on the first
+# release carrying telemetry policy 1. A post-floor empty cell for one of these is
+# the fold working, not a blackout, and renders as `retired`, never `not observed`.
+# The values ride on `dictation.terminal` (`vad_stage_reached`, `vad_*`).
+RETIRED_TAKE_KEYED_EVENTS: dict[str, str] = {
+    "dictation.vad_preparation_completed": "folded into dictation.terminal (#2958)",
+    "dictation.first_vad_chunk_started": "folded into dictation.terminal (#2958)",
+    "dictation.first_vad_chunk_completed": "folded into dictation.terminal (#2958)",
+}
+
+# The FIRST release tag whose build no longer emits the retired names. Unset until that
+# tag exists (never guess a version): while it is None every empty cell still reads
+# `not observed`, because a missing marker on a PRE-floor release is a genuine coverage
+# gap and must never be dressed up as the fold working. Set it from the first release
+# tag containing the #2958 merge; a development version string never matches the floor
+# and keeps its measured reading.
+RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE: str | None = None
+
+
+def is_retired_cell(event: str, release: str) -> bool:
+    """True only for a retired name on a release at or after the known floor."""
+    floor = RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE
+    return (
+        event in RETIRED_TAKE_KEYED_EVENTS
+        and floor is not None
+        and re.fullmatch(r"\d+\.\d+\.\d+", release) is not None
+        and version_key(release) >= version_key(floor)
+    )
 
 # The event whose take IDs are the SUCCESS side of the fingerprint take rate.
 SUCCESS_TAKE_EVENT = "dictation.completed"
@@ -1911,7 +1942,12 @@ def render_take_coverage(coverage: Sequence[TakeCoverageRow]) -> list[str]:
         for release in releases:
             row = by_cell.get((event, release))
             if row is None:
-                lines.append(f"  {event} on {release}: {NOT_OBSERVED}")
+                if is_retired_cell(event, release):
+                    lines.append(
+                        f"  {event} on {release}: retired, {RETIRED_TAKE_KEYED_EVENTS[event]}"
+                    )
+                else:
+                    lines.append(f"  {event} on {release}: {NOT_OBSERVED}")
                 continue
             marker = "   <- no take keys" if row.with_take == 0 else ""
             lines.append(
@@ -3317,7 +3353,15 @@ def run_self_test() -> int:
     )
     ph.dev_ids = ()
     observed_coverage = fetch_take_coverage(ph)
-    coverage_lines = "\n".join(render_take_coverage(observed_coverage))
+    # #2958: this grid is asserted with the retirement floor UNSET, explicitly, so the
+    # assertions below stay true after the shipping floor is filled in.
+    global RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE
+    saved_coverage_floor = RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE
+    try:
+        RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE = None
+        coverage_lines = "\n".join(render_take_coverage(observed_coverage))
+    finally:
+        RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE = saved_coverage_floor
     assert "dictation.completed on 2.6.0: 400/400 rows carry take_id" in coverage_lines
     assert "dictation.completed on 2.7.0: 500/500 rows carry take_id" in coverage_lines
     assert "recording.cap_warning_shown on 2.6.0: 0/3 rows carry take_id" in coverage_lines
@@ -3332,9 +3376,38 @@ def run_self_test() -> int:
         if name in ("dictation.completed", "recording.cap_warning_shown"):
             continue
         for rel in ("2.6.0", "2.7.0"):
+            # #2958: with NO known floor a retired name's empty cell is still a blackout
+            # cell. Dressing it up as "retired" before the floor is known would hide a
+            # genuine historical gap.
             assert f"  {name} on {rel}: {NOT_OBSERVED}" in coverage_lines, (name, rel)
+    assert set(RETIRED_TAKE_KEYED_EVENTS) <= set(TAKE_KEYED_EVENTS), "a retired name stays listed"
     assert "100%" not in coverage_lines and "0%" not in coverage_lines
     passed("take coverage renders the full event x release grid, blackout cells included")
+
+    # #2958: the retirement floor. Pre-floor and development versions keep their measured
+    # reading; at and after the floor a retired name's empty cell reads `retired`; a
+    # non-retired name is never affected; an unset floor retires nothing.
+    retired_name = "dictation.first_vad_chunk_started"
+    saved_floor = RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE
+    try:
+        RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE = None
+        assert not is_retired_cell(retired_name, "2.7.0"), "unset floor must retire nothing"
+        RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE = "2.7.0"
+        assert not is_retired_cell(retired_name, "2.6.0"), "pre-floor is a real gap"
+        assert is_retired_cell(retired_name, "2.7.0"), "at-floor is the fold"
+        assert is_retired_cell(retired_name, "2.7.1"), "post-floor is the fold"
+        assert not is_retired_cell(retired_name, "v2.7.1-14-gabc-dev"), "dev strings never match"
+        assert not is_retired_cell("dictation.completed", "2.7.0"), "only retired names"
+        floored_lines = "\n".join(render_take_coverage(observed_coverage))
+        assert f"  {retired_name} on 2.6.0: {NOT_OBSERVED}" in floored_lines, floored_lines
+        assert (
+            f"  {retired_name} on 2.7.0: retired, folded into dictation.terminal (#2958)"
+            in floored_lines
+        ), floored_lines
+        assert f"  {retired_name} on 2.7.0: {NOT_OBSERVED}" not in floored_lines
+    finally:
+        RETIRED_TAKE_KEYED_EVENTS_FIRST_RELEASE = saved_floor
+    passed("retired marker names read `retired` only at or after a KNOWN release floor")
 
     # A subset larger than its set is impossible; it means the query or the parse
     # is wrong, and a wrong coverage number is worse than none.

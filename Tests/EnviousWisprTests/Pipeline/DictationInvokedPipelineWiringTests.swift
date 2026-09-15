@@ -193,11 +193,12 @@ struct DictationInvokedPipelineWiringTests {
     #expect(codeOnly.contains("takeID: telemetryState.takeID))"))
   }
 
-  /// #1846 chunk 9: the VAD marker bridge. `VADMarkerTakeIDTelemetryTests` proves a
-  /// supplied key reaches all three payloads. `CaptureVADSignalSourceTests`
-  /// behaviourally proves every marker carries the run's key, so replacing one
-  /// argument with `nil` fails that test too. This source scan additionally freezes
-  /// all three call sites and the exact identity expression used at each one.
+  /// #1846 chunk 9: the VAD marker bridge forwards the frozen take key.
+  /// `TakeStageSummaryTelemetryTests` verifies the terminal summary those keys
+  /// select (#2958); `CaptureVADSignalSourceTests` behaviourally proves every
+  /// marker carries the run's key, so replacing one argument with `nil` fails that
+  /// test too. This source scan additionally freezes all three call sites and the
+  /// exact identity expression used at each one.
   ///
   /// It also freezes WHICH value: `runSessionID`, captured once at run start and
   /// validated by `monitorIsCurrent` immediately before each emission. A superseded

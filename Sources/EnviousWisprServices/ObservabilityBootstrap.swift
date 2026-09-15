@@ -60,9 +60,14 @@ public enum ObservabilityBootstrap {
     config.flushIntervalSeconds = 30
     config.maxQueueSize = 1000
     config.setBeforeSend { event in
-      // PII redaction: strip transcript content, API keys, and emails from event properties.
-      // This is a limb — must never throw or crash. Heart is unaffected if this fails.
-      event.properties = ObservabilityBootstrap.sanitizePostHogProperties(event.properties)
+      // #2958 volume policy first (drop / sample / stamp), then PII redaction: strip
+      // transcript content, API keys, and emails from event properties. Both are a
+      // limb — must never throw or crash. Heart is unaffected if this fails.
+      guard
+        let properties = ObservabilityBootstrap.processPostHogEvent(
+          name: event.event, properties: event.properties, uuid: event.uuid)
+      else { return nil }
+      event.properties = properties
       return event
     }
 
@@ -208,10 +213,31 @@ public enum ObservabilityBootstrap {
     SentryEventSanitizer.sanitize(event)
   }
 
-  /// Redact every value in a PostHog event's property bag (the EXACT body the
-  /// PostHog `beforeSend` runs). PostHog is app-only, so this stays in Services,
-  /// but it shares the one value redactor so the tripwire (#1095) covers both
-  /// pipelines through a single seam.
+  /// The EXACT body the PostHog `beforeSend` runs (#2958): stamp `environment` and
+  /// `app_version` from the CURRENT bundle, let the volume policy decide whether the
+  /// row leaves at all and stamp it, then redact every value. Returns nil for a dropped
+  /// row. SDK-independent so a test can drive the real boundary without the SDK.
+  ///
+  /// The two stamps are set here, unconditionally, and not only by `register()`: the
+  /// SDK captures `Application Installed` / `Application Opened` synchronously inside
+  /// `setup`, BEFORE `register()` has run, and super properties persist on disk, so
+  /// those first rows carried no `environment` at all (801 of 801 `Application
+  /// Installed` rows in the 30 days to 2026-09-15) or the PREVIOUS launch's
+  /// `app_version` after an update.
+  static func processPostHogEvent(
+    name: String, properties: [String: Any], uuid: UUID
+  ) -> [String: Any]? {
+    var input = properties
+    input["environment"] = currentEnvironment
+    input["app_version"] = appVersion
+    guard let kept = TelemetryVolumePolicy.apply(event: name, properties: input, uuid: uuid)
+    else { return nil }
+    return sanitizePostHogProperties(kept)
+  }
+
+  /// Redact every value in a PostHog event's property bag. PostHog is app-only, so this
+  /// stays in Services, but it shares the one value redactor so the tripwire (#1095)
+  /// covers both pipelines through a single seam.
   static func sanitizePostHogProperties(_ properties: [String: Any]) -> [String: Any] {
     var redacted: [String: Any] = [:]
     for (key, value) in properties {

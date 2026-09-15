@@ -1,22 +1,23 @@
 import EnviousWisprServices
 import Foundation
 
-/// Emits the three record-start VAD stage markers (#1780) to BOTH channels.
+/// Routes the three record-start VAD stage markers (#1780) to BOTH channels.
 ///
 /// Why both: a Sentry breadcrumb travels inside the crash report, so it is the
 /// authoritative crash-local sequence — that is what let #1780 be reconstructed
-/// at all. A PostHog event answers the fleet question ("where do recordings
-/// normally reach or drop out"). `sentry-operations.md`
+/// at all. The PostHog side answers the fleet question ("where do recordings
+/// normally reach or drop out"): since #2958 that is no longer one row per
+/// marker but the take's `TakeStageSummary`, carried on `dictation.terminal` as
+/// the `vad_*` fields. `sentry-operations.md`
 /// RULE: sentry-for-bugs-posthog-for-behaviour permits exactly this pairing:
 /// it forbids turning non-bugs into alerting Sentry *errors*, not non-alerting
-/// diagnostic breadcrumbs alongside counted events.
+/// diagnostic breadcrumbs alongside counted observations.
 ///
 /// Ownership boundary: this type owns the three breadcrumb messages and the
-/// one-breadcrumb-plus-one-event parity rule. `TelemetryService` remains the
-/// sole authority for the exact PostHog event names and property
-/// serialization. Observation of the physical boundaries stays with
-/// `CaptureVADSignalSource` and `VADMonitorLoop`; this type only routes the
-/// facts they report.
+/// one-breadcrumb-plus-one-call parity rule. `TelemetryService` remains the
+/// sole authority for the terminal-row property names and serialization.
+/// Observation of the physical boundaries stays with `CaptureVADSignalSource`
+/// and `VADMonitorLoop`; this type only routes the facts they report.
 ///
 /// Deliberately stateless: no session identity, no lifecycle, no detector
 /// state, no orchestration. Callers own the monitor-generation validity check

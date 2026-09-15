@@ -206,6 +206,11 @@ public final class TelemetryService {
   public static let shared = TelemetryService()
   private init() {}
 
+  /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
+  /// three VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
+  /// `TakeStageLedger`.
+  let takeStages = TakeStageLedger()
+
   #if DEBUG
     /// Test-only observation seam for selected telemetry emissions.
     /// Each emitter owns when it fires and which typed property buckets it exposes;
@@ -1288,6 +1293,9 @@ public final class TelemetryService {
   public func dictationStarted(takeID: String, backend: String) {
     let event = "dictation.started"
     let props: [String: Any] = ["take_id": takeID, "backend": backend]
+    // #2958: acceptance opens the take's record-start summary. Opened HERE, on the
+    // denominator, so a marker for a take that was never accepted has nowhere to land.
+    takeStages.open(takeID: takeID)
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
@@ -1393,6 +1401,13 @@ public final class TelemetryService {
     if let vadFilteredSampleCount { props["vad_filtered_sample_count"] = vadFilteredSampleCount }
     if let vadRetainedRatio { props["vad_retained_ratio"] = vadRetainedRatio }
     if let vadConditioningReason { props["vad_conditioning_reason"] = vadConditioningReason }
+    // #2958: the record-start summary (#1780's three boundaries) rides on the terminal
+    // row. Consumed exactly once; a take with no open entry (pre-acceptance failure,
+    // evicted, or already closed) renders NO `vad_stage_reached` rather than a
+    // fabricated `none`, so absence keeps meaning "no summary", not "nothing reached".
+    if let summary = takeStages.close(takeID: takeID) {
+      props.merge(summary.terminalProperties) { current, _ in current }
+    }
     #if DEBUG
       var stringProps: [String: String] = [
         "take_id": takeID, "backend": backend, "result": result,
@@ -1401,6 +1416,7 @@ public final class TelemetryService {
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
         "delivery_disposition", "vad_conditioning_reason",
+        "vad_stage_reached", "vad_backend", "vad_input_route",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -1414,13 +1430,18 @@ public final class TelemetryService {
       var doubleProps: [String: Double] = [:]
       for key in [
         "whole_buffer_rms", "max_window_rms", "peak_audio_level", "capture_native_rate_hz",
-        "vad_retained_ratio",
+        "vad_retained_ratio", "vad_monitor_to_first_chunk_ms", "vad_first_chunk_latency_ms",
       ] {
         if let value = props[key] as? Double { doubleProps[key] = value }
       }
+      var boolProps: [String: Bool] = [:]
+      for key in ["vad_ready", "vad_model_reused", "vad_first_chunk_should_stop"] {
+        if let value = props[key] as? Bool { boolProps[key] = value }
+      }
       testEventHook?(
         CapturedTelemetryEvent(
-          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps))
+          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps,
+          boolProps: boolProps))
       // The attribution fields are logged as ABSENT-or-value rather than
       // omitted, because their absence is the thing worth reading: a signal-free
       // terminal that logs `peak=absent` is a wiring defect, and a terminal that
@@ -1443,7 +1464,10 @@ public final class TelemetryService {
             // triple above. `vad_retained=absent` on a completed take is a
             // wiring defect; a low value is the finding.
             + "vad_retained=\(doubleProps["vad_retained_ratio"].map { String($0) } ?? "absent") "
-            + "vad_reason=\(stringProps["vad_conditioning_reason"] ?? "absent")",
+            + "vad_reason=\(stringProps["vad_conditioning_reason"] ?? "absent") "
+            // #2958: the folded record-start summary, ABSENT-or-value for the same
+            // reason: `vad_stage=absent` on an accepted take is a ledger defect.
+            + "vad_stage=\(stringProps["vad_stage_reached"] ?? "absent")",
           level: .info, category: "Telemetry")
       }
     #endif
@@ -3983,17 +4007,22 @@ public final class TelemetryService {
     )
   }
 
-  // MARK: - Record-start VAD stage markers (#1780)
+  // MARK: - Record-start VAD stage markers (#1780, folded #2958)
 
-  /// The three markers below light the previously dark interval between
+  /// The three boundaries below light the previously dark interval between
   /// `dictation.invoked` and `asr.completed`. #1780 crashed inside the first
   /// VAD chunk and had to be reconstructed from crash-dump thread states
   /// because nothing in that window was observable in a release build.
   ///
-  /// `RecordStartTelemetrySink` pairs each of these with a Sentry breadcrumb;
-  /// this type remains the sole authority for the exact PostHog event names
-  /// and property serialization. `package` (not `public`) — no external
-  /// product needs them.
+  /// #2958: they no longer emit PostHog rows of their own. Each boundary keeps its
+  /// Sentry breadcrumb (`RecordStartTelemetrySink`, the crash-local sequence) and
+  /// writes the take's `TakeStageSummary`, which `dictationTerminal` carries as the
+  /// `vad_*` fields. The three rows were 366k events a month, 20% of everything, on
+  /// takes that reached a terminal anyway; the fleet question they answered ("where
+  /// do recordings normally reach") is now `dictation.terminal.vad_stage_reached`.
+  ///
+  /// A call with no `takeID`, or for a take that was never accepted or is already
+  /// closed, writes nothing. `package` (not `public`) — no external product needs them.
 
   /// VAD readiness evaluation returned, immediately before monitor entry.
   /// `modelReused` is snapshotted BEFORE preparation by the caller: read after,
@@ -4003,27 +4032,17 @@ public final class TelemetryService {
     inputRoute: String,
     ready: Bool,
     modelReused: Bool,
-    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    /// #1846: which dictation this VAD work belongs to. Nil writes nothing.
     takeID: String? = nil
   ) {
-    // #1846: ONE payload, with the hook derived from it. These three emitters
-    // previously built the hook event and the PostHog properties as two separate
-    // literals, so a test could assert a key that the real capture never sent.
-    var props: [String: Any] = [
-      "backend": backend,
-      "input_route": inputRoute,
-      "ready": ready,
-      "model_reused": modelReused,
-    ]
-    if let takeID { props["take_id"] = takeID }
-    #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "dictation.vad_preparation_completed",
-          stringProps: props.compactMapValues { $0 as? String },
-          boolProps: props.compactMapValues { $0 as? Bool }))
-    #endif
-    PostHogSDK.shared.capture("dictation.vad_preparation_completed", properties: props)
+    guard let takeID else { return }
+    takeStages.update(takeID: takeID) { summary in
+      summary.stageReached = max(summary.stageReached, .prepared)
+      summary.backend = backend
+      summary.inputRoute = inputRoute
+      summary.ready = ready
+      summary.modelReused = modelReused
+    }
   }
 
   /// Immediately BEFORE the first `SilenceDetector.processChunk` await.
@@ -4031,52 +4050,37 @@ public final class TelemetryService {
     backend: String,
     inputRoute: String,
     monitorToFirstChunkMs: Double,
-    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    /// #1846: which dictation this VAD work belongs to. Nil writes nothing.
     takeID: String? = nil
   ) {
-    var props: [String: Any] = [
-      "backend": backend,
-      "input_route": inputRoute,
-      "monitor_to_first_chunk_ms": monitorToFirstChunkMs,
-    ]
-    if let takeID { props["take_id"] = takeID }
-    #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "dictation.first_vad_chunk_started",
-          stringProps: props.compactMapValues { $0 as? String },
-          doubleProps: props.compactMapValues { $0 as? Double }))
-    #endif
-    PostHogSDK.shared.capture("dictation.first_vad_chunk_started", properties: props)
+    guard let takeID else { return }
+    takeStages.update(takeID: takeID) { summary in
+      summary.stageReached = max(summary.stageReached, .firstChunkStarted)
+      summary.backend = backend
+      summary.inputRoute = inputRoute
+      summary.monitorToFirstChunkMs = monitorToFirstChunkMs
+    }
   }
 
-  /// Immediately AFTER that await returns. `started` present with `completed`
-  /// absent is the diagnostic: it localises a fatal failure to first-chunk
-  /// processing, which contains the CoreML path #1780 died in.
+  /// Immediately AFTER that await returns. `first_chunk_started` reached with
+  /// `first_chunk_completed` absent is the diagnostic: it localises a failure to
+  /// first-chunk processing, which contains the CoreML path #1780 died in.
   package func dictationFirstVADChunkCompleted(
     backend: String,
     inputRoute: String,
     chunkProcessingLatencyMs: Double,
     shouldStop: Bool,
-    /// #1846: which dictation this VAD work belongs to. Omit-when-nil.
+    /// #1846: which dictation this VAD work belongs to. Nil writes nothing.
     takeID: String? = nil
   ) {
-    var props: [String: Any] = [
-      "backend": backend,
-      "input_route": inputRoute,
-      "chunk_processing_latency_ms": chunkProcessingLatencyMs,
-      "should_stop": shouldStop,
-    ]
-    if let takeID { props["take_id"] = takeID }
-    #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "dictation.first_vad_chunk_completed",
-          stringProps: props.compactMapValues { $0 as? String },
-          doubleProps: props.compactMapValues { $0 as? Double },
-          boolProps: props.compactMapValues { $0 as? Bool }))
-    #endif
-    PostHogSDK.shared.capture("dictation.first_vad_chunk_completed", properties: props)
+    guard let takeID else { return }
+    takeStages.update(takeID: takeID) { summary in
+      summary.stageReached = max(summary.stageReached, .firstChunkCompleted)
+      summary.backend = backend
+      summary.inputRoute = inputRoute
+      summary.firstChunkLatencyMs = chunkProcessingLatencyMs
+      summary.firstChunkShouldStop = shouldStop
+    }
   }
 }
 

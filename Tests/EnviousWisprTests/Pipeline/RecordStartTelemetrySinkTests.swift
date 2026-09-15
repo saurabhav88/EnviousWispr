@@ -7,9 +7,11 @@ import Testing
 ///
 /// The whole diagnostic value of these markers depends on BOTH channels firing:
 /// the Sentry breadcrumb is what survives inside a crash report (it is how
-/// #1780 was reconstructed), the PostHog event is what answers the fleet
-/// question. A marker that emits only one is a defect, so each test asserts
-/// exactly one of each and no extras.
+/// #1780 was reconstructed), the `TelemetryService` call is what answers the
+/// fleet question (since #2958 by writing the take summary that rides on
+/// `dictation.terminal`, not by a PostHog row of its own). A marker that
+/// reaches only one channel is a defect, so each test asserts exactly one of
+/// each and no extras.
 ///
 /// Spies are per-instance injected closures, never the process-global
 /// `SentryBreadcrumb.breadcrumbDelegate` or `TelemetryService.testEventHook`
