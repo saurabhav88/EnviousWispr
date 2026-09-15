@@ -105,6 +105,29 @@ import Testing
     #expect(recorded.events.count == 3)
   }
 
+  /// The two launch observers are unordered. When the server's `.stopped` seed
+  /// lands BEFORE the install seed, health resolves against the default
+  /// `.notInstalled`; the install seed that follows is still the launch, not a
+  /// transition (cloud review P1 on #2974).
+  @Test(
+    "a server seed that lands before the install seed does not turn the install seed into a row")
+  func serverSeedBeforeInstallSeedStaysSilent() throws {
+    let (runtime, recorded, cleanup) = try makeRuntime()
+    defer { cleanup() }
+
+    runtime.applyServerStateForTesting(.stopped)  // red(download_required) against the default
+    #expect(EGOneRuntime.healthReason(runtime.health) == "download_required")
+    #expect(recorded.events.isEmpty)
+
+    runtime.applyInstallStateForTesting(.installed(version: "v2-sharded"))  // the real seed
+    #expect(EGOneRuntime.healthReason(runtime.health) == "not_started")
+    #expect(recorded.events.isEmpty)
+
+    // Only now is a change a transition.
+    runtime.applyServerStateForTesting(.failed(reason: "spawn_failed"))
+    #expect(recorded.events == [.healthChanged(from: "yellow", to: "red", reason: "spawn_failed")])
+  }
+
   /// Only the launch shapes go silent; a probe verdict or a memory-pressure
   /// pause may be the only record of that moment, so it still emits inside one
   /// colour (Codex r1, r2).

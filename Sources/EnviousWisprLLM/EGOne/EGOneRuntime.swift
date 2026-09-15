@@ -107,11 +107,16 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // verdict, a memory-pressure pause, a removal failure) may be the only
       // record of that moment and still emits.
       //
-      // The first resolved value is not a transition either: the initialiser's
-      // `.red(not_running)` is a placeholder, and `placeholder -> whatever the
-      // install state is` describes the launch, not a change.
-      defer { healthResolvedOnce = true }
-      guard healthResolvedOnce else { return }
+      // Nothing before the INSTALL seed is a transition either: the
+      // initialiser's `.red(not_running)` is a placeholder, and the two launch
+      // observers (server state, install state) are separate unstructured
+      // tasks with no ordering. If the server's `.stopped` seed lands first,
+      // health resolves against the default `.notInstalled`, and the install
+      // seed that follows would read as `red -> yellow` for an installed
+      // model. So the gate opens when the install-state stream has delivered
+      // its first value (`installSeedResolved`, set in `applyInstallState`),
+      // never on the first health assignment (cloud review P1 on #2974).
+      guard installSeedResolved else { return }
       let reason = Self.healthReason(health)
       let colourChanged = Self.healthLabel(oldValue) != Self.healthLabel(health)
       if !colourChanged {
@@ -135,8 +140,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   static let reasonsCountedElsewhere: Set<String> = [
     "download_required", "not_started", "starting",
   ]
-  /// False until `health` has been assigned once (#2966). See `health.didSet`.
-  private var healthResolvedOnce = false
+  /// False until the install-state stream has delivered its first value
+  /// (#2966). Set at the end of `applyInstallState`, AFTER that value's own
+  /// health recompute, so the install seed and anything the server seed did
+  /// before it are silent. See `health.didSet`.
+  private var installSeedResolved = false
   /// Why the manifest cannot activate on this app build (empty = fine).
   /// Non-empty reads RED in the UI ("app update required" for an unknown
   /// prompt template).
@@ -335,6 +343,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   private var upgradeDownloadInFlight: EGOneUpgradeContext?
 
   private func applyInstallState(_ rawState: EGOneInstallState) {
+    // #2966: the first install-state value is the launch seed; the health
+    // gate opens once it has been applied (the dedupe guard below may skip
+    // the recompute for a seed equal to the default, so this runs on exit,
+    // not inside the guarded path).
+    defer { installSeedResolved = true }
     // ENRICH BEFORE ANYTHING ELSE READS THE STATE, including the dedupe guard
     // below — otherwise the first tick and the enriched second tick differ only
     // in a field the guard does not compare, and the row keeps the unenriched
