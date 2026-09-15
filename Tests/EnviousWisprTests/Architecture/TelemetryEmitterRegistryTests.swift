@@ -275,15 +275,28 @@ struct TelemetryEmitterRegistryTests {
   static func scanSources() throws -> (emitters: Set<Emitter>, unresolved: [Unresolved]) {
     let root = RepoRoot.url.path
     let dir = RepoRoot.sourceURL(sourcesDir)
+    // A traversal error or a symlink would otherwise be a silent hole in the scan: the
+    // walker skips what it cannot read and does not follow links, and every registered
+    // emitter it did reach would keep the suite green. Both are recorded as failures.
     guard
-      let walker = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)
+      let walker = FileManager.default.enumerator(
+        at: dir, includingPropertiesForKeys: [.isSymbolicLinkKey],
+        errorHandler: { url, error in
+          Issue.record("cannot enumerate \(url.path): \(error)")
+          return true
+        })
     else {
       Issue.record("cannot enumerate \(dir.path)")
       return ([], [])
     }
     var sources: [(file: String, source: String)] = []
-    for case let url as URL in walker where url.pathExtension == "swift" {
+    for case let url as URL in walker {
       let relative = String(url.path.dropFirst(root.count + 1))
+      if try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
+        Issue.record("\(relative) is a symlink; the scan does not follow links, so it refuses one")
+        continue
+      }
+      guard url.pathExtension == "swift" else { continue }
       sources.append((relative, try String(contentsOf: url, encoding: .utf8)))
     }
     return scan(sources: sources.sorted { $0.file < $1.file })
