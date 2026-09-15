@@ -129,14 +129,39 @@ public enum SentryEventSanitizer {
     )
   }
 
+  /// Keys whose String value is content-free BY CONSTRUCTION and would otherwise
+  /// trip a heuristic below (#2965). Each is named by what produces it, so a
+  /// reader can check the value cannot carry user text:
+  /// - `trace_id`, `span_id`, `parent_span_id`: Sentry SDK trace context, 32/16
+  ///   hex. Blanking `trace_id` made the server discard the value and record two
+  ///   `invalid_data` ingestion errors on EVERY event.
+  /// - `kernel_version`: Sentry SDK OS context, the Darwin kernel banner (>100
+  ///   chars).
+  /// - `device_app_hash`: Sentry SDK app context, a 40-hex hash; the `app.device`
+  ///   tag Sentry derives from it arrived `[REDACTED]`.
+  /// - `revision`: the model delivery manifest's git SHA
+  ///   (`ModelDeliveryTelemetryBridge`), a 40-hex value on ~5,000 PostHog rows a
+  ///   month.
+  /// The exemption is by KEY only and only for a String value; a nested container
+  /// under one of these keys is still walked. A future emitter that reuses one of
+  /// these names for free text gets no scrubbing, so the names stay this specific.
+  public static let contentFreeKeys: Set<String> = [
+    "trace_id", "span_id", "parent_span_id", "kernel_version", "device_app_hash", "revision",
+  ]
+
   /// Redact every String value in a `[String: Any]` dictionary recursively,
   /// leaving non-string scalar values untouched. Shared by Sentry beforeSend redaction
   /// of `event.extra`, `breadcrumb.data`, `event.context`, and
-  /// `exception.mechanism.data`.
+  /// `exception.mechanism.data`, and by the PostHog property bag. Key-aware: a
+  /// String under a `contentFreeKeys` name passes through verbatim.
   public static func redactDict(_ input: [String: Any]) -> [String: Any] {
     var output: [String: Any] = [:]
     for (key, value) in input {
-      output[key] = redactValue(value)
+      if contentFreeKeys.contains(key), let str = value as? String {
+        output[key] = str
+      } else {
+        output[key] = redactValue(value)
+      }
     }
     return output
   }
@@ -159,6 +184,10 @@ public enum SentryEventSanitizer {
   /// - API key patterns: sk-*, phc_*, sntrys_*, key_*, or >= 32 contiguous hex chars
   /// - Email-like patterns
   /// Returns the original string if it matches no pattern, or `[REDACTED]` if it does.
+  /// A string that passes every pattern still has any `/Users/<name>/` username
+  /// segment scrubbed (#2965): the frame/debug-image scrub covers only the
+  /// native-crash surfaces, and a short `String(describing:)` in an extra or a
+  /// PostHog property can carry a home path.
   /// Never throws — any regex failure is silently ignored and the original value returned.
   public static func redactString(_ input: String) -> String {
     // Long non-URL strings (transcript content heuristic)
@@ -192,6 +221,6 @@ public enum SentryEventSanitizer {
       return "[REDACTED]"
     }
 
-    return input
+    return redactUserPath(input)
   }
 }

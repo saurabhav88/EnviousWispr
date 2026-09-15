@@ -239,11 +239,9 @@ public enum ObservabilityBootstrap {
   /// stays in Services, but it shares the one value redactor so the tripwire (#1095)
   /// covers both pipelines through a single seam.
   static func sanitizePostHogProperties(_ properties: [String: Any]) -> [String: Any] {
-    var redacted: [String: Any] = [:]
-    for (key, value) in properties {
-      redacted[key] = SentryEventSanitizer.redactValue(value)
-    }
-    return redacted
+    // Key-aware (`SentryEventSanitizer.contentFreeKeys`, #2965) so a top-level
+    // `revision` survives the same way a Sentry context value does.
+    SentryEventSanitizer.redactDict(properties)
   }
 
   /// Forwarder to the shared username-path scrubber (#1095 tripwire seam).

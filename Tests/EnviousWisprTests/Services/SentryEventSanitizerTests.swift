@@ -1,3 +1,4 @@
+import EnviousWisprObservabilityCore
 import Foundation
 import Sentry
 import Testing
@@ -325,6 +326,87 @@ struct SentryEventSanitizerTests {
     #expect(sanitized.extra?["key"] as? String == "[REDACTED]")
     #expect(sanitized.extra?["hex"] as? String == "[REDACTED]")
     #expect(sanitized.extra?["safe_short"] as? String == "built_in_mic")
+  }
+
+  // MARK: - #2965: the survive direction
+
+  /// The SDK's own trace/os/app context values and the model manifest SHA are
+  /// content-free by construction and were arriving `[REDACTED]` on every Sentry
+  /// event and on ~5,000 PostHog rows a month. Two-way: the SAME values under a
+  /// key that is NOT allow-listed are still redacted, so the exemption is the key,
+  /// never the shape.
+  @Test(
+    "content-free keys survive in Sentry contexts and PostHog properties; the same value under another key does not"
+  )
+  func contentFreeKeysSurvive() {
+    let traceID = "53cd34f8daca430491da41d26b0b5149"  // 32 hex, live shape
+    let spanID = "ae7c429f94234b05"
+    let deviceHash = "b7c9e1d3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5"  // 40 hex, live shape
+    let revision = "aed02740059203c4a87495924f685de3722ae9ce"  // manifest SHA, live
+    let kernel =
+      "Darwin Kernel Version 25.0.0: Thu Aug 14 21:17:10 PDT 2026; "
+      + "root:xnu-12377.1.9~3/RELEASE_ARM64_T6041 (this banner is over one hundred characters)"
+    #expect(kernel.count > 100)  // premise: trips the >100 rule without the exemption
+
+    let event = Event(level: .error)
+    event.context = [
+      "trace": ["trace_id": traceID, "span_id": spanID],
+      "os": ["kernel_version": kernel],
+      "app": ["device_app_hash": deviceHash],
+      "control": ["free_text": kernel, "token": traceID],
+    ]
+    event.extra = ["revision": revision, "unlisted": revision]
+
+    let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
+    #expect(sanitized.context?["trace"]?["trace_id"] as? String == traceID)
+    #expect(sanitized.context?["trace"]?["span_id"] as? String == spanID)
+    #expect(sanitized.context?["os"]?["kernel_version"] as? String == kernel)
+    #expect(sanitized.context?["app"]?["device_app_hash"] as? String == deviceHash)
+    #expect(sanitized.extra?["revision"] as? String == revision)
+    // Control: identical values under unlisted keys still trip the heuristics.
+    #expect(sanitized.context?["control"]?["free_text"] as? String == "[REDACTED]")
+    #expect(sanitized.context?["control"]?["token"] as? String == "[REDACTED]")
+    #expect(sanitized.extra?["unlisted"] as? String == "[REDACTED]")
+
+    // PostHog bag goes through the same key-aware walk.
+    let props = ObservabilityBootstrap.sanitizePostHogProperties([
+      "revision": revision, "unlisted": revision,
+      "nested": ["revision": revision, "unlisted": revision],
+    ])
+    #expect(props["revision"] as? String == revision)
+    #expect(props["unlisted"] as? String == "[REDACTED]")
+    let nested = props["nested"] as? [String: Any]
+    #expect(nested?["revision"] as? String == revision)
+    #expect(nested?["unlisted"] as? String == "[REDACTED]")
+  }
+
+  /// A short free-text value that passes every denylist pattern still cannot
+  /// carry a home-directory username to either vendor.
+  @Test(
+    "a home path inside a short pass-through string has its username scrubbed on both pipelines")
+  func homePathScrubbedOnPassThrough() {
+    let short = "open failed: /Users/\(Self.userMarker)/Library/Application Support/x.bin"
+    #expect(short.count <= 100)  // premise: NOT caught by the length rule
+
+    let event = Event(level: .error)
+    event.extra = ["error": short]
+    let crumb = Breadcrumb(level: .info, category: "pipeline.test")
+    crumb.message = short
+    event.breadcrumbs = [crumb]
+    let sanitized = ObservabilityBootstrap.sanitizeSentryEvent(event)
+    #expect(
+      sanitized.extra?["error"] as? String
+        == "open failed: /Users/[REDACTED]/Library/Application Support/x.bin")
+    #expect(payloadContainsUserMarker(sanitized) == false)
+
+    let props = ObservabilityBootstrap.sanitizePostHogProperties(["error": short])
+    #expect(
+      props["error"] as? String
+        == "open failed: /Users/[REDACTED]/Library/Application Support/x.bin")
+    // Idempotent: a second pass changes nothing.
+    #expect(
+      SentryEventSanitizer.redactString(props["error"] as? String ?? "") == props["error"]
+        as? String)
   }
 
   // MARK: - Helpers

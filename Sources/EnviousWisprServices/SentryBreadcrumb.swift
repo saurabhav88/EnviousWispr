@@ -254,7 +254,8 @@ public enum SentryBreadcrumb {
   /// code are framework identifiers (e.g. `AVFoundationErrorDomain#-11800`), never
   /// user content — so dictation text can never reach the message surface, even if
   /// a future error type interpolated a transcript into its `localizedDescription`.
-  /// See #1095. `internal` (not `private`) so the redaction tripwire can pin it.
+  /// See #1095. `package` (not `private`) so the redaction tripwire can pin it and
+  /// `KernelDictationDriver` can name a warm-up failure by type (#2965).
   ///
   /// A `private` or file-scope-`private` Swift error type's bridged `NSError.domain`
   /// demangles to `…(unknown context at $<runtime-ptr>).TypeName` — long enough to trip
@@ -265,7 +266,7 @@ public enum SentryBreadcrumb {
   /// An error type that declares `StableSentryErrorIdentity` overrides the bridged
   /// identity with a pinned one, so its Sentry grouping cannot move when the type's
   /// cases change (#1524). Every other error keeps the bridged behaviour unchanged.
-  nonisolated static func structuredDescriptor(_ error: any Error) -> String {
+  nonisolated package static func structuredDescriptor(_ error: any Error) -> String {
     if let stable = error as? any StableSentryErrorIdentity {
       return stable.sentryFingerprintDescriptor
     }
