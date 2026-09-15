@@ -41,7 +41,7 @@ import PostHog
 
 /// Telemetry Bible Phase 4 (#1173): which user action triggered an API-key
 /// validation pass. Threaded into `validateKeyAndDiscoverModels` (defaulted to
-/// `.modelDiscovery`); only the two Save buttons pass `.save`.
+/// `.modelDiscovery`); only Save-button validation passes `.save`.
 public enum ApiKeyValidationSource: String, Sendable {
   case save
   case modelDiscovery = "model_discovery"
@@ -145,10 +145,10 @@ public enum RecoveryFailureClass: String, Sendable {
   case xpcUnreachable = "xpc_unreachable"
   case cancelled
   case notReady = "not_ready"
-  // #2132: the six below fill a residual that was 100% of genuine recovery
-  // failures (18 events / 30d to 2026-08-19). They are produced by
-  // `recoveryFailureClass(for:)` in `EnviousWisprASR`, which is the only module
-  // that can see the four `internal` error families D-028 keeps isolated.
+  // #2132: ASR classification filled a residual that was 100% of genuine recovery
+  // failures (18 events / 30d to 2026-08-19). Historical classifications remain
+  // declared; current mappings live in `recoveryFailureClass(for:)` in
+  // `EnviousWisprASR`, which can inspect its module-internal error families.
   // VERSION FLOOR: installs below the release carrying this keep emitting
   // `other`, so any query spanning the boundary needs an `app_version`
   // dimension — `analytics-operations.md` RULE:
@@ -173,7 +173,7 @@ public enum RecoveryFailureClass: String, Sendable {
   /// still false. Distinct from `notReady`, which is a DETERMINISTIC refusal at
   /// the load site with no model admitted — conflating the two restores the #2132
   /// deletion, because only this one is transient enough to earn a retry. Same
-  /// version floor as the six above.
+  /// version floor as the classifications introduced by #2132.
   case loadReturnedNotReady = "load_returned_not_ready"
   case managerNotOwned = "manager_not_owned"
   case other
@@ -207,7 +207,7 @@ public final class TelemetryService {
   private init() {}
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
-  /// three VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
+  /// VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
   /// `TakeStageLedger`.
   let takeStages = TakeStageLedger()
 
@@ -254,7 +254,7 @@ public final class TelemetryService {
     // here, since a `.retryExhausted`/preempted retry never reaches a
     // completed transcript.
     asrRetryOutcome: String? = nil,
-    /// #1846: which dictation this completion belongs to. Forwarded to all FOUR
+    /// #1846: which dictation this completion belongs to. Forwarded to all
     /// events this function fans out to, so one argument covers
     /// `dictation.completed`, `asr.completed`, `llm.polish_completed` and
     /// `paste.completed`.
@@ -380,7 +380,7 @@ public final class TelemetryService {
 
   // MARK: - Escape Recovery (#2087)
   //
-  // Five take-keyed, content-free events. They exist because
+  // Take-keyed, content-free events. They exist because
   // `dictation.canceled` deliberately keeps its current meaning and emission
   // point: redefining a long-running production series from "requested" to
   // "actually discarded" would silently rewrite externally saved PostHog
@@ -1315,7 +1315,7 @@ public final class TelemetryService {
 
   /// A dictation ENDED, and this is what happened to it.
   ///
-  /// `result` is one of the seven terminal labels the app already uses
+  /// `result` is one of the terminal labels the app already uses
   /// internally; `reason` is a `TerminalNoticeReason` raw value, present only
   /// when `result` is `failed`. Neither vocabulary is invented here — both ship
   /// today, which is the whole point (founder 2026-07-31: "the backend system
@@ -1361,8 +1361,8 @@ public final class TelemetryService {
     // #2087: ADDITIVE and defaulted, so every existing call site and every
     // existing query keeps working. An Escape Recovery session concludes
     // `.completed`, so without this the ordinary terminal row would report it as
-    // a normal dictation; minting a ninth `result` label would instead break the
-    // eight-label vocabulary every existing chart reads.
+    // a normal dictation; minting another `result` label would instead change
+    // the vocabulary every existing chart reads.
     deliveryDisposition: String? = nil,
     // #2184: ADDITIVE and defaulted. All four omit when nil, and nil is the
     // correct reading rather than a gap — a take that concluded before the
@@ -1992,7 +1992,7 @@ public final class TelemetryService {
   /// Deliberately NOT emitted for `durable_save`, which fires on every
   /// successful dictation and would swamp the signal for a path this change
   /// does not touch (founder Gate 2, 2026-07-29: "light telemetry"). Only the
-  /// two spent-attempt sources emit.
+  /// spent-attempt sources emit.
   ///
   /// Privacy: shape only — a source label, a component label, and a boolean.
   /// Never the recovery id, a path, or an error string.
@@ -2324,7 +2324,7 @@ public final class TelemetryService {
   /// #1446: AI polish was ATTEMPTED and threw. Disjoint from
   /// `llm.polish_completed` (an output was accepted) and `llm.polish_skipped`
   /// (no polish output was accepted under an explicit skip contract). Together
-  /// the three events partition instrumented live polish outcomes.
+  /// these events partition instrumented live polish outcomes.
   ///
   /// Fires for EVERY live attempted-polish failure, whether or not the reason also
   /// earns an alerting Sentry error. That makes this the durable, complete record
@@ -2483,7 +2483,7 @@ public final class TelemetryService {
   ///
   /// `step` is the closed set of `TerminalResolutionBudget.step` labels, and
   /// every site that charges the budget is one of these (cloud review of the
-  /// #2777 PR asked for the whole set, not the three the resolver alone uses):
+  /// #2777 PR asked for the whole set, not just the resolver's labels):
   /// `scan` (the process sweep), `focused`, `role`, `count`, `range`,
   /// `range_read`, `browser_address_bar` (the caret reads in
   /// `PasteService.caretDerivedContext`) and `screen` (the terminal screen
@@ -2541,9 +2541,9 @@ public final class TelemetryService {
   /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921,
   /// #1980).
   ///
-  /// A separate value rather than eight more parameters so the projection has
+  /// A separate value rather than individual parameters so the projection has
   /// one owner and one test surface: `paste.completed` is emitted from a
-  /// metrics projection, and eight loose optionals threaded through it is how
+  /// metrics projection, and loose optionals threaded through it is how
   /// one of them eventually gets dropped without any test noticing. #1921 and
   /// #1980 each added two of them, which is exactly the growth this shape was
   /// chosen to absorb.
@@ -2751,7 +2751,7 @@ public final class TelemetryService {
 
   /// Telemetry Bible Phase 4 (#1173): `config` carries the comprehensive
   /// per-setting projection block (all OTHER user-facing settings, privacy-
-  /// projected as low-cardinality strings — see `SettingsProjection`). The ten
+  /// projected as low-cardinality strings — see `SettingsProjection`). The
   /// pre-existing fields stay byte-identical (Phase 0/3 contract); `config` adds
   /// the rest as flat `properties` keys so the holistic per-user config can be
   /// reconstructed query-side from this baseline overlaid with `settings.changed`
@@ -3129,7 +3129,7 @@ public final class TelemetryService {
   // behaviour, which `observability-operations.md`
   // RULE: instrumentation-stays-observation-only forbids adding to expose a
   // metric. If that observation is ever wanted, it needs its own ticket and the
-  // emitter is eight lines to restore.
+  // emitter can be restored as part of that work.
 
   /// Emitted when LID abstains (returned nil language).
   /// `reason` is one of: "too_short", "low_confidence", "narrow_margin".
@@ -3310,7 +3310,7 @@ public final class TelemetryService {
 
   // MARK: - File import turn labels: rename, retry, displayed (#2811, phase 4 of #2807)
 
-  /// Three sibling events under the `file_import_turns_` prefix, never new fields on
+  /// Sibling events under the `file_import_turns_` prefix, never new fields on
   /// `file_import_turns` itself: that event fires exactly once per import from the storage
   /// pass, before any screen draws a turn, so a per-attempt or render-time fact cannot ride
   /// on it without inflating every count of it (plan §3e, chunk 4 correction). Shape only,
@@ -3447,8 +3447,8 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("update.relocation_failed", properties: props)
   }
 
-  /// A usable destination copy was OBSERVED. Two legitimate emitters, because
-  /// there are two successful routes: the healthy child after its own health
+  /// A usable destination copy was OBSERVED. Legitimate emission routes include
+  /// the healthy child after its own health
   /// check, and the parent after an `.existingRunning` activation, which
   /// launches no child at all (#2006 §3.4a).
   public func updateRelocationCompleted(
@@ -4013,7 +4013,7 @@ public final class TelemetryService {
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)
 
-  /// The three boundaries below light the previously dark interval between
+  /// The record-start boundaries below light the previously dark interval between
   /// `dictation.invoked` and `asr.completed`. #1780 crashed inside the first
   /// VAD chunk and had to be reconstructed from crash-dump thread states
   /// because nothing in that window was observable in a release build.
