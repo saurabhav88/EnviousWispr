@@ -8,7 +8,7 @@ import Foundation
 ///
 /// Why one boundary and not per-emitter guards: every emitter shares one wire, and the
 /// question "does this row leave" must have one reader. Count the emitter sites, never
-/// from a number written here (the four `emitUpdateStage` callers share one `capture`):
+/// from a number written here (the `emitUpdateStage` callers share one `capture`):
 /// `rg --pcre2 -c '^\s*(?:PostHogSDK\.shared\.capture\((?!name,)|emitUpdateStage\(")'
 /// Sources/EnviousWisprServices/TelemetryService.swift`. An emitter keeps describing what
 /// happened; this type keeps deciding what is worth a billed row.

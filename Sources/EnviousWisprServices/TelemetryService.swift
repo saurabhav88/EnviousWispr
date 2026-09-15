@@ -207,7 +207,7 @@ public final class TelemetryService {
   private init() {}
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
-  /// three VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
+  /// VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
   /// `TakeStageLedger`.
   let takeStages = TakeStageLedger()
 
@@ -254,7 +254,7 @@ public final class TelemetryService {
     // here, since a `.retryExhausted`/preempted retry never reaches a
     // completed transcript.
     asrRetryOutcome: String? = nil,
-    /// #1846: which dictation this completion belongs to. Forwarded to all FOUR
+    /// #1846: which dictation this completion belongs to. Forwarded to all
     /// events this function fans out to, so one argument covers
     /// `dictation.completed`, `asr.completed`, `llm.polish_completed` and
     /// `paste.completed`.
@@ -1992,7 +1992,7 @@ public final class TelemetryService {
   /// Deliberately NOT emitted for `durable_save`, which fires on every
   /// successful dictation and would swamp the signal for a path this change
   /// does not touch (founder Gate 2, 2026-07-29: "light telemetry"). Only the
-  /// two spent-attempt sources emit.
+  /// spent-attempt sources emit.
   ///
   /// Privacy: shape only — a source label, a component label, and a boolean.
   /// Never the recovery id, a path, or an error string.
@@ -2324,7 +2324,7 @@ public final class TelemetryService {
   /// #1446: AI polish was ATTEMPTED and threw. Disjoint from
   /// `llm.polish_completed` (an output was accepted) and `llm.polish_skipped`
   /// (no polish output was accepted under an explicit skip contract). Together
-  /// the three events partition instrumented live polish outcomes.
+  /// these events partition instrumented live polish outcomes.
   ///
   /// Fires for EVERY live attempted-polish failure, whether or not the reason also
   /// earns an alerting Sentry error. That makes this the durable, complete record
@@ -4011,7 +4011,7 @@ public final class TelemetryService {
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)
 
-  /// The three boundaries below light the previously dark interval between
+  /// The record-start boundaries below light the previously dark interval between
   /// `dictation.invoked` and `asr.completed`. #1780 crashed inside the first
   /// VAD chunk and had to be reconstructed from crash-dump thread states
   /// because nothing in that window was observable in a release build.
