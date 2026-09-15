@@ -104,7 +104,7 @@ both post (the one check an in-memory mock can't reproduce).
    req = urllib.request.Request(
        'https://us.posthog.com/api/projects/354235/query/',
        data=json.dumps({'query': {'kind': 'HogQLQuery', 'query':
-           \"SELECT count() FROM events WHERE event='download_clicked' OR (event='download_redirect' AND coalesce(properties.excluded_reason,'')='')\"
+           \"SELECT count() FROM events WHERE event='download_clicked' OR (event='download_redirect' AND coalesce(properties.excluded_reason,'')='' AND coalesce(properties.source_bucket,'')!='onsite')\"
        }}).encode(),
        headers={'Authorization': f'Bearer {os.environ[\"POSTHOG_KEY\"]}', 'Content-Type': 'application/json'},
        method='POST',
