@@ -228,9 +228,10 @@ export class DownloadCounter {
     } = payload;
 
     // Qualification (#1243's definition; since #2953 owned by
-    // workers/shared/download-intent.js): every redirect qualifies unless the
-    // doorway bot-excluded it; a historical browser click always qualifies.
-    const qualifies = qualifiesDownloadIntent({ event, excludedReason });
+    // workers/shared/download-intent.js): on-site clicks always qualify;
+    // off-site redirects qualify only when not bot-excluded; the on-site
+    // redirect is the click's server-side twin and never counts twice.
+    const qualifies = qualifiesDownloadIntent({ event, excludedReason, sourceBucket });
     if (!qualifies) {
       return Response.json({ counted: false, reason: "excluded" });
     }

@@ -432,14 +432,14 @@ export function websiteSql(win) {
  * to the two relevant event types. Both predicates are byte-preserved from the
  * two builders this replaces, so the numbers do not move.
  *
- * NO host filter, on measured evidence: download_clicked (pre-#2953 rows) came only from
+ * NO host filter, on measured evidence: download_clicked appears only from
  * enviouswispr.com, and download_redirect carries no $host at all because the
  * doorway worker emits it server-side. A host filter here would silently drop
  * every off-site redirect. */
 export function downloadsSql(win) {
   // The intent predicate is owned by workers/shared/download-intent.js (#2953):
-  // every download is a doorway redirect now, and the historical browser
-  // click rows still count.
+  // one on-site click produces a client event AND an on-site redirect, and
+  // only the shared rule knows to count that once.
   return `SELECT
       countIf(${DOWNLOAD_INTENT_SQL}) AS intents,
       countIf(event = 'download_redirect'

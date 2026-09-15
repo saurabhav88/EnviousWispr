@@ -102,16 +102,20 @@
   events.forEach((e) => window.addEventListener(e, trigger, { once: true, passive: true }));
   setTimeout(loadCrisp, 5000);
 
-  // Download placement (#2953). Every on-site button points at the /download
-  // doorway, which records the download server-side with the visitor's cookie,
-  // whether or not the tracker loaded. The only thing the server cannot see is
-  // WHICH button was pressed, so this handler writes the placement into the
-  // link before the browser follows it. There is no browser-side download
-  // event any more; workers/shared/download-intent.js counts the redirect.
-  function stampPlacement(e) {
+  // Download click tracking with placement attribution. Every on-site button
+  // points at the /download doorway (#2953), which records the same download
+  // server-side with the visitor's cookie; this browser event is the on-site
+  // download intent every consumer counts (workers/shared/download-intent.js)
+  // because the tracker keeps the visit's first referrer on it (Google, Reddit,
+  // direct), while the doorway only ever sees our own page as the referrer and
+  // also receives fetches that never ran this script. The handler also writes
+  // the placement into the link so the doorway's twin record carries it. The
+  // PostHog snippet installs a queueing stub synchronously, so a click before
+  // the library arrives is still recorded once it does.
+  function trackDownload(e) {
     const link = e.target.closest('a[href^="/download"]');
     if (!link) return;
-    const placement =
+    const source =
       link.dataset.downloadSource ||
       (link.closest('nav') && 'nav') ||
       (link.closest('.hero-section') && 'hero') ||
@@ -120,11 +124,17 @@
       (link.closest('.blog-cta') && 'blog-post') ||
       'unknown';
     const target = new URL(link.href, window.location.href);
-    target.searchParams.set('placement', placement);
+    target.searchParams.set('placement', source);
     link.href = target.pathname + target.search;
+    if (e.type === 'click' && typeof window.posthog !== 'undefined') {
+      window.posthog.capture('download_clicked', {
+        source: source,
+        page: window.location.pathname,
+      });
+    }
   }
   // auxclick is the middle button (open in new tab); the browser follows the
-  // href as it stands when the handler returns.
-  document.addEventListener('click', stampPlacement);
-  document.addEventListener('auxclick', stampPlacement);
+  // href as it stands when the handler returns. Only a real click is an intent.
+  document.addEventListener('click', trackDownload);
+  document.addEventListener('auxclick', trackDownload);
 </script>

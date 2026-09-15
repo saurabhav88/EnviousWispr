@@ -8,16 +8,18 @@
 // Plan: docs/feature-requests/plan-2026-06-29-download-attribution.md (§3, §3d)
 // for the off-site buckets; #2953 for the on-site path.
 //
-// Since #2953 EVERY download passes through here and this redirect is the one
-// download record (workers/shared/download-intent.js). Off-site owned links
-// (README, directories, profile bios, social posts) carry ?source=<bucket>;
-// every on-site button carries ?source=onsite plus &placement=<button>, which
-// the page script writes into the link on click. The browser emits no download
-// event of its own any more: this fires even when the tracker never loaded, it
-// carries the real IP for country and the User-Agent for platform, and when the
-// visitor's first-party PostHog cookie is present it carries the SAME
-// distinct_id and session id as the page views, so a download joins the visit
-// that produced it.
+// Since #2953 EVERY download passes through here. Off-site owned links (README,
+// directories, profile bios, social posts) carry ?source=<bucket> and this
+// redirect is their download record. Every on-site button carries
+// ?source=onsite plus &placement=<button>, which the page script writes into
+// the link on click; there the browser's download_clicked is the intent
+// consumers count (it carries the visit's origin) and this redirect is its
+// server-side twin (workers/shared/download-intent.js). What the twin adds: the
+// real IP for country, the User-Agent for platform, and when the visitor's
+// first-party PostHog cookie is present the SAME distinct_id and session id as
+// the page views, so a download joins the visit that produced it. The doorway
+// also receives on-site fetches that never ran the page script (link checkers,
+// previews, prefetchers), which is why the twin is not counted.
 
 const DMG_URL =
   "https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg";
@@ -33,7 +35,7 @@ const KNOWN_BUCKETS = new Set([
   "linkedin", "reddit", "x", "youtube", "medium", "facebook", "hackernews",
   "producthunt", "discord", "ai_assistant", "newsletter",
   "direct_or_dark", "unknown_referrer", "bot_filtered",
-  "onsite", // #2953: every on-site button, with &placement=<button> stamped on click
+  "onsite", // #2953: every on-site button; the click's server-side twin, never a second intent
 ]);
 
 // Link-preview scanners, crawlers, and non-browser agents. GET hits from these are
