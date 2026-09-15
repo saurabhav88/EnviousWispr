@@ -12,7 +12,7 @@ set -euo pipefail
 #   -> xcodebuild archive (signing OFF; PostHog/Sentry/feed stamped via -xcconfig
 #      at archive time, because Xcode processes Info.plist during the archive)
 #   -> pull the fully-assembled .app out of the archive's Products/Applications
-#   -> plutil-stamp the semver into the app + both XPC Info.plists
+#   -> plutil-stamp the semver into the app Info.plist
 #   -> manual inside-out codesign that EMBEDS the Developer ID provisioning
 #      profile at Contents/embedded.provisionprofile BEFORE the main-app signature
 #      seals it (Apple TN3125 — keychain-access-groups is a restricted entitlement
@@ -126,9 +126,9 @@ ARCHIVED_APP="$ARCHIVE_PATH/Products/Applications/EnviousWispr.app"
 test -d "$ARCHIVED_APP"
 ditto "$ARCHIVED_APP" "$BUNDLE"
 
-echo "==> [3/9] Stamp semver + feed URL into app + XPC Info.plists"
-# Xcode names embedded XPC dirs by PRODUCT name (EnviousWispr*Service.xpc), not
-# bundle id (#913 PR4 learning) — discover by glob, route by CFBundleIdentifier.
+echo "==> [3/9] Stamp semver + feed URL into the app Info.plist"
+# No first-party XPC helper remains since #1908 (ASR in-process); Sparkle's own
+# XPC services are signed in step 5 and never stamped here (#2981).
 # SUFeedURL + SentryDSN stamped here (not via xcconfig) to avoid the `//` comment
 # truncation and the bash-fragile $(SLASH) escape (#1087). plutil is `//`-safe.
 # SentryDSN is stamped UNCONDITIONALLY (empty when the secret is unset) so the
@@ -138,16 +138,6 @@ plutil -replace SUFeedURL -string "$FEED_URL" "$BUNDLE/Contents/Info.plist"
 plutil -replace SentryDSN -string "${SENTRY_DSN:-}" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$BUNDLE/Contents/Info.plist"
-for XPC_SVC in "$BUNDLE/Contents/XPCServices"/*.xpc; do
-    [[ -d "$XPC_SVC" ]] || continue
-    # SentryDSN: helper crash reporting (#1174). Stamped UNCONDITIONALLY (empty
-    # when the secret is unset), same pattern as the app stamp above, so the
-    # archive-time placeholder never survives. HelperObservability treats an
-    # empty value as "no DSN, skip" — never a real DSN.
-    plutil -replace SentryDSN -string "${SENTRY_DSN:-}" "$XPC_SVC/Contents/Info.plist"
-    plutil -replace CFBundleShortVersionString -string "$VERSION" "$XPC_SVC/Contents/Info.plist"
-    plutil -replace CFBundleVersion -string "$VERSION" "$XPC_SVC/Contents/Info.plist"
-done
 
 echo "==> [4/9] Verify stamped secrets + feed + versions (pre-sign)"
 APP_PLIST="$BUNDLE/Contents/Info.plist"
@@ -163,24 +153,11 @@ if [[ -n "${SENTRY_DSN:-}" ]]; then
     test "$SENTRY_VALUE" = "$SENTRY_DSN"
     [[ "$SENTRY_VALUE" != *'$('* ]]
     unset SENTRY_VALUE
-    # #1174: helper crash reporting requires the DSN to reach BOTH XPC plists.
-    # REQUIRED verify (not optional) — a missing helper DSN silently loses helper
-    # crash visibility in release. Same plutil-stamp guard as the app above.
-    for XPC_PLIST in "$BUNDLE/Contents/XPCServices"/*.xpc/Contents/Info.plist; do
-        [[ -f "$XPC_PLIST" ]] || continue
-        XPC_SENTRY_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :SentryDSN' "$XPC_PLIST")"
-        test "$XPC_SENTRY_VALUE" = "$SENTRY_DSN"
-        [[ "$XPC_SENTRY_VALUE" != *'$('* ]]
-        unset XPC_SENTRY_VALUE
-    done
 fi
 FEED_VALUE="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_PLIST")"
 test "$FEED_VALUE" = "$FEED_URL"
-for PLIST in "$APP_PLIST" "$BUNDLE/Contents/XPCServices"/*.xpc/Contents/Info.plist; do
-    [[ -f "$PLIST" ]] || continue
-    test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")" = "$VERSION"
-    test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")" = "$VERSION"
-done
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PLIST")" = "$VERSION"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PLIST")" = "$VERSION"
 echo "    secrets + feed + versions stamped correctly"
 
 echo "==> [4b/9] Bundle GPL + third-party notices + source pointer INSIDE the app"
@@ -256,11 +233,11 @@ if ! { grep -q "${VERSION}" "$LICENSES_DIR/SOURCE.txt" && grep -q "${COMMIT}" "$
 fi
 echo "    license material sealed in Contents/Resources/Licenses (GPL-3.0.txt, THIRD-PARTY-NOTICES.txt, SOURCE.txt @ ${COMMIT:0:8})"
 
-echo "==> [4c/9] Verify the bundled VAD model rode the archive into both bundles (#1224)"
+echo "==> [4c/9] Verify the bundled VAD model rode the archive into the app bundle (#1224)"
 # The fix for #1224 (VAD model downloads at record-start) bundles the model as
-# a Tuist folder-reference resource on BOTH the main app target and the audio
-# XPC service target (Project.swift), instead of it being fetched from the
-# network at runtime. A packaging mistake here (a dropped resources: entry, a
+# a Tuist folder-reference resource on the main app target (Project.swift; the
+# audio XPC target it also covered went in-process in #1543), instead of it
+# being fetched from the network at runtime. A packaging mistake here (a dropped resources: entry, a
 # Tuist glob regression) would silently reintroduce the network dependency in
 # a shipped build with no functional-test signal until users hit it — same
 # shape of gate as the EG-1 llama-server check below, run pre-sign so a
