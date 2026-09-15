@@ -332,7 +332,7 @@ import Testing
           #expect(rows.first?.stringProps["result"] == "ready")
           // The already-warm case and a real wait are told apart by this, which
           // is why the gate carries no separate already_ready result value.
-          #expect(rows.first?.stringProps["duration_seconds"] != nil)
+          #expect(rows.first?.doubleProps["duration_seconds"] != nil)
           #expect(events.gateRows("onboarding.step_blocked").isEmpty)
         }
       }

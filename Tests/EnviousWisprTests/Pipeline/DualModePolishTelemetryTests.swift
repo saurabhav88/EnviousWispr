@@ -171,6 +171,9 @@ struct DualModePolishTelemetryTests {
       #expect(event.stringProps["router_mode"] == nil)
       #expect(event.stringProps["filter_tripped"] == "code_shape_guard")
       #expect(event.boolProps["fell_back_to_raw"] == true)
+      // #2980: the latency travels as Double, the same type as `$value`.
+      #expect(event.doubleProps["latency_seconds"] == 0.873)
+      #expect(event.stringProps["latency_seconds"] == nil)
     }
 
     @Test("TelemetryService omits polish properties for cloud providers (nil params)")

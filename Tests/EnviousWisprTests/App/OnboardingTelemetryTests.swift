@@ -209,7 +209,10 @@ import Testing
           step: "model_download", result: "completed", durationSeconds: 2.0)
         let c = events.named("onboarding.step_completed")
         #expect(c.count == 1)
-        #expect(c.first?.stringProps["duration_seconds"] == "2.000")
+        // #2980: Double, the same type as `$value`; never a formatted String.
+        #expect(c.first?.doubleProps["duration_seconds"] == 2.0)
+        #expect(c.first?.doubleProps["$value"] == 2.0)
+        #expect(c.first?.stringProps["duration_seconds"] == nil)
       }
     }
 
@@ -239,9 +242,7 @@ import Testing
         vm.sessionStartFloor = { sessionStart }
         vm.completeStep("accessibility_permission", result: "granted")
         let dur =
-          Double(
-            events.named("onboarding.step_completed").first?
-              .stringProps["duration_seconds"] ?? "0") ?? 0
+          events.named("onboarding.step_completed").first?.doubleProps["duration_seconds"] ?? 0
         #expect(dur < 60)  // clamped to the session, not the stale ~3600
       }
     }
@@ -255,9 +256,7 @@ import Testing
         vm.stepStartedAt = Date(timeIntervalSinceNow: -3)  // this step started 3s ago
         vm.completeStep("model_download", result: "completed")
         let dur =
-          Double(
-            events.named("onboarding.step_completed").first?
-              .stringProps["duration_seconds"] ?? "0") ?? 0
+          events.named("onboarding.step_completed").first?.doubleProps["duration_seconds"] ?? 0
         #expect(dur >= 2 && dur < 20)  // ~3s (the step clock), NOT 100s (the floor)
       }
     }
