@@ -69,7 +69,7 @@
     });
   }
   // Crisp chat: its loader pulls ~400 KB of script and opens a socket, so it
-  // waits for the same trigger as PostHog instead of competing with the page's
+  // waits for interaction or five seconds instead of competing with the page's
   // own stylesheet, fonts and hero image on a cold visit. The queue and site id
   // are set up front so nothing that pushes to $crisp before load is lost.
   window.$crisp = [];
@@ -111,7 +111,8 @@
   // also receives fetches that never ran this script. The handler also writes
   // the placement into the link so the doorway's twin record carries it. The
   // PostHog snippet installs a queueing stub synchronously, so a click before
-  // the library arrives is still recorded once it does.
+  // the library arrives is queued; delivery needs the library to load and
+  // drain the queue before this document is destroyed.
   function trackDownload(e) {
     const link = e.target.closest('a[href^="/download"]');
     if (!link) return;
@@ -126,15 +127,19 @@
     const target = new URL(link.href, window.location.href);
     target.searchParams.set('placement', source);
     link.href = target.pathname + target.search;
-    if (e.type === 'click' && typeof window.posthog !== 'undefined') {
+    if (
+      (e.type === 'click' || (e.type === 'auxclick' && e.button === 1)) &&
+      typeof window.posthog !== 'undefined'
+    ) {
       window.posthog.capture('download_clicked', {
         source: source,
         page: window.location.pathname,
       });
     }
   }
-  // auxclick is the middle button (open in new tab); the browser follows the
-  // href as it stands when the handler returns. Only a real click is an intent.
+  // Track primary activation (including cmd-click) and middle-button auxclick;
+  // a right-button auxclick only stamps placement. The browser follows the href
+  // as it stands when the handler returns.
   document.addEventListener('click', trackDownload);
   document.addEventListener('auxclick', trackDownload);
 </script>

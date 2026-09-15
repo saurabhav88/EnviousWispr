@@ -13,7 +13,7 @@ import {
 // renderings of the same predicate; both are pinned here so they cannot drift
 // apart without this file noticing.
 
-test("intent contract: the click counts on-site, the redirect counts off-site, the on-site redirect and bots never", () => {
+test("intent contract: clicks and non-excluded off-site redirects count", () => {
   // Client click always counts, whatever else is on the row.
   assert.equal(qualifiesDownloadIntent({ event: "download_clicked" }), true);
   assert.equal(qualifiesDownloadIntent({ event: "download_clicked", excludedReason: "bot_ua", sourceBucket: "onsite" }), true);
@@ -22,7 +22,7 @@ test("intent contract: the click counts on-site, the redirect counts off-site, t
   assert.equal(qualifiesDownloadIntent({ event: "download_redirect", excludedReason: "", sourceBucket: "github_readme" }), true);
   // A pre-#2953 redirect row carries no source_bucket at all and still counts.
   assert.equal(qualifiesDownloadIntent({ event: "download_redirect", excludedReason: null }), true);
-  // Bots never count.
+  // Bot-excluded redirects never count.
   assert.equal(qualifiesDownloadIntent({ event: "download_redirect", excludedReason: "bot_ua", sourceBucket: "reddit" }), false);
   // The on-site redirect is the click's server-side twin, never a second intent.
   assert.equal(qualifiesDownloadIntent({ event: "download_redirect", sourceBucket: "onsite" }), false);

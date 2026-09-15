@@ -53,7 +53,7 @@ export function qualifiesDownloadIntent({ event, excludedReason, sourceBucket })
   );
 }
 
-/** Same split as OFFSITE_REDIRECT_SQL for a single relayed event. */
+/** Classify a relayed redirect as off-site; does not check bot exclusion (qualify first). */
 export function isOffsiteRedirect({ event, sourceBucket }) {
   return event === p.redirect && (sourceBucket ?? "") !== p.onsiteBucket;
 }

@@ -429,8 +429,7 @@ export function websiteSql(win) {
  *
  * Same table, same window, differing only by predicate, so two countIf columns
  * replace two round trips. `WHERE event IN (...)` keeps the merged query scoped
- * to the two relevant event types. Both predicates are byte-preserved from the
- * two builders this replaces, so the numbers do not move.
+ * to the two relevant event types. Intent qualification follows the shared rule.
  *
  * NO host filter, on measured evidence: download_clicked appears only from
  * enviouswispr.com, and download_redirect carries no $host at all because the
