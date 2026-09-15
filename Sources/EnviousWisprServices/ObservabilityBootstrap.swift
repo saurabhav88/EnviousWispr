@@ -21,6 +21,10 @@ public enum ObservabilityBootstrap {
   /// Detect environment from bundle ID: dev builds use `.dev` suffix.
   private static var environment: String { currentEnvironment }
 
+  /// The shared-project source tag (#2982). One value for every build of this app;
+  /// EnviousStaging registers `enviousstaging` in the same project.
+  static let appTag = "enviouswispr"
+
   /// App version from bundle (e.g. "1.6.2" for release, "v1.6.1-14-g...-dev" for dev)
   private static var appVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -73,8 +77,12 @@ public enum ObservabilityBootstrap {
 
     PostHogSDK.shared.setup(config)
 
-    // Tag environment so dev dogfooding doesn't muddy production dashboards
-    PostHogSDK.shared.register(["environment": environment, "app_version": appVersion])
+    // Tag environment so dev dogfooding doesn't muddy production dashboards, and
+    // `app` because project 354235 is shared with EnviousStaging (#2982; the
+    // shared-project rule: every Envious Labs product tags its source).
+    PostHogSDK.shared.register([
+      "environment": environment, "app_version": appVersion, "app": appTag,
+    ])
   }
 
   private static func initializeSentry() {
@@ -213,12 +221,13 @@ public enum ObservabilityBootstrap {
     SentryEventSanitizer.sanitize(event)
   }
 
-  /// The EXACT body the PostHog `beforeSend` runs (#2958): stamp `environment` and
-  /// `app_version` from the CURRENT bundle, let the volume policy decide whether the
-  /// row leaves at all and stamp it, then redact every value. Returns nil for a dropped
-  /// row. SDK-independent so a test can drive the real boundary without the SDK.
+  /// The EXACT body the PostHog `beforeSend` runs (#2958): stamp `environment`,
+  /// `app_version` and `app` from the CURRENT bundle, let the volume policy decide
+  /// whether the row leaves at all and stamp it, then redact every value. Returns nil
+  /// for a dropped row. SDK-independent so a test can drive the real boundary without
+  /// the SDK.
   ///
-  /// The two stamps are set here, unconditionally, and not only by `register()`: the
+  /// The stamps are set here, unconditionally, and not only by `register()`: the
   /// SDK captures `Application Installed` / `Application Opened` synchronously inside
   /// `setup`, BEFORE `register()` has run, and super properties persist on disk, so
   /// those first rows carried no `environment` at all (801 of 801 `Application
@@ -230,6 +239,7 @@ public enum ObservabilityBootstrap {
     var input = properties
     input["environment"] = currentEnvironment
     input["app_version"] = appVersion
+    input["app"] = appTag
     guard let kept = TelemetryVolumePolicy.apply(event: name, properties: input, uuid: uuid)
     else { return nil }
     return sanitizePostHogProperties(kept)

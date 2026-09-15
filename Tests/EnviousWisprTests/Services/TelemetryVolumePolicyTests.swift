@@ -284,6 +284,9 @@ struct TelemetryVolumePolicyTests {
     // before this (801 of 801 in the 30 days to 2026-09-15).
     #expect(out["environment"] as? String == ObservabilityBootstrap.currentEnvironment)
     #expect((out["app_version"] as? String)?.isEmpty == false)
+    // #2982: the shared-project source tag, read AFTER the sanitizer so a redaction
+    // heuristic that ate the literal would fail here, not in a dashboard.
+    #expect(out["app"] as? String == "enviouswispr")
     #expect(out["take_id"] as? String == "9F2C1D84-6B3A-4E07-9C51-0A7D2E6F1B33")
     #expect(out["distinct_id"] as? String == "019f93ff-404b-7638-99e6-62cfd4da84f8")
     #expect(
@@ -301,9 +304,10 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       ObservabilityBootstrap.processPostHogEvent(
         name: "Application Installed",
-        properties: ["environment": "stale", "app_version": "0.0.0-stale"],
+        properties: ["environment": "stale", "app_version": "0.0.0-stale", "app": "stale"],
         uuid: Self.droppedUUID))
     #expect(out["environment"] as? String == ObservabilityBootstrap.currentEnvironment)
     #expect(out["app_version"] as? String != "0.0.0-stale")
+    #expect(out["app"] as? String == "enviouswispr")
   }
 }
