@@ -100,13 +100,20 @@ struct SnippetImportParsersTests {
       ])
   }
 
-  @Test("A quoted field after a comma on ANY line reads the paste as CSV")
+  @Test("A quoted CSV field on ANY line reads the paste as CSV")
   func quotedFieldOnALaterLineIsCSV() throws {
     let text = "a,b\nsig,\"Best,\nSaurabh\""
     #expect(SnippetPasteSniff.sniff(text) == .csv)
     let result = try PasteSnippetsImportSource.parse(text: text, format: .auto)
     expectPairs(result.candidates, [("a", "b"), ("sig", "Best,\nSaurabh")])
     #expect(SnippetPasteSniff.sniff("a = b\nsig = Hello,\"Sam\"") == .ambiguous)
+    // A leading quoted field on a later row, CSV-shaped (comma after the closing quote).
+    let leading = "a,b\n\"say \"\"hi\"\"\",hello"
+    #expect(SnippetPasteSniff.sniff(leading) == .csv)
+    let parsed = try PasteSnippetsImportSource.parse(text: leading, format: .auto)
+    expectPairs(parsed.candidates, [("a", "b"), ("say \"hi\"", "hello")])
+    // A leading quoted TRIGGER on a later line (separator after the closing quote) is list.
+    #expect(SnippetPasteSniff.sniff("a = b\n\"my email\" = x@y") == .list)
   }
 
   @Test("The live preview refuses what Continue would refuse")

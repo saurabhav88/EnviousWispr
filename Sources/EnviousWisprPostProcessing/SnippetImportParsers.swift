@@ -405,19 +405,19 @@ package enum SnippetPasteSniff: Sendable, Equatable {
       String($0).trimmingCharacters(in: .whitespaces)
     }
     guard let firstLine = lines.first(where: { !$0.isEmpty }) else { return .list }
-    // A leading `"` on the first line followed, after its closing quote, by an explicit
-    // separator or a colon is the LINE grammar's quoted trigger (`"my email" = "x@y"`), not
-    // CSV; any other leading `"` is CSV. The other quote pairs are never CSV quotes.
-    if firstLine.hasPrefix("\"") {
-      return leadingQuotedFieldIsAListSide(firstLine) ? .list : .csv
+    // A leading `"` followed, after its closing quote, by an explicit separator or a colon is
+    // the LINE grammar's quoted trigger (`"my email" = "x@y"`), not CSV; a leading `"` followed
+    // by anything else is a CSV field. The other quote pairs are never CSV quotes. EVERY
+    // quote signal is read on EVERY line, never the first only: a headerless CSV whose
+    // first row is unquoted and whose later row is `"say ""hi""",hello` or `sig,"Best,` then
+    // more lines is still CSV. A quoted field right after a comma counts unless an explicit
+    // separator comes before it on that line (`sig = Hello,"Sam"` is a list line whose text
+    // holds a quote, and the ambiguity rule below offers the picker).
+    if firstLine.hasPrefix("\""), leadingQuotedFieldIsAListSide(firstLine) { return .list }
+    for line in lines where !line.isEmpty {
+      if line.hasPrefix("\"") && !leadingQuotedFieldIsAListSide(line) { return .csv }
+      if hasQuotedFieldAfterComma(line) { return .csv }
     }
-    // A quoted field right after a comma on ANY line (`sig,"Best,` then more lines is a
-    // multi-line CSV expansion, and the line grammar would cut it at the first line break),
-    // unless an explicit separator comes before it on that line: `sig = Hello,"Sam"` is a
-    // list line whose text holds a quote, and the ambiguity rule below offers the picker.
-    // Every line is inspected, not only the first: a headerless CSV whose first row is
-    // unquoted and whose third row is multi-line is still CSV.
-    if lines.contains(where: hasQuotedFieldAfterComma) { return .csv }
     if let record = try? SnippetCSVParser.records(firstLine).first, SnippetCSVParser.isHeader(record) {
       return .csv
     }
