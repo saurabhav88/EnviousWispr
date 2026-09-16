@@ -362,6 +362,12 @@ struct InverseTextNormalizerParityTests {
       // an already-written path segment named "slash" is not a spoken command (cloud review
       // PR #2960): glued to punctuation on either side, the word stays, and the pass is idempotent
       ("https://example.com/slash/docs", "https://example.com/slash/docs"),
+      // glued on the LEFT ONLY (mutation battery #2959 row 5): the right-hand boundary alone
+      // would not block this one, since a space or "." follows. Only the left-hand
+      // "(?<!\S)" check protects it, so it needs its own case rather than riding on the
+      // both-sides-glued rows above.
+      ("a/slash to convert", "a/slash to convert"),
+      ("check example.com/slash.", "check example.com/slash."),
       ("C:\\backslash\\Users", "C:\\backslash\\Users"),
       ("(slash) means divide", "(slash) means divide"),
       // ... and glued on the RIGHT through a suffix (cloud review round 2): a hostname or a
@@ -398,6 +404,7 @@ struct InverseTextNormalizerParityTests {
   func issue2955JoinersStayWordsOff(input: String) {
     let out = InverseTextNormalizer().normalize(input, spokenPunctuation: false)
     #expect(out.contains("slash"), "expected the word to survive, got \(out.debugDescription)")
-    #expect(out.contains("/") == false && out.contains("\\") == false, "got \(out.debugDescription)")
+    #expect(
+      out.contains("/") == false && out.contains("\\") == false, "got \(out.debugDescription)")
   }
 }
