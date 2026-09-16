@@ -84,7 +84,7 @@ struct OtherAudioSettingsPanel: View {
     }
   }
 
-  /// Shown under `Pause music` when the system route cannot answer on this Mac
+  /// Shown under `Pause` when the system route cannot answer on this Mac
   /// (a macOS update closed it): only the two scriptable players remain.
   static let pauseAnythingUnavailableNote =
     "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused."
@@ -124,8 +124,8 @@ struct OtherAudioSettingsPanel: View {
   }
 
   private func refreshAvailability(_ mode: OtherAudioWhileDictating) {
-    // Pause music's note comes from the adapter probe, not the output device;
-    // an output change must not clear it.
+    // Pause's note comes from the adapter probe, not the output device; an
+    // output change must not clear it.
     guard mode != .pauseMusic else { return }
     guard !dictationRuntime.otherAudioHold.isModeAvailable(mode) else {
       unavailableNote = nil
@@ -133,7 +133,7 @@ struct OtherAudioSettingsPanel: View {
     }
     switch mode {
     case .turnDown:
-      unavailableNote = "Turn down is not available on your current speakers or headphones."
+      unavailableNote = "Lower is not available on your current speakers or headphones."
     case .mute:
       unavailableNote = "Mute is not available on your current speakers or headphones."
     case .nothing, .pauseMusic:
