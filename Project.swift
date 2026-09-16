@@ -590,15 +590,17 @@ let project = Project(
       ],
       // #1413 v1.1: MediaRemoteAdapter.framework is bundled, NEVER linked: the
       // app spawns /usr/bin/perl to load it (see LiveMediaRemoteAdapter.swift).
-      // Folder-referenced so the Versions/ symlink layout survives verbatim.
-      // codeSignOnCopy signs it with the build's identity in the dev build;
-      // build-release-dmg.sh re-signs it inside-out with the Developer ID.
+      // It lives under Vendor/, not Sources/: a framework bundle carries
+      // Versions/Current symlinks, and the #2987 emitter scanner refuses any
+      // symlink under Sources/. Folder-referenced so that layout survives
+      // verbatim. codeSignOnCopy signs it with the build's identity in the dev
+      // build; build-release-dmg.sh re-signs it inside-out with the Developer ID.
       copyFiles: [
         .frameworks(
           name: "Embed mediaremote-adapter",
           files: [
             .folderReference(
-              path: "Sources/EnviousWispr/Resources/MediaRemoteAdapter.framework",
+              path: "Vendor/MediaRemoteAdapter.framework",
               codeSignOnCopy: true)
           ])
       ],
