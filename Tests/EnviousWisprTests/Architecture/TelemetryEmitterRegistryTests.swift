@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftParser
 import SwiftSyntax
@@ -32,6 +33,11 @@ struct TelemetryEmitterRegistryTests {
   /// Grandfathered rows at the freeze. The count must EQUAL this: grade a row, lower the
   /// number in the same change. Slack here is a free `ungraded` slot for a new emitter.
   static let ungradedCeiling = 110
+  /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
+  /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
+  /// The failure message prints the new value; paste it only when grading or retiring.
+  static let ungradedFingerprint =
+    "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
 
   /// The closed cadence vocabulary. Deliberately no `per_chunk`, `per_buffer`, `per_frame`,
   /// `per_second`: an event finer than a take folds into the take's terminal row.
@@ -303,17 +309,30 @@ struct TelemetryEmitterRegistryTests {
   }
 
   /// The event names `TelemetryVolumePolicy.sampledDecision` switches on: string literals
-  /// used as `case` patterns anywhere in the policy file. A name in a comment or an unrelated
-  /// constant is not a case and does not count.
+  /// used as `case` patterns inside THAT function's body only. A name in a comment, an
+  /// unrelated constant, or another switch (`decide`) is not a sampling case.
   static func policyCaseNames() throws -> Set<String> {
     let source = try String(contentsOf: RepoRoot.sourceURL(policyFile), encoding: .utf8)
     let finder = CaseLiteralFinder(viewMode: .sourceAccurate)
     finder.walk(Parser.parse(source: source))
+    #expect(finder.sawFunction, "\(policyFile) must declare `sampledDecision`")
     return finder.names
   }
 
   final class CaseLiteralFinder: SyntaxVisitor {
     var names: Set<String> = []
+    var sawFunction = false
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+      guard node.name.text == "sampledDecision", let body = node.body else {
+        return .skipChildren
+      }
+      sawFunction = true
+      let inner = CaseLiteralFinder(viewMode: .sourceAccurate)
+      inner.sawFunction = true
+      inner.walk(body)
+      names.formUnion(inner.names)
+      return .skipChildren
+    }
     override func visit(_ node: SwitchCaseItemSyntax) -> SyntaxVisitorContinueKind {
       if let expression = node.pattern.as(ExpressionPatternSyntax.self),
         let name = CaptureVisitor.literalName(expression.expression)
@@ -493,15 +512,28 @@ struct TelemetryEmitterRegistryTests {
     }
   }
 
-  @Test("the grandfathered count equals its ceiling, which only ratchets down")
+  static func fingerprint(_ names: [String]) -> String {
+    let joined = names.sorted().joined(separator: "\n")
+    return SHA256.hash(data: Data(joined.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
+  @Test("the grandfathered set is frozen by count and by identity, and only shrinks")
   func ungradedOnlyRatchetsDown() throws {
-    let ungraded = try Self.registryRows().filter { $0.cadence == "ungraded" }.count
+    let names = try Self.registryRows().filter { $0.cadence == "ungraded" }.map(\.event)
     #expect(
-      ungraded == Self.ungradedCeiling,
+      names.count == Self.ungradedCeiling,
       """
-      \(ungraded) ungraded rows, ceiling \(Self.ungradedCeiling). A NEW emitter is never \
+      \(names.count) ungraded rows, ceiling \(Self.ungradedCeiling). A NEW emitter is never \
       ungraded: give it a cadence, a treatment, a reader and its issue. When you grade an old \
       row, lower `ungradedCeiling` to match in the same change; slack is a free slot.
+      """)
+    let actual = Self.fingerprint(names)
+    #expect(
+      actual == Self.ungradedFingerprint,
+      """
+      The set of ungraded event names changed (same count or not). Swapping a retired row for \
+      a new `ungraded` row is not grading. If this change GRADES or RETIRES an old row, set \
+      `ungradedFingerprint` to \(actual) and `ungradedCeiling` to \(names.count).
       """)
   }
 }
