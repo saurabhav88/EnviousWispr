@@ -54,8 +54,11 @@ const BOT_UA =
   /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|embedly|vkshare|preview|scanner|monitor|curl|wget|python-requests|headless|w3c_validator/i;
 
 // Exported for unit testing the bot heuristic without the Cloudflare runtime.
+// Google-Safety is Google's documented fetcher for checking publicly posted links
+// (developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers);
+// it carries no "bot" token, so it is named explicitly (#2993).
 export function isLikelyBot(ua) {
-  return BOT_UA.test(ua || "");
+  return /^Google-Safety$/i.test(ua || "") || BOT_UA.test(ua || "");
 }
 
 // PostHog's browser SDK persists `{distinct_id, $sesid: [lastActivityMs,
@@ -194,15 +197,46 @@ function bucketFromUtm(utmSource, utmMedium) {
   return null;
 }
 
+// Save-correlated link checks. Saving a YouTube description fires three
+// doorway hits within a second (measured 2026-09-16, three saves, nine hits, all
+// counted and posted as downloads #1534-#1542): one from a Google address with no
+// parseable User-Agent and no Referer, then two from other machines with a Chrome
+// UA and `Referer: https://enviouswispr.com/` on a link tagged `source=youtube`.
+// The UA regex above sees none of them. Two shapes are excluded here; both are
+// heuristics, not proofs, and a human request with a stripped UA or an own-host
+// Referer on an explicit off-site tag is excluded with them:
+//  - no User-Agent at all. Null $os/$browser on the measured row does NOT prove
+//    the UA was empty (an unrecognised UA parses to null too); the raw UA now
+//    recorded on every row settles that on the next save.
+//  - an explicit off-site `source=` tag whose Referer is our own host. No page on
+//    enviouswispr.com carried an off-site-tagged doorway link when this shipped
+//    (point-in-time grep, not a guard); on-site buttons use `source=onsite`.
+// Both keep the resolved bucket so the digest still shows WHERE the hit came from,
+// and set excluded_reason so nothing downstream counts or posts it. The on-site
+// twin is exempt from both: it never counts (#2953), and its row must stay as is.
 // Pure resolver — exported for unit testing without the Cloudflare runtime.
-export function resolveSourceBucket({ isBot, explicit, utmSource, utmMedium, referrerHost }) {
+// `ua` and `selfHost` are required, not defaulted: a caller that forgets them
+// fails loud in the test, never silently reads as "a browser from elsewhere".
+export function resolveSourceBucket({ isBot, explicit, utmSource, utmMedium, referrerHost, ua, selfHost }) {
+  if (typeof ua !== "string" || typeof selfHost !== "string") {
+    throw new TypeError("resolveSourceBucket needs ua and selfHost");
+  }
   if (isBot) return { bucket: "bot_filtered", excludedReason: "bot_ua" };
-  if (explicit && KNOWN_BUCKETS.has(explicit)) return { bucket: explicit, excludedReason: null };
-  const bucket =
-    bucketFromUtm(utmSource, utmMedium) ||
-    bucketFromReferrer(referrerHost) ||
-    (referrerHost ? "unknown_referrer" : "direct_or_dark");
-  return { bucket, excludedReason: null };
+  const tagged = Boolean(explicit) && KNOWN_BUCKETS.has(explicit);
+  const bucket = tagged
+    ? explicit
+    : bucketFromUtm(utmSource, utmMedium) ||
+      bucketFromReferrer(referrerHost) ||
+      (referrerHost ? "unknown_referrer" : "direct_or_dark");
+  const excludedReason =
+    bucket === "onsite"
+      ? null
+      : ua === ""
+        ? "no_ua"
+        : tagged && bucket !== "bot_filtered" && referrerHost && referrerHost === selfHost
+          ? "self_referred_offsite"
+          : null;
+  return { bucket, excludedReason };
 }
 
 export async function onRequest(context) {
@@ -234,6 +268,8 @@ export async function onRequest(context) {
       utmSource,
       utmMedium,
       referrerHost,
+      ua,
+      selfHost: url.hostname.toLowerCase(),
     });
 
     // #2953: the visitor's own id and session when the first-party cookie is
@@ -266,6 +302,11 @@ export async function onRequest(context) {
         placement: placementFromQuery(q.get("placement")),
         $os: platform.os,
         $browser: platform.browser,
+        // #2993: the same property posthog-js already sends on every one of our
+        // page views (920 of 920 in the 7 days to 2026-09-16), so it adds nothing
+        // to what Envious Labs receives. It tells an EMPTY UA from one the parser
+        // cannot name, which null $os/$browser cannot, and names the next scanner.
+        $raw_user_agent: ua || null,
         $browser_language: languageFromHeader(request.headers.get("Accept-Language")),
         $ip: request.headers.get("CF-Connecting-IP") || undefined, // real user IP for GeoIP, not CF egress
         // #2953: attach to the visitor's person when we have their id (the site

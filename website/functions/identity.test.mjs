@@ -131,12 +131,12 @@ test("language is the first Accept-Language tag or nothing", () => {
 
 test("onsite is an explicit bucket and never falls through to a referrer class", () => {
   assert.deepEqual(
-    resolveSourceBucket({ isBot: false, explicit: "onsite", utmSource: null, utmMedium: null, referrerHost: "enviouswispr.com" }),
+    resolveSourceBucket({ isBot: false, explicit: "onsite", utmSource: null, utmMedium: null, referrerHost: "enviouswispr.com", ua: "Mozilla/5.0", selfHost: "enviouswispr.com" }),
     { bucket: "onsite", excludedReason: null },
   );
   // A bot hitting the on-site path is still a bot.
   assert.equal(
-    resolveSourceBucket({ isBot: true, explicit: "onsite", utmSource: null, utmMedium: null, referrerHost: "enviouswispr.com" }).bucket,
+    resolveSourceBucket({ isBot: true, explicit: "onsite", utmSource: null, utmMedium: null, referrerHost: "enviouswispr.com", ua: "curl/8.4.0", selfHost: "enviouswispr.com" }).bucket,
     "bot_filtered",
   );
 });
