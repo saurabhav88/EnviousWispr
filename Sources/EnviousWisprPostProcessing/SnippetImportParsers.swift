@@ -66,8 +66,9 @@ package enum SnippetLineListParser {
   }
 
   /// Matching pairs of surrounding quotes. ONE pair is removed, and only when both ends
-  /// match: `""hello""` becomes `"hello"`, and `'hello` keeps its apostrophe.
-  private static let quotePairs: [(Character, Character)] = [
+  /// match: `""hello""` becomes `"hello"`, and `'hello` keeps its apostrophe. The same pairs
+  /// open a QUOTED TRIGGER (`closingQuote(ofLeadingFieldIn:)`).
+  static let quotePairs: [(Character, Character)] = [
     ("\"", "\""), ("'", "'"), ("\u{201C}", "\u{201D}"), ("\u{2018}", "\u{2019}"),
   ]
 
@@ -77,15 +78,18 @@ package enum SnippetLineListParser {
     return String(value.dropFirst().dropLast())
   }
 
-  /// The closing quote of a field that starts at the line's first character, with a doubled
-  /// quote inside the field skipped (the same walk the sniff does). Nil when the line does
-  /// not start with a quote or the quote is never closed.
+  /// The closing quote of a field that starts at the line's first character with ANY of the
+  /// supported opening quotes (`"`, `'`, `\u{201C}`, `\u{2018}`), matched by its own closer,
+  /// with a doubled closer inside the field skipped (the same walk the sniff does for `"`).
+  /// Nil when the line does not start with a quote or the quote is never closed.
   static func closingQuote(ofLeadingFieldIn line: String) -> String.Index? {
-    guard line.hasPrefix("\"") else { return nil }
+    guard let first = line.first,
+      let closer = quotePairs.first(where: { $0.0 == first })?.1
+    else { return nil }
     var tail = line.dropFirst()
-    while let close = tail.firstIndex(of: "\"") {
+    while let close = tail.firstIndex(of: closer) {
       let afterClose = line.index(after: close)
-      if afterClose < line.endIndex, line[afterClose] == "\"" {
+      if afterClose < line.endIndex, line[afterClose] == closer {
         tail = line[line.index(after: afterClose)...]
         continue
       }
@@ -395,9 +399,9 @@ package enum SnippetPasteSniff: Sendable, Equatable {
       String($0).trimmingCharacters(in: .whitespaces)
     }
     guard let firstLine = lines.first(where: { !$0.isEmpty }) else { return .list }
-    // A leading quote on the first line followed, after its closing quote, by an explicit
+    // A leading `"` on the first line followed, after its closing quote, by an explicit
     // separator or a colon is the LINE grammar's quoted trigger (`"my email" = "x@y"`), not
-    // CSV; any other leading quote is CSV.
+    // CSV; any other leading `"` is CSV. The other quote pairs are never CSV quotes.
     if firstLine.hasPrefix("\"") {
       return leadingQuotedFieldIsAListSide(firstLine) ? .list : .csv
     }

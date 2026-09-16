@@ -85,6 +85,9 @@ struct SnippetImportParsersTests {
       "\"comma\",\"k: v = w\"",
       "\"quoted words\" and more = x",
       "\"open quote = y",
+      "'single': 'Use x = y'",
+      "\u{201C}curly\u{201D} = \u{201C}a, b = c\u{201D}",
+      "\u{2018}it\u{2019}\u{2019}s\u{2019} -> \u{2018}x = y\u{2019}",
     ].joined(separator: "\n")
     let result = try SnippetLineListParser.parse(text, limit: 10)
     expectPairs(
@@ -92,6 +95,8 @@ struct SnippetImportParsersTests {
       [
         ("sig", "Use x = y"), ("arrow", "a -> b, c"), ("tab", "x = y"), ("comma", "k: v = w"),
         ("\"quoted words\" and more", "x"), ("\"open quote", "y"),
+        ("single", "Use x = y"), ("curly", "a, b = c"),
+        ("it\u{2019}\u{2019}s", "x = y"),
       ])
   }
 
