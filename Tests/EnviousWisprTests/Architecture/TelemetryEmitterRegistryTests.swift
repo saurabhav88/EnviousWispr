@@ -329,6 +329,17 @@ struct TelemetryEmitterRegistryTests {
 
     /// The SDK named in TYPE position (`typealias Client = PostHogSDK`, `let x: PostHogSDK`)
     /// is a second route to the singleton this scan does not follow, so it is reported.
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+      if collect, node.name.text == "PostHogSDK" {
+        unresolved.append(
+          (
+            "`PostHogSDK` named as a qualified type; only `PostHogSDK.shared.capture` is scanned",
+            site(node).line
+          ))
+      }
+      return .visitChildren
+    }
+
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
       if collect, node.name.text == "PostHogSDK" {
         unresolved.append(
@@ -666,6 +677,7 @@ struct TelemetryEmitterRegistryTests {
         func o() { PostHogSDK.shared.flush() }
         func p() { let f = PostHogSDK.shared.capture; f("hidden.value") }
         typealias Client = PostHogSDK
+        typealias Qualified = PostHog.PostHogSDK
         func q() { PostHogSDK /* c */ .shared.capture("eleven.trivia") }
         func r() { PostHogSDK.shared.capture("twelve.a"); PostHogSDK.shared.capture("twelve.a") }
         func defaulted(_ name: String = "hidden.default") { PostHogSDK.shared.capture(name) }
@@ -717,7 +729,7 @@ struct TelemetryEmitterRegistryTests {
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
       + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 14, Comment(rawValue: unresolvedMessage))
+    #expect(result.unresolved.count == 15, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
@@ -768,6 +780,13 @@ struct TelemetryEmitterRegistryTests {
 
     let duplicates = Dictionary(grouping: rows, by: \.event).filter { $0.value.count > 1 }
     #expect(duplicates.isEmpty, "duplicate rows: \(duplicates.keys.sorted())")
+
+    // A mistyped or renamed `case` in `sampledDecision` would silently sample nothing and
+    // retain the real event at 100%; every policy case must name a live emitter.
+    let orphanCases = try Self.policyCaseNames().subtracting(emitted).sorted()
+    #expect(
+      orphanCases.isEmpty,
+      "\(Self.policyFile) samples \(orphanCases), which no emitter sends; fix the case")
   }
 
   @Test("every row is well formed and its treatment is real")
