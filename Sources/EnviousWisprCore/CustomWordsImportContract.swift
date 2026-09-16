@@ -380,7 +380,7 @@ package enum CustomWordsImportValidationError: LocalizedError, Sendable, Equatab
   /// Quotes escape into something identifiable when there is anything to name,
   /// and steps aside when there is not: a whitespace-only entry has no scalar
   /// worth printing, and `"   "` is the same dead end as `""` was.
-  static func describe(_ value: String) -> String {
+  package static func describe(_ value: String) -> String {
     let hasSomethingToName = value.unicodeScalars.contains {
       !CharacterSet.whitespacesAndNewlines.contains($0)
     }
