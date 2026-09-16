@@ -43,7 +43,7 @@ If you dictate with music, a podcast or a video playing, EnviousWispr can get th
 A few things worth knowing:
 
 - Turn down and Mute act on everything your Mac plays through that output, including a call in progress and spoken feedback from a screen reader.
-- Audio that starts mid-take is quiet too: the whole output stays lowered until you stop.
+- Audio that starts mid-take is quiet on the output selected when recording began. If you switch speakers or headphones during the take, the new output is not lowered or muted.
 - If you change the volume yourself during a take, your new level stays. EnviousWispr only puts the volume back when it is still at the level it set.
 - If your Mac was already muted when you started, it stays muted.
 - Pause music resumes only what it paused, and only if it is still the paused item. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them rather than starting something you did not have playing.

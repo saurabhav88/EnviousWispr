@@ -96,17 +96,39 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
   private struct State {
     var ended: Set<UUID> = []
     var pausedByHold: [UUID: [String]] = [:]
-    var consentPromptRaised = false
+    /// Players whose Automation prompt this launch already raised, per player:
+    /// a prompt for Music must not suppress a later one for Spotify.
+    var consentPrompted: Set<String> = []
   }
 
   private let env: Environment
   private let queue: DispatchQueue
+  /// The prompt BLOCKS its thread until answered, so it never runs on `queue`:
+  /// a resume queued behind it would wait on the dialog, leaving what we paused
+  /// paused until the user answers (second pass, 2026-09-16).
+  private let consentQueue: DispatchQueue
   private let state = OSAllocatedUnfairLock(initialState: State())
 
-  package init(environment: Environment = .live, queue: DispatchQueue? = nil) {
+  package init(
+    environment: Environment = .live, queue: DispatchQueue? = nil,
+    consentQueue: DispatchQueue? = nil
+  ) {
     self.env = environment
     self.queue =
       queue ?? DispatchQueue(label: "com.enviouswispr.other-audio.media", qos: .userInitiated)
+    self.consentQueue =
+      consentQueue
+      ?? DispatchQueue(label: "com.enviouswispr.other-audio.consent", qos: .userInitiated)
+  }
+
+  /// Raises the prompt once per launch PER PLAYER, off both the main actor and
+  /// the media queue.
+  private nonisolated func raiseConsentPrompts(_ targets: [String]) {
+    let fresh = state.withLock { s -> [String] in
+      targets.filter { s.consentPrompted.insert($0).inserted }
+    }
+    guard !fresh.isEmpty else { return }
+    consentQueue.async { [env] in fresh.forEach(env.raiseConsentPrompt) }
   }
 
   package func pause(holdID: UUID, completion: @escaping @MainActor (MediaPauseOutcome) -> Void) {
@@ -159,7 +181,9 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
       case .playing, .paused, .nothing: adapterAnswers = true
       case .unavailable, .none: adapterAnswers = false
       }
-      if !adapterAnswers { running.forEach(env.raiseConsentPrompt) }
+      if !adapterAnswers {
+        raiseConsentPrompts(running.filter { env.consent($0) == .needed })
+      }
       Task { @MainActor in completion(adapterAnswers) }
     }
   }
@@ -231,6 +255,7 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
   ) -> MediaPauseOutcome {
     var paused: [String] = []
     var consentNeeded = false
+    var needingConsent: [String] = []
     var consentDenied = false
     var failed = false
     for target in running {
@@ -239,6 +264,7 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
       case .granted: break
       case .needed:
         consentNeeded = true
+        needingConsent.append(target)
         continue
       case .denied:
         consentDenied = true
@@ -262,14 +288,9 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
         failed = true
       }
     }
-    if consentNeeded {
-      // Once per launch, raise the prompt on this queue so the NEXT take works.
-      let raise = state.withLock { s -> Bool in
-        if s.consentPromptRaised { return false }
-        s.consentPromptRaised = true
-        return true
-      }
-      if raise { running.forEach(env.raiseConsentPrompt) }
+    if !needingConsent.isEmpty {
+      // Raised for the NEXT take; this one is reported as consent needed.
+      raiseConsentPrompts(needingConsent)
     }
     if !paused.isEmpty { return .paused(targets: paused) }
     if consentNeeded { return .consentNeeded }
@@ -283,15 +304,15 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
   /// budget. `play` is sent only when a fresh read shows the SAME app and the
   /// SAME item still paused, so nothing the user did not have playing starts.
   /// THE one comparison between a fresh read and what a pause recorded (three
-  /// call sites, one definition): same app, and when the pause recorded an
-  /// item, the same item. A read that now lacks an item we recorded does not
-  /// match: it may be another tab or an ad, and a miss can only leave something
-  /// paused, never start it.
+  /// call sites, one definition): same app AND the same item, where "item" is
+  /// the title, or "untitled" for both. A recorded untitled item never matches
+  /// a titled one (second pass: an untitled voice note must not resume a song
+  /// the user paused in the same app), and a titled item never matches a read
+  /// that lost its title. A miss can only leave something paused, never start it.
   private nonisolated static func matches(
     _ now: MediaRemoteAdapter.Source, _ recorded: MediaRemoteAdapter.Source
   ) -> Bool {
-    now.bundleID == recorded.bundleID
-      && (recorded.identity == nil || now.identity == recorded.identity)
+    now.bundleID == recorded.bundleID && now.identity == recorded.identity
   }
 
   private nonisolated func adapterResume(_ source: MediaRemoteAdapter.Source) -> MediaResumeOutcome {

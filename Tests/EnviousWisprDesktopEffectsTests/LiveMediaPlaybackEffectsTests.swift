@@ -66,6 +66,7 @@ private final class FakePlayers: @unchecked Sendable {
   }
 
   func state(of id: String) -> String? { lock.withLock { states[id] } }
+  func start(_ id: String, _ state: String) { lock.withLock { states[id] = state } }
 
   private static func stateDescriptor(_ s: String) -> NSAppleEventDescriptor {
     let code: OSType =
@@ -244,7 +245,35 @@ struct LiveMediaPlaybackEffectsTests {
     let second = await pause(effects, UUID())
     #expect(first == .consentNeeded && second == .consentNeeded)
     #expect(players.events.isEmpty)
-    #expect(players.prompts == ["com.spotify.client"])
+    #expect(await promptsSettled(players) == ["com.spotify.client"])
+  }
+
+  /// The prompt runs on the consent queue, so the test waits for it to land.
+  private func promptsSettled(_ players: FakePlayers) async -> [String] {
+    for _ in 0..<50 {  // settle: bounded wait on a real side effect
+      if !players.prompts.isEmpty { break }
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+    return players.prompts
+  }
+
+  @Test("Consent is prompted once per PLAYER, not once per launch")
+  func consentPromptedPerPlayer() async {
+    // Music needs consent first, Spotify is not running yet.
+    let players = FakePlayers(["com.apple.Music": "playing"])
+    players.consent = .needed
+    let queue = DispatchQueue(label: "test.media")
+    let effects = LiveMediaPlaybackEffects(environment: players.environment(), queue: queue)
+    _ = await pause(effects, UUID())
+    #expect(await promptsSettled(players) == ["com.apple.Music"])
+    // Spotify opens later and needs its own prompt.
+    players.start("com.spotify.client", "playing")
+    _ = await pause(effects, UUID())
+    for _ in 0..<50 {  // settle: bounded
+      if players.prompts.count == 2 { break }
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(players.prompts == ["com.apple.Music", "com.spotify.client"])
   }
 
   @Test("Consent denied: no events, no prompt")
@@ -584,11 +613,12 @@ struct LiveMediaPlaybackAdapterRouteTests {
 
   /// Bounded wait on the fake's `entered` signal, off the main actor.
   private func awaitEntered(_ adapter: FakeAdapter) async {
-    _ = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+    let entered = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
       DispatchQueue.global().async {
         c.resume(returning: adapter.entered.wait(timeout: .now() + 2) == .success)
       }
     }
+    #expect(entered, "The adapter never entered the blocked read")
   }
 
   @Test("Orphan resume of an adapter target has the same gate: same app and item, still paused")
@@ -606,6 +636,7 @@ struct LiveMediaPlaybackAdapterRouteTests {
   @Test("Preflight: a healthy adapter raises no consent prompt; a broken one does")
   func preflightRaisesOnlyWithoutAdapter() async {
     let players = FakePlayers(["com.spotify.client": "playing"])
+    players.consent = .needed
     let healthy = make(players, FakeAdapter(nil))
     let answered = await MediaResultWaiter<Bool>().wait { healthy.preflightConsent(completion: $0) }
     #expect(answered == true)
@@ -616,6 +647,10 @@ struct LiveMediaPlaybackAdapterRouteTests {
     let fallback = make(players, broken)
     let answered2 = await MediaResultWaiter<Bool>().wait { fallback.preflightConsent(completion: $0) }
     #expect(answered2 == false)
+    for _ in 0..<50 {  // settle: bounded wait on the consent queue
+      if !players.prompts.isEmpty { break }
+      try? await Task.sleep(for: .milliseconds(20))
+    }
     #expect(players.prompts == ["com.spotify.client"])
   }
 }
