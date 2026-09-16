@@ -36,7 +36,7 @@ A short sound confirms when EnviousWispr starts and stops listening, which helps
 If you dictate with music, a podcast or a video playing, EnviousWispr can get that sound out of the way when you start talking and put it back when you stop. Go to **Settings**, then **Sounds**, and pick one of four choices under **Other Audio While You Dictate**. The setting is off from the start, so nothing changes until you choose.
 
 - **Nothing.** Music and other audio keep playing as they are.
-- **Turn down.** Lowers what plays through your current speakers or headphones to about a fifth for the whole take, then puts it back to exactly where it was.
+- **Turn down.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back to exactly where it was.
 - **Mute.** Silences your current speakers or headphones for the whole take, then puts the volume back.
 - **Pause music.** Pauses Music or Spotify if it is playing, then resumes it when you stop. Only those two apps are paused; a browser tab or another player keeps going, so use Turn down or Mute for those.
 

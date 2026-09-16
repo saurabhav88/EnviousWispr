@@ -222,11 +222,11 @@ private struct Rig {
 @Suite("Other audio hold", .tags(.productOutcome))
 struct OtherAudioHoldTests {
 
-  @Test("Turn down lowers to a fifth after the cue delay and restores the exact original")
+  @Test("Turn down lowers to half after the cue delay and restores the exact original")
   func turnDownAppliesAndRestores() async {
     let rig = Rig()
     await rig.start(.turnDown)
-    #expect(rig.volume.volume == 0.1)
+    #expect(rig.volume.volume == 0.25)
     #expect(rig.records().first?.volume == .applied)
     rig.stop()
     #expect(rig.volume.volume == 0.5)
@@ -333,13 +333,13 @@ struct OtherAudioHoldTests {
   func toleranceBoundary() async {
     let inside = Rig()
     await inside.start(.turnDown)
-    inside.volume.volume = 0.1 + 0.009
+    inside.volume.volume = 0.25 + 0.009
     inside.stop()
     #expect(inside.sink.summaries.last?.volume == .restored)
 
     let outside = Rig()
     await outside.start(.turnDown)
-    outside.volume.volume = 0.1 + 0.02
+    outside.volume.volume = 0.25 + 0.02
     outside.stop()
     #expect(outside.sink.summaries.last?.volume == .skippedUserChanged)
   }
@@ -400,7 +400,7 @@ struct OtherAudioHoldTests {
     rig.volume.volumeUnreadable = true
     rig.stop()
     #expect(rig.sink.summaries.last?.volume == .unresolved)
-    #expect(rig.volume.writes == ["volume=0.1"], "no blind write")
+    #expect(rig.volume.writes == ["volume=0.25"], "no blind write")
     #expect(rig.records().isEmpty, "unresolved is a final disposition (R2)")
   }
 
@@ -455,7 +455,7 @@ struct OtherAudioHoldTests {
     #expect(record.volume == .applied)
 
     let next = Rig(pid: 1)
-    next.volume.volume = 0.1  // still at our applied level
+    next.volume.volume = 0.25  // still at our applied level
     let store = OtherAudioHoldStore(directory: dead.dir)
     let hold = OtherAudioHold(
       dependencies: OtherAudioHold.Dependencies(
@@ -575,7 +575,7 @@ struct OtherAudioHoldTests {
     rig.stop()
     #expect(rig.sink.summaries.last?.volume == .unresolved)
     #expect(rig.sink.summaries.last?.failure == "restore_failed")
-    #expect(rig.volume.writes == ["volume=0.1"], "no blind restore write")
+    #expect(rig.volume.writes == ["volume=0.25"], "no blind restore write")
     #expect(rig.records().isEmpty, "unresolved is final (R2)")
     #expect(rig.sink.defects.isEmpty, "a read failure is a condition, not our defect")
   }

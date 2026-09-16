@@ -75,7 +75,10 @@ final class OtherAudioHold {
     var isProcessAlive: (Int32) -> Bool
   }
 
-  static let turnDownFactor: Float = 0.2
+  /// Half the slider, not a fifth: the macOS output slider is far from linear to
+  /// the ear, and x0.2 read as muted on the built-in speakers (founder, live
+  /// test 2026-09-15). Half still clearly "turns down" while staying audible.
+  static let turnDownFactor: Float = 0.5
   static let volumeTolerance: Float = 0.01
 
   private let deps: Dependencies
@@ -350,6 +353,11 @@ final class OtherAudioHold {
   private func settleMedia(
     _ holdID: UUID, _ disposition: OtherAudioMediaDisposition, reason: String?
   ) {
+    // A hold's media settles ONCE (M1 -> M2/M3/M4). A pause outcome that arrives
+    // after the resume already settled it (consent prompt answered minutes
+    // later, live UAT 2026-09-15) must not rewrite a final disposition.
+    let current = (live?.record.id == holdID) ? live?.record : deps.store.read(id: holdID)
+    guard current?.media == .pending else { return }
     mutateRecord(holdID) { $0.media = disposition }
     if let reason {
       deps.telemetry.breadcrumb("other_audio media", data: ["reason": reason])

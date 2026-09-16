@@ -255,7 +255,7 @@ extension RecordingSoundsSettingsView {
       return "Music and other audio keep playing as they are."
     case .turnDown:
       return
-        "Lowers what plays through your current speakers or headphones to about a fifth while you dictate, then puts it back. If you change the volume during a take, your new level stays."
+        "Lowers what plays through your current speakers or headphones to about half while you dictate, then puts it back. If you change the volume during a take, your new level stays."
     case .mute:
       return
         "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays."
