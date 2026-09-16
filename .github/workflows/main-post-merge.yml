@@ -20,6 +20,9 @@ on:
       - 'scripts/lib/lane-verdict.sh'
       - 'scripts/lib/lane-verdict.py'
       - 'scripts/lib/xcode-test-run.sh'
+      # #3019: the phase wrapper and the metrics emitter run in every job here.
+      - 'scripts/lib/ci-phase.sh'
+      - 'scripts/ci/ci-metrics.py'
   schedule:
     # Hourly re-validation of main HEAD (#2334): during a merge train,
     # cancel-in-progress cancels every push run before it completes, so main
@@ -40,9 +43,17 @@ on:
 # run, but it can never cancel an in-flight scheduled run — which is what
 # lets the hourly validation survive a merge train. Do not "simplify" this
 # group: the push path's per-ref isolation is load-bearing.
+#
+# #3019: a scheduled run no longer cancels the previous scheduled run. The
+# guard may now wait up to 50 min for an in-flight push run and then take
+# over with a ~40 min matrix, so a takeover can still be running when the
+# next hour's schedule fires; cancelling it would throw that work away. The
+# group still serialises scheduled runs, so the next one queues, and its
+# guard answers `no` (the earlier one went green) or `stale` (main moved on)
+# without spending a Mac. Push and pull_request groups keep cancel-in-progress.
 concurrency:
   group: main-post-merge-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 # Shared Xcode-engine constants (#913 PR3).
 env:
@@ -152,7 +163,11 @@ jobs:
   schedule-guard:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # #3019: the guard may now WAIT for an in-flight push run on the same sha
+    # (scripts/ci/post-merge-should-run.sh, WAIT_MAX_SECONDS=3000 by default)
+    # instead of repeating its validation; 60 leaves the wait its cap plus the
+    # API calls. Linux minutes on a public repository, never macOS ones.
+    timeout-minutes: 60
     outputs:
       should_run: ${{ steps.guard.outputs.should_run }}
 
@@ -173,6 +188,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: scripts/ci/post-merge-should-run.sh --sha "${{ github.sha }}"
 
   # The long pole, and the cache WRITER. Builds both configurations (the cache
@@ -239,7 +255,8 @@ jobs:
       - name: Build (release, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_release xcode-build-release.log -- xcodebuild build \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
@@ -260,7 +277,8 @@ jobs:
       - name: Build for testing (release, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build-for-testing \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_for_testing_release xcode-build-for-testing-release.log -- xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
@@ -279,7 +297,8 @@ jobs:
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
-          ew_run_tests \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase tests_release /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_RELEASE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-release" \
@@ -324,7 +343,14 @@ jobs:
       # manual diagnostic runs remain restore-only. #3013: this is the `release`
       # family's writer; debug-validation writes the `debug` family. One writer
       # per family, enforced by scripts/ci/check-cache-paths.py.
+      - name: Stamp cache save start
+        id: save-start
+        if: always()
+        continue-on-error: true
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Save Xcode build cache (release family)
+        id: cache-save
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
@@ -343,6 +369,39 @@ jobs:
             ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
             ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
           key: ${{ steps.setup.outputs.cache-primary-key }}
+
+      # #3019: one line of numbers for this job (scripts/ci/ci-metrics.py).
+      # Advisory: never fails the lane. Runs after the save so save seconds
+      # are on the line too.
+      - name: CI metrics
+        if: always()
+        continue-on-error: true
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.setup.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+          RESTORE_S: ${{ steps.setup.outputs.cache-restore-seconds }}
+          RESTORED_KB: ${{ steps.setup.outputs.cache-restored-kb }}
+          CAS_VALIDATE: ${{ steps.setup.outputs.cas-validate-outcome }}
+          CAS_VALIDATE_S: ${{ steps.setup.outputs.cas-validate-seconds }}
+          CAS_KB: ${{ steps.setup.outputs.cas-kb }}
+          SAVE_OUTCOME: ${{ steps.cache-save.outcome }}
+          SAVE_T0: ${{ steps.save-start.outputs.t }}
+        run: |
+          save_s=""
+          if [[ "$SAVE_T0" =~ ^[0-9]+$ ]] && [ "$SAVE_OUTCOME" != "skipped" ]; then save_s=$(( $(date +%s) - SAVE_T0 )); fi
+          python3 scripts/ci/ci-metrics.py emit \
+            --job release-validation --family release \
+            --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
+            --log 'xcode-build-*.log' \
+            --set "cache_matched_key=$CACHE_MATCHED_KEY" \
+            --set "cache_hit=$CACHE_HIT" \
+            --set "restore_s=$RESTORE_S" \
+            --set "restored_kb=$RESTORED_KB" \
+            --set "cas_validate=$CAS_VALIDATE" \
+            --set "cas_validate_s=$CAS_VALIDATE_S" \
+            --set "cas_kb=$CAS_KB" \
+            --set "save_outcome=$SAVE_OUTCOME" \
+            --set "save_s=$save_s"
 
   # Runs in parallel with release-validation. #3013: the FULL Debug suite,
   # uninstrumented (the coverage report moved to nightly-battery.yml), on an
@@ -399,7 +458,8 @@ jobs:
       - name: Build (debug, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_debug xcode-build-debug.log -- xcodebuild build \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
@@ -415,7 +475,8 @@ jobs:
       - name: Build for testing (debug, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build-for-testing \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_for_testing_debug xcode-build-for-testing-debug.log -- xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
@@ -430,7 +491,8 @@ jobs:
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
-          ew_run_tests \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase tests_debug /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-debug" \
@@ -467,7 +529,14 @@ jobs:
           retention-days: 7
 
       # #3013: the `debug` family's writer, same conditions as the release one.
+      - name: Stamp cache save start
+        id: save-start
+        if: always()
+        continue-on-error: true
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Save Xcode build cache (debug family)
+        id: cache-save
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
@@ -482,6 +551,39 @@ jobs:
             ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
             ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
           key: ${{ steps.setup.outputs.cache-primary-key }}
+
+      # #3019: one line of numbers for this job (scripts/ci/ci-metrics.py).
+      # Advisory: never fails the lane. Runs after the save so save seconds
+      # are on the line too.
+      - name: CI metrics
+        if: always()
+        continue-on-error: true
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.setup.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+          RESTORE_S: ${{ steps.setup.outputs.cache-restore-seconds }}
+          RESTORED_KB: ${{ steps.setup.outputs.cache-restored-kb }}
+          CAS_VALIDATE: ${{ steps.setup.outputs.cas-validate-outcome }}
+          CAS_VALIDATE_S: ${{ steps.setup.outputs.cas-validate-seconds }}
+          CAS_KB: ${{ steps.setup.outputs.cas-kb }}
+          SAVE_OUTCOME: ${{ steps.cache-save.outcome }}
+          SAVE_T0: ${{ steps.save-start.outputs.t }}
+        run: |
+          save_s=""
+          if [[ "$SAVE_T0" =~ ^[0-9]+$ ]] && [ "$SAVE_OUTCOME" != "skipped" ]; then save_s=$(( $(date +%s) - SAVE_T0 )); fi
+          python3 scripts/ci/ci-metrics.py emit \
+            --job debug-validation --family debug \
+            --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
+            --log 'xcode-build-*.log' \
+            --set "cache_matched_key=$CACHE_MATCHED_KEY" \
+            --set "cache_hit=$CACHE_HIT" \
+            --set "restore_s=$RESTORE_S" \
+            --set "restored_kb=$RESTORED_KB" \
+            --set "cas_validate=$CAS_VALIDATE" \
+            --set "cas_validate_s=$CAS_VALIDATE_S" \
+            --set "cas_kb=$CAS_KB" \
+            --set "save_outcome=$SAVE_OUTCOME" \
+            --set "save_s=$save_s"
 
   # One place that says whether main is green. Without this, a reader has to
   # combine three job results by eye, and a SKIPPED job looks like a failure.
@@ -521,6 +623,15 @@ jobs:
             fi
             if [ "$SCHEDULE_GUARD" = "no" ]; then
               echo "Scheduled validation skipped: main HEAD already has a green full-matrix run"
+              exit 0
+            fi
+            # #3019: the guard waited for an in-flight run and main moved on
+            # meanwhile; validating the old sha would be wasted and would hold
+            # the next schedule in the concurrency queue. Not a green signal
+            # for this sha, and not a failure: the next schedule validates
+            # current HEAD.
+            if [ "$SCHEDULE_GUARD" = "stale" ]; then
+              echo "Scheduled validation skipped: main moved to a newer commit while this run waited; the next schedule validates current HEAD (this sha is NOT validated by this run)"
               exit 0
             fi
           fi

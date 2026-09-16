@@ -38,6 +38,9 @@ on:
       - '.github/workflows/nightly-battery.yml'
       - '.github/actions/xcode-ci-setup/action.yml'
       - 'scripts/lib/xcode-test-run.sh'
+      # #3019: the phase wrapper and the metrics emitter run in every job here.
+      - 'scripts/lib/ci-phase.sh'
+      - 'scripts/ci/ci-metrics.py'
       - 'scripts/lib/lane-verdict.sh'
       - 'scripts/lib/lane-verdict.py'
       - 'scripts/ci/debug-only-inventory.py'
@@ -73,12 +76,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # #3019: restore the `release` family, not `debug`. The coverage Debug
+      # build below hits neither family (instrumentation changes every compile
+      # command, ci-pipeline.md RULE: cache-writer-is-post-merge-only), so the
+      # only build here a cache can serve is the Release test build, and that
+      # one matches what release-validation writes on every main push.
+      # Measured before the switch: Release build-for-testing 17m31s from cold
+      # (run 35137227588).
       - name: Xcode CI setup
         id: setup
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
-          configuration: debug
+          configuration: release
 
       # Coverage instrumentation ONLY here (see the header). `build-for-testing`
       # records the coverage setting in the generated .xctestrun, so the run
@@ -86,7 +96,8 @@ jobs:
       - name: Build for testing (debug, coverage, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build-for-testing \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_for_testing_debug_coverage xcode-build-for-testing-debug-coverage.log -- xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
@@ -102,7 +113,8 @@ jobs:
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
-          ew_run_tests \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase tests_debug_coverage /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-debug" \
@@ -153,7 +165,8 @@ jobs:
       - name: Build for testing (release, Xcode)
         run: |
           set -euo pipefail
-          xcodebuild build-for-testing \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_for_testing_release xcode-build-for-testing-release.log -- xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
@@ -169,7 +182,8 @@ jobs:
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
-          ew_run_tests \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase tests_release /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
             "$XCODE_RELEASE_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-release" \
@@ -188,6 +202,32 @@ jobs:
             --debug "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
             --release "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
             --inventory scripts/ci/debug-only-tests.txt | tee inventory-report.txt
+
+      # #3019: one line of numbers for this job (scripts/ci/ci-metrics.py).
+      # Advisory: never fails the battery.
+      - name: CI metrics
+        if: always()
+        continue-on-error: true
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.setup.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+          RESTORE_S: ${{ steps.setup.outputs.cache-restore-seconds }}
+          RESTORED_KB: ${{ steps.setup.outputs.cache-restored-kb }}
+          CAS_VALIDATE: ${{ steps.setup.outputs.cas-validate-outcome }}
+          CAS_VALIDATE_S: ${{ steps.setup.outputs.cas-validate-seconds }}
+          CAS_KB: ${{ steps.setup.outputs.cas-kb }}
+        run: |
+          python3 scripts/ci/ci-metrics.py emit \
+            --job battery --family release \
+            --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
+            --log 'xcode-build-*.log' \
+            --set "cache_matched_key=$CACHE_MATCHED_KEY" \
+            --set "cache_hit=$CACHE_HIT" \
+            --set "restore_s=$RESTORE_S" \
+            --set "restored_kb=$RESTORED_KB" \
+            --set "cas_validate=$CAS_VALIDATE" \
+            --set "cas_validate_s=$CAS_VALIDATE_S" \
+            --set "cas_kb=$CAS_KB"
 
       - name: Upload failure diagnostics
         if: failure()
