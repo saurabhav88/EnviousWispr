@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/ci/compile-eval-packages.sh — compile the three standalone eval
 # packages against the checkout's EnviousWisprCore (#1836, moved out of
-# pr-check.yml's inline step in #3019 so the loop is spelled once and can run
-# in the background beside the test step).
+# pr-check.yml's inline step in #3019 so the loop is spelled once and its
+# seconds land on the EW-CI-METRICS line through scripts/lib/ci-phase.sh).
 #
 # scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE SwiftPM
 # packages that path-depend on EnviousWisprCore. Nothing else compiles them —

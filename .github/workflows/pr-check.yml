@@ -215,48 +215,23 @@ jobs:
       # refuses an empty or truncated run. Still serial: parallel Swift Testing
       # was measured unsafe for this suite (Project.swift, the Release scheme).
       #
-      # #3019: the standalone eval packages (scripts/ci/compile-eval-packages.sh,
-      # the #1836 guard that used to be the step after this one) compile in the
-      # background while the serial suite runs: the suite is one process on a
-      # runner with idle cores, and the eval compile reads no DerivedData. The
-      # step fails if either half fails; the eval log is printed after the
-      # tests so the two outputs never interleave. Measured before: eval 5m48s
-      # after a 4m47s test run, both serial (run 35137227664). If a contention
-      # failure ever appears in the suite, this overlap goes, not the test.
-      - name: Run logic tests (release, Xcode) while the eval packages compile
+      # #3019 measured overlapping the eval-package compile with this step on
+      # the 3-core hosted runner (PR #3021 head caacfcaa): tests 287 s -> 562 s,
+      # eval 342 s -> 723 s, launch-to-join 723 s against 629 s serial, and one
+      # timing-sensitive test failed under the load. The overlap went, the test
+      # stayed; the eval compile is its own step after this one again.
+      - name: Run logic tests (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
           . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
-          # Both halves report their own status; the pair fails if either did.
-          # `phase_eval_and_tests_s` (the outer wrapper) is the launch-to-join
-          # interval: the number that decides whether the overlap pays, against
-          # the serial tests + eval it replaces. `phase_eval_packages_s` and
-          # `phase_tests_release_s` are the halves. The eval half's console goes
-          # to its own file so the two outputs never interleave in the job log.
-          ew_pair() {
-            local eval_pid test_rc=0 eval_rc=0
-            ( ew_phase eval_packages eval-packages.log -- scripts/ci/compile-eval-packages.sh ) > eval-packages.console 2>&1 &
-            eval_pid=$!
-            trap 'kill "$eval_pid" 2>/dev/null || true' EXIT
-            TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
-              "$DERIVED_DATA_PATH/Build/Products" \
-              "$XCODE_RELEASE_SCHEME" \
-              "$GITHUB_WORKSPACE/xcode-test-release" \
-              "PR Release lane" \
-              "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests" || test_rc=$?
-            wait "$eval_pid" || eval_rc=$?
-            trap - EXIT
-            echo "::group::eval-packages.console (eval half rc=$eval_rc)"
-            cat eval-packages.console || true
-            echo "::endgroup::"
-            [ "$eval_rc" -eq 0 ] || echo "::error title=eval packages::standalone eval packages failed to compile (rc=$eval_rc, log above)"
-            [ "$test_rc" -eq 0 ] || echo "::error title=Release tests::test half failed (rc=$test_rc)"
-            [ "$test_rc" -eq 0 ] && [ "$eval_rc" -eq 0 ]
-          }
-          ew_phase eval_and_tests /dev/null -- ew_pair
+          TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_RELEASE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-release" \
+            "PR Release lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
 
       # #2162: a red lane was undiagnosable from CI because `gh run view --log`
       # truncates at roughly 6 MB and a failing run and a passing run produced an
@@ -303,10 +278,19 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      # #1836's eval-package compile guard runs INSIDE the test step above since
-      # #3019 (scripts/ci/compile-eval-packages.sh owns the loop and its
-      # rationale). It was a step here, then its own job from #2114 to #3013,
-      # then a step again; now it is a background half of the test step.
+      # #1836's eval-package compile guard: scripts/ci/compile-eval-packages.sh
+      # owns the loop and its rationale since #3019. It was a step here, then
+      # its own job from #2114 to #3013, and a step again since #3013: with one
+      # required macOS lane per PR the third runner it took was a slot the build
+      # lane then waited for. It reads no DerivedData, so it runs last, after
+      # the suite (running it BESIDE the suite was measured slower, see the
+      # test step). Still gates merges through this job's result in build-check.
+      - name: Compile standalone eval packages
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase eval_packages eval-packages.log -- scripts/ci/compile-eval-packages.sh
 
       # #3019: one line of numbers for this job. Advisory: it can never fail
       # the lane, and a broken instrument shows in this step's log instead of

@@ -163,18 +163,12 @@ def build_record(args, env: dict) -> tuple:
         record["compiler_cache_hits"] = hits
         record["compiler_cache_misses"] = misses
     record.update(parse_sets(args.set, errors))
-    # Non-overlapping total: the PR job's `eval_and_tests` pair interval
-    # already contains its two halves, so those are not added again.
+    # Every phase is wrapped exactly once and none nests another (the
+    # overlapped eval+tests pair was measured slower and removed, #3019), so
+    # the total is a plain sum.
     phases = {k: v for k, v in record.items()
               if k.startswith("phase_") and k.endswith("_s") and type(v) is int}
-    pair = "phase_eval_and_tests_s"
-    missing_pair = "phase_eval_packages_s" in phases and pair not in phases
-    if pair in phases:
-        for child in ("phase_eval_packages_s", "phase_tests_release_s"):
-            phases.pop(child, None)
-    record["phases_total_s"] = None if missing_pair else sum(phases.values())
-    if missing_pair:
-        errors.append("overlap children recorded without the enclosing pair interval")
+    record["phases_total_s"] = sum(phases.values())
     if errors:
         record["errors"] = errors
     return record, errors
@@ -405,15 +399,10 @@ def self_test() -> int:
         expect("a pattern with no match makes the count NOT a measurement", "compiler_cache_hits" not in rec_c2)
 
         with open(metrics, "a") as fh:
-            fh.write("phase_eval_packages_s=120\nphase_eval_and_tests_s=300\n")
-        rec_d, _ = build_record(A, env)
-        expect("pair interval replaces its halves in phases_total_s (359 + 300, not + 290 + 120)",
-               rec_d.get("phases_total_s") == 659)
-        with open(metrics, "w") as fh:
             fh.write("phase_eval_packages_s=120\n")
-        rec_e, errs_e = build_record(A, env)
-        expect("overlap half without its pair: total is None and an error is recorded",
-               rec_e.get("phases_total_s") is None and any("pair" in e for e in errs_e))
+        rec_d, _ = build_record(A, env)
+        expect("phases_total_s is the plain sum of every wrapped phase (359 + 290 + 120)",
+               rec_d.get("phases_total_s") == 769)
         with open(metrics, "w") as fh:
             fh.write("phase_build_release_s=359\nphase_tests_release_s=287\nphase_tests_release_s=3\n")
 
