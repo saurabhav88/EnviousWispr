@@ -373,18 +373,46 @@ package struct PasteSnippetsImportSource: SnippetImportSource {
     try Self.parse(text: text, format: format)
   }
 
-  /// Shared with the paste screen's live count, which runs it off the main actor.
+  /// The screen's live count and Continue share this one reading, so the count can never
+  /// disagree with what Continue produces.
   package static func parse(text: String, format: SnippetPasteFormat) throws -> SnippetImportBatch {
+    try preview(text: text, choice: format).batch
+  }
+
+  /// The grammar the text will be read with, given the sniff and the user's choice. The
+  /// choice matters ONLY for an ambiguous paste (plan §3.2): for anything else the sniff
+  /// decides, so a "Read as: CSV" picked for an earlier paste cannot silently override a
+  /// later plain list or exported JSON once the picker has gone.
+  package static func resolvedFormat(
+    sniff: SnippetPasteSniff, choice: SnippetPasteFormat
+  ) -> SnippetPasteFormat {
+    guard sniff == .ambiguous else { return .auto }
+    return choice == .csv ? .csv : .list
+  }
+
+  /// Bound, sniff, resolve, parse, in that order: the byte ceiling runs before the sniff
+  /// touches the text, so an enormous paste never reaches a line split or a CSV scan.
+  package static func preview(
+    text: String, choice: SnippetPasteFormat
+  ) throws -> (sniff: SnippetPasteSniff, batch: SnippetImportBatch) {
     guard text.utf8.count <= SnippetImportLimits.maximumImportFileBytes else {
       throw SnippetImportSourceError.tooLarge
     }
     let limit = SnippetImportLimits.maximumCandidates
+    let sniff = SnippetPasteSniff.sniff(text)
     let resolved: SnippetPasteSniff
-    switch format {
-    case .auto: resolved = SnippetPasteSniff.sniff(text)
+    switch resolvedFormat(sniff: sniff, choice: choice) {
+    case .auto: resolved = sniff
     case .list: resolved = .list
     case .csv: resolved = .csv
     }
+    let batch = try parse(text: text, as: resolved, limit: limit)
+    return (sniff, batch)
+  }
+
+  private static func parse(
+    text: String, as resolved: SnippetPasteSniff, limit: Int
+  ) throws -> SnippetImportBatch {
     switch resolved {
     case .transferDocument:
       let document: SnippetsTransferDocument

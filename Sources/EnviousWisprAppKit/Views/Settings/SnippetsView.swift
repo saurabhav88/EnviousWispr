@@ -5,14 +5,16 @@ import SwiftUI
 /// (`docs/feature-requests/issue-628-design/EnviousWispr Snippets.dc.html`).
 ///
 /// Three cards: the keyword, the list, and — when the list is empty — the state that explains
-/// what a snippet is for. Import ships visible and DISABLED, marked "Coming soon" (founder,
-/// 2026-09-01): the button occupies the place the design gives it so the shape of the screen
-/// does not change when the flow lands.
+/// what a snippet is for. Import (#2997) opens the review-then-commit sheet from the place the
+/// design gives its button.
 struct SnippetsView: View {
   @Environment(SnippetsCoordinator.self) private var coordinator
 
   @State private var query = ""
-  @State private var editing: SnippetDraft?
+  /// ONE route for both sheets, so the two can never be presented at once: two independent
+  /// `.sheet(item:)` states are not mutually exclusive, and macOS 14 behaviour with two
+  /// presented sheets is unverified (plan §3.5).
+  @State private var sheetRoute: SnippetsSheetRoute?
   @State private var keywordField = ""
   /// Held here rather than on the coordinator: an export never changes the store, so a failed
   /// one must not sit in the same slot as a failed save and read as though a snippet was lost.
@@ -28,8 +30,19 @@ struct SnippetsView: View {
       listCard
     }
     .onAppear { keywordField = coordinator.keyword }
-    .sheet(item: $editing) { draft in
-      SnippetEditSheet(draft: draft, keyword: coordinator.keyword)
+    .sheet(item: $sheetRoute) { route in
+      switch route {
+      case .edit(let draft):
+        SnippetEditSheet(draft: draft, keyword: coordinator.keyword)
+      case .importSnippets:
+        // Closures, not the coordinator: the sheet reads the list FROM DISK at each
+        // comparison so a stale rebuild sees what another process wrote, and commits
+        // through the coordinator's one import writer.
+        SnippetImportSheet(
+          dependencies: .live(
+            existingSnippets: { coordinator.refreshFromDisk().snippets },
+            commit: { await coordinator.commitImport($0) }))
+      }
     }
   }
 
@@ -119,10 +132,14 @@ struct SnippetsView: View {
     HStack(spacing: 8) {
       Text(countLabel).settingsHelperCopy()
       Spacer(minLength: 0)
-      // Visible and inert, on purpose. A greyed control with an honest label tells the user the
-      // path exists and is not ready; hiding it would make the feature look absent instead.
-      SettingsActionButton(title: "Import", isEnabled: false, emphasis: .outlined) {}
-        .help("Coming soon")
+      // Enabled even when the store is unreadable, like Export: the import itself then
+      // refuses with the coordinator's own sentence rather than the button going dark.
+      SettingsActionButton(
+        title: "Import", isEnabled: true, emphasis: .outlined,
+        systemImage: "square.and.arrow.down"
+      ) {
+        sheetRoute = .importSnippets
+      }
       SettingsActionButton(
         title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined
       ) {
@@ -135,7 +152,7 @@ struct SnippetsView: View {
         }
       }
       SettingsActionButton(title: "Add snippet", isEnabled: true, emphasis: .filled) {
-        editing = SnippetDraft(snippet: nil)
+        sheetRoute = .edit(SnippetDraft(snippet: nil))
       }
     }
     .padding(.horizontal, SettingsLayout.rowPaddingH)
@@ -184,7 +201,7 @@ struct SnippetsView: View {
 
   private func row(_ snippet: Snippet) -> some View {
     Button {
-      editing = SnippetDraft(snippet: snippet)
+      sheetRoute = .edit(SnippetDraft(snippet: snippet))
     } label: {
       HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
@@ -273,7 +290,7 @@ struct SnippetsView: View {
       .multilineTextAlignment(.center)
       .frame(maxWidth: 340)
       SettingsActionButton(title: "Add your first snippet", isEnabled: true, emphasis: .filled) {
-        editing = SnippetDraft(snippet: nil)
+        sheetRoute = .edit(SnippetDraft(snippet: nil))
       }
       .padding(.top, 4)
     }
@@ -287,4 +304,17 @@ struct SnippetsView: View {
 struct SnippetDraft: Identifiable {
   let id = UUID()
   let snippet: Snippet?
+}
+
+/// The one sheet the Snippets page can show at a time (#2997).
+enum SnippetsSheetRoute: Identifiable {
+  case edit(SnippetDraft)
+  case importSnippets
+
+  var id: String {
+    switch self {
+    case .edit(let draft): return "edit-\(draft.id.uuidString)"
+    case .importSnippets: return "import"
+    }
+  }
 }

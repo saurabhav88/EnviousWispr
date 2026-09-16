@@ -36,7 +36,8 @@ import Testing
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: customWords,
-        permissions: permissions
+        permissions: permissions,
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
       )
 
       let box = EventBox()
@@ -97,7 +98,8 @@ import Testing
         settings: settings,
         keychainManager: keychain,
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true })
+        permissions: PermissionsService(accessibilityReader: { true }),
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
       )
 
       let box = EventBox()
@@ -113,6 +115,37 @@ import Testing
         return
       }
       #expect(event.boolProps["has_api_keys"] == true)
+    }
+
+    /// #2997: the snapshot carries the retained snippet STATE, from the closures the
+    /// bootstrapper wires to the snippets coordinator. Non-default values on purpose, so a
+    /// closure that was never called (and a default that leaked through) cannot pass.
+    @MainActor
+    @Test("The snapshot carries the snippet count and whether the keyword is the default")
+    func snapshotCarriesSnippetState() {
+      let suite = UserDefaults(suiteName: "StandingSnapshotBuilderTests-\(UUID().uuidString)")!
+      let builder = StandingSnapshotBuilder(
+        settings: SettingsManager(defaults: suite),
+        keychainManager: KeychainManager(),
+        customWordsCoordinator: CustomWordsCoordinator(),
+        permissions: PermissionsService(accessibilityReader: { true }),
+        snippetsCount: { 7 }, snippetsKeywordIsDefault: { false }
+      )
+
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "settings.snapshot" { box.set(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      builder.emit()
+
+      guard let event = box.value else {
+        Issue.record("Expected settings.snapshot event")
+        return
+      }
+      #expect(event.intProps["snippets_count"] == 7)
+      #expect(event.boolProps["snippets_keyword_is_default"] == false)
     }
   }
 

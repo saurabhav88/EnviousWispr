@@ -155,12 +155,28 @@ final class SnippetsCoordinator {
     var isEmpty: Bool { additions.isEmpty }
   }
 
+  /// Why a commit failed, typed so the sheet can classify it for telemetry and still render
+  /// the coordinator's own sentence.
+  enum SnippetImportCommitError: Sendable, Equatable {
+    case validation(SnippetValidationError)
+    case store(SnippetStoreError)
+    case other(String)
+
+    @MainActor var message: String {
+      switch self {
+      case .validation(let error): return SnippetsCoordinator.message(for: error)
+      case .store(let error): return SnippetsCoordinator.message(for: error)
+      case .other(let description): return "That could not be saved. \(description)"
+      }
+    }
+  }
+
   /// Outcome of a reviewed import. `.stale` is not a failure the user caused: the list changed
   /// while Review was open, so the sheet recompares against the current list instead.
   enum SnippetImportCommitOutcome: Sendable, Equatable {
     case committed(SnippetImportReceipt)
     case stale
-    case failed(message: String)
+    case failed(SnippetImportCommitError)
   }
 
   /// Write a reviewed import in one atomic store write, then publish what is on disk.
@@ -197,11 +213,11 @@ final class SnippetsCoordinator {
       // `existingSnippets` dependency is `refreshFromDisk`), so no adopt happens here.
       return .stale
     } catch let error as SnippetValidationError {
-      return .failed(message: Self.message(for: error))
+      return .failed(.validation(error))
     } catch let error as SnippetStoreError {
-      return .failed(message: Self.message(for: error))
+      return .failed(.store(error))
     } catch {
-      return .failed(message: "That could not be saved. \(error.localizedDescription)")
+      return .failed(.other(error.localizedDescription))
     }
   }
 
@@ -232,10 +248,17 @@ final class SnippetsCoordinator {
   ///
   /// For the export, which asks the user for a destination first: another EnviousWispr process
   /// can change the store while that panel is open, and a backup written from the pre-panel
-  /// snapshot would omit or resurrect snippets without saying so.
+  /// snapshot would omit or resurrect snippets without saying so. And for the import's review
+  /// (#2997), which compares against what another process may have written.
+  ///
+  /// An UNREADABLE file adopts nothing and returns the list already published: `load()` reads
+  /// that file as empty, and publishing empty would switch every snippet off for the session
+  /// while the snippets still sit on disk. The import then fails at the store with the
+  /// unreadable sentence; the export writes the list it already had.
   @discardableResult
   func refreshFromDisk() -> SnippetVocabulary {
-    adopt(manager.load())
+    guard let onDisk = manager.refreshedVocabulary() else { return vocabulary }
+    return adopt(onDisk)
   }
 
   /// Adopt a vocabulary and publish it. THE ONLY writer of `vocabulary`.

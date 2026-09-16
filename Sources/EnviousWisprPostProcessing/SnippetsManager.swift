@@ -177,6 +177,24 @@ public final class SnippetsManager: @unchecked Sendable {
     return nil
   }
 
+  /// Read the store for a REFRESH of the published list (#2997): the vocabulary when the
+  /// file is readable, EMPTY when there is none (missing, or archived as corrupt), and nil
+  /// when the file exists and cannot be read.
+  ///
+  /// The difference from `load()` is the nil: a publisher that adopted `load()`'s empty
+  /// answer for an unreadable file would switch every snippet off for the session while the
+  /// user's snippets still sit on disk. Missing and archived ARE empty, and are adopted.
+  public func refreshedVocabulary() -> SnippetVocabulary? {
+    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return nil }
+    switch result {
+    case .loaded(let vocabulary): return vocabulary
+    case .missing, .archivedCorrupt:
+      return SnippetVocabulary(
+        snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+    case .unreadable: return nil
+    }
+  }
+
   /// Read the store, and on a brand-new install write the starter examples first (#628).
   ///
   /// The seed is attempted for `missing` ONLY, which is what makes it a one-time event: after

@@ -217,6 +217,12 @@ public final class TelemetryService {
     /// callers must not infer one hook call per facade call. Nil in release builds;
     /// tests use it to inspect the typed projection exposed alongside normal capture.
     public var testEventHook: (@Sendable (CapturedTelemetryEvent) -> Void)?
+    /// #2997: the COMPLETE property dictionary an emitter hands the SDK, untyped, for a
+    /// privacy allowlist that must see every value whatever its type. The typed hook above
+    /// drops anything that is not a String, Int, Double or Bool, so an array or a nested
+    /// dictionary could reach PostHog while staying invisible to every asserted bucket.
+    /// Opt-in per emitter: `snippetsImported` calls it; add others as their contracts need.
+    public var testRawPropertiesHook: (@Sendable (String, [String: Any]) -> Void)?
   #endif
 
   // MARK: - Observation Layer (reads domain objects)
@@ -2847,6 +2853,7 @@ public final class TelemetryService {
     hasApiKeys: Bool,
     microphoneStatus: String, accessibilityStatus: String,
     accessibilityWarningDismissed: Bool,
+    snippetsCount: Int, snippetsKeywordIsDefault: Bool,
     config: [String: String] = [:]
   ) {
     var props: [String: Any] = [
@@ -2859,6 +2866,10 @@ public final class TelemetryService {
       "microphone_status": microphoneStatus,
       "accessibility_status": accessibilityStatus,
       "accessibility_warning_dismissed": accessibilityWarningDismissed,
+      // #2997: retained snippet STATE per launch (how many installs keep snippets, how
+      // large). Import attribution is `snippets.imported`; this row cannot carry it.
+      "snippets_count": snippetsCount,
+      "snippets_keyword_is_default": snippetsKeywordIsDefault,
     ]
     props.merge(config) { _, new in new }
     #if DEBUG
@@ -2875,6 +2886,39 @@ public final class TelemetryService {
           boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("settings.snapshot", properties: props)
+  }
+
+  /// #2997: one row per Snippet Import ATTEMPT, at its terminal. Shape only: `source`,
+  /// `outcome` and `failure` are closed vocabularies owned by `SnippetImportReporter`, the
+  /// rest are counts. No trigger, expansion, file name, path or error description ever.
+  /// `failure` is present only on a `failed` outcome.
+  public func snippetsImported(
+    source: String, outcome: String, candidates: Int, added: Int, skippedExisting: Int,
+    skippedDuplicateBatch: Int, skippedUnticked: Int, excluded: Int, failure: String?
+  ) {
+    var props: [String: Any] = [
+      "source": source,
+      "outcome": outcome,
+      "candidates": candidates,
+      "added": added,
+      "skipped_existing": skippedExisting,
+      "skipped_duplicate_batch": skippedDuplicateBatch,
+      "skipped_unticked": skippedUnticked,
+      "excluded": excluded,
+    ]
+    if let failure { props["failure"] = failure }
+    #if DEBUG
+      // Derived from the same dictionary PostHog receives (#1987), and the whole dictionary.
+      testRawPropertiesHook?("snippets.imported", props)
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "snippets.imported",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("snippets.imported", properties: props)
   }
 
   /// Telemetry Bible Phase 4 (#1173): a single user-facing setting changed

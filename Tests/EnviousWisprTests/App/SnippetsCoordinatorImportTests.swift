@@ -174,22 +174,47 @@ struct SnippetsCoordinatorImportTests {
 
     let duplicate = await coordinator.commitImport(
       plan(coordinator, additions: [Snippet(trigger: "MY EMAIL", expansion: "other")]))
-    #expect(
-      duplicate
-        == .failed(
-          message: SnippetsCoordinator.message(
-            for: SnippetValidationError.duplicateTrigger(existing: "my email"))))
+    #expect(duplicate == .failed(.validation(.duplicateTrigger(existing: "my email"))))
+    if case .failed(let error) = duplicate {
+      #expect(
+        error.message
+          == SnippetsCoordinator.message(
+            for: SnippetValidationError.duplicateTrigger(existing: "my email")))
+    }
 
     let baseline = coordinator.snippets
     try Self.newerVersionFile.write(to: manager.storageURL)
     let unreadable = await coordinator.commitImport(
       SnippetsCoordinator.SnippetImportCommitPlan(
         baseline: baseline, additions: [Snippet(trigger: "sig", expansion: "hi")]))
-    #expect(
-      unreadable
-        == .failed(
-          message: SnippetsCoordinator.message(for: SnippetStoreError.existingFileUnreadable)))
+    #expect(unreadable == .failed(.store(.existingFileUnreadable)))
+    if case .failed(let error) = unreadable {
+      #expect(
+        error.message == SnippetsCoordinator.message(for: SnippetStoreError.existingFileUnreadable))
+    }
     #expect(coordinator.errorMessage == nil)
+  }
+
+  @Test("A refresh against an unreadable file keeps the published list and publishes nothing")
+  func refreshAgainstUnreadableFileKeepsPublishedList() throws {
+    let (coordinator, manager) = makeCoordinator()
+    let existing = Snippet(trigger: "my email", expansion: "sam@example.com")
+    #expect(coordinator.save(existing))
+    var published = 0
+    coordinator.onVocabularyChanged = { _ in published += 1 }
+
+    try Self.newerVersionFile.write(to: manager.storageURL)
+    let refreshed = coordinator.refreshFromDisk()
+
+    #expect(refreshed.snippets.map(\.id) == [existing.id])
+    #expect(coordinator.snippets.map(\.id) == [existing.id])
+    #expect(published == 0)
+    #expect(manager.load().snippets.isEmpty, "load() reads it as empty; the refresh must not")
+
+    // A missing file IS empty, and a refresh says so.
+    try FileManager.default.removeItem(at: manager.storageURL)
+    #expect(coordinator.refreshFromDisk().snippets.isEmpty)
+    #expect(published == 1)
   }
 
   @Test("Every store error has a sentence, including the stale one")

@@ -52,6 +52,12 @@ import Testing
 /// state, and AX priming remain inside the delegated type. Allowlist 23 → 24
 /// (4 owned `var` + 20 injected `let`); non-private method count and imports
 /// unchanged.
+/// Bible §30 entry (#2997, 2026-09-16): `customWordsCoordinator` REPLACED by
+/// `standingSnapshotBuilder`. The coordinator stored the words coordinator only to
+/// construct the launch `settings.snapshot` emitter; the snapshot now also reads the
+/// snippets coordinator, and the bootstrapper, which holds both, builds the emitter
+/// once and injects it. One narrow dependency traded for one narrower one; allowlist
+/// count unchanged at 24; non-private method count unchanged.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -66,7 +72,7 @@ import Testing
     "settings",
     "permissions",
     "keychainManager",
-    "customWordsCoordinator",
+    "standingSnapshotBuilder",  // #2997
     "contactsImportCoordinator",
     "aiAvailability",
     "audioCapture",

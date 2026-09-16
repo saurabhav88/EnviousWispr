@@ -54,7 +54,7 @@ struct TelemetryEmitterRegistryTests {
   /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
   /// makes that a visible edit here.
   static let sitesFingerprint =
-    "6273c8ab0059dd6f11a52867e051a98620cb4bced706ec52eca57dd81669eb47"
+    "9bc2a65e3561627101435b3fb97e7916d33ef5493a1ccb2876254447fc5d2ea8"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

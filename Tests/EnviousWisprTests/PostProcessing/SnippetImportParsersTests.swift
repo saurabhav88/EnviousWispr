@@ -275,6 +275,29 @@ struct SnippetImportParsersTests {
     expectPairs(csv.candidates, [("sig", "Hello=world")])
   }
 
+  @Test("The Read-as choice applies only to an ambiguous paste; the sniff decides everything else")
+  func choiceAppliesOnlyWhenAmbiguous() throws {
+    #expect(PasteSnippetsImportSource.resolvedFormat(sniff: .ambiguous, choice: .auto) == .list)
+    #expect(PasteSnippetsImportSource.resolvedFormat(sniff: .ambiguous, choice: .csv) == .csv)
+    #expect(PasteSnippetsImportSource.resolvedFormat(sniff: .ambiguous, choice: .list) == .list)
+    for sniff in [SnippetPasteSniff.list, .csv, .transferDocument] {
+      #expect(PasteSnippetsImportSource.resolvedFormat(sniff: sniff, choice: .csv) == .auto)
+    }
+    // A CSV choice left over from an earlier ambiguous paste cannot override a plain list
+    // or exported JSON pasted after it.
+    let list = try PasteSnippetsImportSource.parse(text: "sig = a b", format: .csv)
+    expectPairs(list.candidates, [("sig", "a b")])
+    let document = SnippetsTransferDocument(
+      version: SnippetsManager.currentVersion, keyword: "backslash",
+      snippets: [Snippet(trigger: "sig", expansion: "hi")])
+    let json = String(decoding: try JSONEncoder().encode(document), as: UTF8.self)
+    let fromJSON = try PasteSnippetsImportSource.parse(text: json, format: .csv)
+    expectPairs(fromJSON.candidates, [("sig", "hi")])
+    let preview = try PasteSnippetsImportSource.preview(text: "sig,Hello=world", choice: .csv)
+    #expect(preview.sniff == .ambiguous)
+    expectPairs(preview.batch.candidates, [("sig", "Hello=world")])
+  }
+
   @Test("A pasted export reads through the transfer document with fresh review ids")
   func pastedExportUsesTransferDocument() throws {
     let snippet = Snippet(trigger: "my email", expansion: "hello@example.com")

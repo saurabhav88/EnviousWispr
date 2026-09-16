@@ -20,17 +20,25 @@ struct StandingSnapshotBuilder {
   private let keychainManager: KeychainManager
   private let customWordsCoordinator: CustomWordsCoordinator
   private let permissions: PermissionsService
+  /// #2997: the snippet state, as two closures rather than a second coordinator type, so
+  /// this builder keeps one coordinator dependency.
+  private let snippetsCount: @MainActor () -> Int
+  private let snippetsKeywordIsDefault: @MainActor () -> Bool
 
   init(
     settings: SettingsManager,
     keychainManager: KeychainManager,
     customWordsCoordinator: CustomWordsCoordinator,
-    permissions: PermissionsService
+    permissions: PermissionsService,
+    snippetsCount: @escaping @MainActor () -> Int,
+    snippetsKeywordIsDefault: @escaping @MainActor () -> Bool
   ) {
     self.settings = settings
     self.keychainManager = keychainManager
     self.customWordsCoordinator = customWordsCoordinator
     self.permissions = permissions
+    self.snippetsCount = snippetsCount
+    self.snippetsKeywordIsDefault = snippetsKeywordIsDefault
   }
 
   /// Build the current snapshot values and emit `settings.snapshot`.
@@ -54,6 +62,8 @@ struct StandingSnapshotBuilder {
       microphoneStatus: permissions.microphoneStatusString,
       accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied",
       accessibilityWarningDismissed: permissions.accessibilityWarningDismissed,
+      snippetsCount: snippetsCount(),
+      snippetsKeywordIsDefault: snippetsKeywordIsDefault(),
       // Phase 4 (#1173): the comprehensive per-setting projection block (all
       // other user-facing settings) for query-side holistic reconstruction.
       config: SettingsProjection.snapshotConfig(s)

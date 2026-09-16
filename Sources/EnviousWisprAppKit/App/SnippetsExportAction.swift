@@ -65,12 +65,17 @@ enum SnippetsExportAction {
     // written, and it is the only read whose result the file actually reflects.
     let latest = currentVocabulary()
     let exported = latest.snippets.isEmpty ? vocabulary : latest
-    // `SnippetsTransferDocument` is the one definition of the file, shared with Import (#2997).
-    let document = SnippetsTransferDocument(
+    return await write(document(for: exported), to: destination, count: exported.snippets.count)
+  }
+
+  /// The file's contents for a vocabulary. `SnippetsTransferDocument` is the one definition of
+  /// the file, shared with Import (#2997); `SnippetsExportRoundTripTests` writes this through
+  /// the same writer and reads it back through the importer.
+  static func document(for vocabulary: SnippetVocabulary) -> SnippetsTransferDocument {
+    SnippetsTransferDocument(
       version: SnippetsManager.currentVersion,
-      keyword: exported.keyword,
-      snippets: exported.snippets)
-    return await write(document, to: destination, count: exported.snippets.count)
+      keyword: vocabulary.keyword,
+      snippets: vocabulary.snippets)
   }
 
   /// `@concurrent` so this always runs OFF the caller's actor. A plain `async` on a `@MainActor`
