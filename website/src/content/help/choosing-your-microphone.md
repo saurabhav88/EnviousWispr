@@ -64,7 +64,7 @@ A few things worth knowing:
 - If you change the volume yourself during a take, your new level stays. EnviousWispr only puts the volume back when it is still at the level it set.
 - If your Mac was already muted when you started, it stays muted.
 - Pause music resumes only what it paused, and only if it is still the paused item. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them rather than starting something you did not have playing.
-- Pause music reaches every player through a part of macOS that Apple does not document for apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the Microphone page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify; that first take is not paused, and every take after you allow it is.
+- Pause music reaches every player through a part of macOS that Apple has not opened up to apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the Microphone page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify; that first take is not paused, and every take after you allow it is.
 - If EnviousWispr quits or crashes in the middle of a take, the volume comes back the next time the app opens.
 - Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The Microphone page tells you when Turn down or Mute is not available on your current output.
 - The start and stop sounds still play. The output is lowered a moment after the start sound so it is not cut off.
