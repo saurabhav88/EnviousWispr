@@ -35,6 +35,16 @@ struct SmartImportSupportedAppsCopyTests {
       sentence([VoxAdapter(), JunoAdapter(), SpokenlyAdapter()]) == "Vox, Juno, and Spokenly")
   }
 
+  @Test("the snippet picker sentence names every app the snippet registry ships")
+  func snippetSentenceNamesEveryApp() {
+    let sentence = SmartImportSupportedAppsCopy.sentence(
+      joining: SnippetImportAppRegistry.v1.displayNames)
+    #expect(sentence == "Wispr Flow and TypeWhisper")
+    for name in SnippetImportAppRegistry.v1.displayNames {
+      #expect(sentence.contains(name))
+    }
+  }
+
   @Test("an empty registry still produces a readable sentence")
   func emptyRegistry() {
     // Unreachable in production — `v1` is never empty — but the formatter must

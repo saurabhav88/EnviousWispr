@@ -38,6 +38,24 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
   }
 }
 
+/// Where a competitor app keeps a store on disk, and whether it is there.
+///
+/// The one thing the word adapters (`SmartImportAdapter`) and the snippet
+/// adapters (`SnippetImportAppAdapter`, #2997) share below the read itself:
+/// probe the candidate locations in order and report the first that exists.
+package protocol ImportedAppLocator: Sendable {
+  /// Where this app keeps the store, in probe order.
+  var candidatePaths: [URL] { get }
+}
+
+extension ImportedAppLocator {
+  /// The first location that actually exists, or nil.
+  package var installedPath: URL? {
+    candidatePaths.first { FileManager.default.fileExists(atPath: $0.path) }
+  }
+  package var isInstalled: Bool { installedPath != nil }
+}
+
 /// One competitor app EnviousWispr can read vocabulary out of.
 ///
 /// A registry, like the file parsers: adding an app is a new conformer and one
@@ -47,14 +65,12 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
 /// launch or when the sheet opens — an installed competitor is never quietly
 /// inspected in the background. `isInstalled` is only consulted once the user
 /// is looking at the app picker, and `loadWords` only after they choose one.
-package protocol SmartImportAdapter: Sendable {
+package protocol SmartImportAdapter: ImportedAppLocator {
   /// Stable identifier carried in the import batch for source attribution.
   /// No consumer reads it today (#2052).
   var identifier: String { get }
   /// What the user sees.
   var displayName: String { get }
-  /// Where this app keeps vocabulary, in probe order.
-  var candidatePaths: [URL] { get }
   /// Read the canonical words, alongside any misspelling the source app
   /// itself records as correcting to that word.
   func loadWords(at url: URL) throws -> SmartImportReadResult
@@ -158,8 +174,29 @@ private func acquireStableSnapshot<Snapshot, Accepted>(
 /// folding them into a single "policy" would be a false single authority. What
 /// they genuinely share is the read sequence below.
 package enum SmartImportSQLiteReader {
+  /// Step every row through `mapRow` as a word, then hand control back to the
+  /// caller while the connection is still open. The word-shaped wrapper every
+  /// word adapter calls; the sequence itself is `readRows`.
+  static func read(
+    uri: String,
+    sql: String,
+    appName: String,
+    mapRow: (OpaquePointer?) throws -> SmartImportWord?,
+    afterRowsRead: () throws -> Void = {}
+  ) throws -> SmartImportReadResult {
+    let read = try readRows(
+      uri: uri, sql: sql, appName: appName, mapRow: mapRow, afterRowsRead: afterRowsRead)
+    return SmartImportReadResult(words: read.rows, excludedCount: read.excludedCount)
+  }
+
   /// Step every row through `mapRow`, then hand control back to the caller
   /// while the connection is still open.
+  ///
+  /// Generic over the row type (#2997): the word adapters map rows to
+  /// `SmartImportWord` and the snippet adapters to `SnippetImportCandidate`
+  /// through the SAME open, prepare, step, verify-completion, finalize and
+  /// close sequence, so a second feature reading the same databases cannot
+  /// drift from the first on any of those steps.
   ///
   /// `mapRow` returning nil is an ordinary EXCLUSION and is counted; a THROW is
   /// a malformed source and refuses the whole read. Those are different things.
@@ -170,13 +207,13 @@ package enum SmartImportSQLiteReader {
   /// through the reader rather than letting the caller run it after `read`
   /// returns is the entire reason this parameter exists: returning first would
   /// move the check past cleanup and widen the window it exists to close.
-  static func read(
+  static func readRows<Row>(
     uri: String,
     sql: String,
     appName: String,
-    mapRow: (OpaquePointer?) throws -> SmartImportWord?,
+    mapRow: (OpaquePointer?) throws -> Row?,
     afterRowsRead: () throws -> Void = {}
-  ) throws -> SmartImportReadResult {
+  ) throws -> (rows: [Row], excludedCount: Int) {
     var db: OpaquePointer?
     guard
       sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
@@ -194,11 +231,11 @@ package enum SmartImportSQLiteReader {
     }
     defer { sqlite3_finalize(statement) }
 
-    var words: [SmartImportWord] = []
+    var rows: [Row] = []
     var excludedCount = 0
     var result = sqlite3_step(statement)
     while result == SQLITE_ROW {
-      if let word = try mapRow(statement) { words.append(word) } else { excludedCount += 1 }
+      if let row = try mapRow(statement) { rows.append(row) } else { excludedCount += 1 }
       result = sqlite3_step(statement)
     }
     // Only SQLITE_DONE means "that was all of them" (code review, #1686). The
@@ -209,7 +246,7 @@ package enum SmartImportSQLiteReader {
     // a test that never runs.
     guard result == SQLITE_DONE else { throw SmartImportError.unreadable(appName) }
     try afterRowsRead()
-    return SmartImportReadResult(words: words, excludedCount: excludedCount)
+    return (rows, excludedCount)
   }
 
   /// The canonical "a corrected spelling is the word, the misspelling that
@@ -229,6 +266,16 @@ package enum SmartImportSQLiteReader {
     return SmartImportWord(canonical: alias, caseSensitive: caseSensitive)
   }
 
+  /// A SQLite `file:` URI whose PATH is percent-encoded, so a home directory or a scratch
+  /// path containing `%`, `#`, `?` or a space cannot be read as a percent escape, a query, or a
+  /// fragment: SQLite percent-decodes the path, so an unescaped `%` or `#` resolves to a
+  /// different file (#2997). `.urlPathAllowed` keeps `/` and every ordinary path character and
+  /// encodes exactly those three plus space; SQLite decodes them back to the real path.
+  static func fileURI(path: String, query: String) -> String {
+    let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+    return "file:\(encoded)?\(query)"
+  }
+
   // MARK: - Strict column reads
   //
   // SQLite columns are dynamically typed, so a schema that drifts under us can
@@ -243,7 +290,7 @@ package enum SmartImportSQLiteReader {
     guard sqlite3_column_type(statement, column) == SQLITE_TEXT,
       let value = sqlite3_column_text(statement, column)
     else { throw SmartImportError.unreadable(appName) }
-    return String(cString: value)
+    return try decodeText(value, sqlite3_column_bytes(statement, column), appName)
   }
 
   static func optionalText(
@@ -254,7 +301,21 @@ package enum SmartImportSQLiteReader {
     guard type == SQLITE_TEXT, let value = sqlite3_column_text(statement, column) else {
       throw SmartImportError.unreadable(appName)
     }
-    return String(cString: value)
+    return try decodeText(value, sqlite3_column_bytes(statement, column), appName)
+  }
+
+  /// UTF-8 text of the column's EXACT stored length, refusing an embedded NUL. `String(cString:)`
+  /// stops at the first NUL byte, so a value the source stored as `a\0b` would import as `a`
+  /// and be reported a success (#2997). Malformed bytes and a NUL both refuse the whole read,
+  /// consistent with the strict-column policy above.
+  private static func decodeText(
+    _ value: UnsafePointer<UInt8>, _ byteCount: Int32, _ appName: String
+  ) throws -> String {
+    let bytes = UnsafeBufferPointer(start: value, count: Int(byteCount))
+    guard let text = String(bytes: bytes, encoding: .utf8), !text.utf8.contains(0) else {
+      throw SmartImportError.unreadable(appName)
+    }
+    return text
   }
 
   static func requiredBoolean(
@@ -296,12 +357,6 @@ extension SmartImportAdapter {
     }
     return data
   }
-
-  /// The first location that actually exists, or nil.
-  package var installedPath: URL? {
-    candidatePaths.first { FileManager.default.fileExists(atPath: $0.path) }
-  }
-  package var isInstalled: Bool { installedPath != nil }
 }
 
 // MARK: - FluidVoice
@@ -409,48 +464,29 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 
 // MARK: - Wispr Flow
 
-/// SQLite, read strictly read-only against another app's live database.
-package struct WisprFlowAdapter: SmartImportAdapter {
-  package let identifier = "wispr-flow"
-  package let displayName = "Wispr Flow"
-
-  package var candidatePaths: [URL] {
+/// How Wispr Flow's live database is read, shared by the word adapter and the
+/// snippet adapter (#2997): the sidecar guard, the immutable connection, and
+/// the post-read recheck, exactly as `WisprFlowAdapter.loadWords` owned them
+/// before the extraction. What differs per adapter is the SQL and the row
+/// mapping, which are passed in.
+package enum WisprFlowDatabase {
+  /// The one database, holding words and snippets alike.
+  static var candidatePaths: [URL] {
     [
       FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Wispr Flow/flow.sqlite")
     ]
   }
 
-  package init() {}
-
-  package func loadWords(at url: URL) throws -> SmartImportReadResult {
-    // isDeleted: a soft-delete flag. Importing unfiltered would resurrect
-    // words the user deliberately removed — the single worst thing this
-    // adapter could do.
-    // isSnippet: text expansions are a different feature, not vocabulary.
-    // `replacement` is the corrected spelling when present; `phrase` is the
-    // misspelling that prompted it, carried across as an alias.
-    //
-    // `ORDER BY id` is new: a bare `LIMIT` with no order leaves SQLite's row
-    // order unspecified, and "the same word claimed as an alias by two
-    // different corrected spellings" needs a real, stable "earlier" for that
-    // to mean anything. `id` (VARCHAR(36) PRIMARY KEY) is ordered, not
-    // `rowid` — this table's PK does not alias `rowid`, and an unaliased
-    // `rowid` is not guaranteed persistent across a `VACUUM`.
-    //
-    // Both filters moved OUT of the WHERE clause in #1773: an adapter cannot
-    // count rows SQL never returns, and without that count an import that
-    // refused everything looks identical to an empty source. The consequence
-    // is deliberate — `LIMIT` now bounds TOTAL rows rather than surviving
-    // ones, so a dictionary above the ceiling is refused rather than silently
-    // importing whichever survivors happened to fit.
-    let sql = """
-      SELECT phrase, replacement, isDeleted, isSnippet
-      FROM Dictionary
-      ORDER BY id COLLATE BINARY ASC
-      LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
-      """
-
+  /// Read `sql` against the database at `url` under Wispr Flow's acquisition
+  /// policy. `mapRow` returning nil is an exclusion and is counted; a throw
+  /// refuses the whole read (`SmartImportSQLiteReader.readRows`).
+  static func read<Row>(
+    at url: URL,
+    appName: String,
+    sql: String,
+    mapRow: (OpaquePointer?) throws -> Row?
+  ) throws -> (rows: [Row], excludedCount: Int) {
     // Choose the connection mode from the WAL sidecar, rather than trying one
     // and falling back (code reviews r1 + r2, both measured).
     //
@@ -505,9 +541,9 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // for. Reading a live database was never going to be both safe and
     // complete; this picks the honest half.
     guard !sidecarsExist() else {
-      throw SmartImportError.unreadable(displayName)
+      throw SmartImportError.unreadable(appName)
     }
-    let uri = "file:\(url.path)?immutable=1"
+    let uri = SmartImportSQLiteReader.fileURI(path: url.path, query: "immutable=1")
 
     // The check above and the open below are still two moments: Wispr Flow can
     // START writing in between, and immutable would then read a stale view
@@ -518,31 +554,77 @@ package struct WisprFlowAdapter: SmartImportAdapter {
     // than report. Immutable cannot create one, so a sidecar found afterwards
     // is always the other app's doing, never ours.
 
-    return try SmartImportSQLiteReader.read(
-      uri: uri, sql: sql, appName: displayName,
-      mapRow: { statement in
-        let phrase = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
-        let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
-        let isDeleted = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
-        let isSnippet = try SmartImportSQLiteReader.requiredBoolean(statement, 3, displayName)
-        // Both exclusions are this adapter's whole point, and both are now
-        // COUNTED rather than hidden by SQL. Returning nil is an exclusion;
-        // a throw above is a malformed database.
-        guard !isDeleted, !isSnippet else { return nil }
-        return SmartImportSQLiteReader.word(canonical: replacement, alias: phrase)
-      },
+    return try SmartImportSQLiteReader.readRows(
+      uri: uri, sql: sql, appName: appName,
+      mapRow: mapRow,
       // Re-check the sidecar state the connection mode was chosen from. If
       // Wispr Flow began or finished writing while this read was in flight,
-      // the mode no longer matches the database and these words may be a stale
+      // the mode no longer matches the database and these rows may be a stale
       // view, so refuse rather than hand back something that looks complete.
       //
       // This runs INSIDE the reader — after SQLITE_DONE, before its finalize
-      // and close defers — which is exactly where it sat when this adapter
+      // and close defers — which is exactly where it sat when the word adapter
       // owned the sequence itself. Hoisting it to after `read` returned would
       // move it past cleanup and widen the window it exists to close.
       afterRowsRead: {
-        guard !sidecarsExist() else { throw SmartImportError.unreadable(displayName) }
+        guard !sidecarsExist() else { throw SmartImportError.unreadable(appName) }
       })
+  }
+}
+
+/// SQLite, read strictly read-only against another app's live database.
+package struct WisprFlowAdapter: SmartImportAdapter {
+  package let identifier = "wispr-flow"
+  package let displayName = "Wispr Flow"
+
+  package var candidatePaths: [URL] { WisprFlowDatabase.candidatePaths }
+
+  package init() {}
+
+  package func loadWords(at url: URL) throws -> SmartImportReadResult {
+    // isDeleted: a soft-delete flag. Importing unfiltered would resurrect
+    // words the user deliberately removed — the single worst thing this
+    // adapter could do.
+    // isSnippet: text expansions are a different feature, not vocabulary.
+    // `replacement` is the corrected spelling when present; `phrase` is the
+    // misspelling that prompted it, carried across as an alias.
+    //
+    // `ORDER BY id` is new: a bare `LIMIT` with no order leaves SQLite's row
+    // order unspecified, and "the same word claimed as an alias by two
+    // different corrected spellings" needs a real, stable "earlier" for that
+    // to mean anything. `id` (VARCHAR(36) PRIMARY KEY) is ordered, not
+    // `rowid` — this table's PK does not alias `rowid`, and an unaliased
+    // `rowid` is not guaranteed persistent across a `VACUUM`.
+    //
+    // Both filters moved OUT of the WHERE clause in #1773: an adapter cannot
+    // count rows SQL never returns, and without that count an import that
+    // refused everything looks identical to an empty source. The consequence
+    // is deliberate — `LIMIT` now bounds TOTAL rows rather than surviving
+    // ones, so a dictionary above the ceiling is refused rather than silently
+    // importing whichever survivors happened to fit.
+    let sql = """
+      SELECT phrase, replacement, isDeleted, isSnippet
+      FROM Dictionary
+      ORDER BY id COLLATE BINARY ASC
+      LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
+      """
+
+    // Acquisition (the sidecar guard, the immutable connection, the post-read
+    // recheck) is `WisprFlowDatabase.read`, shared with the snippet adapter
+    // (#2997). Only the SQL and the row mapping are this adapter's.
+    let read = try WisprFlowDatabase.read(at: url, appName: displayName, sql: sql) {
+      statement -> SmartImportWord? in
+      let phrase = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
+      let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
+      let isDeleted = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
+      let isSnippet = try SmartImportSQLiteReader.requiredBoolean(statement, 3, displayName)
+      // Both exclusions are this adapter's whole point, and both are now
+      // COUNTED rather than hidden by SQL. Returning nil is an exclusion;
+      // a throw above is a malformed database.
+      guard !isDeleted, !isSnippet else { return nil }
+      return SmartImportSQLiteReader.word(canonical: replacement, alias: phrase)
+    }
+    return SmartImportReadResult(words: read.rows, excludedCount: read.excludedCount)
   }
 }
 
@@ -586,7 +668,12 @@ package struct VoxAdapter: SmartImportAdapter {
 
 // MARK: - TypeWhisper
 
-/// Core Data store, read through a private, stability-checked copy.
+/// How a TypeWhisper Core Data store is read: through a private,
+/// stability-checked copy. Shared by the word adapter (`dictionary.store`) and
+/// the snippet adapter (`snippets.store`, #2997); the two stores sit beside
+/// each other with the same `-wal`/`-shm` sidecars and the same never-checkpoint
+/// behaviour, so one acquisition serves both. What differs per adapter is the
+/// SQL and the row mapping, which are passed in.
 ///
 /// Wispr Flow's policy — refuse when a sidecar exists, else open `immutable=1`
 /// — does NOT transfer here, and the difference is measured rather than
@@ -606,13 +693,15 @@ package struct VoxAdapter: SmartImportAdapter {
 /// recognise. Opening the SOURCE read-only returns the right rows too, but it
 /// MODIFIES their `-shm` (verified by hash), and writing inside another app's
 /// data directory is what #1686 removed.
-package struct TypeWhisperAdapter: SmartImportAdapter {
-  package let identifier = "typewhisper"
-  package let displayName = "TypeWhisper"
-
-  /// Bounded read of one store part, injected so a test can mutate the WAL
-  /// between the two verification passes. Returns nil when the part is absent.
-  package typealias PartReader = @Sendable (URL) throws -> Data?
+package enum TypeWhisperStoreSnapshot {
+  /// TypeWhisper keeps one Core Data store per feature beside each other
+  /// (`dictionary.store`, `snippets.store`, ...), each with its own sidecars.
+  static func candidatePaths(store name: String) -> [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/TypeWhisper/\(name)")
+    ]
+  }
 
   /// `-shm` is deliberately absent: it is a regenerable shared-memory index,
   /// not durable vocabulary. Measured — copying main+`-wal` alone still
@@ -623,13 +712,113 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
   /// whole acquisitions are attempted.
   private static let acquisitionAttempts = 3
 
+  /// The aggregate ceiling on main plus WAL. The same value the injected part
+  /// reader applies per part (`TypeWhisperAdapter.readPartFromDisk`), so a
+  /// part alone over the ceiling and two parts together over it are refused by
+  /// one number.
+  static var maximumBytes: Int { TypeWhisperAdapter.maximumVocabularyBytes }
+
+  /// Read `sql` against a stable private copy of the store at `url`. `mapRow`
+  /// returning nil is an exclusion and is counted; a throw refuses the whole
+  /// read (`SmartImportSQLiteReader.readRows`).
+  static func read<Row>(
+    at url: URL,
+    readPart: TypeWhisperAdapter.PartReader,
+    appName: String,
+    sql: String,
+    mapRow: (OpaquePointer?) throws -> Row?
+  ) throws -> (rows: [Row], excludedCount: Int) {
+    let snapshot = try acquireStableSnapshot(at: url, readPart: readPart, appName: appName)
+
+    let fm = FileManager.default
+    let scratch = fm.temporaryDirectory
+      .appendingPathComponent("ew-typewhisper-\(UUID().uuidString)", isDirectory: true)
+    guard (try? fm.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else {
+      throw SmartImportError.unreadable(appName)
+    }
+    // Removed on every exit, including a throw from the read below.
+    defer { try? fm.removeItem(at: scratch) }
+
+    let copy = scratch.appendingPathComponent(url.lastPathComponent)
+    for (suffix, bytes) in snapshot {
+      guard (try? bytes.write(to: URL(fileURLWithPath: copy.path + suffix))) != nil else {
+        throw SmartImportError.unreadable(appName)
+      }
+    }
+
+    return try SmartImportSQLiteReader.readRows(
+      uri: SmartImportSQLiteReader.fileURI(path: copy.path, query: "mode=ro"), sql: sql,
+      appName: appName, mapRow: mapRow)
+  }
+
+  /// Read every store part twice and accept only a byte-identical pair.
+  ///
+  /// Copying the parts one after another is NOT enough: TypeWhisper can
+  /// checkpoint or replace the WAL between two sequential reads, producing a
+  /// main file and a WAL from different moments — a snapshot that never
+  /// existed. Two agreeing passes prove the accepted bytes coexisted during
+  /// the overlap between them.
+  ///
+  /// The loop itself lives in `acquireStableSnapshot(appName:attempts:read:agrees:accept:)`,
+  /// shared with Handy. Only the vendor knowledge is here: what the parts are,
+  /// and what it means for two reads of them to agree.
+  /// Every closure below is explicitly typed. Left to inference, the generic
+  /// call takes longer than the type-checker's budget and fails to build.
+  private static func acquireStableSnapshot(
+    at url: URL, readPart: TypeWhisperAdapter.PartReader, appName: String
+  ) throws -> [(String, Data)] {
+    typealias Parts = [(String, Data)]
+    let read: () throws -> Parts = {
+      try readAllParts(at: url, readPart: readPart, appName: appName)
+    }
+    let agrees: (Parts, Parts) -> Bool = { first, second in
+      first.map(\.0) == second.map(\.0)
+        && zip(first, second).allSatisfy { $0.1 == $1.1 }
+    }
+    // Identity: TypeWhisper's acceptance is the agreement itself. The bytes are
+    // opened as SQLite later, from a private copy.
+    let accept: (Parts) throws -> Parts = { $0 }
+    return try EnviousWisprPostProcessing.acquireStableSnapshot(
+      appName: appName,
+      attempts: Self.acquisitionAttempts,
+      read: read,
+      agrees: agrees,
+      accept: accept)
+  }
+
+  private static func readAllParts(
+    at url: URL, readPart: TypeWhisperAdapter.PartReader, appName: String
+  ) throws -> [(String, Data)] {
+    var parts: [(String, Data)] = []
+    var total = 0
+    for suffix in Self.storeSuffixes {
+      guard let bytes = try readPart(URL(fileURLWithPath: url.path + suffix)) else { continue }
+      total += bytes.count
+      guard total <= Self.maximumBytes else {
+        throw SmartImportError.unreadable(appName)
+      }
+      parts.append((suffix, bytes))
+    }
+    guard !parts.isEmpty else { throw SmartImportError.unreadable(appName) }
+    return parts
+  }
+}
+
+/// Core Data store, read through a private, stability-checked copy
+/// (`TypeWhisperStoreSnapshot`, which records why that policy differs from
+/// Wispr Flow's).
+package struct TypeWhisperAdapter: SmartImportAdapter {
+  package let identifier = "typewhisper"
+  package let displayName = "TypeWhisper"
+
+  /// Bounded read of one store part, injected so a test can mutate the WAL
+  /// between the two verification passes. Returns nil when the part is absent.
+  package typealias PartReader = @Sendable (URL) throws -> Data?
+
   private let readPart: PartReader
 
   package var candidatePaths: [URL] {
-    [
-      FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/TypeWhisper/dictionary.store")
-    ]
+    TypeWhisperStoreSnapshot.candidatePaths(store: "dictionary.store")
   }
 
   package init(readPart: @escaping PartReader = TypeWhisperAdapter.readPartFromDisk) {
@@ -643,8 +832,8 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     // Mechanics shared through `BoundedFileRead` (#2997). This site's contract is
     // unchanged and differs from the others on purpose: a missing part is nil, and
-    // the ceiling-plus-one bytes are RETURNED, because `readAllParts` bounds the
-    // AGGREGATE of main plus WAL and must see that a part alone already exceeds it. The
+    // the ceiling-plus-one bytes are RETURNED, because `TypeWhisperStoreSnapshot` bounds
+    // the AGGREGATE of main plus WAL and must see that a part alone already exceeds it. The
     // loop never checked cancellation here either, so the hook is empty.
     do {
       return try BoundedFileRead.read(
@@ -655,24 +844,6 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
   }
 
   package func loadWords(at url: URL) throws -> SmartImportReadResult {
-    let snapshot = try acquireStableSnapshot(at: url)
-
-    let fm = FileManager.default
-    let scratch = fm.temporaryDirectory
-      .appendingPathComponent("ew-typewhisper-\(UUID().uuidString)", isDirectory: true)
-    guard (try? fm.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else {
-      throw SmartImportError.unreadable(displayName)
-    }
-    // Removed on every exit, including a throw from the read below.
-    defer { try? fm.removeItem(at: scratch) }
-
-    let copy = scratch.appendingPathComponent(url.lastPathComponent)
-    for (suffix, bytes) in snapshot {
-      guard (try? bytes.write(to: URL(fileURLWithPath: copy.path + suffix))) != nil else {
-        throw SmartImportError.unreadable(displayName)
-      }
-    }
-
     // No filtering WHERE clause: the mapper must SEE disabled and
     // non-allowlisted rows in order to count them.
     //
@@ -691,9 +862,13 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
       LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
 
-    return try SmartImportSQLiteReader.read(
-      uri: "file:\(copy.path)?mode=ro", sql: sql, appName: displayName
-    ) { statement in
+    // Acquisition (two agreeing passes over main plus WAL, a private copy, a
+    // `mode=ro` open) is `TypeWhisperStoreSnapshot.read`, shared with the
+    // snippet adapter (#2997). Only the SQL and the row mapping are this
+    // adapter's.
+    let read = try TypeWhisperStoreSnapshot.read(
+      at: url, readPart: readPart, appName: displayName, sql: sql
+    ) { statement -> SmartImportWord? in
       let original = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
       let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
       let caseSensitive = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
@@ -708,52 +883,7 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
       return SmartImportSQLiteReader.word(
         canonical: replacement, alias: original, caseSensitive: .supplied(caseSensitive))
     }
-  }
-
-  /// Read every store part twice and accept only a byte-identical pair.
-  ///
-  /// Copying the parts one after another is NOT enough: TypeWhisper can
-  /// checkpoint or replace the WAL between two sequential reads, producing a
-  /// main file and a WAL from different moments — a snapshot that never
-  /// existed. Two agreeing passes prove the accepted bytes coexisted during
-  /// the overlap between them.
-  ///
-  /// The loop itself lives in `acquireStableSnapshot(appName:attempts:read:agrees:accept:)`,
-  /// shared with Handy. Only the vendor knowledge is here: what the parts are,
-  /// and what it means for two reads of them to agree.
-  /// Every closure below is explicitly typed. Left to inference, the generic
-  /// call takes longer than the type-checker's budget and fails to build.
-  private func acquireStableSnapshot(at url: URL) throws -> [(String, Data)] {
-    typealias Parts = [(String, Data)]
-    let read: () throws -> Parts = { try readAllParts(at: url) }
-    let agrees: (Parts, Parts) -> Bool = { first, second in
-      first.map(\.0) == second.map(\.0)
-        && zip(first, second).allSatisfy { $0.1 == $1.1 }
-    }
-    // Identity: TypeWhisper's acceptance is the agreement itself. The bytes are
-    // opened as SQLite later, from a private copy.
-    let accept: (Parts) throws -> Parts = { $0 }
-    return try EnviousWisprPostProcessing.acquireStableSnapshot(
-      appName: displayName,
-      attempts: Self.acquisitionAttempts,
-      read: read,
-      agrees: agrees,
-      accept: accept)
-  }
-
-  private func readAllParts(at url: URL) throws -> [(String, Data)] {
-    var parts: [(String, Data)] = []
-    var total = 0
-    for suffix in Self.storeSuffixes {
-      guard let bytes = try readPart(URL(fileURLWithPath: url.path + suffix)) else { continue }
-      total += bytes.count
-      guard total <= Self.maximumVocabularyBytes else {
-        throw SmartImportError.unreadable(displayName)
-      }
-      parts.append((suffix, bytes))
-    }
-    guard !parts.isEmpty else { throw SmartImportError.unreadable(displayName) }
-    return parts
+    return SmartImportReadResult(words: read.rows, excludedCount: read.excludedCount)
   }
 }
 

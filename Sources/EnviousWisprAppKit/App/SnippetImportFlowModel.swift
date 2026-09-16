@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Drives one import from source choice to committed result: which screen the sheet shows,
 /// the review rows and their decisions, and the load → compare → review → commit sequence
-/// shared by Paste and Open a file (and, from PR-B, another app). A snippet-shaped twin of
+/// shared by Paste, Open a file and From another app. A snippet-shaped twin of
 /// `CustomWordsImportFlowModel`, kept separate on purpose: it needs none of the word
 /// features (aliases, enrichment, fuzzy matching, Replace) and has its own comparison key.
 ///
@@ -55,6 +55,7 @@ final class SnippetImportFlowModel {
     case methodPicker
     case paste
     case file
+    case appPicker
     case review
     case working(Work)
     case result(Result)
@@ -81,6 +82,7 @@ final class SnippetImportFlowModel {
   enum Method: String, CaseIterable, Identifiable, Sendable {
     case paste
     case file
+    case app
 
     var id: Self { self }
 
@@ -88,6 +90,7 @@ final class SnippetImportFlowModel {
       switch self {
       case .paste: return .paste
       case .file: return .file
+      case .app: return .appPicker
       }
     }
   }
@@ -134,7 +137,7 @@ final class SnippetImportFlowModel {
   /// True exactly where `goBack()` does something: the input screens and review.
   var canGoBack: Bool {
     switch step {
-    case .paste, .file, .review: return true
+    case .paste, .file, .appPicker, .review: return true
     case .methodPicker, .working, .result: return false
     }
   }
@@ -154,7 +157,7 @@ final class SnippetImportFlowModel {
   func showReview() {
     guard selectedMethod != nil else { return }
     switch step {
-    case .paste, .file, .working:
+    case .paste, .file, .appPicker, .working:
       step = .review
     case .methodPicker, .review, .result:
       break
@@ -163,7 +166,7 @@ final class SnippetImportFlowModel {
 
   func beginWork(_ work: Work) {
     switch step {
-    case .paste, .file, .review, .working:
+    case .paste, .file, .appPicker, .review, .working:
       step = .working(work)
     case .methodPicker, .result:
       break
@@ -181,7 +184,7 @@ final class SnippetImportFlowModel {
   /// to a run the user just walked away from.
   func goBack() {
     switch step {
-    case .paste, .file:
+    case .paste, .file, .appPicker:
       selectedMethod = nil
       step = .methodPicker
     case .review:
@@ -240,7 +243,7 @@ final class SnippetImportFlowModel {
     case .result(.completed), .result(.nothingApproved):
       guard selectedMethod != .paste else { return false }
       return hasNonWhitespacePasteDraft
-    case .methodPicker, .paste, .file, .review,
+    case .methodPicker, .paste, .file, .appPicker, .review,
       .working(.loadingCandidates), .working(.comparing),
       .result(.nothingFound), .result(.nothingCompatible), .result(.failed):
       return hasNonWhitespacePasteDraft
@@ -261,7 +264,7 @@ final class SnippetImportFlowModel {
       clearRun()
       selectedMethod = .paste
       step = .paste
-    case .methodPicker, .paste, .file, .review, .working:
+    case .methodPicker, .paste, .file, .appPicker, .review, .working:
       break
     }
   }

@@ -136,7 +136,7 @@ struct SnippetImportFlowModelTests {
   // MARK: - Navigation
 
   nonisolated static let methodCases: [(Model.Method, Model.Step)] = [
-    (.paste, .paste), (.file, .file),
+    (.paste, .paste), (.file, .file), (.app, .appPicker),
   ]
 
   @Test("Initial step is the method picker with nothing selected")

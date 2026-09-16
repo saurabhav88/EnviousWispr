@@ -76,6 +76,12 @@ enum SnippetImportTelemetryFailure: String, Sendable, CaseIterable {
       case .triggerTooLong, .expansionTooLong, .unusableTrigger, .unusableExpansion:
         return .unusableEntry
       }
+    case let app as SnippetImportAppError:
+      switch app {
+      case .appNotFound: return .appNotFound
+      case .unreadable: return .appStoreUnreadable
+      case .tooManySourceEntries: return .tooMany
+      }
     default:
       return .unreadable
     }

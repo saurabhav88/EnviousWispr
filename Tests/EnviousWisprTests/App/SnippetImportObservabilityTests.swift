@@ -207,6 +207,34 @@ import Testing
       #expect(Self.violations(in: good) == ["failed without failure"])
     }
 
+    @Test("Every rival-app failure maps to a closed failure value, and every app id is a closed source")
+    func appFailuresAndSourcesAreClosed() {
+      // PR-B: the three app conditions land on the values the plan reserved for them, never
+      // on the catch-all `unreadable` (which would hide "the app is not installed" inside
+      // "could not read"), and the registry's identifiers ARE the `source` vocabulary, so a
+      // new adapter cannot report under `file_other`.
+      #expect(
+        SnippetImportTelemetryFailure.forLoadError(SnippetImportAppError.appNotFound("Wispr Flow"))
+          == .appNotFound)
+      #expect(
+        SnippetImportTelemetryFailure.forLoadError(SnippetImportAppError.unreadable("TypeWhisper"))
+          == .appStoreUnreadable)
+      #expect(
+        SnippetImportTelemetryFailure.forLoadError(
+          SnippetImportAppError.tooManySourceEntries(appName: "Wispr Flow", limit: 5_000))
+          == .tooMany)
+      for adapter in SnippetImportAppRegistry.v1.adapters {
+        #expect(
+          SnippetImportTelemetrySource(rawValue: adapter.identifier) != nil,
+          "\(adapter.identifier) is not in the closed source vocabulary")
+      }
+      #expect(
+        SnippetImportAppRegistry.v1.adapters.map(\.identifier) == [
+          SnippetImportTelemetrySource.wisprFlow.rawValue,
+          SnippetImportTelemetrySource.typeWhisper.rawValue,
+        ])
+    }
+
     @Test("An attempt is reported once, however many times its terminal is reached")
     func attemptLatches() async {
       let box = await observe {
