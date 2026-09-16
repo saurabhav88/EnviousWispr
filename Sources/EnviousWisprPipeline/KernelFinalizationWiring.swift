@@ -340,7 +340,7 @@ struct KernelFinalizationWiring {
     currentTime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
     // #950 — the SAME shared `KernelTelemetryState` the kernel stamps and the
     // lifecycle sink reads; the metrics builder reads the kernel-computed
-    // tail-trim diagnostic from it for the PostHog `asr.completed` event.
+    // tail-trim diagnostic from it for the PostHog `dictation.completed` event.
     // Defaulted (fresh, tail fields nil) so other construction sites stay
     // source-compatible; the factory passes the shared instance.
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
@@ -1275,7 +1275,7 @@ struct KernelFinalizationWiring {
       cleanupLanguageBucket: outcome.cleanupLanguageBucket,
       // #950 tail-trim diagnostic — kernel-computed, read from the shared
       // telemetry state (eligible Parakeet batch only; nil for streaming /
-      // WhisperKit / non-success). Carried onto `asr.completed`.
+      // WhisperKit / non-success). Carried onto `dictation.completed`.
       tailDroppedMs: telemetryState.asrCompletedTelemetry?.droppedTailMs,
       tailHadEnergy: telemetryState.asrCompletedTelemetry?.tailHadEnergy,
       // #950 tail-preserve recovery + tuning signals.
@@ -1284,7 +1284,7 @@ struct KernelFinalizationWiring {
       tailVoicedFraction: telemetryState.asrCompletedTelemetry?.tailVoicedFraction,
       tailRefusedReason: telemetryState.asrCompletedTelemetry?.tailRefusedReason,
       // #1232 tail-clip telemetry — kernel-computed classifier + lead signals,
-      // read from the shared telemetry state. Carried onto `asr.completed`.
+      // read from the shared telemetry state. Carried onto `dictation.completed`.
       tailClipClassification: telemetryState.asrCompletedTelemetry?.tailClipClassification,
       captureTrailingSilenceMs: telemetryState.asrCompletedTelemetry?.captureTrailingSilenceMs,
       captureTail200Rms: telemetryState.asrCompletedTelemetry?.captureTail200Rms,

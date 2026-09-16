@@ -1217,7 +1217,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // #1946: same hazard, eight more fields. These are written ONLY when the
         // casing deadline actually fired, so without clearing them one timeout
         // would file its evidence against every later healthy recording — in
-        // stored metrics AND in `paste.completed`. Caught by whole-diff review;
+        // stored metrics AND in `dictation.completed`. Caught by whole-diff review;
         // the comment above had already named the class.
         outcome.casingDeadlinePhase = nil
         outcome.casingLanguageMs = nil

@@ -26,7 +26,6 @@ ai_diagnostics.run_completed	ungraded	ungraded	-	pre-#2987
 api_key.changed	ungraded	ungraded	-	pre-#2987
 api_key.validation_completed	ungraded	ungraded	-	pre-#2987
 app.launched	ungraded	ungraded	-	pre-#2987
-asr.completed	ungraded	ungraded	-	pre-#2987
 asr.retry_deadline_observed	ungraded	ungraded	-	pre-#2987
 audio.capture_interrupted	ungraded	ungraded	-	pre-#2987
 audio.dead_mic_recovery	ungraded	ungraded	-	pre-#2987
@@ -87,7 +86,6 @@ onboarding.completed	ungraded	ungraded	-	pre-#2987
 onboarding.started	ungraded	ungraded	-	pre-#2987
 onboarding.step_blocked	ungraded	ungraded	-	pre-#2987
 onboarding.step_completed	ungraded	ungraded	-	pre-#2987
-paste.completed	ungraded	ungraded	-	pre-#2987
 paste.copies_observed	ungraded	ungraded	-	pre-#2987
 permission.status	ungraded	ungraded	-	pre-#2987
 pipeline.failed	ungraded	ungraded	-	pre-#2987

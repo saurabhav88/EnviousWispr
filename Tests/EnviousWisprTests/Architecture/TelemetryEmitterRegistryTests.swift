@@ -45,7 +45,7 @@ struct TelemetryEmitterRegistryTests {
 
   /// Grandfathered rows at the freeze. The count must EQUAL this: grade a row, lower the
   /// number in the same change. Slack here is a free `ungraded` slot for a new emitter.
-  static let ungradedCeiling = 110
+  static let ungradedCeiling = 108
   /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
   /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
   /// The failure message prints the new value; paste it only when grading or retiring.
@@ -54,9 +54,9 @@ struct TelemetryEmitterRegistryTests {
   /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
   /// makes that a visible edit here.
   static let sitesFingerprint =
-    "2fb414073cdfd043f9315ecfb01157a3d6bfd26e17d944a742fe409c941b7fff"
+    "4c0eeb857526cd1e9e818153b2cba940b7c04241828d122282e2320597f111dd"
   static let ungradedFingerprint =
-    "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
+    "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 
   /// The closed cadence vocabulary. Deliberately no `per_chunk`, `per_buffer`, `per_frame`,
   /// `per_second`: an event finer than a take folds into the take's terminal row.

@@ -84,7 +84,8 @@ TAKE_PROPERTY = "take_id"
 # `TelemetryService.swift`, or is listed in `RETIRED_TAKE_KEYED_EVENTS` below
 # with the release that stopped emitting it. Match the FIELD, not a
 # `props`/`properties` variable name — a pattern pinned to `props[...]`
-# structurally cannot match the `asr.completed` emitter and silently reports 12,
+# structurally cannot match an emitter whose dictionary is named `properties`
+# (the `asr.completed` emitter was one until #2958 phase 2) and silently reports 12,
 # and a pattern pinned to the `["take_id"] = takeID` assignment shape cannot
 # match a dictionary LITERAL (`"take_id": takeID`), which is how
 # `asr.retry_deadline_observed` went unlisted from v2.5.0 to #2979. Measure with
@@ -133,13 +134,19 @@ TAKE_KEYED_EVENTS = (
 )
 
 # #2958: names kept for HISTORICAL queries whose rows stopped on the first
-# release carrying telemetry policy 1. A post-floor empty cell for one of these is
-# the fold working, not a blackout, and renders as `retired`, never `not observed`.
-# The values ride on `dictation.terminal` (`vad_stage_reached`, `vad_*`).
+# release carrying telemetry policy 2 (policy 1 never shipped in a tagged
+# release, so one floor covers both phases). A post-floor empty cell for one of
+# these is the fold working, not a blackout, and renders as `retired`, never
+# `not observed`. Phase 1 values ride on `dictation.terminal` (`vad_stage_reached`,
+# `vad_*`); phase 2 values ride on `dictation.completed` (`asr_cold_start`,
+# `asr_char_count`, `paste_latency_ms`, `paste_seconds`, the `tail_*` /
+# `streaming_*` / `caret_*` / `casing_*` keys under their old names).
 RETIRED_TAKE_KEYED_EVENTS: dict[str, str] = {
     "dictation.vad_preparation_completed": "folded into dictation.terminal (#2958)",
     "dictation.first_vad_chunk_started": "folded into dictation.terminal (#2958)",
     "dictation.first_vad_chunk_completed": "folded into dictation.terminal (#2958)",
+    "asr.completed": "folded into dictation.completed (#2958 phase 2)",
+    "paste.completed": "folded into dictation.completed (#2958 phase 2)",
 }
 
 # The FIRST release tag whose build no longer emits the retired names. Unset until that

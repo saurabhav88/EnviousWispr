@@ -725,7 +725,16 @@ export function decideComparability(metricKey, versions) {
  * grain they are reported at).
  *
  * Templates keep their placeholders: `calculationId` hashes THIS text, so a
- * rendered date, dev-id list or production predicate must never change it. */
+ * rendered date, dev-id list or production predicate must never change it.
+ *
+ * #2958 phase 2 folded `paste.completed` onto `dictation.completed`. Old builds
+ * keep sending both rows for months, and `paste_result` is on every
+ * `dictation.completed` row from every build, so the folded branch is gated on
+ * `telemetry_policy_version >= 2` (a build that emits it never emits
+ * `paste.completed`; a build without the stamp is counted by the old row only)
+ * and on `paste_latency_ms`, the exact population marker: the old row fired
+ * only when tier AND latency were measured, while `paste_result` is set from
+ * the tier alone. Either build counts once. */
 const ADDITIVE_SQL = `
 SELECT
   toDate(toTimeZone(timestamp, 'America/New_York'))            AS day,
@@ -733,9 +742,17 @@ SELECT
   count() OVER ()                                              AS total_group_rows,
   countIf(event = 'dictation.completed'
           AND properties.result = 'success')                   AS dictations,
-  countIf(event = 'paste.completed')                           AS paste_attempts,
   countIf(event = 'paste.completed'
-          AND properties.tier LIKE 'clipboard_only%')          AS paste_fallbacks,
+          OR (event = 'dictation.completed'
+              AND toInt(properties.telemetry_policy_version) >= 2
+              AND isNotNull(properties.paste_result)
+              AND isNotNull(properties.paste_latency_ms)))     AS paste_attempts,
+  countIf((event = 'paste.completed'
+           AND properties.tier LIKE 'clipboard_only%')
+          OR (event = 'dictation.completed'
+              AND toInt(properties.telemetry_policy_version) >= 2
+              AND isNotNull(properties.paste_latency_ms)
+              AND properties.paste_result LIKE 'clipboard_only%')) AS paste_fallbacks,
   countIf(event = 'llm.polish_completed'
           AND properties.provider = 'appleIntelligence')       AS afm_attempts,
   countIf(event = 'llm.polish_completed' AND properties.provider = 'appleIntelligence'
@@ -1099,7 +1116,8 @@ export const METRIC_CALCULATIONS = {
     direction: "lower-is-better", moverEligible: true,
   },
   autopaste_direct: {
-    source: "additive", population: "paste.completed",
+    source: "additive",
+    population: "paste.completed, or dictation.completed at telemetry_policy_version >= 2 with paste_result and paste_latency_ms",
     numerator: "paste_attempts - paste_fallbacks", denominator: "paste_attempts",
     aggregation: "sum of day-grain counts", unit: "share",
     direction: "higher-is-better", moverEligible: true,

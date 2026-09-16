@@ -254,13 +254,65 @@ public final class TelemetryService {
     // here, since a `.retryExhausted`/preempted retry never reaches a
     // completed transcript.
     asrRetryOutcome: String? = nil,
-    /// #1846: which dictation this completion belongs to. Forwarded to all
+    /// #1846: which dictation this completion belongs to. Forwarded to both
     /// events this function fans out to, so one argument covers
-    /// `dictation.completed`, `asr.completed`, `llm.polish_completed` and
-    /// `paste.completed`.
+    /// `dictation.completed` and `llm.polish_completed`.
     takeID: String? = nil
   ) {
     let m = t.metrics
+    // #2958 phase 2: the ASR and paste facts ride the terminal row. Each block
+    // is present exactly when its retired row (`asr.completed`,
+    // `paste.completed`) used to fire, so the population a reader counts by
+    // `asr_char_count` or `paste_latency_ms` is the one it counted by event name.
+    let asrFold: AsrCompletionTelemetry? = m.flatMap { m in
+      guard m.asrLatencySeconds != nil else { return nil }
+      return AsrCompletionTelemetry(
+        coldStart: m.coldStart, charCount: t.text.count,
+        tailDroppedMs: m.tailDroppedMs, tailHadEnergy: m.tailHadEnergy,
+        usedTailPreservation: m.usedTailPreservation, recoveredTailMs: m.recoveredTailMs,
+        tailVoicedFraction: m.tailVoicedFraction, tailRefusedReason: m.tailRefusedReason,
+        tailClipClass: m.tailClipClassification,
+        captureTrailingSilenceMs: m.captureTrailingSilenceMs,
+        captureTail200Rms: m.captureTail200Rms, captureTail200Peak: m.captureTail200Peak,
+        asrInputDurationMs: m.asrInputDurationMs, asrLastTokenEndMs: m.asrLastTokenEndMs,
+        asrLastTokenGapMs: m.asrLastTokenGapMs, asrChunked: m.asrChunked,
+        // #1309: requested restated from the metrics' streamingMode only when
+        // the effective-path facts are present (WhisperKit; Parakeet omits all).
+        streamingRequested: m.streamingEffective != nil ? m.streamingMode : nil,
+        streamingEffective: m.streamingEffective,
+        streamingDegradeReason: m.streamingDegradeReason,
+        streamingFinalPath: m.streamingFinalPath,
+        streamingDecodeCount: m.streamingDecodeCount,
+        streamingCoveredSec: m.streamingCoveredSec,
+        tailDecodeSec: m.tailDecodeSec,
+        maxUnconfirmedWindowSec: m.maxUnconfirmedWindowSec,
+        stopWhileDecodeInFlight: m.stopWhileDecodeInFlight)
+    }
+    let pasteFold: (latencyMs: Int, insertion: PasteInsertionTelemetry)? = m.flatMap { m in
+      guard m.pasteTier != nil, let ms = m.pasteLatencyMs else { return nil }
+      return (
+        ms,
+        PasteInsertionTelemetry(
+          smartInsertionEnabled: m.smartInsertionEnabled,
+          caretContextOutcome: m.caretContextOutcome,
+          caretCaptureRetried: m.caretCaptureRetried,
+          caretCaptureRetryMs: m.caretCaptureRetryMs,
+          repairRules: m.repairRules,
+          payloadKind: m.pastePayloadKind,
+          axDeclineReason: m.axDeclineReason,
+          axSettability: m.axSettability,
+          languageResolutionSource: m.languageResolutionSource,
+          languageConfidenceBucket: m.languageConfidenceBucket,
+          casingDeadlinePhase: m.casingDeadlinePhase,
+          casingLanguageMs: m.casingLanguageMs,
+          casingOracleFetchMs: m.casingOracleFetchMs,
+          casingRepairMs: m.casingRepairMs,
+          casingOracleClosure: m.casingOracleClosure,
+          casingOracleInflightMs: m.casingOracleInflightMs,
+          casingOracleClosuresCompleted: m.casingOracleClosuresCompleted,
+          casingOracleClosureMaxMs: m.casingOracleClosureMaxMs)
+      )
+    }
     dictationCompleted(
       result: "success",
       inputMode: inputMode,
@@ -312,33 +364,11 @@ public final class TelemetryService {
       interruptedBy: interruptedBy,
       asrSalvageOutcome: asrSalvageOutcome,
       asrRetryOutcome: asrRetryOutcome,
+      asr: asrFold,
+      pasteLatencyMs: pasteFold?.latencyMs,
+      pasteInsertion: pasteFold?.insertion ?? .init(),
       takeID: takeID
     )
-    if let asrLat = m?.asrLatencySeconds {
-      asrCompleted(
-        backend: t.backendType.rawValue, result: "success", coldStart: m?.coldStart ?? false,
-        latencySeconds: asrLat, charCount: t.text.count,
-        tailDroppedMs: m?.tailDroppedMs, tailHadEnergy: m?.tailHadEnergy,
-        usedTailPreservation: m?.usedTailPreservation, recoveredTailMs: m?.recoveredTailMs,
-        tailVoicedFraction: m?.tailVoicedFraction, tailRefusedReason: m?.tailRefusedReason,
-        tailClipClass: m?.tailClipClassification,
-        captureTrailingSilenceMs: m?.captureTrailingSilenceMs,
-        captureTail200Rms: m?.captureTail200Rms, captureTail200Peak: m?.captureTail200Peak,
-        asrInputDurationMs: m?.asrInputDurationMs, asrLastTokenEndMs: m?.asrLastTokenEndMs,
-        asrLastTokenGapMs: m?.asrLastTokenGapMs, asrChunked: m?.asrChunked,
-        // #1309: requested restated from the metrics' streamingMode only when
-        // the effective-path facts are present (WhisperKit; Parakeet omits all).
-        streamingRequested: m?.streamingEffective != nil ? m?.streamingMode : nil,
-        streamingEffective: m?.streamingEffective,
-        streamingDegradeReason: m?.streamingDegradeReason,
-        streamingFinalPath: m?.streamingFinalPath,
-        streamingDecodeCount: m?.streamingDecodeCount,
-        streamingCoveredSec: m?.streamingCoveredSec,
-        tailDecodeSec: m?.tailDecodeSec,
-        maxUnconfirmedWindowSec: m?.maxUnconfirmedWindowSec,
-        stopWhileDecodeInFlight: m?.stopWhileDecodeInFlight,
-        takeID: takeID)
-    }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
         provider: t.llmProvider ?? "unknown", model: t.llmModel,
@@ -349,30 +379,6 @@ public final class TelemetryService {
         ollamaRemote: m?.polishRanRemote,
         takeID: takeID
       )
-    }
-    if let tier = m?.pasteTier, let ms = m?.pasteLatencyMs {
-      pasteCompleted(
-        tier: tier, targetApp: m?.targetApp, result: "success", latencyMs: ms,
-        insertion: PasteInsertionTelemetry(
-          smartInsertionEnabled: m?.smartInsertionEnabled,
-          caretContextOutcome: m?.caretContextOutcome,
-          caretCaptureRetried: m?.caretCaptureRetried,
-          caretCaptureRetryMs: m?.caretCaptureRetryMs,
-          repairRules: m?.repairRules,
-          payloadKind: m?.pastePayloadKind,
-          axDeclineReason: m?.axDeclineReason,
-          axSettability: m?.axSettability,
-          languageResolutionSource: m?.languageResolutionSource,
-          languageConfidenceBucket: m?.languageConfidenceBucket,
-          casingDeadlinePhase: m?.casingDeadlinePhase,
-          casingLanguageMs: m?.casingLanguageMs,
-          casingOracleFetchMs: m?.casingOracleFetchMs,
-          casingRepairMs: m?.casingRepairMs,
-          casingOracleClosure: m?.casingOracleClosure,
-          casingOracleInflightMs: m?.casingOracleInflightMs,
-          casingOracleClosuresCompleted: m?.casingOracleClosuresCompleted,
-          casingOracleClosureMaxMs: m?.casingOracleClosureMaxMs),
-        takeID: takeID)
     }
   }
 
@@ -1330,8 +1336,8 @@ public final class TelemetryService {
   /// which is its own terminal. Anyone deriving an ASR-impact rate must select
   /// reasons explicitly rather than counting this label.
   ///
-  /// **Count DISTINCT `take_id`, never rows.** A healthy take also emits an
-  /// `asr.completed` stage row; adding event counts double-counts it.
+  /// **Count DISTINCT `take_id`, never rows.** A healthy take also emits a
+  /// `dictation.completed` row; adding event counts double-counts it.
   ///
   /// The attribution block is present only for `zero_signal` and the
   /// empty-decode terminal — the two terminals #1890 is about. #1920 renamed the
@@ -1611,6 +1617,16 @@ public final class TelemetryService {
     interruptedBy: String? = nil,
     asrSalvageOutcome: String? = nil,
     asrRetryOutcome: String? = nil,
+    /// #2958 phase 2: the facts that rode `asr.completed` until
+    /// `telemetry_policy_version` 2. Present exactly when that row used to
+    /// fire (ASR latency measured); nil omits every key.
+    asr: AsrCompletionTelemetry? = nil,
+    /// #2958 phase 2: the facts that rode `paste.completed`. `pasteLatencyMs`
+    /// is the population marker a reader filters on (`paste_result` alone is
+    /// wider: it is set from the tier with or without a latency); the
+    /// insertion fields travel only alongside it.
+    pasteLatencyMs: Int? = nil,
+    pasteInsertion: PasteInsertionTelemetry = .init(),
     /// #1846: which dictation this event belongs to. Omit-when-nil.
     takeID: String? = nil
   ) {
@@ -1704,6 +1720,27 @@ public final class TelemetryService {
     // Set BEFORE the hook below, which now DERIVES from `props` — a line added
     // after it would ship to PostHog and be invisible to every test.
     if let irs = inputResolutionSource { props["input_resolution_source"] = irs }
+    // #2958 phase 2: the ASR and paste facts that were their own rows. Every
+    // folded key is unique on this row (`cold_start` / `char_count` take the
+    // `asr_` prefix; `backend`, `result`, `tier`, `latency_*`, `$value`,
+    // `target_app`, `take_id` were copies of keys above and are dropped). The
+    // assert keeps that true when a key is added on either side.
+    if let asr {
+      assert(
+        Set(asr.properties.keys).isDisjoint(with: props.keys),
+        "asr fold collides with a dictation.completed key")
+      props.merge(asr.properties) { current, _ in current }
+    }
+    if let ms = pasteLatencyMs {
+      props["paste_latency_ms"] = ms
+      // Same family as `asr_seconds` / `llm_seconds` (RULE:
+      // value-slot-carries-seconds-for-durations); `$value` stays e2e.
+      props["paste_seconds"] = Double(ms) / 1000.0
+      assert(
+        Set(pasteInsertion.properties.keys).isDisjoint(with: props.keys),
+        "paste fold collides with a dictation.completed key")
+      props.merge(pasteInsertion.properties) { current, _ in current }
+    }
     #if DEBUG
       // #1846: the hook now DERIVES from the payload that PostHog receives.
       // `reportDictationCompleted` previously built a parallel `hookStringProps`
@@ -2165,95 +2202,6 @@ public final class TelemetryService {
     }
   }
 
-  public func asrCompleted(
-    backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int,
-    // #950 tail-trim diagnostic — eligible Parakeet batch only; nil omitted.
-    // Metadata only (Int ms + Bool); no audio/content. `tailDroppedMs` always set
-    // (incl. 0) when eligible so the denominator holds; `tailHadEnergy` only when
-    // a tail was actually dropped.
-    tailDroppedMs: Int? = nil, tailHadEnergy: Bool? = nil,
-    // #950 tail-preserve recovery + tuning signals (omit-on-nil). `tailPreserved`
-    // nil=ineligible / false=eligible-not-preserved / true=recovered;
-    // `tailPreservedMs` = ms appended back; `tailVoicedFraction` = sustained-voice
-    // ratio; `tailRefusedReason` = why an eligible tail was refused. Metadata only.
-    usedTailPreservation: Bool? = nil, recoveredTailMs: Int? = nil,
-    tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil,
-    // #1232 tail-clip telemetry (recalibrated #1236; omit-on-nil; numbers/booleans
-    // only — no audio or text). `tailClipClass` = asr_complete / suspected_asr_drop
-    // / unknown; `asrLastTokenGapMs` = untranscribed-tail drop metric; the rest are
-    // the classifier's lead signals.
-    tailClipClass: String? = nil, captureTrailingSilenceMs: Int? = nil,
-    captureTail200Rms: Double? = nil, captureTail200Peak: Double? = nil,
-    asrInputDurationMs: Int? = nil, asrLastTokenEndMs: Int? = nil,
-    asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil,
-    // #1309 effective-path streaming telemetry (WhisperKit only; omit-on-nil;
-    // metadata only — no audio/content). `streamingRequested` = the kernel's
-    // capability-gate decision; `streamingEffective` = a streaming flush
-    // delivered the transcript; `streamingDegradeReason` = none / disabled /
-    // auto_language / model_not_ready / flush_empty / flush_throw;
-    // `streamingFinalPath` = streaming_flush / clean_batch / fallback_batch /
-    // failed.
-    streamingRequested: Bool? = nil, streamingEffective: Bool? = nil,
-    streamingDegradeReason: String? = nil, streamingFinalPath: String? = nil,
-    streamingDecodeCount: Int? = nil, streamingCoveredSec: Double? = nil,
-    tailDecodeSec: Double? = nil, maxUnconfirmedWindowSec: Double? = nil,
-    stopWhileDecodeInFlight: Bool? = nil,
-    /// #1846: which dictation this event belongs to. Omit-when-nil.
-    takeID: String? = nil
-  ) {
-    var properties: [String: Any] = [
-      "backend": backend,
-      "result": result,
-      "cold_start": coldStart,
-      "latency_seconds": latencySeconds,  // #2980: Double
-      "char_count": charCount,
-      "$value": latencySeconds,
-    ]
-    if let tailDroppedMs { properties["tail_dropped_ms"] = tailDroppedMs }
-    if let tailHadEnergy { properties["tail_had_energy"] = tailHadEnergy }
-    if let usedTailPreservation { properties["tail_preserved"] = usedTailPreservation }
-    if let recoveredTailMs { properties["tail_preserved_ms"] = recoveredTailMs }
-    if let tailVoicedFraction { properties["tail_voiced_fraction"] = tailVoicedFraction }
-    if let tailRefusedReason { properties["tail_refused_reason"] = tailRefusedReason }
-    if let tailClipClass { properties["tail_clip_class"] = tailClipClass }
-    if let captureTrailingSilenceMs {
-      properties["capture_trailing_silence_ms"] = captureTrailingSilenceMs
-    }
-    if let captureTail200Rms { properties["capture_tail_200_rms"] = captureTail200Rms }
-    if let captureTail200Peak { properties["capture_tail_200_peak"] = captureTail200Peak }
-    if let asrInputDurationMs { properties["asr_input_duration_ms"] = asrInputDurationMs }
-    if let asrLastTokenEndMs { properties["asr_last_token_end_ms"] = asrLastTokenEndMs }
-    if let asrLastTokenGapMs { properties["asr_last_token_gap_ms"] = asrLastTokenGapMs }
-    if let asrChunked { properties["asr_chunked"] = asrChunked }
-    if let streamingRequested { properties["streaming_requested"] = streamingRequested }
-    if let streamingEffective { properties["streaming_effective"] = streamingEffective }
-    if let streamingDegradeReason {
-      properties["streaming_degrade_reason"] = streamingDegradeReason
-    }
-    if let streamingFinalPath { properties["final_path"] = streamingFinalPath }
-    if let streamingDecodeCount { properties["streaming_decode_count"] = streamingDecodeCount }
-    if let streamingCoveredSec { properties["streaming_covered_sec"] = streamingCoveredSec }
-    if let tailDecodeSec { properties["tail_decode_sec"] = tailDecodeSec }
-    if let maxUnconfirmedWindowSec {
-      properties["max_unconfirmed_window_sec"] = maxUnconfirmedWindowSec
-    }
-    if let stopWhileDecodeInFlight {
-      properties["stop_while_decode_in_flight"] = stopWhileDecodeInFlight
-    }
-    if let takeID { properties["take_id"] = takeID }
-    #if DEBUG
-      // #1846: derived from the emitted payload, never a parallel dictionary.
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "asr.completed",
-          stringProps: properties.compactMapValues { $0 as? String },
-          intProps: properties.compactMapValues { $0 as? Int },
-          doubleProps: properties.compactMapValues { $0 as? Double },
-          boolProps: properties.compactMapValues { $0 as? Bool }))
-    #endif
-    PostHogSDK.shared.capture("asr.completed", properties: properties)
-  }
-
   public func llmPolishCompleted(
     provider: String, model: String?,
     result: String, latencySeconds: Double,
@@ -2430,8 +2378,8 @@ public final class TelemetryService {
   /// converting it loses nothing.
   /// How many copies of one dictation landed (#2652).
   ///
-  /// A SEPARATE event rather than a field on `paste.completed`, because the verdict is only
-  /// available after a settle window that `paste.completed` must not wait for — delaying an
+  /// A SEPARATE event rather than a field on `dictation.completed`, because the verdict is only
+  /// available after a settle window that `dictation.completed` must not wait for — delaying an
   /// existing latency metric to carry a new one would corrupt it, and a stalled probe would cost
   /// us an otherwise valid completion. Joined on `take_id`. **Either arrival order is permitted;
   /// no query may assume one.**
@@ -2439,7 +2387,7 @@ public final class TelemetryService {
   /// **Lengths never leave the Mac.** The arithmetic runs locally and only its verdict is sent.
   /// Field counts describe the size of whatever document the user is working in, which has nothing
   /// to do with dictation, so shipping one would widen exposure beyond
-  /// `asr.completed.char_count`, which describes only dictated output.
+  /// `dictation.completed.asr_char_count`, which describes only dictated output.
   ///
   /// Machine characteristics are deliberately NOT repeated here: `app.launched` already carries
   /// `os_version` and `device_model`, joinable by `distinct_id`. Repeating them per delivery would
@@ -2517,47 +2465,144 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("terminal_breaker.tripped", properties: props)
   }
 
-  public func pasteCompleted(
-    tier: String, targetApp: String?, result: String, latencyMs: Int,
-    insertion: PasteInsertionTelemetry = .init(),
-    /// #1846: which dictation this event belongs to. Omit-when-nil.
-    takeID: String? = nil
-  ) {
-    var props: [String: Any] = [
-      "tier": tier,
-      "result": result,
-      "latency_ms": latencyMs,
-      "$value": Double(latencyMs) / 1000.0,
-    ]
-    if let a = targetApp { props["target_app"] = a }
-    props.merge(insertion.properties) { current, _ in current }
-    if let takeID { props["take_id"] = takeID }
-    #if DEBUG
-      // #1846: projected from `props`, not from `insertion.properties`. The old
-      // projection could not see `tier`, `result`, `latency_ms` or `target_app` at
-      // all, so it could not have seen `take_id` either — and a hook that cannot
-      // observe the payload is not a test seam. Strictly wider; nothing removed.
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "paste.completed",
-          stringProps: props.compactMapValues { $0 as? String },
-          intProps: props.compactMapValues { $0 as? Int },
-          doubleProps: props.compactMapValues { $0 as? Double },
-          boolProps: props.compactMapValues { $0 as? Bool }
-        ))
-    #endif
-    PostHogSDK.shared.capture("paste.completed", properties: props)
+  /// ASR facts folded onto `dictation.completed` (#2958 phase 2; they were the
+  /// `asr.completed` row until `telemetry_policy_version` 2). Same reason for
+  /// the shape as `PasteInsertionTelemetry` below: one owner, one test surface.
+  ///
+  /// Key names are the ones the retired row used, except `cold_start` and
+  /// `char_count`, which take the `asr_` prefix on the shared row. Field
+  /// provenance: #950 tail-trim + tail-preserve (`tail_*`), #1232/#1236
+  /// tail-clip classifier (`tail_clip_class`, `capture_tail_*`,
+  /// `asr_last_token_*`), #1309 effective-path streaming (`streaming_*`,
+  /// `final_path`). Numbers, booleans and closed-set names only; never audio
+  /// or text (`sentry-operations.md` RULE: telemetry-privacy-boundary).
+  public struct AsrCompletionTelemetry: Sendable {
+    public let coldStart: Bool
+    public let charCount: Int
+    /// `tailDroppedMs` always set (incl. 0) when eligible so the denominator
+    /// holds; `tailHadEnergy` only when a tail was actually dropped.
+    public let tailDroppedMs: Int?
+    public let tailHadEnergy: Bool?
+    /// `usedTailPreservation` nil = ineligible / false = eligible-not-preserved
+    /// / true = recovered; `recoveredTailMs` = ms appended back.
+    public let usedTailPreservation: Bool?
+    public let recoveredTailMs: Int?
+    public let tailVoicedFraction: Double?
+    public let tailRefusedReason: String?
+    /// asr_complete / suspected_asr_drop / unknown.
+    public let tailClipClass: String?
+    public let captureTrailingSilenceMs: Int?
+    public let captureTail200Rms: Double?
+    public let captureTail200Peak: Double?
+    public let asrInputDurationMs: Int?
+    public let asrLastTokenEndMs: Int?
+    public let asrLastTokenGapMs: Int?
+    public let asrChunked: Bool?
+    /// WhisperKit only. `streamingRequested` = the kernel's capability-gate
+    /// decision; `streamingEffective` = a streaming flush delivered the
+    /// transcript; `streamingDegradeReason` = none / disabled / auto_language /
+    /// model_not_ready / flush_empty / flush_throw; `streamingFinalPath` =
+    /// streaming_flush / clean_batch / fallback_batch / failed.
+    public let streamingRequested: Bool?
+    public let streamingEffective: Bool?
+    public let streamingDegradeReason: String?
+    public let streamingFinalPath: String?
+    public let streamingDecodeCount: Int?
+    public let streamingCoveredSec: Double?
+    public let tailDecodeSec: Double?
+    public let maxUnconfirmedWindowSec: Double?
+    public let stopWhileDecodeInFlight: Bool?
+
+    public init(
+      coldStart: Bool, charCount: Int,
+      tailDroppedMs: Int? = nil, tailHadEnergy: Bool? = nil,
+      usedTailPreservation: Bool? = nil, recoveredTailMs: Int? = nil,
+      tailVoicedFraction: Double? = nil, tailRefusedReason: String? = nil,
+      tailClipClass: String? = nil, captureTrailingSilenceMs: Int? = nil,
+      captureTail200Rms: Double? = nil, captureTail200Peak: Double? = nil,
+      asrInputDurationMs: Int? = nil, asrLastTokenEndMs: Int? = nil,
+      asrLastTokenGapMs: Int? = nil, asrChunked: Bool? = nil,
+      streamingRequested: Bool? = nil, streamingEffective: Bool? = nil,
+      streamingDegradeReason: String? = nil, streamingFinalPath: String? = nil,
+      streamingDecodeCount: Int? = nil, streamingCoveredSec: Double? = nil,
+      tailDecodeSec: Double? = nil, maxUnconfirmedWindowSec: Double? = nil,
+      stopWhileDecodeInFlight: Bool? = nil
+    ) {
+      self.coldStart = coldStart
+      self.charCount = charCount
+      self.tailDroppedMs = tailDroppedMs
+      self.tailHadEnergy = tailHadEnergy
+      self.usedTailPreservation = usedTailPreservation
+      self.recoveredTailMs = recoveredTailMs
+      self.tailVoicedFraction = tailVoicedFraction
+      self.tailRefusedReason = tailRefusedReason
+      self.tailClipClass = tailClipClass
+      self.captureTrailingSilenceMs = captureTrailingSilenceMs
+      self.captureTail200Rms = captureTail200Rms
+      self.captureTail200Peak = captureTail200Peak
+      self.asrInputDurationMs = asrInputDurationMs
+      self.asrLastTokenEndMs = asrLastTokenEndMs
+      self.asrLastTokenGapMs = asrLastTokenGapMs
+      self.asrChunked = asrChunked
+      self.streamingRequested = streamingRequested
+      self.streamingEffective = streamingEffective
+      self.streamingDegradeReason = streamingDegradeReason
+      self.streamingFinalPath = streamingFinalPath
+      self.streamingDecodeCount = streamingDecodeCount
+      self.streamingCoveredSec = streamingCoveredSec
+      self.tailDecodeSec = tailDecodeSec
+      self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec
+      self.stopWhileDecodeInFlight = stopWhileDecodeInFlight
+    }
+
+    /// Absent facts are OMITTED, never sent as a placeholder.
+    public var properties: [String: Any] {
+      var out: [String: Any] = [
+        "asr_cold_start": coldStart,
+        "asr_char_count": charCount,
+      ]
+      if let tailDroppedMs { out["tail_dropped_ms"] = tailDroppedMs }
+      if let tailHadEnergy { out["tail_had_energy"] = tailHadEnergy }
+      if let usedTailPreservation { out["tail_preserved"] = usedTailPreservation }
+      if let recoveredTailMs { out["tail_preserved_ms"] = recoveredTailMs }
+      if let tailVoicedFraction { out["tail_voiced_fraction"] = tailVoicedFraction }
+      if let tailRefusedReason { out["tail_refused_reason"] = tailRefusedReason }
+      if let tailClipClass { out["tail_clip_class"] = tailClipClass }
+      if let captureTrailingSilenceMs {
+        out["capture_trailing_silence_ms"] = captureTrailingSilenceMs
+      }
+      if let captureTail200Rms { out["capture_tail_200_rms"] = captureTail200Rms }
+      if let captureTail200Peak { out["capture_tail_200_peak"] = captureTail200Peak }
+      if let asrInputDurationMs { out["asr_input_duration_ms"] = asrInputDurationMs }
+      if let asrLastTokenEndMs { out["asr_last_token_end_ms"] = asrLastTokenEndMs }
+      if let asrLastTokenGapMs { out["asr_last_token_gap_ms"] = asrLastTokenGapMs }
+      if let asrChunked { out["asr_chunked"] = asrChunked }
+      if let streamingRequested { out["streaming_requested"] = streamingRequested }
+      if let streamingEffective { out["streaming_effective"] = streamingEffective }
+      if let streamingDegradeReason { out["streaming_degrade_reason"] = streamingDegradeReason }
+      if let streamingFinalPath { out["final_path"] = streamingFinalPath }
+      if let streamingDecodeCount { out["streaming_decode_count"] = streamingDecodeCount }
+      if let streamingCoveredSec { out["streaming_covered_sec"] = streamingCoveredSec }
+      if let tailDecodeSec { out["tail_decode_sec"] = tailDecodeSec }
+      if let maxUnconfirmedWindowSec {
+        out["max_unconfirmed_window_sec"] = maxUnconfirmedWindowSec
+      }
+      if let stopWhileDecodeInFlight {
+        out["stop_while_decode_in_flight"] = stopWhileDecodeInFlight
+      }
+      return out
+    }
   }
 
-  /// Cursor-aware insertion fields for `paste.completed` (#1785, extended #1921,
-  /// #1980).
+  /// Cursor-aware insertion fields for `dictation.completed` (#1785, extended
+  /// #1921, #1980; on `paste.completed` until #2958 phase 2 folded that row).
   ///
   /// A separate value rather than individual parameters so the projection has
-  /// one owner and one test surface: `paste.completed` is emitted from a
-  /// metrics projection, and loose optionals threaded through it is how
-  /// one of them eventually gets dropped without any test noticing. #1921 and
-  /// #1980 each added two of them, which is exactly the growth this shape was
-  /// chosen to absorb.
+  /// one owner and one test surface: the row is emitted from a metrics
+  /// projection, and loose optionals threaded through it is how one of them
+  /// eventually gets dropped without any test noticing. #1921 and #1980 each
+  /// added two of them, which is exactly the growth this shape was chosen to
+  /// absorb.
   ///
   /// Every field is a shape or a closed-set name. `repairRules` carries reasons
   /// (`case_skipped:protected_word`) and never the word a reason applied to,
@@ -3161,7 +3206,7 @@ public final class TelemetryService {
   }
 
   /// Emitted per transcription: surfaces real-time factor per language+model for
-  /// per-language perf dashboards. Kept separate from `asr.completed` (generic) so
+  /// per-language perf dashboards. Kept separate from `dictation.completed` (generic) so
   /// the multilingual dashboard can slice by lang without schema churn elsewhere.
   ///
   /// #2060: `$value` holds `msPerAudioSecond`, a RATE, not a duration — decided
@@ -4017,7 +4062,7 @@ public final class TelemetryService {
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)
 
   /// The record-start boundaries below light the previously dark interval between
-  /// `dictation.invoked` and `asr.completed`. #1780 crashed inside the first
+  /// `dictation.invoked` and `dictation.completed`. #1780 crashed inside the first
   /// VAD chunk and had to be reconstructed from crash-dump thread states
   /// because nothing in that window was observable in a release build.
   ///
