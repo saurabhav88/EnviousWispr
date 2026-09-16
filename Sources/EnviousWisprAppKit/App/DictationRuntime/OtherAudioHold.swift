@@ -140,8 +140,15 @@ final class OtherAudioHold {
     mode: OtherAudioWhileDictating, backend: OtherAudioBackend, startDelay: TimeInterval
   ) {
     let volume = deps.effects.volume
-    guard let deviceID = deps.defaultOutputDeviceID(), let device = volume.identity(of: deviceID)
-    else {
+    let device = deps.defaultOutputDeviceID().flatMap { volume.identity(of: $0) }
+    // Pause music needs no output device (cloud review, PR #3000): a Mac with no
+    // default output, or one mid-switch, still gets its player paused. The
+    // volume modes cannot run without one.
+    guard let device = device, mode != .pauseMusic else {
+      if mode == .pauseMusic {
+        beginMediaOnly(backend: backend)
+        return
+      }
       deps.log("hold skipped mode=\(mode.rawValue) reason=no_output_device")
       deps.telemetry.recordTakeSummary(
         OtherAudioTakeSummary(
@@ -260,6 +267,35 @@ final class OtherAudioHold {
       }
       self.apply(holdID: holdID)
     }
+  }
+
+  /// `Pause music` with no readable output device: the same record-first
+  /// shape with an empty device snapshot (no property will ever be applied, so
+  /// nothing is restored against it) and transport `none`.
+  private func beginMediaOnly(backend: OtherAudioBackend) {
+    let mode = OtherAudioWhileDictating.pauseMusic
+    let record = OtherAudioHoldRecord(
+      id: UUID(), pid: deps.pid, mode: mode.rawValue, createdAt: Date(),
+      original: OutputVolumeSnapshot(deviceUID: ""), volume: .notApplied, mute: .notApplied,
+      media: .pending)
+    let t0 = deps.nowMicros()
+    do {
+      try deps.store.write(record)
+    } catch {
+      deps.log("hold skipped mode=\(mode.rawValue) reason=record_failed")
+      deps.telemetry.breadcrumb(
+        "other_audio record_failed", data: ["mode": mode.rawValue, "error": Self.errorClass(error)])
+      deps.telemetry.recordTakeSummary(
+        OtherAudioTakeSummary(
+          mode: mode.rawValue, volume: .notApplied, mute: .notApplied, media: .nothingPaused,
+          outputTransport: "none", failure: "record_failed"))
+      return
+    }
+    var current = Live(record: record, backend: backend, transport: "none")
+    current.recordMicros = deps.nowMicros() - t0
+    live = current
+    deps.log("hold id=\(record.id) opened mode=\(mode.rawValue) device=none record_us=\(current.recordMicros ?? 0)")
+    startMediaPause(holdID: record.id)
   }
 
   // MARK: - Apply (P2, P3, P4)

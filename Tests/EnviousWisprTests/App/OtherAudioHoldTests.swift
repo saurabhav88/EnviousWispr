@@ -450,6 +450,29 @@ struct OtherAudioHoldTests {
     #expect(fallback.sink.crumbs.contains("other_audio media route"))
   }
 
+  @Test("Pause music runs with no output device at all; the volume modes do not")
+  func pauseMusicNeedsNoOutputDevice() async {
+    let rig = Rig()
+    rig.volume.device = nil
+    rig.media.pauseOutcome = MediaPauseOutcome(
+      .paused(targets: ["adapter:com.google.Chrome\u{1F}yt\u{1F}"]), route: .adapter)
+    rig.media.resumeOutcome = .resumed
+    await rig.start(.pauseMusic)
+    #expect(rig.records().first?.media == .pending, "the take opened without a device")
+    #expect(rig.media.resumed.isEmpty, "not yet ended")
+    rig.stop()
+    #expect(rig.sink.summaries.last?.media == .resumed || rig.sink.mediaSettled.last == .resumed)
+    #expect(rig.sink.summaries.last?.outputTransport == "none")
+    #expect(rig.sink.summaries.last?.failure == nil)
+    #expect(rig.records().isEmpty)
+
+    let muteRig = Rig()
+    muteRig.volume.device = nil
+    await muteRig.start(.mute)
+    #expect(muteRig.sink.summaries.last?.failure == "no_output_device")
+    #expect(muteRig.records().isEmpty)
+  }
+
   @Test("Pause music with nothing playing settles at once and needs no resume")
   func pauseMusicNothingPlaying() async {
     let rig = Rig()

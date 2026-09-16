@@ -165,7 +165,8 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
     queue.async { [self] in
       let outcome = resumeOnQueue(
         targets.filter {
-          Self.targets.contains($0) || $0.hasPrefix(MediaRemoteAdapter.targetPrefix)
+          Self.targets.contains(Self.scriptedParts(of: $0).bundleID)
+            || $0.hasPrefix(MediaRemoteAdapter.targetPrefix)
         })
       Task { @MainActor in completion(outcome) }
     }
@@ -277,9 +278,13 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
       // the take ended would be a new effect, not a late completion.
       guard mayIssue(holdID: holdID, started: started) else { break }
       guard playerState(target) == .playing else { continue }
+      // The TRACK, not just the player: a resume must not start a different
+      // track the user paused mid-take (cloud review, PR #3000).
+      guard mayIssue(holdID: holdID, started: started) else { break }
+      let trackID = trackID(target)
       guard mayIssue(holdID: holdID, started: started) else { break }
       if env.run("tell application id \"\(target)\" to pause") != nil {
-        paused.append(target)
+        paused.append(Self.scriptedTarget(bundleID: target, trackID: trackID))
         // Recorded per target, immediately: a later target's failure never
         // erases an earlier success, and a resume queued behind reads this.
         let recorded = paused
@@ -319,6 +324,15 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
     switch adapterGet() {
     case .paused(let now):
       guard Self.matches(now, source) else { return .sourceChanged }
+      // Same item, but the user played and re-paused it (or a same-title tab
+      // sits elsewhere in its timeline): the frozen position moved. Their
+      // pause, not ours (cloud review, PR #3000). Unknown on either side skips
+      // the check.
+      if let then = source.elapsed, let now = now.elapsed,
+        abs(now - then) > MediaRemoteAdapter.elapsedTolerance
+      {
+        return .sourceChanged
+      }
       return adapterSend(MediaRemoteAdapter.playCommand) ? .resumed : .failed
     case .playing(let now):
       // The user already resumed our item (M3); a different playing app or
@@ -347,29 +361,59 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
         }
         continue
       }
-      guard env.isRunning(target) else { continue }
-      switch env.consent(target) {
+      let (bundle, recordedTrack) = Self.scriptedParts(of: target)
+      guard env.isRunning(bundle) else { continue }
+      switch env.consent(bundle) {
       case .granted: break
       case .notRunning: continue
       case .needed, .denied:
         failed = true
         continue
       }
-      switch playerState(target) {
+      switch playerState(bundle) {
       case .playing, .stopped:
         continue  // the user already resumed or stopped it
       case .unknown:
         failed = true
         continue
       case .paused:
-        guard env.isRunning(target) else { continue }
-        if env.run("tell application id \"\(target)\" to play") == nil {
+        // Same track as the one we paused, or nothing is sent: the user paused
+        // a different one themselves. Two unreadable ids compare equal (v1).
+        guard trackID(bundle) == recordedTrack else {
+          sourceChanged = true
+          continue
+        }
+        guard env.isRunning(bundle) else { continue }
+        if env.run("tell application id \"\(bundle)\" to play") == nil {
           failed = true
         }
       }
     }
     if failed { return .failed }
     return sourceChanged ? .sourceChanged : .resumed
+  }
+
+  /// A scripted target string: the bundle id, and when the pause could read it,
+  /// the track id after `MediaRemoteAdapter.fieldSeparator` (never in an id).
+  package nonisolated static func scriptedTarget(bundleID: String, trackID: String?) -> String {
+    guard let trackID, !trackID.isEmpty else { return bundleID }
+    return bundleID + MediaRemoteAdapter.fieldSeparator + trackID
+  }
+
+  package nonisolated static func scriptedParts(of target: String) -> (bundleID: String, trackID: String?) {
+    let parts = target.components(separatedBy: MediaRemoteAdapter.fieldSeparator)
+    guard parts.count >= 2, !parts[1].isEmpty else { return (parts[0], nil) }
+    return (parts[0], parts[1])
+  }
+
+  /// Each player's stable track identity in its own dictionary: Spotify's `id`
+  /// (`spotify:track:…`), Music's `persistent ID`. nil when there is no current
+  /// track or the read fails.
+  private nonisolated func trackID(_ bundleID: String) -> String? {
+    let property = bundleID == "com.apple.Music" ? "persistent ID" : "id"
+    let value = env.run("tell application id \"\(bundleID)\" to \(property) of current track")?
+      .stringValue
+    return (value?.isEmpty == false) ? value : nil
   }
 
   private nonisolated func mayIssue(holdID: UUID, started: Date) -> Bool {

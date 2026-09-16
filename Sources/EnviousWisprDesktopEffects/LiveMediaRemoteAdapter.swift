@@ -56,11 +56,18 @@ package struct MediaRemoteAdapter: Sendable {
   package struct Source: Equatable, Sendable {
     package var bundleID: String
     package var identity: String?
-    package init(bundleID: String, identity: String?) {
+    /// The playback position (seconds) at the read; frozen while paused, so a
+    /// resume can tell our pause from one the user made later on the same item.
+    package var elapsed: Double?
+    package init(bundleID: String, identity: String?, elapsed: Double? = nil) {
       self.bundleID = bundleID
       self.identity = identity
+      self.elapsed = elapsed
     }
   }
+
+  /// Positions further apart than this are two different pauses.
+  package static let elapsedTolerance: Double = 2.0
 
   package enum NowPlayingRead: Equatable, Sendable {
     case playing(Source)
@@ -70,23 +77,25 @@ package struct MediaRemoteAdapter: Sendable {
   }
 
   /// The string a hold record keeps for an adapter-paused source, so an orphan
-  /// resume after a crash has the same gate as a live one. Bundle ids never
-  /// contain `|`; an identity may, so only the FIRST `|` splits.
+  /// resume after a crash has the same gate as a live one:
+  /// `adapter:` bundle SEP identity SEP elapsed, with the ASCII unit separator
+  /// (U+001F) between fields, which no bundle id, title or number contains.
   package static let targetPrefix = "adapter:"
+  package static let fieldSeparator = "\u{1F}"
 
   package static func target(for source: Source) -> String {
-    targetPrefix + source.bundleID + (source.identity.map { "|" + $0 } ?? "")
+    let elapsed = source.elapsed.map { String($0) } ?? ""
+    return targetPrefix + source.bundleID + fieldSeparator + (source.identity ?? "")
+      + fieldSeparator + elapsed
   }
 
   package static func source(fromTarget target: String) -> Source? {
     guard target.hasPrefix(targetPrefix) else { return nil }
-    let body = target.dropFirst(targetPrefix.count)
-    guard let bar = body.firstIndex(of: "|") else {
-      return body.isEmpty ? nil : Source(bundleID: String(body), identity: nil)
-    }
-    let bundle = String(body[..<bar])
-    guard !bundle.isEmpty else { return nil }
-    return Source(bundleID: bundle, identity: String(body[body.index(after: bar)...]))
+    let parts = target.dropFirst(targetPrefix.count).components(separatedBy: fieldSeparator)
+    guard let bundle = parts.first, !bundle.isEmpty else { return nil }
+    let identity = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
+    let elapsed = parts.count > 2 ? Double(parts[2]) : nil
+    return Source(bundleID: bundle, identity: identity, elapsed: elapsed)
   }
 
   package let scriptURL: URL
@@ -151,7 +160,8 @@ package struct MediaRemoteAdapter: Sendable {
     // untitled audio only.
     let title = (dict["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     let itemID = (dict["contentItemIdentifier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    let source = Source(bundleID: bundleID, identity: title ?? itemID)
+    let elapsed = (dict["elapsedTime"] as? NSNumber)?.doubleValue
+    let source = Source(bundleID: bundleID, identity: title ?? itemID, elapsed: elapsed)
     return playing ? .playing(source) : .paused(source)
   }
 
