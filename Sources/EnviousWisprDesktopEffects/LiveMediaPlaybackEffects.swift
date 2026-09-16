@@ -16,14 +16,20 @@ import os
 /// Nothing is ever started by mistake on either route: `play` is sent only to a
 /// source WE paused that a fresh read still reports paused.
 ///
-/// Every Apple event runs on ONE serial background queue, never on the main
-/// actor: a TCC Automation prompt blocks the thread it is raised on. A pause and
-/// its resume are keyed by hold id; `resume` marks the hold ended UNDER A LOCK
-/// before enqueueing, and the pause work item checks that mark at its start and
-/// before each target event, so a take that ended while consent or a slow player
-/// blocked the queue issues no further events. Cancellation cannot interrupt an
-/// event already executing, so a pause that completes late still records what it
-/// paused, and the resume queued behind it undoes exactly that.
+/// Ordering lives on ONE serial background queue; the script itself does not.
+/// `NSAppleScript` is a main-thread-only class (Apple's Thread Safety Summary;
+/// cloud review, PR #3000), so `liveRun` hops each script to the main thread,
+/// wrapped in an AppleScript `with timeout` so a hung player bounds the stall,
+/// and returns to the queue. A consent prompt would block the thread it is
+/// raised on, so the prompt is never a script: it is raised through the C
+/// permission API on its own `consentQueue`, and a script is sent only to a
+/// player whose consent already reads granted. A pause and its resume are keyed
+/// by hold id; `resume` marks the hold ended UNDER A LOCK before enqueueing, and
+/// the pause work item checks that mark at its start and before each target
+/// event, so a take that ended while a slow player blocked the queue issues no
+/// further events. Cancellation cannot interrupt an event already executing, so
+/// a pause that completes late still records what it paused, and the resume
+/// queued behind it undoes exactly that.
 @MainActor
 package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
   package nonisolated static let targets = ["com.apple.Music", "com.spotify.client"]
@@ -429,10 +435,22 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
 
   // MARK: - Live OS touches
 
+  /// A player that never answers would otherwise hold the main thread for
+  /// AppleScript's default two minutes. Not measured against a hung player;
+  /// the wrapper is AppleScript's own reply timeout.
+  package nonisolated static let scriptTimeoutSeconds = 2
+
+  /// Main thread only (`NSAppleScript`). Called from the serial queue, which
+  /// nothing on the main actor ever waits on, so the synchronous hop cannot
+  /// deadlock; a main-thread caller runs it in place.
   private nonisolated static func liveRun(_ source: String) -> NSAppleEventDescriptor? {
-    var error: NSDictionary?
-    let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
-    return error == nil ? result : nil
+    let wrapped = "with timeout of \(scriptTimeoutSeconds) seconds\n\(source)\nend timeout"
+    let body: () -> NSAppleEventDescriptor? = {
+      var error: NSDictionary?
+      let result = NSAppleScript(source: wrapped)?.executeAndReturnError(&error)
+      return error == nil ? result : nil
+    }
+    return Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body)
   }
 
   private nonisolated static func liveConsent(_ bundleID: String) -> ConsentState {
