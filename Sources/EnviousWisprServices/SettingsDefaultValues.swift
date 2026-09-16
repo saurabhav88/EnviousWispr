@@ -161,4 +161,6 @@ enum SettingsDefaultValues {
   // merging), so no installed base has an implicit old pairing to protect.
   static let playRecordingSounds = true
   static let recordingSoundPairing: RecordingSoundPairing = .whisperTick
+  /// #1413: off by default — nobody's Mac changes until they pick a mode.
+  static let otherAudioWhileDictating: OtherAudioWhileDictating = .nothing
 }

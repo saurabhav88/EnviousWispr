@@ -44,6 +44,11 @@ struct RecordingSoundCueTests {
     #expect(format.channelCount == 1)
     #expect(format.sampleRate == 44_100)
     #expect((0.05...0.30).contains(duration))
+    // #1413: the other-audio hold delays its apply by this constant so the start
+    // cue is never cut. A start asset longer than it would be muted mid-cue.
+    if moment == .start {
+      #expect(duration <= RecordingSoundCue.longestStartCueSeconds)
+    }
 
     let buffer = try #require(
       AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)))

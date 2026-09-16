@@ -39,6 +39,12 @@ struct RecordingSoundCue {
     _ moment: RecordingSoundMoment
   ) -> Bool
 
+  /// #1413: an upper bound on every `*_start.wav`, bound by
+  /// `RecordingSoundCueTests.recordingSoundAssetIsUsable`. The other-audio hold
+  /// waits this long after the start cue is INVOKED before lowering the output,
+  /// so the cue is not cut; the longest start asset measures 0.20 s.
+  static let longestStartCueSeconds: TimeInterval = 0.25
+
   private var activePairingByBackend: [Backend: RecordingSoundPairing] = [:]
   private let playback: Playback
 

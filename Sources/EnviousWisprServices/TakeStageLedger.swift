@@ -34,6 +34,8 @@ struct TakeStageSummary: Equatable {
   var monitorToFirstChunkMs: Double?
   var firstChunkLatencyMs: Double?
   var firstChunkShouldStop: Bool?
+  /// #1413: what the other-audio hold did for this take, written at its restore.
+  var otherAudio: OtherAudioTerminalFacts?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -47,6 +49,62 @@ struct TakeStageSummary: Equatable {
     if let monitorToFirstChunkMs { out["vad_monitor_to_first_chunk_ms"] = monitorToFirstChunkMs }
     if let firstChunkLatencyMs { out["vad_first_chunk_latency_ms"] = firstChunkLatencyMs }
     if let firstChunkShouldStop { out["vad_first_chunk_should_stop"] = firstChunkShouldStop }
+    if let otherAudio { out.merge(otherAudio.terminalProperties) { current, _ in current } }
+    return out
+  }
+}
+
+/// #1413. The other-audio facts that ride on `dictation.terminal`: zero new rows,
+/// a handful of closed-vocabulary properties on a row already paid for, and only
+/// for takes whose mode was not `nothing`. A timing whose operation did not run
+/// is nil and stays absent on the wire.
+public struct OtherAudioTerminalFacts: Equatable, Sendable {
+  public var mode: String
+  public var volume: String
+  public var mute: String
+  public var media: String
+  public var outputTransport: String?
+  public var applyMicros: Int?
+  public var restoreMicros: Int?
+  public var recordMicros: Int?
+  public var failure: String?
+  /// v1.1: `adapter` / `scripted` / `none`, which media route answered the
+  /// pause, and the adapter's bounded failure class (`load`, `timeout`, `exit`,
+  /// `parse`, `send`) when it was tried and failed. The fleet-wide "did an OS
+  /// update turn the adapter off" question is answered here, never by Sentry.
+  public var mediaRoute: String?
+  public var adapterFailure: String?
+
+  public init(
+    mode: String, volume: String, mute: String, media: String, outputTransport: String? = nil,
+    applyMicros: Int? = nil, restoreMicros: Int? = nil, recordMicros: Int? = nil,
+    failure: String? = nil, mediaRoute: String? = nil, adapterFailure: String? = nil
+  ) {
+    self.mode = mode
+    self.volume = volume
+    self.mute = mute
+    self.media = media
+    self.outputTransport = outputTransport
+    self.applyMicros = applyMicros
+    self.restoreMicros = restoreMicros
+    self.recordMicros = recordMicros
+    self.failure = failure
+    self.mediaRoute = mediaRoute
+    self.adapterFailure = adapterFailure
+  }
+
+  var terminalProperties: [String: Any] {
+    var out: [String: Any] = [
+      "other_audio_mode": mode, "other_audio_volume": volume, "other_audio_mute": mute,
+      "other_audio_media": media,
+    ]
+    if let outputTransport { out["other_audio_output_transport"] = outputTransport }
+    if let applyMicros { out["other_audio_apply_us"] = applyMicros }
+    if let restoreMicros { out["other_audio_restore_us"] = restoreMicros }
+    if let recordMicros { out["other_audio_record_us"] = recordMicros }
+    if let failure { out["other_audio_failure"] = failure }
+    if let mediaRoute { out["other_audio_media_route"] = mediaRoute }
+    if let adapterFailure { out["other_audio_adapter_failure"] = adapterFailure }
     return out
   }
 }
@@ -106,6 +164,20 @@ final class TakeStageLedger: @unchecked Sendable {
       mutate(&entry)
       entries[takeID] = entry
       return true
+    }
+  }
+
+  /// #1413: mutates the MOST RECENTLY OPENED entry and returns its take id, or nil
+  /// when nothing is open. The other-audio hold has no take id of its own (no
+  /// existing handoff carries one to the coordinator), and exactly one take is in
+  /// flight when its restore runs, so the newest open entry is that take.
+  @discardableResult
+  func updateNewest(_ mutate: (inout TakeStageSummary) -> Void) -> String? {
+    lock.withLock {
+      guard let takeID = order.last, var entry = entries[takeID] else { return nil }
+      mutate(&entry)
+      entries[takeID] = entry
+      return takeID
     }
   }
 

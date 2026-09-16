@@ -45,6 +45,9 @@ struct DesktopEffectIsolationFreezeTests {
     "LiveOverlayPanelDriver",
     "LiveWorkspaceObserver",
     "LiveRelocationRelauncher",
+    // #1413: the output-volume writer and the Music/Spotify scripter.
+    "LiveOutputVolumeEffects",
+    "LiveMediaPlaybackEffects",
   ]
 
   private static let bannedModule = "EnviousWisprDesktopEffects"

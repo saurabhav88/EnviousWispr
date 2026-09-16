@@ -68,6 +68,7 @@ public final class SettingsManager {
     case showBluetoothTips
     case playRecordingSounds
     case recordingSoundPairing
+    case otherAudioWhileDictating
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -112,6 +113,7 @@ public final class SettingsManager {
     "overlayPillPosition",
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
+    "otherAudioWhileDictating",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
   ]
@@ -822,6 +824,16 @@ public final class SettingsManager {
     }
   }
 
+  /// #1413: what happens to other audio while a dictation records. UI-only —
+  /// no pipeline sync; snapshotted per-recording by `OtherAudioHold` at the
+  /// `.recording` transition, so a change mid-take applies to the NEXT take.
+  public var otherAudioWhileDictating: OtherAudioWhileDictating {
+    didSet {
+      defaults.set(otherAudioWhileDictating.rawValue, forKey: "otherAudioWhileDictating")
+      onChange?(.otherAudioWhileDictating)
+    }
+  }
+
   public var isDebugModeEnabled: Bool {
     didSet {
       defaults.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
@@ -1276,6 +1288,11 @@ public final class SettingsManager {
       RecordingSoundPairing(
         rawValue: defaults.string(forKey: "recordingSoundPairing") ?? ""
       ) ?? SettingsDefaultValues.recordingSoundPairing
+
+    otherAudioWhileDictating =
+      OtherAudioWhileDictating(
+        rawValue: defaults.string(forKey: "otherAudioWhileDictating") ?? ""
+      ) ?? SettingsDefaultValues.otherAudioWhileDictating
 
     // What's New: fresh install (nil) defaults to current version so new users aren't badged.
     let storedWhatsNew =

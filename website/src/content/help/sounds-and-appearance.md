@@ -1,13 +1,13 @@
 ---
 title: "Sounds and Appearance"
-description: "Light and dark mode, where the recording bar sits and how it looks, and recording sounds."
+description: "Light and dark mode, where the recording bar sits and how it looks, recording sounds, and what happens to music while you dictate."
 category: "features"
 section: "Appearance and Sounds"
 order: 5
-keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon"]
-updated: 2026-09-05
+keywords: ["sound", "sounds", "beep", "chime", "mute the sound", "turn off sound", "appearance", "theme", "dark mode", "pill", "pill design", "recording pill", "overlay", "bar position", "move the bar", "menu bar icon", "other audio"]
+updated: 2026-09-16
 ---
-Four settings change how EnviousWispr looks and sounds while you use it. None of them affects what you dictate or how accurately it is transcribed.
+Five settings change how EnviousWispr looks and sounds while you use it. The first four affect only looks and sounds, never what you dictate or how accurately it is transcribed. The fifth, Other audio while you dictate, can quiet the music around you, which keeps background sound out of your recording.
 
 ### Light or dark
 
@@ -30,3 +30,7 @@ The same **Appearance** page has a **Recording Pill** row with three designs: **
 A short sound confirms when EnviousWispr starts and stops listening, which helps if you dictate without looking at the screen or you are unsure whether it registered your keybind. This setting is on from the start, using the Whisper Tick pairing. To silence it, go to **Settings**, then select **Sounds**, and switch off **Play recording sounds**.
 
 **Preview a sound.** Select any of the sound pairings on the **Sounds** page and click the preview button to hear each one before you settle on it.
+
+### Other audio while you dictate
+
+What happens to music, a podcast or a video while you dictate (turn it down, mute it, or pause it) is set on the Microphone page. See [Choosing Your Microphone](/help/choosing-your-microphone/).

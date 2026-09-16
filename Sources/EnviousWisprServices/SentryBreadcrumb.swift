@@ -418,6 +418,11 @@ public enum SentryBreadcrumb {
     /// key failed to generate/persist. Non-crash — the recording is byte-identical;
     /// only the safety copy is absent for that take.
     case recoveryKeyStoreFailed = "recovery_key_store_failed"
+    /// #1413: the other-audio hold broke one of its own invariants (a
+    /// disposition outside the plan's tables, a restore attempted without a
+    /// confirmed read-back). A limb: the dictation is untouched; at worst the
+    /// user's volume or a paused player is not put back.
+    case otherAudioDefect = "other_audio_defect"
     /// #1063 PR2: a recovered spool failed to decrypt (missing key, cipher
     /// mismatch, or an empty/torn prefix). Non-crash limb — the orphan is deleted.
     /// #1897: this said "and the user sees 'couldn't recover'". It does not.

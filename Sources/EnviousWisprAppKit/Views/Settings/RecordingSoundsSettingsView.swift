@@ -207,8 +207,6 @@ private struct RecordingSoundPairingCard: View {
   }
 }
 
-// MARK: - Catalog copy
-
 private func displayName(for pairing: RecordingSoundPairing) -> String {
   switch pairing {
   case .dustMote: return "Dust Mote"

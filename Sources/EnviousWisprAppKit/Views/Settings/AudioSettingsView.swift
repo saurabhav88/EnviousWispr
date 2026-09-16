@@ -127,6 +127,10 @@ struct AudioSettingsView: View {
         }
       }
 
+      // #1413: above Readiness (founder, 2026-09-16): the take's other audio
+      // belongs with the microphone, not with the start/stop sounds.
+      OtherAudioSettingsPanel()
+
       BrandedPanel(
         icon: "timer",
         header: "Microphone Readiness",

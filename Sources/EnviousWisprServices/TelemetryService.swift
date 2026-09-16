@@ -204,12 +204,20 @@ public enum ASRRetryDeadlineDisposition: String, Sendable {
 @MainActor
 public final class TelemetryService {
   public static let shared = TelemetryService()
-  private init() {}
+  private init() {
+    takeStages = TakeStageLedger()
+  }
+
+  /// Internal injection so a test can drive the real fold against an isolated
+  /// ledger instead of the shared service (#1413).
+  init(takeStages: TakeStageLedger) {
+    self.takeStages = takeStages
+  }
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
   /// VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
   /// `TakeStageLedger`.
-  let takeStages = TakeStageLedger()
+  let takeStages: TakeStageLedger
 
   #if DEBUG
     /// Test-only observation seam for selected telemetry emissions.
@@ -4085,6 +4093,30 @@ public final class TelemetryService {
         "input_chars": inputChars,
       ]
     )
+  }
+
+  // MARK: - Other audio while dictating (#1413, folded onto the terminal row)
+
+  /// Writes the hold's facts into the open take entry so they ride on that take's
+  /// `dictation.terminal` row. Returns the take id written, or nil when no take is
+  /// open (an error pinned during finalization can close the entry first); a nil
+  /// is a logged no-op, never a second row and never a fabricated value.
+  @discardableResult
+  public func recordOtherAudioTake(_ facts: OtherAudioTerminalFacts) -> String? {
+    takeStages.updateNewest { $0.otherAudio = facts }
+  }
+
+  /// The media half settles later; update ONLY the take that carried the summary.
+  public func updateOtherAudioMedia(
+    takeID: String, media: String, failure: String? = nil, route: String? = nil,
+    adapterFailure: String? = nil
+  ) {
+    takeStages.update(takeID: takeID) {
+      $0.otherAudio?.media = media
+      if let failure { $0.otherAudio?.failure = failure }
+      if let route { $0.otherAudio?.mediaRoute = route }
+      if let adapterFailure { $0.otherAudio?.adapterFailure = adapterFailure }
+    }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

@@ -83,6 +83,14 @@ final class DictationLifecycleCoordinator {
   /// `let` — excluded from the collaborator ceiling by design.
   private var recordingSoundCue = RecordingSoundCue()
 
+  /// #1413: the other-audio hold, the same per-transition slot as the cue. ONE
+  /// instance shared with `DictationRuntime`, which exposes it to the app shell
+  /// for the launch-time orphan adoption and the quit-time finish; this home
+  /// drives it per transition. Held as a `var` like the cue: it is owned
+  /// take-scoped state, not an injected collaborator, and the ceiling counts
+  /// `let`s. nil only in tests that construct the coordinator without one.
+  private var otherAudioHold: OtherAudioHold?
+
   /// #2648 — the running session's claim on the shared ASR-and-polish resource,
   /// handed over by `RecordingStarter` at the moment the session was minted,
   /// **paired with the backend that minted it**.
@@ -185,7 +193,8 @@ final class DictationLifecycleCoordinator {
     lastRecordingResult: LastRecordingResult,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
     recordingLockedAccess: RecordingLockedAccess,
-    releaseEngineClaim: @escaping @MainActor (EngineLease.Token) -> Void
+    releaseEngineClaim: @escaping @MainActor (EngineLease.Token) -> Void,
+    otherAudioHold: OtherAudioHold? = nil
   ) {
     self.application = application
     self.kernelDriver = kernelDriver
@@ -200,6 +209,7 @@ final class DictationLifecycleCoordinator {
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.recordingLockedAccess = recordingLockedAccess
     self.releaseEngineClaim = releaseEngineClaim
+    self.otherAudioHold = otherAudioHold
   }
 
   /// Wire the two pipelines' `onStateChange` callbacks. Called once by the
@@ -357,6 +367,12 @@ final class DictationLifecycleCoordinator {
     // #1171 — every transition refreshes engine status; the terminal ones apply a
     // switch deferred while this recording was active (coordinator-owned).
     onEngineRelevantStateChange()
+    // #1413: BEFORE the cue. On `.recording` this only schedules a delayed apply,
+    // so the start cue is invoked first; on every other state it restores
+    // synchronously, so the stop cue renders at the restored level.
+    otherAudioHold?.handle(
+      newState, backend: .parakeet, mode: settings.otherAudioWhileDictating,
+      startDelay: settings.playRecordingSounds ? RecordingSoundCue.longestStartCueSeconds : 0)
     // #1342: capture-overlap tradeoff documented on `RecordingSoundCue`.
     recordingSoundCue.handle(
       newState, backend: .parakeet,
@@ -429,6 +445,10 @@ final class DictationLifecycleCoordinator {
     onPipelineStateChange?(newState)
     // #1171 — see `handleParakeet`: refresh status + apply a deferred switch on terminal.
     onEngineRelevantStateChange()
+    // #1413: see `handleParakeet` — hold before cue.
+    otherAudioHold?.handle(
+      newState, backend: .whisperKit, mode: settings.otherAudioWhileDictating,
+      startDelay: settings.playRecordingSounds ? RecordingSoundCue.longestStartCueSeconds : 0)
     recordingSoundCue.handle(
       newState, backend: .whisperKit,
       enabled: settings.playRecordingSounds, selectedPairing: settings.recordingSoundPairing)
