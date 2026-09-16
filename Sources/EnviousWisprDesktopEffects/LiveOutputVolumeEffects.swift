@@ -26,23 +26,36 @@ package final class LiveOutputVolumeEffects: OutputVolumeControlling {
   }
 
   /// Every device on the system, input-only and output-only alike.
+  ///
+  /// The size query and the read are two calls, so the list can change between
+  /// them (cloud review, PR #3000): a shrunken list leaves a zero-filled tail,
+  /// a grown one can leave the held output past the buffer. Only the bytes
+  /// CoreAudio wrote back are read, and a failed read or a miss is retried
+  /// (three attempts in all) before the device is reported gone, because a
+  /// `nil` here retires the hold as `skippedDeviceGone` and leaves the Mac
+  /// lowered or muted.
   package func device(forUID uid: String) -> AudioDeviceID? {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDevices,
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
-    var size: UInt32 = 0
-    guard
-      AudioObjectGetPropertyDataSize(
-        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr
-    else { return nil }
-    let count = Int(size) / MemoryLayout<AudioDeviceID>.size
-    var ids = [AudioDeviceID](repeating: 0, count: count)
-    guard
-      AudioObjectGetPropertyData(
-        AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == noErr
-    else { return nil }
-    return ids.first { Self.uid(of: $0) == uid }
+    let system = AudioObjectID(kAudioObjectSystemObject)
+    let stride = MemoryLayout<AudioDeviceID>.size
+    for _ in 0..<3 {
+      var size: UInt32 = 0
+      guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr
+      else { continue }
+      let count = Int(size) / stride
+      guard count > 0 else { continue }
+      var ids = [AudioDeviceID](repeating: 0, count: count)
+      size = UInt32(count * stride)
+      guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr
+      else { continue }
+      if let device = ids.prefix(Int(size) / stride).first(where: { Self.uid(of: $0) == uid }) {
+        return device
+      }
+    }
+    return nil
   }
 
   package func readVolume(of device: AudioDeviceID) -> OutputPropertyRead<Float> {
