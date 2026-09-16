@@ -16,6 +16,16 @@ import Testing
 /// set (so `per_chunk` cannot be written down at all), a `sampled` treatment that
 /// `TelemetryVolumePolicy.swift` does not implement, and a grandfather count that rises.
 ///
+/// WHAT THIS GUARDS AGAINST, so review rounds do not chase it forever: a session that FORGETS
+/// the volume question. Every direct route to PostHog is closed structurally (an unregistered
+/// name, a swapped grandfather row, a capture in another file, a stored or re-instantiated
+/// singleton, the SDK named as a type, `capture` taken as a function value, a comment inside
+/// the receiver, two sites on one line, a defaulted forwarder argument, a shadowing binding of
+/// any kind, a second call site for a registered name). What a syntax scan cannot see is a
+/// feature calling an EXISTING `TelemetryService` wrapper from a hot path; the rule and code
+/// review own that, and an author working to evade this suite is a review finding, not a
+/// scanner gap.
+///
 /// Same shape as `TestInventoryFreezeTests`: `SwiftParser` over every file under `Sources/`
 /// (so a capture added outside `TelemetryService.swift` is seen), a text registry under `scripts/`, an equality invariant in
 /// both directions, and a ceiling that only ratchets down.
@@ -66,6 +76,8 @@ struct TelemetryEmitterRegistryTests {
     let name: String
     let file: String
     let line: Int
+    /// Two captures on one line are two sites, so the column is part of the identity.
+    let column: Int
   }
 
   // MARK: - Scanner
@@ -103,27 +115,41 @@ struct TelemetryEmitterRegistryTests {
       functionStack.removeLast()
     }
 
+    private func site(_ node: some SyntaxProtocol) -> (line: Int, column: Int) {
+      let location = converter.location(for: node.positionAfterSkippingLeadingTrivia)
+      return (location.line, location.column)
+    }
+
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-      let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-      guard let first = node.arguments.first?.expression else { return .visitChildren }
+      let at = site(node)
+      let arguments = Array(node.arguments)
       if Self.isPostHogCapture(node.calledExpression) {
-        handleCaptureArgument(first, line: line)
+        if let first = arguments.first?.expression {
+          handleCaptureArgument(first, at: at)
+        } else if collect {
+          unresolved.append(("`PostHogSDK.shared.capture` called with no event name", at.line))
+        }
       } else if collect, let callee = Self.forwarderName(node.calledExpression),
         let position = forwarders[callee]
       {
-        let arguments = Array(node.arguments)
+        // A forwarder called without its event argument is a defaulted parameter the
+        // registry never saw; reported rather than skipped.
         if position < arguments.count, let name = Self.literalName(arguments[position].expression) {
-          emitters.insert(Emitter(name: name, file: file, line: line))
+          emitters.insert(Emitter(name: name, file: file, line: at.line, column: at.column))
         } else {
-          unresolved.append(("forwarder \(callee) called with a non-literal event name", line))
+          unresolved.append(
+            ("forwarder \(callee) called without a literal event name", at.line))
         }
       }
       return .visitChildren
     }
 
-    private func handleCaptureArgument(_ argument: ExprSyntax, line: Int) {
+    private func handleCaptureArgument(_ argument: ExprSyntax, at: (line: Int, column: Int)) {
+      let line = at.line
       if let name = Self.literalName(argument) {
-        if collect { emitters.insert(Emitter(name: name, file: file, line: line)) }
+        if collect {
+          emitters.insert(Emitter(name: name, file: file, line: line, column: at.column))
+        }
         return
       }
       guard let reference = argument.as(DeclReferenceExprSyntax.self),
@@ -140,7 +166,9 @@ struct TelemetryEmitterRegistryTests {
       }
       switch Self.localLiteral(named: identifier, in: function) {
       case .one(let name):
-        if collect { emitters.insert(Emitter(name: name, file: file, line: line)) }
+        if collect {
+          emitters.insert(Emitter(name: name, file: file, line: line, column: at.column))
+        }
       case .none:
         if collect {
           unresolved.append(("`\(identifier)` is not a local `let` string literal", line))
@@ -171,11 +199,42 @@ struct TelemetryEmitterRegistryTests {
     /// `.register`, ...). Stored, passed or returned, it becomes an alias whose `.capture`
     /// calls this scan cannot attribute, so the escape itself is reported.
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      if collect, node.trimmedDescription == "PostHogSDK.shared",
-        node.parent?.is(MemberAccessExprSyntax.self) != true
+      guard collect else { return .visitChildren }
+      if Self.isSingleton(ExprSyntax(node)), node.parent?.is(MemberAccessExprSyntax.self) != true {
+        unresolved.append(
+          ("`PostHogSDK.shared` escapes into an alias; call it directly", site(node).line))
+      }
+      // `PostHogSDK.shared.capture` as a VALUE (stored, passed) is a capture path whose
+      // later calls carry no literal; only the callee position of a call is recognised.
+      if let base = node.base, Self.isSingleton(base),
+        node.declName.baseName.text == "capture",
+        node.parent?.is(FunctionCallExprSyntax.self) != true
       {
-        let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-        unresolved.append(("`PostHogSDK.shared` escapes into an alias; call it directly", line))
+        unresolved.append(
+          ("`PostHogSDK.shared.capture` used as a function value", site(node).line))
+      }
+      return .visitChildren
+    }
+
+    /// `PostHogSDK.shared` matched by TOKENS (trivia such as a comment between them is
+    /// ignored), never by source text.
+    static func isSingleton(_ expression: ExprSyntax) -> Bool {
+      guard let member = expression.as(MemberAccessExprSyntax.self),
+        member.declName.baseName.text == "shared",
+        let base = member.base?.as(DeclReferenceExprSyntax.self)
+      else { return false }
+      return base.baseName.text == "PostHogSDK"
+    }
+
+    /// The SDK named in TYPE position (`typealias Client = PostHogSDK`, `let x: PostHogSDK`)
+    /// is a second route to the singleton this scan does not follow, so it is reported.
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+      if collect, node.name.text == "PostHogSDK" {
+        unresolved.append(
+          (
+            "`PostHogSDK` named as a type; only `PostHogSDK.shared.capture` is scanned",
+            site(node).line
+          ))
       }
       return .visitChildren
     }
@@ -187,8 +246,7 @@ struct TelemetryEmitterRegistryTests {
         let viaShared =
           node.parent?.as(MemberAccessExprSyntax.self)?.declName.baseName.text == "shared"
         if !viaShared {
-          let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-          unresolved.append(("`PostHogSDK` used other than through `.shared`", line))
+          unresolved.append(("`PostHogSDK` used other than through `.shared`", site(node).line))
         }
       }
       return .visitChildren
@@ -200,7 +258,7 @@ struct TelemetryEmitterRegistryTests {
         member.declName.baseName.text == "capture",
         let base = member.base
       else { return false }
-      return base.trimmedDescription == "PostHogSDK.shared"
+      return isSingleton(base)
     }
 
     /// The event name from a string literal. Segments after the first interpolation are
@@ -256,18 +314,37 @@ struct TelemetryEmitterRegistryTests {
         self.identifier = identifier
         super.init(viewMode: .sourceAccurate)
       }
-      override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
-        for binding in node.bindings {
-          guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self),
-            pattern.identifier.text == identifier
-          else { continue }
+      /// EVERY binding of the identifier counts: `let`, `var`, `for ... in`, `if let`,
+      /// `case let`, a closure parameter. Only a lone `let` with a literal initializer
+      /// resolves; anything else is ambiguous.
+      override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+        guard node.identifier.text == identifier else { return .visitChildren }
+        bindings += 1
+        guard let binding = node.parent?.as(PatternBindingSyntax.self),
+          let declaration = binding.parent?.parent?.as(VariableDeclSyntax.self)
+        else {
+          mutable = true  // a `for`, `if let`, `case let` or other non-declaration binding
+          return .visitChildren
+        }
+        if declaration.bindingSpecifier.tokenKind != .keyword(.let) { mutable = true }
+        if let value = binding.initializer?.value,
+          let name = CaptureVisitor.literalName(value)
+        {
+          found = name
+        }
+        return .visitChildren
+      }
+      override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
+        if node.name.text == identifier {
           bindings += 1
-          if node.bindingSpecifier.tokenKind != .keyword(.let) { mutable = true }
-          if let value = binding.initializer?.value,
-            let name = CaptureVisitor.literalName(value)
-          {
-            found = name
-          }
+          mutable = true
+        }
+        return .visitChildren
+      }
+      override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
+        if (node.secondName ?? node.firstName).text == identifier {
+          bindings += 1
+          mutable = true
         }
         return .visitChildren
       }
@@ -450,6 +527,16 @@ struct TelemetryEmitterRegistryTests {
         }
         func n() { PostHogSDK().capture("hidden.instance") }
         func o() { PostHogSDK.shared.flush() }
+        func p() { let f = PostHogSDK.shared.capture; f("hidden.value") }
+        typealias Client = PostHogSDK
+        func q() { PostHogSDK /* c */ .shared.capture("eleven.trivia") }
+        func r() { PostHogSDK.shared.capture("twelve.a"); PostHogSDK.shared.capture("twelve.a") }
+        func defaulted(_ name: String = "hidden.default") { PostHogSDK.shared.capture(name) }
+        func s() { defaulted() }
+        func t() {
+          let event = "thirteen.registered"
+          for event in ["hidden.loop"] { PostHogSDK.shared.capture(event) }
+        }
       }
       """
     let other = """
@@ -464,15 +551,20 @@ struct TelemetryEmitterRegistryTests {
     #expect(
       Set(result.emitters.map(\.name)) == [
         "one.literal", "two.local", "three.*", "four.forwarded", "five.self_forwarded",
-        "six.second_position", "nine.cross_file", "ten.other_file",
+        "six.second_position", "nine.cross_file", "ten.other_file", "eleven.trivia",
+        "twelve.a",
       ])
+    #expect(
+      result.emitters.filter { $0.name == "twelve.a" }.count == 2,
+      "two captures on one line are two sites")
     #expect(
       result.emitters.first { $0.name == "ten.other_file" }?.file == "Elsewhere.swift",
       "an emitter reports the file it lives in")
     let unresolvedMessage =
-      "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton and "
-      + "the second instance must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 5, Comment(rawValue: unresolvedMessage))
+      "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
+      + "second instance, the function value, the typealias, the defaulted forwarder and the "
+      + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
+    #expect(result.unresolved.count == 9, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
