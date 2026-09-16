@@ -25,7 +25,7 @@
 #      diagnostics. Console text is an untyped stream in which a crash and a
 #      quotation of a crash are the same bytes, and a gate that fires on data is
 #      the shape `validation-discipline.md` RULE: false-positives-not-gates-
-#      trains-evasion measures the cost of.
+#      train-evasion measures the cost of.
 #   2. THE STRING IS NOT OURS. Its wording belongs to the Swift runtime and to
 #      Xcode, so a set of console signatures is a DESCRIPTION with a next
 #      counterexample forever, not an enumeration.
