@@ -11,7 +11,9 @@
 # runner, no Mac mini).
 #
 # What it records, explicitly, so a skip is never mistaken for hardware proof:
-#   occupied   another EnviousWispr process is mid-dictation; battery not run
+#   occupied   a dictation is in flight (app log, Debug/Dev instances) or the
+#              default input device is running in ANY process (CoreAudio, covers
+#              a Release build and every other app); battery not run
 #   ran        the suite executed; counts of passed / skipped from the log
 #   failed     the suite failed or the runner errored
 # A suite whose gate skipped every case still reads "ran" with `skipped=N`, and
@@ -142,6 +144,27 @@ if [ "${1:-}" = "--self-test" ]; then
   exit $?
 fi
 
+# The microphone itself, whoever holds it (cloud review r4): app.log is a
+# Debug-only sink (`AppLoggerCompileOutTests.releaseBuildSinkIsDeadCode`), so
+# a Release EnviousWispr, or any other app, is invisible to the log-state check
+# above. CoreAudio's `kAudioDevicePropertyDeviceIsRunningSomewhere` on the
+# default input answers for every process. Three-valued; 2 (could not tell)
+# counts as in use. Compiled once into the log directory; a compile failure
+# also counts as in use, because "I could not ask" is not "free".
+mic_in_use() {
+  local src="$PROJECT_ROOT/scripts/lib/mic-in-use.swift" bin="$LOG_DIR/mic-in-use"
+  if [ ! -x "$bin" ] || [ "$src" -nt "$bin" ]; then
+    xcrun swiftc -O -o "$bin" "$src" >/dev/null 2>&1 || { log "mic probe: compile failed; treating the microphone as in use"; return 0; }
+  fi
+  local rc=0
+  "$bin" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) log "mic probe: could not tell (rc=$rc); treating the microphone as in use"; return 0 ;;
+  esac
+}
+
 post_discord() {  # $1=message; log-only when no webhook is configured
   # The env file is a plain `DISCORD_WEBHOOK_URL=...` assignment (no `export`),
   # so sourcing it sets a shell variable only; the value is passed to the
@@ -165,8 +188,13 @@ PY
 log "=== nightly battery start (root $PROJECT_ROOT, $(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo no-git))"
 
 if occupied "$APP_LOG"; then
-  log "occupied: a dictation is in flight; battery not run"
+  log "occupied: a dictation is in flight (app log); battery not run"
   post_discord "Nightly battery: skipped, a dictation was in flight at $(stamp). Not a hardware result."
+  exit 0
+fi
+if mic_in_use; then
+  log "occupied: the default input device is running somewhere; battery not run"
+  post_discord "Nightly battery: skipped, the microphone was in use at $(stamp). Not a hardware result."
   exit 0
 fi
 

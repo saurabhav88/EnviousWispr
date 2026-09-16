@@ -181,6 +181,7 @@ scripts/lib/*
 # #3013: the one owner of "run an already-built test bundle set and judge it",
 # used by pr-check.yml, main-post-merge.yml and nightly-battery.yml.
 !scripts/lib/xcode-test-run.sh
+!scripts/lib/mic-in-use.swift
 # #3013: the hardware battery for a physical Mac and its launchd job.
 !scripts/nightly-local-battery.sh
 !scripts/launchd/
