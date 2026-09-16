@@ -29,6 +29,12 @@ final class SnippetsCoordinator {
 
   private let manager: SnippetsManager
 
+  /// Test seam: runs on the main actor after an import's store write has returned and before
+  /// its publication. The window it opens is the one an edit sheet's save can land in; a
+  /// test stages that save here. Never set in production.
+  // periphery:ignore - test seam
+  var importWriteDidReturn: (@MainActor () -> Void)?
+
   init(manager: SnippetsManager = SnippetsManager()) {
     self.manager = manager
     // Assigned directly, not through `adopt`: nothing has registered a listener yet, and the
@@ -128,6 +134,97 @@ final class SnippetsCoordinator {
       return "Snippets could not be saved just now. Try that again."
     case .writeFailed(let reason):
       return "That could not be saved. \(reason)"
+    case .listChangedDuringReview:
+      // Reached only if an import's stale refusal ever surfaces as a message; `commitImport`
+      // maps it to `.stale` and the sheet recompares instead of showing this.
+      return
+        "Your snippets changed while you were reviewing. Nothing was imported. Review the updated list and try again."
+    }
+  }
+
+  // MARK: - Import
+
+  /// A reviewed import, ready to write (#2997): the list the review was built against and the
+  /// snippets the user approved, minted with fresh ids, in review order.
+  struct SnippetImportCommitPlan: Sendable, Equatable {
+    let baseline: [Snippet]
+    let additions: [Snippet]
+
+    /// True when the commit would change nothing. Such a commit takes no lock and writes no
+    /// file; the flow model already refuses to reach here for it.
+    var isEmpty: Bool { additions.isEmpty }
+  }
+
+  /// Outcome of a reviewed import. `.stale` is not a failure the user caused: the list changed
+  /// while Review was open, so the sheet recompares against the current list instead.
+  enum SnippetImportCommitOutcome: Sendable, Equatable {
+    case committed(SnippetImportReceipt)
+    case stale
+    case failed(message: String)
+  }
+
+  /// Write a reviewed import in one atomic store write, then publish what is on disk.
+  ///
+  /// The store call runs off the main actor: the lock wait, the validation of up to 5,000
+  /// snippets and the fsync would otherwise freeze the settings window. What gets PUBLISHED
+  /// afterwards is the disk state, not the receipt: between the store call returning and the
+  /// main actor resuming, an edit sheet can save and publish a newer list, and adopting the
+  /// older receipt over it would publish stale state. The lock serialises the two writes;
+  /// reading disk at publication time serialises the two publications in the same order
+  /// (`apply` mutates and publishes synchronously on the main actor, so a reload-and-adopt
+  /// cannot interleave with an edit).
+  ///
+  /// Never assigns `errorMessage`: an import failure is shown by the sheet's result screen,
+  /// not in the page's save-error slot (`SnippetsView` records why the export message is kept
+  /// out of that slot; the same reason applies). Once the store call has started, nothing
+  /// rolls it back; the sheet's own generation only decides whether the result is shown.
+  func commitImport(_ plan: SnippetImportCommitPlan) async -> SnippetImportCommitOutcome {
+    // An empty plan publishes nothing: no disk re-read and no `adopt`, so the drivers are not
+    // re-seeded with a list that did not change.
+    guard !plan.isEmpty else {
+      return .committed(SnippetImportReceipt(
+        vocabulary: SnippetVocabulary(
+          snippets: plan.baseline, keyword: keyword, generation: vocabulary.generation),
+        addedIDs: []))
+    }
+    do {
+      let receipt = try await Self.write(plan, to: manager)
+      importWriteDidReturn?()
+      publishAfterImport(receipt)
+      return .committed(receipt)
+    } catch SnippetStoreError.listChangedDuringReview {
+      // Nothing was written. The sheet re-reads the list from disk itself (its
+      // `existingSnippets` dependency is `refreshFromDisk`), so no adopt happens here.
+      return .stale
+    } catch let error as SnippetValidationError {
+      return .failed(message: Self.message(for: error))
+    } catch let error as SnippetStoreError {
+      return .failed(message: Self.message(for: error))
+    } catch {
+      return .failed(message: "That could not be saved. \(error.localizedDescription)")
+    }
+  }
+
+  /// `@concurrent` is load-bearing: entering it leaves the main actor for the lock wait,
+  /// validation and fsync. `SnippetsManager` is `@unchecked Sendable` by design.
+  @concurrent private static func write(
+    _ plan: SnippetImportCommitPlan, to manager: SnippetsManager
+  ) async throws -> SnippetImportReceipt {
+    try manager.importSnippets(plan.additions, reviewedAgainst: plan.baseline)
+  }
+
+  /// Publish the DISK state after an import, never `.empty`.
+  ///
+  /// `loadedVocabulary()` is nil when the file is unreadable right after our own write, or was
+  /// archived. `load()` would answer empty there, and publishing empty would silently switch
+  /// every snippet off for the session. On nil the generations decide: the same manager mints
+  /// them monotonically on every save, so a published generation ABOVE the receipt's means a
+  /// later edit has already been published and is kept; otherwise the receipt is adopted.
+  private func publishAfterImport(_ receipt: SnippetImportReceipt) {
+    if let onDisk = manager.loadedVocabulary() {
+      adopt(onDisk)
+    } else if vocabulary.generation <= receipt.vocabulary.generation {
+      adopt(receipt.vocabulary)
     }
   }
 
