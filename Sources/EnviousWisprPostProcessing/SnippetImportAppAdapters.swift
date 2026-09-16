@@ -29,9 +29,11 @@ package enum SnippetImportAppError: LocalizedError, Sendable, Equatable {
       return
         "Couldn't read your \(app) snippets. If \(app) is open, try quitting it and importing again."
     case .tooManySourceEntries(let app, let limit):
+      // "entries", not "snippets": the count is of every row scanned where the app keeps
+      // its snippets, and in Wispr Flow that table holds the words too.
       return
-        "\(app) has more than \(limit) snippets, including entries it may hide or disable. "
-        + "EnviousWispr stopped without importing anything."
+        "\(app) has more than \(limit) entries where it keeps snippets, counting ones that "
+        + "can't be snippets here. EnviousWispr stopped without importing anything."
     }
   }
 }

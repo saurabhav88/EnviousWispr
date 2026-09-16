@@ -59,6 +59,11 @@ enum RivalAppStoreFixtures {
       sqlite3_close(db)
       throw Failure(description: "could not create \(url.path)")
     }
+    // The open connection is the caller's only on success; a throw below must not leak it.
+    var transferred = false
+    defer {
+      if !transferred { sqlite3_close(db) }
+    }
     try exec(db, "PRAGMA journal_mode=WAL;")
     try exec(db, "PRAGMA wal_autocheckpoint=0;")
     try exec(db, schema)
@@ -66,6 +71,7 @@ enum RivalAppStoreFixtures {
       try exec(db, "PRAGMA wal_checkpoint(TRUNCATE);")
       try exec(db, walOnlyInsert)
     }
+    transferred = true
     return (url, db)
   }
 

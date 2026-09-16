@@ -239,7 +239,9 @@ struct SnippetImportAppAdaptersTests {
 
     // The injected part reader stands in for a store that grew past the ceiling: the real
     // reader returns ceiling-plus-one bytes for such a part, and the aggregate check refuses.
+    nonisolated(unsafe) var partReads = 0
     let oversized = TypeWhisperSnippetAdapter(readPart: { url in
+      partReads += 1
       guard url.lastPathComponent.hasSuffix("-wal") else {
         return FileManager.default.contents(atPath: url.path)
       }
@@ -248,17 +250,24 @@ struct SnippetImportAppAdaptersTests {
     #expect(throws: SnippetImportAppError.unreadable("TypeWhisper")) {
       _ = try oversized.loadSnippets(at: store.url)
     }
+    // The CEILING refused, not SQLite choking on a fabricated WAL: the first main-plus-WAL
+    // pair is rejected before a second pass or any open (a corrupt-WAL refusal would read
+    // both parts twice per acquisition, three acquisitions).
+    #expect(partReads == 2, "reject the first main/WAL pair before another acquisition pass")
   }
 
-  @Test("a TypeWhisper boolean or text column of the wrong type is refused, never coerced")
-  func typeWhisperMalformedColumnsRefuse() throws {
+  @Test(
+    "a TypeWhisper boolean or text column of the wrong type is refused, never coerced",
+    arguments: [
+      // ZISENABLED as text, ZREPLACEMENT as a blob, ZTRIGGER as a blob.
+      "INSERT INTO ZSNIPPET VALUES (1,1,1,0,'yes',0,NULL,NULL,'text','sig',NULL);",
+      "INSERT INTO ZSNIPPET VALUES (1,1,1,0,1,0,NULL,NULL,x'DEADBEEF','sig',NULL);",
+      "INSERT INTO ZSNIPPET VALUES (1,1,1,0,1,0,NULL,NULL,'text',x'DEADBEEF',NULL);",
+    ])
+  func typeWhisperMalformedColumnsRefuse(_ row: String) throws {
     let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let store = try makeTypeWhisperStore(
-      in: dir,
-      rows: [
-        "INSERT INTO ZSNIPPET VALUES (1,1,1,0,'yes',0,NULL,NULL,'text','sig',NULL);"
-      ])
+    let store = try makeTypeWhisperStore(in: dir, rows: [row])
     defer { sqlite3_close(store.writer) }
 
     #expect(throws: SnippetImportAppError.unreadable("TypeWhisper")) {
@@ -455,11 +464,13 @@ struct SnippetImportAppAdaptersTests {
     ) {
       _ = try await AppSnippetImportSource(adapter: MostlyExcluded()).loadCandidates()
     }
+    // "entries", never "snippets": Wispr Flow's table holds its words too, so a store with
+    // 5,001 words and no snippets must not be told it has 5,000 snippets.
     #expect(
       SnippetImportAppError.tooManySourceEntries(appName: "Wispr Flow", limit: 5_000)
         .errorDescription
-        == "Wispr Flow has more than 5000 snippets, including entries it may hide or disable. "
-        + "EnviousWispr stopped without importing anything.")
+        == "Wispr Flow has more than 5000 entries where it keeps snippets, counting ones that "
+        + "can't be snippets here. EnviousWispr stopped without importing anything.")
   }
 
   @Test("a real store one past the ceiling is refused, and one at the ceiling is read")
