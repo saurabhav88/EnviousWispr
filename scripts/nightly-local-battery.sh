@@ -76,13 +76,16 @@ occupied() {
 }
 
 post_discord() {  # $1=message; log-only when no webhook is configured
+  # The env file is a plain `DISCORD_WEBHOOK_URL=...` assignment (no `export`),
+  # so sourcing it sets a shell variable only; the value is passed to the
+  # Python child explicitly below rather than relying on inheritance.
   # shellcheck disable=SC1090
   [ -f "$ENV_FILE" ] && . "$ENV_FILE"
   if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
     log "discord: not configured (log only)"
     return 0
   fi
-  python3 - "$1" <<'PY' || log "discord: delivery failed"
+  DISCORD_WEBHOOK_URL="$DISCORD_WEBHOOK_URL" python3 - "$1" <<'PY' || log "discord: delivery failed"
 import json, sys, os, urllib.request
 req = urllib.request.Request(os.environ["DISCORD_WEBHOOK_URL"], data=json.dumps({"content": sys.argv[1]}).encode(),
                              headers={"Content-Type": "application/json"})
