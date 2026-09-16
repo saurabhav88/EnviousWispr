@@ -65,7 +65,7 @@ enum WhatsNewContent {
       icon: "square.and.arrow.down",
       title: "Import your snippets",
       description:
-        "Bring snippets in from the file you exported, a CSV, or a list you paste. You review the list before anything is saved, snippets you already have are skipped, and your keyword stays as it is.",
+        "Bring snippets in from the file you exported, a CSV, a list you paste, or straight from Wispr Flow or TypeWhisper. You review the list before anything is saved, snippets you already have are skipped, and your keyword stays as it is.",
       version: "2.5.1"
     ),
 

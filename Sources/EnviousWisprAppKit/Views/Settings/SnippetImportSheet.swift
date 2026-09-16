@@ -6,9 +6,9 @@ import SwiftUI
 /// (`docs/feature-requests/issue-628-design/EnviousWispr Snippets.dc.html`).
 ///
 /// The same shell as `CustomWordsImportSheet`: one observable model, one root `switch`, one
-/// container-level `.animation()`. Paste and Open a file feed the same review and commit
-/// path; From another app is added in PR-B. Dismissing at any point cancels in-flight work
-/// and writes nothing; a commit already started completes and is not shown.
+/// container-level `.animation()`. Paste, Open a file and From another app feed the same
+/// review and commit path. Dismissing at any point cancels in-flight work and writes
+/// nothing; a commit already started completes and is not shown.
 struct SnippetImportSheet: View {
   private static let screenTransition: AnyTransition = .asymmetric(
     insertion: .opacity.combined(with: .offset(y: 20)),
@@ -55,6 +55,9 @@ struct SnippetImportSheet: View {
             .transition(Self.screenTransition)
         case .file:
           SnippetImportFileScreen(model: model)
+            .transition(Self.screenTransition)
+        case .appPicker:
+          SnippetImportAppPickerScreen(model: model)
             .transition(Self.screenTransition)
         case .review:
           SnippetImportReviewScreen(model: model)
@@ -174,7 +177,7 @@ struct SnippetImportSheet: View {
         ) {
           model.confirm()
         }
-      case .methodPicker, .paste, .file, .working:
+      case .methodPicker, .paste, .file, .appPicker, .working:
         SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
           requestCancel()
         }
@@ -197,6 +200,7 @@ struct SnippetImportSheet: View {
     case .methodPicker: return "Import snippets"
     case .paste: return "Paste snippets"
     case .file: return "Open a file"
+    case .appPicker: return "From another app"
     case .review: return "Review"
     case .working(.loadingCandidates): return "Finding snippets"
     case .working(.comparing): return "Checking your list"
@@ -239,6 +243,75 @@ private struct SnippetImportMethodPickerScreen: View {
       ) {
         model.select(.file)
       }
+      ImportMethodCard(
+        icon: "sparkles",
+        title: "From another app",
+        subtitle: "Bring your snippets over from another dictation app."
+      ) {
+        model.select(.app)
+      }
+    }
+  }
+}
+
+// MARK: - From another app
+
+private struct SnippetImportAppPickerScreen: View {
+  let model: SnippetImportFlowModel
+  /// Detection runs when this screen appears, not at launch or when the sheet opens: an
+  /// installed competitor is never quietly inspected in the background, only when the user
+  /// has asked to see this list (the same discipline as the Dictionary picker).
+  @State private var installed: [String] = []
+  @State private var didLookForApps = false
+
+  private var registry: SnippetImportAppRegistry { .v1 }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Snippets you already saved in another dictation app, found on this Mac.")
+        .settingsReadingCopy()
+
+      if !didLookForApps {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text("Looking for apps on this Mac.").settingsReadingCopy()
+        }
+      } else if installed.isEmpty {
+        InsetNotice(
+          text: "No supported dictation apps found on this Mac. EnviousWispr can read "
+            + "snippets from \(SmartImportSupportedAppsCopy.sentence(joining: registry.displayNames))."
+        )
+      } else {
+        ForEach(registry.adapters.filter { installed.contains($0.identifier) }, id: \.identifier) {
+          adapter in
+          ImportMethodCard(
+            icon: "app.badge",
+            title: adapter.displayName,
+            subtitle: "Read your snippets from \(adapter.displayName)."
+          ) {
+            model.begin(with: AppSnippetImportSource(adapter: adapter))
+          }
+        }
+      }
+
+      // The honest shape before they commit to it: snippets come across as the other app
+      // holds them, and ones you already have are skip-only. Placeholders the other app
+      // fills in at paste time (today's date, the clipboard) cannot be a snippet here and
+      // are counted on the review screen rather than silently dropped.
+      Text(
+        "Snippets you already have are left as they are. Entries the other app fills in when pasting, like today's date, are left out and counted."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+    }
+    .task {
+      // Detached rather than a plain Task: a plain Task inherits MainActor from this view,
+      // and these are disk existence checks across several locations.
+      let found = await Task.detached { () -> [String] in
+        SnippetImportAppRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+      }.value
+      installed = found
+      didLookForApps = true
     }
   }
 }

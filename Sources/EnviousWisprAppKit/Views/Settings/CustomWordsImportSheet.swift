@@ -752,7 +752,12 @@ private struct ImportResultScreen: View {
 /// the next adapter; this one cannot.
 package enum SmartImportSupportedAppsCopy {
   package static func sentence(for registry: SmartImportRegistry) -> String {
-    let names = registry.displayNames
+    sentence(joining: registry.displayNames)
+  }
+
+  /// The same sentence for any registry's names; the snippet picker (#2997) passes
+  /// `SnippetImportAppRegistry.displayNames`.
+  package static func sentence(joining names: [String]) -> String {
     switch names.count {
     case 0: return "no apps yet"
     case 1: return names[0]
