@@ -92,7 +92,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .speechEngine: return "waveform"
     case .transcribeFile: return "waveform.badge.plus"
     case .livePreview: return "text.viewfinder"
-    case .audio: return "speaker.wave.2"
+    case .audio: return "mic"
     case .recordingSounds: return "bell.and.waveform"
     case .keybinds: return "keyboard"
     case .aiPolish: return "sparkles"

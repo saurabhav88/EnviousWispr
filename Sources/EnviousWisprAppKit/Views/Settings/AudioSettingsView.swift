@@ -5,12 +5,20 @@ import SwiftUI
 
 /// Audio input device selection and noise processing settings.
 ///
-/// Laid out as self-contained cards (mockup, 2026-07-03): each section owns its
-/// header, description, control, and footnote inside one bordered surface via
-/// `BrandedPanel`.
+/// The three microphone controls (Input Device, Other Audio While You
+/// Dictate, Microphone Readiness) share ONE card as icon-labelled rows with a
+/// trailing control, divided by hairlines (founder mockup, 2026-09-16) —
+/// replacing the earlier one-card-per-topic layout. The Bluetooth guide keeps
+/// its own card below, and the frozen-per-recording rule moved from a boxed
+/// banner at the top to a plain tip line at the bottom, matching the mockup.
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
+
+  /// `SettingsRowIcon`'s fixed width (26) plus the row's own leading spacing
+  /// (11), so helper text under a row's icon+label aligns under the LABEL
+  /// rather than under the icon.
+  private static let rowIndent: CGFloat = 37
 
   var body: some View {
     let settingsManager = settings
@@ -33,50 +41,53 @@ struct AudioSettingsView: View {
         settingsManager.selectedInputDeviceUID = newValue
       }
     )
+    // #2664: the socket control sits on the SAME line as the device picker,
+    // sized to its own text (founder, 2026-09-05: a full-width segmented bar
+    // for two options read as a giant purple slab). Only for a device
+    // reporting more than one input, and never for one whose UID could not
+    // be read (nothing to key a choice on, and an empty key would be shared
+    // by every such device). The DISPLAYED selection goes through the same
+    // pure rule HAL applies, so a saved index the device no longer has shows
+    // as Input 1. Stored 0-based; labelled from 1 like the sockets on the box.
+    let multiInputDevice = socketDevice.flatMap { device in
+      device.inputChannelCount > 1 && !device.uid.isEmpty ? device : nil
+    }
 
     SettingsContentView {
-      // The frozen-per-recording rule covers every control on this page, so it
-      // lives once here at the top instead of inside each card.
-      FrozenPerRecordingBanner()
-
-      BrandedPanel(
-        icon: "mic",
-        header: "Input Device",
-        // #2030: this promised Auto "follows the input device currently selected in
-        // macOS", which #2022 made false for the diverted cohort: when that device is
-        // proven not to be a microphone and a real one is available, the ladder refuses
-        // it and binds the physical device instead. The status pill beside this copy
-        // already names the device actually opened, so leaving the promise unqualified
-        // made the card contradict itself on exactly the machines the divert exists for.
-        description:
-          "Select which microphone to use for recording. \"Auto\" follows the input "
-          + "device selected in macOS. If that device turns out not to be a real "
-          + "microphone, recording uses an available microphone instead."
-      ) {
-        // #2664: the socket control sits on the SAME line as the device picker,
-        // sized to its own text (founder, 2026-09-05: a full-width segmented bar
-        // for two options read as a giant purple slab). Only for a device
-        // reporting more than one input, and never for one whose UID could not
-        // be read (nothing to key a choice on, and an empty key would be shared
-        // by every such device). The DISPLAYED selection goes through the same
-        // pure rule HAL applies, so a saved index the device no longer has shows
-        // as Input 1. Stored 0-based; labelled from 1 like the sockets on the box.
-        let multiInputDevice = socketDevice.flatMap { device in
-          device.inputChannelCount > 1 && !device.uid.isEmpty ? device : nil
-        }
-        VStack(alignment: .leading, spacing: 6) {
-          HStack(spacing: 10) {
-            Picker("", selection: inputDeviceSelection) {
-              Text("Auto").tag("")
-              ForEach(audioDeviceList.availableInputDevices) { device in
-                Text(device.name).tag(device.uid)
+      BrandedSection {
+        BrandedRow {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 11) {
+              SettingsRowIcon(systemName: "waveform")
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Input device").settingsRowLabel()
+                // #2030: this promised Auto "follows the input device currently selected in
+                // macOS", which #2022 made false for the diverted cohort: when that device is
+                // proven not to be a microphone and a real one is available, the ladder refuses
+                // it and binds the physical device instead. The status pill beside this copy
+                // already names the device actually opened, so leaving the promise unqualified
+                // made the card contradict itself on exactly the machines the divert exists for.
+                Text(
+                  "Select which microphone to use for recording. \"Auto\" follows the input "
+                    + "device selected in macOS. If that device turns out not to be a real "
+                    + "microphone, recording uses an available microphone instead."
+                ).settingsReadingCopy()
               }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 340, alignment: .leading)
+              Spacer(minLength: 12)
+              HStack(spacing: 10) {
+                Picker("", selection: inputDeviceSelection) {
+                  Text("Auto").tag("")
+                  ForEach(audioDeviceList.availableInputDevices) { device in
+                    Text(device.name).tag(device.uid)
+                  }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220, alignment: .leading)
 
-            if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
-              StatusPill(text: "Using \(socketDevice.name)")
+                if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
+                  StatusPill(text: "Using \(socketDevice.name)")
+                }
+              }
             }
 
             if let device = multiInputDevice {
@@ -116,45 +127,53 @@ struct AudioSettingsView: View {
                   .fixedSize()
                 }
               }
+              .padding(.leading, Self.rowIndent)
+
+              Text(InputSocketCopy.helper(deviceName: device.name))
+                .settingsHelperCopy()
+                .padding(.leading, Self.rowIndent)
             }
-
-            Spacer(minLength: 0)
-          }
-
-          if let device = multiInputDevice {
-            Text(InputSocketCopy.helper(deviceName: device.name)).settingsHelperCopy()
           }
         }
-      }
 
-      // #1413: above Readiness (founder, 2026-09-16): the take's other audio
-      // belongs with the microphone, not with the start/stop sounds.
-      OtherAudioSettingsPanel()
+        // #1413: above Readiness (founder, 2026-09-16): the take's other audio
+        // belongs with the microphone, not with the start/stop sounds.
+        BrandedRow {
+          OtherAudioSettingsPanel(rowIndent: Self.rowIndent)
+        }
 
-      BrandedPanel(
-        icon: "timer",
-        header: "Microphone Readiness",
-        description:
-          "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
-      ) {
-        VStack(alignment: .leading, spacing: 10) {
-          BrandedSegmentedPicker(
-            options: [
-              ("Off", nil, WarmEnginePolicy.off),
-              ("10 sec", nil, WarmEnginePolicy.seconds10),
-              ("30 sec", nil, WarmEnginePolicy.seconds30),
-              ("60 sec", nil, WarmEnginePolicy.seconds60),
-              ("Always", nil, WarmEnginePolicy.always),
-            ],
-            selection: $settings.warmEnginePolicy
-          )
-          if settings.warmEnginePolicy == .always {
-            InsetNotice(
-              text:
-                "Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase.",
-              systemImage: "exclamationmark.triangle",
-              tint: .stWarning
-            )
+        BrandedRow(showDivider: false) {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 11) {
+              SettingsRowIcon(systemName: "timer")
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Microphone Readiness").settingsRowLabel()
+                Text(
+                  "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
+                ).settingsReadingCopy()
+              }
+              Spacer(minLength: 12)
+              BrandedSegmentedPicker(
+                options: [
+                  ("Off", nil, WarmEnginePolicy.off),
+                  ("10 sec", nil, WarmEnginePolicy.seconds10),
+                  ("30 sec", nil, WarmEnginePolicy.seconds30),
+                  ("60 sec", nil, WarmEnginePolicy.seconds60),
+                  ("Always", nil, WarmEnginePolicy.always),
+                ],
+                selection: $settings.warmEnginePolicy
+              )
+              .fixedSize(horizontal: true, vertical: false)
+            }
+            if settings.warmEnginePolicy == .always {
+              InsetNotice(
+                text:
+                  "Always keeps the microphone engine active. The macOS microphone indicator may stay visible and power use may increase.",
+                systemImage: "exclamationmark.triangle",
+                tint: .stWarning
+              )
+              .padding(.leading, Self.rowIndent)
+            }
           }
         }
       }
@@ -202,6 +221,11 @@ struct AudioSettingsView: View {
           .toggleStyle(BrandedToggleStyle())
         }
       }
+
+      // The frozen-per-recording rule covers every control on this page, so it
+      // lives once here rather than inside each card (moved from a boxed banner
+      // at the top to a plain tip line at the bottom, mockup 2026-09-16).
+      MicrophonePageFooterTip()
     }
   }
 
@@ -240,5 +264,26 @@ private struct StatusPill: View {
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
     .background(tint.opacity(0.12), in: Capsule())
+  }
+}
+
+/// The frozen-per-recording rule, as a quiet single line under every card on
+/// this page: a lightbulb glyph plus the canonical copy, no box. Local to this
+/// page (`SpeechEngineSettingsView` keeps the boxed `FrozenPerRecordingBanner`
+/// at its own top, unchanged).
+private struct MicrophonePageFooterTip: View {
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "lightbulb")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.stTextTertiary)
+        .accessibilityHidden(true)
+      Text("Tip: \(SettingsCopy.frozenPerRecording)")
+        .font(.stHelper)
+        .foregroundStyle(.stTextTertiary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 4)
   }
 }
