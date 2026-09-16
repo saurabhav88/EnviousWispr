@@ -212,19 +212,23 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
           return MediaPauseOutcome(.nothingPlaying, route: .adapter)
         }
         var paused = adapterSend(MediaRemoteAdapter.pauseCommand)
-        if !paused {
-          // A refused acknowledgement can still have paused the source (Codex
-          // r1 Q4): re-read once, and own it only if it now reports paused.
-          if case .paused(let now) = adapterGet() ?? .nothing, Self.matches(now, source) {
-            paused = true
-          }
+        // One re-read after the send, whatever it answered. A refused
+        // acknowledgement can still have paused the source (Codex r1 Q4), so
+        // it is owned only if it now reports paused; and the position the
+        // resume gate compares is the FROZEN one, read after the pause landed,
+        // not the moving one sampled before the send (cloud review r5: a slow
+        // send could drift past the tolerance and leave the item paused).
+        var recorded = source
+        if case .paused(let now) = adapterGet() ?? .nothing, Self.matches(now, source) {
+          paused = true
+          recorded = now
         }
         guard paused else {
           // The adapter answered; the source may be a browser tab, so the
           // scripted route (and its consent prompts) is not a fallback here.
           return MediaPauseOutcome(.failed, route: .adapter, adapterFailure: "send")
         }
-        let target = MediaRemoteAdapter.target(for: source)
+        let target = MediaRemoteAdapter.target(for: recorded)
         state.withLock { $0.pausedByHold[holdID] = [target] }
         return MediaPauseOutcome(.paused(targets: [target]), route: .adapter)
       case .paused, .nothing:

@@ -398,6 +398,9 @@ private final class FakeAdapter: @unchecked Sendable {
   var source: (bundle: String, identity: String?, playing: Bool)?
   /// The payload's `elapsedTime` when set (frozen while paused in the real adapter).
   var elapsed: Double?
+  /// Playback keeps moving while `send 1` is in flight: the position the source
+  /// freezes at when the pause lands, applied on a successful pause command.
+  var elapsedAfterPause: Double?
   /// Overrides the whole `get` answer (a broken adapter).
   var getOverride: MediaRemoteAdapter.RunResult?
   var rejectSend = false
@@ -436,7 +439,10 @@ private final class FakeAdapter: @unchecked Sendable {
           return .init(status: 1, stdout: "", stderr: "Failed to send command")
         }
         if rejectSend { return .init(status: 1, stdout: "", stderr: "Failed to send command") }
-        if command.dropFirst().first == MediaRemoteAdapter.pauseCommand { source?.playing = false }
+        if command.dropFirst().first == MediaRemoteAdapter.pauseCommand {
+          source?.playing = false
+          if let elapsedAfterPause { elapsed = elapsedAfterPause }
+        }
         if command.dropFirst().first == MediaRemoteAdapter.playCommand { source?.playing = true }
         return .init(status: 0, stdout: "", stderr: "")
       }
@@ -478,7 +484,10 @@ struct LiveMediaPlaybackAdapterRouteTests {
     let outcome = await pause(effects, holdID)
     #expect(outcome == .paused(targets: [T("com.google.Chrome", "yt-1")], route: .adapter))
     #expect(adapter.isPlaying() == false)
-    #expect(adapter.commands() == ["get --no-artwork --allow-missing-title", "send 1"])
+    #expect(
+      adapter.commands() == [
+        "get --no-artwork --allow-missing-title", "send 1", "get --no-artwork --allow-missing-title",
+      ], "read, pause, then one re-read for the frozen position")
     #expect(players.events.isEmpty, "the adapter answered: no Apple event, no consent check")
 
     let resumed = await resume(effects, holdID)
@@ -574,6 +583,22 @@ struct LiveMediaPlaybackAdapterRouteTests {
     _ = await pause(effects, holdB)
     adapter.elapsed = 201.0
     #expect(await resume(effects, holdB) == .resumed)
+  }
+
+  @Test("The recorded position is the one frozen AFTER the pause landed, not the moving one before")
+  func frozenPositionIsRecorded() async {
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    adapter.elapsed = 100.0
+    // A slow send: playback ran on past the tolerance before the pause landed.
+    adapter.elapsedAfterPause = 103.5
+    let effects = make(FakePlayers([:]), adapter)
+    let holdID = UUID()
+    let outcome = await pause(effects, holdID)
+    #expect(outcome == .paused(targets: [T("com.google.Chrome", "yt-1", elapsed: "103.5")], route: .adapter))
+    // Still frozen there at the end: ours, resumed. Recording 100.0 would have
+    // read this as the user's pause and left it paused.
+    #expect(await resume(effects, holdID) == .resumed)
+    #expect(adapter.commands().last == "send 0")
   }
 
   @Test("A different app is the source at the end: reported as source changed, nothing sent")
