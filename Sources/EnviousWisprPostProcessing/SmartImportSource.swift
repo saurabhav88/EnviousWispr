@@ -266,6 +266,16 @@ package enum SmartImportSQLiteReader {
     return SmartImportWord(canonical: alias, caseSensitive: caseSensitive)
   }
 
+  /// A SQLite `file:` URI whose PATH is percent-encoded, so a home directory or a scratch
+  /// path containing `%`, `#`, `?` or a space cannot be read as a percent escape, a query, or a
+  /// fragment: SQLite percent-decodes the path, so an unescaped `%` or `#` resolves to a
+  /// different file (#2997). `.urlPathAllowed` keeps `/` and every ordinary path character and
+  /// encodes exactly those three plus space; SQLite decodes them back to the real path.
+  static func fileURI(path: String, query: String) -> String {
+    let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+    return "file:\(encoded)?\(query)"
+  }
+
   // MARK: - Strict column reads
   //
   // SQLite columns are dynamically typed, so a schema that drifts under us can
@@ -280,7 +290,7 @@ package enum SmartImportSQLiteReader {
     guard sqlite3_column_type(statement, column) == SQLITE_TEXT,
       let value = sqlite3_column_text(statement, column)
     else { throw SmartImportError.unreadable(appName) }
-    return String(cString: value)
+    return try decodeText(value, sqlite3_column_bytes(statement, column), appName)
   }
 
   static func optionalText(
@@ -291,7 +301,21 @@ package enum SmartImportSQLiteReader {
     guard type == SQLITE_TEXT, let value = sqlite3_column_text(statement, column) else {
       throw SmartImportError.unreadable(appName)
     }
-    return String(cString: value)
+    return try decodeText(value, sqlite3_column_bytes(statement, column), appName)
+  }
+
+  /// UTF-8 text of the column's EXACT stored length, refusing an embedded NUL. `String(cString:)`
+  /// stops at the first NUL byte, so a value the source stored as `a\0b` would import as `a`
+  /// and be reported a success (#2997). Malformed bytes and a NUL both refuse the whole read,
+  /// consistent with the strict-column policy above.
+  private static func decodeText(
+    _ value: UnsafePointer<UInt8>, _ byteCount: Int32, _ appName: String
+  ) throws -> String {
+    let bytes = UnsafeBufferPointer(start: value, count: Int(byteCount))
+    guard let text = String(bytes: bytes, encoding: .utf8), !text.utf8.contains(0) else {
+      throw SmartImportError.unreadable(appName)
+    }
+    return text
   }
 
   static func requiredBoolean(
@@ -519,7 +543,7 @@ package enum WisprFlowDatabase {
     guard !sidecarsExist() else {
       throw SmartImportError.unreadable(appName)
     }
-    let uri = "file:\(url.path)?immutable=1"
+    let uri = SmartImportSQLiteReader.fileURI(path: url.path, query: "immutable=1")
 
     // The check above and the open below are still two moments: Wispr Flow can
     // START writing in between, and immutable would then read a stale view
@@ -723,7 +747,8 @@ package enum TypeWhisperStoreSnapshot {
     }
 
     return try SmartImportSQLiteReader.readRows(
-      uri: "file:\(copy.path)?mode=ro", sql: sql, appName: appName, mapRow: mapRow)
+      uri: SmartImportSQLiteReader.fileURI(path: copy.path, query: "mode=ro"), sql: sql,
+      appName: appName, mapRow: mapRow)
   }
 
   /// Read every store part twice and accept only a byte-identical pair.

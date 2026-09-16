@@ -183,7 +183,10 @@ package struct TypeWhisperSnippetAdapter: SnippetImportAppAdapter {
   }
 
   static func carriesPlaceholder(_ text: String) -> Bool {
-    text.contains("{{") && text.contains("}}")
+    // A closing `}}` must come AFTER an opening `{{`: a snippet whose text mentions both in
+    // the other order ("close with }} then open with {{") is a literal, not a placeholder.
+    guard let opening = text.range(of: "{{") else { return false }
+    return text.range(of: "}}", range: opening.upperBound..<text.endIndex) != nil
   }
 }
 

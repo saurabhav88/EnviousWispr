@@ -114,6 +114,42 @@ struct SnippetImportAppAdaptersTests {
     )
   }
 
+  @Test("a Wispr Flow snippet whose text holds an embedded NUL is refused, not truncated")
+  func wisprFlowEmbeddedNulRefuses() throws {
+    // `String(cString:)` would stop at the NUL and import "hi", reporting success on
+    // silently changed content. The strict decoder refuses the whole read instead.
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try RivalAppStoreFixtures.makeWisprFlowDatabase(
+      in: dir,
+      rows:
+        "INSERT INTO Dictionary VALUES ('1','sig',char(104)||char(105)||char(0)||char(120),0,1);")
+
+    #expect(throws: SnippetImportAppError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowSnippetAdapter().loadSnippets(at: url)
+    }
+  }
+
+  @Test(
+    "a snippet whose text mentions the delimiters in reverse order is a literal, not a placeholder")
+  func typeWhisperReversedDelimitersAreLiteral() throws {
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(
+      in: dir,
+      rows: [
+        Self.typeWhisperRow(
+          1, enabled: true, trigger: "braces", replacement: "close with }} then open with {{"),
+        Self.typeWhisperRow(2, enabled: true, trigger: "date", replacement: "{{DATE}}"),
+      ])
+    defer { sqlite3_close(store.writer) }
+
+    let rows = try TypeWhisperSnippetAdapter().loadSnippets(at: store.url)
+    #expect(rows.candidates.map(\.trigger) == ["braces"])
+    #expect(rows.candidates.map(\.expansion) == ["close with }} then open with {{"])
+    #expect(rows.excludedCount == 1, "only the real {{DATE}} placeholder is left out")
+  }
+
   @Test("a Wispr Flow column of the wrong type refuses the whole read rather than guessing")
   func wisprFlowMalformedColumnRefuses() throws {
     let dir = RivalAppStoreFixtures.makeDirectory()
