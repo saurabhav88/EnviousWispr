@@ -1850,6 +1850,34 @@ public final class TelemetryService {
       properties: ["count": count, "$value": count, "trigger": trigger])
   }
 
+  /// #2951: one row per Custom Words import that landed words (Settings >
+  /// Your Words > Import, the only entry). Sibling of `contactsImported`.
+  /// Cadence per_user_action, about 40 rows a month across the fleet (plan
+  /// §3.6); reader: the imports-by-source HogQL in `analytics-operations.md`
+  /// FACT: app-posthog-events. `source` is `CustomWordsImportBatch.sourceID`,
+  /// a closed set of parser and adapter ids; counts only, never a word
+  /// (`sentry-operations.md` RULE: telemetry-privacy-boundary). `$value` is
+  /// the landed count, as on `contacts_imported`.
+  public func customWordsImported(source: String, found: Int, imported: Int, skipped: Int) {
+    let props: [String: Any] = [
+      "source": source,
+      "count_found": found,
+      "count_imported": imported,
+      "count_skipped": skipped,
+      "$value": imported,
+    ]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "custom_words_imported",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: [:],
+          boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("custom_words_imported", properties: props)
+  }
+
   /// Issue #445 launch-time telemetry, now emitted by the shared
   /// `KernelDictationDriver.ensureEngineWarm(reason: .launch)` (#879) when it
   /// drives the launch warm-up — `result` is one of "success",

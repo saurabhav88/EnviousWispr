@@ -18,7 +18,7 @@ import Foundation
 /// late completion is discarded rather than applied to a screen that moved on.
 @MainActor @Observable
 final class CustomWordsImportFlowModel {
-  /// The two collaborators the workflow needs, injected as narrow closures
+  /// The collaborators the workflow needs, injected as narrow closures
   /// rather than a coordinator reference so tests drive the flow without
   /// constructing persistence (`di-narrow-homes`).
   struct Dependencies {
@@ -33,12 +33,19 @@ final class CustomWordsImportFlowModel {
     var compare:
       @Sendable ([CustomWordsImportCandidate], [CustomWord], CustomWordsImportFuzzyPolicy)
         async throws -> [CustomWordsImportComparison]
+    /// #2951: called once per commit that landed words, with the shape of the
+    /// run (never a word). The live wiring forwards it to telemetry; this
+    /// module does not import Services, so the mapping lives at the call
+    /// site. No default on purpose: a fixture that forgets it fails to
+    /// compile rather than silently dropping the report.
+    var report: @MainActor (CustomWordsImportReport) -> Void
 
     /// Production wiring: one compare engine for the sheet's lifetime.
     static func live(
       existingWords: @escaping @MainActor () -> [CustomWord],
       commit: @escaping @MainActor (CustomWordsImportCommitPlan) ->
-        CustomWordsCoordinator.CustomWordsImportCommitOutcome
+        CustomWordsCoordinator.CustomWordsImportCommitOutcome,
+      report: @escaping @MainActor (CustomWordsImportReport) -> Void
     ) -> Dependencies {
       let engine = CustomWordsImportCompareEngine()
       return Dependencies(
@@ -47,7 +54,8 @@ final class CustomWordsImportFlowModel {
         compare: { candidates, existing, policy in
           try await engine.compare(
             candidates: candidates, against: existing, fuzzyPolicy: policy)
-        }
+        },
+        report: report
       )
     }
   }
@@ -133,6 +141,10 @@ final class CustomWordsImportFlowModel {
   /// recompare correctly keeps the ORIGINAL load's eligibility, exactly as it
   /// keeps `candidates` itself.
   private var batchEnrichmentEligible = true
+  /// #2951: the loaded batch's `sourceID`, kept for the commit report. Same
+  /// lifecycle as `batchEnrichmentEligible` above: set by `load()`, reset by
+  /// `abandonWork()`, kept across a stale recompare.
+  private var batchSourceID = ""
   private var generation = 0
   private var activeTask: Task<Void, Never>?
 
@@ -236,8 +248,14 @@ final class CustomWordsImportFlowModel {
   /// is cancelled and can no longer publish. Clears the draft so a confirmed
   /// discard is final and idempotent, whether this runs from an explicit
   /// discard action or from `.onDisappear`'s unconditional cleanup.
+  ///
+  /// Also clears the review rows: `abandonWork()` resets the batch metadata
+  /// (`batchEnrichmentEligible`, `batchSourceID`), so a `confirm()` after a
+  /// cancel must find nothing to approve rather than commit an abandoned
+  /// review under reset metadata (#2951, Codex round 1).
   func cancel() {
     abandonWork()
+    rows = []
     pasteDraft = ""
   }
 
@@ -340,6 +358,14 @@ final class CustomWordsImportFlowModel {
     switch dependencies.commit(plan) {
     case .committed(let receipt):
       droppedAliasCollisionCount = receipt.droppedAliasCollisions.count
+      // #2951: the report is the fact, the result screen is its presentation,
+      // so it goes out first. Only this branch wrote words; `.stale` comes
+      // back here through Review and reports when its own commit lands.
+      dependencies.report(
+        CustomWordsImportReport(
+          sourceID: batchSourceID,
+          found: candidates.count,
+          imported: receipt.addedIDs.count))
       showResult(
         .completed(added: receipt.addedIDs.count, replaced: receipt.replacedIDs.count))
     case .stale:
@@ -376,6 +402,7 @@ final class CustomWordsImportFlowModel {
       }
       candidates = batch.candidates
       batchEnrichmentEligible = batch.enrichmentEligible
+      batchSourceID = batch.sourceID
       beginWork(.comparing)
       await compare(candidates: batch.candidates, generation: generation)
     } catch is CancellationError {
@@ -433,6 +460,7 @@ final class CustomWordsImportFlowModel {
     activeTask?.cancel()
     activeTask = nil
     batchEnrichmentEligible = true
+    batchSourceID = ""
     return advanceGeneration()
   }
 
@@ -444,4 +472,22 @@ final class CustomWordsImportFlowModel {
   private func isCurrent(_ candidateGeneration: Int) -> Bool {
     candidateGeneration == generation
   }
+}
+
+/// #2951: the shape of one landed import, handed to `Dependencies.report`.
+/// Counts and a closed-set source id only, never a word
+/// (`sentry-operations.md` RULE: telemetry-privacy-boundary).
+struct CustomWordsImportReport: Equatable, Sendable {
+  /// `CustomWordsImportBatch.sourceID`: `paste`, a file parser id, or a Smart
+  /// Import adapter id.
+  let sourceID: String
+  /// Candidates the source produced after validation (the batch Review was
+  /// built from).
+  let found: Int
+  /// Words the commit actually wrote (`receipt.addedIDs.count`).
+  let imported: Int
+  /// Rows that did not land: already present, or left unchecked. One owner for
+  /// the arithmetic, so a reader cannot see `found`, `imported` and a `skipped`
+  /// that disagree.
+  var skipped: Int { found - imported }
 }

@@ -193,7 +193,14 @@ struct YourWordsView: View {
         CustomWordsImportSheet(
           dependencies: .live(
             existingWords: { customWordsCoordinator.customWords },
-            commit: { customWordsCoordinator.commitImport($0) }
+            commit: { customWordsCoordinator.commitImport($0) },
+            // #2951: one row per landed import; the flow model cannot name
+            // the Services module, so the mapping lives here.
+            report: {
+              TelemetryService.shared.customWordsImported(
+                source: $0.sourceID, found: $0.found, imported: $0.imported,
+                skipped: $0.skipped)
+            }
           )
         )
       }
