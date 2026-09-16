@@ -321,9 +321,12 @@ struct TelemetryEmitterRegistryTests {
     /// second instance) is a capture path this scan cannot see, so it is reported too.
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
       if collect, node.baseName.text == "PostHogSDK" {
-        let viaShared =
-          node.parent?.as(MemberAccessExprSyntax.self)?.declName.baseName.text == "shared"
-        if !viaShared {
+        let parent = node.parent?.as(MemberAccessExprSyntax.self)
+        // As the MEMBER of `PostHog.PostHogSDK` this node is owned by the member-access
+        // visitor above; only a bare base reference is judged here.
+        let isMemberName = parent?.base?.as(DeclReferenceExprSyntax.self)?.id != node.id
+        let viaShared = parent?.declName.baseName.text == "shared"
+        if parent == nil || (!isMemberName && !viaShared) {
           unresolved.append(("`PostHogSDK` used other than through `.shared`", site(node).line))
         }
       }
@@ -631,10 +634,12 @@ struct TelemetryEmitterRegistryTests {
         }
         func u() { PostHog.PostHogSDK.shared.capture("fourteen.qualified") }
         func v() { let c = PostHog.PostHogSDK.shared; c.capture("hidden.qualified_alias") }
+        func clash(v: String, event: String) { PostHogSDK.shared.capture(event) }
+        func w() { clash(v: "x", event: "hidden.conflict_a") }
       }
       struct Twin {
-        func second(event: String, v: String) { PostHogSDK.shared.capture(event) }
-        func w() { second(event: "hidden.conflict", v: "x") }
+        func clash(event: String, v: String) { PostHogSDK.shared.capture(event) }
+        func x() { clash(event: "hidden.conflict_b", v: "x") }
       }
       """
     let other = """
