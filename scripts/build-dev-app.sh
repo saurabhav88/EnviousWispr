@@ -181,6 +181,12 @@ echo "==> Step 7: Verifying deployed bundle..."
   || { echo "ERROR: EG-1 llama-server missing from Resources (#1271)"; exit 1; }
 [ -f "$APP_PATH/Contents/Resources/eg1-manifest.json" ] \
   || { echo "ERROR: eg1-manifest.json missing from Resources (#1271)"; exit 1; }
+# #1413 v1.1: the pause-anything adapter. Both halves or the route is silently
+# `unavailable(load)` on every take, which live UAT would misread as an OS change.
+[ -f "$APP_PATH/Contents/Frameworks/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter" ] \
+  || { echo "ERROR: MediaRemoteAdapter.framework missing from Frameworks (#1413)"; exit 1; }
+[ -f "$APP_PATH/Contents/Resources/mediaremote-adapter.pl" ] \
+  || { echo "ERROR: mediaremote-adapter.pl missing from Resources (#1413)"; exit 1; }
 # #2649: S1-mini rides the same route. The licence text is listed here too —
 # its ADDITIONAL TERM binds the distributed bundle, not just the download.
 for s1_resource in s1-manifest.json s1-delivery-manifest.json \

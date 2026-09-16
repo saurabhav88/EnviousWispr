@@ -33,13 +33,13 @@ struct OtherAudioTelemetryTests {
     ledger.open(takeID: "B")
     sink.recordTakeSummary(summary(holdID: holdB))
 
-    sink.recordMediaSettled(.resumeFailed, holdID: holdA, failure: "resume_failed")
+    sink.recordMediaSettled(.resumeFailed, holdID: holdA, failure: "resume_failed", route: nil, adapterFailure: nil)
 
     let a = try #require(ledger.close(takeID: "A")?.otherAudio)
     #expect(a.media == "resume_failed")
     #expect(a.failure == "resume_failed")
 
-    sink.recordMediaSettled(.resumed, holdID: holdB, failure: nil)
+    sink.recordMediaSettled(.resumed, holdID: holdB, failure: nil, route: nil, adapterFailure: nil)
     let b = try #require(ledger.close(takeID: "B")?.otherAudio)
     #expect(b.media == "resumed")
     #expect(b.failure == nil)
@@ -59,7 +59,7 @@ struct OtherAudioTelemetryTests {
 
     ledger.open(takeID: "B")
     sink.recordTakeSummary(summary(holdID: holdB))
-    sink.recordMediaSettled(.resumeFailed, holdID: holdA, failure: "resume_failed")
+    sink.recordMediaSettled(.resumeFailed, holdID: holdA, failure: "resume_failed", route: nil, adapterFailure: nil)
 
     #expect(ledger.openCount == 1)
     let b = try #require(ledger.close(takeID: "B")?.otherAudio)
@@ -76,7 +76,7 @@ struct OtherAudioTelemetryTests {
 
     ledger.open(takeID: "A")
     sink.recordTakeSummary(summary(holdID: UUID()))
-    sink.recordMediaSettled(.nothingPaused, holdID: UUID(), failure: "consent_denied")
+    sink.recordMediaSettled(.nothingPaused, holdID: UUID(), failure: "consent_denied", route: nil, adapterFailure: nil)
 
     let a = try #require(ledger.close(takeID: "A")?.otherAudio)
     #expect(a.media == "pending")
@@ -101,6 +101,41 @@ struct OtherAudioTelemetryTests {
         ]))
     #expect(row["other_audio_failure"] as? String == "record_failed")
     #expect(row["other_audio_media"] as? String == "nothing_paused")
+  }
+
+  @Test("v1.1: route and adapter failure are absent until set, then ride the same row")
+  func routeFacts() throws {
+    let ledger = TakeStageLedger()
+    let service = TelemetryService(takeStages: ledger)
+    let sink = LiveOtherAudioTelemetrySink(telemetry: service)
+    let hold = UUID()
+
+    ledger.open(takeID: "A")
+    var pending = summary(holdID: hold, media: .pending, failure: nil)
+    pending.mediaRoute = "adapter"
+    sink.recordTakeSummary(pending)
+    sink.recordMediaSettled(.sourceChanged, holdID: hold, failure: nil, route: "adapter", adapterFailure: nil)
+    let a = try #require(ledger.close(takeID: "A")).terminalProperties
+    #expect(a["other_audio_media_route"] as? String == "adapter")
+    #expect(a["other_audio_media"] as? String == "source_changed")
+    #expect(a["other_audio_adapter_failure"] == nil)
+
+    ledger.open(takeID: "B")
+    var fell = summary(holdID: UUID(), media: .nothingPaused, failure: nil)
+    fell.mediaRoute = "scripted"
+    fell.adapterFailure = "timeout"
+    sink.recordTakeSummary(fell)
+    let b = try #require(ledger.close(takeID: "B")).terminalProperties
+    #expect(b["other_audio_media_route"] as? String == "scripted")
+    #expect(b["other_audio_adapter_failure"] as? String == "timeout")
+
+    ledger.open(takeID: "C")
+    let late = UUID()
+    sink.recordTakeSummary(summary(holdID: late, media: .pending, failure: nil))
+    sink.recordMediaSettled(.resumed, holdID: late, failure: nil, route: "scripted", adapterFailure: "exit")
+    let c = try #require(ledger.close(takeID: "C")).terminalProperties
+    #expect(c["other_audio_media_route"] as? String == "scripted", "a late outcome carries the route")
+    #expect(c["other_audio_adapter_failure"] as? String == "exit")
   }
 
   @Test("Newest-entry writes target the newest open take; absent entries stay absent")

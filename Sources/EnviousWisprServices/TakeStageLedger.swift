@@ -68,11 +68,17 @@ public struct OtherAudioTerminalFacts: Equatable, Sendable {
   public var restoreMicros: Int?
   public var recordMicros: Int?
   public var failure: String?
+  /// v1.1: `adapter` / `scripted` / `none`, which media route answered the
+  /// pause, and the adapter's bounded failure class (`load`, `timeout`, `exit`,
+  /// `parse`, `send`) when it was tried and failed. The fleet-wide "did an OS
+  /// update turn the adapter off" question is answered here, never by Sentry.
+  public var mediaRoute: String?
+  public var adapterFailure: String?
 
   public init(
     mode: String, volume: String, mute: String, media: String, outputTransport: String? = nil,
     applyMicros: Int? = nil, restoreMicros: Int? = nil, recordMicros: Int? = nil,
-    failure: String? = nil
+    failure: String? = nil, mediaRoute: String? = nil, adapterFailure: String? = nil
   ) {
     self.mode = mode
     self.volume = volume
@@ -83,6 +89,8 @@ public struct OtherAudioTerminalFacts: Equatable, Sendable {
     self.restoreMicros = restoreMicros
     self.recordMicros = recordMicros
     self.failure = failure
+    self.mediaRoute = mediaRoute
+    self.adapterFailure = adapterFailure
   }
 
   var terminalProperties: [String: Any] {
@@ -95,6 +103,8 @@ public struct OtherAudioTerminalFacts: Equatable, Sendable {
     if let restoreMicros { out["other_audio_restore_us"] = restoreMicros }
     if let recordMicros { out["other_audio_record_us"] = recordMicros }
     if let failure { out["other_audio_failure"] = failure }
+    if let mediaRoute { out["other_audio_media_route"] = mediaRoute }
+    if let adapterFailure { out["other_audio_adapter_failure"] = adapterFailure }
     return out
   }
 }

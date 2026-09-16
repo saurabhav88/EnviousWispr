@@ -26,6 +26,9 @@ enum OtherAudioMediaDisposition: String, Codable, Equatable, Sendable {
   case resumed
   case nothingPaused = "nothing_paused"
   case resumeFailed = "resume_failed"
+  /// v1.1: the adapter-paused source was no longer the Now Playing source at
+  /// resume, so nothing could be sent to it. Final; never our failure.
+  case sourceChanged = "source_changed"
 }
 
 /// The persisted record. `version` gates decoding (R6): an unknown version is

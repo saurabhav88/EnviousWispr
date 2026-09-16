@@ -27,7 +27,8 @@ final class LiveOtherAudioTelemetrySink: OtherAudioTelemetrySink {
         mode: summary.mode, volume: summary.volume.rawValue, mute: summary.mute.rawValue,
         media: summary.media.rawValue, outputTransport: summary.outputTransport,
         applyMicros: summary.applyMicros, restoreMicros: summary.restoreMicros,
-        recordMicros: summary.recordMicros, failure: summary.failure))
+        recordMicros: summary.recordMicros, failure: summary.failure,
+        mediaRoute: summary.mediaRoute, adapterFailure: summary.adapterFailure))
     if summary.media == .pending, let takeID {
       pendingTakeIDs[summary.holdID] = takeID
     }
@@ -39,9 +40,14 @@ final class LiveOtherAudioTelemetrySink: OtherAudioTelemetrySink {
     }
   }
 
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?) {
+  func recordMediaSettled(
+    _ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?, route: String?,
+    adapterFailure: String?
+  ) {
     guard let takeID = pendingTakeIDs.removeValue(forKey: holdID) else { return }
-    telemetry.updateOtherAudioMedia(takeID: takeID, media: media.rawValue, failure: failure)
+    telemetry.updateOtherAudioMedia(
+      takeID: takeID, media: media.rawValue, failure: failure, route: route,
+      adapterFailure: adapterFailure)
   }
 
   func breadcrumb(_ message: String, data: [String: String]) {

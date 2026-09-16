@@ -64,26 +64,61 @@ package protocol OutputVolumeControlling: AnyObject {
   func setMute(_ muted: Bool, of device: AudioDeviceID) -> Bool
 }
 
+/// Which mechanism answered a pause (#1413 v1.1): the system Now Playing
+/// adapter, the scripted Music/Spotify events, or neither ran. Rides the take's
+/// terminal row as `other_audio_media_route`.
+package enum MediaRoute: String, Equatable, Sendable {
+  case adapter, scripted, none
+}
+
 /// Result of one media operation, reported back to the hold off the effect's own
-/// queue. `pausedTargets` are bundle identifiers of players that accepted `pause`.
-package enum MediaPauseOutcome: Equatable, Sendable {
-  case paused(targets: [String])
-  case nothingPlaying
-  case consentNeeded
-  case consentDenied
-  case failed
+/// queue. `targets` are what the pause recorded: bundle identifiers of players
+/// that accepted a scripted `pause`, or `adapter:<bundle>|<identity>` for the
+/// source the adapter paused. `adapterFailure` is the bounded class when the
+/// adapter was tried and failed; `route` then names what ran instead.
+package struct MediaPauseOutcome: Equatable, Sendable {
+  package enum Result: Equatable, Sendable {
+    case paused(targets: [String])
+    case nothingPlaying
+    case consentNeeded
+    case consentDenied
+    case failed
+  }
+
+  package var result: Result
+  package var route: MediaRoute
+  package var adapterFailure: String?
+
+  package init(_ result: Result, route: MediaRoute = .scripted, adapterFailure: String? = nil) {
+    self.result = result
+    self.route = route
+    self.adapterFailure = adapterFailure
+  }
+
+  // Case-shaped constructors so a scripted-route outcome reads like the v1 enum.
+  package static func paused(targets: [String], route: MediaRoute = .scripted) -> Self {
+    Self(.paused(targets: targets), route: route)
+  }
+  package static var nothingPlaying: Self { Self(.nothingPlaying) }
+  package static var consentNeeded: Self { Self(.consentNeeded) }
+  package static var consentDenied: Self { Self(.consentDenied) }
+  package static var failed: Self { Self(.failed) }
 }
 
 package enum MediaResumeOutcome: Equatable, Sendable {
   case resumed
   case nothingToResume
+  /// The source we paused is no longer the Now Playing source, so nothing can
+  /// be sent to it. Not a success (it may still be paused) and not our failure.
+  case sourceChanged
   case failed
 }
 
-/// Pause/resume of the scriptable players. Every operation is keyed by the hold
+/// Pause/resume of whatever is playing. Every operation is keyed by the hold
 /// that owns it so a late completion can never be attributed to another take.
 /// The live conformer is `LiveMediaPlaybackEffects` in DesktopEffects; it owns
-/// the serial Apple-events queue, the consent policy and the `ended` set.
+/// the two routes (adapter, then scripted), the serial queue, the consent
+/// policy and the `ended` set.
 @MainActor
 package protocol MediaPlaybackControlling: AnyObject {
   /// Enqueue a pause for `holdID`. `completion` is called on the main actor
@@ -97,9 +132,11 @@ package protocol MediaPlaybackControlling: AnyObject {
   func resumeOrphan(
     holdID: UUID, targets: [String],
     completion: @escaping @MainActor (MediaResumeOutcome) -> Void)
-  /// Raise the Automation consent prompt for running targets, off the main
-  /// actor. Called from the Settings picker when `Pause music` is chosen.
-  func preflightConsent()
+  /// Raise the Automation consent prompt for running scripted targets, off the
+  /// main actor, only when the adapter route is unavailable on this Mac. Called
+  /// from the Settings picker when `Pause music` is chosen; `completion` reports
+  /// whether the adapter answered, for the picker's availability note.
+  func preflightConsent(completion: @escaping @MainActor (Bool) -> Void)
 }
 
 /// The pair `WisprBootstrapper.init` requires, non-defaulted, like

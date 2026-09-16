@@ -38,6 +38,11 @@ struct OtherAudioTakeSummary: Equatable, Sendable {
   /// Closed operation/reason for a failure that is a CONDITION, not our defect
   /// (`record_failed`, `unsupported_output`, `consent_needed`, ...). nil when none.
   var failure: String?
+  /// v1.1: which media route answered (`adapter` / `scripted` / `none`) and the
+  /// adapter's bounded failure class when it was tried and failed. nil until
+  /// the pause outcome arrives (a late outcome carries them on the settlement).
+  var mediaRoute: String? = nil
+  var adapterFailure: String? = nil
   /// Local correlation only, so a late media settlement reaches ITS take's row.
   /// Never included in vendor properties.
   var holdID: UUID = UUID()
@@ -51,7 +56,9 @@ protocol OtherAudioTelemetrySink: AnyObject {
   func recordTakeSummary(_ summary: OtherAudioTakeSummary)
   /// Called once the media half of the same hold settles, possibly after the
   /// summary; the sink updates only the row that hold's summary landed on.
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?)
+  func recordMediaSettled(
+    _ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?, route: String?,
+    adapterFailure: String?)
   func breadcrumb(_ message: String, data: [String: String])
   func captureDefect(_ message: String, data: [String: String])
 }
@@ -93,6 +100,8 @@ final class OtherAudioHold {
     var recordMicros: Int?
     /// A media condition that settled during the take (`consent_needed`, ...).
     var failure: String?
+    var mediaRoute: String?
+    var adapterFailure: String?
   }
 
   private var live: Live?
@@ -334,10 +343,12 @@ final class OtherAudioHold {
   private func startMediaPause(holdID: UUID) {
     deps.effects.media.pause(holdID: holdID) { [weak self] outcome in
       guard let self else { return }
-      switch outcome {
+      self.noteMediaRoute(holdID, outcome)
+      switch outcome.result {
       case .paused(let targets):
         self.mutateRecord(holdID) { $0.pausedTargets = targets }
-        self.deps.log("hold id=\(holdID) media paused count=\(targets.count)")
+        self.deps.log(
+          "hold id=\(holdID) media paused count=\(targets.count) route=\(outcome.route.rawValue)")
       case .nothingPlaying:
         self.settleMedia(holdID, .nothingPaused, reason: nil)
       case .consentNeeded:
@@ -350,9 +361,32 @@ final class OtherAudioHold {
     }
   }
 
+  /// Keeps the route facts on the live take (the summary carries them) or, for
+  /// an outcome that lands after the take ended, on the pending settlement.
+  private var lateRoutes: [UUID: (route: String, adapterFailure: String?)] = [:]
+
+  private func noteMediaRoute(_ holdID: UUID, _ outcome: MediaPauseOutcome) {
+    let route = outcome.route.rawValue
+    if var current = live, current.record.id == holdID {
+      current.mediaRoute = route
+      current.adapterFailure = outcome.adapterFailure
+      live = current
+    } else if deps.store.read(id: holdID)?.media == .pending {
+      lateRoutes[holdID] = (route, outcome.adapterFailure)
+    }
+    var data = ["route": route]
+    if let failure = outcome.adapterFailure { data["adapter_failure"] = failure }
+    deps.telemetry.breadcrumb("other_audio media route", data: data)
+    if let failure = outcome.adapterFailure {
+      deps.log("hold id=\(holdID) adapter unavailable reason=\(failure) route=\(route)")
+    }
+  }
+
   private func settleMedia(
     _ holdID: UUID, _ disposition: OtherAudioMediaDisposition, reason: String?
   ) {
+    // Whatever happens below, this hold's late route entry is spent here.
+    defer { lateRoutes.removeValue(forKey: holdID) }
     // A hold's media settles ONCE (M1 -> M2/M3/M4). A pause outcome that arrives
     // after the resume already settled it (consent prompt answered minutes
     // later, live UAT 2026-09-15) must not rewrite a final disposition.
@@ -366,7 +400,12 @@ final class OtherAudioHold {
         live = current
       }
     }
-    deps.telemetry.recordMediaSettled(disposition, holdID: holdID, failure: reason)
+    let late = lateRoutes[holdID]
+    let onLive = (live?.record.id == holdID) ? live : nil
+    deps.telemetry.recordMediaSettled(
+      disposition, holdID: holdID, failure: reason,
+      route: onLive?.mediaRoute ?? late?.route,
+      adapterFailure: onLive?.adapterFailure ?? late?.adapterFailure)
     deps.log(
       "hold id=\(holdID) media settled disposition=\(disposition.rawValue) reason=\(reason ?? "none")"
     )
@@ -409,6 +448,10 @@ final class OtherAudioHold {
     restoreProperties(&current.record)
 
     live = nil
+    // The route facts outlive the live take: the media half settles after it.
+    if current.record.media == .pending, let route = current.mediaRoute {
+      lateRoutes[holdID] = (route, current.adapterFailure)
+    }
     persist(current.record)
     let restoreMicros = hasPropertyObligation ? deps.nowMicros() - t0 : nil
 
@@ -431,6 +474,7 @@ final class OtherAudioHold {
         failure: current.failure
           ?? ((current.record.volume == .unresolved || current.record.mute == .unresolved)
             ? "restore_failed" : nil),
+        mediaRoute: current.mediaRoute, adapterFailure: current.adapterFailure,
         holdID: holdID))
 
     if current.record.media == .pending {
@@ -439,6 +483,7 @@ final class OtherAudioHold {
         switch outcome {
         case .resumed: self.settleMedia(holdID, .resumed, reason: nil)
         case .nothingToResume: self.settleMedia(holdID, .nothingPaused, reason: nil)
+        case .sourceChanged: self.settleMedia(holdID, .sourceChanged, reason: nil)
         case .failed: self.settleMedia(holdID, .resumeFailed, reason: "resume_failed")
         }
       }
@@ -541,10 +586,12 @@ final class OtherAudioHold {
     }
   }
 
-  /// Raises the Automation prompt for running players off the main actor, so it
-  /// lands when the user picks `Pause music` rather than mid-take.
-  func preflightConsent() {
-    deps.effects.media.preflightConsent()
+  /// Probes the adapter off the main actor and, only when it cannot answer on
+  /// this Mac, raises the Automation prompt for running players so it lands
+  /// when the user picks `Pause music` rather than mid-take. `completion`
+  /// reports whether "pause anything" is available here.
+  func preflightConsent(completion: @escaping @MainActor (Bool) -> Void = { _ in }) {
+    deps.effects.media.preflightConsent(completion: completion)
   }
 
   // MARK: - Launch and quit
@@ -578,6 +625,7 @@ final class OtherAudioHold {
           switch outcome {
           case .resumed: self.settleMedia(holdID, .resumed, reason: nil)
           case .nothingToResume: self.settleMedia(holdID, .nothingPaused, reason: nil)
+          case .sourceChanged: self.settleMedia(holdID, .sourceChanged, reason: nil)
           case .failed: self.settleMedia(holdID, .resumeFailed, reason: "resume_failed")
           }
         }

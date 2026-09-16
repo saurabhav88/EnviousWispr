@@ -580,6 +580,27 @@ let project = Project(
         ),
         "Sources/EnviousWispr/Resources/speaker-plda-parameters.json",
         "Sources/EnviousWispr/Resources/speaker-models-LICENSE.txt",
+        // #1413 v1.1: the perl half of the community mediaremote-adapter (BSD-3;
+        // provenance and the fragility statement in the PROVENANCE file). A
+        // script is a resource; its framework is nested CODE and rides
+        // `copyFiles` below into Contents/Frameworks (Apple TN2206 placement),
+        // never a resource, so the release signature seals it as code.
+        "Sources/EnviousWispr/Resources/mediaremote-adapter.pl",
+        "Sources/EnviousWispr/Resources/mediaremote-adapter-LICENSE.txt",
+      ],
+      // #1413 v1.1: MediaRemoteAdapter.framework is bundled, NEVER linked: the
+      // app spawns /usr/bin/perl to load it (see LiveMediaRemoteAdapter.swift).
+      // Folder-referenced so the Versions/ symlink layout survives verbatim.
+      // codeSignOnCopy signs it with the build's identity in the dev build;
+      // build-release-dmg.sh re-signs it inside-out with the Developer ID.
+      copyFiles: [
+        .frameworks(
+          name: "Embed mediaremote-adapter",
+          files: [
+            .folderReference(
+              path: "Sources/EnviousWispr/Resources/MediaRemoteAdapter.framework",
+              codeSignOnCopy: true)
+          ])
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the

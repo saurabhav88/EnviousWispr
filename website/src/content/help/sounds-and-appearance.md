@@ -38,7 +38,7 @@ If you dictate with music, a podcast or a video playing, EnviousWispr can get th
 - **Nothing.** Music and other audio keep playing as they are.
 - **Turn down.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back to exactly where it was.
 - **Mute.** Silences your current speakers or headphones for the whole take, then puts the volume back.
-- **Pause music.** Pauses Music or Spotify if it is playing, then resumes it when you stop. Only those two apps are paused; a browser tab or another player keeps going, so use Turn down or Mute for those.
+- **Pause music.** Pauses whatever is playing (Spotify, Music, a YouTube tab, a podcast app), then resumes it when you stop. Only what was playing when you started is paused; anything you start during the take keeps going.
 
 A few things worth knowing:
 
@@ -46,7 +46,8 @@ A few things worth knowing:
 - Audio that starts mid-take is quiet too: the whole output stays lowered until you stop.
 - If you change the volume yourself during a take, your new level stays. EnviousWispr only puts the volume back when it is still at the level it set.
 - If your Mac was already muted when you started, it stays muted.
-- The first time you use Pause music, macOS asks whether EnviousWispr may control Music or Spotify. That first take is not paused; every take after you allow it is.
+- Pause music resumes only what it paused, and only if it is still the paused item. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them rather than starting something you did not have playing.
+- Pause music reaches every player through a part of macOS that Apple does not document for apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the Sounds page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify; that first take is not paused, and every take after you allow it is.
 - If EnviousWispr quits or crashes in the middle of a take, the volume comes back the next time the app opens.
 - Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The Sounds page tells you when Turn down or Mute is not available on your current output.
 - The start and stop sounds still play. The output is lowered a moment after the start sound so it is not cut off.

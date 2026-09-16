@@ -4079,10 +4079,15 @@ public final class TelemetryService {
   }
 
   /// The media half settles later; update ONLY the take that carried the summary.
-  public func updateOtherAudioMedia(takeID: String, media: String, failure: String? = nil) {
+  public func updateOtherAudioMedia(
+    takeID: String, media: String, failure: String? = nil, route: String? = nil,
+    adapterFailure: String? = nil
+  ) {
     takeStages.update(takeID: takeID) {
       $0.otherAudio?.media = media
       if let failure { $0.otherAudio?.failure = failure }
+      if let route { $0.otherAudio?.mediaRoute = route }
+      if let adapterFailure { $0.otherAudio?.adapterFailure = adapterFailure }
     }
   }
 

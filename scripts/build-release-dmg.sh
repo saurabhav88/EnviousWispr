@@ -335,6 +335,20 @@ else
         echo "::error::EG-1 llama-server missing from Contents/Resources (#1271)"
         exit 1
     fi
+    # 5.6. #1413 v1.1: the bundled mediaremote-adapter framework. Nested CODE in
+    # Contents/Frameworks that the app never links (perl loads it), so no build
+    # phase signs it with the Developer ID: seal it here, before the main-app
+    # signature, like Sparkle above. Its perl script is a resource and needs no
+    # signature of its own. Missing either half is a broken build, not a
+    # degraded feature: fail closed.
+    MRA_FRAMEWORK="$BUNDLE/Contents/Frameworks/MediaRemoteAdapter.framework"
+    if [[ -f "$MRA_FRAMEWORK/Versions/A/MediaRemoteAdapter" && -f "$BUNDLE/Contents/Resources/mediaremote-adapter.pl" ]]; then
+        echo "    [5.6/6] mediaremote-adapter: MediaRemoteAdapter.framework"
+        codesign "${SIGN_FLAGS[@]}" "$MRA_FRAMEWORK/Versions/A"
+    else
+        echo "::error::MediaRemoteAdapter.framework or mediaremote-adapter.pl missing from the bundle (#1413)"
+        exit 1
+    fi
     # 6. Embed the Developer ID provisioning profile, THEN the main app bundle.
     # keychain-access-groups is a RESTRICTED entitlement; AMFI requires the embedded
     # profile to authorize it at launch (TN3125). The profile is sealed by the

@@ -265,7 +265,7 @@ struct LiveMediaPlaybackEffectsTests {
       environment: players.environment(), queue: DispatchQueue(label: "t"))
     var outcome: MediaPauseOutcome?
     effects.pause(holdID: UUID()) { outcome = $0 }
-    #expect(outcome == .nothingPlaying)
+    #expect(outcome == MediaPauseOutcome(.nothingPlaying, route: .none))
   }
 
   @Test("The issue budget stops new events; a first success is still recorded")
@@ -324,6 +324,348 @@ private final class OSAllocatedUnfairLockBox: @unchecked Sendable {
 
 /// Awaits an effect's own completion callback; a deadline only as a fallback so
 /// a lost callback fails the row instead of hanging the lane.
+// MARK: - v1.1: the adapter route in front of the scripted one
+
+/// A scriptable Now Playing source: what `get` reports, whether `send` is
+/// accepted, and every adapter invocation in order. Answers as the real perl
+/// process would (stdout JSON or `null`, stderr, exit status), so the parser is
+/// exercised on every row, not bypassed.
+private final class FakeAdapter: @unchecked Sendable {
+  private let lock = NSLock()
+  /// nil = nothing registered (`null`); otherwise the source and its playing flag.
+  var source: (bundle: String, identity: String?, playing: Bool)?
+  /// Overrides the whole `get` answer (a broken adapter).
+  var getOverride: MediaRemoteAdapter.RunResult?
+  var rejectSend = false
+  /// The refusal that still paused: `send 1` exits non-zero AND the source pauses.
+  var rejectSendButPause = false
+  /// Block inside the first `get` (a read in flight when the take ends) to stage a race.
+  let gate = DispatchSemaphore(value: 0)
+  let entered = DispatchSemaphore(value: 0)
+  var blockInsideGet = false
+  private(set) var calls: [[String]] = []
+
+  init(_ source: (bundle: String, identity: String?, playing: Bool)?) { self.source = source }
+
+  var run: @Sendable ([String]) -> MediaRemoteAdapter.RunResult {
+    { [self] arguments in
+      let command = Array(arguments.dropFirst(2))
+      if command.first == "get", blockInsideGet {
+        blockInsideGet = false
+        entered.signal()
+        gate.wait()
+      }
+      return lock.withLock {
+        calls.append(command)
+        if command.first == "get" {
+          if let getOverride { return getOverride }
+          guard let source else { return .init(status: 0, stdout: "null\n", stderr: "") }
+          var dict: [String: Any] = ["bundleIdentifier": source.bundle, "playing": source.playing,
+            "processIdentifier": 42]
+          if let identity = source.identity { dict["contentItemIdentifier"] = identity }
+          let data = try! JSONSerialization.data(withJSONObject: dict)
+          return .init(status: 0, stdout: String(decoding: data, as: UTF8.self), stderr: "")
+        }
+        if rejectSendButPause, command.dropFirst().first == MediaRemoteAdapter.pauseCommand {
+          source?.playing = false
+          return .init(status: 1, stdout: "", stderr: "Failed to send command")
+        }
+        if rejectSend { return .init(status: 1, stdout: "", stderr: "Failed to send command") }
+        if command.dropFirst().first == MediaRemoteAdapter.pauseCommand { source?.playing = false }
+        if command.dropFirst().first == MediaRemoteAdapter.playCommand { source?.playing = true }
+        return .init(status: 0, stdout: "", stderr: "")
+      }
+    }
+  }
+
+  func commands() -> [String] { lock.withLock { calls.map { $0.joined(separator: " ") } } }
+  func isPlaying() -> Bool? { lock.withLock { source?.playing } }
+}
+
+@MainActor
+@Suite("Live media playback effects: adapter route", .tags(.productOutcome))
+struct LiveMediaPlaybackAdapterRouteTests {
+  private func make(_ players: FakePlayers, _ adapter: FakeAdapter?) -> LiveMediaPlaybackEffects {
+    var env = players.environment()
+    env.adapter = adapter?.run
+    return LiveMediaPlaybackEffects(environment: env, queue: DispatchQueue(label: "test.media"))
+  }
+
+  private func pause(_ effects: LiveMediaPlaybackEffects, _ holdID: UUID) async -> MediaPauseOutcome? {
+    await MediaResultWaiter<MediaPauseOutcome>().wait { effects.pause(holdID: holdID, completion: $0) }
+  }
+
+  private func resume(_ effects: LiveMediaPlaybackEffects, _ holdID: UUID) async -> MediaResumeOutcome? {
+    await MediaResultWaiter<MediaResumeOutcome>().wait { effects.resume(holdID: holdID, completion: $0) }
+  }
+
+  @Test("A browser tab playing: paused through the adapter, no Apple event, resumed at the end")
+  func browserTabPausedAndResumed() async {
+    let players = FakePlayers(["com.spotify.client": "paused"])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    let outcome = await pause(effects, holdID)
+    #expect(outcome == .paused(targets: ["adapter:com.google.Chrome|yt-1"], route: .adapter))
+    #expect(adapter.isPlaying() == false)
+    #expect(adapter.commands() == ["get --no-artwork --allow-missing-title", "send 1"])
+    #expect(players.events.isEmpty, "the adapter answered: no Apple event, no consent check")
+
+    let resumed = await resume(effects, holdID)
+    #expect(resumed == .resumed)
+    #expect(adapter.isPlaying() == true)
+    #expect(adapter.commands().suffix(2) == ["get --no-artwork --allow-missing-title", "send 0"])
+  }
+
+  @Test("Adapter says nothing is playing: no event, no prompt, even with Spotify running")
+  func adapterNothingIsTrusted() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    players.consent = .needed
+    let adapter = FakeAdapter(nil)
+    let effects = make(players, adapter)
+    let outcome = await pause(effects, UUID())
+    #expect(outcome == MediaPauseOutcome(.nothingPlaying, route: .adapter))
+    #expect(players.events.isEmpty && players.prompts.isEmpty)
+  }
+
+  @Test("Adapter says the source is already paused: left alone, nothing recorded")
+  func alreadyPausedIsLeftAlone() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.spotify.client", identity: "t", playing: false))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    #expect(await pause(effects, holdID) == MediaPauseOutcome(.nothingPlaying, route: .adapter))
+    #expect(await resume(effects, holdID) == .nothingToResume)
+    #expect(adapter.commands() == ["get --no-artwork --allow-missing-title"])
+  }
+
+  @Test("User pressed play mid-take: nothing is sent at the end")
+  func userResumedIsLeftAlone() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    _ = await pause(effects, holdID)
+    adapter.source?.playing = true
+    #expect(await resume(effects, holdID) == .resumed)
+    #expect(!adapter.commands().contains("send 0"))
+  }
+
+  @Test("Another item paused in the same app at the end: not ours, nothing is started")
+  func sameAppDifferentItemIsNotResumed() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    _ = await pause(effects, holdID)
+    // The user opened another tab, played it, and paused it themselves.
+    adapter.source = (bundle: "com.google.Chrome", identity: "yt-2", playing: false)
+    #expect(await resume(effects, holdID) == .sourceChanged)
+    #expect(!adapter.commands().contains("send 0"))
+    #expect(adapter.isPlaying() == false)
+  }
+
+  @Test("Recorded an item, the read at the end has none: not provably ours, nothing is started")
+  func missingIdentityAtResumeIsNotOurs() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    _ = await pause(effects, holdID)
+    adapter.source = (bundle: "com.google.Chrome", identity: nil, playing: false)
+    #expect(await resume(effects, holdID) == .sourceChanged)
+    #expect(!adapter.commands().contains("send 0"))
+    // A different item PLAYING in the same app is not "the user resumed ours" either.
+    let holdB = UUID()
+    adapter.source = (bundle: "com.google.Chrome", identity: "yt-1", playing: true)
+    _ = await pause(effects, holdB)
+    adapter.source = (bundle: "com.google.Chrome", identity: "yt-3", playing: true)
+    #expect(await resume(effects, holdB) == .sourceChanged)
+  }
+
+  @Test("A different app is the source at the end: reported as source changed, nothing sent")
+  func differentAppAtResume() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    _ = await pause(effects, holdID)
+    adapter.source = (bundle: "com.apple.Podcasts", identity: "ep", playing: false)
+    #expect(await resume(effects, holdID) == .sourceChanged)
+    #expect(!adapter.commands().contains("send 0"))
+  }
+
+  @Test("Adapter unavailable (exit 1, load failure): the scripted route runs with a fresh budget")
+  func unavailableFallsBackToScripted() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    let adapter = FakeAdapter(nil)
+    adapter.getOverride = .init(status: 1, stdout: "", stderr: "Failed to load framework: x")
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    let outcome = await pause(effects, holdID)
+    #expect(outcome?.result == .paused(targets: ["com.spotify.client"]))
+    #expect(outcome?.route == .scripted)
+    #expect(outcome?.adapterFailure == "load")
+    #expect(players.state(of: "com.spotify.client") == "paused")
+    #expect(await resume(effects, holdID) == .resumed)
+    #expect(players.state(of: "com.spotify.client") == "playing")
+  }
+
+  @Test("Adapter internal timeout (null on stdout, timed out on stderr) is a failure, not nothing playing")
+  func timeoutIsUnavailable() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    let adapter = FakeAdapter(nil)
+    adapter.getOverride = .init(
+      status: 0, stdout: "null\n",
+      stderr: "Reading now playing information timed out after 2000 milliseconds\n")
+    let effects = make(players, adapter)
+    let outcome = await pause(effects, UUID())
+    #expect(outcome?.route == .scripted)
+    #expect(outcome?.adapterFailure == "timeout")
+    #expect(players.state(of: "com.spotify.client") == "paused")
+  }
+
+  @Test("Adapter unavailable and no scripted player running: nothing playing, route none, failure kept")
+  func unavailableWithNothingScripted() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter(nil)
+    adapter.getOverride = .init(status: nil, stdout: "", stderr: "")
+    let effects = make(players, adapter)
+    let outcome = await pause(effects, UUID())
+    #expect(outcome == MediaPauseOutcome(.nothingPlaying, route: .none, adapterFailure: "timeout"))
+  }
+
+  @Test("Pause send refused and the source did not pause: failed on the adapter route, no scripted fallback")
+  func refusedSendIsFailedNotFallback() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    adapter.rejectSend = true
+    let effects = make(players, adapter)
+    let outcome = await pause(effects, UUID())
+    #expect(outcome == MediaPauseOutcome(.failed, route: .adapter, adapterFailure: "send"))
+    #expect(players.events.isEmpty, "the adapter answered, so Spotify is not touched")
+  }
+
+  @Test("Pause send refused but the source reads paused afterwards: owned and resumed")
+  func refusedSendThatPausedIsOwned() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    adapter.rejectSendButPause = true
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    let outcome = await pause(effects, holdID)
+    #expect(outcome == .paused(targets: ["adapter:com.google.Chrome|yt-1"], route: .adapter))
+    #expect(adapter.commands() == [
+      "get --no-artwork --allow-missing-title", "send 1", "get --no-artwork --allow-missing-title",
+    ])
+    #expect(await resume(effects, holdID) == .resumed)
+    #expect(adapter.isPlaying() == true)
+  }
+
+  @Test("Take ends while the adapter read is in flight: nothing is sent afterwards")
+  func endedDuringReadSendsNothing() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: true))
+    adapter.blockInsideGet = true
+    let effects = make(players, adapter)
+    let holdID = UUID()
+    let paused = Signal<MediaPauseOutcome>()
+    effects.pause(holdID: holdID) { paused.finish($0) }
+    // The read is in flight; the take ends; then the read returns "playing".
+    await awaitEntered(adapter)
+    let resumed = Signal<MediaResumeOutcome>()
+    effects.resume(holdID: holdID) { resumed.finish($0) }
+    adapter.gate.signal()
+    #expect(await paused.wait() == MediaPauseOutcome(.nothingPlaying, route: .adapter))
+    #expect(!adapter.commands().contains("send 1"))
+    #expect(await resumed.wait() == .nothingToResume)
+    #expect(adapter.isPlaying() == true, "the user's playback was never touched")
+  }
+
+  /// Bounded wait on the fake's `entered` signal, off the main actor.
+  private func awaitEntered(_ adapter: FakeAdapter) async {
+    _ = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+      DispatchQueue.global().async {
+        c.resume(returning: adapter.entered.wait(timeout: .now() + 2) == .success)
+      }
+    }
+  }
+
+  @Test("Orphan resume of an adapter target has the same gate: same app and item, still paused")
+  func orphanAdapterResume() async {
+    let players = FakePlayers([:])
+    let adapter = FakeAdapter((bundle: "com.google.Chrome", identity: "yt-1", playing: false))
+    let effects = make(players, adapter)
+    let outcome = await MediaResultWaiter<MediaResumeOutcome>().wait {
+      effects.resumeOrphan(holdID: UUID(), targets: ["adapter:com.google.Chrome|yt-1"], completion: $0)
+    }
+    #expect(outcome == .resumed)
+    #expect(adapter.isPlaying() == true)
+  }
+
+  @Test("Preflight: a healthy adapter raises no consent prompt; a broken one does")
+  func preflightRaisesOnlyWithoutAdapter() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    let healthy = make(players, FakeAdapter(nil))
+    let answered = await MediaResultWaiter<Bool>().wait { healthy.preflightConsent(completion: $0) }
+    #expect(answered == true)
+    #expect(players.prompts.isEmpty)
+
+    let broken = FakeAdapter(nil)
+    broken.getOverride = .init(status: 1, stdout: "", stderr: "Failed to load framework")
+    let fallback = make(players, broken)
+    let answered2 = await MediaResultWaiter<Bool>().wait { fallback.preflightConsent(completion: $0) }
+    #expect(answered2 == false)
+    #expect(players.prompts == ["com.spotify.client"])
+  }
+}
+
+@Suite("MediaRemote adapter parser", .tags(.productOutcome))
+struct MediaRemoteAdapterParserTests {
+  typealias R = MediaRemoteAdapter.RunResult
+
+  @Test("The stdout/stderr/status matrix maps to the four reads")
+  func matrix() {
+    let playing = #"{"bundleIdentifier":"com.spotify.client","processIdentifier":1,"playing":true,"title":"Fault","contentItemIdentifier":"9AD6"}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: playing, stderr: ""))
+      == .playing(.init(bundleID: "com.spotify.client", identity: "9AD6")))
+    let pausedNoItem = #"{"bundleIdentifier":"com.google.Chrome","processIdentifier":1,"playing":false,"title":"A video"}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: pausedNoItem, stderr: ""))
+      == .paused(.init(bundleID: "com.google.Chrome", identity: "A video")))
+    let untitled = #"{"bundleIdentifier":"org.telegram.desktop","processIdentifier":1,"playing":true}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: untitled, stderr: ""))
+      == .playing(.init(bundleID: "org.telegram.desktop", identity: nil)))
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null\n", stderr: "")) == .nothing)
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: #"{"processIdentifier":1,"playing":true}"#, stderr: "")) == .nothing, "no bundle id: cannot be re-identified")
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null", stderr: "Reading now playing information timed out after 2000 milliseconds")) == .unavailable(.timeout))
+    #expect(MediaRemoteAdapter.parseGet(R(status: nil, stdout: "", stderr: "")) == .unavailable(.timeout))
+    #expect(MediaRemoteAdapter.parseGet(R(status: 1, stdout: "", stderr: "Failed to load framework: x")) == .unavailable(.load))
+    #expect(MediaRemoteAdapter.parseGet(R(status: 2, stdout: "", stderr: "boom")) == .unavailable(.exit))
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "not json", stderr: "")) == .unavailable(.parse))
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "{}", stderr: "")) == .unavailable(.parse))
+  }
+
+  @Test("A recorded target round-trips, and an identity may contain the separator")
+  func targetRoundTrip() {
+    let source = MediaRemoteAdapter.Source(bundleID: "com.google.Chrome", identity: "A | B")
+    let target = MediaRemoteAdapter.target(for: source)
+    #expect(target == "adapter:com.google.Chrome|A | B")
+    #expect(MediaRemoteAdapter.source(fromTarget: target) == source)
+    #expect(MediaRemoteAdapter.source(fromTarget: "adapter:com.x") == .init(bundleID: "com.x", identity: nil))
+    #expect(MediaRemoteAdapter.source(fromTarget: "com.spotify.client") == nil)
+    #expect(MediaRemoteAdapter.source(fromTarget: "adapter:") == nil)
+  }
+
+  @Test("The bundled paths name the script in Resources and the framework in Frameworks")
+  func bundledPaths() {
+    let a = MediaRemoteAdapter.bundled
+    #expect(a.scriptURL.lastPathComponent == "mediaremote-adapter.pl")
+    #expect(a.frameworkURL.lastPathComponent == "MediaRemoteAdapter.framework")
+    #expect(a.getArguments.suffix(3) == ["get", "--no-artwork", "--allow-missing-title"])
+    #expect(a.sendArguments("1").suffix(2) == ["send", "1"])
+  }
+}
+
 @MainActor
 private final class MediaResultWaiter<Value: Sendable> {
   private var continuation: CheckedContinuation<Value?, Never>?

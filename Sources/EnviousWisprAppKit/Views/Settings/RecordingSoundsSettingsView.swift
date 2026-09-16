@@ -74,8 +74,16 @@ struct RecordingSoundsSettingsView: View {
         }
       }
       .onChange(of: settings.otherAudioWhileDictating, initial: true) { _, mode in
+        unavailableNote = nil
         refreshAvailability(mode)
-        if mode == .pauseMusic { dictationRuntime.otherAudioHold.preflightConsent() }
+        if mode == .pauseMusic {
+          // The probe answers off the main actor; the note lands when it does,
+          // and only for the choice still selected.
+          dictationRuntime.otherAudioHold.preflightConsent { adapterAnswers in
+            guard settings.otherAudioWhileDictating == .pauseMusic else { return }
+            unavailableNote = adapterAnswers ? nil : Self.pauseAnythingUnavailableNote
+          }
+        }
       }
 
       // A second, separate card for Preview — its own visual home, not a row
@@ -261,9 +269,14 @@ extension RecordingSoundsSettingsView {
         "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays."
     case .pauseMusic:
       return
-        "Pauses Music or Spotify if it is playing, then resumes it when you stop. macOS may ask for permission the first time; a take that needs permission is not paused."
+        "Pauses whatever is playing (music, a video, a podcast), then resumes it when you stop. If you switch to something else during a take, what we paused stays paused."
     }
   }
+
+  /// Shown under `Pause music` when the system route cannot answer on this Mac
+  /// (a macOS update closed it): only the two scriptable players remain.
+  static let pauseAnythingUnavailableNote =
+    "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused."
 
   private static var defaultOutputAddress: AudioObjectPropertyAddress {
     AudioObjectPropertyAddress(
@@ -298,6 +311,9 @@ extension RecordingSoundsSettingsView {
   }
 
   private func refreshAvailability(_ mode: OtherAudioWhileDictating) {
+    // Pause music's note comes from the adapter probe, not the output device;
+    // an output change must not clear it.
+    guard mode != .pauseMusic else { return }
     guard !dictationRuntime.otherAudioHold.isModeAvailable(mode) else {
       unavailableNote = nil
       return

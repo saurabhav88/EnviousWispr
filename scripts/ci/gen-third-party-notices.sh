@@ -63,6 +63,11 @@ COMPONENTS=(
   # llama-server-PROVENANCE.md); its MIT license text is vendored in-repo,
   # hence the repo: path scheme (#1271 Codex code-diff r6).
   "llama.cpp (bundled llama-server binary)|fdb1db87|MIT|repo:Sources/EnviousWispr/Resources/llama-server-LICENSE.txt|https://github.com/ggml-org/llama.cpp|"
+  # #1413: mediaremote-adapter is NOT a SwiftPM dep either — the framework is
+  # built from the pinned upstream commit and committed with its perl script
+  # (Sources/EnviousWispr/Resources/mediaremote-adapter-PROVENANCE.md); its
+  # BSD-3 text is vendored in-repo beside it.
+  "mediaremote-adapter (bundled MediaRemoteAdapter.framework + mediaremote-adapter.pl)|v0.7.7 (e3ff5021)|BSD-3-Clause|repo:Sources/EnviousWispr/Resources/mediaremote-adapter-LICENSE.txt|https://github.com/ungive/mediaremote-adapter|"
   # #1224: the bundled Silero VAD CoreML model. Not a SwiftPM dep (a
   # committed binary asset, same as llama-server above) — MIT-licensed by
   # the Silero Team, converted to CoreML by FluidInference; vendored

@@ -99,7 +99,7 @@ private final class FakeMedia: MediaPlaybackControlling {
     orphanResumes.append((holdID, targets))
     completion(resumeOutcome)
   }
-  func preflightConsent() {}
+  func preflightConsent(completion: @escaping @MainActor (Bool) -> Void) { completion(true) }
 }
 
 @MainActor
@@ -110,9 +110,14 @@ private final class FakeSink: OtherAudioTelemetrySink {
   var defects: [String] = []
   func recordTakeSummary(_ summary: OtherAudioTakeSummary) { summaries.append(summary) }
   var mediaSettledHolds: [UUID] = []
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?) {
+  var mediaSettledRoutes: [String?] = []
+  func recordMediaSettled(
+    _ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?, route: String?,
+    adapterFailure: String?
+  ) {
     mediaSettled.append(media)
     mediaSettledHolds.append(holdID)
+    mediaSettledRoutes.append(route)
   }
   func breadcrumb(_ message: String, data: [String: String]) { crumbs.append(message) }
   func captureDefect(_ message: String, data: [String: String]) { defects.append(message) }
@@ -417,6 +422,32 @@ struct OtherAudioHoldTests {
     #expect(rig.sink.mediaSettled.last == .resumed)
     #expect(rig.records().isEmpty)
     #expect(rig.volume.writes.isEmpty, "pause music never touches the device")
+  }
+
+  @Test("v1.1: the route and adapter failure ride the summary; source changed settles as its own value")
+  func pauseMusicRouteFacts() async {
+    let rig = Rig()
+    rig.media.pauseOutcome = MediaPauseOutcome(
+      .paused(targets: ["adapter:com.google.Chrome|yt-1"]), route: .adapter)
+    rig.media.resumeOutcome = .sourceChanged
+    await rig.start(.pauseMusic)
+    #expect(rig.records().first?.pausedTargets == ["adapter:com.google.Chrome|yt-1"])
+    rig.stop()
+    #expect(rig.sink.summaries.last?.mediaRoute == "adapter")
+    #expect(rig.sink.summaries.last?.adapterFailure == nil)
+    #expect(rig.sink.mediaSettled.last == .sourceChanged)
+    #expect(rig.sink.mediaSettledRoutes.last == "adapter")
+    #expect(rig.sink.summaries.last?.failure == nil, "source changed is not our failure")
+    #expect(rig.records().isEmpty, "source_changed is final: the record retires")
+
+    let fallback = Rig()
+    fallback.media.pauseOutcome = MediaPauseOutcome(
+      .nothingPlaying, route: .none, adapterFailure: "load")
+    await fallback.start(.pauseMusic)
+    fallback.stop()
+    #expect(fallback.sink.summaries.last?.mediaRoute == "none")
+    #expect(fallback.sink.summaries.last?.adapterFailure == "load")
+    #expect(fallback.sink.crumbs.contains("other_audio media route"))
   }
 
   @Test("Pause music with nothing playing settles at once and needs no resume")
