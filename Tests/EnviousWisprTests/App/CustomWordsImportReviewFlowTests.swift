@@ -81,6 +81,13 @@ struct CustomWordsImportReviewFlowTests {
     }
   }
 
+  /// #2951: records every commit report the flow hands out. `@MainActor`
+  /// because the report dependency is a `@MainActor` closure.
+  @MainActor
+  final class ReportSpy {
+    var reports: [CustomWordsImportReport] = []
+  }
+
   // MARK: - Builders
 
   static func candidate(_ canonical: String) -> CustomWordsImportCandidate {
@@ -102,7 +109,8 @@ struct CustomWordsImportReviewFlowTests {
   static func makeModel(
     existing: [CustomWord] = [],
     compare: CompareSpy,
-    commit: CommitSpy
+    commit: CommitSpy,
+    report: ReportSpy = ReportSpy()
   ) -> Model {
     Model(
       dependencies: .init(
@@ -126,7 +134,8 @@ struct CustomWordsImportReviewFlowTests {
             compare.completedCalls += 1
             return result
           }
-        }
+        },
+        report: { report.reports.append($0) }
       )
     )
   }
@@ -381,6 +390,99 @@ struct CustomWordsImportReviewFlowTests {
     #expect(model.approvedRows.isEmpty)
     #expect(model.staleNotice != nil)
     #expect(compare.callCount == 2)
+  }
+
+  // MARK: - Commit report (#2951)
+
+  /// The report carries the batch's source id, the candidate count the review
+  /// was built from, and the count the commit wrote. Two candidates, one
+  /// already present, one added: found 2, imported 1, skipped 1. The receipt's
+  /// `addedIDs` is the imported count, never the approved-row count, so a
+  /// commit that wrote fewer than approved reports what actually landed.
+  @Test("a landed commit reports the source, the found count and the imported count once")
+  func landedCommitReportsOnce() async {
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    let report = ReportSpy()
+    let existingWord = CustomWord(canonical: "GitHub")
+    compare.results = [
+      [
+        Self.comparison("Kubernetes", .new),
+        Self.comparison("GitHub", .exact(existing: existingWord)),
+      ]
+    ]
+    commit.outcomes = [
+      .committed(
+        CustomWordsImportCommitReceipt(
+          addedIDs: [UUID()], replacedIDs: [], droppedAliasCollisions: []))
+    ]
+    let model = Self.makeModel(
+      existing: [existingWord], compare: compare, commit: commit, report: report)
+    await Self.runToReview(
+      model, candidates: [Self.candidate("Kubernetes"), Self.candidate("GitHub")])
+
+    model.confirm()
+
+    #expect(
+      report.reports == [CustomWordsImportReport(sourceID: "test", found: 2, imported: 1)])
+    #expect(report.reports.first?.skipped == 1)
+  }
+
+  /// `.stale` wrote nothing, so it reports nothing; the recompare returns to
+  /// Review and the commit that then lands reports exactly once, still under
+  /// the original batch's source and candidate count.
+  @Test("a stale commit reports nothing; the commit that lands after it reports once")
+  func staleThenLandedReportsOnce() async {
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    let report = ReportSpy()
+    compare.results = [
+      [Self.comparison("Kubernetes", .new)],
+      [Self.comparison("Kubernetes", .new)],
+    ]
+    commit.outcomes = [
+      .stale,
+      .committed(
+        CustomWordsImportCommitReceipt(
+          addedIDs: [UUID()], replacedIDs: [], droppedAliasCollisions: [])),
+    ]
+    let model = Self.makeModel(compare: compare, commit: commit, report: report)
+    await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
+
+    model.confirm()
+    await Self.settle(model, waitingFor: "the rebuilt review screen") { $0.step == .review }
+    #expect(report.reports.isEmpty, "a stale commit wrote nothing and must not report")
+
+    model.setDecision(.add, forRow: model.rows[0].id)
+    model.confirm()
+
+    #expect(
+      report.reports == [CustomWordsImportReport(sourceID: "test", found: 1, imported: 1)])
+    #expect(model.step == .result(.completed(added: 1, replaced: 0)))
+  }
+
+  @Test("a failed commit and an all-skipped review report nothing")
+  func failedAndNothingApprovedReportNothing() async {
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    let report = ReportSpy()
+    compare.results = [
+      [Self.comparison("Kubernetes", .new)],
+      [Self.comparison("GitHub", .exact(existing: CustomWord(canonical: "GitHub")))],
+    ]
+    commit.outcomes = [.failed(message: "disk full")]
+    let model = Self.makeModel(compare: compare, commit: commit, report: report)
+
+    await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
+    model.confirm()
+    #expect(model.step == .result(.failed(message: "disk full")))
+
+    model.reset()
+    await Self.runToReview(model, candidates: [Self.candidate("GitHub")])
+    model.confirm()
+    #expect(model.step == .result(.nothingApproved))
+
+    #expect(report.reports.isEmpty)
   }
 
   // MARK: - Cancellation

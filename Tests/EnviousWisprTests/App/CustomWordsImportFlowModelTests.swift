@@ -18,7 +18,8 @@ struct CustomWordsImportFlowModelTests {
       dependencies: .init(
         existingWords: { [] },
         commit: { _ in .failed(message: "navigation-only test double") },
-        compare: { _, _, _ in [] }
+        compare: { _, _, _ in [] },
+        report: { _ in Issue.record("report reached from a navigation-only test") }
       )
     )
   }
