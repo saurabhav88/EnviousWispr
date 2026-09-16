@@ -8,10 +8,11 @@ import SwiftUI
 /// take. Lives on the Microphone page above Microphone Readiness (founder,
 /// 2026-09-16: it is about the take's audio, not about the start/stop sounds).
 ///
-/// Self-contained: owns the availability note, the adapter probe at choice time
-/// and the default-output listener that keeps the note honest when the user
-/// switches speakers with the page open (a read/observe, not a desktop effect;
-/// released with the panel).
+/// Renders as one row of the shared Microphone card (`AudioSettingsView`),
+/// not its own card, but stays self-contained: owns the availability note, the
+/// adapter probe at choice time and the default-output listener that keeps the
+/// note honest when the user switches speakers with the page open (a
+/// read/observe, not a desktop effect; released with the row).
 struct OtherAudioSettingsPanel: View {
   @Environment(SettingsManager.self) private var settings
   /// The other-audio hold answers "can the current speakers carry this mode"
@@ -19,11 +20,18 @@ struct OtherAudioSettingsPanel: View {
   @Environment(DictationRuntime.self) private var dictationRuntime
   @State private var unavailableNote: String?
   @State private var outputListener: AudioObjectPropertyListenerBlock?
+  /// Left indent for the footnote/note lines below the row, so they align
+  /// under the label rather than the icon. See `AudioSettingsView.rowIndent`.
+  let rowIndent: CGFloat
 
   var body: some View {
     @Bindable var settings = settings
-    BrandedPanel(icon: "speaker.wave.2.fill", header: "Other Audio While You Dictate") {
-      VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 8) {
+      SettingsControlRow(
+        icon: "speaker.wave.2.fill",
+        title: "Other Audio While You Dictate",
+        description: Self.footnote(for: settings.otherAudioWhileDictating)
+      ) {
         BrandedSegmentedPicker(
           options: [
             ("Nothing", nil, OtherAudioWhileDictating.nothing),
@@ -33,11 +41,12 @@ struct OtherAudioSettingsPanel: View {
           ],
           selection: $settings.otherAudioWhileDictating
         )
-        Text(Self.footnote(for: settings.otherAudioWhileDictating))
+        .fixedSize(horizontal: true, vertical: false)
+      }
+      if let unavailableNote {
+        Text(unavailableNote)
           .settingsReadingCopy()
-        if let unavailableNote {
-          Text(unavailableNote).settingsReadingCopy()
-        }
+          .padding(.leading, rowIndent)
       }
     }
     .onChange(of: settings.otherAudioWhileDictating, initial: true) { _, mode in
