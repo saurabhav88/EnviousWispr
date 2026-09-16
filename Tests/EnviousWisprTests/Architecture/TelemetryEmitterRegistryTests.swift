@@ -574,15 +574,27 @@ struct TelemetryEmitterRegistryTests {
     }
   }
 
+  /// Only the cases of the `switch` whose subject is `event` count: a nested switch on a
+  /// property value (`case "success"`) inside one arm is not an event name.
   final class CaseLiteralFinder: SyntaxVisitor {
     var names: Set<String> = []
-    override func visit(_ node: SwitchCaseItemSyntax) -> SyntaxVisitorContinueKind {
-      if let expression = node.pattern.as(ExpressionPatternSyntax.self),
-        let name = CaptureVisitor.literalName(expression.expression)
-      {
-        names.insert(name)
+    override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind {
+      guard node.subject.as(DeclReferenceExprSyntax.self)?.baseName.text == "event" else {
+        return .skipChildren
       }
-      return .visitChildren
+      for element in node.cases {
+        guard let switchCase = element.as(SwitchCaseSyntax.self),
+          let label = switchCase.label.as(SwitchCaseLabelSyntax.self)
+        else { continue }
+        for item in label.caseItems {
+          if let expression = item.pattern.as(ExpressionPatternSyntax.self),
+            let name = CaptureVisitor.literalName(expression.expression)
+          {
+            names.insert(name)
+          }
+        }
+      }
+      return .skipChildren
     }
   }
 
