@@ -6,7 +6,7 @@ section: "Text Processing"
 order: 7
 keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text"]
 related: ["adding-custom-words", "ai-polish-and-cloud-data"]
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. An email address, a sign-off, a link you send people every week.
 
@@ -86,4 +86,4 @@ Your saved text also decides how it ends. Say nothing but the keyword and the tr
 
 **Export** writes your snippets and your keyword to a file you choose. Useful when you move to a new Mac. EnviousWispr will refuse to save over its own snippets file, because that would erase the snippets you were trying to back up.
 
-**Import** sits beside it but is greyed out. It is coming soon.
+**Import** brings snippets in from three places: the file you exported, a CSV with a trigger column and a text column, or a list you paste (one snippet per line, the trigger, then `=`, then the text; a tab, an arrow, or a comma work too). You review the list before anything is saved: snippets you already have are marked and skipped, and you can untick any you do not want. Your keyword is never changed by an import; only the snippets come across.

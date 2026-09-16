@@ -22,14 +22,6 @@ enum SnippetsExportAction {
     case failed(String)
   }
 
-  /// The exported shape. Deliberately the same field names the store persists, so a file a user
-  /// keeps for a year still means what it says, and Import has nothing to translate.
-  struct Document: Encodable, Sendable {
-    let version: Int
-    let keyword: String
-    let snippets: [Snippet]
-  }
-
   /// Ask for a destination on the main actor, then WRITE off it.
   ///
   /// The write and its full filesystem sync are not free on a network, external or cloud-synced
@@ -73,11 +65,17 @@ enum SnippetsExportAction {
     // written, and it is the only read whose result the file actually reflects.
     let latest = currentVocabulary()
     let exported = latest.snippets.isEmpty ? vocabulary : latest
-    let document = Document(
+    return await write(document(for: exported), to: destination, count: exported.snippets.count)
+  }
+
+  /// The file's contents for a vocabulary. `SnippetsTransferDocument` is the one definition of
+  /// the file, shared with Import (#2997); `SnippetsExportRoundTripTests` writes this through
+  /// the same writer and reads it back through the importer.
+  static func document(for vocabulary: SnippetVocabulary) -> SnippetsTransferDocument {
+    SnippetsTransferDocument(
       version: SnippetsManager.currentVersion,
-      keyword: exported.keyword,
-      snippets: exported.snippets)
-    return await write(document, to: destination, count: exported.snippets.count)
+      keyword: vocabulary.keyword,
+      snippets: vocabulary.snippets)
   }
 
   /// `@concurrent` so this always runs OFF the caller's actor. A plain `async` on a `@MainActor`
@@ -85,7 +83,7 @@ enum SnippetsExportAction {
   /// the whole point of splitting it out.
   @concurrent
   private static func write(
-    _ document: Document, to destination: URL, count: Int
+    _ document: SnippetsTransferDocument, to destination: URL, count: Int
   ) async -> Outcome {
     do {
       try DurableJSONFile.write(document, to: destination, tempPrefix: ".ew-snippets-export")

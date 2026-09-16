@@ -281,19 +281,15 @@ extension SmartImportAdapter {
 
   /// Read a vocabulary file with that ceiling applied to the READ itself.
   func boundedData(at url: URL, appName: String) throws -> Data {
-    guard let handle = try? FileHandle(forReadingFrom: url) else {
+    // Mechanics shared through `BoundedFileRead` (#2997); this site's contract is
+    // unchanged: any reader failure and any overflow are `.unreadable(appName)`, and the
+    // loop never checked cancellation here, so the hook is empty rather than the default.
+    let data: Data
+    do {
+      data = try BoundedFileRead.read(
+        at: url, ceiling: Self.maximumVocabularyBytes, beforeEachRead: {})
+    } catch is BoundedFileRead.Failure {
       throw SmartImportError.unreadable(appName)
-    }
-    defer { try? handle.close() }
-    let ceiling = Self.maximumVocabularyBytes + 1
-    var data = Data()
-    while data.count < ceiling {
-      let chunk: Data?
-      do { chunk = try handle.read(upToCount: ceiling - data.count) } catch {
-        throw SmartImportError.unreadable(appName)
-      }
-      guard let chunk, !chunk.isEmpty else { break }
-      data.append(chunk)
     }
     guard data.count <= Self.maximumVocabularyBytes else {
       throw SmartImportError.unreadable(appName)
@@ -645,21 +641,17 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
   /// does not bound a file that grows during it.
   package static func readPartFromDisk(_ url: URL) throws -> Data? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-    guard let handle = try? FileHandle(forReadingFrom: url) else {
+    // Mechanics shared through `BoundedFileRead` (#2997). This site's contract is
+    // unchanged and differs from the others on purpose: a missing part is nil, and
+    // the ceiling-plus-one bytes are RETURNED, because `readAllParts` bounds the
+    // AGGREGATE of main plus WAL and must see that a part alone already exceeds it. The
+    // loop never checked cancellation here either, so the hook is empty.
+    do {
+      return try BoundedFileRead.read(
+        at: url, ceiling: TypeWhisperAdapter.maximumVocabularyBytes, beforeEachRead: {})
+    } catch is BoundedFileRead.Failure {
       throw SmartImportError.unreadable("TypeWhisper")
     }
-    defer { try? handle.close() }
-    let ceiling = TypeWhisperAdapter.maximumVocabularyBytes + 1
-    var data = Data()
-    while data.count < ceiling {
-      let chunk: Data?
-      do { chunk = try handle.read(upToCount: ceiling - data.count) } catch {
-        throw SmartImportError.unreadable("TypeWhisper")
-      }
-      guard let chunk, !chunk.isEmpty else { break }
-      data.append(chunk)
-    }
-    return data
   }
 
   package func loadWords(at url: URL) throws -> SmartImportReadResult {

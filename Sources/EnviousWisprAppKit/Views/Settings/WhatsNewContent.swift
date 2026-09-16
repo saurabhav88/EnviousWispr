@@ -55,6 +55,20 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.1
+
+    // #2997 PR-A, merged onto main after v2.5.0 shipped (tag v2.5.0 exists), so this entry
+    // opens a new group per whats-new-protocol.md FACT: whats-new-grouping.
+    // currentContentVersion bumped to match.
+    Entry(
+      id: "import-your-snippets",
+      icon: "square.and.arrow.down",
+      title: "Import your snippets",
+      description:
+        "Bring snippets in from the file you exported, a CSV, or a list you paste. You review the list before anything is saved, snippets you already have are skipped, and your keyword stays as it is.",
+      version: "2.5.1"
+    ),
+
     // MARK: - v2.5.0
 
     // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.

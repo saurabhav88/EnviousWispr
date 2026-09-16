@@ -366,39 +366,16 @@ package struct FileImportSource: CustomWordsImportSource {
     try Task.checkCancellation()
 
     // Bound the READ itself, rather than checking the size and then reading
-    // separately (code review r3). Between a stat and a load the file can grow
-    // or be replaced — by a sync client, by whatever wrote it — and the ceiling
-    // would be bypassed on exactly the input it exists to refuse. Reading one
-    // byte past the limit from a single open handle answers "is this too big"
-    // and "give me the bytes" as one operation, so there is no window between
-    // the question and the answer.
-    guard let handle = try? FileHandle(forReadingFrom: url) else {
+    // separately, and loop to EOF rather than trusting one read: both properties
+    // are owned by `BoundedFileRead` (#2997), which returns whatever it read up to
+    // one byte past the ceiling and leaves "too big" to this site. Cancellation
+    // between short reads passes through unchanged; only the reader's own
+    // failures become `.unreadable`.
+    let data: Data
+    do {
+      data = try BoundedFileRead.read(at: url, ceiling: parser.maximumBytes)
+    } catch is BoundedFileRead.Failure {
       throw ImportFileError.unreadable
-    }
-    defer { try? handle.close() }
-
-    // Loop until EOF or one byte past the ceiling (code review r4). A single
-    // `read(upToCount:)` may return FEWER bytes without having reached the end
-    // — routine for network-mounted and cloud-backed files — which would have
-    // silently imported a truncated prefix of the user's list and could also
-    // miss that the file exceeds the limit. Accumulating until the file says
-    // it is done makes "how much is there" a fact rather than a guess.
-    var data = Data()
-    let ceiling = parser.maximumBytes + 1
-    while data.count < ceiling {
-      try Task.checkCancellation()
-      // `read(upToCount:)` signals EOF with NIL, and a genuine failure by
-      // throwing. Collapsing those two with `try?` turned every successful
-      // read-to-completion into "unreadable" — caught immediately by the
-      // existing tests, which is what they are for.
-      let chunk: Data?
-      do {
-        chunk = try handle.read(upToCount: ceiling - data.count)
-      } catch {
-        throw ImportFileError.unreadable
-      }
-      guard let chunk, !chunk.isEmpty else { break }  // EOF
-      data.append(chunk)
     }
     guard data.count <= parser.maximumBytes else {
       throw ImportFileError.tooLarge

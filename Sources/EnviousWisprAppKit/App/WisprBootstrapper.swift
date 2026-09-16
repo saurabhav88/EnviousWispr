@@ -845,14 +845,19 @@ package final class WisprBootstrapper {
     // #1173: settings-change telemetry observer. `emitBaseline` re-emits the
     // comprehensive `settings.snapshot` at onboarding-completion (fixes the
     // first-run gap for a long-running app). Built before the funnel is wired.
+    // #2997: one builder for both emission points (launch, via the lifecycle coordinator,
+    // and onboarding completion, via the settings funnel). The snippet state rides as two
+    // closures so the builder depends on one coordinator type.
+    let standingSnapshotBuilder = StandingSnapshotBuilder(
+      settings: settings, keychainManager: keychainManager,
+      customWordsCoordinator: customWordsCoordinator, permissions: permissions,
+      snippetsCount: { [snippetsCoordinator] in snippetsCoordinator.snippets.count },
+      snippetsKeywordIsDefault: { [snippetsCoordinator] in
+        snippetsCoordinator.keyword == SnippetVocabulary.defaultKeyword
+      })
     let settingsChangeTelemetry = SettingsChangeTelemetry(
       settings: settings,
-      emitBaseline: { [keychainManager, customWordsCoordinator, permissions] in
-        StandingSnapshotBuilder(
-          settings: settings, keychainManager: keychainManager,
-          customWordsCoordinator: customWordsCoordinator, permissions: permissions
-        ).emit()
-      })
+      emitBaseline: { standingSnapshotBuilder.emit() })
     // #1173: drain a pending settings delta before any telemetry flush (quit /
     // update-relaunch) so a change made inside the debounce window isn't lost.
     TelemetryService.shared.onBeforeFlush = { [weak settingsChangeTelemetry] in
@@ -1390,7 +1395,7 @@ package final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
-      customWordsCoordinator: customWordsCoordinator,
+      standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
       audioCapture: audioCapture,

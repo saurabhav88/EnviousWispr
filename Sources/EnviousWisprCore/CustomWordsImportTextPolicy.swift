@@ -106,6 +106,19 @@ package enum CustomWordsImportTextPolicy {
     }
   }
 
+  /// Whether a MULTI-LINE stored value — a snippet expansion (#2997) — is acceptable.
+  ///
+  /// The same scalar rules as `isAcceptableStoredValue` with line breaks and tabs ALLOWED:
+  /// an expansion is delivered exactly as typed, newlines included, so a sign-off across
+  /// three lines is content, not a separator. Everything else that rule refuses is still
+  /// refused here (controls, surrogates, private-use, unassigned, format scalars other than
+  /// the two word-forming joiners, and the U+2028/U+2029 separators, which are invisible
+  /// inside stored text and render differently across apps).
+  package static func isAcceptableMultilineStoredValue(_ value: String) -> Bool {
+    guard hasVisibleContent(value) else { return false }
+    return value.unicodeScalars.allSatisfy(isAcceptable)
+  }
+
   package static func isAcceptableStoredValue(_ value: String) -> Bool {
     guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return false

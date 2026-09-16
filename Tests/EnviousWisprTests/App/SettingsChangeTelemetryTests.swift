@@ -254,7 +254,8 @@ import Testing
           settings: settings,
           keychainManager: KeychainManager(),
           customWordsCoordinator: CustomWordsCoordinator(),
-          permissions: PermissionsService(accessibilityReader: { true })
+          permissions: PermissionsService(accessibilityReader: { true }),
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
         ).emit()
         return box.value
       }

@@ -107,6 +107,7 @@ settings.change_blocked	ungraded	ungraded	-	pre-#2987
 settings.changed	ungraded	ungraded	-	pre-#2987
 settings.model_preparing_impression	ungraded	ungraded	-	pre-#2987
 settings.snapshot	ungraded	ungraded	-	pre-#2987
+snippets.imported	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (imports by source and outcome HogQL, #2997)	#2997
 telemetry.flush_requested	ungraded	ungraded	-	pre-#2987
 terminal_breaker.tripped	ungraded	ungraded	-	pre-#2987
 transcription.interrupted_at_quit	ungraded	ungraded	-	pre-#2987

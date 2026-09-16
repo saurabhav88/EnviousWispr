@@ -177,10 +177,24 @@ public struct Snippet: Codable, Identifiable, Sendable, Hashable {
       .filter { !$0.isEmpty }
   }
 
+  /// The ONE definition of "the same spoken words", as a hashable key (#2997).
+  ///
+  /// `triggerTokens` joined by a single space, or nil when there are no tokens. Injective
+  /// because every token is non-empty and whitespace-free (`normalize` trims and the split
+  /// is on whitespace), so two different token arrays can never join to one key. Nil rather
+  /// than "" so an empty trigger can never collide with another empty trigger: a snippet
+  /// nobody can say is refused, not matched. `collidesWith` is defined through this, and so
+  /// are the import's review builder and its locked commit, which index thousands of
+  /// snippets at once and cannot afford a token-array compare per pair.
+  public var collisionKey: String? {
+    let tokens = triggerTokens
+    return tokens.isEmpty ? nil : tokens.joined(separator: " ")
+  }
+
   /// True when both snippets would be matched by the same spoken words. The duplicate rule,
   /// stated once, so the edit sheet, import, and any future caller cannot drift apart.
   public func collidesWith(_ other: Snippet) -> Bool {
-    let mine = triggerTokens
-    return !mine.isEmpty && mine == other.triggerTokens
+    guard let mine = collisionKey else { return false }
+    return mine == other.collisionKey
   }
 }

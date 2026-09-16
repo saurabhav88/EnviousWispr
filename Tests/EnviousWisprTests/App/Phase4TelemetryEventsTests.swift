@@ -113,7 +113,8 @@ import Testing
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: permissions)
+        permissions: permissions,
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
       let box = capture { builder.emit() }
       let snap = box.named("settings.snapshot").first
       // New comprehensive fields ride alongside the ten legacy fields.
@@ -140,7 +141,8 @@ import Testing
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true }))
+        permissions: PermissionsService(accessibilityReader: { true }),
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
       let snap = capture { builder.emit() }.named("settings.snapshot").first
       #expect(snap?.stringProps["llm_model"] == "custom")  // deny-by-default, never the raw name
     }

@@ -62,10 +62,14 @@ export const DEGRADED = "degraded";
 export const ERROR_CATEGORIES = Object.freeze({
   // Declared in the enum, never emitted. Conservative-lost is unreachable here
   // rather than wrong; if a producer is ever added, the classification is
-  // already the safe one.
+  // already the safe one (state_mismatch was one of these until #2997 gave it
+  // a producer; the test below re-derives the set from Sources/ every run).
   availability_check_failed: { group: LOST, deliveryProven: false, emitted: false, label: "AI availability check failed" },
   fallback_failed: { group: LOST, deliveryProven: false, emitted: false, label: "polish fallback failed" },
-  state_mismatch: { group: LOST, deliveryProven: false, emitted: false, label: "recording state mismatch" },
+  // #2997: the one producer is Snippet Import's review/commit mismatch
+  // (`SnippetImportReporter.fileReviewCommitMismatch`), filed from Settings with no
+  // dictation in flight and nothing written, so no text can have been lost.
+  state_mismatch: { group: DEGRADED, deliveryProven: true, emitted: true, label: "snippet import review and commit disagreed" },
 
   // Polish limbs. Every one of these leaves the previously-produced text intact
   // (CLAUDE.md § Principles; ITN runs BEFORE polish, so number and date

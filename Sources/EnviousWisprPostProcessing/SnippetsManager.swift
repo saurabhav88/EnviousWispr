@@ -31,6 +31,20 @@ public enum SnippetStoreError: Error, Equatable, Sendable {
   /// The lock could not be taken at all.
   case coordinationUnavailable
   case writeFailed(String)
+  /// An import's review was built against a list that no longer matches disk (#2997). Nothing
+  /// was written; the caller recompares against the current list. Never a failure to the user.
+  case listChangedDuringReview
+}
+
+/// What an import wrote (#2997): the saved vocabulary and the ids it added, in review order.
+public struct SnippetImportReceipt: Sendable, Equatable {
+  public let vocabulary: SnippetVocabulary
+  public let addedIDs: [UUID]
+
+  public init(vocabulary: SnippetVocabulary, addedIDs: [UUID]) {
+    self.vocabulary = vocabulary
+    self.addedIDs = addedIDs
+  }
 }
 
 /// On-disk store for the user's snippets (#628).
@@ -88,7 +102,21 @@ public final class SnippetsManager: @unchecked Sendable {
   ///
   /// Its first version WAS inert — every load reset it to 0 — which the store's own test caught
   /// rather than a user.
-  private var generation: UInt64 = 0
+  ///
+  /// Behind its own in-process lock (#2997): an import's write runs off the main actor while
+  /// the screen can still `load()`, and `@unchecked Sendable` protects nothing by itself. The
+  /// file lock does not cover the reads that build a fallback BEFORE it is taken. This lock
+  /// is held for one read or one increment and never while the file lock is acquired.
+  private let generationState = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+  private var generation: UInt64 { generationState.withLock { $0 } }
+
+  private func advanceGeneration() -> UInt64 {
+    generationState.withLock {
+      $0 &+= 1
+      return $0
+    }
+  }
 
   public init() {
     let base =
@@ -134,6 +162,43 @@ public final class SnippetsManager: @unchecked Sendable {
     // bytes are safe in the archive. Only `loadOrSeedStarters` needs the two kept apart.
     if case .loaded(let vocabulary) = result { return vocabulary }
     return empty
+  }
+
+  /// Read the store for PUBLICATION after a write (#2997): the vocabulary only when the file is
+  /// there and readable, nil otherwise.
+  ///
+  /// `load()` answers "what should the screen draw" and reads an unreadable file as empty.
+  /// A caller about to PUBLISH cannot use that answer: publishing empty would silently switch
+  /// every snippet off for the session. Three-valued in, two-valued out, with the empty case
+  /// kept out of reach.
+  public func loadedVocabulary() -> SnippetVocabulary? {
+    // Non-blocking: this runs on the main actor, and another process holding the lock must
+    // not freeze the window. Contention reads as nil, and the caller's fallback holds.
+    guard let result = try? withLock(blocking: false, { loadWhileLocked() }) else { return nil }
+    if case .loaded(let vocabulary) = result { return vocabulary }
+    return nil
+  }
+
+  /// Read the store for a REFRESH of the published list (#2997): the vocabulary when the
+  /// file is readable, EMPTY when there is none (missing, or archived as corrupt), and nil
+  /// when the file exists and cannot be read.
+  ///
+  /// The difference from `load()` is the nil: a publisher that adopted `load()`'s empty
+  /// answer for an unreadable file would switch every snippet off for the session while the
+  /// user's snippets still sit on disk. Missing and archived ARE empty, and are adopted.
+  public func refreshedVocabulary() -> SnippetVocabulary? {
+    // BLOCKING, unlike `loadedVocabulary`: an explicit refresh (the export's re-read after
+    // the save panel, the import's review) waits for an in-progress writer rather than
+    // silently answering with an older published snapshot, which the export would then
+    // write as a backup (cloud review, PR #3006).
+    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return nil }
+    switch result {
+    case .loaded(let vocabulary): return vocabulary
+    case .missing, .archivedCorrupt:
+      return SnippetVocabulary(
+        snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+    case .unreadable: return nil
+    }
   }
 
   /// Read the store, and on a brand-new install write the starter examples first (#628).
@@ -292,9 +357,9 @@ public final class SnippetsManager: @unchecked Sendable {
     } catch {
       throw SnippetStoreError.writeFailed(error.localizedDescription)
     }
-    generation &+= 1
+    let saved = advanceGeneration()
     return SnippetVocabulary(
-      snippets: vocabulary.snippets, keyword: vocabulary.keyword, generation: generation)
+      snippets: vocabulary.snippets, keyword: vocabulary.keyword, generation: saved)
   }
 
   // MARK: - Mutations
@@ -378,6 +443,93 @@ public final class SnippetsManager: @unchecked Sendable {
       return SnippetVocabulary(
         snippets: current.snippets, keyword: cleaned, generation: current.generation)
     }
+  }
+
+  // MARK: - Import
+
+  /// What "the same list" means for an import's stale check: id, trigger and expansion.
+  /// `createdAt` is left out on purpose; it never changes after creation and carries nothing
+  /// the review showed.
+  private struct Fingerprint: Hashable {
+    let id: UUID
+    let trigger: String
+    let expansion: String
+
+    init(_ snippet: Snippet) {
+      id = snippet.id
+      trigger = snippet.trigger
+      expansion = snippet.expansion
+    }
+  }
+
+  /// Counted, not a set: a hand-edited file can carry the same entry twice, and a set would
+  /// read `[a, a]` on disk as equal to the `[a]` the review was built against.
+  private static func fingerprints(_ snippets: [Snippet]) -> [Fingerprint: Int] {
+    var counts: [Fingerprint: Int] = [:]
+    for snippet in snippets { counts[Fingerprint(snippet), default: 0] += 1 }
+    return counts
+  }
+
+  /// One atomic write of every approved snippet, or nothing (#2997).
+  ///
+  /// `baseline` is the list the review screen was built against. Inside the lock the current
+  /// list is compared to it first; a mismatch throws `listChangedDuringReview` and writes
+  /// nothing, so a snippet another EnviousWispr process added during the review can neither be
+  /// duplicated nor silently overwritten. Then every addition is validated against the current
+  /// list AND the additions before it, in O(n + m): one key per current snippet, one lookup
+  /// per addition. Never `validate(_:against:)` per addition, whose linear scan would be
+  /// 5,000 × the whole list inside the lock. The first invalid addition refuses the whole
+  /// batch. Accepted snippets go in at the front in review order, like `upsert`, in one save.
+  ///
+  /// Add-only, with fresh ids: unlike `validate`, an addition is never excused from colliding
+  /// with a snippet that carries its own id, because an import never edits in place.
+  public func importSnippets(
+    _ additions: [Snippet], reviewedAgainst baseline: [Snippet]
+  ) throws -> SnippetImportReceipt {
+    // Empty additions are a store-level no-op: no lock, no save, no generation bump. The flow
+    // model already returns "nothing approved" before reaching here; this is the second
+    // boundary so the store cannot be made to rewrite its file for nothing. No disk read
+    // either: `load()` takes the blocking lock and can archive a corrupt file. The vocabulary
+    // returned is a placeholder no caller adopts (`commitImport` publishes nothing for an
+    // empty receipt).
+    guard !additions.isEmpty else {
+      return SnippetImportReceipt(
+        vocabulary: SnippetVocabulary(
+          snippets: baseline, keyword: SnippetVocabulary.defaultKeyword, generation: 0),
+        addedIDs: [])
+    }
+    var added: [UUID] = []
+    let vocabulary = try mutate { current in
+      guard Self.fingerprints(current.snippets) == Self.fingerprints(baseline) else {
+        throw SnippetStoreError.listChangedDuringReview
+      }
+      // collisionKey -> the trigger that owns it. The FIRST owner is kept, as `validate`'s
+      // linear scan names the first; a hand-edited file is the only way to hold two.
+      var keys: [String: String] = [:]
+      for snippet in current.snippets {
+        if let key = snippet.collisionKey, keys[key] == nil { keys[key] = snippet.trigger }
+      }
+      var accepted: [Snippet] = []
+      accepted.reserveCapacity(additions.count)
+      for snippet in additions {
+        // The same three rules as `validate`, expressed through the key set.
+        guard let key = snippet.collisionKey else { throw SnippetValidationError.triggerEmpty }
+        guard !snippet.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw SnippetValidationError.expansionEmpty
+        }
+        if let existing = keys[key] {
+          throw SnippetValidationError.duplicateTrigger(existing: existing)
+        }
+        keys[key] = snippet.trigger
+        accepted.append(snippet)
+        added.append(snippet.id)
+      }
+      var snippets = current.snippets
+      snippets.insert(contentsOf: accepted, at: 0)
+      return SnippetVocabulary(
+        snippets: snippets, keyword: current.keyword, generation: current.generation)
+    }
+    return SnippetImportReceipt(vocabulary: vocabulary, addedIDs: added)
   }
 
   // MARK: - Validation

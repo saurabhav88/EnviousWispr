@@ -48,7 +48,10 @@ final class AppLifecycleCoordinator {
   private let settings: SettingsManager
   private let permissions: PermissionsService
   private let keychainManager: KeychainManager
-  private let customWordsCoordinator: CustomWordsCoordinator
+  /// #2997: the launch `settings.snapshot` emitter, built by the bootstrapper, which holds
+  /// every coordinator the snapshot reads. Replaces the `customWordsCoordinator` this type
+  /// stored only to build the same emitter here.
+  private let standingSnapshotBuilder: StandingSnapshotBuilder
   private let contactsImportCoordinator: ContactsImportCoordinator
   private let aiAvailability: AIAvailabilityCoordinator
   private let audioCapture: any AudioCaptureInterface
@@ -91,7 +94,7 @@ final class AppLifecycleCoordinator {
     settings: SettingsManager,
     permissions: PermissionsService,
     keychainManager: KeychainManager,
-    customWordsCoordinator: CustomWordsCoordinator,
+    standingSnapshotBuilder: StandingSnapshotBuilder,
     contactsImportCoordinator: ContactsImportCoordinator,
     aiAvailability: AIAvailabilityCoordinator,
     audioCapture: any AudioCaptureInterface,
@@ -117,7 +120,7 @@ final class AppLifecycleCoordinator {
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
-    self.customWordsCoordinator = customWordsCoordinator
+    self.standingSnapshotBuilder = standingSnapshotBuilder
     self.contactsImportCoordinator = contactsImportCoordinator
     self.aiAvailability = aiAvailability
     self.audioCapture = audioCapture
@@ -290,12 +293,7 @@ final class AppLifecycleCoordinator {
       // when Accessibility is denied (Codex code-diff review caught the stale
       // pre-refresh read). The seven pre-existing settings fields are unaffected
       // by ordering.
-      StandingSnapshotBuilder(
-        settings: settings,
-        keychainManager: keychainManager,
-        customWordsCoordinator: customWordsCoordinator,
-        permissions: permissions
-      ).emit()
+      standingSnapshotBuilder.emit()
 
       // #1480: first launch-time evaluation of the Bluetooth card, after
       // refreshOnLaunch() settled the launch state. Runs only for completed
