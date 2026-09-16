@@ -232,6 +232,14 @@ struct TelemetryEmitterRegistryTests {
       if let position = parameters.firstIndex(where: {
         ($0.secondName ?? $0.firstName).text == identifier
       }) {
+        // A parameter that is ALSO bound locally (`let event = ...` in a nested scope) is
+        // not a forwarder any scan can attribute; fail closed rather than guess.
+        if Self.localLiteral(named: identifier, in: function) != .none {
+          if collect {
+            unresolved.append(("`\(identifier)` is a parameter shadowed by a local binding", line))
+          }
+          return
+        }
         // A forwarder: its callers carry the literal and are counted in pass 2.
         let name = function.name.text
         let label = parameters[position].firstName.text
@@ -695,6 +703,10 @@ struct TelemetryEmitterRegistryTests {
           PostHogSDK.shared.capture(event)
         }
         func z() { emit(source: "x"); emit(event: "fifteen.labelled", source: "y") }
+        func shadowed(event: String) {
+          if true { let event = "hidden.shadow"; PostHogSDK.shared.capture(event) }
+        }
+        func aa() { shadowed(event: "hidden.through_shadow") }
       }
       struct Twin {
         func clash(event: String, v: String) { PostHogSDK.shared.capture(event) }
@@ -729,7 +741,7 @@ struct TelemetryEmitterRegistryTests {
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
       + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 15, Comment(rawValue: unresolvedMessage))
+    #expect(result.unresolved.count == 16, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
