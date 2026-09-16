@@ -636,6 +636,10 @@ struct MediaRemoteAdapterParserTests {
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: untitled, stderr: ""))
       == .playing(.init(bundleID: "org.telegram.desktop", identity: nil)))
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null\n", stderr: "")) == .nothing)
+    // A live stream: a warning on stderr beside a full payload (live UAT 2026-09-15).
+    let live = #"{"bundleIdentifier":"com.google.Chrome","processIdentifier":1,"playing":true,"title":"lofi","contentItemIdentifier":"C738"}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: live, stderr: "Invalid JSON value type in dictionary for key 'duration': inf (__NSCFNumber)\n"))
+      == .playing(.init(bundleID: "com.google.Chrome", identity: "C738")))
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: #"{"processIdentifier":1,"playing":true}"#, stderr: "")) == .nothing, "no bundle id: cannot be re-identified")
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null", stderr: "Reading now playing information timed out after 2000 milliseconds")) == .unavailable(.timeout))
     #expect(MediaRemoteAdapter.parseGet(R(status: nil, stdout: "", stderr: "")) == .unavailable(.timeout))

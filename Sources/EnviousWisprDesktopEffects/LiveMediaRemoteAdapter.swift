@@ -125,16 +125,20 @@ package struct MediaRemoteAdapter: Sendable {
     guard status == 0 else {
       return .unavailable(stderr.contains("Failed to load framework") ? .load : .exit)
     }
-    if !stderr.isEmpty {
+    let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    // stderr is decisive only when stdout carries no payload: the adapter also
+    // WARNS there while still printing a full payload (a live stream reports
+    // `duration: inf`, which its JSON writer drops with a warning; live UAT
+    // 2026-09-15 on a YouTube live tab, upstream #28).
+    if stdout == "null" {
+      if stderr.isEmpty { return .nothing }
       return .unavailable(stderr.contains("timed out") ? .timeout : .exit)
     }
-    let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-    if stdout == "null" { return .nothing }
     guard let data = stdout.data(using: .utf8),
       let object = try? JSONSerialization.jsonObject(with: data),
       let dict = object as? [String: Any],
       let playing = dict["playing"] as? Bool
-    else { return .unavailable(.parse) }
+    else { return .unavailable(stderr.contains("timed out") ? .timeout : .parse) }
     // A source with no bundle id cannot be re-identified at resume, so it is
     // never paused: the resume gate could not tell it from a different app.
     guard let bundleID = dict["bundleIdentifier"] as? String, !bundleID.isEmpty else {
