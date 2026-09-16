@@ -250,9 +250,9 @@ struct SnippetImportAppAdaptersTests {
     #expect(throws: SnippetImportAppError.unreadable("TypeWhisper")) {
       _ = try oversized.loadSnippets(at: store.url)
     }
-    // The CEILING refused, not SQLite choking on a fabricated WAL: the first main-plus-WAL
-    // pair is rejected before a second pass or any open (a corrupt-WAL refusal would read
-    // both parts twice per acquisition, three acquisitions).
+    // The CEILING refused, not SQLite choking on a fabricated WAL: the first
+    // main-plus-WAL pair is rejected after two part reads. Without that guard,
+    // these stable bytes would take four part reads before SQLite opens the copy.
     #expect(partReads == 2, "reject the first main/WAL pair before another acquisition pass")
   }
 
