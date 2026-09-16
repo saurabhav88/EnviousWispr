@@ -98,7 +98,7 @@ struct TelemetryEmitterRegistryTests {
     let file: String
     /// Function names whose capture argument is one of their own parameters, with the
     /// POSITION of that parameter, so a caller's argument at the same position is read.
-    var forwarders: [String: Int]
+    var forwarders: [String: ForwardSlot]
     /// Bare names that map to conflicting positions, within this file or across files.
     var conflictingForwarders: Set<String> = []
     let collect: Bool
@@ -107,7 +107,8 @@ struct TelemetryEmitterRegistryTests {
     var unresolved: [(what: String, line: Int)] = []
 
     init(
-      converter: SourceLocationConverter, file: String, forwarders: [String: Int], collect: Bool
+      converter: SourceLocationConverter, file: String, forwarders: [String: ForwardSlot],
+      collect: Bool
     ) {
       self.converter = converter
       self.file = file
@@ -177,12 +178,27 @@ struct TelemetryEmitterRegistryTests {
         } else if collect {
           unresolved.append(("`PostHogSDK.shared.capture` called with no event name", at.line))
         }
-      } else if collect, let callee = Self.forwarderName(node.calledExpression),
-        let position = forwarders[callee]
+      } else if collect, let (callee, receiver) = Self.forwarderName(node.calledExpression),
+        let slot = forwarders[callee]
       {
-        // A forwarder called without its event argument is a defaulted parameter the
-        // registry never saw; reported rather than skipped.
-        if position < arguments.count, let name = Self.literalName(arguments[position].expression) {
+        // A forwarder reached through another object (`telemetry.emit(...)`) cannot be
+        // attributed by name alone; reported rather than skipped.
+        guard receiver == nil else {
+          unresolved.append(
+            ("forwarder \(callee) called through `\(receiver!)`; call it on self", at.line))
+          return .visitChildren
+        }
+        // The event argument is found by LABEL when the parameter has one, by position
+        // otherwise; a defaulted event parameter left out is reported, never assumed.
+        let argument: LabeledExprSyntax?
+        if let label = slot.label {
+          argument = arguments.first { $0.label?.text == label }
+        } else if slot.position < arguments.count, arguments[slot.position].label == nil {
+          argument = arguments[slot.position]
+        } else {
+          argument = nil
+        }
+        if let argument, let name = Self.literalName(argument.expression) {
           emitters.insert(
             Emitter(
               name: name, file: file, line: at.line, column: at.column,
@@ -212,12 +228,17 @@ struct TelemetryEmitterRegistryTests {
         return
       }
       let identifier = reference.baseName.text
-      if let position = Self.parameterNames(of: function).firstIndex(of: identifier) {
+      let parameters = Array(function.signature.parameterClause.parameters)
+      if let position = parameters.firstIndex(where: {
+        ($0.secondName ?? $0.firstName).text == identifier
+      }) {
         // A forwarder: its callers carry the literal and are counted in pass 2.
         let name = function.name.text
-        if forwarders[name] == Int.max { return }  // already marked conflicting by pass 1
-        if let known = forwarders[name], known != position { conflictingForwarders.insert(name) }
-        forwarders[name] = position
+        let label = parameters[position].firstName.text
+        let slot = ForwardSlot(label: label == "_" ? nil : label, position: position)
+        if forwarders[name] == .conflicting { return }  // marked by pass 1
+        if let known = forwarders[name], known != slot { conflictingForwarders.insert(name) }
+        forwarders[name] = slot
         return
       }
       switch Self.localLiteral(named: identifier, in: function) {
@@ -240,15 +261,17 @@ struct TelemetryEmitterRegistryTests {
 
     /// A call to a forwarder, bare (`emitUpdateStage(...)`) or on `self` / `Self`
     /// (`self.emitUpdateStage(...)`). Any other receiver is not a forwarder call.
-    static func forwarderName(_ callee: ExprSyntax) -> String? {
+    /// The called name and, when it is reached through something other than `self` /
+    /// `Self`, the receiver's spelling (so the caller can refuse it).
+    static func forwarderName(_ callee: ExprSyntax) -> (name: String, receiver: String?)? {
       if let reference = callee.as(DeclReferenceExprSyntax.self) {
-        return reference.baseName.text
+        return (reference.baseName.text, nil)
       }
       if let member = callee.as(MemberAccessExprSyntax.self) {
         let base = member.base?.trimmedDescription
-        if base == nil || base == "self" || base == "Self" {
-          return member.declName.baseName.text
-        }
+        let name = member.declName.baseName.text
+        if base == nil || base == "self" || base == "Self" { return (name, nil) }
+        return (name, base)
       }
       return nil
     }
@@ -432,6 +455,13 @@ struct TelemetryEmitterRegistryTests {
     }
   }
 
+  /// Where a forwarder's event parameter sits: its label (nil for `_`) and its position.
+  struct ForwardSlot: Equatable {
+    let label: String?
+    let position: Int
+    static let conflicting = ForwardSlot(label: nil, position: Int.max)
+  }
+
   struct Unresolved {
     let file: String
     let line: Int
@@ -444,7 +474,7 @@ struct TelemetryEmitterRegistryTests {
     emitters: Set<Emitter>, unresolved: [Unresolved]
   ) {
     let parsed = sources.map { (file: $0.file, tree: Parser.parse(source: $0.source)) }
-    var forwarders: [String: Int] = [:]
+    var forwarders: [String: ForwardSlot] = [:]
     var conflictingForwarders: Set<String> = []
     for (file, tree) in parsed {
       let discovery = CaptureVisitor(
@@ -454,13 +484,13 @@ struct TelemetryEmitterRegistryTests {
       // Two forwarders sharing a bare name with the event in different positions: no
       // syntax-only attribution is safe, so every call to that name is reported.
       conflictingForwarders.formUnion(discovery.conflictingForwarders)
-      for (name, position) in discovery.forwarders {
-        if let known = forwarders[name], known != position { conflictingForwarders.insert(name) }
-        forwarders[name] = position
+      for (name, slot) in discovery.forwarders {
+        if let known = forwarders[name], known != slot { conflictingForwarders.insert(name) }
+        forwarders[name] = slot
       }
     }
     for name in conflictingForwarders {
-      forwarders[name] = Int.max  // no argument index satisfies it: every call is unresolved
+      forwarders[name] = .conflicting  // no argument satisfies it: every call is unresolved
     }
     var emitters: Set<Emitter> = []
     var unresolved: [Unresolved] = []
@@ -636,6 +666,11 @@ struct TelemetryEmitterRegistryTests {
         func v() { let c = PostHog.PostHogSDK.shared; c.capture("hidden.qualified_alias") }
         func clash(v: String, event: String) { PostHogSDK.shared.capture(event) }
         func w() { clash(v: "x", event: "hidden.conflict_a") }
+        func y() { other.forward("hidden.foreign", v: "x") }
+        func emit(event: String = "hidden.default_labelled", source: String) {
+          PostHogSDK.shared.capture(event)
+        }
+        func z() { emit(source: "x"); emit(event: "fifteen.labelled", source: "y") }
       }
       struct Twin {
         func clash(event: String, v: String) { PostHogSDK.shared.capture(event) }
@@ -655,7 +690,7 @@ struct TelemetryEmitterRegistryTests {
       Set(result.emitters.map(\.name)) == [
         "one.literal", "two.local", "three.*", "four.forwarded", "five.self_forwarded",
         "six.second_position", "nine.cross_file", "ten.other_file", "eleven.trivia",
-        "twelve.a", "fourteen.qualified",
+        "twelve.a", "fourteen.qualified", "fifteen.labelled",
       ])
     #expect(
       result.emitters.filter { $0.name == "twelve.a" }.count == 2,
@@ -670,7 +705,7 @@ struct TelemetryEmitterRegistryTests {
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
       + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 12, Comment(rawValue: unresolvedMessage))
+    #expect(result.unresolved.count == 14, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
