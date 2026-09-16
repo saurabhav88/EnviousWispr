@@ -108,37 +108,33 @@ struct SettingsRowIcon: View {
   }
 }
 
-/// A settings row that reads horizontally (icon, then label/description, then
-/// a trailing control) at ordinary widths, and drops the control BELOW the
-/// label at the app's declared 750pt minimum window width — where a
-/// multi-segment picker sized to its own content cannot share one line with a
-/// full description and stay readable (Codex, PR #3007, live-reproduced by
-/// resizing the Microphone page to its minimum).
+/// A settings row that reads horizontally (icon, then title, then a trailing
+/// control) at ordinary widths, and drops the control BELOW the title at the
+/// app's declared 750pt minimum window width — where a multi-segment picker
+/// sized to its own content cannot share one line with the title and stay
+/// readable (Codex, PR #3007, live-reproduced by resizing the Microphone page
+/// to its minimum).
 ///
-/// The label column is capped to `labelMaxWidth` so `ViewThatFits` can
-/// actually measure the wide candidate: a wrapping `Text` reports its
-/// single-line extent as its ideal width under an unconstrained proposal, so
-/// an uncapped label would never read as "too wide" and the narrow candidate
-/// would never be chosen even when the control genuinely has no room.
+/// The row's explanatory sentence lives behind the small "?" beside the
+/// title (`SettingsInfoButton`) rather than always rendering underneath it —
+/// freeing the row down to one line so the control reads as the main event
+/// (founder, 2026-09-16: "so much more space, make everything look nicer").
 struct SettingsControlRow<Control: View>: View {
   let icon: String
   let title: String
   let description: String
   @ViewBuilder let control: () -> Control
 
-  private static var labelMaxWidth: CGFloat { 260 }
-
   var body: some View {
     ViewThatFits(in: .horizontal) {
-      HStack(alignment: .top, spacing: 11) {
+      HStack(alignment: .center, spacing: 11) {
         SettingsRowIcon(systemName: icon)
         label
-          .frame(maxWidth: Self.labelMaxWidth, alignment: .leading)
         Spacer(minLength: 12)
         control()
       }
       VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .top, spacing: 11) {
+        HStack(alignment: .center, spacing: 11) {
           SettingsRowIcon(systemName: icon)
           label
         }
@@ -152,9 +148,45 @@ struct SettingsControlRow<Control: View>: View {
   }
 
   private var label: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(title).settingsRowLabel()
-      Text(description).settingsReadingCopy()
+    HStack(spacing: 6) {
+      Text(title)
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+      SettingsInfoButton(text: description)
+    }
+  }
+}
+
+/// A small "?" affordance that reveals a row's explanatory sentence on
+/// demand, used by `SettingsControlRow` so a row's title line stays short
+/// while the full explanation stays one click away.
+///
+/// A real `Button`, never a hover-only reveal — hover is unreachable by
+/// keyboard and VoiceOver, and those are exactly the readers who most need
+/// the sentence spelled out (same reasoning as
+/// `SpeechEngineSettingsView.spokenPunctuationHelpButton`). `.help()` answers
+/// a mouse hover for free on top of the click-to-open popover.
+struct SettingsInfoButton: View {
+  let text: String
+  @State private var showPopover = false
+
+  var body: some View {
+    Button {
+      showPopover = true
+    } label: {
+      Image(systemName: "questionmark.circle")
+        .foregroundStyle(Color.stTextTertiary)
+        .font(.system(size: 15, weight: .regular))
+        .settingsHoverQuiet()
+    }
+    .buttonStyle(.borderless)
+    .help(text)
+    .accessibilityLabel(text)
+    .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+      Text(text)
+        .settingsReadingCopy()
+        .frame(maxWidth: 280, alignment: .leading)
+        .padding(14)
     }
   }
 }

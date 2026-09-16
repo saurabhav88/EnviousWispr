@@ -7,10 +7,11 @@ import SwiftUI
 ///
 /// The three microphone controls (Input Device, Other Audio While You
 /// Dictate, Microphone Readiness) share ONE card as icon-labelled rows with a
-/// trailing control, divided by hairlines (founder mockup, 2026-09-16) —
-/// replacing the earlier one-card-per-topic layout. The Bluetooth guide keeps
-/// its own card below, and the frozen-per-recording rule moved from a boxed
-/// banner at the top to a plain tip line at the bottom, matching the mockup.
+/// trailing control, divided by hairlines (founder mockup, 2026-09-16). Each
+/// row's explainer sentence lives behind its title's "?" instead of always
+/// showing, so the row stays one line (founder, 2026-09-16). The Bluetooth
+/// guide is a compact row below with its own "Learn more" popover, and the
+/// frozen-per-recording rule is a plain tip line at the bottom.
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
@@ -172,47 +173,13 @@ struct AudioSettingsView: View {
         }
       }
 
-      // #1480: permanent Bluetooth cold-start guide. Same icons + tip wording as
-      // the once-per-launch popover (BluetoothTipsCopy is the single copy home),
-      // plus the preferred-mic-order line, the authoritative P.S., and the toggle
-      // that turns the popover off (this guide always stays).
-      BrandedPanel(
-        icon: "dot.radiowaves.left.and.right",
-        header: BluetoothTipsCopy.settingsHeader,
-        description: BluetoothTipsCopy.settingsIntro
-      ) {
-        VStack(alignment: .leading, spacing: 14) {
-          VStack(alignment: .leading, spacing: 12) {
-            bluetoothTipRow(icon: BluetoothTipsCopy.iconTiming, text: BluetoothTipsCopy.tipTiming)
-            bluetoothTipRow(
-              icon: BluetoothTipsCopy.iconReadiness, text: BluetoothTipsCopy.tipReadiness)
-            bluetoothTipRow(
-              icon: BluetoothTipsCopy.iconHeadphones, text: BluetoothTipsCopy.tipHeadphones)
-          }
-
-          InsetNotice(
-            text: BluetoothTipsCopy.micOrder,
-            systemImage: "list.bullet",
-            tint: .stAccent
-          )
-
-          Text(BluetoothTipsCopy.settingsPS)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-          Divider().overlay(Color.stDivider)
-
-          Toggle(isOn: $settings.showBluetoothTips) {
-            VStack(alignment: .leading, spacing: 2) {
-              Text(BluetoothTipsCopy.showTipsToggle).settingsRowLabel()
-              Text("Shows the reminder popover once per launch. This guide always stays.")
-                .font(.stHelper)
-                .foregroundStyle(.stTextSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          }
-          .toggleStyle(BrandedToggleStyle())
+      // #1480: compact Bluetooth guide row, matching the founder's mockup
+      // (2026-09-16) — the full guide (tips, preferred mic order, the toggle
+      // for the once-per-launch popover) now lives behind "Learn more"
+      // instead of always occupying page space.
+      BrandedSection {
+        BrandedRow(showDivider: false) {
+          BluetoothGuideRow(showBluetoothTips: $settings.showBluetoothTips)
         }
       }
 
@@ -220,25 +187,6 @@ struct AudioSettingsView: View {
       // lives once here rather than inside each card (moved from a boxed banner
       // at the top to a plain tip line at the bottom, mockup 2026-09-16).
       MicrophonePageFooterTip()
-    }
-  }
-
-  /// One tip row in the Bluetooth guide: accent icon badge + sentence, matching
-  /// the popover's rows (same icons, same copy via `BluetoothTipsCopy`).
-  private func bluetoothTipRow(icon: String, text: String) -> some View {
-    HStack(alignment: .center, spacing: 11) {
-      Image(systemName: icon)
-        .font(.system(size: 15, weight: .medium))
-        .foregroundStyle(.stAccent)
-        .frame(width: 34, height: 34)
-        .background(Color.stAccentLight, in: Circle())
-        .overlay(Circle().strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
-        .accessibilityHidden(true)
-      Text(text)
-        .font(.stBody)
-        .foregroundStyle(.stTextBody)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
     }
   }
 }
@@ -279,5 +227,127 @@ private struct MicrophonePageFooterTip: View {
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 4)
+  }
+}
+
+/// The compact Bluetooth entry point (founder mockup, 2026-09-16): icon,
+/// title, one intro sentence, and a "Learn more" button that opens the full
+/// guide as a popover. Same responsive shape as `SettingsControlRow` (icon +
+/// label horizontally, control dropping below the label at the app's 750pt
+/// minimum), kept as a sibling rather than folded into that type because this
+/// row's sentence stays VISIBLE — `SettingsControlRow`'s hides its
+/// description behind the title's own "?" — and the trailing slot is a fixed
+/// "Learn more" action rather than an arbitrary control.
+private struct BluetoothGuideRow: View {
+  @Binding var showBluetoothTips: Bool
+  @State private var showGuide = false
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 11) {
+        SettingsRowIcon(systemName: "dot.radiowaves.left.and.right")
+        label
+        Spacer(minLength: 12)
+        learnMoreButton
+      }
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .top, spacing: 11) {
+          SettingsRowIcon(systemName: "dot.radiowaves.left.and.right")
+          label
+        }
+        // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
+        // spacing (11); see `SettingsControlRow`.
+        learnMoreButton
+          .padding(.leading, 37)
+      }
+    }
+    .popover(isPresented: $showGuide, arrowEdge: .bottom) {
+      BluetoothGuidePopoverContent(showBluetoothTips: $showBluetoothTips)
+    }
+  }
+
+  private var label: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(BluetoothTipsCopy.settingsHeader)
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+      Text(BluetoothTipsCopy.settingsIntro).settingsReadingCopy()
+    }
+  }
+
+  private var learnMoreButton: some View {
+    SettingsActionButton(
+      title: "Learn more", isEnabled: true, trailingSystemImage: "chevron.right"
+    ) {
+      showGuide = true
+    }
+  }
+}
+
+/// The Bluetooth guide's full content, reached through `BluetoothGuideRow`'s
+/// "Learn more" button. Same icons + tip wording as the once-per-launch
+/// popover (`BluetoothTipsCopy` is the single copy home), plus the
+/// preferred-mic-order line, the authoritative P.S., and the toggle that
+/// turns that popover off (this guide always stays reachable here).
+private struct BluetoothGuidePopoverContent: View {
+  @Binding var showBluetoothTips: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Text(BluetoothTipsCopy.settingsHeader)
+        .font(.stSectionHeader)
+        .foregroundStyle(.stTextPrimary)
+
+      VStack(alignment: .leading, spacing: 12) {
+        tipRow(icon: BluetoothTipsCopy.iconTiming, text: BluetoothTipsCopy.tipTiming)
+        tipRow(icon: BluetoothTipsCopy.iconReadiness, text: BluetoothTipsCopy.tipReadiness)
+        tipRow(icon: BluetoothTipsCopy.iconHeadphones, text: BluetoothTipsCopy.tipHeadphones)
+      }
+
+      InsetNotice(
+        text: BluetoothTipsCopy.micOrder,
+        systemImage: "list.bullet",
+        tint: .stAccent
+      )
+
+      Text(BluetoothTipsCopy.settingsPS)
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Divider().overlay(Color.stDivider)
+
+      Toggle(isOn: $showBluetoothTips) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(BluetoothTipsCopy.showTipsToggle).settingsRowLabel()
+          Text("Shows the reminder popover once per launch. This guide always stays.")
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .toggleStyle(BrandedToggleStyle())
+    }
+    .frame(maxWidth: 340, alignment: .leading)
+    .padding(16)
+  }
+
+  /// One tip row: accent icon badge + sentence, matching the overlay
+  /// popover's rows (same icons, same copy via `BluetoothTipsCopy`).
+  private func tipRow(icon: String, text: String) -> some View {
+    HStack(alignment: .center, spacing: 11) {
+      Image(systemName: icon)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(.stAccent)
+        .frame(width: 34, height: 34)
+        .background(Color.stAccentLight, in: Circle())
+        .overlay(Circle().strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
+        .accessibilityHidden(true)
+      Text(text)
+        .font(.stBody)
+        .foregroundStyle(.stTextBody)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
   }
 }
