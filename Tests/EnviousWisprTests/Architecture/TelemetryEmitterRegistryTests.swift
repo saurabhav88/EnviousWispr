@@ -54,7 +54,7 @@ struct TelemetryEmitterRegistryTests {
   /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
   /// makes that a visible edit here.
   static let sitesFingerprint =
-    "2d6b68bbf823502ab7e56e474e9bfdfb558cfea8c78f98efb5dff76ead11f101"
+    "32a91b239e22ce39e49f11e2513f847723434915d69314f39bca13056b907064"
   static let ungradedFingerprint =
     "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
 
@@ -128,7 +128,41 @@ struct TelemetryEmitterRegistryTests {
       return (location.line, location.column)
     }
 
-    private var enclosingFunction: String { functionStack.last?.name.text ?? "<top>" }
+    /// `Type.Nested.name(label:label:)`: the type path disambiguates same-named methods
+    /// on different types, the labels disambiguate overloads.
+    private var enclosingFunction: String {
+      guard let function = functionStack.last else {
+        return typeStack.joined(separator: ".") + ".<top>"
+      }
+      let labels = function.signature.parameterClause.parameters.map { $0.firstName.text + ":" }
+      return (typeStack + [function.name.text + "(" + labels.joined() + ")"]).joined(separator: ".")
+    }
+
+    private var typeStack: [String] = []
+    private func enterType(_ name: String) -> SyntaxVisitorContinueKind {
+      typeStack.append(name)
+      return .visitChildren
+    }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+      enterType(node.name.text)
+    }
+    override func visitPost(_ node: StructDeclSyntax) { typeStack.removeLast() }
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+      enterType(node.name.text)
+    }
+    override func visitPost(_ node: ClassDeclSyntax) { typeStack.removeLast() }
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+      enterType(node.name.text)
+    }
+    override func visitPost(_ node: ActorDeclSyntax) { typeStack.removeLast() }
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+      enterType(node.name.text)
+    }
+    override func visitPost(_ node: EnumDeclSyntax) { typeStack.removeLast() }
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+      enterType(node.extendedType.trimmedDescription)
+    }
+    override func visitPost(_ node: ExtensionDeclSyntax) { typeStack.removeLast() }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       let at = site(node)
@@ -581,6 +615,9 @@ struct TelemetryEmitterRegistryTests {
     #expect(
       result.emitters.first { $0.name == "ten.other_file" }?.file == "Elsewhere.swift",
       "an emitter reports the file it lives in")
+    #expect(
+      result.emitters.first { $0.name == "six.second_position" }?.function == "Fixture.h()",
+      "the site identity is the type path plus the function and its labels")
     let unresolvedMessage =
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
