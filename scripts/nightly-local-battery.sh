@@ -60,50 +60,74 @@ log() { printf '%s %s\n' "$(stamp)" "$*" | tee -a "$LOG"; }
 
 # Occupancy: a dictation in flight owns the microphone. Read the app log's
 # CONTENT, not its mtime (tools-and-apps.md RULE: peer-occupancy-procedure): an
-# idle instance writes `AXWarmup prime` on every app switch. Lines are written
-# by AppLogger as `[2026-09-16T14:11:42-04:00] [INFO] [Pipeline] Recording
-# started. …`: a BRACKETED ISO-8601 stamp with a UTC offset, parsed here with
-# Python's fromisoformat so the offset is honoured (cloud review r2: the first
-# version anchored on a leading digit and never matched a real line, so the
-# battery would have run into a live take). `--self-test` drives this with
-# fixture logs both ways.
+# idle instance writes `AXWarmup prime` on every app switch.
+#
+# STATE, not a window (cloud review r3): a take can run for up to 60 minutes
+# (AppConstants, the #1060 cap) and `Recording started` is written once, so
+# "a start marker in the last two minutes" read a 5-minute take as free. The
+# telemetry layer mints a pair for EVERY take, whatever its outcome:
+# `[Telemetry] dictation_started take=…` and `[Telemetry] dictation_terminal
+# result=<completed|no_speech|discarded|cancelled|…>` (266 starts / 263
+# terminals in the 2026-09-16 log; the 3 missing terminals were kills). So:
+# occupied iff the last start is later than the last terminal AND younger than
+# the cap plus a margin (a start with no terminal after that is a dead
+# process, not a take). Lines are `[2026-09-16T14:11:42-04:00] [INFO] …`, a
+# bracketed ISO-8601 stamp with a UTC offset, parsed with fromisoformat. An
+# unparseable start fails TOWARD occupied. `--self-test` drives every branch.
 occupied() {  # $1 = log path
   local log_path="$1"
   [ -f "$log_path" ] || return 1
-  local recent
-  recent="$(tail -n 200 "$log_path" 2>/dev/null | /usr/bin/grep -aE 'Double press|Recording started|RAW ASR' | tail -n 1 || true)"
-  [ -n "$recent" ] || return 1
-  # Only a marker from the last two minutes counts as "in flight"; a marker
-  # whose stamp cannot be parsed counts as IN FLIGHT (fail toward not running
-  # the microphone suites over someone's take).
-  printf '%s' "$recent" | python3 -c '
+  tail -n 2000 "$log_path" 2>/dev/null | python3 -c '
 import re, sys
 from datetime import datetime, timezone
-line = sys.stdin.read()
-m = re.match(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\]", line)
-if not m:
-    sys.exit(0)  # unparseable marker: treat as occupied
-stamp = datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
-age = (datetime.now(timezone.utc) - stamp).total_seconds()
-sys.exit(0 if age < 120 else 1)
+STAMP = re.compile(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\]")
+CAP_SECONDS = 3600 + 60
+last_start = last_terminal = None
+for line in sys.stdin:
+    if "[Telemetry] dictation_started" in line:
+        last_start = line
+    elif "[Telemetry] dictation_terminal" in line:
+        last_terminal = line
+if last_start is None:
+    sys.exit(1)                      # no take ever: free
+def stamp(line):
+    m = STAMP.match(line)
+    return None if not m else datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+s = stamp(last_start)
+if s is None:
+    sys.exit(0)                      # unparseable start: treat as occupied
+t = stamp(last_terminal) if last_terminal else None
+if t is not None and t >= s:
+    sys.exit(1)                      # the last take ended: free
+age = (datetime.now(timezone.utc) - s).total_seconds()
+sys.exit(0 if age < CAP_SECONDS else 1)   # in flight, unless older than any take can be
 '
 }
 
 self_test() {
   local fails=0 fx
   fx="$(mktemp -d)"
-  local now_iso old_iso
-  now_iso="$(date +%Y-%m-%dT%H:%M:%S%z | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/')"
-  old_iso="$(date -v-10M +%Y-%m-%dT%H:%M:%S%z | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/')"
-  printf '[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n[%s] [INFO] [Pipeline] Recording started. Backend: parakeet, streaming=false\n' "$old_iso" "$now_iso" > "$fx/live.log"
-  printf '[%s] [INFO] [Pipeline] Recording started. Backend: parakeet, streaming=false\n[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n' "$old_iso" "$now_iso" > "$fx/stale.log"
-  printf '[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n' "$now_iso" > "$fx/idle.log"
-  printf 'garbage Recording started\n' > "$fx/unparseable.log"
-  if occupied "$fx/live.log"; then echo "ok   [a Recording started line from now reads occupied]"; else echo "FAIL [live marker not detected]"; fails=$((fails+1)); fi
-  if ! occupied "$fx/stale.log"; then echo "ok   [a ten-minute-old marker reads free]"; else echo "FAIL [stale marker read as occupied]"; fails=$((fails+1)); fi
-  if ! occupied "$fx/idle.log"; then echo "ok   [AXWarmup prime alone reads free]"; else echo "FAIL [idle read as occupied]"; fails=$((fails+1)); fi
-  if occupied "$fx/unparseable.log"; then echo "ok   [an unparseable marker fails toward occupied]"; else echo "FAIL [unparseable marker read as free]"; fails=$((fails+1)); fi
-  if ! occupied "$fx/missing.log"; then echo "ok   [no log reads free]"; else echo "FAIL [missing log read as occupied]"; fails=$((fails+1)); fi
+  iso() { date -v"$1" +%Y-%m-%dT%H:%M:%S%z | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/'; }
+  local now_iso five_min_ago sixty_five_min_ago
+  now_iso="$(iso -0S)"; five_min_ago="$(iso -5M)"; sixty_five_min_ago="$(iso -65M)"
+  local S='[INFO] [Telemetry] dictation_started take=AAAA backend=parakeet' T='[INFO] [Telemetry] dictation_terminal result=completed take=AAAA' W='[INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true'
+  printf '[%s] %s\n[%s] %s\n' "$five_min_ago" "$S" "$now_iso" "$W" > "$fx/long-take.log"
+  printf '[%s] %s\n[%s] %s\n[%s] %s\n' "$five_min_ago" "$S" "$five_min_ago" "$T" "$now_iso" "$W" > "$fx/ended.log"
+  printf '[%s] %s\n' "$now_iso" "$W" > "$fx/idle.log"
+  printf '[%s] %s\n' "$sixty_five_min_ago" "$S" > "$fx/dead.log"
+  printf 'garbage %s\n' "$S" > "$fx/unparseable.log"
+  printf '[%s] %s\n[%s] %s\n[%s] %s\n' "$sixty_five_min_ago" "$S" "$sixty_five_min_ago" "$T" "$now_iso" "$S" > "$fx/second-take.log"
+  check() {  # $1=expect(0 occupied|1 free) $2=fixture $3=label
+    local rc=0; occupied "$fx/$2" || rc=$?
+    if [ "$rc" -eq "$1" ]; then echo "ok   [$3]"; else echo "FAIL [$3] expected rc=$1 got rc=$rc"; fails=$((fails+1)); fi
+  }
+  check 0 long-take.log "a take started five minutes ago with no terminal reads occupied"
+  check 1 ended.log "a take that reached its terminal reads free"
+  check 1 idle.log "AXWarmup prime alone reads free"
+  check 1 dead.log "a start older than the 60-minute cap with no terminal reads free (dead process)"
+  check 0 unparseable.log "an unparseable start fails toward occupied"
+  check 0 second-take.log "a new start after an old terminal reads occupied"
+  check 1 missing.log "no log reads free"
   rm -rf "$fx"
   if [ "$fails" -eq 0 ]; then
     echo "== nightly-local-battery self-test PASS =="
