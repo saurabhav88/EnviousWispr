@@ -4,9 +4,9 @@ description: "Letting EnviousWispr follow your Mac, or choosing a microphone you
 category: "audio-and-microphone"
 section: "Input Configuration"
 order: 1
-keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone"]
+keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-09-05
+updated: 2026-09-16
 ---
 EnviousWispr can follow whichever microphone your Mac is set to, or use a specific device you name yourself. Both choices live under **Settings** \> **Microphone**.
 
@@ -47,3 +47,24 @@ EnviousWispr keeps what it recorded up to that point and transcribes it, rather 
 ### A note on headsets
 
 If your AirPods are your Mac's input, EnviousWispr records from them, and your headset drops out of music mode while it does. Read [_Bluetooth and AirPods_](/help/bluetooth-and-airpods/) for what that changes.
+
+### Other audio while you dictate
+
+If you dictate with music, a podcast or a video playing, EnviousWispr can get that sound out of the way when you start talking and put it back when you stop. Go to **Settings**, then **Microphone**, and pick one of four choices under **Other Audio While You Dictate**, just above Microphone Readiness. The setting is off from the start, so nothing changes until you choose.
+
+- **Nothing.** Music and other audio keep playing as they are.
+- **Turn down.** Lowers what plays through your current speakers or headphones to about half for the whole take, then puts it back to exactly where it was.
+- **Mute.** Silences your current speakers or headphones for the whole take, then puts the volume back.
+- **Pause music.** Pauses whatever is playing (Spotify, Music, a YouTube tab, a podcast app), then resumes it when you stop. Only what was playing when you started is paused; anything you start during the take keeps going.
+
+A few things worth knowing:
+
+- Turn down and Mute act on everything your Mac plays through that output, including a call in progress and spoken feedback from a screen reader.
+- Audio that starts mid-take is quiet on the output selected when recording began. If you switch speakers or headphones during the take, the new output is not lowered or muted.
+- If you change the volume yourself during a take, your new level stays. EnviousWispr only puts the volume back when it is still at the level it set.
+- If your Mac was already muted when you started, it stays muted.
+- Pause music resumes only what it paused, and only if it is still the paused item. If you switch to another song, tab or app during a take, or press play yourself, EnviousWispr leaves things as you left them rather than starting something you did not have playing.
+- Pause music reaches every player through a part of macOS that Apple does not document for apps. If a macOS update turns that off, EnviousWispr falls back to pausing Music and Spotify only, and the Microphone page says so. On that fallback, macOS asks the first time whether EnviousWispr may control Music or Spotify; that first take is not paused, and every take after you allow it is.
+- If EnviousWispr quits or crashes in the middle of a take, the volume comes back the next time the app opens.
+- Some speakers and headphones, such as a display over HDMI, do not let apps change their volume. The Microphone page tells you when Turn down or Mute is not available on your current output.
+- The start and stop sounds still play. The output is lowered a moment after the start sound so it is not cut off.
