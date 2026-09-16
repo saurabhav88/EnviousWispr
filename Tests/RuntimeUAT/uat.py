@@ -33,6 +33,7 @@ sys.path.insert(0, HERE)
 import uat_catalog as cat  # noqa: E402
 import preflight as pf  # noqa: E402
 import log_verdict as lv  # noqa: E402
+import file_verdict as fv  # noqa: E402
 from instance_guard import running_enviouswispr_instances  # noqa: E402
 
 MARK = "/tmp/.ew-uat-mark"
@@ -245,6 +246,18 @@ def cmd_preflight(args):
                          "the worktree that owns that build")
         else:
             print(f"OK    app               pid {pid}, this worktree's build")
+            level, detail = pf.door_present(app_path)
+            print(f"{level.upper():5} {'import-door':17} {detail}")
+            if level == "fail":
+                # With --file the caller is checking for transcribe-file, and a build without
+                # the door cannot run it: a FAIL, not a heads-up (cloud review of PR #2914).
+                (fails if args.file else warnings).append(
+                    f"import-door: {detail}" + ("" if args.file else " (only transcribe-file needs it)"))
+            if args.file:
+                level, detail = pf.import_file_ok(args.file)
+                print(f"{level.upper():5} {'import-file':17} {detail}")
+                if level == "fail":
+                    fails.append(f"import-file: {detail}")
 
     # 3. Debug build with Debug Mode on: a launch banner at or after the process start.
     app_start = None
@@ -446,6 +459,136 @@ def cmd_run(args):
 
     # The silent probe is not a generic recipe: it must play TRUE silence, not a
     # TTS clip, and its verdict is a word count gated on a completed take.
+    # transcribe-file is not a dictation: no audio plays, no CGEvent is posted, and the
+    # verdict is structural (door finished, coordinator stored, row on disk), read by
+    # file_verdict.py rather than log_verdict.py. It runs on THIS thread on purpose:
+    # the door pumps the run loop of the calling thread (import_door.py:64-66).
+    if args.file and args.recipe != "transcribe-file":
+        raise SystemExit(f"REFUSED: --file is read by transcribe-file only; {args.recipe} would ignore it and grade "
+                         "a dictation instead")
+    if args.timeout is not None and args.recipe != "transcribe-file":
+        raise SystemExit(f"REFUSED: --timeout is read by transcribe-file only; {args.recipe} keeps its own timing")
+    if args.recipe == "transcribe-file":
+        # The door driver imports PyObjC at module level, so it is imported HERE, not at the
+        # top of this file: `uat.py --self-test` runs on the hosted runner without PyObjC.
+        from import_door import REFUSALS as door_refusals
+        if args.audio or args.sentence or args.expect:
+            raise SystemExit("REFUSED: transcribe-file takes --file, not --audio / --sentence / --expect")
+        if not args.file:
+            raise SystemExit("REFUSED: transcribe-file needs --file <path>")
+        path = os.path.abspath(os.path.expanduser(args.file))
+        if not os.path.isfile(path) or not os.access(path, os.R_OK):
+            raise SystemExit(f"REFUSED: --file {args.file!r} is not a readable file")
+        if os.path.getsize(path) == 0:
+            raise SystemExit(f"REFUSED: --file {args.file!r} is empty (0 bytes)")
+        # The one dev app built under THIS worktree, by executable path (never by app
+        # name: every dev build shares one bundle id). resolve_pid REFUSES on any
+        # count but one, which is the peer-occupancy rule, not a guess.
+        try:
+            pid = w.resolve_pid(worktree)
+        except RuntimeError as e:
+            # No single instance of THIS worktree's build: the instrument, not the product.
+            print(f"INSTRUMENT: {e}")
+            return 2
+        # Every dev app writes the SAME app.log, and the reader grades the last run in it.
+        # A second instance from another worktree would make that run unattributable, so
+        # the count of ALL instances must be one, not only the count under this worktree
+        # (resolve_pid checks the latter; cloud review of PR #2914). The guard keys by the
+        # pid STRING from `ps`; resolve_pid returns an int. Checked again after the run: an
+        # instance that started during an hour-long import wrote untagged rows to the same
+        # log, and the reader anchors on the LAST terminal row (cloud round 3).
+        def peers():
+            return {p: path for p, path in running_enviouswispr_instances().items() if str(p) != str(pid)}
+        others = peers()
+        if others:
+            listing = ", ".join(f"{p} {path}" for p, path in others.items())
+            print(f"INSTRUMENT: another EnviousWispr instance is running and shares app.log ({listing}); "
+                  "the verdict would be unattributable. One dev app per Mac")
+            return 2
+        timeout = 900 if args.timeout is None else args.timeout
+        mark = dt.datetime.now().astimezone()
+        print(f"== RUN transcribe-file -> transcribe_file_backend(pid={pid}, {path!r}, timeout={timeout}) ==")
+        try:
+            reply = w.transcribe_file_backend(pid, path, timeout=timeout, worktree=worktree, echo=True)
+        except RuntimeError as e:
+            # The door never answered (the app exited after PID resolution, a build without
+            # the door, a wrong worktree): the instrument, not the product.
+            print(f"INSTRUMENT: the door did not answer: {e}")
+            return 2
+        # An immediate refusal (busy, malformed, wrongLaunch, duplicate) means the run never
+        # started: an INSTRUMENT exit, with the door's own reason, before any log is read.
+        if reply.get("status") in door_refusals:
+            print(f"INSTRUMENT: the door refused before starting: status={reply.get('status')} "
+                  f"reason={reply.get('reason', '')}")
+            return 2
+        # The door posts its reply FIRST and schedules the matching log line in a Task after
+        # (DebugImportDoor.postLive), and the stored row lands a beat before either. Poll the
+        # log for THIS request's terminal line, up to 10 s; a fixed settle read a slow logger
+        # as INSTRUMENT (cloud round 4). The snapshot that satisfies the poll is the one
+        # graded below: nothing written after it can reach the verdict.
+        request_id = reply.get("request")
+        deadline = time.monotonic() + 10
+        recent = []
+        while time.monotonic() < deadline:
+            recent = w.log_entries_since(mark)
+            if any("[DebugImportDoor]" in l and f"request={request_id}" in l
+                   and f"status={reply.get('status')}" in l for l in recent):
+                break
+            time.sleep(0.25)
+        # Peer check AFTER the snapshot is taken: a peer that started at any point up to the
+        # snapshot is running now and is caught here; a peer that starts after the snapshot
+        # cannot have written into it (cloud rounds 3 and 5: a check before a read leaves the
+        # read's own window open; a check after the read closes it).
+        others = peers()
+        if others:
+            listing = ", ".join(f"{p} {path}" for p, path in others.items())
+            print(f"INSTRUMENT: another EnviousWispr instance started during the run and shares app.log "
+                  f"({listing}); the terminal row cannot be attributed to this build")
+            return 2
+        history = reply.get("history")
+        row_path = os.path.expanduser(f"~/Library/Application Support/EnviousWispr/transcripts/{history}.json") if history else None
+        row = None
+        if row_path and os.path.isfile(row_path):
+            try:
+                with open(row_path, encoding="utf-8") as fh:
+                    row = json.load(fh)
+            except (OSError, ValueError) as e:
+                print(f"INSTRUMENT: the History row {history} could not be read: {e}")
+                return 2
+        exit_code, ev = fv.file_verdict(recent, row, expect_door=True, request=request_id)
+        print(fv.format_verdict(ev))
+        if ev.get("note"):
+            print(("INSTRUMENT: " if exit_code == 2 else "") + ev["note"])
+        evidence = {
+            "recipe": args.recipe,
+            "function": recipe["function"],
+            "file": path,
+            "door_reply": {k: v for k, v in reply.items() if not k.startswith("_")},
+            "history": history,
+            "row_path": row_path if row is not None else None,
+            "exit_code": exit_code,
+            # The one field a consumer may read alone: the reader's verdict, never the
+            # door's word (the door can say finished while the row disagrees with the log).
+            "harness_verdict": exit_code == 0,
+            "head_sha": full_head,
+            "build_matches_head": build_matches_head,
+            "skipped": False,
+            "verdict": ev,
+            "ran_at": now_iso(),
+        }
+        print(f"exit_code={exit_code} status={reply.get('status')} history={history}")
+        if run_dir:
+            out = os.path.join(run_dir, "live-uat.json")
+            tmp = out + ".tmp"
+            try:
+                with open(tmp, "w") as fh:
+                    json.dump(evidence, fh, indent=2)
+                os.replace(tmp, out)
+            except OSError as e:
+                print(f"INSTRUMENT: the receipt could not be written to {out}: {e}")
+                return 2
+            print(f"written: {out}")
+        return exit_code
     if args.recipe == "silent-probe":
         print("== RUN silent-probe -> 6 s of true silence ==")
         state, words, newest = run_silent_probe(w)
@@ -563,12 +706,15 @@ def main(argv=None):
     r.set_defaults(fn=cmd_recipes)
     pre = sub.add_parser("preflight", help="check this machine and write the receipt the gates read")
     pre.add_argument("--silent-probe", action="store_true", help="also record 6 s of silence to detect an occupied room")
+    pre.add_argument("--file", help="transcribe-file: also check the file the door will be handed")
     pre.set_defaults(fn=cmd_preflight)
     run = sub.add_parser("run", help="run a recipe and write live-uat.json")
     run.add_argument("recipe", choices=list(cat.RECIPES))
     run.add_argument("--sentence")
     run.add_argument("--expect")
     run.add_argument("--audio")
+    run.add_argument("--file", help="transcribe-file: the audio/video file to hand through the door")
+    run.add_argument("--timeout", type=int, default=None, help="transcribe-file: seconds to wait for the door's terminal reply (default 900, cap 3600)")
     run.add_argument("--run-dir")
     run.set_defaults(fn=cmd_run)
     v = sub.add_parser("verdict", help="dictation verdicts from app.log since the mark")
@@ -668,6 +814,17 @@ def _self_test():
     with wave.open(p) as wv:
         check("silent wav is ~6 s mono 16-bit", abs(wv.getnframes() / wv.getframerate() - 6.0) < 0.01
               and wv.getnchannels() == 1 and wv.getsampwidth() == 2)
+
+    # The hosted runner has no PyObjC, and this self-test runs there: no module-level import
+    # of a module that loads it (import_door, wispr_eyes, objc, Foundation, AppKit). The
+    # transcribe-file branch imports the door's refusal set inside the branch for this reason
+    # (cloud review of PR #2914).
+    import ast as _ast
+    tree = _ast.parse(open(__file__, encoding="utf-8").read(), filename=__file__)
+    heavy = {"import_door", "wispr_eyes", "objc", "Foundation", "AppKit", "Quartz"}
+    top = {n.module for n in tree.body if isinstance(n, _ast.ImportFrom)} | \
+          {a.name for n in tree.body if isinstance(n, _ast.Import) for a in n.names}
+    check(f"no module-level import loads PyObjC (the hosted self-test) {sorted(top & heavy)}", not (top & heavy))
 
     # Counted from the rows that RAN, never a literal (a hardcoded total drifts
     # the first time a check is added and reports N/N+1 as a pass).
