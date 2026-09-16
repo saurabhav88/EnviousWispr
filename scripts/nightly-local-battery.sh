@@ -27,6 +27,7 @@
 # Usage:
 #   scripts/nightly-local-battery.sh            # run every gated suite
 #   scripts/nightly-local-battery.sh --list     # print the suite list and exit
+#   scripts/nightly-local-battery.sh --self-test # occupancy detector against fixture logs
 set -uo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -59,21 +60,63 @@ log() { printf '%s %s\n' "$(stamp)" "$*" | tee -a "$LOG"; }
 
 # Occupancy: a dictation in flight owns the microphone. Read the app log's
 # CONTENT, not its mtime (tools-and-apps.md RULE: peer-occupancy-procedure): an
-# idle instance writes `AXWarmup prime` on every app switch.
-occupied() {
-  [ -f "$APP_LOG" ] || return 1
+# idle instance writes `AXWarmup prime` on every app switch. Lines are written
+# by AppLogger as `[2026-09-16T14:11:42-04:00] [INFO] [Pipeline] Recording
+# started. …`: a BRACKETED ISO-8601 stamp with a UTC offset, parsed here with
+# Python's fromisoformat so the offset is honoured (cloud review r2: the first
+# version anchored on a leading digit and never matched a real line, so the
+# battery would have run into a live take). `--self-test` drives this with
+# fixture logs both ways.
+occupied() {  # $1 = log path
+  local log_path="$1"
+  [ -f "$log_path" ] || return 1
   local recent
-  recent="$(tail -n 200 "$APP_LOG" 2>/dev/null | /usr/bin/grep -aE 'Double press|Recording started|RAW ASR' | tail -n 1 || true)"
+  recent="$(tail -n 200 "$log_path" 2>/dev/null | /usr/bin/grep -aE 'Double press|Recording started|RAW ASR' | tail -n 1 || true)"
   [ -n "$recent" ] || return 1
-  # Only a marker from the last two minutes counts as "in flight".
-  local ts now
-  ts="$(printf '%s' "$recent" | /usr/bin/grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}' || true)"
-  [ -n "$ts" ] || return 1
-  now="$(date +%s)"
-  local marker_epoch
-  marker_epoch="$(date -j -f '%Y-%m-%d %H:%M:%S' "${ts/T/ }" +%s 2>/dev/null || echo 0)"
-  [ $((now - marker_epoch)) -lt 120 ]
+  # Only a marker from the last two minutes counts as "in flight"; a marker
+  # whose stamp cannot be parsed counts as IN FLIGHT (fail toward not running
+  # the microphone suites over someone's take).
+  printf '%s' "$recent" | python3 -c '
+import re, sys
+from datetime import datetime, timezone
+line = sys.stdin.read()
+m = re.match(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\]", line)
+if not m:
+    sys.exit(0)  # unparseable marker: treat as occupied
+stamp = datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+age = (datetime.now(timezone.utc) - stamp).total_seconds()
+sys.exit(0 if age < 120 else 1)
+'
 }
+
+self_test() {
+  local fails=0 fx
+  fx="$(mktemp -d)"
+  local now_iso old_iso
+  now_iso="$(date +%Y-%m-%dT%H:%M:%S%z | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/')"
+  old_iso="$(date -v-10M +%Y-%m-%dT%H:%M:%S%z | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/')"
+  printf '[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n[%s] [INFO] [Pipeline] Recording started. Backend: parakeet, streaming=false\n' "$old_iso" "$now_iso" > "$fx/live.log"
+  printf '[%s] [INFO] [Pipeline] Recording started. Backend: parakeet, streaming=false\n[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n' "$old_iso" "$now_iso" > "$fx/stale.log"
+  printf '[%s] [INFO] [AccessibilityWarmup] AXWarmup prime pid=1 found=true\n' "$now_iso" > "$fx/idle.log"
+  printf 'garbage Recording started\n' > "$fx/unparseable.log"
+  if occupied "$fx/live.log"; then echo "ok   [a Recording started line from now reads occupied]"; else echo "FAIL [live marker not detected]"; fails=$((fails+1)); fi
+  if ! occupied "$fx/stale.log"; then echo "ok   [a ten-minute-old marker reads free]"; else echo "FAIL [stale marker read as occupied]"; fails=$((fails+1)); fi
+  if ! occupied "$fx/idle.log"; then echo "ok   [AXWarmup prime alone reads free]"; else echo "FAIL [idle read as occupied]"; fails=$((fails+1)); fi
+  if occupied "$fx/unparseable.log"; then echo "ok   [an unparseable marker fails toward occupied]"; else echo "FAIL [unparseable marker read as free]"; fails=$((fails+1)); fi
+  if ! occupied "$fx/missing.log"; then echo "ok   [no log reads free]"; else echo "FAIL [missing log read as occupied]"; fails=$((fails+1)); fi
+  rm -rf "$fx"
+  if [ "$fails" -eq 0 ]; then
+    echo "== nightly-local-battery self-test PASS =="
+  else
+    echo "== nightly-local-battery self-test FAIL ($fails) =="
+    return 1
+  fi
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+  self_test
+  exit $?
+fi
 
 post_discord() {  # $1=message; log-only when no webhook is configured
   # The env file is a plain `DISCORD_WEBHOOK_URL=...` assignment (no `export`),
@@ -89,13 +132,15 @@ post_discord() {  # $1=message; log-only when no webhook is configured
 import json, sys, os, urllib.request
 req = urllib.request.Request(os.environ["DISCORD_WEBHOOK_URL"], data=json.dumps({"content": sys.argv[1]}).encode(),
                              headers={"Content-Type": "application/json"})
-urllib.request.urlopen(req).read()
+# Bounded, like the hosted reporter: an optional notification must never keep
+# the launchd job alive.
+urllib.request.urlopen(req, timeout=30).read()
 PY
 }
 
 log "=== nightly battery start (root $PROJECT_ROOT, $(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo no-git))"
 
-if occupied; then
+if occupied "$APP_LOG"; then
   log "occupied: a dictation is in flight; battery not run"
   post_discord "Nightly battery: skipped, a dictation was in flight at $(stamp). Not a hardware result."
   exit 0
@@ -106,8 +151,13 @@ summary=()
 for suite in "${SUITES[@]}"; do
   run_log="$LOG_DIR/nightly-battery-$(printf '%s' "$suite" | tr '/' '_').log"
   if "$PROJECT_ROOT/scripts/xcode-test.sh" --filter "$suite" --log-dir "$LOG_DIR/nightly-lanes" >"$run_log" 2>&1; then
-    passed="$(/usr/bin/grep -aoE 'Test run with [0-9]+ tests? in [0-9]+ suites? passed' "$run_log" | /usr/bin/grep -oE '[0-9]+' | head -1 || echo 0)"
-    skipped="$(/usr/bin/grep -acE '^.*[◇✔].*skipped' "$run_log" || true)"
+    # A filtered run still executes every bundle, so several `Test run with N`
+    # lines print (the unfiltered bundles report 0); sum them, never the first.
+    passed="$(/usr/bin/grep -aoE 'Test run with [0-9]+ tests? in [0-9]+ suites? passed' "$run_log" | /usr/bin/grep -oE 'with [0-9]+' | awk '{s+=$2} END {print s+0}')"
+    # Swift Testing prints a skipped case as `➜ Test "…" skipped.` (the arrow,
+    # not the ◇/✔ of started/passed); a description that merely contains the
+    # word "skipped" is excluded by anchoring on the trailing ` skipped.`.
+    skipped="$(/usr/bin/grep -acE '^[^a-zA-Z0-9]*➜ Test .* skipped\.$' "$run_log" || true)"
     log "ran    $suite passed=${passed:-0} skipped=${skipped:-0}"
     summary+=("$suite: ran, passed=${passed:-0} skipped=${skipped:-0}")
   else
