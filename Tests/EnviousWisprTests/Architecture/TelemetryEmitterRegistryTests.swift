@@ -36,6 +36,11 @@ struct TelemetryEmitterRegistryTests {
   /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
   /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
   /// The failure message prints the new value; paste it only when grading or retiring.
+  /// SHA-256 of `name<TAB>site count` for every event, sorted. A SECOND call site for an
+  /// already registered name (a per-buffer path reusing `dictation.completed`) changes the
+  /// cadence without touching the registry; the fingerprint makes that a visible edit here.
+  static let sitesFingerprint =
+    "ffcfc5907e1447c0e4c0ca1f8a8f476b15ce985fdbe57226d17c2339b2046af9"
   static let ungradedFingerprint =
     "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
 
@@ -160,6 +165,33 @@ struct TelemetryEmitterRegistryTests {
         }
       }
       return nil
+    }
+
+    /// The singleton may only ever be the receiver of a member access (`.capture`, `.flush`,
+    /// `.register`, ...). Stored, passed or returned, it becomes an alias whose `.capture`
+    /// calls this scan cannot attribute, so the escape itself is reported.
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+      if collect, node.trimmedDescription == "PostHogSDK.shared",
+        node.parent?.is(MemberAccessExprSyntax.self) != true
+      {
+        let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
+        unresolved.append(("`PostHogSDK.shared` escapes into an alias; call it directly", line))
+      }
+      return .visitChildren
+    }
+
+    /// Any other spelling of the SDK type as a value (`PostHogSDK()`, `PostHogSDK.self`, a
+    /// second instance) is a capture path this scan cannot see, so it is reported too.
+    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+      if collect, node.baseName.text == "PostHogSDK" {
+        let viaShared =
+          node.parent?.as(MemberAccessExprSyntax.self)?.declName.baseName.text == "shared"
+        if !viaShared {
+          let line = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
+          unresolved.append(("`PostHogSDK` used other than through `.shared`", line))
+        }
+      }
+      return .visitChildren
     }
 
     /// `PostHogSDK.shared.capture`, spelled exactly as the sanitizer seam expects.
@@ -412,6 +444,12 @@ struct TelemetryEmitterRegistryTests {
           var event = "eight.mutable"
           PostHogSDK.shared.capture(event)
         }
+        func m() {
+          let client = PostHogSDK.shared
+          client.capture("hidden.alias")
+        }
+        func n() { PostHogSDK().capture("hidden.instance") }
+        func o() { PostHogSDK.shared.flush() }
       }
       """
     let other = """
@@ -432,9 +470,12 @@ struct TelemetryEmitterRegistryTests {
       result.emitters.first { $0.name == "ten.other_file" }?.file == "Elsewhere.swift",
       "an emitter reports the file it lives in")
     let unresolvedMessage =
-      "`forward(dynamic)`, the shadowed `event` and the `var event` must be reported, not "
-      + "dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 3, Comment(rawValue: unresolvedMessage))
+      "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton and "
+      + "the second instance must be reported, not dropped or guessed: \(result.unresolved)"
+    #expect(result.unresolved.count == 5, Comment(rawValue: unresolvedMessage))
+    #expect(
+      !result.emitters.contains { $0.name.hasPrefix("hidden.") },
+      "an aliased capture is never counted as a registered emitter")
   }
 
   @Test("every capture name under Sources resolves")
@@ -519,6 +560,22 @@ struct TelemetryEmitterRegistryTests {
         row.event.hasSuffix(".*") || !row.event.contains("*"),
         "\(at): a family row is `prefix.*` and nothing else")
     }
+  }
+
+  @Test("the number of call sites per event is frozen; a new site re-answers the checklist")
+  func callSitesAreFrozen() throws {
+    let emitters = try Self.scanSources().emitters
+    let counts = Dictionary(grouping: emitters, by: \.name).mapValues(\.count)
+    let lines = counts.map { "\($0.key)\t\($0.value)" }
+    let actual = Self.fingerprint(lines)
+    #expect(
+      actual == Self.sitesFingerprint,
+      """
+      The set of (event, call-site count) pairs changed. A second call site for a registered \
+      event fires at that site's cadence, which the registry row does not describe: answer \
+      the checklist for the new site (or fold it), then set `sitesFingerprint` to \(actual).
+      Sites now: \(lines.sorted().joined(separator: ", "))
+      """)
   }
 
   static func fingerprint(_ names: [String]) -> String {
