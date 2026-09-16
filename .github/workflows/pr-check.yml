@@ -26,16 +26,32 @@ env:
   TEST_RUNNER_CI: "true"
 
 jobs:
-  # Debug lane: Xcode debug build + XPC hygiene self-tests + debug-config logic
-  # tests via `xcodebuild test`. Runs in parallel with build-release (issue #906).
-  # needs_build gating stays at STEP level so a docs-only PR runs this job but
-  # skips the build/test steps and reports success — the build-check aggregator
-  # requires success from both lanes. (#913 PR3 moved this lane to the Xcode engine.)
-  build-debug:
+  # build-and-test: the ONE required macOS lane (#3013). Release build of the
+  # shippable app (non-testable, fully optimised) + older-macOS linkage assert +
+  # snapshot of that app for the advisory macOS 14 launch job + Release
+  # test-target compile with ENABLE_TESTABILITY=YES (issue #1539: a test file
+  # referencing a #if DEBUG-only Sources symbol without gating itself compiles
+  # in Debug and vanishes in Release) + the FULL logic suite executed from those
+  # bundles (`test-without-building`, never a second compile) + the
+  # FoundationModels compile probe + the standalone eval packages.
+  #
+  # The Debug lane that used to run beside this one is gone: the founder's Mac
+  # runs the Debug suite before every push, and post-merge still runs the full
+  # Debug suite on main, so PRs are gated on the configuration that SHIPS. What
+  # that moves: Debug-only compilation and Debug-specific behaviour are now
+  # found after merge instead of before. Measured before the change (2026-09-16,
+  # docs/audits/ci-test-burden-2026-09-16): five macOS jobs and ~65 Mac-minutes
+  # per app-code PR on a five-slot account, 8 min of queue in the sample.
+  # Step-level needs_build gating. (#913 PR3 → Xcode engine.)
+  build-and-test:
     runs-on: macos-26
-    timeout-minutes: 45
-    # Expose this lane's content-detection verdict so the build-check aggregator
-    # can report honestly whether a Swift compile actually ran (#1089).
+    timeout-minutes: 60
+    # Least privilege (carried over from the retired older-macos-launch.yml): this
+    # job builds and runs branch-controlled code and needs no write capability.
+    # Artifacts move between jobs of the same run on the Actions runtime token.
+    permissions:
+      contents: read
+    # Content-detection verdict for the aggregator's honest status line (#1089).
     outputs:
       needs_build: ${{ steps.changes.outputs.needs_build }}
 
@@ -65,21 +81,9 @@ jobs:
       - name: Verify third-party notices are in sync
         run: scripts/ci/gen-third-party-notices.sh --check
 
-      # #2141's test-inventory gate deliberately has NO step here. It is a Swift test
-      # (`TestInventoryFreezeTests`) parsing with SwiftParser, so it runs inside this lane's existing
-      # `xcodebuild test` — no new step, no new required check, no aggregator clause. The shell version
-      # that did live here was a hand-rolled Swift lexer and took eleven review findings before it was
-      # replaced; see that suite's header.
-
-      # #2146's clipboard guard followed the same path for the same reason: the shell scanner and its
-      # two CI steps are gone, and `ClipboardIsolationFreezeTests` parses with SwiftParser inside this
-      # lane's existing `xcodebuild test`.
-
       # #2592: the whole Xcode setup (toolchain through project generation) is
-      # ONE owner, shared with both main-post-merge.yml jobs. This lane and
-      # build-release used to carry it inline, hand-mirrored, and that is where
-      # #2580's permanently cold cache shipped from. The `if:` here skips the
-      # entire action for a docs-only PR; the action's header says why the
+      # ONE owner, shared with both main-post-merge.yml jobs. The `if:` here skips
+      # the entire action for a docs-only PR; the action's header says why the
       # steps inside carry none.
       - name: Xcode CI setup
         id: setup
@@ -87,139 +91,7 @@ jobs:
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
-
-      - name: Build (debug, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'generic/platform=macOS' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64
-
-      - name: Run logic tests (debug, Xcode)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          set -o pipefail
-          xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'platform=macOS,arch=arm64' \
-            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64 | tee xcode-test-debug.log
-
-          # Guard against a silent zero-test run: xcodebuild prints suite-level
-          # "passed" text even for an empty bundle, so a presence-grep would
-          # green a run where nothing executed. Require a positive executed
-          # count (summed across the Swift Testing per-target run summaries).
-          #
-          # #2401: that reasoning is complete about the EMPTY case and is kept
-          # unchanged inside the shared owner. What it cannot see is a TRUNCATED
-          # one — a crashed bundle was measured reporting `** TEST SUCCEEDED **`
-          # at 2,557 of 6,664 tests with exit 0, and a crash prints zero failure
-          # marks, so every signal a reader checks agreed and every one was
-          # wrong. `ew_lane_verdict` keeps the count guard and additionally reads
-          # the named .xcresult, where a crashed case carries a typed `Failed`
-          # result that no amount of test output can forge.
-          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
-          ew_lane_verdict \
-            "xcode-test-debug.log" \
-            "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
-            "PR Debug lane"
-
-      # #2162: a red `build-debug` was undiagnosable from CI BY CONSTRUCTION, and both halves of that
-      # had to be true at once. This lane writes `xcode-test-debug.log` and an `.xcresult` and then
-      # discarded both, while only the RELEASE lane uploaded on failure — and `gh run view --log`
-      # truncates at roughly 6 MB, which a full Debug lane exceeds. The truncation is the dangerous
-      # half because it is SILENT: a failing run and a PASSING run produce an identical tail, so the
-      # step log carries no information about which one you are looking at. Three failures were chased
-      # on that non-evidence before a passing run was pulled as a control.
-      #
-      # This prints the failing lines themselves, which are small and therefore survive truncation.
-      # `if: failure()` so it costs a green run nothing, and `|| true` so a diagnostic can never be the
-      # thing that fails the lane.
-      - name: Report Debug test failures
-        if: failure()
-        run: |
-          echo "=== Swift Testing failures ==="
-          grep -aE "^.*(✘|recorded an issue).*$" xcode-test-debug.log | tail -80 || true
-          echo "=== compile errors ==="
-          grep -aE "error:" xcode-test-debug.log | tail -40 || true
-          echo "=== last 80 lines ==="
-          tail -80 xcode-test-debug.log || true
-
-      - name: Upload Debug test failure bundle
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: debug-test-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            xcode-test-debug.log
-            xcode-test-debug.xcresult
-          if-no-files-found: warn
-
-      # #1600's coverage measurement MOVED to main-post-merge.yml's
-      # debug-validation job in the CI-speed pass. It was informational by
-      # explicit design — no percentage gate, `continue-on-error`, fail-open
-      # internals — so it never decided a merge, but `-enableCodeCoverage YES`
-      # instruments every first-party module on the PR critical path. The number
-      # is just as useful measured once per merge as once per push, and
-      # debug-validation runs the same Debug suite on the same runner. #1600's
-      # intent (be able to ask "which production branches actually execute" with
-      # a number) is preserved there, including the first-party-only xccov
-      # filtering. Do not re-add it here without a reason the number has to be
-      # per-PR.
-
-  # Release lane: Xcode release build + Release test-target compile +
-  # FoundationModels compile probe. Runs in parallel with build-debug (issue
-  # #906). The probe is a standalone macOS-26 SDK compile (~5s). The Release
-  # test-target compile (issue #1539) catches a test file that references a
-  # #if DEBUG-only Sources symbol without gating itself — that class compiles
-  # fine in Debug (this lane's sibling `build-debug`) but silently vanishes in
-  # Release, previously surfacing only post-merge in main-post-merge.yml. Step-
-  # level needs_build gating. (#913 PR3 → Xcode engine.)
-  build-release:
-    runs-on: macos-26
-    timeout-minutes: 45
-    # Mirror of build-debug's output; the aggregator cross-checks both lanes and
-    # reports "unknown" on any divergence rather than overclaiming (#1089).
-    outputs:
-      needs_build: ${{ steps.changes.outputs.needs_build }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          # #825: keep FULL history. "Detect code changes" diffs
-          # pull_request.base.sha, which can predate a shallow clone when main
-          # advances mid-PR -> "fatal: bad object" -> build-check red before any
-          # build runs. Do not re-shallow without explicitly fetching BASE_SHA.
-          fetch-depth: 0
-
-      - name: Detect code changes
-        id: changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
-
-      # #2592: same shared setup as build-debug — see that lane's comment.
-      - name: Xcode CI setup
-        id: setup
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: ./.github/actions/xcode-ci-setup
-        with:
-          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+          configuration: release
 
       - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
@@ -274,6 +146,34 @@ jobs:
           ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
           ./scripts/ci/check-weak-linked-symbols.sh "$APP"
 
+      # The shippable app is snapshotted HERE, before `build-for-testing` below
+      # rewrites the same products tree with ENABLE_TESTABILITY=YES. The advisory
+      # macOS 14 launch job must certify the bundle users receive, not the
+      # testable one. Tarred, never uploaded as a directory: `upload-artifact`
+      # neither preserves symlinks nor keeps permissions, and a macOS framework
+      # IS a symlink structure (carried over from older-macos-launch.yml).
+      - name: Snapshot non-testable Release app
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
+          [ -d "$APP" ] || {
+            echo "::error::Release app missing: $APP"
+            exit 1
+          }
+          tar -czf "$RUNNER_TEMP/enviouswispr-app.tar.gz" \
+            -C "$(dirname "$APP")" "$(basename "$APP")"
+          ls -lh "$RUNNER_TEMP/enviouswispr-app.tar.gz"
+
+      - name: Upload the app for the older-macOS launch
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: enviouswispr-release-app
+          path: ${{ runner.temp }}/enviouswispr-app.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Build for testing (release, Xcode)
         id: release-test-build
         if: steps.changes.outputs.needs_build == 'true'
@@ -303,6 +203,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # #3013: RUN the suite from the bundles the step above produced. `ew_run_tests`
+      # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape for PR,
+      # post-merge and nightly: it finds exactly one `<scheme>_*.xctestrun`, runs
+      # `test-without-building` (zero compiles in this step, by construction),
+      # then hands the log and .xcresult to `ew_lane_verdict` (#2401), which
+      # refuses an empty or truncated run. Still serial: parallel Swift Testing
+      # was measured unsafe for this suite (Project.swift, the Release scheme).
+      - name: Run logic tests (release, Xcode)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
+          TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_RELEASE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-release" \
+            "PR Release lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # #2162: a red lane was undiagnosable from CI because `gh run view --log`
+      # truncates at roughly 6 MB and a failing run and a passing run produced an
+      # identical tail. Print the failing lines themselves (small, survive
+      # truncation); `|| true` so a diagnostic can never be the thing that fails.
+      - name: Report Release test failures
+        if: failure()
+        run: |
+          echo "=== Swift Testing failures ==="
+          grep -aE "^.*(✘|recorded an issue).*$" xcode-test-release.log | tail -80 || true
+          echo "=== last 80 lines ==="
+          tail -80 xcode-test-release.log || true
+
+      - name: Upload Release test failure bundle
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-test-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-test-release.log
+            xcode-test-release.xcresult
+          if-no-files-found: warn
+
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -326,81 +267,37 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-  # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
-  # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
-  # them — not scripts/xcode-test.sh, not any workflow — so a public Core
-  # signature change broke them with a fully green local suite AND a green
-  # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
-  # and left apple_runner uncompilable; 4,374 local tests passed and only a
-  # human reading the call site caught it.
-  #
-  # Compile-only: no run, no corpus, no model download.
-  #
-  # THIS WAS A STEP INSIDE build-release until the CI-speed pass. It sat there
-  # because "build-check is the only required status context, so a separate
-  # advisory job would reproduce the exact invisibility this fixes." That premise
-  # is right and the conclusion no longer follows: this job is NOT advisory — it
-  # is listed in build-check's `needs:` and in its fail-closed check, exactly like
-  # worker-tests and website-check already are, so it gates merges without any
-  # ruleset change. What it stops doing is sitting on the critical path.
-  #
-  # Measured on PR run 31969994752: 301s (20:37:42 to 20:42:43) at the END of
-  # build-release, which was the whole PR's critical path at 1668s. These packages
-  # read no DerivedData and have no dependency on the Xcode build in that job
-  # (Package.swift path-depends on the repo root only), so the sequencing was
-  # incidental, not required. As its own job the 301s overlaps build-debug's ~930s
-  # and costs zero wall clock.
-  #
-  # No build cache here on purpose: `.build/` would be a PR-written cache, and the
-  # post-merge-only cache policy (#804) keeps PR jobs restore-only to protect the
-  # 10 GiB repository budget. Cold is affordable once it is parallel.
-  #
-  # The cost, stated rather than glossed: this is a THIRD macOS runner per PR
-  # against the 5-slot macOS limit #804 weighed. One PR plus a post-merge is now 5
-  # and sits exactly at it; two PRs plus a post-merge is 8 and queues. That is
-  # acceptable for the reason measured when main-post-merge.yml was split into
-  # parallel jobs (#2033): queue time does NOT count against
-  # `timeout-minutes`, so oversubscription degrades to slower feedback and never to
-  # a killed job. This job also holds its slot for ~300s, not the ~1600s the lane it
-  # left holds, so it frees up long before the build lanes do.
-  #
-  # `swift build` is correct here and does NOT contravene the project's
-  # Xcode-build-engine policy. That policy governs the app,
-  # XPC, release and repo-test gates; these packages are invisible to
-  # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
-  # `swift build` is explicitly allowed as an informal compile check.
-  #
-  # prompt_render joined this loop when it was first tracked: it renders the
-  # per-model polish prompts the Ollama benchmark measures, so a Core prompt
-  # -builder signature change breaking it would silently invalidate the next
-  # benchmark rather than fail anything.
-  eval-packages:
-    runs-on: macos-26
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          # Full history for the same reason as the build lanes (#825): "Detect
-          # code changes" diffs pull_request.base.sha, which can predate a shallow
-          # clone when main advances mid-PR.
-          fetch-depth: 0
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: latest-stable
-
-      - name: Detect code changes
-        id: changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
-
-      # STEP-level gating, matching build-debug and website-check: a job-level
-      # `if` reports `skipped`, which a needs-based aggregator treats as
-      # not-success. A content-only PR runs this job, skips the work, succeeds.
+      # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
+      # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
+      # them — not scripts/xcode-test.sh, not any workflow — so a public Core
+      # signature change broke them with a fully green local suite AND a green
+      # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
+      # and left apple_runner uncompilable; 4,374 local tests passed and only a
+      # human reading the call site caught it.
+      #
+      # Compile-only: no run, no corpus, no model download.
+      #
+      # It was a step here, then its own job from #2114 to #3013 ("costs zero wall
+      # clock, overlaps build-debug"), and is a step again: with one required
+      # macOS lane per PR the third runner it took was a slot the build lane then
+      # waited for (8 min of queue in the 2026-09-16 sample). It reads no
+      # DerivedData, so it runs last, after the suite. Still gates merges through
+      # this job's result in build-check.
+      #
+      # No build cache here on purpose: `.build/` would be a PR-written cache, and the
+      # post-merge-only cache policy (#804) keeps PR jobs restore-only to protect the
+      # 10 GiB repository budget.
+      #
+      # `swift build` is correct here and does NOT contravene the project's
+      # Xcode-build-engine policy. That policy governs the app,
+      # XPC, release and repo-test gates; these packages are invisible to
+      # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
+      # `swift build` is explicitly allowed as an informal compile check.
+      #
+      # prompt_render joined this loop when it was first tracked: it renders the
+      # per-model polish prompts the Ollama benchmark measures, so a Core prompt
+      # -builder signature change breaking it would silently invalidate the next
+      # benchmark rather than fail anything.
       - name: Compile standalone eval packages
         if: steps.changes.outputs.needs_build == 'true'
         run: |
@@ -448,6 +345,60 @@ jobs:
           done
           echo "==> All three standalone eval packages compile against current Core"
 
+  # Older-macOS launch, advisory (#3013 moved it here from older-macos-launch.yml).
+  #
+  # Does the app still START on the oldest macOS we support? We build against the
+  # macOS 26 SDK with a macOS 14 deployment target: a reference to a macOS 26
+  # symbol that is bound STRONGLY makes dyld abort at LAUNCH on macOS 14/15,
+  # before any `#available` check in our code runs. The STATIC linkage check is
+  # on build-and-test (required). This EMPIRICAL launch stays advisory: it
+  # depends on a hosted image with a published retirement date and on starting
+  # a GUI app headlessly, neither of which belongs on the path that blocks every
+  # merge. It is deliberately NOT in build-check's `needs:`.
+  #
+  # The app cannot be built on the older runner (it needs the macOS 26 SDK), so
+  # build-and-test snapshots the shippable app BEFORE its testable rebuild and
+  # this job carries it to macos-14. Trigger is `needs_build`, deliberately
+  # broader than the old workflow's path list.
+  older-macos-launch:
+    name: Launch on macOS 14 (the deployment target)
+    needs: build-and-test
+    if: needs.build-and-test.outputs.needs_build == 'true'
+    runs-on: macos-14
+    timeout-minutes: 20
+    # Least privilege: this job runs branch-controlled scripts; artifacts move
+    # between jobs of the same run on the Actions runtime token.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Report the runner's OS
+        run: sw_vers
+
+      - name: Download the app
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: enviouswispr-release-app
+          path: downloaded
+
+      - name: Unpack the bundle
+        run: |
+          set -euo pipefail
+          mkdir -p extracted
+          tar -xzf downloaded/enviouswispr-app.tar.gz -C extracted
+          # Symlinks must have survived, or the framework is malformed again and the launch would
+          # be testing a bundle users never receive.
+          links=$(find extracted -type l | wc -l | tr -d ' ')
+          echo "==> symlinks preserved: $links"
+          [ "$links" -gt 0 ] || { echo "FAIL: no symlinks in the unpacked bundle; the framework structure did not survive transfer" >&2; exit 1; }
+
+      - name: Launch and assert it survives
+        run: ./scripts/ci/assert-app-launches.sh extracted/EnviousWispr.app
+
   # Worker unit suites (#1589). Deliberately UNCONDITIONAL and deliberately
   # running BOTH workers every time: the point is to catch a change under
   # workers/shared/ that breaks the OTHER consumer, which a paths filter or a
@@ -492,7 +443,7 @@ jobs:
   # a broken site was discovered after merge, at deploy. The help centre's whole
   # safety story rests on this build and these checks, so it runs before merge.
   #
-  # needs_website gating is at STEP level, matching build-debug: a non-website PR
+  # needs_website gating is at STEP level, matching build-and-test: a non-website PR
   # runs this job, skips the work, and reports SUCCESS. A job-level `if` would
   # report `skipped`, which a needs-based aggregator treats as not-success.
   website-check:
@@ -583,7 +534,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-debug, build-release, eval-packages, worker-tests, website-check, recipe-check]
+    needs: [build-and-test, worker-tests, website-check, recipe-check]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -735,36 +686,35 @@ jobs:
           python3 scripts/eval/acceptance_gate.py --mode selftest
 
       - name: Require every lane
+        env:
+          BUILD: ${{ needs.build-and-test.result }}
+          WORKER: ${{ needs.worker-tests.result }}
+          WEBSITE: ${{ needs.website-check.result }}
+          RECIPE: ${{ needs.recipe-check.result }}
         run: |
-          if [ "${{ needs.build-debug.result }}" != "success" ] \
-             || [ "${{ needs.build-release.result }}" != "success" ] \
-             || [ "${{ needs.eval-packages.result }}" != "success" ] \
-             || [ "${{ needs.worker-tests.result }}" != "success" ] \
-             || [ "${{ needs.website-check.result }}" != "success" ] \
-             || [ "${{ needs.recipe-check.result }}" != "success" ]; then
-            echo "::error::lane failed — build-debug=${{ needs.build-debug.result }} build-release=${{ needs.build-release.result }} eval-packages=${{ needs.eval-packages.result }} worker-tests=${{ needs.worker-tests.result }} website-check=${{ needs.website-check.result }} recipe-check=${{ needs.recipe-check.result }}"
-            exit 1
-          fi
-          echo "==> Both build lanes, the eval-package compile, and the worker unit suites passed."
+          set -euo pipefail
+          rc=0
+          for pair in "build-and-test=$BUILD" "worker-tests=$WORKER" "website-check=$WEBSITE" "recipe-check=$RECIPE"; do
+            [ "${pair#*=}" = success ] || { echo "::error::lane did not succeed: $pair"; rc=1; }
+          done
+          [ "$rc" -eq 0 ] || exit 1
+          echo "==> The build-and-test lane, the worker unit suites, the website check and the recipe check passed."
 
       - name: Report build status
+        env:
+          NEEDS_BUILD: ${{ needs.build-and-test.outputs.needs_build }}
         run: |
           set -euo pipefail
           # Honest at-a-glance signal for reviewers: distinguish a real Swift
           # build + test pass from a content-only skip, without touching the
           # required-check name or the per-step skip logic (#1089). Runs only
-          # after the fail-closed gate above, so it renders solely on a green
-          # run. Both lanes run identical content detection on the same SHAs;
-          # require them to agree, else report "unknown" rather than overclaim.
-          debug_needs="${{ needs.build-debug.outputs.needs_build }}"
-          release_needs="${{ needs.build-release.outputs.needs_build }}"
-          if [ "$debug_needs" = "true" ] && [ "$release_needs" = "true" ]; then
-            STATUS="build-check passed: Swift build and tests ran."
-          elif [ "$debug_needs" = "false" ] && [ "$release_needs" = "false" ]; then
-            STATUS="build-check passed: change classified as content-only, Swift build and tests intentionally skipped."
-          else
-            STATUS="build-check passed: build mode unknown (lane verdicts debug='$debug_needs' release='$release_needs')."
-          fi
+          # after the fail-closed gate above. A missing classification is an
+          # error, never "unknown".
+          case "$NEEDS_BUILD" in
+            true) STATUS="build-check passed: Release build and the full logic suite ran." ;;
+            false) STATUS="build-check passed: change classified as content-only, Swift build and tests intentionally skipped." ;;
+            *) echo "::error::missing or invalid build classification: '$NEEDS_BUILD'"; exit 1 ;;
+          esac
           echo "==> $STATUS"
           echo "$STATUS" >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=build-check::$STATUS"

@@ -527,11 +527,9 @@ struct TranscriptCoordinatorFilterTests {
           ? transcript("row \(i)", file: "file-\(i).m4a", ageSeconds: TimeInterval(i))
           : dictation("row \(i)", ageSeconds: TimeInterval(i)))
     }
-    #if DEBUG
-      coordinator.setTranscriptsForTesting(rows)
-    #else
-      for row in rows { try coordinator.saveAndShow(row) }
-    #endif
+    // Bulk seam in both configurations (#3013): the Release fallback used to be
+    // `saveAndShow` per row, 25,000 writes before the stopwatch started.
+    coordinator.setTranscriptsForTesting(rows)
 
     let clock = ContinuousClock()
     func fastest(_ body: () -> Int) -> (Duration, Int) {

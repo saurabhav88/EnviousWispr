@@ -1307,12 +1307,20 @@ final class TranscriptCoordinator {
       pulseTask = nil
     }
 
-    // periphery:ignore - test seam
-    func setTranscriptsForTesting(_ rows: [Transcript]) {
-      transcripts = rows
-      startPulseIfNeeded()
-    }
   #endif
+
+  /// Bulk fixture seam, available in BOTH configurations (#3013). It used to sit
+  /// inside the `#if DEBUG` block above, so the Release run of the 25,000-row
+  /// History cost test fell back to `saveAndShow` once per row (25,000 disk
+  /// writes and front-inserts before the stopwatch started): 276 s on the hosted
+  /// Release lane against 0.2 s in Debug (2026-09-16). The other Debug-only
+  /// helpers stay where they are; only the seam the test needs in both
+  /// configurations is here.
+  // periphery:ignore - test seam
+  func setTranscriptsForTesting(_ rows: [Transcript]) {
+    transcripts = rows
+    startPulseIfNeeded()
+  }
 }
 
 /// Which kind of History row the list shows (#2807).

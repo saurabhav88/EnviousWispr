@@ -19,6 +19,7 @@ on:
       # the same reason the composite action and the revision guard are listed.
       - 'scripts/lib/lane-verdict.sh'
       - 'scripts/lib/lane-verdict.py'
+      - 'scripts/lib/xcode-test-run.sh'
   schedule:
     # Hourly re-validation of main HEAD (#2334): during a merge train,
     # cancel-in-progress cancels every push run before it completes, so main
@@ -222,54 +223,18 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/verify-checked-out-revision.sh
 
+      # #3013: this job restores and WRITES the `release` cache family only. It
+      # used to build the Debug product and the Debug test bundle here too
+      # (10m54s on 2026-09-16) purely to seed the one shared cache the PR lanes
+      # restored ("the writer must build what the readers build", #2580). With
+      # one family per configuration, debug-validation seeds its own, and no job
+      # builds a configuration it does not test.
       - name: Xcode CI setup
         id: setup
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
-
-      # Both configurations are built here because this job writes the cache
-      # pr-check.yml restores for its own debug AND release jobs. Dropping the
-      # debug build would shrink that cache and slow every future PR.
-      - name: Build (debug, Xcode)
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'generic/platform=macOS' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64
-
-      # #2580: THE WRITER MUST BUILD WHAT THE READERS BUILD, and this is the one
-      # part of the original fix that survives. The only job that saves the cache
-      # built the Debug PRODUCT and never the Debug TESTS, so `EnviousWisprTests`
-      # — 624 files, ~350s, 62% of the PR compile window — could not be in any
-      # cache it wrote. Not a miss: by construction. A content-addressed cache
-      # changes nothing about that: it only holds compile jobs it has SEEN.
-      #
-      # NO COVERAGE FLAG, and that is load-bearing rather than an omission.
-      # debug-validation runs the same suite with `-enableCodeCoverage YES`,
-      # which instruments every first-party module and changes every compile
-      # command line — a different cache key. Those entries could not serve
-      # pr-check.yml's uninstrumented build-debug, so caching them would look
-      # correct, ship, and move wall clock by zero. The flags below mirror that
-      # lane's `xcodebuild test` invocation exactly, destination included.
-      - name: Build for testing (debug, Xcode)
-        run: |
-          set -euo pipefail
-          xcodebuild build-for-testing \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -destination 'platform=macOS,arch=arm64' \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64
+          configuration: release
 
       - name: Build (release, Xcode)
         run: |
@@ -284,41 +249,42 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
-      # ENABLE_TESTABILITY=YES is required on the release TEST invocation only:
+      # ENABLE_TESTABILITY=YES is required on the release TEST build only:
       # the test targets use `@testable import`, which needs the first-party
       # modules built with `-enable-testing`. Debug enables testability by
       # default; Release does not, so without this the test build fails with
       # "module built without '-enable-testing'". It is NOT set on the release
       # `build` step above, so the shippable release artifact stays non-testable
-      # and fully optimized. (Mirrors the old `swift test -c release` behavior.)
-      - name: Run logic tests (release config, Xcode)
-        id: release-tests
+      # and fully optimized. Same invocation as pr-check.yml's build-and-test,
+      # so the cache this job writes serves that lane.
+      - name: Build for testing (release, Xcode)
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
-            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 \
-            ENABLE_TESTABILITY=YES 2>&1 | tee xcode-test-release.log
+            ENABLE_TESTABILITY=YES
 
-          # Require a positive executed-test count (see pr-check.yml rationale):
-          # a presence-grep would green a zero-test run. #2401: that guard is
-          # complete about the EMPTY case and is kept unchanged inside the shared
-          # owner, which additionally reads the named .xcresult so a TRUNCATED
-          # run cannot pass — a crashed bundle prints zero failure marks and
-          # concludes SUCCEEDED.
-          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
-          ew_lane_verdict \
-            "xcode-test-release.log" \
-            "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
-            "Post-merge Release lane"
+      # #3013: one owner for the run shape (scripts/lib/xcode-test-run.sh):
+      # `test-without-building` from the bundles above, then `ew_lane_verdict`
+      # (#2401), which refuses an empty or truncated run.
+      - name: Run logic tests (release config, Xcode)
+        id: release-tests
+        run: |
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
+          ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_RELEASE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-release" \
+            "Post-merge Release lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
 
       - name: Summarize release-test failure
         if: failure() && steps.release-tests.outcome == 'failure'
@@ -355,8 +321,10 @@ jobs:
       # Save only when the build/tests succeeded and the restore was not an exact
       # hit. The primary key carries github.sha, so a first run for this commit
       # always saves; a rerun of the same commit exact-hits and skips. PR and
-      # manual diagnostic runs remain restore-only.
-      - name: Save Xcode build cache
+      # manual diagnostic runs remain restore-only. #3013: this is the `release`
+      # family's writer; debug-validation writes the `debug` family. One writer
+      # per family, enforced by scripts/ci/check-cache-paths.py.
+      - name: Save Xcode build cache (release family)
         if: >-
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
@@ -367,17 +335,23 @@ jobs:
           # MUST stay identical to the restore paths in
           # .github/actions/xcode-ci-setup/action.yml — a save/restore pair that
           # disagrees produces a permanently cold cache with no error anywhere.
-          # Since #2592 that restore is the ONLY other copy of this list (all
-          # four macOS lanes go through it), and scripts/ci/check-cache-paths.py
-          # holds both to the same literal expectation.
+          # Since #2592 that restore is the ONLY other copy of this list (every
+          # macOS lane goes through it), and scripts/ci/check-cache-paths.py
+          # holds every save to the same literal expectation.
           path: |
             ${{ env.DERIVED_DATA_PATH }}/SourcePackages
             ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
             ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
           key: ${{ steps.setup.outputs.cache-primary-key }}
 
-  # Runs in parallel with release-validation. Restore-only: it never writes the
-  # cache, so the writer contract with pr-check.yml has exactly one owner.
+  # Runs in parallel with release-validation. #3013: the FULL Debug suite,
+  # uninstrumented (the coverage report moved to nightly-battery.yml), on an
+  # explicit Debug app build (assembly is a check tests cannot make,
+  # ci-pipeline.md FACT: debug-build-is-not-redundant) plus one Debug
+  # `build-for-testing`. This is the only hosted Debug run left after the PR
+  # Debug lane was retired, so it stays FULL until a reviewed Debug-only
+  # inventory (scripts/ci/debug-only-tests.txt) is proven complete; narrowing is
+  # a later, receipted change. Writes the `debug` cache family.
   debug-validation:
     needs: [classify, schedule-guard]
     # #2334: same schedule guard and status-function rationale as
@@ -388,12 +362,10 @@ jobs:
       needs.classify.outputs.needs_build == 'true' &&
       (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
-    # Whole-job duration over the 20 most recent successful runs: 666-1008s
-    # (11.1-16.8 min), median ~850s. The CI-speed pass added coverage
-    # instrumentation to this job (see the coverage step below); pr-check.yml's
-    # build-debug ran the same suite WITH coverage at 697-1194s on the same
-    # runner class, so ~20 min is the realistic new worst case. 30 keeps ~1.5x
-    # against that, sized from the measured spread rather than a round number.
+    # 2026-09-16, with coverage: 22-29 min when it finished, and 11 of the last
+    # 30 runs hit this cap (#2950, #2963). The coverage recompile was 11m01s of
+    # that; without it the same run is expected under 20 min. The cap stays at
+    # 30 until the first ten receipts say otherwise (#3013).
     timeout-minutes: 30
 
     steps:
@@ -418,9 +390,11 @@ jobs:
         run: scripts/ci/verify-checked-out-revision.sh
 
       - name: Xcode CI setup
+        id: setup
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+          configuration: debug
 
       - name: Build (debug, Xcode)
         run: |
@@ -435,76 +409,33 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
-      - name: Run logic tests (debug, Xcode)
-        id: debug-tests
+      # No coverage flag: `-enableCodeCoverage YES` instrumented every module,
+      # third-party included, for an 11-minute second compile the cache could
+      # not serve (2026-09-16). The report lives in nightly-battery.yml now.
+      - name: Build for testing (debug, Xcode)
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -destination 'platform=macOS,arch=arm64' \
-            -resultBundlePath "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
-            -enableCodeCoverage YES \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
-            VALID_ARCHS=arm64 2>&1 | tee xcode-test-debug.log
+            VALID_ARCHS=arm64
 
-          # Require a positive executed-test count (see pr-check.yml rationale):
-          # a presence-grep would green a zero-test run. #2401: that guard is
-          # complete about the EMPTY case and is kept unchanged inside the shared
-          # owner, which additionally reads the named .xcresult so a TRUNCATED
-          # run cannot pass — a crashed bundle prints zero failure marks and
-          # concludes SUCCEEDED.
-          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
-          ew_lane_verdict \
-            "xcode-test-debug.log" \
-            "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
-            "Post-merge Debug lane"
-
-      # #1600, MOVED here from pr-check.yml's build-debug lane in the CI-speed
-      # pass. It was always informational — no percentage gate, because coverage
-      # measures execution rather than assertion quality and a threshold would
-      # invite padding tests to hit a number. Instrumenting every first-party
-      # module cost that on the PR critical path for a figure nothing gated, so
-      # it now runs once per merge instead of once per push, on the same Debug
-      # suite and the same runner.
-      #
-      # Never allowed to fail this job: continue-on-error at the step level, plus
-      # internal fail-open logic with no `set -e`.
-      - name: Coverage summary (debug, informational only)
-        continue-on-error: true
+      - name: Run logic tests (debug, Xcode)
+        id: debug-tests
         run: |
-          set -uo pipefail
-          REPORT=$(xcrun xccov view --report --json "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" 2>/dev/null) || true
-          if [ -z "$REPORT" ]; then
-            echo "==> Coverage summary unavailable (xccov produced no output)"
-            exit 0
-          fi
-          # The report's root `.lineCoverage` aggregates EVERY instrumented
-          # target, including the .xctest bundles themselves and third-party
-          # static libraries (FluidAudio alone carries ~45k executable lines) —
-          # inflating/diluting the number away from actual Sources/ coverage.
-          # Every first-party module is named `EnviousWispr*` 1:1 with its
-          # Sources/ directory (frameworks + the thin app shell + the ASR XPC
-          # service); filter to those and exclude .xctest/.bundle to isolate real
-          # production-code coverage. (#1600)
-          FIRST_PARTY=$(echo "$REPORT" | jq '
-            [.targets[] | select(.name | startswith("EnviousWispr"))
-              | select((.name | endswith(".xctest")) or (.name | endswith(".bundle")) | not)]
-            | {covered: (map(.coveredLines) | add // 0), executable: (map(.executableLines) | add // 0)}
-          ' 2>/dev/null)
-          COVERED=$(echo "$FIRST_PARTY" | jq -r '.covered // empty' 2>/dev/null)
-          EXECUTABLE=$(echo "$FIRST_PARTY" | jq -r '.executable // empty' 2>/dev/null)
-          if [ -n "$COVERED" ] && [ -n "$EXECUTABLE" ] && [ "$EXECUTABLE" -gt 0 ]; then
-            PCT_DISPLAY=$(awk -v c="$COVERED" -v e="$EXECUTABLE" 'BEGIN{printf "%.1f", (c/e)*100}')
-            echo "==> Debug-lane first-party line coverage: ${PCT_DISPLAY}% (${COVERED}/${EXECUTABLE} lines)"
-            echo "Debug-lane first-party line coverage: **${PCT_DISPLAY}%** (${COVERED}/${EXECUTABLE} lines — Sources/ only, excludes test bundles and third-party deps; informational, no gate)" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "==> Coverage summary unavailable (could not parse xccov JSON or no first-party targets found)"
-          fi
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
+          ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-debug" \
+            "Post-merge Debug lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
 
       # The release job had failure diagnostics and the debug job did not, which
       # meant a debug-only failure on main left nothing to read. Same treatment
@@ -534,6 +465,23 @@ jobs:
             xcode-test-debug.xcresult
           if-no-files-found: warn
           retention-days: 7
+
+      # #3013: the `debug` family's writer, same conditions as the release one.
+      - name: Save Xcode build cache (debug family)
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          success() &&
+          steps.setup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          # MUST stay identical to the restore paths in
+          # .github/actions/xcode-ci-setup/action.yml (see release-validation).
+          path: |
+            ${{ env.DERIVED_DATA_PATH }}/SourcePackages
+            ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
+            ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
+          key: ${{ steps.setup.outputs.cache-primary-key }}
 
   # One place that says whether main is green. Without this, a reader has to
   # combine three job results by eye, and a SKIPPED job looks like a failure.

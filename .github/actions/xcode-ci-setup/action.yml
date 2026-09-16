@@ -1,9 +1,10 @@
 name: Xcode CI setup
 description: >-
   Toolchain selection, Tuist install, compilation-cache and DerivedData
-  redirects, build-cache restore, and Xcode project generation — the setup
-  every lane in pr-check.yml and main-post-merge.yml that builds the app with
-  xcodebuild needs before it can build or test. (eval-packages builds
+  redirects, build-cache restore (one family per configuration), and Xcode
+  project generation — the setup every lane in pr-check.yml,
+  main-post-merge.yml and nightly-battery.yml that builds the app with
+  xcodebuild needs before it can build or test. (The eval-packages step builds
   standalone SwiftPM packages with `swift build` and deliberately does not
   use it.)
 
@@ -38,6 +39,13 @@ inputs:
     description: Tuist version pinned via mise.
     required: false
     default: 4.195.11
+  configuration:
+    description: >-
+      Build-cache family, `debug` or `release` (#3013). Each family has ONE
+      writer in main-post-merge.yml (debug-validation / release-validation) and
+      restore-keys never cross families, so a Debug lane cannot restore Release
+      objects it cannot use, and vice versa. Validated before the restore.
+    required: true
 
 outputs:
   cache-primary-key:
@@ -135,6 +143,19 @@ runs:
       shell: bash
       run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ inputs.derived-data-path }}"
 
+    # #3013: a wrong family name would build a key no writer ever saves, and a
+    # permanently cold cache is silent (#2580). Refuse anything but the two.
+    - name: Validate cache configuration
+      shell: bash
+      env:
+        CONFIGURATION: ${{ inputs.configuration }}
+      run: |
+        set -euo pipefail
+        case "$CONFIGURATION" in
+          debug|release) echo "==> cache family: $CONFIGURATION" ;;
+          *) echo "::error::xcode-ci-setup: configuration must be 'debug' or 'release', got '$CONFIGURATION'"; exit 1 ;;
+        esac
+
     - name: Compute Xcode build cache key
       id: xcode-cache-key
       shell: bash
@@ -150,9 +171,12 @@ runs:
 
     # Rolling key (github.sha suffix) so the primary key is never an exact hit
     # on a PR. pr-check.yml is restore-only by design — main-post-merge.yml's
-    # release-validation job is the sole writer (issue #804), and it saves
-    # under this step's exported cache-primary-key. restore-keys fall through
-    # to the freshest cache.
+    # two validation jobs are the writers, one per family (issue #804, #3013),
+    # each saving under this step's exported cache-primary-key. restore-keys
+    # fall through to the freshest cache OF THE SAME FAMILY: the broadest prefix
+    # still carries `-xcode-<configuration>-`, so a Debug lane never restores
+    # Release objects and a first run after a toolchain bump starts cold rather
+    # than half-wrong.
     #
     # The third path entry is a glob (issue #1295): the redirect above makes
     # tuist generate's implicit resolve write into a per-project hash-named
@@ -195,11 +219,45 @@ runs:
           ${{ inputs.derived-data-path }}/SourcePackages
           ${{ inputs.derived-data-path }}/CompilationCache.noindex
           ${{ inputs.derived-data-path }}/*/SourcePackages
-        key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
+        key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ inputs.configuration }}-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
-          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
-          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
+          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ inputs.configuration }}-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
+          ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ inputs.configuration }}-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+
+    # #3013, EXPERIMENT (advisory, continue-on-error): validate the restored
+    # compilation store in-process, before Xcode does. Measured 2026-09-16 on
+    # seven hosted jobs: Xcode's own `ValidateCAS` step runs an out-of-process
+    # validator with a 120 s deadline; on the 5.4 GB store it took 78-117 s when
+    # it passed, and in 2 of 5 PR jobs it hit 120.3 s, logged `recovered from
+    # invalid data`, and the whole store was set aside (0 compiler cache hits
+    # against ~600, about 6 min more compiling). The same archive validated on
+    # other runs, so the archive is not the variable; the deadline is the
+    # strongly suspected cause, not a proven one (the validator's error is
+    # suppressed). `llvm-cas --validate-if-needed --in-process` has no such
+    # deadline and should leave Xcode's step reporting `validation skipped`.
+    # What decides whether this stays: restore + validation + compile + save
+    # seconds and the hit counts over repeated warm runs, recorded on #3013.
+    # No size cap is set here: the setting's name and pruning behaviour are
+    # unverified in this toolchain.
+    - name: Validate restored compilation cache in process (experiment)
+      continue-on-error: true
+      shell: bash
+      env:
+        DD: ${{ inputs.derived-data-path }}
+      run: |
+        set -euo pipefail
+        # Xcode names the store `builtin` on CI (`ValidateCAS …/CompilationCache.noindex/builtin`);
+        # a local run names it `generic`. Validate every store present rather
+        # than guess. Proven locally 2026-09-16: first call `validated
+        # successfully`, second call `validation skipped`.
+        shopt -s nullglob
+        found=0
+        for CAS in "$GITHUB_WORKSPACE/$DD/CompilationCache.noindex"/*/; do
+          found=1
+          echo "==> in-process CAS validation: $CAS ($(du -sh "$CAS" 2>/dev/null | cut -f1))"
+          /usr/bin/time -p xcrun llvm-cas --cas "$CAS" --validate-if-needed --in-process
+        done
+        [ "$found" -eq 1 ] || echo "==> no restored CAS under $GITHUB_WORKSPACE/$DD/CompilationCache.noindex; cold build"
 
     # The one line that says whether the cache did anything. `Cache not found
     # for input keys` on every key is what a permanently cold cache looks like

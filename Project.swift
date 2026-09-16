@@ -754,6 +754,22 @@ let project = Project(
       // PR3: release-config test action so main-post-merge can run
       // `xcodebuild test -scheme EnviousWispr-Release -configuration Release`,
       // preserving the release-config test coverage the old post-merge job ran.
+      //
+      // #3013: this scheme is now the PR gate's test run, executed from
+      // `build-for-testing` products with `test-without-building`.
+      //
+      // STILL SERIAL, measured. `.testableTarget(…, parallelization:
+      // .swiftTestingOnly)` was tried on 2026-09-16 (local M5 Max, Release):
+      // the main bundle never reached its summary line, 79 cases failed across
+      // LivePreviewPacksModelTests (6), BulkImportEnrichmentCoordinatorTests
+      // (5, `Task timed out after 5.0s`), KernelFinalizationWiringTests (3),
+      // RecoveryTextProcessorTests, SupersededStagingSweepTests,
+      // SnippetImportReviewCeilingTests, OverlayDirectorTests and
+      // EGOneInstallStateTelemetryTests, against 0 failures serial
+      // (docs/audits/ci-test-burden-2026-09-16/parallel-release-failures.txt).
+      // Shared state, not the flag, is the defect; each of those suites needs its
+      // seam fixed before the flag can return (testing-philosophy.md
+      // RULE: a-flaky-suite-earns-no-new-cases-until-its-wait-seam-is-fixed).
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
         configuration: "Release"

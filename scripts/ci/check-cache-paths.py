@@ -183,7 +183,27 @@ EXPECTED_ROOT = DD_LITERAL
 EXPECTED_OWNERS = (
     (".github/actions/xcode-ci-setup/action.yml", "composite", "restore"),
     (".github/workflows/main-post-merge.yml", "release-validation", "save"),
+    (".github/workflows/main-post-merge.yml", "debug-validation", "save"),
 )
+
+# #3013: one cache FAMILY per build configuration, one writer per family. The
+# composite action builds the key from its `configuration` input, so a Debug
+# lane never restores Release objects it cannot use. The marker filter above
+# cannot see this (a key reworded to drop the family token still carries
+# `-xcode-`), so the family contract is checked separately:
+#   - the composite's restore key AND every restore-keys prefix carry the
+#     family token, so no fallback crosses families;
+#   - every workflow caller passes a literal `configuration` from FAMILIES;
+#   - every save sits in a unit named here, its unit's setup call names the
+#     family this table expects, and its key is that setup step's exported
+#     primary key; each family has exactly one writer.
+SETUP_ACTION = "./.github/actions/xcode-ci-setup"
+FAMILIES = ("debug", "release")
+FAMILY_TOKEN = "-xcode-${{ inputs.configuration }}-"
+EXPECTED_WRITERS = {
+    (".github/workflows/main-post-merge.yml", "release-validation"): "release",
+    (".github/workflows/main-post-merge.yml", "debug-validation"): "debug",
+}
 
 # Cache steps that are NOT Xcode caches and are allowed to exist, (file, unit).
 # Empty today: the npm cache comes from setup-node's own `cache:` input, not an
@@ -424,7 +444,87 @@ def root_producers(path: str, root: str = "."):
                         yield path, unit, f"path entry {line.strip()!r} spells the root as a reusable-workflow input this check cannot resolve", None
 
 
-def check(files, expected_paths, expected_owners, expected_root, expected_other=(), root=".") -> int:
+def check_families(files, expected_writers, root="."):
+    """The per-configuration cache-family contract (#3013). Returns a list of
+    (file, unit, message) defects; empty means clean. Independent of the path
+    and owner checks above, and only as strong as `expected_writers`: a table
+    with no rows checks nothing, so the entrypoint passes the module constant."""
+    bad = []
+    writers_seen = collections.defaultdict(list)
+    for f in files:
+        doc = _load(f)
+        if doc is None:
+            continue
+        composite = (doc.get("runs") or {}).get("using") == "composite"
+        if composite:
+            # The family contract binds the SETUP action's manifest only; another
+            # composite (say, a hello-world helper) owns no cache and declares no
+            # configuration.
+            setup_dir = os.path.normpath(os.path.join(root, SETUP_ACTION))
+            if os.path.normpath(os.path.dirname(os.path.join(root, f))) != setup_dir:
+                continue
+            declared = (doc.get("inputs") or {}).get("configuration")
+            if not isinstance(declared, dict) or not declared.get("required"):
+                bad.append((f, "composite", "the setup manifest must declare a REQUIRED `configuration` input; "
+                                            "an omitted family renders as an empty token and every key misses"))
+            for st in (doc["runs"].get("steps") or []):
+                if _kind(str(st.get("uses", ""))) not in ("restore", "restore+save"):
+                    continue
+                with_ = st.get("with", {}) or {}
+                key = _canon(str(with_.get("key", "")))
+                if _canon(FAMILY_TOKEN) not in key:
+                    bad.append((f, "composite", f"restore key {key!r} does not carry the family token {FAMILY_TOKEN!r}"))
+                for ln in str(with_.get("restore-keys", "") or "").splitlines():
+                    if ln.strip() and _canon(FAMILY_TOKEN) not in _canon(ln):
+                        bad.append((f, "composite", f"restore-keys prefix {ln.strip()!r} lacks the family token, so a "
+                                                    "fallback could restore the other configuration's objects"))
+            continue
+        if "jobs" not in doc:
+            continue
+        for unit, steps, _ in _units(doc):
+            setup_family, setup_id = None, None
+            for st in steps:
+                uses = str(st.get("uses", ""))
+                with_ = st.get("with", {}) or {}
+                if uses.rstrip("/") == SETUP_ACTION:
+                    fam = with_.get("configuration")
+                    if fam is None:
+                        bad.append((f, unit, f"calls {SETUP_ACTION} without `configuration`; the family would be empty"))
+                    elif str(fam) not in FAMILIES:
+                        bad.append((f, unit, f"calls {SETUP_ACTION} with configuration {fam!r}, expected one of {FAMILIES}"))
+                    else:
+                        setup_family, setup_id = str(fam), st.get("id")
+                kind = _kind(uses)
+                if kind in ("save", "restore+save") and in_family(str(with_.get("key", ""))):
+                    want = expected_writers.get((f, unit))
+                    if want is None:
+                        bad.append((f, unit, "holds a cache save but is not a writer in EXPECTED_WRITERS"))
+                        continue
+                    writers_seen[want].append((f, unit))
+                    if setup_family != want:
+                        bad.append((f, unit, f"saves the {want!r} family but its setup call names "
+                                             f"configuration {setup_family!r}"))
+                    key = _canon(str(with_.get("key", "")))
+                    expected_key = _canon(f"${{{{ steps.{setup_id}.outputs.cache-primary-key }}}}") if setup_id else None
+                    if expected_key is None or key != expected_key:
+                        bad.append((f, unit, f"save key {key!r} is not the setup step's exported primary key "
+                                             f"({expected_key!r}); a hand-spelled key can drift from the restore"))
+    for (f, unit), fam in expected_writers.items():
+        if not writers_seen.get(fam):
+            bad.append((f, unit, f"expected to write the {fam!r} family and no such save was found"))
+        elif len(writers_seen[fam]) > 1:
+            bad.append((f, unit, f"the {fam!r} family has {len(writers_seen[fam])} writers: "
+                                 + ", ".join(f"{a}::{b}" for a, b in writers_seen[fam])))
+    # de-duplicate the family-level rows (one per expected writer of that family)
+    out, seen = [], set()
+    for row in bad:
+        if row not in seen:
+            seen.add(row); out.append(row)
+    return out
+
+
+def check(files, expected_paths, expected_owners, expected_root, expected_other=(), root=".",
+          expected_writers=None) -> int:
     found, other, bad = [], [], []
     # Every file must PARSE before anything is compared. A traceback is red
     # too, but it names no file in the annotation the aggregator shows.
@@ -521,6 +621,16 @@ def check(files, expected_paths, expected_owners, expected_root, expected_other=
                             "does not expect. If that is intended, add it to EXPECTED_OWNERS after "
                             "confirming its path list — and if it is a save, it is a second writer, "
                             "which ci-pipeline.md RULE: cache-writer-is-post-merge-only forbids."))
+
+    if expected_writers is not None:
+        fam_bad = check_families(files, expected_writers, root)
+        print()
+        print("cache families:")
+        if fam_bad:
+            bad.extend(fam_bad)
+        else:
+            print(f"    one writer per family {sorted(set(expected_writers.values()))}, every caller names its family, "
+                  "no restore prefix crosses families")
 
     if bad:
         print()
@@ -983,6 +1093,215 @@ def self_test() -> int:
         expect("a workflow cache step spelling the root as the INPUTS expression is caught although it normalises clean",
                run([good_a, input_path], F, owners(good_a, input_path)), 1)
 
+        # --- #3013: one cache family per configuration, one writer per family.
+        # Each case is its own fake repo, because the family contract binds the
+        # manifest at `.github/actions/xcode-ci-setup/action.yml` and nothing else.
+        fam_counter = [0]
+
+        def fam_repo(manifest_body, *workflow_bodies):
+            fam_counter[0] += 1
+            rel_root = f"famrepo{fam_counter[0]}"
+            root_dir = os.path.join(tmp, rel_root)
+            manifest = fixture(manifest_body, os.path.join(rel_root, ".github/actions/xcode-ci-setup/action.yml"), env=None)
+            workflows = [fixture(body, os.path.join(rel_root, f".github/workflows/w{i}.yml")) for i, body in enumerate(workflow_bodies)]
+            return root_dir, manifest, workflows
+
+        def fam_run(root_dir, files, writers):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rows = check_families(files, writers, root_dir)
+            last["out"] = "\n".join(m for _, _, m in rows)
+            return 1 if rows else 0
+
+        MANIFEST_GOOD = """
+            name: setup
+            inputs:
+              configuration:
+                required: true
+            runs:
+              using: composite
+              steps:
+                - uses: actions/cache/restore@v5
+                  with:
+                    key: ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-${{ github.sha }}
+                    restore-keys: |
+                      ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-
+                      ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-
+                    path: |
+                      .derivedData/CI/SourcePackages
+            """
+        WF_GOOD = """
+            jobs:
+              rel:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ steps.setup.outputs.cache-primary-key }}
+                      path: |
+                        .derivedData/CI/SourcePackages
+              dbg:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: debug
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ steps.setup.outputs.cache-primary-key }}
+                      path: |
+                        .derivedData/CI/SourcePackages
+              reader:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+            """
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
+        W = {(w, "rel"): "release", (w, "dbg"): "debug"}
+        expect("(control) two families, one writer each, every caller named -> pass", fam_run(r, [m, w], W), 0)
+        r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
+            jobs:
+              reader:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    with:
+                      derived-data-path: .derivedData/CI
+            """)
+        expect("a caller omitting configuration is caught",
+               fam_run(r, [m, w, w2], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "without `configuration`")
+        r, m, (w, w2) = fam_repo(MANIFEST_GOOD, WF_GOOD, """
+            jobs:
+              reader:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: prod
+            """)
+        expect("a caller naming an unknown family is caught",
+               fam_run(r, [m, w, w2], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "expected one of")
+        r, m, (w,) = fam_repo("""
+            name: setup
+            inputs:
+              configuration:
+                required: true
+            runs:
+              using: composite
+              steps:
+                - uses: actions/cache/restore@v5
+                  with:
+                    key: ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-${{ github.sha }}
+                    restore-keys: |
+                      ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-
+                      ${{ runner.os }}-xcode-
+                    path: |
+                      .derivedData/CI/SourcePackages
+            """, WF_GOOD)
+        expect("a restore-keys prefix that crosses families is caught",
+               fam_run(r, [m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "lacks the family token")
+        r, m, (w,) = fam_repo("""
+            name: setup
+            runs:
+              using: composite
+              steps:
+                - uses: actions/cache/restore@v5
+                  with:
+                    key: ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-${{ github.sha }}
+                    restore-keys: |
+                      ${{ runner.os }}-xcode-${{ inputs.configuration }}-tc-mf-
+                    path: |
+                      .derivedData/CI/SourcePackages
+            """, WF_GOOD)
+        expect("a setup manifest without a required configuration input is caught",
+               fam_run(r, [m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "REQUIRED `configuration`")
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, """
+            jobs:
+              rel:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ steps.setup.outputs.cache-primary-key }}
+                      path: |
+                        .derivedData/CI/SourcePackages
+              rel2:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ steps.setup.outputs.cache-primary-key }}
+                      path: |
+                        .derivedData/CI/SourcePackages
+            """)
+        expect("two writers for one family are caught",
+               fam_run(r, [m, w], {(w, "rel"): "release", (w, "rel2"): "release"}), 1, "writers")
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, """
+            jobs:
+              dbg:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ steps.setup.outputs.cache-primary-key }}
+                      path: |
+                        .derivedData/CI/SourcePackages
+            """)
+        expect("a writer whose setup names the other family is caught",
+               fam_run(r, [m, w], {(w, "dbg"): "debug"}), 1, "setup call names")
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, """
+            jobs:
+              rel:
+                steps:
+                  - uses: ./.github/actions/xcode-ci-setup
+                    id: setup
+                    with:
+                      derived-data-path: .derivedData/CI
+                      configuration: release
+                  - uses: actions/cache/save@v5
+                    with:
+                      key: ${{ runner.os }}-xcode-release-hand-spelled
+                      path: |
+                        .derivedData/CI/SourcePackages
+            """)
+        expect("a save keyed by anything but the setup's exported key is caught",
+               fam_run(r, [m, w], {(w, "rel"): "release"}), 1, "exported primary key")
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
+        expect("an expected writer with no save is caught",
+               fam_run(r, [m], {(w, "rel"): "release", (w, "dbg"): "debug"}), 1, "no such save")
+        # A composite that is NOT the setup action owns no cache and declares no
+        # configuration; the family contract must not bind it.
+        r, m, (w,) = fam_repo(MANIFEST_GOOD, WF_GOOD)
+        hello = fixture("""
+            name: Hello
+            description: Print hello
+            runs:
+              using: composite
+              steps:
+                - shell: bash
+                  run: echo hello
+            """, os.path.join(os.path.relpath(r, tmp), ".github/actions/hello/action.yml"), env=None)
+        expect("(control) an unrelated composite is not bound by the family contract",
+               fam_run(r, [hello, m, w], {(w, "rel"): "release", (w, "dbg"): "debug"}), 0)
+
         # --- #2593 item 3: discovery reaches nested manifests and .yaml.
         repo = os.path.join(tmp, "repo")
         for rel in (".github/workflows/a.yml", ".github/workflows/b.yaml",
@@ -1009,4 +1328,5 @@ def self_test() -> int:
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
         sys.exit(self_test())
-    sys.exit(check(discover("."), EXPECTED_PATHS, EXPECTED_OWNERS, EXPECTED_ROOT, EXPECTED_OTHER, "."))
+    sys.exit(check(discover("."), EXPECTED_PATHS, EXPECTED_OWNERS, EXPECTED_ROOT, EXPECTED_OTHER, ".",
+                   EXPECTED_WRITERS))

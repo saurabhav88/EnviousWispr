@@ -1,0 +1,243 @@
+name: Nightly Battery
+
+# What runs here and NOT on every pull request (#3013):
+#   - the coverage report (#1600): `-enableCodeCoverage YES` instruments every
+#     module, third-party included, and recompiles the tree a second time (11
+#     minutes on the post-merge Debug lane, 2026-09-16). The number is
+#     informational, no gate, and just as useful once a day as once a push.
+#   - the Debug-only test inventory check: the PR gate runs the Release suite
+#     and post-merge runs the full Debug suite; scripts/ci/debug-only-tests.txt
+#     names the tests that exist only in Debug so that run can one day be
+#     narrowed. Both COMPLETE populations are needed to prove the list, so
+#     both full suites run here, and the comparison fails closed.
+#
+# What deliberately stays on the pull request: the complete Release suite,
+# benchmarks and whole-tree scans included (founder 2026-09-16: the full suite
+# stays at the merge gate). This workflow removes nothing from pr-check.yml.
+#
+# The microphone / real-model battery is NOT here: hosted macOS runners have no
+# audio input device and cannot run the speech models under test conditions.
+# That battery is scripts/nightly-local-battery.sh on a physical Mac, scheduled
+# by launchd, never a GitHub runner (.claude/knowledge/ci-security-architecture.md
+# DECISION: no self-hosted runner, no Mac mini).
+#
+# Self-proof: runs on pull_request for its own inputs, so a change here is seen
+# running on its PR before it merges (ci-pipeline.md
+# RULE: ci-workflow-only-pr-needs-swift-trigger). The reporter job never runs on
+# a pull request: branch-controlled code must not reach a credential.
+
+on:
+  schedule:
+    # 08:17 UTC = 04:17 Eastern in daylight time, 03:17 in standard time. Off the
+    # hour on purpose: GitHub flags top-of-hour crons as high-load.
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/nightly-battery.yml'
+      - '.github/actions/xcode-ci-setup/action.yml'
+      - 'scripts/lib/xcode-test-run.sh'
+      - 'scripts/lib/lane-verdict.sh'
+      - 'scripts/lib/lane-verdict.py'
+      - 'scripts/ci/debug-only-inventory.py'
+      - 'scripts/ci/debug-only-tests.txt'
+      - 'scripts/ci/notify-nightly.py'
+
+concurrency:
+  group: nightly-battery-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  # Only a PR's own superseded run is worth cancelling; a scheduled or
+  # dispatched battery mid-report must not be killed by the next one.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DERIVED_DATA_PATH: .derivedData/CI
+  XCODE_PROJECT: EnviousWispr.xcodeproj
+  XCODE_SCHEME: EnviousWispr
+  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+  TEST_RUNNER_CI: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  battery:
+    runs-on: macos-26
+    # Two full builds (Debug instrumented, Release testable) plus two full
+    # suites on a 3-core runner. Cold on the Release side because this job
+    # restores the debug family only. Cap sized for that; to be measured.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Xcode CI setup
+        id: setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
+          configuration: debug
+
+      # Coverage instrumentation ONLY here (see the header). `build-for-testing`
+      # records the coverage setting in the generated .xctestrun, so the run
+      # step below inherits it without repeating the flag.
+      - name: Build for testing (debug, coverage, Xcode)
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            -enableCodeCoverage YES \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
+
+      - name: Run the full Debug suite (coverage)
+        id: debug-tests
+        run: |
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
+          ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-debug" \
+            "Nightly Debug lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # #1600, moved here from main-post-merge.yml's debug-validation job in
+      # #3013. It was always informational — no percentage gate, because
+      # coverage measures execution rather than assertion quality and a
+      # threshold would invite padding tests to hit a number.
+      #
+      # Never allowed to fail this job: continue-on-error at the step level, plus
+      # internal fail-open logic with no `set -e`.
+      - name: Coverage summary (debug, informational only)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          REPORT=$(xcrun xccov view --report --json "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" 2>/dev/null) || true
+          if [ -z "$REPORT" ]; then
+            echo "==> Coverage summary unavailable (xccov produced no output)"
+            exit 0
+          fi
+          # The report's root `.lineCoverage` aggregates EVERY instrumented
+          # target, including the .xctest bundles themselves and third-party
+          # static libraries (FluidAudio alone carries ~45k executable lines) —
+          # inflating/diluting the number away from actual Sources/ coverage.
+          # Every first-party module is named `EnviousWispr*` 1:1 with its
+          # Sources/ directory; filter to those and exclude .xctest/.bundle to
+          # isolate real production-code coverage. (#1600)
+          FIRST_PARTY=$(echo "$REPORT" | jq '
+            [.targets[] | select(.name | startswith("EnviousWispr"))
+              | select((.name | endswith(".xctest")) or (.name | endswith(".bundle")) | not)]
+            | {covered: (map(.coveredLines) | add // 0), executable: (map(.executableLines) | add // 0)}
+          ' 2>/dev/null)
+          COVERED=$(echo "$FIRST_PARTY" | jq -r '.covered // empty' 2>/dev/null)
+          EXECUTABLE=$(echo "$FIRST_PARTY" | jq -r '.executable // empty' 2>/dev/null)
+          if [ -n "$COVERED" ] && [ -n "$EXECUTABLE" ] && [ "$EXECUTABLE" -gt 0 ]; then
+            PCT_DISPLAY=$(awk -v c="$COVERED" -v e="$EXECUTABLE" 'BEGIN{printf "%.1f", (c/e)*100}')
+            echo "==> Debug first-party line coverage: ${PCT_DISPLAY}% (${COVERED}/${EXECUTABLE} lines)"
+            echo "Debug first-party line coverage: **${PCT_DISPLAY}%** (${COVERED}/${EXECUTABLE} lines — Sources/ only, excludes test bundles and third-party deps; informational, no gate)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "==> Coverage summary unavailable (could not parse xccov JSON or no first-party targets found)"
+          fi
+
+      # ENABLE_TESTABILITY=YES on the Release TEST build only (see
+      # main-post-merge.yml for the rationale). This is the second complete
+      # population the inventory comparison needs.
+      - name: Build for testing (release, Xcode)
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_RELEASE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64 \
+            ENABLE_TESTABILITY=YES
+
+      - name: Run the full Release suite
+        id: release-tests
+        run: |
+          set -euo pipefail
+          . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
+          ew_run_tests \
+            "$DERIVED_DATA_PATH/Build/Products" \
+            "$XCODE_RELEASE_SCHEME" \
+            "$GITHUB_WORKSPACE/xcode-test-release" \
+            "Nightly Release lane" \
+            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+
+      # The reviewed inventory must equal the live Debug−Release identifier set,
+      # and every reviewed selector must resolve. A new Debug-only test that was
+      # never added to the list fails HERE, the morning after it merged, rather
+      # than silently vanishing from a narrowed post-merge run one day.
+      - name: Validate the Debug-only inventory
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/debug-only-inventory.py --self-test
+          python3 scripts/ci/debug-only-inventory.py validate \
+            --debug "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            --release "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
+            --inventory scripts/ci/debug-only-tests.txt | tee inventory-report.txt
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-battery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            xcode-test-debug.log
+            xcode-test-debug.xcresult
+            xcode-test-release.log
+            xcode-test-release.xcresult
+            inventory-report.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Reports a failed scheduled or dispatched battery. ONLY on main and only for
+  # schedule/dispatch: a dispatch on a feature branch would otherwise check out
+  # branch-controlled code next to the webhook and the write token. The
+  # checkout below pins main for the same reason. One reporter at a time across
+  # events, so two failures cannot open two tracking issues.
+  report:
+    needs: battery
+    if: >-
+      always() &&
+      needs.battery.result != 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: nightly-battery-issue-reporter
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+
+      - name: Post the failure
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.battery.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/notify-nightly.py --self-test
+          python3 scripts/ci/notify-nightly.py --result "$RESULT" --run-url "$RUN_URL" --repo "$REPO"
