@@ -592,6 +592,13 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
 struct BrandedSegmentedPicker<T: Hashable>: View {
   let options: [(label: String, systemImage: String?, value: T)]
   @Binding var selection: T
+  /// Roomier padding for a page with space to spare (founder, 2026-09-16: "a
+  /// little bit more padding so they don't look so small"). Every pre-existing
+  /// call site keeps the original, tighter padding by leaving this `false`.
+  var comfortable: Bool = false
+
+  private var verticalPadding: CGFloat { comfortable ? 11 : 7 }
+  private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
 
   var body: some View {
     HStack(spacing: 4) {
@@ -611,8 +618,8 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
               .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
           }
           .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
-          .padding(.vertical, 7)
-          .padding(.horizontal, 12)
+          .padding(.vertical, verticalPadding)
+          .padding(.horizontal, horizontalPadding)
           .frame(maxWidth: .infinity)
           .contentShape(Rectangle())
           .background(
@@ -638,6 +645,32 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
     .overlay(
       RoundedRectangle(cornerRadius: 10)
         .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+}
+
+/// Publishes the max width reported by `.reportingWidth()` among its
+/// descendants, up to the nearest `.onPreferenceChange`. Used to size two
+/// sibling `BrandedSegmentedPicker`s (Media during dictation, Microphone
+/// readiness) to the SAME total width even though they hold a different
+/// number of options (founder, 2026-09-16: "the same exact length as the
+/// buttons above them").
+struct SegmentedControlWidthKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
+  }
+}
+
+extension View {
+  /// Reports this view's own rendered width via `SegmentedControlWidthKey`,
+  /// without affecting its own layout (the `GeometryReader` sits in a
+  /// `.background`, so it takes the size the view already has).
+  func reportingWidth() -> some View {
+    background(
+      GeometryReader { proxy in
+        Color.clear.preference(key: SegmentedControlWidthKey.self, value: proxy.size.width)
+      }
     )
   }
 }
