@@ -23,6 +23,11 @@ struct OtherAudioSettingsPanel: View {
   /// Left indent for the footnote/note lines below the row, so they align
   /// under the label rather than the icon. See `AudioSettingsView.rowIndent`.
   let rowIndent: CGFloat
+  /// Shared width with the Microphone readiness row's segmented control, so
+  /// the two read as the same length despite holding a different number of
+  /// options. `nil` until `AudioSettingsView` has measured both (see
+  /// `SegmentedControlWidthKey`).
+  let matchedWidth: CGFloat?
 
   var body: some View {
     @Bindable var settings = settings
@@ -39,9 +44,12 @@ struct OtherAudioSettingsPanel: View {
             ("Mute", "speaker.slash", OtherAudioWhileDictating.mute),
             ("Pause", "pause.circle", OtherAudioWhileDictating.pauseMusic),
           ],
-          selection: $settings.otherAudioWhileDictating
+          selection: $settings.otherAudioWhileDictating,
+          comfortable: true
         )
         .fixedSize(horizontal: true, vertical: false)
+        .reportingWidth()
+        .frame(width: matchedWidth)
       }
       if let unavailableNote {
         Text(unavailableNote)

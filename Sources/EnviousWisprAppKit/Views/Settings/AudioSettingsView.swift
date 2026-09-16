@@ -11,7 +11,10 @@ import SwiftUI
 /// row's explainer sentence lives behind its title's "?" instead of always
 /// showing, so the row stays one line (founder, 2026-09-16). The Bluetooth
 /// guide is a compact row below with its own "Learn more" popover, and the
-/// frozen-per-recording rule is a plain tip line at the bottom.
+/// frozen-per-recording rule is a plain tip line at the bottom. A third pass
+/// (founder, 2026-09-16) gave the Auto picker, the "Using X" pill, the two
+/// segmented controls, and "Learn more" roomier padding, and matched the two
+/// segmented controls' widths so they read as the same length.
 struct AudioSettingsView: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(AudioDeviceList.self) private var audioDeviceList
@@ -20,6 +23,12 @@ struct AudioSettingsView: View {
   /// (11), so helper text under a row's icon+label aligns under the LABEL
   /// rather than under the icon.
   private static let rowIndent: CGFloat = 37
+
+  /// The width shared by the Media-during-dictation and Microphone-readiness
+  /// segmented controls, measured live via `SegmentedControlWidthKey` (founder,
+  /// 2026-09-16: those two rows should read as the same length). `nil` until
+  /// the first layout pass reports both widths.
+  @State private var matchedSegmentedWidth: CGFloat?
 
   var body: some View {
     let settingsManager = settings
@@ -81,6 +90,7 @@ struct AudioSettingsView: View {
                 }
                 .labelsHidden()
                 .tint(.stAccent)
+                .controlSize(.large)
                 .frame(maxWidth: 220, alignment: .leading)
 
                 if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
@@ -138,7 +148,7 @@ struct AudioSettingsView: View {
         // #1413: above Readiness (founder, 2026-09-16): the take's other audio
         // belongs with the microphone, not with the start/stop sounds.
         BrandedRow {
-          OtherAudioSettingsPanel(rowIndent: Self.rowIndent)
+          OtherAudioSettingsPanel(rowIndent: Self.rowIndent, matchedWidth: matchedSegmentedWidth)
         }
 
         BrandedRow(showDivider: false) {
@@ -157,9 +167,12 @@ struct AudioSettingsView: View {
                   ("60 sec", nil, WarmEnginePolicy.seconds60),
                   ("Always", nil, WarmEnginePolicy.always),
                 ],
-                selection: $settings.warmEnginePolicy
+                selection: $settings.warmEnginePolicy,
+                comfortable: true
               )
               .fixedSize(horizontal: true, vertical: false)
+              .reportingWidth()
+              .frame(width: matchedSegmentedWidth)
             }
             if settings.warmEnginePolicy == .always {
               InsetNotice(
@@ -172,6 +185,9 @@ struct AudioSettingsView: View {
             }
           }
         }
+      }
+      .onPreferenceChange(SegmentedControlWidthKey.self) { width in
+        matchedSegmentedWidth = width > 0 ? width : nil
       }
 
       // #1480: compact Bluetooth guide row, matching the founder's mockup
@@ -204,8 +220,8 @@ private struct StatusPill: View {
       Text(text).font(.stHelper).foregroundStyle(tint).lineLimit(1).truncationMode(.tail)
     }
     .frame(maxWidth: 220)
-    .padding(.horizontal, 10)
-    .padding(.vertical, 6)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
     .background(tint.opacity(0.12), in: Capsule())
   }
 }
@@ -278,7 +294,7 @@ private struct BluetoothGuideRow: View {
 
   private var learnMoreButton: some View {
     SettingsActionButton(
-      title: "Learn more", isEnabled: true, trailingSystemImage: "chevron.right"
+      title: "Learn more", isEnabled: true, size: .large, trailingSystemImage: "chevron.right"
     ) {
       showGuide = true
     }
