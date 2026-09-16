@@ -5,10 +5,13 @@ set -euo pipefail
 # (#913 PR7). Canonical replacement for the retired CLT-only `swift-test.sh`
 # (whose header falsely claimed "Xcode is not installed").
 #
-# Mirrors CI: pr-check.yml runs Debug tests and compiles the Release test
-# targets without executing them; main-post-merge.yml additionally runs the
-# Release suite with ENABLE_TESTABILITY=YES. `--release` runs that full
-# Release suite locally for reproduction or stronger pre-push proof.
+# Relation to CI (#3013): pr-check.yml's single required lane builds and RUNS
+# the Release suite (`build-for-testing` + `test-without-building`,
+# scripts/lib/xcode-test-run.sh); main-post-merge.yml runs the full Debug suite
+# and the Release suite on main. So the Debug lane below is the developer's
+# everyday run and the only pre-merge Debug execution, and `--release` runs
+# what the PR gate runs. The two result bundles from a `--release` run are the
+# inputs to scripts/ci/debug-only-inventory.py.
 #
 # Usage:
 #   scripts/xcode-test.sh                 # Debug lane (matches the PR gate)

@@ -178,6 +178,12 @@ scripts/lib/*
 !scripts/lib/log-dir-test.sh
 !scripts/lib/lane-verdict.sh
 !scripts/lib/lane-verdict.py
+# #3013: the one owner of "run an already-built test bundle set and judge it",
+# used by pr-check.yml, main-post-merge.yml and nightly-battery.yml.
+!scripts/lib/xcode-test-run.sh
+# #3013: the hardware battery for a physical Mac and its launchd job.
+!scripts/nightly-local-battery.sh
+!scripts/launchd/
 !scripts/lib/lane-verdict-test.sh
 # #1951: catalog ids are pull targets, so a wrong one ships a dead Download
 # button. Tracked deliberately — a gitignored validator can only be run by
