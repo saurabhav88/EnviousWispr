@@ -389,6 +389,22 @@ import Testing
           == "velvetTap")
     }
 
+    @Test("Other audio while dictating emits one delta carrying only the mode (#1413)")
+    func otherAudioDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.otherAudioWhileDictating = .pauseMusic
+      telemetry.flush()
+
+      let modeDeltas = deltas(box, setting: "other_audio_while_dictating")
+      #expect(modeDeltas.count == 1)
+      #expect(modeDeltas.first?.stringProps["from"] == "nothing")
+      #expect(modeDeltas.first?.stringProps["to"] == "pauseMusic")
+      #expect(
+        SettingsProjection.value(for: .otherAudioWhileDictating, settings: settings)
+          == "pauseMusic")
+    }
+
     @Test("Two settings in one window emit two deltas")
     func twoSettingsTwoDeltas() {
       let (settings, telemetry, box, _) = makeHarness()

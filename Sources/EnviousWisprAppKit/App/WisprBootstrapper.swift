@@ -159,7 +159,11 @@ package final class WisprBootstrapper {
     makeHotkeyEffects: () -> any DesktopHotkeyEffects,
     presentationEffects: DesktopPresentationEffects,
     relocationRelauncher: any RelocationRelaunching,
-    overlayEffects: DesktopOverlayEffects
+    overlayEffects: DesktopOverlayEffects,
+    // #1413: the output-volume and media-player seams. Required and non-defaulted
+    // for the same reason `makeHotkeyEffects` is: a default would let this
+    // test-linked module lower the developer's speakers or pause their Spotify.
+    otherAudioEffects: OtherAudioEffects
   ) {
     self.application = presentationEffects.application
     // ===== Subsystem construction (epic #763) =====
@@ -1191,6 +1195,23 @@ package final class WisprBootstrapper {
       engineCoordinator?.poke(.driverStateChanged)
       recoveryCoordinator?.requestRecoveryRecheck()
     }
+    // #1413: ONE hold, shared by the coordinator (per-transition driver) and the
+    // runtime (the app shell's launch/quit entry points). Not stored here: the
+    // composition root's stored-property cap is at its limit and the runtime
+    // already owns this take-scoped family.
+    let otherAudioHold = OtherAudioHold(
+      dependencies: OtherAudioHold.Dependencies(
+        effects: otherAudioEffects,
+        defaultOutputDeviceID: { AudioDeviceEnumerator.defaultOutputDeviceID() },
+        store: OtherAudioHoldStore(),
+        telemetry: LiveOtherAudioTelemetrySink(),
+        log: { line in
+          Task { await AppLogger.shared.log(line, level: .info, category: "OtherAudio") }
+        },
+        nowMicros: { Int(DispatchTime.now().uptimeNanoseconds / 1_000) },
+        sleep: { seconds in try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) },
+        pid: ProcessInfo.processInfo.processIdentifier,
+        isProcessAlive: { pid in kill(pid, 0) == 0 || errno == EPERM }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       application: presentationEffects.application,
       kernelDriver: kernelDriver,
@@ -1210,7 +1231,8 @@ package final class WisprBootstrapper {
       // engine claimed if the session's vendor decode is still running.
       releaseEngineClaim: { [abandonedDecodeHold] token in
         abandonedDecodeHold.releaseFromDictation(token)
-      }
+      },
+      otherAudioHold: otherAudioHold
     )
     dictationLifecycleCoordinator.install()
     // #1171 — every pipeline state change pokes the coordinator: non-terminal
@@ -1233,6 +1255,7 @@ package final class WisprBootstrapper {
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      otherAudioHold: otherAudioHold,
       recoveryCoordinator: recoveryCoordinator,
       recordingLockedAccess: recordingLockedAccess,
       // #2648 — the record-start paths claim the shared resource as a DICTATION
@@ -1850,6 +1873,10 @@ package final class WisprBootstrapper {
   }
 
   package func applicationDidFinishLaunching() {
+    // #1413: FIRST, synchronously, before `runDidFinishLaunching` starts the
+    // dictation hotkey (`AppLifecycleCoordinator.swift` → `startHotkeyServiceIfEnabled`):
+    // a Mac left lowered by a dead process is put back before any take can start.
+    dictationRuntime.otherAudioHold.adoptOrphans()
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2381. AFTER launch, not during: `NSApp.servicesProvider` set before the app has finished
     // launching is registered against an app that cannot yet answer, and the menu item is then
@@ -1888,6 +1915,10 @@ package final class WisprBootstrapper {
       // #2885: stop answering, and stop watching, before anything below tears down.
       debugImportDoor.uninstall()
     #endif
+    // #1413: finish a live hold from memory before anything below tears down —
+    // a Cocoa quit concludes no take, so this is the only path that restores
+    // the volume for a quit mid-dictation.
+    dictationRuntime.otherAudioHold.finishForTermination()
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.

@@ -40,6 +40,10 @@ final class DictationRuntime {
   private let hotkeyController: HotkeyController
   private let starter: RecordingStarter
   private let finalizer: RecordingFinalizer
+  /// #1413: the other-audio hold, driven per transition by the lifecycle
+  /// coordinator (which shares this instance) and reached from the app shell
+  /// for `adoptOrphans()` at launch and `finishForTermination()` at quit.
+  let otherAudioHold: OtherAudioHold
 
   init(
     audioCapture: any AudioCaptureInterface,
@@ -53,6 +57,7 @@ final class DictationRuntime {
     lastRecordingResult: LastRecordingResult,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
+    otherAudioHold: OtherAudioHold,
     recoveryCoordinator: RecoveryCoordinator,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     // #2648 — passed straight through to `RecordingStarter`, never stored here.
@@ -77,6 +82,7 @@ final class DictationRuntime {
     endMinting: @escaping @MainActor () -> Void = {}
   ) {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
+    self.otherAudioHold = otherAudioHold
     self.audioEventRouter = AudioEventRouter(
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,

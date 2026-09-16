@@ -392,6 +392,39 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).recordingSoundPairing == .whisperTick)
   }
 
+  // MARK: - Other audio while dictating (#1413)
+
+  @Test("other audio while dictating defaults to nothing on a fresh install")
+  func otherAudioDefaultsToNothing() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    #expect(settings.otherAudioWhileDictating == .nothing)
+  }
+
+  @Test("other audio while dictating persists by rawValue and is in the unified key set")
+  func otherAudioPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.otherAudioWhileDictating = .mute
+    #expect(suite.string(forKey: "otherAudioWhileDictating") == "mute")
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.otherAudioWhileDictating == .mute)
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("otherAudioWhileDictating"))
+  }
+
+  @Test("an unparseable stored other-audio mode falls back to .nothing")
+  func otherAudioUnparseableFallsBack() {
+    let suite = Self.freshSuite()
+    suite.set("duckEverything", forKey: "otherAudioWhileDictating")
+    #expect(SettingsManager(defaults: suite).otherAudioWhileDictating == .nothing)
+  }
+
+  @Test("the other-audio picker order is Nothing, Turn down, Mute, Pause music")
+  func otherAudioCatalogOrder() {
+    #expect(
+      OtherAudioWhileDictating.allCases.map(\.rawValue)
+        == ["nothing", "turnDown", "mute", "pauseMusic"])
+  }
+
   #if DEBUG
     // AFM adapter PoC dev knob — a per-build contract: writes to .standard (not
     // the injected store) and stays out of the unified key set. DEBUG-gated

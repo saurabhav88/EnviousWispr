@@ -86,6 +86,9 @@ enum SettingsProjection {
     case quickAddHotkeyShape = "quick_add_hotkey_shape"
     case playRecordingSounds = "play_recording_sounds"
     case recordingSoundPairing = "recording_sound_pairing"
+    /// #1413. The chosen mode only (a closed four-value enum); never which app or
+    /// device it acted on.
+    case otherAudioWhileDictating = "other_audio_while_dictating"
   }
 
   /// Logicals whose underlying control is a slider; they earn the longer
@@ -154,6 +157,7 @@ enum SettingsProjection {
     case .quickAddKeyCode, .quickAddModifiers: return [.quickAddHotkeyShape]
     case .playRecordingSounds: return [.playRecordingSounds]
     case .recordingSoundPairing: return [.recordingSoundPairing]
+    case .otherAudioWhileDictating: return [.otherAudioWhileDictating]
     // Not instrumented.
     case .selectedBackend, .onboardingState, .hasCompletedOnboarding,
       .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage,
@@ -241,6 +245,7 @@ enum SettingsProjection {
     case .quickAddHotkeyShape: return hotkeyShape(settings.quickAddKeyCode)
     case .playRecordingSounds: return onOff(settings.playRecordingSounds)
     case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
+    case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
     }
   }
 

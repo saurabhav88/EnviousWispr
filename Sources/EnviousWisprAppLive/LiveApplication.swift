@@ -45,7 +45,10 @@ package final class LiveApplication {
       // because the host builds its panel lazily, on first presentation.
       overlayEffects: DesktopOverlayEffects(
         makePanel: { LiveOverlayPanelDriver() },
-        workspace: LiveWorkspaceObserver()))
+        workspace: LiveWorkspaceObserver()),
+      // #1413: the two live desktop mutations behind the other-audio hold.
+      otherAudioEffects: OtherAudioEffects(
+        volume: LiveOutputVolumeEffects(), media: LiveMediaPlaybackEffects()))
   }
 
   // MARK: - Scene surface

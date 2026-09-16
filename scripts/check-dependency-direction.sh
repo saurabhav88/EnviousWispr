@@ -182,7 +182,14 @@ done
 # removes a `//` or `/*` and its tail on ONE line, not the continuation lines of a
 # block comment. A false positive is a sentence to rewrite; a false negative is a
 # suite back on the developer's real desktop.
-live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents|(NSApp|NSApplication[.]shared)[.](activate|setActivationPolicy)|panel[.]makeKeyAndOrderFront|NSWorkspace[.]shared[.]openApplication|NSPanel[[:space:]]*[(]|NSPanel[.]init|activeSpaceDidChangeNotification'
+# #1413: `AudioObjectSetPropertyData` is a WRITE to a CoreAudio device — the
+# other-audio hold lowers the default output through it. Reads
+# (`AudioObjectGetPropertyData`) stay unmatched: Audio and AppKit read device
+# state everywhere and observing is not acting. `NSAppleScript` is NOT here:
+# `PasteService.swift` drives System Events through it from Services, the same
+# known-gap family as the `PasteCascadeExecutor` activations above; the media
+# adapter is covered by `DesktopEffectIsolationFreezeTests.bannedSymbols`.
+live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents|(NSApp|NSApplication[.]shared)[.](activate|setActivationPolicy)|panel[.]makeKeyAndOrderFront|NSWorkspace[.]shared[.]openApplication|NSPanel[[:space:]]*[(]|NSPanel[.]init|activeSpaceDidChangeNotification|AudioObjectSetPropertyData'
 
 test_targets_and_permitted() {
   case "$1" in

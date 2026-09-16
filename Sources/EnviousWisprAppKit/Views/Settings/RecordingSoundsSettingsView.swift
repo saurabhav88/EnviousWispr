@@ -15,7 +15,11 @@ struct RecordingSoundsSettingsView: View {
   // into other Settings pages (DiagnosticsSettingsView) rather than adding
   // new state.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  // #1413: the other-audio hold answers "can the current speakers carry this
+  // mode" and raises the players' consent prompt at choice time.
+  @Environment(DictationRuntime.self) private var dictationRuntime
   @State private var activePreviewTask: Task<Void, Never>?
+  @State private var unavailableNote: String?
 
   private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
 
@@ -42,6 +46,31 @@ struct RecordingSoundsSettingsView: View {
             }
           }
         }
+      }
+
+      // #1413: what happens to everything else your Mac is playing while you
+      // dictate. Off by default; a change applies to the next take.
+      BrandedPanel(icon: "speaker.wave.2.fill", header: "Other Audio While You Dictate") {
+        VStack(alignment: .leading, spacing: 8) {
+          BrandedSegmentedPicker(
+            options: [
+              ("Nothing", nil, OtherAudioWhileDictating.nothing),
+              ("Turn down", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
+              ("Mute", "speaker.slash", OtherAudioWhileDictating.mute),
+              ("Pause music", "pause.circle", OtherAudioWhileDictating.pauseMusic),
+            ],
+            selection: $settings.otherAudioWhileDictating
+          )
+          Text(Self.footnote(for: settings.otherAudioWhileDictating))
+            .settingsReadingCopy()
+          if let unavailableNote {
+            Text(unavailableNote).settingsReadingCopy()
+          }
+        }
+      }
+      .onChange(of: settings.otherAudioWhileDictating, initial: true) { _, mode in
+        refreshAvailability(mode)
+        if mode == .pauseMusic { dictationRuntime.otherAudioHold.preflightConsent() }
       }
 
       // A second, separate card for Preview — its own visual home, not a row
@@ -208,6 +237,40 @@ private struct RecordingSoundPairingCard: View {
 }
 
 // MARK: - Catalog copy
+
+extension RecordingSoundsSettingsView {
+  /// One line per choice, in the user's words. No dashes (GR-NO-DASHES).
+  static func footnote(for mode: OtherAudioWhileDictating) -> String {
+    switch mode {
+    case .nothing:
+      return "Music and other audio keep playing as they are."
+    case .turnDown:
+      return
+        "Lowers what plays through your current speakers or headphones to about a fifth while you dictate, then puts it back. If you change the volume during a take, your new level stays."
+    case .mute:
+      return
+        "Silences your current speakers or headphones while you dictate, including calls and spoken feedback, then puts the volume back. If you change the volume during a take, your new level stays."
+    case .pauseMusic:
+      return
+        "Pauses Music or Spotify if it is playing, then resumes it when you stop. macOS may ask for permission the first time; a take that needs permission is not paused."
+    }
+  }
+
+  private func refreshAvailability(_ mode: OtherAudioWhileDictating) {
+    guard !dictationRuntime.otherAudioHold.isModeAvailable(mode) else {
+      unavailableNote = nil
+      return
+    }
+    switch mode {
+    case .turnDown:
+      unavailableNote = "Turn down is not available on your current speakers or headphones."
+    case .mute:
+      unavailableNote = "Mute is not available on your current speakers or headphones."
+    case .nothing, .pauseMusic:
+      unavailableNote = nil
+    }
+  }
+}
 
 private func displayName(for pairing: RecordingSoundPairing) -> String {
   switch pairing {

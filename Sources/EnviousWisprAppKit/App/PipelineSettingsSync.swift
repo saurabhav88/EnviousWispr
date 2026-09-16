@@ -371,6 +371,8 @@ final class PipelineSettingsSync {
       break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
     case .playRecordingSounds, .recordingSoundPairing:
       break  // #1342: UI-only; read live by RecordingSoundCue, no pipeline sync.
+    case .otherAudioWhileDictating:
+      break  // #1413: UI-only; snapshotted per-recording by OtherAudioHold, no pipeline sync.
     }
   }
 

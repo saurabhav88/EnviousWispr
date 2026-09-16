@@ -4059,6 +4059,22 @@ public final class TelemetryService {
     )
   }
 
+  // MARK: - Other audio while dictating (#1413, folded onto the terminal row)
+
+  /// Writes the hold's facts into the open take entry so they ride on that take's
+  /// `dictation.terminal` row. Returns the take id written, or nil when no take is
+  /// open (an error pinned during finalization can close the entry first); a nil
+  /// is a logged no-op, never a second row and never a fabricated value.
+  @discardableResult
+  public func recordOtherAudioTake(_ facts: OtherAudioTerminalFacts) -> String? {
+    takeStages.updateNewest { $0.otherAudio = facts }
+  }
+
+  /// The media half settles later; update ONLY the take that carried the summary.
+  public func updateOtherAudioMedia(takeID: String, media: String) {
+    takeStages.update(takeID: takeID) { $0.otherAudio?.media = media }
+  }
+
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)
 
   /// The record-start boundaries below light the previously dark interval between

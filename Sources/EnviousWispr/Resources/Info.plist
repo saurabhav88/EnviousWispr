@@ -27,7 +27,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>EnviousWispr uses AppleScript to paste your dictated text into the active app when direct insertion is not available.</string>
+	<string>EnviousWispr uses AppleScript to paste your dictated text into the active app when direct insertion is not available, and to pause Music or Spotify while you dictate if you choose that setting.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>EnviousWispr reads the names in your contacts so dictation can spell the people you know correctly. Your address book is never uploaded.</string>
 	<key>NSHighResolutionCapable</key>

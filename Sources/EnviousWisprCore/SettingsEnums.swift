@@ -95,6 +95,20 @@ public enum OverlayPillPosition: String, CaseIterable, Sendable {
 /// declaration order IS the display order. `pairingCatalogOrderMatchesApprovedSequence`
 /// (RecordingSoundCueTests.swift) asserts the exact sequence to catch
 /// accidental drift.
+/// What EnviousWispr does to OTHER audio on the default output device while a
+/// dictation is recording (#1413). `turnDown` and `mute` are one engine (lower the
+/// device, hold for the take, restore conditionally); `pauseMusic` scripts Music and
+/// Spotify only. Persisted by rawValue; unknown or missing values resolve to
+/// `.nothing`, which touches nothing and writes no record.
+///
+/// Declaration order IS the Settings picker order: Nothing, Turn down, Mute, Pause music.
+public enum OtherAudioWhileDictating: String, CaseIterable, Sendable {
+  case nothing
+  case turnDown
+  case mute
+  case pauseMusic
+}
+
 public enum RecordingSoundPairing: String, CaseIterable, Sendable {
   case dustMote
   case velvetHush
