@@ -313,26 +313,35 @@ struct TelemetryEmitterRegistryTests {
   /// unrelated constant, or another switch (`decide`) is not a sampling case.
   static func policyCaseNames() throws -> Set<String> {
     let source = try String(contentsOf: RepoRoot.sourceURL(policyFile), encoding: .utf8)
-    let finder = CaseLiteralFinder(viewMode: .sourceAccurate)
-    finder.walk(Parser.parse(source: source))
-    #expect(finder.sawFunction, "\(policyFile) must declare `sampledDecision`")
-    return finder.names
+    let locator = FunctionBodyLocator(name: "sampledDecision")
+    locator.walk(Parser.parse(source: source))
+    guard let body = locator.body else {
+      Issue.record("\(policyFile) must declare `sampledDecision`")
+      return []
+    }
+    // Discovery and collection are separate visitors on purpose: the collector never sees
+    // anything outside the located body, so a switch in an initializer, an accessor or a
+    // closure elsewhere in the file cannot contribute a case.
+    let collector = CaseLiteralFinder(viewMode: .sourceAccurate)
+    collector.walk(body)
+    return collector.names
+  }
+
+  final class FunctionBodyLocator: SyntaxVisitor {
+    let name: String
+    var body: CodeBlockSyntax?
+    init(name: String) {
+      self.name = name
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == name, body == nil { body = node.body }
+      return .skipChildren
+    }
   }
 
   final class CaseLiteralFinder: SyntaxVisitor {
     var names: Set<String> = []
-    var sawFunction = false
-    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-      guard node.name.text == "sampledDecision", let body = node.body else {
-        return .skipChildren
-      }
-      sawFunction = true
-      let inner = CaseLiteralFinder(viewMode: .sourceAccurate)
-      inner.sawFunction = true
-      inner.walk(body)
-      names.formUnion(inner.names)
-      return .skipChildren
-    }
     override func visit(_ node: SwitchCaseItemSyntax) -> SyntaxVisitorContinueKind {
       if let expression = node.pattern.as(ExpressionPatternSyntax.self),
         let name = CaptureVisitor.literalName(expression.expression)
