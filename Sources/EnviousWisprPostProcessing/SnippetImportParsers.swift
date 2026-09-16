@@ -374,7 +374,15 @@ package enum SnippetPasteSniff: Sendable, Equatable {
     if firstLine.hasPrefix("\"") {
       return leadingQuotedFieldIsAListSide(firstLine) ? .list : .csv
     }
-    if firstLine.contains(",\"") { return .csv }
+    // ... unless an explicit separator comes BEFORE it: `sig = Hello,"Sam"` is a list line
+    // whose text happens to hold a quote, and the ambiguity rule below offers the picker.
+    if let quotedComma = firstLine.range(of: ",\"") {
+      let earlierSeparator = SnippetLineListParser.explicitSeparators.contains {
+        guard let range = firstLine.range(of: $0) else { return false }
+        return range.lowerBound < quotedComma.lowerBound
+      }
+      if !earlierSeparator { return .csv }
+    }
     if let record = try? SnippetCSVParser.records(firstLine).first, SnippetCSVParser.isHeader(record) {
       return .csv
     }
