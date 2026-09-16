@@ -29,7 +29,10 @@ import Testing
 /// Same shape as `TestInventoryFreezeTests`: `SwiftParser` over every file under `Sources/`
 /// (so a capture added outside `TelemetryService.swift` is seen), a text registry under `scripts/`, an equality invariant in
 /// both directions, and a ceiling that only ratchets down.
-@Suite("Telemetry emitter registry (#2987)", .tags(.driftGuard))
+/// `.serialized` for the same RESOURCE reason as `TestInventoryFreezeTests`: three members
+/// read the whole-tree scan, and one cached scan run once beats three concurrent parses of
+/// every file under `Sources/` on a constrained CI runner.
+@Suite("Telemetry emitter registry (#2987)", .serialized, .tags(.driftGuard))
 struct TelemetryEmitterRegistryTests {
 
   // MARK: - Model
@@ -46,11 +49,12 @@ struct TelemetryEmitterRegistryTests {
   /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
   /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
   /// The failure message prints the new value; paste it only when grading or retiring.
-  /// SHA-256 of `name<TAB>site count` for every event, sorted. A SECOND call site for an
-  /// already registered name (a per-buffer path reusing `dictation.completed`) changes the
-  /// cadence without touching the registry; the fingerprint makes that a visible edit here.
+  /// SHA-256 of `name<TAB>file<TAB>function<TAB>count` for every call site, sorted. A second
+  /// or MOVED call site for an already registered name (a per-buffer path reusing
+  /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
+  /// makes that a visible edit here.
   static let sitesFingerprint =
-    "ffcfc5907e1447c0e4c0ca1f8a8f476b15ce985fdbe57226d17c2339b2046af9"
+    "2d6b68bbf823502ab7e56e474e9bfdfb558cfea8c78f98efb5dff76ead11f101"
   static let ungradedFingerprint =
     "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
 
@@ -78,6 +82,10 @@ struct TelemetryEmitterRegistryTests {
     let line: Int
     /// Two captures on one line are two sites, so the column is part of the identity.
     let column: Int
+    /// The enclosing function (or `<top>`): the stable site identity `sitesFingerprint` pins,
+    /// so moving a capture into a different function is a visible change while re-indenting
+    /// or reordering inside one is not.
+    let function: String
   }
 
   // MARK: - Scanner
@@ -120,6 +128,8 @@ struct TelemetryEmitterRegistryTests {
       return (location.line, location.column)
     }
 
+    private var enclosingFunction: String { functionStack.last?.name.text ?? "<top>" }
+
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       let at = site(node)
       let arguments = Array(node.arguments)
@@ -135,7 +145,10 @@ struct TelemetryEmitterRegistryTests {
         // A forwarder called without its event argument is a defaulted parameter the
         // registry never saw; reported rather than skipped.
         if position < arguments.count, let name = Self.literalName(arguments[position].expression) {
-          emitters.insert(Emitter(name: name, file: file, line: at.line, column: at.column))
+          emitters.insert(
+            Emitter(
+              name: name, file: file, line: at.line, column: at.column,
+              function: enclosingFunction))
         } else {
           unresolved.append(
             ("forwarder \(callee) called without a literal event name", at.line))
@@ -148,7 +161,9 @@ struct TelemetryEmitterRegistryTests {
       let line = at.line
       if let name = Self.literalName(argument) {
         if collect {
-          emitters.insert(Emitter(name: name, file: file, line: line, column: at.column))
+          emitters.insert(
+            Emitter(
+              name: name, file: file, line: line, column: at.column, function: enclosingFunction))
         }
         return
       }
@@ -167,7 +182,9 @@ struct TelemetryEmitterRegistryTests {
       switch Self.localLiteral(named: identifier, in: function) {
       case .one(let name):
         if collect {
-          emitters.insert(Emitter(name: name, file: file, line: line, column: at.column))
+          emitters.insert(
+            Emitter(
+              name: name, file: file, line: line, column: at.column, function: enclosingFunction))
         }
       case .none:
         if collect {
@@ -387,6 +404,10 @@ struct TelemetryEmitterRegistryTests {
     return (emitters, unresolved)
   }
 
+  /// Run once per process and shared by every member that reads the tree.
+  static let cachedScan: Result<(emitters: Set<Emitter>, unresolved: [Unresolved]), Error> =
+    Result { try scanSources() }
+
   static func scanSources() throws -> (emitters: Set<Emitter>, unresolved: [Unresolved]) {
     let root = RepoRoot.url.path
     let dir = RepoRoot.sourceURL(sourcesDir)
@@ -572,7 +593,7 @@ struct TelemetryEmitterRegistryTests {
 
   @Test("every capture name under Sources resolves")
   func everyCaptureNameResolves() throws {
-    let result = try Self.scanSources()
+    let result = try Self.cachedScan.get()
     #expect(
       result.unresolved.isEmpty,
       """
@@ -587,7 +608,7 @@ struct TelemetryEmitterRegistryTests {
 
   @Test("every emitter has a registry row, and every row names a live emitter")
   func registryMatchesEmitters() throws {
-    let emitters = try Self.scanSources().emitters
+    let emitters = try Self.cachedScan.get().emitters
     let rows = try Self.registryRows()
     let emitted = Set(emitters.map(\.name))
     let registered = Set(rows.map(\.event))
@@ -648,6 +669,11 @@ struct TelemetryEmitterRegistryTests {
           policyCases.contains(row.event),
           "\(at): declared sampled, but \(Self.policyFile) has no `case` for it")
       }
+      if row.cadence != "ungraded", policyCases.contains(row.event) {
+        #expect(
+          row.treatment == "sampled",
+          "\(at): \(Self.policyFile) samples this event, so a graded row must say `sampled`")
+      }
       #expect(
         row.event.hasSuffix(".*") || !row.event.contains("*"),
         "\(at): a family row is `prefix.*` and nothing else")
@@ -656,16 +682,21 @@ struct TelemetryEmitterRegistryTests {
 
   @Test("the number of call sites per event is frozen; a new site re-answers the checklist")
   func callSitesAreFrozen() throws {
-    let emitters = try Self.scanSources().emitters
-    let counts = Dictionary(grouping: emitters, by: \.name).mapValues(\.count)
+    let emitters = try Self.cachedScan.get().emitters
+    // Identity is (event, file, enclosing function, count within that function): a capture
+    // MOVED into a hotter function changes it, a line or column shuffle does not.
+    let counts = Dictionary(
+      grouping: emitters, by: { "\($0.name)\t\($0.file)\t\($0.function)" }
+    ).mapValues(\.count)
     let lines = counts.map { "\($0.key)\t\($0.value)" }
     let actual = Self.fingerprint(lines)
     #expect(
       actual == Self.sitesFingerprint,
       """
-      The set of (event, call-site count) pairs changed. A second call site for a registered \
-      event fires at that site's cadence, which the registry row does not describe: answer \
-      the checklist for the new site (or fold it), then set `sitesFingerprint` to \(actual).
+      The set of (event, file, function, site count) changed. A new or moved call site for a \
+      registered event fires at that site's cadence, which the registry row does not \
+      describe: answer the checklist for the site (or fold it), then set `sitesFingerprint` \
+      to \(actual).
       Sites now: \(lines.sorted().joined(separator: ", "))
       """)
   }
