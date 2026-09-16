@@ -98,6 +98,10 @@ final class OtherAudioHold {
     self.deps = dependencies
   }
 
+  /// Read-only test seam: the delayed apply task, so a test can await its
+  /// completion instead of guessing with yields.
+  var pendingApplyForTesting: Task<Void, Never>? { live?.applyTask }
+
   // MARK: - Coordinator entry point
 
   /// Call on every `PipelineState` transition for one backend, BEFORE the sound

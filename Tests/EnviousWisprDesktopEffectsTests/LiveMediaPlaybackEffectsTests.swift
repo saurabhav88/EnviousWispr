@@ -151,12 +151,14 @@ struct LiveMediaPlaybackEffectsTests {
   /// Waits until the fake is blocked inside an event (a real signal from the
   /// queue thread, bridged off the main actor).
   private func awaitEntered(_ players: FakePlayers) async {
-    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+    let entered = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
       DispatchQueue.global().async {
-        players.entered.wait()
-        c.resume()
+        // Deadline fallback for the fake's actual entry signal. (settle: bounded wait)
+        let result = players.entered.wait(timeout: .now() + 2)
+        c.resume(returning: result == .success)
       }
     }
+    #expect(entered, "The player never entered the blocked event")
   }
 
   @Test("A take that ends while the state QUERY is executing issues no pause afterwards")

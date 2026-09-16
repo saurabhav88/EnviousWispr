@@ -204,12 +204,20 @@ public enum ASRRetryDeadlineDisposition: String, Sendable {
 @MainActor
 public final class TelemetryService {
   public static let shared = TelemetryService()
-  private init() {}
+  private init() {
+    takeStages = TakeStageLedger()
+  }
+
+  /// Internal injection so a test can drive the real fold against an isolated
+  /// ledger instead of the shared service (#1413).
+  init(takeStages: TakeStageLedger) {
+    self.takeStages = takeStages
+  }
 
   /// #2958: per-take record-start summary, opened at `dictation.started`, written by the
   /// VAD marker calls, consumed by `dictation.terminal`. Owner of the rules:
   /// `TakeStageLedger`.
-  let takeStages = TakeStageLedger()
+  let takeStages: TakeStageLedger
 
   #if DEBUG
     /// Test-only observation seam for selected telemetry emissions.

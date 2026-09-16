@@ -153,34 +153,46 @@ private struct Rig {
   let delayGate = DelayGate()
 
   /// A sleep stand-in the test can hold open and release, honouring cancellation.
-  final class DelayGate: @unchecked Sendable {
-    private let lock = NSLock()
+  /// Registration and the entry signal happen together on the main actor, so a
+  /// cancellation can never land between them.
+  @MainActor
+  final class DelayGate {
     private var armed = false
-    private var waiters: [CheckedContinuation<Void, any Error>] = []
-    private(set) var entered = 0
-    func arm() { lock.withLock { armed = true } }
+    private var waiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
+    private(set) var entered = HoldTestSignal()
+
+    func arm() {
+      precondition(waiters.isEmpty)
+      armed = true
+      entered = HoldTestSignal()
+    }
+
     func waitIfArmed() async throws {
-      guard lock.withLock({ armed }) else { return }
-      lock.withLock { entered += 1 }
+      try Task.checkCancellation()
+      guard armed else { return }
+      let id = UUID()
       try await withTaskCancellationHandler {
-        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, any Error>) in
-          lock.withLock { waiters.append(c) }
+        try await withCheckedThrowingContinuation {
+          (continuation: CheckedContinuation<Void, any Error>) in
+          if Task.isCancelled {
+            continuation.resume(throwing: CancellationError())
+            return
+          }
+          waiters[id] = continuation
+          entered.signal()
         }
       } onCancel: {
-        let pending = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
-          let w = waiters
-          waiters.removeAll()
-          return w
+        Task { @MainActor [weak self] in
+          self?.waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
         }
-        pending.forEach { $0.resume(throwing: CancellationError()) }
       }
+      try Task.checkCancellation()
     }
+
     func release() {
-      let pending = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
-        let w = waiters
-        waiters.removeAll()
-        return w
-      }
+      armed = false
+      let pending = Array(waiters.values)
+      waiters.removeAll()
       pending.forEach { $0.resume() }
     }
   }
@@ -198,8 +210,7 @@ private struct Rig {
     delay: TimeInterval = 0
   ) async {
     hold.handle(.recording, backend: backend, mode: mode, startDelay: delay)
-    await Task.yield()
-    await Task.yield()
+    await awaitApplyCompletion(hold.pendingApplyForTesting)
   }
 
   func stop(backend: OtherAudioBackend = .parakeet) {
@@ -334,25 +345,27 @@ struct OtherAudioHoldTests {
   }
 
   @Test("A take that ends before the delayed apply cancels it: nothing written, record retires")
-  func endInsideDelayCancels() async {
+  func endInsideDelayCancels() async throws {
     let rig = Rig()
     rig.hold.handle(.recording, backend: .parakeet, mode: .mute, startDelay: 0.25)
-    // No yield: the apply Task has not run.
+    let task = try #require(rig.hold.pendingApplyForTesting)
     rig.stop()
-    await Task.yield()
-    await Task.yield()
+    await awaitApplyCompletion(task)
     #expect(rig.volume.writes.isEmpty)
     #expect(rig.records().isEmpty)
     #expect(rig.sink.summaries.last?.mute == .notApplied)
   }
 
   @Test("A change during the cue delay leaves that property alone")
-  func changeDuringDelay() async {
+  func changeDuringDelay() async throws {
     let rig = Rig()
+    rig.delayGate.arm()
     rig.hold.handle(.recording, backend: .parakeet, mode: .turnDown, startDelay: 0.25)
+    let task = try #require(rig.hold.pendingApplyForTesting)
+    #expect(await rig.delayGate.entered.wait())
     rig.volume.volume = 0.7  // user moved it before we applied
-    await Task.yield()
-    await Task.yield()
+    rig.delayGate.release()
+    await awaitApplyCompletion(task)
     #expect(rig.volume.writes.isEmpty)
     rig.stop()
     #expect(rig.volume.volume == 0.7)
@@ -578,19 +591,26 @@ struct OtherAudioHoldTests {
     #expect(rig.sink.summaries.last?.failure == "restore_failed")
   }
 
-  @Test("A record update that cannot reach disk keeps the record for the next launch (R4)")
-  func recordUpdateFailureKeepsRecord() async {
+  @Test("A failed record update preserves the recovery copy even when deletion is possible (R4)")
+  func recordUpdateFailureKeepsRecord() async throws {
     let rig = Rig()
     await rig.start(.mute)
-    // Make every further write fail: the directory becomes read-only.
-    try? FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: rig.dir.path)
-    defer {
-      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: rig.dir.path)
-    }
+    let record = try #require(rig.records().first)
+    // Block ONLY the temporary-file write by squatting its path with a directory.
+    // The parent stays writable, so the old unconditional deletion would still
+    // have removed the final record: this row tells the fixed code from it.
+    let blockedTemporaryFile = rig.dir.appendingPathComponent(
+      ".\(record.id.uuidString).json.tmp", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: blockedTemporaryFile, withIntermediateDirectories: false)
+    let probe = rig.dir.appendingPathComponent("deletion-probe")
+    try Data([1]).write(to: probe)
+    try FileManager.default.removeItem(at: probe)
+
     rig.stop()
     #expect(rig.volume.muted == false, "the live restore still happens")
     #expect(rig.records().count == 1, "the stale recovery copy survives")
-    #expect(rig.records().first?.mute == .applied, "disk still says applied; nothing lied")
+    #expect(rig.store.read(id: record.id)?.mute == .applied, "disk still says applied; nothing lied")
     #expect(rig.sink.crumbs.contains("other_audio record_stale"))
   }
 
@@ -654,7 +674,7 @@ struct OtherAudioHoldTests {
     for backend in [OtherAudioBackend.parakeet, .whisperKit] {
       await rig.start(.mute, backend: backend)
       rig.hold.handle(.recording, backend: backend, mode: .mute, startDelay: 0)  // repeated
-      await Task.yield()
+      await awaitApplyCompletion(rig.hold.pendingApplyForTesting)
       #expect(rig.volume.writes.filter { $0 == "mute=true" }.count == 1)
       rig.hold.handle(.transcribing, backend: backend, mode: .mute, startDelay: 0)
       rig.hold.handle(.polishing, backend: backend, mode: .mute, startDelay: 0)
@@ -667,18 +687,63 @@ struct OtherAudioHoldTests {
   }
 
   @Test("A take that ends while the delayed apply is asleep cancels it (nothing written)")
-  func endWhileAsleepCancels() async {
+  func endWhileAsleepCancels() async throws {
     let rig = Rig()
     rig.delayGate.arm()
     rig.hold.handle(.recording, backend: .parakeet, mode: .mute, startDelay: 0.25)
-    // Let the apply task reach the sleep, on a real signal.
-    while rig.delayGate.entered == 0 { await Task.yield() }
+    let task = try #require(rig.hold.pendingApplyForTesting)
+    #expect(await rig.delayGate.entered.wait())
     rig.stop()
-    rig.delayGate.release()
-    await Task.yield()
-    await Task.yield()
+    // The gate is NOT released: cancellation itself must unblock the sleep.
+    await awaitApplyCompletion(task)
     #expect(rig.volume.writes.isEmpty)
     #expect(rig.records().isEmpty)
     #expect(rig.sink.summaries.last?.mute == .notApplied)
   }
+}
+
+/// A one-shot signal with a deadline fallback; the subject's own signal decides success.
+@MainActor
+private final class HoldTestSignal {
+  private var signalled = false
+  private var continuation: CheckedContinuation<Bool, Never>?
+  private var deadline: Task<Void, Never>?
+
+  func signal() {
+    signalled = true
+    finish(true)
+  }
+
+  func wait() async -> Bool {
+    if signalled { return true }
+    return await withCheckedContinuation { continuation in
+      self.continuation = continuation
+      deadline = Task { @MainActor [weak self] in
+        // Deadline fallback; the subject's signal decides success. (settle: bounded wait)
+        try? await Task.sleep(for: .seconds(2))
+        self?.finish(false)
+      }
+    }
+  }
+
+  private func finish(_ result: Bool) {
+    guard let continuation else { return }
+    self.continuation = nil
+    deadline?.cancel()
+    deadline = nil
+    continuation.resume(returning: result)
+  }
+}
+
+/// Awaits the hold's delayed apply task to completion (bounded), so a row never
+/// guesses with yields.
+@MainActor
+private func awaitApplyCompletion(_ task: Task<Void, Never>?) async {
+  guard let task else { return }
+  let completed = HoldTestSignal()
+  Task { @MainActor in
+    await task.value
+    completed.signal()
+  }
+  #expect(await completed.wait(), "The scheduled apply task did not finish")
 }
