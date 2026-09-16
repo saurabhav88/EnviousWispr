@@ -54,7 +54,7 @@ struct TelemetryEmitterRegistryTests {
   /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
   /// makes that a visible edit here.
   static let sitesFingerprint =
-    "32a91b239e22ce39e49f11e2513f847723434915d69314f39bca13056b907064"
+    "2fb414073cdfd043f9315ecfb01157a3d6bfd26e17d944a742fe409c941b7fff"
   static let ungradedFingerprint =
     "d36d076926939405942bc83c1a092345dc46a5b0f5518ef8e23c34bea9aa3320"
 
@@ -134,7 +134,9 @@ struct TelemetryEmitterRegistryTests {
       guard let function = functionStack.last else {
         return typeStack.joined(separator: ".") + ".<top>"
       }
-      let labels = function.signature.parameterClause.parameters.map { $0.firstName.text + ":" }
+      let labels = function.signature.parameterClause.parameters.map {
+        $0.firstName.text + ":" + $0.type.trimmedDescription
+      }
       return (typeStack + [function.name.text + "(" + labels.joined() + ")"]).joined(separator: ".")
     }
 
@@ -616,7 +618,7 @@ struct TelemetryEmitterRegistryTests {
       result.emitters.first { $0.name == "ten.other_file" }?.file == "Elsewhere.swift",
       "an emitter reports the file it lives in")
     #expect(
-      result.emitters.first { $0.name == "six.second_position" }?.function == "Fixture.h()",
+      result.emitters.first { $0.name == "one.literal" }?.function == "Fixture.a()",
       "the site identity is the type path plus the function and its labels")
     let unresolvedMessage =
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
