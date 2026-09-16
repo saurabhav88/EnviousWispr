@@ -57,23 +57,20 @@ struct AudioSettingsView: View {
       BrandedSection {
         BrandedRow {
           VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 11) {
-              SettingsRowIcon(systemName: "waveform")
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Input device").settingsRowLabel()
-                // #2030: this promised Auto "follows the input device currently selected in
-                // macOS", which #2022 made false for the diverted cohort: when that device is
-                // proven not to be a microphone and a real one is available, the ladder refuses
-                // it and binds the physical device instead. The status pill beside this copy
-                // already names the device actually opened, so leaving the promise unqualified
-                // made the card contradict itself on exactly the machines the divert exists for.
-                Text(
-                  "Select which microphone to use for recording. \"Auto\" follows the input "
-                    + "device selected in macOS. If that device turns out not to be a real "
-                    + "microphone, recording uses an available microphone instead."
-                ).settingsReadingCopy()
-              }
-              Spacer(minLength: 12)
+            // #2030: this promised Auto "follows the input device currently selected in
+            // macOS", which #2022 made false for the diverted cohort: when that device is
+            // proven not to be a microphone and a real one is available, the ladder refuses
+            // it and binds the physical device instead. The status pill beside this copy
+            // already names the device actually opened, so leaving the promise unqualified
+            // made the card contradict itself on exactly the machines the divert exists for.
+            SettingsControlRow(
+              icon: "waveform",
+              title: "Input device",
+              description:
+                "Select which microphone to use for recording. \"Auto\" follows the input "
+                + "device selected in macOS. If that device turns out not to be a real "
+                + "microphone, recording uses an available microphone instead."
+            ) {
               HStack(spacing: 10) {
                 Picker("", selection: inputDeviceSelection) {
                   Text("Auto").tag("")
