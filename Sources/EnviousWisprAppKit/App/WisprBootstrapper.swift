@@ -1211,7 +1211,19 @@ package final class WisprBootstrapper {
         nowMicros: { Int(DispatchTime.now().uptimeNanoseconds / 1_000) },
         sleep: { seconds in try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) },
         pid: ProcessInfo.processInfo.processIdentifier,
-        isProcessAlive: { pid in kill(pid, 0) == 0 || errno == EPERM }))
+        isProcessAlive: { pid in
+          // Alive AND ours: a reused pid names some other executable, and a
+          // process whose path cannot be read is not a running EnviousWispr.
+          guard kill(pid, 0) == 0 || errno == EPERM else { return false }
+          var buffer = [CChar](repeating: 0, count: Int(4 * MAXPATHLEN))
+          let written = buffer.withUnsafeMutableBytes { bytes -> Int32 in
+            guard let base = bytes.baseAddress else { return 0 }
+            return proc_pidpath(pid, base, UInt32(bytes.count))
+          }
+          guard written > 0, Int(written) <= buffer.count else { return false }
+          let path = String(decoding: buffer[..<Int(written)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
+          return path.hasSuffix("/EnviousWispr")
+        }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       application: presentationEffects.application,
       kernelDriver: kernelDriver,

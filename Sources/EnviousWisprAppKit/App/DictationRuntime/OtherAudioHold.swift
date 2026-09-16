@@ -79,6 +79,11 @@ final class OtherAudioHold {
     var nowMicros: () -> Int
     var sleep: @Sendable (TimeInterval) async throws -> Void
     var pid: Int32
+    /// True only for a live process that IS an EnviousWispr build. A bare
+    /// liveness probe is not enough: a pid recorded before a crash can be
+    /// reused by an unrelated long-lived process before the next launch, and
+    /// the record would then be left alone with the Mac still lowered or muted
+    /// (cloud review, PR #3000). The live closure checks the executable's name.
     var isProcessAlive: (Int32) -> Bool
   }
 
@@ -633,8 +638,8 @@ final class OtherAudioHold {
   // MARK: - Launch and quit
 
   /// Adopt every record left by a dead process (P10-P12, M1-M4), synchronously,
-  /// BEFORE any take can start. A record whose pid is alive is another running
-  /// build's live hold and is left alone.
+  /// BEFORE any take can start. A record whose pid is a live EnviousWispr
+  /// process is another running build's live hold and is left alone.
   func adoptOrphans() {
     let records = deps.store.readAll(rejected: { [deps] name in
       deps.log("record rejected name=\(name)")
