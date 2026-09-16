@@ -144,15 +144,12 @@ struct AudioSettingsView: View {
 
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 11) {
-              SettingsRowIcon(systemName: "timer")
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Microphone Readiness").settingsRowLabel()
-                Text(
-                  "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
-                ).settingsReadingCopy()
-              }
-              Spacer(minLength: 12)
+            SettingsControlRow(
+              icon: "timer",
+              title: "Microphone Readiness",
+              description:
+                "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
+            ) {
               BrandedSegmentedPicker(
                 options: [
                   ("Off", nil, WarmEnginePolicy.off),

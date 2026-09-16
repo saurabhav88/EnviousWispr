@@ -108,6 +108,57 @@ struct SettingsRowIcon: View {
   }
 }
 
+/// A settings row that reads horizontally (icon, then label/description, then
+/// a trailing control) at ordinary widths, and drops the control BELOW the
+/// label at the app's declared 750pt minimum window width — where a
+/// multi-segment picker sized to its own content cannot share one line with a
+/// full description and stay readable (Codex, PR #3007, live-reproduced by
+/// resizing the Microphone page to its minimum).
+///
+/// The label column is capped to `labelMaxWidth` so `ViewThatFits` can
+/// actually measure the wide candidate: a wrapping `Text` reports its
+/// single-line extent as its ideal width under an unconstrained proposal, so
+/// an uncapped label would never read as "too wide" and the narrow candidate
+/// would never be chosen even when the control genuinely has no room.
+struct SettingsControlRow<Control: View>: View {
+  let icon: String
+  let title: String
+  let description: String
+  @ViewBuilder let control: () -> Control
+
+  private static var labelMaxWidth: CGFloat { 260 }
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 11) {
+        SettingsRowIcon(systemName: icon)
+        label
+          .frame(maxWidth: Self.labelMaxWidth, alignment: .leading)
+        Spacer(minLength: 12)
+        control()
+      }
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .top, spacing: 11) {
+          SettingsRowIcon(systemName: icon)
+          label
+        }
+        // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
+        // spacing (11), so the control aligns under the LABEL rather than
+        // the icon.
+        control()
+          .padding(.leading, 37)
+      }
+    }
+  }
+
+  private var label: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(title).settingsRowLabel()
+      Text(description).settingsReadingCopy()
+    }
+  }
+}
+
 // MARK: - Settings Content Container
 
 /// Replaces `Form { }.formStyle(.grouped)` with a branded ScrollView layout.
@@ -1149,31 +1200,31 @@ struct SettingsActionButton: View {
   /// at all.
   private var styledLabel: some View {
     HStack(spacing: 5) {
-        if let systemImage {
-          Image(systemName: systemImage)
-            .font(.system(size: 11, weight: .semibold))
-            // Decoration. Without this the symbol contributes its own
-            // symbol-derived name beside the title, so "Add term" is announced
-            // as a plus sign AND the words -- where the `Label` this replaced
-            // announced one thing.
-            .accessibilityHidden(true)
-        }
-        Text(title)
-          .font(.system(size: fontSize, weight: .semibold))
-        if let trailingSystemImage {
-          Image(systemName: trailingSystemImage)
-            .font(.system(size: fontSize - 1, weight: .semibold))
-            // Decoration, same reason as the leading glyph above: the arrow in "Continue ->"
-            // is the shape of the word, not a second thing to announce.
-            .accessibilityHidden(true)
-        }
+      if let systemImage {
+        Image(systemName: systemImage)
+          .font(.system(size: 11, weight: .semibold))
+          // Decoration. Without this the symbol contributes its own
+          // symbol-derived name beside the title, so "Add term" is announced
+          // as a plus sign AND the words -- where the `Label` this replaced
+          // announced one thing.
+          .accessibilityHidden(true)
       }
-      .padding(.horizontal, horizontalPadding)
-      .padding(.vertical, verticalPadding)
-      .foregroundStyle(foreground)
-      .background(fill, in: outline)
-      .overlay(outline.strokeBorder(border, lineWidth: 1))
-      .contentShape(outline)
+      Text(title)
+        .font(.system(size: fontSize, weight: .semibold))
+      if let trailingSystemImage {
+        Image(systemName: trailingSystemImage)
+          .font(.system(size: fontSize - 1, weight: .semibold))
+          // Decoration, same reason as the leading glyph above: the arrow in "Continue ->"
+          // is the shape of the word, not a second thing to announce.
+          .accessibilityHidden(true)
+      }
+    }
+    .padding(.horizontal, horizontalPadding)
+    .padding(.vertical, verticalPadding)
+    .foregroundStyle(foreground)
+    .background(fill, in: outline)
+    .overlay(outline.strokeBorder(border, lineWidth: 1))
+    .contentShape(outline)
   }
 
   /// The one place `shape` becomes geometry, so the fill, the border and the hit target
@@ -1181,7 +1232,8 @@ struct SettingsActionButton: View {
   private var outline: AnyInsettableShape {
     switch shape {
     case .capsule: return AnyInsettableShape(Capsule())
-    case .roundedRect: return AnyInsettableShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    case .roundedRect:
+      return AnyInsettableShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
   }
 
@@ -1293,7 +1345,8 @@ struct SettingsFieldChrome: ViewModifier {
         RoundedRectangle(cornerRadius: 8)
           .strokeBorder(
             focused ? Color.stAccent : Color.stInputBorder,
-            lineWidth: focused ? 2 : 1)
+            lineWidth: focused ? 2 : 1
+          )
           // Decoration. On the hit-test path it can swallow a click on the very
           // edge the border is drawn to advertise (cloud Codex, PR #2774).
           .allowsHitTesting(false)

@@ -27,14 +27,11 @@ struct OtherAudioSettingsPanel: View {
   var body: some View {
     @Bindable var settings = settings
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .top, spacing: 11) {
-        SettingsRowIcon(systemName: "speaker.wave.2.fill")
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Other Audio While You Dictate").settingsRowLabel()
-          Text(Self.footnote(for: settings.otherAudioWhileDictating))
-            .settingsReadingCopy()
-        }
-        Spacer(minLength: 12)
+      SettingsControlRow(
+        icon: "speaker.wave.2.fill",
+        title: "Other Audio While You Dictate",
+        description: Self.footnote(for: settings.otherAudioWhileDictating)
+      ) {
         BrandedSegmentedPicker(
           options: [
             ("Nothing", nil, OtherAudioWhileDictating.nothing),
