@@ -425,7 +425,11 @@ struct TelemetryEmitterRegistryTests {
       let finder = LocalLiteralFinder(identifier: identifier)
       finder.walk(body)
       if finder.bindings > 1 || finder.mutable { return .ambiguous }
-      return finder.found.map { .one($0) } ?? .none
+      // One binding whose initializer is not a literal (`let event = makeEvent()`) is a
+      // binding all the same: never `.none`, which would let a parameter of the same name
+      // be read as a forwarder.
+      if finder.bindings == 1 { return finder.found.map { .one($0) } ?? .ambiguous }
+      return .none
     }
 
     final class LocalLiteralFinder: SyntaxVisitor {
@@ -707,6 +711,10 @@ struct TelemetryEmitterRegistryTests {
           if true { let event = "hidden.shadow"; PostHogSDK.shared.capture(event) }
         }
         func aa() { shadowed(event: "hidden.through_shadow") }
+        func computed(event: String) {
+          if true { let event = makeEvent(); PostHogSDK.shared.capture(event) }
+        }
+        func ab() { computed(event: "hidden.through_computed") }
       }
       struct Twin {
         func clash(event: String, v: String) { PostHogSDK.shared.capture(event) }
@@ -741,7 +749,7 @@ struct TelemetryEmitterRegistryTests {
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
       + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 16, Comment(rawValue: unresolvedMessage))
+    #expect(result.unresolved.count == 17, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
