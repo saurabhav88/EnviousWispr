@@ -248,8 +248,14 @@ final class CustomWordsImportFlowModel {
   /// is cancelled and can no longer publish. Clears the draft so a confirmed
   /// discard is final and idempotent, whether this runs from an explicit
   /// discard action or from `.onDisappear`'s unconditional cleanup.
+  ///
+  /// Also clears the review rows: `abandonWork()` resets the batch metadata
+  /// (`batchEnrichmentEligible`, `batchSourceID`), so a `confirm()` after a
+  /// cancel must find nothing to approve rather than commit an abandoned
+  /// review under reset metadata (#2951, Codex round 1).
   func cancel() {
     abandonWork()
+    rows = []
     pasteDraft = ""
   }
 

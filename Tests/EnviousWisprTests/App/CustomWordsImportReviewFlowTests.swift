@@ -461,6 +461,27 @@ struct CustomWordsImportReviewFlowTests {
     #expect(model.step == .result(.completed(added: 1, replaced: 0)))
   }
 
+  /// `cancel()` resets the batch metadata; the review it abandons must not be
+  /// committable afterwards, or a confirm would write under reset eligibility
+  /// and report an empty source. The sheet dismisses on cancel, so this is the
+  /// model-level guarantee behind that, not a path the UI drives.
+  @Test("confirm after cancel commits nothing and reports nothing")
+  func confirmAfterCancelCommitsNothing() async {
+    let compare = CompareSpy()
+    let commit = CommitSpy()
+    let report = ReportSpy()
+    compare.results = [[Self.comparison("Kubernetes", .new)]]
+    let model = Self.makeModel(compare: compare, commit: commit, report: report)
+    await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
+    #expect(model.approvedRows.count == 1)
+
+    model.cancel()
+    model.confirm()
+
+    #expect(commit.plans.isEmpty)
+    #expect(report.reports.isEmpty)
+  }
+
   @Test("a failed commit and an all-skipped review report nothing")
   func failedAndNothingApprovedReportNothing() async {
     let compare = CompareSpy()
