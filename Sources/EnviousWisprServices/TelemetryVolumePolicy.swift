@@ -30,7 +30,12 @@ public enum TelemetryVolumePolicy {
 
   /// Bumped whenever a rule below changes what leaves the Mac. Stamped on EVERY kept row so
   /// a query can floor by policy rather than by app version.
-  public static let policyVersion = 1
+  ///
+  /// 1: #2958 phase 1, the VAD stage markers folded and the five sampled rows.
+  /// 2: #2958 phase 2, `asr.completed` and `paste.completed` folded onto
+  ///    `dictation.completed`; a reader tells a folded row from an old-build
+  ///    row by this stamp (`workers/daily-report/src/version-scorecard.js`).
+  public static let policyVersion = 2
   public static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of

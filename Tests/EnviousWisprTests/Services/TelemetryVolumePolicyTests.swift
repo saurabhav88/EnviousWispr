@@ -214,7 +214,7 @@ struct TelemetryVolumePolicyTests {
   func backboneAndUnknownKeep() {
     for name in [
       "dictation.started", "dictation.terminal", "dictation.completed", "dictation.invoked",
-      "asr.completed", "paste.completed", "llm.polish_completed", "llm.polish_skipped",
+      "llm.polish_completed", "llm.polish_skipped",
       "llm.polish_failed", "settings.snapshot", "app.launched", "onboarding.completed",
       "some.future_event",
     ] {
@@ -232,7 +232,7 @@ struct TelemetryVolumePolicyTests {
       Policy.apply(
         event: "dictation.started", properties: ["take_id": "T", "backend": "parakeet"],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 1)
+    #expect(out["telemetry_policy_version"] as? Int == 2)
     #expect(out["take_id"] as? String == "T")
     #expect(out["$sample_threshold"] == nil)
     #expect(out.count == 3)
@@ -243,7 +243,7 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       Policy.apply(
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 1)
+    #expect(out["telemetry_policy_version"] as? Int == 2)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
     // A FRACTION, as posthog-js stores it: a percentage here would make the standard
     // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
@@ -278,7 +278,7 @@ struct TelemetryVolumePolicyTests {
           "note": "someone@example.com",
         ],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 1)
+    #expect(out["telemetry_policy_version"] as? Int == 2)
     // The two bundle stamps come from the CURRENT bundle, on every row, whether or not
     // `register()` has run: `Application Installed` rows carried no environment at all
     // before this (801 of 801 in the 30 days to 2026-09-15).

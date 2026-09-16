@@ -5,7 +5,7 @@ import Foundation
 
 // MARK: - How many copies landed (#2652)
 //
-// `paste.completed` fires once whether one copy or two copies of a dictation arrive, so the
+// `dictation.completed` fires once whether one copy or two copies of a dictation arrive, so the
 // reported double-paste defect is invisible fleet-wide: one user reported it and we cannot say
 // whether he is one of one or one of thousands. This observes the destination AFTER delivery has
 // returned and reports an estimate.

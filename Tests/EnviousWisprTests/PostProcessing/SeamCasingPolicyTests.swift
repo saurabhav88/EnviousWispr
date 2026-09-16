@@ -456,7 +456,7 @@ struct SeamCasingPolicyTests {
   @Test("#1922 Both new skip reasons carry a stable telemetry name")
   func newReasonsHaveTelemetryNames() {
     // These two VALUES are the whole of the change's telemetry: they ride the
-    // existing `paste.completed.repair_rules`, so no field or plumbing changes.
+    // existing `dictation.completed.repair_rules`, so no field or plumbing changes.
     // A renamed value would silently break the version floor recorded at ship.
     #expect(
       CursorInsertionRepair.CaseSkipReason.nounInNounCapitalisingLanguage.rawValue

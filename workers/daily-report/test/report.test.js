@@ -2675,15 +2675,17 @@ test("calculationId is stable under formatting and independent of rendered value
   // reviewer using Node's separate createHash implementation - so this is a
   // second implementation agreeing, not an oracle agreeing with itself. Its job
   // is to make later SEMANTIC drift visible: if a query's meaning changes and
-  // nobody bumps a definition, one of these stops matching.
+  // nobody bumps a definition, one of these stops matching. The four additive
+  // ids moved together at #2958 phase 2 (the paste predicate learned the folded
+  // `dictation.completed` shape; every additive metric hashes the same SQL).
   const FROZEN = {
     people: "sha256:c69cd94d49fb654f28078b98879ce94f3ab5ba61f88e2930904c00ca3cb3b403",
-    dictations: "sha256:d20ab223c879bf71a5f0b187cc62772522be0fb674eb45d7000c5d3122821b53",
+    dictations: "sha256:ec2c428014dc6030b37944be833d90b7fd54555feffc6c459460e7597a00c907",
     speed_p50: "sha256:8a4da84fcbdda2531a9027cbb7eb9534072dc2cccc06d64e824f27948f9f94e2",
     speed_p95: "sha256:757c4e9dee47c5f111d5ab9607a6c9e21ccff347b3105deb47ddb5c8d245d2a1",
-    autopaste_direct: "sha256:6c11fc48f2ac8ee1fb5384b953b4fd4dc03d1ab30575fa1571945818787de912",
-    polish_kept: "sha256:1fb2bd4239d81cdfe52f2f5320447d33d6bbdcc87aa91b6804dc1d15503ab4a3",
-    transcription_failed: "sha256:512754ab0f3d3925e37e6ac22ac90b0c89f8d2a45d1c5cf10ceb52f7a7418c3b",
+    autopaste_direct: "sha256:3c8c7eee33bbd94c001f692924bfd909e1233c829e81dcf6566c8cfa1d49f35e",
+    polish_kept: "sha256:d9c9005f21f29fa095b35bcdc5655e7f707b77b8b592656c725d677b0a65126e",
+    transcription_failed: "sha256:ffd8506aa661a33b51f4f918afcee9f7c96a8c61e3f2c29bfd02b17807c6c21c",
   };
   for (const [metric, expected] of Object.entries(FROZEN)) {
     assert.equal(await calculationId(metric), expected, `${metric} calculation drifted`);

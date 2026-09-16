@@ -7,7 +7,7 @@ import Testing
 // The live AX reads are exercised by Live UAT, matching the `classifyInsertOutcome` precedent
 // next door. The ARITHMETIC is pure, and it is what this suite pins.
 //
-// What the instrument is for: `paste.completed` fires once whether one copy or two copies arrive,
+// What the instrument is for: `dictation.completed` fires once whether one copy or two copies arrive,
 // so the reported double-paste defect is invisible fleet-wide. What it is NOT: proof that identical
 // content arrived twice. Every row below is about LENGTH GROWTH, and several of them exist
 // specifically to document where length and meaning come apart.

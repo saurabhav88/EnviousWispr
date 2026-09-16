@@ -76,20 +76,22 @@ struct DictationCompletedRouteFieldsTests {
       }
     }
 
-    // MARK: - #1846 take key on all four completion events
+    // MARK: - #1846 take key on both completion events
 
-    /// ONE argument to `reportDictationCompleted` has to reach all FOUR events it
-    /// fans out to. `asr.completed`, `llm.polish_completed` and `paste.completed` are
-    /// each gated on their own metric being present, so this supplies metrics that
-    /// open all three gates and asserts every event carries the same key.
+    /// ONE argument to `reportDictationCompleted` has to reach BOTH events it
+    /// fans out to. `llm.polish_completed` is gated on its own metric being
+    /// present, so this supplies metrics that open that gate and asserts every
+    /// event carries the same key. (Until #2958 phase 2 the fan-out was four
+    /// events; `asr.completed` and `paste.completed` now ride the terminal row,
+    /// see `foldedFieldsRideTheTerminalRow` below.)
     ///
     /// Observed through the DEBUG hook, which as of #1846 derives from the payload
     /// PostHog actually receives. Before that, `reportDictationCompleted` emitted a
     /// parallel dictionary under the `dictation.completed` name while the real payload
     /// was built with no hook at all — a test here could have passed with the
     /// production line deleted.
-    @Test("the take key reaches all four completion events from one argument")
-    func takeKeyReachesAllFourCompletionEvents() throws {
+    @Test("the take key reaches both completion events from one argument")
+    func takeKeyReachesBothCompletionEvents() throws {
       let seen = EventsBox()
       TelemetryService.shared.testEventHook = { @Sendable event in
         MainActor.assumeIsolated { seen.events.append(event) }
@@ -103,10 +105,8 @@ struct DictationCompletedRouteFieldsTests {
 
       let names = Set(seen.events.map(\.name))
       #expect(
-        names == [
-          "dictation.completed", "asr.completed", "llm.polish_completed", "paste.completed",
-        ],
-        "all four gates must open, or the assertions below cover fewer events than claimed — saw \(names.sorted())"
+        names == ["dictation.completed", "llm.polish_completed"],
+        "exactly the two fan-out events; a retired row reappearing or the polish gate staying shut both fail here — saw \(names.sorted())"
       )
       for event in seen.events {
         #expect(
@@ -115,9 +115,9 @@ struct DictationCompletedRouteFieldsTests {
       }
     }
 
-    /// Absent on every one of the four, never an empty string.
-    @Test("all four completion events omit the take key entirely when there is no take")
-    func allFourOmitTheTakeKeyWhenNil() throws {
+    /// Absent on both, never an empty string.
+    @Test("both completion events omit the take key entirely when there is no take")
+    func bothOmitTheTakeKeyWhenNil() throws {
       let seen = EventsBox()
       TelemetryService.shared.testEventHook = { @Sendable event in
         MainActor.assumeIsolated { seen.events.append(event) }
@@ -129,7 +129,7 @@ struct DictationCompletedRouteFieldsTests {
         inputMode: "ptt",
         takeID: nil)
 
-      #expect(seen.events.count == 4, "same four events, so the nil suppressed nothing")
+      #expect(seen.events.count == 2, "same two events, so the nil suppressed nothing")
       for event in seen.events {
         #expect(
           event.stringProps["take_id"] == nil,
@@ -137,9 +137,9 @@ struct DictationCompletedRouteFieldsTests {
       }
     }
 
-    /// #1914: `ollama_remote` is scoped to ONE of the four completion events.
-    /// The take-key tests above prove all four fire, so asserting the other
-    /// three are empty here is a real exclusion rather than a vacuous pass.
+    /// #1914: `ollama_remote` is scoped to ONE of the two completion events.
+    /// The take-key tests above prove both fire, so asserting the other one is
+    /// empty here is a real exclusion rather than a vacuous pass.
     ///
     /// The founder tabled failed and skipped remoteness on 2026-08-03. That
     /// tabling has no compiler behind it: adding the key to another emitter is
@@ -158,7 +158,7 @@ struct DictationCompletedRouteFieldsTests {
         inputMode: "ptt",
         takeID: Self.takeID)
 
-      #expect(seen.events.count == 4, "all four gates must open for the exclusion to mean anything")
+      #expect(seen.events.count == 2, "both gates must open for the exclusion to mean anything")
       for event in seen.events {
         if event.name == "llm.polish_completed" {
           #expect(event.boolProps["ollama_remote"] == true)
@@ -232,11 +232,11 @@ struct DictationCompletedRouteFieldsTests {
 
     private static let takeID = "9f2c1d84-6b3a-4e07-9c51-0a7d2e6f1b33"
 
-    /// A transcript whose metrics open the `asr.completed`, `llm.polish_completed`
-    /// and `paste.completed` gates inside `reportDictationCompleted`: a non-nil ASR
-    /// latency, a positive LLM latency with a provider, and a paste tier plus
-    /// latency. Without all three, a test claiming four-event coverage would
-    /// silently assert over one event.
+    /// A transcript whose metrics open the `llm.polish_completed` gate inside
+    /// `reportDictationCompleted` (a positive LLM latency with a provider) AND
+    /// the two fold gates on `dictation.completed` (a non-nil ASR latency; a
+    /// paste tier plus latency). Without all three, a test claiming full
+    /// coverage would silently assert over one event or one half of the row.
     private static func transcriptOpeningAllFourGates() -> Transcript {
       Transcript(
         text: "hello",
@@ -251,7 +251,7 @@ struct DictationCompletedRouteFieldsTests {
           e2eSeconds: 1.0))
     }
 
-    /// The same four-gate transcript with a completed REMOTE Ollama polish on it.
+    /// The same all-gates transcript with a completed REMOTE Ollama polish on it.
     /// Provider is `ollama` so the shape is one production can actually produce.
     private static func transcriptOpeningAllFourGatesRemotely() -> Transcript {
       Transcript(
@@ -440,7 +440,7 @@ struct DictationCompletedRouteFieldsTests {
 
     // MARK: - #1921 language-resolution telemetry, end to end
 
-    /// Collects EVERY event, not just the last. `paste.completed` and
+    /// Collects EVERY event, not just the last. `llm.polish_completed` and
     /// `dictation.completed` both fire from one `reportDictationCompleted`, so a
     /// last-write-wins box would assert against whichever happened to land
     /// second — a test that reads a different event than it names.
@@ -448,16 +448,16 @@ struct DictationCompletedRouteFieldsTests {
       var events: [CapturedTelemetryEvent] = []
     }
 
-    @Test("#1921 language resolution reaches the real paste.completed payload")
-    func languageResolutionReachesPasteCompleted() throws {
+    @Test("#1921 language resolution reaches the real dictation.completed payload")
+    func languageResolutionReachesTheTerminalRow() throws {
       let log = EventLog()
       TelemetryService.shared.testEventHook = { @Sendable event in
         MainActor.assumeIsolated { log.events.append(event) }
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
-      // `pasteTier` and `pasteLatencyMs` are what open the real
-      // `paste.completed` gate; the two #1921 values ride the same metrics.
+      // `pasteTier` and `pasteLatencyMs` are what open the real paste fold
+      // gate on `dictation.completed`; the two #1921 values ride the same metrics.
       // Distinctive on purpose — `document` and `f70to90` are neither the
       // default nor the value any other hop would produce by accident, so a
       // dropped field cannot pass by coincidence.
@@ -470,9 +470,9 @@ struct DictationCompletedRouteFieldsTests {
       TelemetryService.shared.reportDictationCompleted(
         transcript: transcript, inputMode: "ptt")
 
-      let pasteEvents = log.events.filter { $0.name == "paste.completed" }
-      #expect(pasteEvents.count == 1, "exactly one paste.completed, got \(pasteEvents.count)")
-      let props = try #require(pasteEvents.first).stringProps
+      let rows = log.events.filter { $0.name == "dictation.completed" }
+      #expect(rows.count == 1, "exactly one dictation.completed, got \(rows.count)")
+      let props = try #require(rows.first).stringProps
 
       #expect(props["language_resolution_source"] == "document")
       #expect(props["language_confidence_bucket"] == "f70to90")
@@ -545,11 +545,112 @@ struct DictationCompletedRouteFieldsTests {
       TelemetryService.shared.reportDictationCompleted(
         transcript: transcript, inputMode: "ptt")
 
-      let pasteEvents = log.events.filter { $0.name == "paste.completed" }
-      #expect(pasteEvents.count == 1)
-      let props = try #require(pasteEvents.first).stringProps
+      let rows = log.events.filter { $0.name == "dictation.completed" }
+      #expect(rows.count == 1)
+      let props = try #require(rows.first).stringProps
       #expect(props.keys.contains("language_resolution_source") == false)
       #expect(props.keys.contains("language_confidence_bucket") == false)
+    }
+
+    // MARK: - #2958 phase 2, the ASR and paste rows folded onto the terminal row
+
+    /// The two retired rows' payloads ride `dictation.completed` under the
+    /// names the plan fixed: `cold_start` / `char_count` take the `asr_` prefix,
+    /// `latency_ms` becomes `paste_latency_ms` with a `paste_seconds` twin, and
+    /// every other key keeps its old name. Distinctive values on purpose, so a
+    /// field dropped or renamed in the fold cannot pass by coincidence.
+    @Test("#2958 phase 2: the ASR and paste facts ride dictation.completed under the fixed names")
+    func foldedFieldsRideTheTerminalRow() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      var metrics = ExecutionMetrics(
+        asrLatencySeconds: 0.4, pasteTier: "cgevent", pasteLatencyMs: 1234,
+        coldStart: true, streamingMode: true, e2eSeconds: 2.5,
+        tailDroppedMs: 37, tailClipClassification: "suspected_asr_drop",
+        asrLastTokenGapMs: 410, streamingEffective: false)
+      metrics.streamingDegradeReason = "flush_empty"
+      metrics.caretContextOutcome = "captured"
+      metrics.casingDeadlinePhase = "oracle_fetch"
+      var transcript = Transcript(text: "hello there")
+      transcript.metrics = metrics
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt", takeID: Self.takeID)
+
+      let names = Set(log.events.map(\.name))
+      #expect(
+        names == ["dictation.completed"],
+        "no polish gate opened and no retired row fired — saw \(names.sorted())")
+      let row = try #require(log.events.first)
+
+      // ASR half.
+      #expect(row.boolProps["asr_cold_start"] == true)
+      #expect(row.intProps["asr_char_count"] == "hello there".count)
+      #expect(row.doubleProps["asr_seconds"] == 0.4)
+      #expect(row.intProps["tail_dropped_ms"] == 37)
+      #expect(row.stringProps["tail_clip_class"] == "suspected_asr_drop")
+      #expect(row.intProps["asr_last_token_gap_ms"] == 410)
+      #expect(
+        row.boolProps["streaming_requested"] == true,
+        "restated from streamingMode when the effective fact is present")
+      #expect(row.boolProps["streaming_effective"] == false)
+      #expect(row.stringProps["streaming_degrade_reason"] == "flush_empty")
+
+      // Paste half.
+      #expect(row.stringProps["paste_result"] == "cgevent")
+      #expect(row.intProps["paste_latency_ms"] == 1234)
+      #expect(row.doubleProps["paste_seconds"] == 1.234)
+      #expect(row.stringProps["caret_context"] == "captured")
+      #expect(row.stringProps["casing_deadline_phase"] == "oracle_fetch")
+
+      // The retired rows' own copies of terminal keys do not come along.
+      for dropped in [
+        "backend", "tier", "latency_seconds", "latency_ms", "cold_start", "char_count",
+      ] {
+        #expect(
+          row.stringProps[dropped] == nil && row.intProps[dropped] == nil
+            && row.doubleProps[dropped] == nil && row.boolProps[dropped] == nil,
+          "\(dropped) must not ride the terminal row under its retired name")
+      }
+      #expect(row.doubleProps["$value"] == 2.5, "$value stays e2e, never the ASR or paste latency")
+      #expect(row.stringProps["take_id"] == Self.takeID)
+    }
+
+    /// The fold gates match the retired rows' gates exactly: no ASR latency
+    /// means no `asr_*` fold keys (the `asr.completed` row was skipped), and no
+    /// paste latency means no `paste_latency_ms` even when `paste_result` is
+    /// set from the tier (the `paste.completed` row was skipped). A reader
+    /// filtering on `paste_latency_ms` therefore sees the population the old
+    /// row name gave it.
+    @Test(
+      "#2958 phase 2: a fold half stays off the row when its retired gate would have stayed shut")
+    func foldHalvesFollowTheRetiredGates() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = ExecutionMetrics(
+        pasteTier: "clipboard_only", coldStart: true, tailDroppedMs: 37)
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt")
+
+      let row = try #require(log.events.first { $0.name == "dictation.completed" })
+      #expect(
+        row.stringProps["paste_result"] == "clipboard_only",
+        "tier alone still sets paste_result, as before")
+      #expect(row.intProps["paste_latency_ms"] == nil)
+      #expect(row.doubleProps["paste_seconds"] == nil)
+      #expect(row.boolProps["asr_cold_start"] == nil)
+      #expect(row.intProps["asr_char_count"] == nil)
+      #expect(row.intProps["tail_dropped_ms"] == nil)
     }
 
   #endif

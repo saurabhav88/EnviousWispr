@@ -53,7 +53,7 @@ package final class LanguageRepairDeadlineGate: Sendable {
 
   /// Which stage the deadline caught, as a stable label for logs and telemetry.
   ///
-  /// Raw values are a SHIPPED closed set consumed by `paste.completed`; treat
+  /// Raw values are a SHIPPED closed set consumed by `dictation.completed`; treat
   /// them like any other telemetry vocabulary and never repurpose one.
   package enum TimeoutPhase: String, Sendable, Equatable {
     case resolvingLanguage = "language"

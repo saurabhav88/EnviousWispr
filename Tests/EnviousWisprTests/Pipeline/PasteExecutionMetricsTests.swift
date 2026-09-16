@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprServices
 
 // The cursor-aware insertion fields on `ExecutionMetrics` and their projection
-// onto `paste.completed` (#1785 Chunk 9).
+// onto `dictation.completed` (#1785 Chunk 9; on `paste.completed` until #2958 phase 2).
 //
 // Two obligations, both of which fail silently if untested: a transcript written
 // before this feature must still decode from disk, and the projection must carry
