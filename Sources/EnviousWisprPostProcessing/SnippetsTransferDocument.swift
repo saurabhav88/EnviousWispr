@@ -61,19 +61,30 @@ package struct SnippetsTransferDocument: Codable, Sendable, Equatable {
   private struct AnyDecodable: Decodable {}
 
   /// Decode path. Refuses anything that is not this shape, and a version it cannot read.
+  /// Whether the bytes parse as JSON at all. The paste sniff routes a brace-led paste here
+  /// only when they do, so a list line that starts with a brace is never called a damaged
+  /// export.
+  package static func isJSON(_ data: Data) -> Bool {
+    (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
+  }
+
+  /// The ONE ownership test: a top-level JSON object carrying a `snippets` key claims to be
+  /// ours (a missing or broken `version` beside it is damage, not a different file).
+  package static func looksLikeOurs(_ data: Data) -> Bool {
+    guard let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    else { return false }
+    return (json as? [String: Any])?["snippets"] != nil
+  }
+
   package init(data: Data) throws {
     let header: Header
     do {
       header = try JSONDecoder().decode(Header.self, from: data)
     } catch {
       // Valid JSON that simply is not ours (an array, a config file, the words export)
-      // reads the same as damaged bytes at this layer; keep the two messages true. A
-      // top-level object carrying a `snippets` key claims to be ours, so a missing or
-      // broken `version` beside it is damage, not a different file.
-      if let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) {
-        let object = json as? [String: Any]
-        let claimsOurShape = object?["snippets"] != nil
-        throw claimsOurShape
+      // reads the same as damaged bytes at this layer; keep the two messages true.
+      if Self.isJSON(data) {
+        throw Self.looksLikeOurs(data)
           ? SnippetsTransferError.malformed
           : SnippetsTransferError.notAnEnviousWisprSnippetsFile
       }

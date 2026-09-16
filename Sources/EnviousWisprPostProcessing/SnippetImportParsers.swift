@@ -394,7 +394,13 @@ package enum SnippetPasteSniff: Sendable, Equatable {
 
   package static func sniff(_ text: String) -> SnippetPasteSniff {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.hasPrefix("{") { return .transferDocument }
+    // A brace that opens VALID JSON goes to the export decoder, whose messages then say
+    // "not ours" or "damaged" truthfully. A brace that does not (`{date} = September 16`, a
+    // list line whose trigger starts with a brace, which `SnippetText.normalize` strips) is
+    // a list line, not a damaged export.
+    if trimmed.hasPrefix("{"), SnippetsTransferDocument.isJSON(Data(trimmed.utf8)) {
+      return .transferDocument
+    }
     let lines = SnippetLineListParser.lines(trimmed).map {
       String($0).trimmingCharacters(in: .whitespaces)
     }

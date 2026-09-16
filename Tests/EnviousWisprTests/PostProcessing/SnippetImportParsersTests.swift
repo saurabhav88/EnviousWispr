@@ -396,11 +396,18 @@ struct SnippetImportParsersTests {
     #expect(batch.sourceID == "paste")
   }
 
-  @Test("Pasted JSON that is not ours is refused with the transfer document's reason")
-  func pastedForeignJSONRefused() {
-    #expect(
-      throws: SnippetImportSourceError.exportedSnippets(.notAnEnviousWisprSnippetsFile)
-    ) {
+  @Test("A brace routes to the export decoder only for our own envelope; a braced trigger is a list line")
+  func braceIsNotAlwaysJSON() throws {
+    #expect(SnippetPasteSniff.sniff("{\"snippets\": []}") == .transferDocument)
+    #expect(SnippetPasteSniff.sniff("{\"snippets\": 5, \"version\": \"x\"}") == .transferDocument, "claims our shape; the decoder reports it damaged")
+    #expect(SnippetPasteSniff.sniff("{\"words\": []}") == .transferDocument, "valid JSON that is not ours: the decoder says so")
+    #expect(SnippetPasteSniff.sniff("{date} = September 16") == .list)
+    let braced = try PasteSnippetsImportSource.parse(text: "{date} = September 16", format: .auto)
+    expectPairs(braced.candidates, [("{date}", "September 16")])
+    #expect(throws: SnippetImportSourceError.exportedSnippets(.malformed)) {
+      try PasteSnippetsImportSource.parse(text: "{\"snippets\": 5}", format: .auto)
+    }
+    #expect(throws: SnippetImportSourceError.exportedSnippets(.notAnEnviousWisprSnippetsFile)) {
       try PasteSnippetsImportSource.parse(text: "{\"words\": []}", format: .auto)
     }
   }
