@@ -5,7 +5,7 @@ import SwiftUI
 
 /// #1413: what happens to everything else your Mac is playing while you
 /// dictate. One four-way choice, off by default; a change applies to the next
-/// take. Lives on the Microphone page above Microphone Readiness (founder,
+/// take. Lives on the Microphone page above Microphone readiness (founder,
 /// 2026-09-16: it is about the take's audio, not about the start/stop sounds).
 ///
 /// Renders as one row of the shared Microphone card (`AudioSettingsView`),
@@ -29,15 +29,15 @@ struct OtherAudioSettingsPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsControlRow(
         icon: "speaker.wave.2.fill",
-        title: "Other Audio While You Dictate",
+        title: "Media during dictation",
         description: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(
           options: [
-            ("Nothing", nil, OtherAudioWhileDictating.nothing),
-            ("Turn down", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
+            ("Continue", "play.fill", OtherAudioWhileDictating.nothing),
+            ("Lower", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
             ("Mute", "speaker.slash", OtherAudioWhileDictating.mute),
-            ("Pause music", "pause.circle", OtherAudioWhileDictating.pauseMusic),
+            ("Pause", "pause.circle", OtherAudioWhileDictating.pauseMusic),
           ],
           selection: $settings.otherAudioWhileDictating
         )
@@ -84,7 +84,7 @@ struct OtherAudioSettingsPanel: View {
     }
   }
 
-  /// Shown under `Pause music` when the system route cannot answer on this Mac
+  /// Shown under `Pause` when the system route cannot answer on this Mac
   /// (a macOS update closed it): only the two scriptable players remain.
   static let pauseAnythingUnavailableNote =
     "On this Mac only Music and Spotify can be paused. macOS may ask for permission the first time; a take that needs permission is not paused."
@@ -124,8 +124,8 @@ struct OtherAudioSettingsPanel: View {
   }
 
   private func refreshAvailability(_ mode: OtherAudioWhileDictating) {
-    // Pause music's note comes from the adapter probe, not the output device;
-    // an output change must not clear it.
+    // Pause's note comes from the adapter probe, not the output device; an
+    // output change must not clear it.
     guard mode != .pauseMusic else { return }
     guard !dictationRuntime.otherAudioHold.isModeAvailable(mode) else {
       unavailableNote = nil
@@ -133,7 +133,7 @@ struct OtherAudioSettingsPanel: View {
     }
     switch mode {
     case .turnDown:
-      unavailableNote = "Turn down is not available on your current speakers or headphones."
+      unavailableNote = "Lower is not available on your current speakers or headphones."
     case .mute:
       unavailableNote = "Mute is not available on your current speakers or headphones."
     case .nothing, .pauseMusic:

@@ -19,7 +19,7 @@ enum BluetoothTipsCopy {
   // Shared tips (identical on both surfaces)
   static let tipTiming = "After your mic has been idle, wait 1 to 2 seconds before speaking."
   static let tipReadiness =
-    "Microphone Readiness keeps follow-up dictations ready for up to 30 seconds (on by default)."
+    "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)."
   static let tipHeadphones = "Built-in or wired mics usually avoid this startup delay."
 
   // SF Symbols for the three tips (same icons on both surfaces).
@@ -28,9 +28,9 @@ enum BluetoothTipsCopy {
   static let iconHeadphones = "headphones"
 
   // Microphone-settings guide
-  static let settingsHeader = "When using Bluetooth"
+  static let settingsHeader = "Using a Bluetooth microphone?"
   static let settingsIntro =
-    "Bluetooth microphones switch into call mode when a recording starts, which takes a moment on a cold start."
+    "Bluetooth mics may take 1 to 2 seconds to wake after being idle. Keeping your mic ready reduces the delay."
   static let micOrder = "Preferred mic order: Built-in or wired > USB > Bluetooth"
   static let settingsPS =
     "Built-in, wired, and USB mics do not have this Bluetooth startup delay."
