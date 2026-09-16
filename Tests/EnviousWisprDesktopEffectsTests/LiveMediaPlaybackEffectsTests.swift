@@ -28,6 +28,8 @@ private final class FakePlayers: @unchecked Sendable {
   var blockInsidePauseOf: String?
   /// Targets whose `pause` / `play` commands fail.
   var failCommandsFor: Set<String> = []
+  /// The player advanced to this track in the window before our pause landed.
+  var trackAdvancedOnPause: [String: String] = [:]
   /// Targets whose `player state` cannot be read.
   var unreadableState: Set<String> = []
 
@@ -63,7 +65,10 @@ private final class FakePlayers: @unchecked Sendable {
             return NSAppleEventDescriptor(string: id)
           }
           if failCommandsFor.contains(target) { return nil }
-          if source.hasSuffix("to pause") { states[target] = "paused" }
+          if source.hasSuffix("to pause") {
+            states[target] = "paused"
+            if let next = trackAdvancedOnPause[target] { tracks[target] = next }
+          }
           if source.hasSuffix("to play") { states[target] = "playing" }
           return NSAppleEventDescriptor.null()
         }
@@ -334,6 +339,24 @@ struct LiveMediaPlaybackEffectsTests {
     #expect(outcome == .resumed)
     #expect(players.state(of: "com.spotify.client") == "playing")
     #expect(players.state(of: "com.apple.Music") == "paused")
+  }
+
+  @Test("Scripted route: the track recorded is the one paused, read after the pause landed")
+  func scriptedTrackIsReadAfterPause() async {
+    let players = FakePlayers(["com.spotify.client": "playing"])
+    players.setTrack("com.spotify.client", "spotify:track:A")
+    // A ended and B started between our state read and our pause.
+    players.trackAdvancedOnPause["com.spotify.client"] = "spotify:track:B"
+    let effects = LiveMediaPlaybackEffects(
+      environment: players.environment(), queue: DispatchQueue(label: "test.media"))
+    let holdID = UUID()
+    #expect(await pause(effects, holdID) == .paused(targets: ["com.spotify.client\u{1F}spotify:track:B"]))
+    let pauseIndex = players.events.firstIndex { $0.hasSuffix("to pause") }
+    let idIndex = players.events.firstIndex { $0.hasSuffix("of current track") }
+    #expect(pauseIndex != nil && idIndex != nil && pauseIndex! < idIndex!, "id read after the pause")
+    // B is what we paused: resumed. Recording A would have left B paused.
+    #expect(await resume(effects, holdID) == .resumed)
+    #expect(players.state(of: "com.spotify.client") == "playing")
   }
 
   @Test("Scripted route: a different track the user paused mid-take is not resumed")

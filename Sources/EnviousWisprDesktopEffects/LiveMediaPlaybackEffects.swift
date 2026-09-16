@@ -288,13 +288,14 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
       // the take ended would be a new effect, not a late completion.
       guard mayIssue(holdID: holdID, started: started) else { break }
       guard playerState(target) == .playing else { continue }
-      // The TRACK, not just the player: a resume must not start a different
-      // track the user paused mid-take (cloud review, PR #3000).
-      guard mayIssue(holdID: holdID, started: started) else { break }
-      let trackID = trackID(target)
       guard mayIssue(holdID: holdID, started: started) else { break }
       if env.run("tell application id \"\(target)\" to pause") != nil {
-        paused.append(Self.scriptedTarget(bundleID: target, trackID: trackID))
+        // The TRACK, not just the player: a resume must not start a different
+        // track the user paused mid-take (cloud review, PR #3000). Read AFTER
+        // the pause, never before it: a player can advance a track between
+        // two scripts, and the track we own is the one that is paused now.
+        // Not gated on the budget: it names what this pause already did.
+        paused.append(Self.scriptedTarget(bundleID: target, trackID: trackID(target)))
         // Recorded per target, immediately: a later target's failure never
         // erases an earlier success, and a resume queued behind reads this.
         let recorded = paused
