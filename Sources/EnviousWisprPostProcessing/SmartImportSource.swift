@@ -1,3 +1,4 @@
+import Darwin
 import EnviousWisprCore
 import Foundation
 import SQLite3
@@ -464,11 +465,19 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 
 // MARK: - Wispr Flow
 
-/// How Wispr Flow's live database is read, shared by the word adapter and the
-/// snippet adapter (#2997): the sidecar guard, the immutable connection, and
-/// the post-read recheck, exactly as `WisprFlowAdapter.loadWords` owned them
-/// before the extraction. What differs per adapter is the SQL and the row
-/// mapping, which are passed in.
+/// How Wispr Flow's database is read, shared by the word adapter and the snippet
+/// adapter (#2997, #3012). Wispr Flow runs its store in WAL while open (leaving
+/// `-wal`/`-shm`) and reverts to a `delete`-mode header with no sidecars once
+/// fully quit, so the earlier "refuse whenever a sidecar exists, else open
+/// `immutable=1`" policy refused every import made while Wispr Flow was running —
+/// which is the normal state for someone migrating away from it (#3012).
+///
+/// Instead we read a private APFS clone: clone the main file plus any `-wal` into
+/// a same-volume scratch directory, prove the source did not change across the
+/// clone, then open the clone `mode=ro` (WAL-aware; SQLite rebuilds `-shm` beside
+/// the writable clone). This works whether Wispr Flow is open or closed and never
+/// writes into Wispr Flow's directory. What differs per adapter is the SQL and the
+/// row mapping, which are passed in.
 package enum WisprFlowDatabase {
   /// The one database, holding words and snippets alike.
   static var candidatePaths: [URL] {
@@ -478,97 +487,167 @@ package enum WisprFlowDatabase {
     ]
   }
 
-  /// Read `sql` against the database at `url` under Wispr Flow's acquisition
-  /// policy. `mapRow` returning nil is an exclusion and is counted; a throw
-  /// refuses the whole read (`SmartImportSQLiteReader.readRows`).
+  /// The parts whose presence and identity must be stable for a clone to be
+  /// trusted. We CLONE only main and `-wal`; `-shm` is a regenerable wal-index
+  /// SQLite rebuilds beside the clone, and a `-journal` (rollback mode) makes the
+  /// main file mid-transaction, which this read cannot recover — so its presence
+  /// makes acquisition unavailable rather than something to clone.
+  private static let monitoredSuffixes = ["", "-wal", "-shm", "-journal"]
+  private static let clonedSuffixes = ["", "-wal"]
+  private static let acquisitionAttempts = 3
+
+  /// One monitored part's identity, or its explicit absence. Identity is inode +
+  /// size + nanosecond mtime + nanosecond ctime: a replacement changes the inode,
+  /// an append/truncate the size, and any in-place write the nanosecond ctime, so
+  /// a checkpoint or write during the clone window cannot pass unnoticed.
+  private enum PartState: Equatable {
+    case absent
+    case present(
+      inode: UInt64, size: Int64, mtimeSec: Int, mtimeNsec: Int, ctimeSec: Int, ctimeNsec: Int)
+  }
+
+  /// The source's metadata across every monitored part, or an explicitly
+  /// unavailable acquisition state (main missing, a rollback `-journal` present,
+  /// or a metadata read that failed for any reason other than a part being
+  /// absent). `agrees` rejects `.unavailable` even when both reads return it, so
+  /// such a source retries and then exhausts to `.unreadable` rather than being
+  /// read.
+  private enum SourceMetadata: Equatable {
+    case unavailable
+    case available([PartState])
+  }
+
+  /// Read `sql` against a stable private clone of the database at `url`. `mapRow`
+  /// returning nil is an exclusion and is counted; a throw refuses the whole read
+  /// (`SmartImportSQLiteReader.readRows`).
   static func read<Row>(
     at url: URL,
     appName: String,
     sql: String,
     mapRow: (OpaquePointer?) throws -> Row?
   ) throws -> (rows: [Row], excludedCount: Int) {
-    // Choose the connection mode from the WAL sidecar, rather than trying one
-    // and falling back (code reviews r1 + r2, both measured).
-    //
-    // r1 asked for plain read-only, because `immutable=1` lets SQLite skip WAL
-    // handling and can return stale or torn rows while Wispr Flow writes. Real
-    // concern. But measured on a real install with the app NOT running, plain
-    // read-only opens and then fails to prepare with SQLITE_CANTOPEN: the
-    // database is WAL and a read-only connection needs the `-shm` sidecar,
-    // which a cleanly closed app does not leave behind.
-    //
-    // r2 then caught what try-and-fallback risks: `SQLITE_OPEN_READONLY`
-    // protects the main database only. A read-only connection CAN create
-    // `-wal`/`-shm` in a writable directory, so merely attempting it can
-    // leave files inside another app's data folder — which is not read-only
-    // in any sense the user would recognise. It did not happen here (the
-    // attempt failed first), but "it happens to fail safely" is not a
-    // guarantee worth shipping.
-    //
-    // So decide up front, from a fact already on disk:
-    //   WAL present  → the other app has uncommitted content, so read it
-    //                  WAL-aware. Its sidecars already exist; we create nothing.
-    //   WAL absent   → nothing uncommitted, the committed file IS the whole
-    //                  truth, and immutable reads it without ever creating a
-    //                  sidecar.
-    // BOTH sidecars, not just the WAL (code review r3). If `-wal` exists but
-    // `-shm` does not — a crashed or mid-recovery Wispr Flow — a plain
-    // read-only connection will CREATE the missing `-shm` in a writable
-    // directory, which is the exact thing the previous round removed. And
-    // immutable is not a safe substitute here either: with real uncommitted
-    // WAL content, skipping it would import a stale view and call it complete.
-    //
-    // Neither option is honest, so refuse and say what would fix it. Quitting
-    // the other app flushes its WAL and makes the next attempt both safe and
-    // complete — which is exactly what the error message already tells the
-    // user to do.
     let fm = FileManager.default
-    func sidecarsExist() -> Bool {
-      fm.fileExists(atPath: url.path + "-wal") || fm.fileExists(atPath: url.path + "-shm")
-    }
-    // ANY sidecar means refuse — and the connection is ALWAYS immutable.
-    //
-    // The earlier shape read WAL-aware when a WAL was present, which required
-    // a non-immutable connection, which is the only mode that can CREATE
-    // files. That left a race no re-check could close: if the other app quit
-    // between this decision and the open, both sidecars vanished, SQLite
-    // recreated empty ones inside their directory, and the after-read check
-    // then saw a WAL again and called the import good (Codex review, #1686).
-    //
-    // Refusing instead removes the mode that can write at all, so there is no
-    // window left to lose. It costs the user one step — quit the other app,
-    // which flushes its WAL — and that is exactly what the error already asks
-    // for. Reading a live database was never going to be both safe and
-    // complete; this picks the honest half.
-    guard !sidecarsExist() else {
+    // `.itemReplacementDirectory` is created on the SAME volume as `url`, which
+    // is what makes the clone below an APFS clonefile rather than a physical
+    // copy. Same-volume placement does not by itself PROVE a clone, so the clone
+    // is still forced (`COPYFILE_CLONE_FORCE`) and a failure refuses the read.
+    let scratchParent: URL
+    do {
+      scratchParent = try fm.url(
+        for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+    } catch {
       throw SmartImportError.unreadable(appName)
     }
-    let uri = SmartImportSQLiteReader.fileURI(path: url.path, query: "immutable=1")
+    defer { try? fm.removeItem(at: scratchParent) }
 
-    // The check above and the open below are still two moments: Wispr Flow can
-    // START writing in between, and immutable would then read a stale view
-    // that ignores its uncommitted WAL. A snapshot copy would close the window
-    // completely, but the real database is 151 MB — copying it to read a
-    // handful of words is a poor trade. The state is re-checked after the read
-    // instead: if a sidecar appeared, the words may be stale, so refuse rather
-    // than report. Immutable cannot create one, so a sidecar found afterwards
-    // is always the other app's doing, never ours.
+    let copyMain = try acquireStableClone(source: url, into: scratchParent, appName: appName)
 
+    // The clone is private and cannot change under us, so there is no live-file
+    // window left to guard: the old `afterRowsRead` sidecar recheck is dropped
+    // for this path (the shared hook stays for TypeWhisper).
     return try SmartImportSQLiteReader.readRows(
-      uri: uri, sql: sql, appName: appName,
-      mapRow: mapRow,
-      // Re-check the sidecar state the connection mode was chosen from. If
-      // Wispr Flow began or finished writing while this read was in flight,
-      // the mode no longer matches the database and these rows may be a stale
-      // view, so refuse rather than hand back something that looks complete.
-      //
-      // This runs INSIDE the reader — after SQLITE_DONE, before its finalize
-      // and close defers — which is exactly where it sat when the word adapter
-      // owned the sequence itself. Hoisting it to after `read` returned would
-      // move it past cleanup and widen the window it exists to close.
-      afterRowsRead: {
-        guard !sidecarsExist() else { throw SmartImportError.unreadable(appName) }
-      })
+      uri: SmartImportSQLiteReader.fileURI(path: copyMain.path, query: "mode=ro"),
+      sql: sql, appName: appName, mapRow: mapRow)
+  }
+
+  /// Acquire a byte-stable clone of main (+ `-wal`) via the shared retry loop.
+  /// `read` never throws for a retryable condition — it returns `.unavailable`,
+  /// which `agrees` rejects — so a briefly-busy source retries and then exhausts
+  /// to `.unreadable`. `accept` clones into a fresh empty subdirectory, then
+  /// re-reads the source metadata and refuses unless it is byte-identical to the
+  /// accepted view, closing the window in which Wispr Flow could checkpoint
+  /// between cloning main and `-wal`.
+  private static func acquireStableClone(
+    source: URL, into scratchParent: URL, appName: String
+  ) throws -> URL {
+    typealias Meta = SourceMetadata
+    let read: () throws -> Meta = { readSourceMetadata(source: source) }
+    let agrees: (Meta, Meta) -> Bool = { first, second in
+      if case .available = first { return first == second }
+      return false
+    }
+    let accept: (Meta) throws -> URL = { accepted in
+      let fm = FileManager.default
+      let dir = scratchParent.appendingPathComponent(UUID().uuidString, isDirectory: true)
+      guard (try? fm.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else {
+        throw SmartImportError.unreadable(appName)
+      }
+      var kept = false
+      defer { if !kept { try? fm.removeItem(at: dir) } }
+
+      let copyMain = dir.appendingPathComponent(source.lastPathComponent)
+      for suffix in Self.clonedSuffixes {
+        let src = source.path + suffix
+        guard fm.fileExists(atPath: src) else {
+          // Only main is required; `-wal` is optional (absent in delete mode).
+          if suffix.isEmpty { throw SmartImportError.unreadable(appName) }
+          continue
+        }
+        guard cloneFile(from: src, to: copyMain.path + suffix) else {
+          throw SmartImportError.unreadable(appName)
+        }
+        // Defence in depth: the clone of a regular source must itself be a regular file, so
+        // nothing SQLite opens can be a link back out of the scratch directory (#3012).
+        var cloned = stat()
+        guard lstat(copyMain.path + suffix, &cloned) == 0,
+          (cloned.st_mode & S_IFMT) == S_IFREG
+        else {
+          throw SmartImportError.unreadable(appName)
+        }
+      }
+      // The source must not have changed while we cloned it.
+      guard readSourceMetadata(source: source) == accepted else {
+        throw SmartImportError.unreadable(appName)
+      }
+      kept = true
+      return copyMain
+    }
+    return try acquireStableSnapshot(
+      appName: appName, attempts: Self.acquisitionAttempts,
+      read: read, agrees: agrees, accept: accept)
+  }
+
+  /// Stat every monitored part. A present `-journal` or a stat failure that is
+  /// not `ENOENT` makes the whole source unavailable; a missing main does too.
+  private static func readSourceMetadata(source: URL) -> SourceMetadata {
+    var states: [PartState] = []
+    for suffix in monitoredSuffixes {
+      let path = source.path + suffix
+      var info = stat()
+      if lstat(path, &info) != 0 {
+        if errno == ENOENT {
+          if suffix.isEmpty { return .unavailable }  // main gone
+          states.append(.absent)
+          continue
+        }
+        return .unavailable  // a real stat failure is not "absent"
+      }
+      if suffix == "-journal" { return .unavailable }  // rollback mode mid-transaction
+      // Only a regular file may be cloned. A symlink (lstat reports the link) would be
+      // cloned AS a link by `COPYFILE_CLONE_FORCE` (NOFOLLOW), and SQLite would then follow
+      // it back to the live original, defeating the private-copy guarantee and letting it
+      // touch the source's sidecars (second-pass review, #3012).
+      guard (info.st_mode & S_IFMT) == S_IFREG else { return .unavailable }
+      states.append(
+        .present(
+          inode: UInt64(info.st_ino),
+          size: Int64(info.st_size),
+          mtimeSec: info.st_mtimespec.tv_sec, mtimeNsec: info.st_mtimespec.tv_nsec,
+          ctimeSec: info.st_ctimespec.tv_sec, ctimeNsec: info.st_ctimespec.tv_nsec))
+    }
+    return .available(states)
+  }
+
+  /// Clone `src` to `dst` with no physical-copy fallback: `COPYFILE_CLONE_FORCE`
+  /// fails rather than copying when the destination cannot be a copy-on-write
+  /// clone (e.g. a non-APFS home volume), so a 946 MB file is never silently
+  /// duplicated. `dst` must not already exist (the flag sets `COPYFILE_EXCL`).
+  private static func cloneFile(from src: String, to dst: String) -> Bool {
+    src.withCString { s in
+      dst.withCString { d in
+        copyfile(s, d, nil, copyfile_flags_t(COPYFILE_CLONE_FORCE)) == 0
+      }
+    }
   }
 }
 
