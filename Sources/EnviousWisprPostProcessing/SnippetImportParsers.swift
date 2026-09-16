@@ -77,34 +77,49 @@ package enum SnippetLineListParser {
     return String(value.dropFirst().dropLast())
   }
 
+  /// The closing quote of a field that starts at the line's first character, with a doubled
+  /// quote inside the field skipped (the same walk the sniff does). Nil when the line does
+  /// not start with a quote or the quote is never closed.
+  static func closingQuote(ofLeadingFieldIn line: String) -> String.Index? {
+    guard line.hasPrefix("\"") else { return nil }
+    var tail = line.dropFirst()
+    while let close = tail.firstIndex(of: "\"") {
+      let afterClose = line.index(after: close)
+      if afterClose < line.endIndex, line[afterClose] == "\"" {
+        tail = line[line.index(after: afterClose)...]
+        continue
+      }
+      return close
+    }
+    return nil
+  }
+
+  /// The joiners a line may use, in the order a bare (unquoted) trigger tries them: the
+  /// explicit ones first (earliest in the line wins, longest on a tie), then a comma, then a
+  /// colon not followed by `//`. A QUOTED trigger is different in kind: its separator is
+  /// whatever follows the closing quote, and nothing inside the quotes is searched, so
+  /// `"sig": "Use x = y"` is `sig` / `Use x = y` and `"a","b"` is `a` / `b`. The two shapes
+  /// are the whole grammar; a line is one or the other by its first character.
   private static func splitOnFirstSeparator(_ line: String) -> (String, String)? {
-    // The EARLIEST explicit separator in the line wins, longest first on a tie, so
-    // `sig = A -> B` is `sig` / `A -> B` and `=>` is never read as `=` plus `>`.
+    if let close = closingQuote(ofLeadingFieldIn: line) {
+      let rest = line[line.index(after: close)...]
+      let after = rest.drop(while: { $0 == " " })
+      let left = String(line[...close])
+      for separator in explicitSeparators.sorted(by: { $0.count > $1.count })
+      where after.hasPrefix(separator) {
+        return (left, String(after.dropFirst(separator.count)))
+      }
+      if after.hasPrefix(",") { return (left, String(after.dropFirst())) }
+      if after.hasPrefix(":"), !after.hasPrefix("://") { return (left, String(after.dropFirst())) }
+      // A quoted trigger with no joiner after it: fall through to the bare search, so a
+      // line like `"quoted words" and more = x` still reads by its explicit separator.
+    }
     let ranges = explicitSeparators.compactMap { line.range(of: $0) }
     if let range = ranges.min(by: {
       $0.lowerBound == $1.lowerBound
         ? $0.upperBound > $1.upperBound : $0.lowerBound < $1.lowerBound
     }) {
       return (String(line[..<range.lowerBound]), String(line[range.upperBound...]))
-    }
-    // A quoted pair on one line: `"a","b"` or `"a": "b"`, the same two joiners the sniff
-    // admits after a leading quoted field, with a doubled quote inside the field skipped as
-    // the sniff skips it. The left side is handed back WITH its quotes so the caller strips
-    // exactly one pair, the same as for every other line.
-    if line.hasPrefix("\"") {
-      var tail = line.dropFirst()
-      while let close = tail.firstIndex(of: "\"") {
-        tail = line[line.index(after: close)...]
-        if tail.hasPrefix("\"") {
-          tail = tail.dropFirst()
-          continue
-        }
-        let after = tail.drop(while: { $0 == " " })
-        if after.hasPrefix(",") || (after.hasPrefix(":") && !after.hasPrefix("://")) {
-          return (String(line[...close]), String(after.dropFirst()))
-        }
-        break
-      }
     }
     if let comma = line.firstIndex(of: ",") {
       return (String(line[..<comma]), String(line[line.index(after: comma)...]))
@@ -354,21 +369,23 @@ package enum SnippetPasteSniff: Sendable, Equatable {
   case ambiguous
 
   /// True when the text after the leading quoted field's closing quote starts with an
-  /// explicit separator or a colon. A doubled quote inside the field is skipped.
+  /// explicit separator or a colon: the LINE grammar's quoted trigger, not a CSV field.
   private static func leadingQuotedFieldIsAListSide(_ line: String) -> Bool {
-    var tail = line.dropFirst()
-    while let quote = tail.firstIndex(of: "\"") {
-      tail = tail[tail.index(after: quote)...]
-      if tail.hasPrefix("\"") {
-        tail = tail.dropFirst()
-        continue
-      }
-      let suffix = tail.drop(while: { $0 == " " })
-      return (SnippetLineListParser.explicitSeparators + [":"]).contains {
-        suffix.hasPrefix($0)
-      }
+    guard let close = SnippetLineListParser.closingQuote(ofLeadingFieldIn: line) else {
+      return false
     }
-    return false
+    let suffix = line[line.index(after: close)...].drop(while: { $0 == " " })
+    return (SnippetLineListParser.explicitSeparators + [":"]).contains { suffix.hasPrefix($0) }
+  }
+
+  /// True when a line carries a quoted field right after a comma with no explicit separator
+  /// before it (`sig,"Best,` followed by more lines is a multi-line CSV expansion).
+  private static func hasQuotedFieldAfterComma(_ line: String) -> Bool {
+    guard let quotedComma = line.range(of: ",\"") else { return false }
+    return !SnippetLineListParser.explicitSeparators.contains {
+      guard let range = line.range(of: $0) else { return false }
+      return range.lowerBound < quotedComma.lowerBound
+    }
   }
 
   package static func sniff(_ text: String) -> SnippetPasteSniff {
@@ -378,22 +395,19 @@ package enum SnippetPasteSniff: Sendable, Equatable {
       String($0).trimmingCharacters(in: .whitespaces)
     }
     guard let firstLine = lines.first(where: { !$0.isEmpty }) else { return .list }
-    // A quoted field: at the start of the line, or right after a comma (`sig,"Best,` followed
-    // by more lines is a multi-line CSV expansion, and the line grammar would cut it at the
-    // first line break). A leading quote followed, after its closing quote, by an explicit
-    // separator or a colon is the LINE grammar's quoted side (`"my email" = "x@y"`), not CSV.
+    // A leading quote on the first line followed, after its closing quote, by an explicit
+    // separator or a colon is the LINE grammar's quoted trigger (`"my email" = "x@y"`), not
+    // CSV; any other leading quote is CSV.
     if firstLine.hasPrefix("\"") {
       return leadingQuotedFieldIsAListSide(firstLine) ? .list : .csv
     }
-    // ... unless an explicit separator comes BEFORE it: `sig = Hello,"Sam"` is a list line
-    // whose text happens to hold a quote, and the ambiguity rule below offers the picker.
-    if let quotedComma = firstLine.range(of: ",\"") {
-      let earlierSeparator = SnippetLineListParser.explicitSeparators.contains {
-        guard let range = firstLine.range(of: $0) else { return false }
-        return range.lowerBound < quotedComma.lowerBound
-      }
-      if !earlierSeparator { return .csv }
-    }
+    // A quoted field right after a comma on ANY line (`sig,"Best,` then more lines is a
+    // multi-line CSV expansion, and the line grammar would cut it at the first line break),
+    // unless an explicit separator comes before it on that line: `sig = Hello,"Sam"` is a
+    // list line whose text holds a quote, and the ambiguity rule below offers the picker.
+    // Every line is inspected, not only the first: a headerless CSV whose first row is
+    // unquoted and whose third row is multi-line is still CSV.
+    if lines.contains(where: hasQuotedFieldAfterComma) { return .csv }
     if let record = try? SnippetCSVParser.records(firstLine).first, SnippetCSVParser.isHeader(record) {
       return .csv
     }

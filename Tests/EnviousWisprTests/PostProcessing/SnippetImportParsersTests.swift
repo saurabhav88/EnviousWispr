@@ -76,6 +76,34 @@ struct SnippetImportParsersTests {
       [("sig", "Hello, world"), ("say \"\"hi\"\"", "Hello, world"), ("url", "https://example.com")])
   }
 
+  @Test("A quoted trigger's separator is whatever follows the closing quote; nothing inside the quotes is searched")
+  func quotedTriggerSeparatorFollowsTheClosingQuote() throws {
+    let text = [
+      "\"sig\": \"Use x = y\"",
+      "\"arrow\" => \"a -> b, c\"",
+      "\"tab\"\t\"x = y\"",
+      "\"comma\",\"k: v = w\"",
+      "\"quoted words\" and more = x",
+      "\"open quote = y",
+    ].joined(separator: "\n")
+    let result = try SnippetLineListParser.parse(text, limit: 10)
+    expectPairs(
+      result.candidates,
+      [
+        ("sig", "Use x = y"), ("arrow", "a -> b, c"), ("tab", "x = y"), ("comma", "k: v = w"),
+        ("\"quoted words\" and more", "x"), ("\"open quote", "y"),
+      ])
+  }
+
+  @Test("A quoted field after a comma on ANY line reads the paste as CSV")
+  func quotedFieldOnALaterLineIsCSV() throws {
+    let text = "a,b\nsig,\"Best,\nSaurabh\""
+    #expect(SnippetPasteSniff.sniff(text) == .csv)
+    let result = try PasteSnippetsImportSource.parse(text: text, format: .auto)
+    expectPairs(result.candidates, [("a", "b"), ("sig", "Best,\nSaurabh")])
+    #expect(SnippetPasteSniff.sniff("a = b\nsig = Hello,\"Sam\"") == .ambiguous)
+  }
+
   @Test("The live preview refuses what Continue would refuse")
   func previewValidates() {
     #expect(throws: SnippetImportValidationError.unusableTrigger(trigger: "!!!")) {
