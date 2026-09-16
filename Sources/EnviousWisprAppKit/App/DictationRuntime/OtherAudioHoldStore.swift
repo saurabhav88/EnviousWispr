@@ -145,10 +145,20 @@ final class OtherAudioHoldStore: @unchecked Sendable {
     lock.withLock { (try? Self.decode(at: url(for: id))) ?? nil }
   }
 
-  /// Retires a record. Removing a file that is already gone is not an error.
-  func remove(id: UUID) {
+  /// R1 against the PERSISTED copy, under the same lock: retires the record only
+  /// when the dispositions on disk permit it. A failed final update therefore
+  /// leaves the recovery copy for the next launch (R4) instead of an in-memory
+  /// verdict deleting evidence nothing recorded.
+  @discardableResult
+  func removeIfResolved(id: UUID) -> Bool {
     lock.withLock {
-      try? FileManager.default.removeItem(at: url(for: id))
+      guard let record = try? Self.decode(at: url(for: id)), record.mayRetire else { return false }
+      do {
+        try FileManager.default.removeItem(at: url(for: id))
+        return true
+      } catch {
+        return false
+      }
     }
   }
 
@@ -156,23 +166,28 @@ final class OtherAudioHoldStore: @unchecked Sendable {
   /// unknown-version file is R6: deleted and reported through `rejected`, with
   /// no device or media command ever issued for it.
   func readAll(rejected: (String) -> Void = { _ in }) -> [OtherAudioHoldRecord] {
-    lock.withLock {
+    // The callback runs OUTSIDE the lock: it emits telemetry, and emission is a
+    // limb that must never sit inside store serialization (plan §3.7).
+    let result: (records: [OtherAudioHoldRecord], rejected: [String]) = lock.withLock {
       let fm = FileManager.default
-      guard
-        let names = try? fm.contentsOfDirectory(atPath: directory.path)
-      else { return [] }
-      var out: [OtherAudioHoldRecord] = []
+      guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else {
+        return ([], [])
+      }
+      var records: [OtherAudioHoldRecord] = []
+      var rejectedNames: [String] = []
       for name in names.sorted() where name.hasSuffix(".json") && !name.hasPrefix(".") {
         let fileURL = directory.appendingPathComponent(name)
         if let record = try? Self.decode(at: fileURL) {
-          out.append(record)
+          records.append(record)
         } else {
           try? fm.removeItem(at: fileURL)
-          rejected(name)
+          rejectedNames.append(name)
         }
       }
-      return out
+      return (records, rejectedNames)
     }
+    result.rejected.forEach(rejected)
+    return result.records
   }
 
   /// nil when the file does not exist; throws when it exists and is not a

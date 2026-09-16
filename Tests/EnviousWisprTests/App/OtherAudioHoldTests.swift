@@ -18,8 +18,13 @@ private final class FakeOutputVolume: OutputVolumeControlling {
   var volumeSettable = true
   var muteSettable = true
   var volumeUnreadable = false
+  var muteUnreadable = false
+  var refuseWrites = false
+  /// After a successful write, make the read-back fail (P4).
+  var unreadableAfterWrite = false
   var present = true
   var writes: [String] = []
+  var onWrite: (() -> Void)?
 
   func identity(of id: AudioDeviceID) -> OutputDeviceIdentity? { device?.id == id ? device : nil }
   func device(forUID uid: String) -> AudioDeviceID? {
@@ -31,19 +36,24 @@ private final class FakeOutputVolume: OutputVolumeControlling {
     return .value(volume)
   }
   func readMute(of device: AudioDeviceID) -> OutputPropertyRead<Bool> {
+    if muteUnreadable { return .unreadable }
     guard let muted, muteSettable else { return .unsupported }
     return .value(muted)
   }
   func setVolume(_ v: Float, of device: AudioDeviceID) -> Bool {
-    guard volumeSettable else { return false }
+    guard volumeSettable, !refuseWrites else { return false }
+    onWrite?()
     writes.append("volume=\(v)")
     volume = v
+    if unreadableAfterWrite { volumeUnreadable = true }
     return true
   }
   func setMute(_ m: Bool, of device: AudioDeviceID) -> Bool {
-    guard muteSettable else { return false }
+    guard muteSettable, !refuseWrites else { return false }
+    onWrite?()
     writes.append("mute=\(m)")
     muted = m
+    if unreadableAfterWrite { muteUnreadable = true }
     return true
   }
 }
@@ -99,7 +109,11 @@ private final class FakeSink: OtherAudioTelemetrySink {
   var crumbs: [String] = []
   var defects: [String] = []
   func recordTakeSummary(_ summary: OtherAudioTakeSummary) { summaries.append(summary) }
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition) { mediaSettled.append(media) }
+  var mediaSettledHolds: [UUID] = []
+  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?) {
+    mediaSettled.append(media)
+    mediaSettledHolds.append(holdID)
+  }
   func breadcrumb(_ message: String, data: [String: String]) { crumbs.append(message) }
   func captureDefect(_ message: String, data: [String: String]) { defects.append(message) }
 }
@@ -118,6 +132,7 @@ private struct Rig {
       "other-audio-tests-\(UUID().uuidString)", isDirectory: true)
     store = OtherAudioHoldStore(directory: dir)
     let box = LogBox()
+    let gate = delayGate
     hold = OtherAudioHold(
       dependencies: OtherAudioHold.Dependencies(
         effects: OtherAudioEffects(volume: volume, media: media),
@@ -128,11 +143,47 @@ private struct Rig {
           box.tick += 10
           return box.tick
         },
-        sleep: { _ in },  // the delay is a no-op; the apply Task still hops once
+        // A no-op unless the test arms `delayGate`, in which case the sleep
+        // suspends until released, and cancellation throws like the real one.
+        sleep: { _ in try await gate.waitIfArmed() },
         pid: pid, isProcessAlive: alive))
     logBox = box
   }
   let logBox: LogBox
+  let delayGate = DelayGate()
+
+  /// A sleep stand-in the test can hold open and release, honouring cancellation.
+  final class DelayGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var armed = false
+    private var waiters: [CheckedContinuation<Void, any Error>] = []
+    private(set) var entered = 0
+    func arm() { lock.withLock { armed = true } }
+    func waitIfArmed() async throws {
+      guard lock.withLock({ armed }) else { return }
+      lock.withLock { entered += 1 }
+      try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, any Error>) in
+          lock.withLock { waiters.append(c) }
+        }
+      } onCancel: {
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
+          let w = waiters
+          waiters.removeAll()
+          return w
+        }
+        pending.forEach { $0.resume(throwing: CancellationError()) }
+      }
+    }
+    func release() {
+      let pending = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
+        let w = waiters
+        waiters.removeAll()
+        return w
+      }
+      pending.forEach { $0.resume() }
+    }
+  }
 
   final class LogBox {
     var lines: [String] = []
@@ -464,5 +515,170 @@ struct OtherAudioHoldTests {
     try! a.store.write(b)
     a.stop()
     #expect(a.records().map(\.id) == [b.id])
+  }
+
+  @Test("Mute on an output with neither control is reported unsupported, and the note names Mute")
+  func muteUnsupportedBoth() async {
+    let rig = Rig()
+    rig.volume.volume = nil
+    rig.volume.muted = nil
+    await rig.start(.mute)
+    #expect(rig.volume.writes.isEmpty && rig.records().isEmpty)
+    #expect(rig.sink.summaries.last?.failure == "unsupported_output")
+    #expect(rig.hold.isModeAvailable(.mute) == false)
+    #expect(rig.hold.isModeAvailable(.turnDown) == false)
+    #expect(rig.hold.isModeAvailable(.pauseMusic) == true)
+  }
+
+  @Test("A property that cannot be READ is not 'unsupported': the take is skipped, the mode stays available")
+  func unreadableIsNotUnsupported() async {
+    let rig = Rig()
+    rig.volume.muteUnreadable = true
+    await rig.start(.mute)
+    #expect(rig.volume.writes.isEmpty, "no volume-zero fallback on a read failure")
+    #expect(rig.records().isEmpty)
+    #expect(rig.sink.summaries.last?.failure == "output_read_failed")
+    #expect(rig.hold.isModeAvailable(.mute) == true)
+  }
+
+  @Test("A refused device write is not_applied and never restored")
+  func refusedWrite() async {
+    let rig = Rig()
+    rig.volume.refuseWrites = true
+    await rig.start(.turnDown)
+    #expect(rig.volume.writes.isEmpty)
+    #expect(rig.records().first?.volume == .notApplied)
+    rig.stop()
+    #expect(rig.sink.summaries.last?.volume == .notApplied)
+    #expect(rig.records().isEmpty)
+  }
+
+  @Test("A write whose read-back fails stays applied_unconfirmed, then unresolved at the end (P4, P5)")
+  func writeWithoutReadBack() async {
+    let rig = Rig()
+    rig.volume.unreadableAfterWrite = true
+    await rig.start(.turnDown)
+    #expect(rig.records().first?.volume == .appliedUnconfirmed)
+    rig.stop()
+    #expect(rig.sink.summaries.last?.volume == .unresolved)
+    #expect(rig.sink.summaries.last?.failure == "restore_failed")
+    #expect(rig.volume.writes == ["volume=0.1"], "no blind restore write")
+    #expect(rig.records().isEmpty, "unresolved is final (R2)")
+    #expect(rig.sink.defects.isEmpty, "a read failure is a condition, not our defect")
+  }
+
+  @Test("A restore write that is refused is unresolved and reported as restore_failed")
+  func restoreWriteRefused() async {
+    let rig = Rig()
+    await rig.start(.mute)
+    rig.volume.refuseWrites = true
+    rig.stop()
+    #expect(rig.volume.muted == true)
+    #expect(rig.sink.summaries.last?.mute == .unresolved)
+    #expect(rig.sink.summaries.last?.failure == "restore_failed")
+  }
+
+  @Test("A record update that cannot reach disk keeps the record for the next launch (R4)")
+  func recordUpdateFailureKeepsRecord() async {
+    let rig = Rig()
+    await rig.start(.mute)
+    // Make every further write fail: the directory becomes read-only.
+    try? FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: rig.dir.path)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: rig.dir.path)
+    }
+    rig.stop()
+    #expect(rig.volume.muted == false, "the live restore still happens")
+    #expect(rig.records().count == 1, "the stale recovery copy survives")
+    #expect(rig.records().first?.mute == .applied, "disk still says applied; nothing lied")
+    #expect(rig.sink.crumbs.contains("other_audio record_stale"))
+  }
+
+  @Test("The record is on disk BEFORE the device is written (P1)")
+  func recordPrecedesMutation() async {
+    let rig = Rig()
+    var recordsAtWrite = -1
+    rig.volume.onWrite = { recordsAtWrite = rig.records().count }
+    await rig.start(.mute)
+    #expect(recordsAtWrite == 1)
+  }
+
+  @Test("An orphan whose properties are already final is left untouched (P12)")
+  func orphanFinalLeftAlone() async {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = OtherAudioHoldStore(directory: dir)
+    var record = OtherAudioHoldRecord(
+      id: UUID(), pid: 77, mode: "mute", createdAt: Date(),
+      original: OutputVolumeSnapshot(deviceUID: "out-7", volume: 0.5, muted: false),
+      intendedMute: true, volume: .notApplied, mute: .skippedUserChanged, media: .nothingPaused)
+    try! store.write(record)
+    record.id = UUID()
+    record.mute = .restored
+    try! store.write(record)
+    let rig = Rig(pid: 1)
+    rig.volume.muted = true
+    let hold = OtherAudioHold(
+      dependencies: OtherAudioHold.Dependencies(
+        effects: OtherAudioEffects(volume: rig.volume, media: rig.media),
+        defaultOutputDeviceID: { 7 },
+        store: store, telemetry: rig.sink, log: { _ in }, nowMicros: { 0 },
+        sleep: { _ in }, pid: 1, isProcessAlive: { _ in false }))
+    hold.adoptOrphans()
+    #expect(rig.volume.writes.isEmpty)
+    #expect(store.readAll().isEmpty, "final records retire without any device command")
+  }
+
+  @Test("A late media settlement for take A never touches take B's record or row")
+  func lateMediaAfterNewHold() async {
+    let rig = Rig()
+    rig.media.deliverPauseImmediately = false
+    rig.media.resumeOutcome = .resumed
+    await rig.start(.pauseMusic)
+    rig.stop()
+    let holdA = rig.media.pendingPause.first!.0
+    // Take B starts and ends under Mute while A's pause is still queued.
+    rig.media.deliverPauseImmediately = true
+    await rig.start(.mute)
+    let holdB = rig.records().first { $0.mode == "mute" }!.id
+    rig.media.completeQueuedPause(with: .paused(targets: ["com.apple.Music"]))
+    #expect(rig.sink.mediaSettledHolds.last == holdA)
+    #expect(rig.store.read(id: holdB)?.pausedTargets == [], "B untouched")
+    #expect(rig.store.read(id: holdA) == nil, "A retired after its media settled")
+    rig.stop()
+    #expect(rig.records().isEmpty)
+  }
+
+  @Test("Repeated transitions apply and restore exactly once per take, for either backend")
+  func exactOnceBothBackends() async {
+    let rig = Rig()
+    for backend in [OtherAudioBackend.parakeet, .whisperKit] {
+      await rig.start(.mute, backend: backend)
+      rig.hold.handle(.recording, backend: backend, mode: .mute, startDelay: 0)  // repeated
+      await Task.yield()
+      #expect(rig.volume.writes.filter { $0 == "mute=true" }.count == 1)
+      rig.hold.handle(.transcribing, backend: backend, mode: .mute, startDelay: 0)
+      rig.hold.handle(.polishing, backend: backend, mode: .mute, startDelay: 0)
+      rig.hold.handle(.complete, backend: backend, mode: .mute, startDelay: 0)
+      #expect(rig.volume.writes.filter { $0 == "mute=false" }.count == 1)
+      #expect(rig.sink.summaries.count == 1)
+      rig.volume.writes.removeAll()
+      rig.sink.summaries.removeAll()
+    }
+  }
+
+  @Test("A take that ends while the delayed apply is asleep cancels it (nothing written)")
+  func endWhileAsleepCancels() async {
+    let rig = Rig()
+    rig.delayGate.arm()
+    rig.hold.handle(.recording, backend: .parakeet, mode: .mute, startDelay: 0.25)
+    // Let the apply task reach the sleep, on a real signal.
+    while rig.delayGate.entered == 0 { await Task.yield() }
+    rig.stop()
+    rig.delayGate.release()
+    await Task.yield()
+    await Task.yield()
+    #expect(rig.volume.writes.isEmpty)
+    #expect(rig.records().isEmpty)
+    #expect(rig.sink.summaries.last?.mute == .notApplied)
   }
 }

@@ -13,22 +13,25 @@ import Foundation
 @MainActor
 final class LiveOtherAudioTelemetrySink: OtherAudioTelemetrySink {
   private let telemetry: TelemetryService
-  /// The take id the summary landed on, so the media half updates THAT row and
-  /// never a later take's.
-  private var summaryTakeID: String?
+  /// The take id each hold's summary landed on, keyed by hold id, so a media
+  /// half that settles late updates ITS take's row and never a later take's.
+  private var pendingTakeIDs: [UUID: String] = [:]
 
   init(telemetry: TelemetryService = .shared) {
     self.telemetry = telemetry
   }
 
   func recordTakeSummary(_ summary: OtherAudioTakeSummary) {
-    summaryTakeID = telemetry.recordOtherAudioTake(
+    let takeID = telemetry.recordOtherAudioTake(
       OtherAudioTerminalFacts(
         mode: summary.mode, volume: summary.volume.rawValue, mute: summary.mute.rawValue,
         media: summary.media.rawValue, outputTransport: summary.outputTransport,
         applyMicros: summary.applyMicros, restoreMicros: summary.restoreMicros,
         recordMicros: summary.recordMicros, failure: summary.failure))
-    if summaryTakeID == nil {
+    if summary.media == .pending, let takeID {
+      pendingTakeIDs[summary.holdID] = takeID
+    }
+    if takeID == nil {
       Task {
         await AppLogger.shared.log(
           "other_audio summary: no open take entry", level: .info, category: "OtherAudio")
@@ -36,9 +39,9 @@ final class LiveOtherAudioTelemetrySink: OtherAudioTelemetrySink {
     }
   }
 
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition) {
-    guard let takeID = summaryTakeID else { return }
-    telemetry.updateOtherAudioMedia(takeID: takeID, media: media.rawValue)
+  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?) {
+    guard let takeID = pendingTakeIDs.removeValue(forKey: holdID) else { return }
+    telemetry.updateOtherAudioMedia(takeID: takeID, media: media.rawValue, failure: failure)
   }
 
   func breadcrumb(_ message: String, data: [String: String]) {

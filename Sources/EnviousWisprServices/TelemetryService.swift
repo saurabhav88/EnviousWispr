@@ -4071,8 +4071,11 @@ public final class TelemetryService {
   }
 
   /// The media half settles later; update ONLY the take that carried the summary.
-  public func updateOtherAudioMedia(takeID: String, media: String) {
-    takeStages.update(takeID: takeID) { $0.otherAudio?.media = media }
+  public func updateOtherAudioMedia(takeID: String, media: String, failure: String? = nil) {
+    takeStages.update(takeID: takeID) {
+      $0.otherAudio?.media = media
+      if let failure { $0.otherAudio?.failure = failure }
+    }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

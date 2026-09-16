@@ -38,6 +38,9 @@ struct OtherAudioTakeSummary: Equatable, Sendable {
   /// Closed operation/reason for a failure that is a CONDITION, not our defect
   /// (`record_failed`, `unsupported_output`, `consent_needed`, ...). nil when none.
   var failure: String?
+  /// Local correlation only, so a late media settlement reaches ITS take's row.
+  /// Never included in vendor properties.
+  var holdID: UUID = UUID()
 }
 
 /// Where the hold reports. The live sink folds the summary onto the take's
@@ -46,9 +49,9 @@ struct OtherAudioTakeSummary: Equatable, Sendable {
 @MainActor
 protocol OtherAudioTelemetrySink: AnyObject {
   func recordTakeSummary(_ summary: OtherAudioTakeSummary)
-  /// Called once the media half of the same take settles, possibly after the
-  /// summary; the sink updates the row only if that take is still open.
-  func recordMediaSettled(_ media: OtherAudioMediaDisposition)
+  /// Called once the media half of the same hold settles, possibly after the
+  /// summary; the sink updates only the row that hold's summary landed on.
+  func recordMediaSettled(_ media: OtherAudioMediaDisposition, holdID: UUID, failure: String?)
   func breadcrumb(_ message: String, data: [String: String])
   func captureDefect(_ message: String, data: [String: String])
 }
@@ -85,6 +88,8 @@ final class OtherAudioHold {
     var applied = false
     var applyMicros: Int?
     var recordMicros: Int?
+    /// A media condition that settled during the take (`consent_needed`, ...).
+    var failure: String?
   }
 
   private var live: Live?
@@ -131,6 +136,28 @@ final class OtherAudioHold {
 
     let volumeRead = volume.readVolume(of: device.id)
     let muteRead = volume.readMute(of: device.id)
+    let transport =
+      AudioDeviceEnumerator.transportLabel(forTransportType: device.transportTypeRaw) ?? "other"
+    // A read FAILURE is not "unsupported": the volume-zero fallback is authorised
+    // only for a device with no mute control, never for one we could not read.
+    let requiredReadFailed: Bool
+    switch mode {
+    case .turnDown: requiredReadFailed = volumeRead == .unreadable
+    case .mute:
+      requiredReadFailed =
+        muteRead == .unreadable || (muteRead == .unsupported && volumeRead == .unreadable)
+    case .nothing, .pauseMusic: requiredReadFailed = false
+    }
+    if requiredReadFailed {
+      deps.log("hold skipped mode=\(mode.rawValue) device=\(device.uid) reason=output_read_failed")
+      deps.telemetry.breadcrumb(
+        "other_audio skipped", data: ["mode": mode.rawValue, "reason": "output_read_failed"])
+      deps.telemetry.recordTakeSummary(
+        OtherAudioTakeSummary(
+          mode: mode.rawValue, volume: .notApplied, mute: .notApplied, media: .nothingPaused,
+          outputTransport: transport, failure: "output_read_failed"))
+      return
+    }
     var original = OutputVolumeSnapshot(deviceUID: device.uid)
     if case .value(let v) = volumeRead { original.volume = v }
     if case .value(let m) = muteRead { original.muted = m }
@@ -173,8 +200,7 @@ final class OtherAudioHold {
       deps.telemetry.recordTakeSummary(
         OtherAudioTakeSummary(
           mode: mode.rawValue, volume: .notApplied, mute: .notApplied, media: .nothingPaused,
-          outputTransport: AudioDeviceEnumerator.transportLabel(forTransportType: device.transportTypeRaw) ?? "other",
-          failure: reason == "already_muted" ? nil : reason))
+          outputTransport: transport, failure: reason == "already_muted" ? nil : reason))
       return
     }
 
@@ -189,13 +215,11 @@ final class OtherAudioHold {
       deps.telemetry.recordTakeSummary(
         OtherAudioTakeSummary(
           mode: mode.rawValue, volume: .notApplied, mute: .notApplied, media: .nothingPaused,
-          outputTransport: AudioDeviceEnumerator.transportLabel(forTransportType: device.transportTypeRaw) ?? "other",
-          failure: "record_failed"))
+          outputTransport: transport, failure: "record_failed"))
       return
     }
     let recordMicros = deps.nowMicros() - t0
 
-    let transport = AudioDeviceEnumerator.transportLabel(forTransportType: device.transportTypeRaw) ?? "other"
     var current = Live(record: record, backend: backend, transport: transport)
     current.recordMicros = recordMicros
     live = current
@@ -204,7 +228,9 @@ final class OtherAudioHold {
     )
 
     if mode == .pauseMusic {
+      // No property is selected: nothing to apply, no apply task, no timings.
       startMediaPause(holdID: record.id)
+      return
     }
 
     let holdID = record.id
@@ -274,9 +300,11 @@ final class OtherAudioHold {
     }
 
     current.applied = true
-    current.applyMicros = deps.nowMicros() - t0
     live = current
     persist(current.record)
+    // The record write is part of what the transition path pays for (plan §8).
+    current.applyMicros = deps.nowMicros() - t0 + (current.recordMicros ?? 0)
+    live = current
     deps.log(
       "hold id=\(holdID) applied mode=\(current.record.mode) volume=\(current.record.volume.rawValue) "
         + "mute=\(current.record.mute.rawValue) elapsed_us=\(current.applyMicros ?? -1)")
@@ -321,8 +349,12 @@ final class OtherAudioHold {
     mutateRecord(holdID) { $0.media = disposition }
     if let reason {
       deps.telemetry.breadcrumb("other_audio media", data: ["reason": reason])
+      if var current = live, current.record.id == holdID {
+        current.failure = reason
+        live = current
+      }
     }
-    deps.telemetry.recordMediaSettled(disposition)
+    deps.telemetry.recordMediaSettled(disposition, holdID: holdID, failure: reason)
     deps.log(
       "hold id=\(holdID) media settled disposition=\(disposition.rawValue) reason=\(reason ?? "none")"
     )
@@ -359,12 +391,14 @@ final class OtherAudioHold {
       if current.record.mute == .appliedUnconfirmed { current.record.mute = .notApplied }
     }
 
+    let hasPropertyObligation =
+      current.record.volume.blocksRetirement || current.record.mute.blocksRetirement
     let t0 = deps.nowMicros()
     restoreProperties(&current.record)
-    let restoreMicros = current.applied ? deps.nowMicros() - t0 : nil
 
     live = nil
     persist(current.record)
+    let restoreMicros = hasPropertyObligation ? deps.nowMicros() - t0 : nil
 
     deps.log(
       "hold id=\(holdID) restored reason=\(reason) volume=\(current.record.volume.rawValue) "
@@ -381,7 +415,11 @@ final class OtherAudioHold {
         mode: current.record.mode, volume: current.record.volume, mute: current.record.mute,
         media: current.record.media, outputTransport: current.transport,
         applyMicros: current.applyMicros, restoreMicros: restoreMicros,
-        recordMicros: current.recordMicros, failure: nil))
+        recordMicros: current.recordMicros,
+        failure: current.failure
+          ?? ((current.record.volume == .unresolved || current.record.mute == .unresolved)
+            ? "restore_failed" : nil),
+        holdID: holdID))
 
     if current.record.media == .pending {
       deps.effects.media.resume(holdID: holdID) { [weak self] outcome in
@@ -393,7 +431,7 @@ final class OtherAudioHold {
         }
       }
     }
-    retireIfResolved(holdID, known: current.record)
+    retireIfResolved(holdID)
   }
 
   /// P5-P9 over one record, against the device it names. Mutates dispositions
@@ -413,8 +451,7 @@ final class OtherAudioHold {
       guard record.appliedVolume != nil else {
         // `applied` is only ever written together with its read-back (P3); a
         // record without one is our own invariant broken, not a device condition.
-        deps.telemetry.captureDefect(
-          "applied volume without read-back", data: ["hold": record.id.uuidString])
+        deps.telemetry.captureDefect("applied volume without read-back", data: ["property": "volume"])
         record.volume = .unresolved
         break
       }
@@ -440,8 +477,7 @@ final class OtherAudioHold {
     switch record.mute {
     case .applied:
       guard record.appliedMute != nil else {
-        deps.telemetry.captureDefect(
-          "applied mute without read-back", data: ["hold": record.id.uuidString])
+        deps.telemetry.captureDefect("applied mute without read-back", data: ["property": "mute"])
         record.mute = .unresolved
         break
       }
@@ -465,19 +501,11 @@ final class OtherAudioHold {
     }
   }
 
-  private func retireIfResolved(_ holdID: UUID, known: OtherAudioHoldRecord? = nil) {
-    if let known {
-      if known.mayRetire {
-        deps.store.remove(id: holdID)
-        deps.log("record retired id=\(holdID)")
-      }
-      return
-    }
-    // Read the recovery copy: this is the only place the file decides, and only
-    // whether every obligation has already been recorded final.
-    guard let record = deps.store.read(id: holdID) else { return }
-    if record.mayRetire {
-      deps.store.remove(id: holdID)
+  /// R1 against the PERSISTED copy (R4): a final update that failed to reach disk
+  /// leaves the record for the next launch rather than deleting it on an
+  /// in-memory verdict nothing recorded.
+  private func retireIfResolved(_ holdID: UUID) {
+    if deps.store.removeIfResolved(id: holdID) {
       deps.log("record retired id=\(holdID)")
     }
   }
@@ -493,12 +521,11 @@ final class OtherAudioHold {
       return true
     case .turnDown, .mute:
       guard let deviceID = deps.defaultOutputDeviceID() else { return false }
-      let volume = deps.effects.volume
-      let volumeOK: Bool
-      if case .value = volume.readVolume(of: deviceID) { volumeOK = true } else { volumeOK = false }
-      if mode == .turnDown { return volumeOK }
-      if case .value = volume.readMute(of: deviceID) { return true }
-      return volumeOK
+      // A read FAILURE does not prove the device lacks the capability.
+      let volumeRead = deps.effects.volume.readVolume(of: deviceID)
+      if mode == .turnDown { return volumeRead != .unsupported }
+      let muteRead = deps.effects.volume.readMute(of: deviceID)
+      return muteRead != .unsupported || volumeRead != .unsupported
     }
   }
 
@@ -547,7 +574,7 @@ final class OtherAudioHold {
           record.media = .nothingPaused
           persist(record)
         }
-        retireIfResolved(record.id, known: record)
+        retireIfResolved(record.id)
       }
     }
   }

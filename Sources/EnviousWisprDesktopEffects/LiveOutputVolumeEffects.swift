@@ -47,7 +47,11 @@ package final class LiveOutputVolumeEffects: OutputVolumeControlling {
 
   package func readVolume(of device: AudioDeviceID) -> OutputPropertyRead<Float> {
     var address = Self.volumeAddress
-    guard Self.isSettable(device, &address) else { return .unsupported }
+    switch Self.settability(device, &address) {
+    case .supported: break
+    case .unsupported: return .unsupported
+    case .unreadable: return .unreadable
+    }
     var value: Float32 = 0
     var size = UInt32(MemoryLayout<Float32>.size)
     let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value)
@@ -56,7 +60,11 @@ package final class LiveOutputVolumeEffects: OutputVolumeControlling {
 
   package func readMute(of device: AudioDeviceID) -> OutputPropertyRead<Bool> {
     var address = Self.muteAddress
-    guard Self.isSettable(device, &address) else { return .unsupported }
+    switch Self.settability(device, &address) {
+    case .supported: break
+    case .unsupported: return .unsupported
+    case .unreadable: return .unreadable
+    }
     var value: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
     let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value)
@@ -95,15 +103,27 @@ package final class LiveOutputVolumeEffects: OutputVolumeControlling {
       mElement: kAudioObjectPropertyElementMain)
   }
 
+  private enum Settability { case supported, unsupported, unreadable }
+
   /// Existence AND settability; the settable query returns a status and a
-  /// Boolean, and both must say yes.
+  /// Boolean. A failed QUERY is `unreadable`, not `unsupported`: it proves
+  /// nothing about the device.
+  private static func settability(
+    _ device: AudioDeviceID, _ address: inout AudioObjectPropertyAddress
+  ) -> Settability {
+    guard AudioObjectHasProperty(device, &address) else { return .unsupported }
+    var settable: DarwinBoolean = false
+    guard AudioObjectIsPropertySettable(device, &address, &settable) == noErr else {
+      return .unreadable
+    }
+    return settable.boolValue ? .supported : .unsupported
+  }
+
   private static func isSettable(
     _ device: AudioDeviceID, _ address: inout AudioObjectPropertyAddress
   ) -> Bool {
-    guard AudioObjectHasProperty(device, &address) else { return false }
-    var settable: DarwinBoolean = false
-    guard AudioObjectIsPropertySettable(device, &address, &settable) == noErr else { return false }
-    return settable.boolValue
+    if case .supported = settability(device, &address) { return true }
+    return false
   }
 
   private static func transportType(of device: AudioDeviceID) -> UInt32? {

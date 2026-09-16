@@ -108,6 +108,9 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
     queue.async { [self] in
       let targets = state.withLock { $0.pausedByHold.removeValue(forKey: holdID) } ?? []
       let outcome = resumeOnQueue(targets)
+      // The serial queue has now passed this hold's pause and cleanup; the mark
+      // has done its job and must not accumulate across takes.
+      state.withLock { _ = $0.ended.remove(holdID) }
       Task { @MainActor in completion(outcome) }
     }
   }
@@ -137,8 +140,7 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
     var consentDenied = false
     var failed = false
     for target in running {
-      if state.withLock({ $0.ended.contains(holdID) }) { break }
-      if env.now().timeIntervalSince(started) > Self.issueBudget { break }
+      guard mayIssue(holdID: holdID, started: started) else { break }
       switch env.consent(target) {
       case .granted: break
       case .needed:
@@ -150,16 +152,21 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
       case .notRunning: continue
       }
       guard env.isRunning(target) else { continue }
+      // Re-checked before EACH event, not once per target: a `player state`
+      // query on a slow player can outlive the take, and a pause issued after
+      // the take ended would be a new effect, not a late completion.
+      guard mayIssue(holdID: holdID, started: started) else { break }
       guard playerState(target) == .playing else { continue }
+      guard mayIssue(holdID: holdID, started: started) else { break }
       if env.run("tell application id \"\(target)\" to pause") != nil {
         paused.append(target)
+        // Recorded per target, immediately: a later target's failure never
+        // erases an earlier success, and a resume queued behind reads this.
+        let recorded = paused
+        state.withLock { $0.pausedByHold[holdID] = recorded }
       } else {
         failed = true
       }
-    }
-    if !paused.isEmpty {
-      let recorded = paused
-      state.withLock { $0.pausedByHold[holdID] = recorded }
     }
     if consentNeeded {
       // Once per launch, raise the prompt on this queue so the NEXT take works.
@@ -177,21 +184,40 @@ package final class LiveMediaPlaybackEffects: MediaPlaybackControlling {
     return .nothingPlaying
   }
 
+  /// M3/M4: cleanup for the targets a pause recorded. A target the user already
+  /// resumed or stopped counts as cleanup done (M3); a target whose state cannot
+  /// be read, or whose `play` fails, or whose consent is gone, is M4.
   private nonisolated func resumeOnQueue(_ targets: [String]) -> MediaResumeOutcome {
     guard !targets.isEmpty else { return .nothingToResume }
-    var resumed = false
     var failed = false
-    for target in targets where env.isRunning(target) {
-      guard env.consent(target) == .granted else { continue }
-      guard playerState(target) == .paused else { continue }
-      if env.run("tell application id \"\(target)\" to play") != nil {
-        resumed = true
-      } else {
+    for target in targets {
+      guard env.isRunning(target) else { continue }
+      switch env.consent(target) {
+      case .granted: break
+      case .notRunning: continue
+      case .needed, .denied:
         failed = true
+        continue
+      }
+      switch playerState(target) {
+      case .playing, .stopped:
+        continue  // the user already resumed or stopped it
+      case .unknown:
+        failed = true
+        continue
+      case .paused:
+        guard env.isRunning(target) else { continue }
+        if env.run("tell application id \"\(target)\" to play") == nil {
+          failed = true
+        }
       }
     }
-    if resumed { return .resumed }
-    return failed ? .failed : .nothingToResume
+    return failed ? .failed : .resumed
+  }
+
+  private nonisolated func mayIssue(holdID: UUID, started: Date) -> Bool {
+    !state.withLock { $0.ended.contains(holdID) }
+      && env.now().timeIntervalSince(started) <= Self.issueBudget
   }
 
   /// Sent only after the running check, so it never launches the target; the

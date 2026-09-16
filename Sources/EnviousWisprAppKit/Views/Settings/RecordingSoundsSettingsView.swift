@@ -1,3 +1,4 @@
+import CoreAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -20,6 +21,10 @@ struct RecordingSoundsSettingsView: View {
   @Environment(DictationRuntime.self) private var dictationRuntime
   @State private var activePreviewTask: Task<Void, Never>?
   @State private var unavailableNote: String?
+  /// #1413: the default-output listener that keeps the availability note honest
+  /// when the user switches speakers with the page open. A read/observe, not a
+  /// desktop effect; released with the page.
+  @State private var outputListener: AudioObjectPropertyListenerBlock?
 
   private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
 
@@ -124,6 +129,9 @@ struct RecordingSoundsSettingsView: View {
         }
       }
     }
+    .onAppear {
+      startOutputListener()
+    }
     .onDisappear {
       // This is a plain Task in @State, not a `.task {}` modifier, so SwiftUI
       // does NOT auto-cancel it when the page goes away: leaving Sounds
@@ -132,6 +140,7 @@ struct RecordingSoundsSettingsView: View {
       // 550ms wait, on a page nobody is looking at anymore (Codex code-diff
       // review r7, #1618).
       activePreviewTask?.cancel()
+      stopOutputListener()
     }
     .onChange(of: liveRecordingState.isDictationActive) { _, isActive in
       // Closes the window rather than racing it: cancel the pending preview
@@ -254,6 +263,38 @@ extension RecordingSoundsSettingsView {
       return
         "Pauses Music or Spotify if it is playing, then resumes it when you stop. macOS may ask for permission the first time; a take that needs permission is not paused."
     }
+  }
+
+  private static var defaultOutputAddress: AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+  }
+
+  private func startOutputListener() {
+    guard outputListener == nil else { return }
+    let refresh: @MainActor @Sendable () -> Void = {
+      refreshAvailability(settings.otherAudioWhileDictating)
+    }
+    let listener: AudioObjectPropertyListenerBlock = { _, _ in
+      Task { @MainActor in refresh() }
+    }
+    var address = Self.defaultOutputAddress
+    if AudioObjectAddPropertyListenerBlock(
+      AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, listener) == noErr
+    {
+      outputListener = listener
+    }
+    refresh()
+  }
+
+  private func stopOutputListener() {
+    guard let listener = outputListener else { return }
+    var address = Self.defaultOutputAddress
+    _ = AudioObjectRemovePropertyListenerBlock(
+      AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, listener)
+    outputListener = nil
   }
 
   private func refreshAvailability(_ mode: OtherAudioWhileDictating) {
