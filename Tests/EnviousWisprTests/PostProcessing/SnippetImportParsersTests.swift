@@ -67,6 +67,15 @@ struct SnippetImportParsersTests {
     expectPairs(parsed.candidates, [("my email", "hello@example.com")])
   }
 
+  @Test("A quoted trigger joined by a colon splits at the colon, and a doubled quote inside is skipped")
+  func quotedColonPair() throws {
+    let text = "\"sig\": \"Hello, world\"\n\"say \"\"hi\"\"\": \"Hello, world\"\n\"url\": https://example.com"
+    let result = try PasteSnippetsImportSource.parse(text: text, format: .auto)
+    expectPairs(
+      result.candidates,
+      [("sig", "Hello, world"), ("say \"\"hi\"\"", "Hello, world"), ("url", "https://example.com")])
+  }
+
   @Test("The live preview refuses what Continue would refuse")
   func previewValidates() {
     #expect(throws: SnippetImportValidationError.unusableTrigger(trigger: "!!!")) {

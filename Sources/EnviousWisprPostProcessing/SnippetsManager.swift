@@ -187,9 +187,11 @@ public final class SnippetsManager: @unchecked Sendable {
   /// answer for an unreadable file would switch every snippet off for the session while the
   /// user's snippets still sit on disk. Missing and archived ARE empty, and are adopted.
   public func refreshedVocabulary() -> SnippetVocabulary? {
-    // Non-blocking, as `loadedVocabulary` is: contention reads as nil and the published
-    // list stands.
-    guard let result = try? withLock(blocking: false, { loadWhileLocked() }) else { return nil }
+    // BLOCKING, unlike `loadedVocabulary`: an explicit refresh (the export's re-read after
+    // the save panel, the import's review) waits for an in-progress writer rather than
+    // silently answering with an older published snapshot, which the export would then
+    // write as a backup (cloud review, PR #3006).
+    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return nil }
     switch result {
     case .loaded(let vocabulary): return vocabulary
     case .missing, .archivedCorrupt:

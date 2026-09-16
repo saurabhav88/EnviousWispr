@@ -217,6 +217,32 @@ struct SnippetsCoordinatorImportTests {
     #expect(published == 1)
   }
 
+  @Test("An explicit refresh waits for a writer that holds the lock rather than answering stale")
+  func refreshWaitsForAWriter() async throws {
+    let (coordinator, manager) = makeCoordinator()
+    let before = Snippet(trigger: "before", expansion: "x")
+    #expect(coordinator.save(before))
+    // Another holder (its own descriptor, as another process would be) keeps the lock for
+    // 400 ms. A blocking refresh must WAIT for it; a non-blocking one answers at once with
+    // the published list, which is the stale-backup shape the cloud review named.
+    let url = manager.storageURL
+    let holder = Task.detached {
+      try DurableJSONFile.withExclusiveLock(on: url, blocking: true) {
+        Thread.sleep(forTimeInterval: 0.4)
+      }
+    }
+    try await Task.sleep(for: .milliseconds(80))
+    let started = ContinuousClock.now
+    let refreshed = coordinator.refreshFromDisk()
+    let waited = ContinuousClock.now - started
+    #expect(refreshed.snippets.map(\.trigger) == ["before"])
+    #expect(waited >= .milliseconds(200), "the refresh answered in \(waited) without waiting for the holder")
+    _ = try await holder.value
+    let other = SnippetsManager(fileURL: url)
+    try other.upsert(Snippet(trigger: "added after", expansion: "y"))
+    #expect(coordinator.refreshFromDisk().snippets.map(\.trigger) == ["added after", "before"])
+  }
+
   @Test("Every store error has a sentence, including the stale one")
   func staleErrorHasASentence() {
     let sentence = SnippetsCoordinator.message(for: SnippetStoreError.listChangedDuringReview)

@@ -87,12 +87,23 @@ package enum SnippetLineListParser {
     }) {
       return (String(line[..<range.lowerBound]), String(line[range.upperBound...]))
     }
-    // A quoted CSV pair on one line: "a","b". The left side is handed back WITH its quotes so
-    // the caller strips exactly one pair, the same as for every other line.
-    if line.hasPrefix("\""), let close = line.dropFirst().firstIndex(of: "\"") {
-      let after = line[line.index(after: close)...].drop(while: { $0 == " " })
-      if after.hasPrefix(",") {
-        return (String(line[...close]), String(after.dropFirst()))
+    // A quoted pair on one line: `"a","b"` or `"a": "b"`, the same two joiners the sniff
+    // admits after a leading quoted field, with a doubled quote inside the field skipped as
+    // the sniff skips it. The left side is handed back WITH its quotes so the caller strips
+    // exactly one pair, the same as for every other line.
+    if line.hasPrefix("\"") {
+      var tail = line.dropFirst()
+      while let close = tail.firstIndex(of: "\"") {
+        tail = line[line.index(after: close)...]
+        if tail.hasPrefix("\"") {
+          tail = tail.dropFirst()
+          continue
+        }
+        let after = tail.drop(while: { $0 == " " })
+        if after.hasPrefix(",") || (after.hasPrefix(":") && !after.hasPrefix("://")) {
+          return (String(line[...close]), String(after.dropFirst()))
+        }
+        break
       }
     }
     if let comma = line.firstIndex(of: ",") {
