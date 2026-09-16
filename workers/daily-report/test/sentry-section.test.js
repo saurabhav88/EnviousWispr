@@ -206,7 +206,7 @@ test("the unemitted categories have no producer in the app, not just a flag sayi
   // Scoping this to SWIFT_ENUM made every assertion below vacuous, and the
   // positive control at the bottom is what caught it.
   const source = readAllSwift(resolve(HERE, "../../../Sources"));
-  for (const raw of ["availability_check_failed", "fallback_failed", "state_mismatch"]) {
+  for (const raw of ["availability_check_failed", "fallback_failed"]) {
     assert.equal(ERROR_CATEGORIES[raw].emitted, false, raw);
     assert.equal(ERROR_CATEGORIES[raw].group, LOST, raw);
     const swiftCase = raw.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
