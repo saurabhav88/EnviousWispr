@@ -5,8 +5,8 @@ import SwiftUI
 
 /// Audio input device selection and noise processing settings.
 ///
-/// The three microphone controls (Input Device, Other Audio While You
-/// Dictate, Microphone Readiness) share ONE card as icon-labelled rows with a
+/// The three microphone controls (Input device, Media during dictation,
+/// Microphone readiness) share ONE card as icon-labelled rows with a
 /// trailing control, divided by hairlines (founder mockup, 2026-09-16). Each
 /// row's explainer sentence lives behind its title's "?" instead of always
 /// showing, so the row stays one line (founder, 2026-09-16). The Bluetooth
@@ -80,6 +80,7 @@ struct AudioSettingsView: View {
                   }
                 }
                 .labelsHidden()
+                .tint(.stAccent)
                 .frame(maxWidth: 220, alignment: .leading)
 
                 if settingsManager.preferredInputDeviceIDOverride.isEmpty, let socketDevice {
@@ -144,7 +145,7 @@ struct AudioSettingsView: View {
           VStack(alignment: .leading, spacing: 8) {
             SettingsControlRow(
               icon: "timer",
-              title: "Microphone Readiness",
+              title: "Microphone readiness",
               description:
                 "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words."
             ) {

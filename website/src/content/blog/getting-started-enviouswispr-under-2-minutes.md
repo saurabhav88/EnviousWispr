@@ -124,7 +124,7 @@ Verify microphone access in **System Settings > Privacy & Security > Microphone*
 
 ### "Transcription is slow"
 
-The first transcription after launch includes model loading time. Subsequent transcriptions are faster because the model stays in memory. If you want near-instant response from the first dictation, keep EnviousWispr running in the background. You can also set Microphone Readiness under Settings, Microphone to 60 sec or Always to keep the engine ready between recordings.
+The first transcription after launch includes model loading time. Subsequent transcriptions are faster because the model stays in memory. If you want near-instant response from the first dictation, keep EnviousWispr running in the background. You can also set Microphone readiness under Settings, Microphone to 60 sec or Always to keep the engine ready between recordings.
 
 ### Something else?
 

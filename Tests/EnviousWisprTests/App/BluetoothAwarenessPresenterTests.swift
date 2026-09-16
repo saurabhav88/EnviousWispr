@@ -776,14 +776,14 @@ private func emitEquals(
         == "After your mic has been idle, wait 1 to 2 seconds before speaking.")
     #expect(
       BluetoothTipsCopy.tipReadiness
-        == "Microphone Readiness keeps follow-up dictations ready for up to 30 seconds (on by default)."
+        == "Microphone readiness keeps follow-up dictations ready for up to 30 seconds (on by default)."
     )
     #expect(
       BluetoothTipsCopy.tipHeadphones == "Built-in or wired mics usually avoid this startup delay.")
     #expect(BluetoothTipsCopy.cardTitle == "Bluetooth mic detected")
     #expect(
       BluetoothTipsCopy.cardIntro == "Bluetooth microphones can take a moment on a cold start.")
-    #expect(BluetoothTipsCopy.settingsHeader == "When using Bluetooth")
+    #expect(BluetoothTipsCopy.settingsHeader == "Using a Bluetooth microphone?")
     #expect(
       BluetoothTipsCopy.settingsPS
         == "Built-in, wired, and USB mics do not have this Bluetooth startup delay.")

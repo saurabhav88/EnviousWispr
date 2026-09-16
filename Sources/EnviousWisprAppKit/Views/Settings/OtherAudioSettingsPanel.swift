@@ -5,7 +5,7 @@ import SwiftUI
 
 /// #1413: what happens to everything else your Mac is playing while you
 /// dictate. One four-way choice, off by default; a change applies to the next
-/// take. Lives on the Microphone page above Microphone Readiness (founder,
+/// take. Lives on the Microphone page above Microphone readiness (founder,
 /// 2026-09-16: it is about the take's audio, not about the start/stop sounds).
 ///
 /// Renders as one row of the shared Microphone card (`AudioSettingsView`),
@@ -29,15 +29,15 @@ struct OtherAudioSettingsPanel: View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsControlRow(
         icon: "speaker.wave.2.fill",
-        title: "Other Audio While You Dictate",
+        title: "Media during dictation",
         description: Self.footnote(for: settings.otherAudioWhileDictating)
       ) {
         BrandedSegmentedPicker(
           options: [
-            ("Nothing", nil, OtherAudioWhileDictating.nothing),
-            ("Turn down", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
+            ("Continue", "play.fill", OtherAudioWhileDictating.nothing),
+            ("Lower", "speaker.wave.1", OtherAudioWhileDictating.turnDown),
             ("Mute", "speaker.slash", OtherAudioWhileDictating.mute),
-            ("Pause music", "pause.circle", OtherAudioWhileDictating.pauseMusic),
+            ("Pause", "pause.circle", OtherAudioWhileDictating.pauseMusic),
           ],
           selection: $settings.otherAudioWhileDictating
         )
