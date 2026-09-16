@@ -56,7 +56,7 @@ final class LiveOtherAudioTelemetrySink: OtherAudioTelemetrySink {
 
   func captureDefect(_ message: String, data: [String: String]) {
     SentryBreadcrumb.captureError(
-      OtherAudioDefect(message: message), category: .stateMismatch, stage: "other_audio",
+      OtherAudioDefect(message: message), category: .otherAudioDefect, stage: "other_audio",
       extra: data)
   }
 }

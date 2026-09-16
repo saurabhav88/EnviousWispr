@@ -94,6 +94,11 @@ export const ERROR_CATEGORIES = Object.freeze({
   // ever attempted, so it cannot be counted as one that was lost.
   hotkey_registration_failed: { group: DEGRADED, deliveryProven: true, emitted: true, label: "dictation keybind could not be registered" },
 
+  // #1413: the other-audio hold broke one of its own invariants. The dictation
+  // is untouched (the hold runs beside the take, never in its path); at worst
+  // the user's volume or a paused player was not put back.
+  other_audio_defect: { group: DEGRADED, deliveryProven: true, emitted: true, label: "other-audio hold hit an app defect" },
+
   // Heart failures. Terminal: no text reached the user.
   audio_capture_failed: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture failed" },
   audio_capture_stalled: { group: LOST, deliveryProven: true, emitted: true, label: "microphone capture stalled" },
