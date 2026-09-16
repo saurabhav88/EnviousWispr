@@ -39,14 +39,16 @@ APP_LOG="$LOG_DIR/app.log"
 ENV_FILE="$HOME/.config/enviouswispr/nightly-battery.env"
 mkdir -p "$LOG_DIR"
 
-# The gated suites, Bundle/Type, one per line. Add a suite here when it gains a
-# real-device or real-model `.enabled(if:)` gate. Regenerate the candidates with:
+# The gated suites run through the Xcode bundle, Bundle/Type, one per line. Add
+# a suite here when it gains a real-device or real-model `.enabled(if:)` gate.
+# The MICROPHONE suite (AudioCaptureManagerLiveInputTests) is deliberately not
+# here: it runs through scripts/test-real-microphone.sh below. Regenerate the
+# candidates with:
 #   grep -rlE "shippedModelIsInstalled|modelsInstalled|firstEligibleRealDevice|ShippedBackendLatency" Tests
 SUITES=(
   "EnviousWisprASRTests/ParakeetRealBoundaryTests"
   "EnviousWisprASRTests/WhisperKitWordTimingRealBoundaryTests"
   "EnviousWisprTests/ShippedBackendLatencyTests"
-  "EnviousWisprTests/AudioCaptureManagerLiveInputTests"
   "EnviousWisprTests/FileImportRealBoundaryTests"
   "EnviousWisprTests/KernelFrozenBindGuardTests"
   "EnviousWisprTests/SpeakerLabelerTests"
@@ -200,6 +202,24 @@ fi
 
 fails=0
 summary=()
+# The microphone suite is NOT run through the Xcode bundle (cloud review r5):
+# that bundle has its own TCC identity and the suite SKIPS there, which the
+# per-suite loop below would have counted as "ran". scripts/test-real-microphone.sh
+# is the honest route: SwiftPM under the invoking process's grant, a skip or a
+# zero-test run is a FAILURE, and it carries its own shutdown watchdog. Under
+# launchd the grant belongs to the job's process, so the first scheduled run may
+# fail on TCC; that failure is the receipt to act on (grant once, rerun), never
+# a skip to ignore.
+mic_log="$LOG_DIR/nightly-battery-real-microphone.log"
+if "$PROJECT_ROOT/scripts/test-real-microphone.sh" >"$mic_log" 2>&1; then
+  log "ran    real-microphone receipt (scripts/test-real-microphone.sh) passed"
+  summary+=("real-microphone receipt: passed")
+else
+  fails=$((fails + 1))
+  log "failed real-microphone receipt (see $mic_log; a skip or a missing microphone grant is a failure here)"
+  summary+=("real-microphone receipt: FAILED")
+fi
+
 for suite in "${SUITES[@]}"; do
   run_log="$LOG_DIR/nightly-battery-$(printf '%s' "$suite" | tr '/' '_').log"
   if "$PROJECT_ROOT/scripts/xcode-test.sh" --filter "$suite" --log-dir "$LOG_DIR/nightly-lanes" >"$run_log" 2>&1; then
@@ -210,8 +230,16 @@ for suite in "${SUITES[@]}"; do
     # not the ◇/✔ of started/passed); a description that merely contains the
     # word "skipped" is excluded by anchoring on the trailing ` skipped.`.
     skipped="$(/usr/bin/grep -acE '^[^a-zA-Z0-9]*➜ Test .* skipped\.$' "$run_log" || true)"
-    log "ran    $suite passed=${passed:-0} skipped=${skipped:-0}"
-    summary+=("$suite: ran, passed=${passed:-0} skipped=${skipped:-0}")
+    # A suite whose every case skipped proves nothing about the hardware; the
+    # runner exits 0 for it, so the battery must not.
+    if [ "${passed:-0}" -eq 0 ]; then
+      fails=$((fails + 1))
+      log "failed $suite: 0 passed, skipped=${skipped:-0}; a fully skipped suite is not a hardware result"
+      summary+=("$suite: NO PROOF (0 passed, ${skipped:-0} skipped)")
+    else
+      log "ran    $suite passed=${passed:-0} skipped=${skipped:-0}"
+      summary+=("$suite: ran, passed=${passed:-0} skipped=${skipped:-0}")
+    fi
   else
     fails=$((fails + 1))
     log "failed $suite (see $run_log)"
@@ -219,7 +247,7 @@ for suite in "${SUITES[@]}"; do
   fi
 done
 
-line="Nightly battery on $(scutil --get ComputerName 2>/dev/null || hostname): ${#SUITES[@]} suites, $fails failed. $(printf '%s; ' "${summary[@]}")"
+line="Nightly battery on $(scutil --get ComputerName 2>/dev/null || hostname): $(( ${#SUITES[@]} + 1 )) suites, $fails failed. $(printf '%s; ' "${summary[@]}")"
 log "$line"
 post_discord "$line"
 [ "$fails" -eq 0 ]
