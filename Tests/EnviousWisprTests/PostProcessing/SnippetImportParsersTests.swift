@@ -250,6 +250,7 @@ struct SnippetImportParsersTests {
     #expect(SnippetPasteSniff.sniff("  {\"snippets\": []}") == .transferDocument)
     #expect(SnippetPasteSniff.sniff("trigger,expansion\na,b") == .csv)
     #expect(SnippetPasteSniff.sniff("\"a\",\"b\"") == .csv)
+    #expect(SnippetPasteSniff.sniff("sig,\"Best,\nSaurabh\"") == .csv, "a quoted field after the trigger")
     #expect(SnippetPasteSniff.sniff("a = b\nc -> d") == .list)
     #expect(SnippetPasteSniff.sniff("a, b\nc, d") == .list)
     #expect(SnippetPasteSniff.sniff("") == .list)
@@ -262,6 +263,14 @@ struct SnippetImportParsersTests {
     #expect(SnippetPasteSniff.sniff("sig\tHello, world") == .ambiguous)
     // A header or a quoted field settles it as CSV before ambiguity is considered.
     #expect(SnippetPasteSniff.sniff("trigger,expansion\nsig,Hello=world") == .csv)
+  }
+
+  @Test("Headerless CSV whose text is quoted after the trigger keeps its line breaks")
+  func headerlessQuotedMultilineCSVIsReadAsCSV() throws {
+    let text = "sig,\"Best,\nSaurabh\"\nnext,after"
+    let auto = try PasteSnippetsImportSource.parse(text: text, format: .auto)
+    expectPairs(auto.candidates, [("sig", "Best,\nSaurabh"), ("next", "after")])
+    #expect(auto.notices.isEmpty)
   }
 
   @Test("Headerless comma text is read as a list by default, and differently as CSV")

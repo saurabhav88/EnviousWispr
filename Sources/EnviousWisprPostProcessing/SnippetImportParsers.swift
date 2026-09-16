@@ -333,9 +333,9 @@ package enum SnippetPasteSniff: Sendable, Equatable {
   case transferDocument
   case csv
   case list
-  /// No header, no quoted field, and at least one line carries both a comma and an explicit
-  /// separator, so CSV and the line grammar would read it differently. The paste screen
-  /// shows "Read as: List | CSV"; `auto` resolves to `list`.
+  /// No header, no quoted field (leading, or right after a comma), and at least one line
+  /// carries both a comma and an explicit separator, so CSV and the line grammar would read
+  /// it differently. The paste screen shows "Read as: List | CSV"; `auto` resolves to `list`.
   case ambiguous
 
   package static func sniff(_ text: String) -> SnippetPasteSniff {
@@ -345,7 +345,10 @@ package enum SnippetPasteSniff: Sendable, Equatable {
       String($0).trimmingCharacters(in: .whitespaces)
     }
     guard let firstLine = lines.first(where: { !$0.isEmpty }) else { return .list }
-    if firstLine.hasPrefix("\"") { return .csv }
+    // A quoted field: at the start of the line, or right after a comma (`sig,"Best,` followed
+    // by more lines is a multi-line CSV expansion, and the line grammar would cut it at the
+    // first line break).
+    if firstLine.hasPrefix("\"") || firstLine.contains(",\"") { return .csv }
     if let record = try? SnippetCSVParser.records(firstLine).first, SnippetCSVParser.isHeader(record) {
       return .csv
     }
