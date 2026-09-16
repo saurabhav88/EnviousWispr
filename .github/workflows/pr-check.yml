@@ -93,11 +93,15 @@ jobs:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
           configuration: release
 
+      # #3019: every build/test phase runs through `ew_phase`
+      # (scripts/lib/ci-phase.sh): same command, same exit status, plus a named
+      # log and the seconds for the EW-CI-METRICS line at the end of the job.
       - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          xcodebuild build \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_release xcode-build-release.log -- xcodebuild build \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
@@ -179,8 +183,8 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild build-for-testing \
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          ew_phase build_for_testing_release xcode-build-for-testing-release.log -- xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_RELEASE_SCHEME" \
             -configuration Release \
@@ -190,7 +194,7 @@ jobs:
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64 \
-            ENABLE_TESTABILITY=YES 2>&1 | tee xcode-build-for-testing-release.log
+            ENABLE_TESTABILITY=YES
 
       - name: Upload release test-build failure evidence
         if: failure() && steps.release-test-build.outcome == 'failure'
@@ -210,17 +214,49 @@ jobs:
       # then hands the log and .xcresult to `ew_lane_verdict` (#2401), which
       # refuses an empty or truncated run. Still serial: parallel Swift Testing
       # was measured unsafe for this suite (Project.swift, the Release scheme).
-      - name: Run logic tests (release, Xcode)
+      #
+      # #3019: the standalone eval packages (scripts/ci/compile-eval-packages.sh,
+      # the #1836 guard that used to be the step after this one) compile in the
+      # background while the serial suite runs: the suite is one process on a
+      # runner with idle cores, and the eval compile reads no DerivedData. The
+      # step fails if either half fails; the eval log is printed after the
+      # tests so the two outputs never interleave. Measured before: eval 5m48s
+      # after a 4m47s test run, both serial (run 35137227664). If a contention
+      # failure ever appears in the suite, this overlap goes, not the test.
+      - name: Run logic tests (release, Xcode) while the eval packages compile
         if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
-          TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_run_tests \
-            "$DERIVED_DATA_PATH/Build/Products" \
-            "$XCODE_RELEASE_SCHEME" \
-            "$GITHUB_WORKSPACE/xcode-test-release" \
-            "PR Release lane" \
-            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+          . "$GITHUB_WORKSPACE/scripts/lib/ci-phase.sh"
+          # Both halves report their own status; the pair fails if either did.
+          # `phase_eval_and_tests_s` (the outer wrapper) is the launch-to-join
+          # interval: the number that decides whether the overlap pays, against
+          # the serial tests + eval it replaces. `phase_eval_packages_s` and
+          # `phase_tests_release_s` are the halves. The eval half's console goes
+          # to its own file so the two outputs never interleave in the job log.
+          ew_pair() {
+            local eval_pid test_rc=0 eval_rc=0
+            ( ew_phase eval_packages eval-packages.log -- scripts/ci/compile-eval-packages.sh ) > eval-packages.console 2>&1 &
+            eval_pid=$!
+            trap 'kill "$eval_pid" 2>/dev/null || true' EXIT
+            TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
+              "$DERIVED_DATA_PATH/Build/Products" \
+              "$XCODE_RELEASE_SCHEME" \
+              "$GITHUB_WORKSPACE/xcode-test-release" \
+              "PR Release lane" \
+              "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests" || test_rc=$?
+            wait "$eval_pid" || eval_rc=$?
+            trap - EXIT
+            echo "::group::eval-packages.console (eval half rc=$eval_rc)"
+            cat eval-packages.console || true
+            echo "::endgroup::"
+            [ "$eval_rc" -eq 0 ] || echo "::error title=eval packages::standalone eval packages failed to compile (rc=$eval_rc, log above)"
+            [ "$test_rc" -eq 0 ] || echo "::error title=Release tests::test half failed (rc=$test_rc)"
+            [ "$test_rc" -eq 0 ] && [ "$eval_rc" -eq 0 ]
+          }
+          ew_phase eval_and_tests /dev/null -- ew_pair
 
       # #2162: a red lane was undiagnosable from CI because `gh run view --log`
       # truncates at roughly 6 MB and a failing run and a passing run produced an
@@ -267,83 +303,37 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      # #1836: scripts/eval/{apple_runner,alias_runner,prompt_render} are STANDALONE
-      # SwiftPM packages that path-depend on EnviousWisprCore. Nothing compiled
-      # them — not scripts/xcode-test.sh, not any workflow — so a public Core
-      # signature change broke them with a fully green local suite AND a green
-      # PR. #1770 collapsed LLMProviderConfig's two thinking optionals into one
-      # and left apple_runner uncompilable; 4,374 local tests passed and only a
-      # human reading the call site caught it.
-      #
-      # Compile-only: no run, no corpus, no model download.
-      #
-      # It was a step here, then its own job from #2114 to #3013 ("costs zero wall
-      # clock, overlaps build-debug"), and is a step again: with one required
-      # macOS lane per PR the third runner it took was a slot the build lane then
-      # waited for (8 min of queue in the 2026-09-16 sample). It reads no
-      # DerivedData, so it runs last, after the suite. Still gates merges through
-      # this job's result in build-check.
-      #
-      # No build cache here on purpose: `.build/` would be a PR-written cache, and the
-      # post-merge-only cache policy (#804) keeps PR jobs restore-only to protect the
-      # 10 GiB repository budget.
-      #
-      # `swift build` is correct here and does NOT contravene the project's
-      # Xcode-build-engine policy. That policy governs the app,
-      # XPC, release and repo-test gates; these packages are invisible to
-      # Tuist/Xcode, so SwiftPM is the only thing that can build them. Debug
-      # `swift build` is explicitly allowed as an informal compile check.
-      #
-      # prompt_render joined this loop when it was first tracked: it renders the
-      # per-model polish prompts the Ollama benchmark measures, so a Core prompt
-      # -builder signature change breaking it would silently invalidate the next
-      # benchmark rather than fail anything.
-      - name: Compile standalone eval packages
-        if: steps.changes.outputs.needs_build == 'true'
+      # #1836's eval-package compile guard runs INSIDE the test step above since
+      # #3019 (scripts/ci/compile-eval-packages.sh owns the loop and its
+      # rationale). It was a step here, then its own job from #2114 to #3013,
+      # then a step again; now it is a background half of the test step.
+
+      # #3019: one line of numbers for this job. Advisory: it can never fail
+      # the lane, and a broken instrument shows in this step's log instead of
+      # printing a plausible line with holes (scripts/ci/ci-metrics.py).
+      - name: CI metrics
+        if: always() && steps.changes.outputs.needs_build == 'true'
+        continue-on-error: true
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.setup.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+          RESTORE_S: ${{ steps.setup.outputs.cache-restore-seconds }}
+          RESTORED_KB: ${{ steps.setup.outputs.cache-restored-kb }}
+          CAS_VALIDATE: ${{ steps.setup.outputs.cas-validate-outcome }}
+          CAS_VALIDATE_S: ${{ steps.setup.outputs.cas-validate-seconds }}
+          CAS_KB: ${{ steps.setup.outputs.cas-kb }}
         run: |
-          set -euo pipefail
-          for pkg in scripts/eval/apple_runner scripts/eval/alias_runner scripts/eval/prompt_render; do
-            # Seed each package's resolution from the app's TRACKED pins. Every
-            # eval Package.resolved file is gitignored, so a fresh runner has
-            # none and SwiftPM would resolve the whole graph fresh — floating
-            # ahead of what the app actually ships. Measured locally as of
-            # 2026-07-29 (pins have since moved; the drift is the point, not
-            # the numbers): an unseeded resolve picked PostHog 3.68.4 /
-            # Sentry 9.24.0 / swift-argument-parser 1.8.2 against the app's
-            # then-pinned 3.62.4 / 9.19.0 / 1.7.1. On a REQUIRED check that
-            # means an unrelated
-            # upstream release can turn the gate red, and the compile would not
-            # be against the versions we ship. Root Package.resolved is the one
-            # source of pin truth; SwiftPM prunes the entries this graph does
-            # not need (sparkle, swift-syntax) and holds every shared one.
-            cp Package.resolved "$pkg/Package.resolved"
-            # --only-use-versions-from-resolved-file makes the seeding a
-            # GUARANTEE rather than a hint. Without it SwiftPM may silently
-            # rewrite the copied lockfile and compile whatever resolves at that
-            # moment — e.g. when a PR changes a dependency constraint without
-            # updating the root Package.resolved — which would quietly undo the
-            # pinning this step exists to provide. With it, an out-of-date
-            # lockfile FAILS the step instead. Verified both directions locally:
-            # a correctly seeded build succeeds, and a lockfile that cannot
-            # satisfy the graph errors out rather than re-resolving.
-            # RELEASE, because that is the only configuration this tooling ever
-            # runs in: both READMEs say `swift build -c release`, and both eval
-            # gates execute `.build/release/` binaries
-            # (acceptance_gate.py:48, alias_suggestion_gate.py:45). A debug
-            # compile would validate a configuration nobody uses and would miss
-            # a break behind `#if DEBUG` — a real class here, since Core carries
-            # DEBUG-only members.
-            #
-            # This is NOT the case the Xcode-build-engine policy
-            # forbids. That policy governs the APP release/DoD gate, where Xcode
-            # owns bundle and resource assembly. These three packages have no
-            # Xcode representation at all, so SwiftPM is the only thing that can
-            # build them, and release is what they are actually run as. The
-            # local `check-swift-build-gate.sh` nudge does not apply to CI.
-            echo "==> swift build -c release --package-path $pkg (locked to root pins)"
-            swift build -c release --package-path "$pkg" --only-use-versions-from-resolved-file
-          done
-          echo "==> All three standalone eval packages compile against current Core"
+          python3 scripts/ci/ci-metrics.py emit \
+            --job build-and-test --family release \
+            --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
+            --log 'xcode-build-*.log' \
+            --set "cache_matched_key=$CACHE_MATCHED_KEY" \
+            --set "cache_hit=$CACHE_HIT" \
+            --set "restore_s=$RESTORE_S" \
+            --set "restored_kb=$RESTORED_KB" \
+            --set "cas_validate=$CAS_VALIDATE" \
+            --set "cas_validate_s=$CAS_VALIDATE_S" \
+            --set "cas_kb=$CAS_KB"
 
   # Older-macOS launch, advisory (#3013 moved it here from older-macos-launch.yml).
   #
@@ -542,12 +532,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths)
+      - name: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths + schedule guard + metrics)
         run: |
           set -euo pipefail
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
           python3 scripts/ci/check-test-recipe.py --self-test
+          # #3019: the schedule guard decides whether a macOS matrix runs at
+          # all, and it now waits for an in-flight push run; its verdict matrix
+          # (mocked gh, no network) had no CI caller before this. The metrics
+          # instrument is advisory in every lane, so a broken parser would be
+          # invisible there; here it is red.
+          scripts/ci/post-merge-should-run.sh --self-test
+          python3 scripts/ci/ci-metrics.py --self-test
           # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
           # a restore matches on version BEFORE key — so two lists that differ in
           # any way describe caches that can never see each other, with nothing

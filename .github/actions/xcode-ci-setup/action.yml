@@ -57,6 +57,25 @@ outputs:
   cache-matched-key:
     description: The key the restore actually matched (empty when nothing matched).
     value: ${{ steps.xcode-cache.outputs.cache-matched-key }}
+  # #3019: the numbers scripts/ci/ci-metrics.py puts on the EW-CI-METRICS line,
+  # measured here because only this action sees the restore and the validation.
+  cache-restore-seconds:
+    description: Wall seconds the cache restore step took (download + unpack).
+    value: ${{ steps.restore-measure.outputs.seconds }}
+  cache-restored-kb:
+    description: On-disk size in KB of the restored cache paths (0 when nothing restored).
+    value: ${{ steps.restore-measure.outputs.kb }}
+  cas-validate-outcome:
+    description: >-
+      Result of the in-process compilation-cache validation, one token per
+      store joined by commas: validated | skipped | recovered | failed | none.
+    value: ${{ steps.cas-validate.outputs.outcome }}
+  cas-validate-seconds:
+    description: Wall seconds the in-process validation took across all stores.
+    value: ${{ steps.cas-validate.outputs.seconds }}
+  cas-kb:
+    description: On-disk size in KB of CompilationCache.noindex after the restore.
+    value: ${{ steps.cas-validate.outputs.kb }}
 
 runs:
   using: composite
@@ -211,6 +230,12 @@ runs:
     # `Cache not found for input keys` on all four keys, a permanently cold
     # cache, and nothing red anywhere. Guarded by
     # scripts/ci/check-cache-paths.py.
+    - name: Stamp cache restore start
+      id: restore-start
+      continue-on-error: true
+      shell: bash
+      run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+
     - name: Restore Xcode build cache
       id: xcode-cache
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -223,6 +248,32 @@ runs:
         restore-keys: |
           ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ inputs.configuration }}-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
           ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ inputs.configuration }}-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
+
+    # #3019: restore seconds and on-disk size, for the metrics line. The archive
+    # size the restore step prints (`Cache Size: ~5420 MB`) is only in its own
+    # log; the on-disk size after unpacking is what this action can measure.
+    - name: Measure cache restore
+      id: restore-measure
+      continue-on-error: true
+      shell: bash
+      env:
+        DD: ${{ inputs.derived-data-path }}
+        T0: ${{ steps.restore-start.outputs.t }}
+      run: |
+        set -uo pipefail
+        if [[ ! "${T0:-}" =~ ^[0-9]+$ ]]; then
+          echo "::warning title=ci-metrics::cache restore start timestamp unavailable; restore seconds not measured"
+          exit 0
+        fi
+        seconds=$(( $(date +%s) - T0 ))
+        kb=0
+        shopt -s nullglob
+        for d in "$GITHUB_WORKSPACE/$DD/SourcePackages" "$GITHUB_WORKSPACE/$DD/CompilationCache.noindex" "$GITHUB_WORKSPACE/$DD"/*/SourcePackages; do
+          [ -d "$d" ] || continue
+          kb=$(( kb + $(du -sk "$d" 2>/dev/null | cut -f1 || echo 0) ))
+        done
+        echo "==> Xcode cache restore: ${seconds}s, ${kb} KB on disk"
+        { echo "seconds=$seconds"; echo "kb=$kb"; } >> "$GITHUB_OUTPUT"
 
     # #3013, EXPERIMENT (advisory, continue-on-error): validate the restored
     # compilation store in-process, before Xcode does. Measured 2026-09-16 on
@@ -239,25 +290,50 @@ runs:
     # seconds and the hit counts over repeated warm runs, recorded on #3013.
     # No size cap is set here: the setting's name and pruning behaviour are
     # unverified in this toolchain.
+    #
+    # #3019: `--check-hash` because Xcode's own ValidateCAS passes it
+    # (swift-build BuildOperation.swift, Codex r1 §B on #3013): without it the
+    # comparison against the 78-117 s Xcode figure is not like for like. The
+    # outcome word and the seconds go to $GITHUB_OUTPUT for the metrics line.
     - name: Validate restored compilation cache in process (experiment)
+      id: cas-validate
       continue-on-error: true
       shell: bash
       env:
         DD: ${{ inputs.derived-data-path }}
       run: |
-        set -euo pipefail
+        set -uo pipefail
         # Xcode names the store `builtin` on CI (`ValidateCAS …/CompilationCache.noindex/builtin`);
         # a local run names it `generic`. Validate every store present rather
         # than guess. Proven locally 2026-09-16: first call `validated
         # successfully`, second call `validation skipped`.
         shopt -s nullglob
-        found=0
+        outcomes="" total=0 rc_all=0
+        kb=$(du -sk "$GITHUB_WORKSPACE/$DD/CompilationCache.noindex" 2>/dev/null | cut -f1 || echo 0)
         for CAS in "$GITHUB_WORKSPACE/$DD/CompilationCache.noindex"/*/; do
-          found=1
           echo "==> in-process CAS validation: $CAS ($(du -sh "$CAS" 2>/dev/null | cut -f1))"
-          /usr/bin/time -p xcrun llvm-cas --cas "$CAS" --validate-if-needed --in-process
+          started=$(date +%s)
+          # GitHub runs `shell: bash` steps with -e; `set -uo pipefail` does
+          # not clear it, so a failing substitution must be caught inline or
+          # the step exits before its outputs are written (Codex r2 N3).
+          rc=0
+          out="$(xcrun llvm-cas --cas "$CAS" --validate-if-needed --in-process --check-hash 2>&1)" || rc=$?
+          seconds=$(( $(date +%s) - started ))
+          total=$(( total + seconds ))
+          printf '%s\n' "$out"
+          case "$out" in
+            *"validated successfully"*) word=validated ;;
+            *"validation skipped"*)     word=skipped ;;
+            *"recovered from invalid"*) word=recovered ;;
+            *)                          word=failed ;;
+          esac
+          [ "$rc" -eq 0 ] || { word=failed; rc_all=1; }
+          echo "==> in-process CAS validation: $word in ${seconds}s (rc=$rc)"
+          outcomes="${outcomes:+$outcomes,}$word"
         done
-        [ "$found" -eq 1 ] || echo "==> no restored CAS under $GITHUB_WORKSPACE/$DD/CompilationCache.noindex; cold build"
+        [ -n "$outcomes" ] || { outcomes=none; echo "==> no restored CAS under $GITHUB_WORKSPACE/$DD/CompilationCache.noindex; cold build"; }
+        { echo "outcome=$outcomes"; echo "seconds=$total"; echo "kb=${kb:-0}"; } >> "$GITHUB_OUTPUT"
+        exit "$rc_all"
 
     # The one line that says whether the cache did anything. `Cache not found
     # for input keys` on every key is what a permanently cold cache looks like
