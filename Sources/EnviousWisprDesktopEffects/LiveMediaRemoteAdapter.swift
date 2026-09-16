@@ -50,7 +50,7 @@ package struct MediaRemoteAdapter: Sendable {
   }
 
   /// What the now-playing source looked like at one read. `identity` is the
-  /// track/item the source reported (`contentItemIdentifier`, else `title`), so a
+  /// item's title (else its `contentItemIdentifier` for untitled audio), so a
   /// resume can tell OUR paused item from a different one the user paused in the
   /// same app (another browser tab; council 2026-09-15).
   package struct Source: Equatable, Sendable {
@@ -144,8 +144,14 @@ package struct MediaRemoteAdapter: Sendable {
     guard let bundleID = dict["bundleIdentifier"] as? String, !bundleID.isEmpty else {
       return .nothing
     }
-    let identity = (dict["contentItemIdentifier"] as? String) ?? (dict["title"] as? String)
-    let source = Source(bundleID: bundleID, identity: identity.flatMap { $0.isEmpty ? nil : $0 })
+    // The TITLE is the item identity, not `contentItemIdentifier`: Chrome mints
+    // a new item id on every session change, including our own pause (live UAT
+    // 2026-09-16: C738... before, 3CDD... after, same tab), so an id-based gate
+    // refused to resume the very item it paused. The id is the fallback for
+    // untitled audio only.
+    let title = (dict["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    let itemID = (dict["contentItemIdentifier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    let source = Source(bundleID: bundleID, identity: title ?? itemID)
     return playing ? .playing(source) : .paused(source)
   }
 

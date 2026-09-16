@@ -362,7 +362,7 @@ private final class FakeAdapter: @unchecked Sendable {
           guard let source else { return .init(status: 0, stdout: "null\n", stderr: "") }
           var dict: [String: Any] = ["bundleIdentifier": source.bundle, "playing": source.playing,
             "processIdentifier": 42]
-          if let identity = source.identity { dict["contentItemIdentifier"] = identity }
+          if let identity = source.identity { dict["title"] = identity }
           let data = try! JSONSerialization.data(withJSONObject: dict)
           return .init(status: 0, stdout: String(decoding: data, as: UTF8.self), stderr: "")
         }
@@ -628,18 +628,21 @@ struct MediaRemoteAdapterParserTests {
   func matrix() {
     let playing = #"{"bundleIdentifier":"com.spotify.client","processIdentifier":1,"playing":true,"title":"Fault","contentItemIdentifier":"9AD6"}"#
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: playing, stderr: ""))
-      == .playing(.init(bundleID: "com.spotify.client", identity: "9AD6")))
+      == .playing(.init(bundleID: "com.spotify.client", identity: "Fault")), "title, not the item id")
     let pausedNoItem = #"{"bundleIdentifier":"com.google.Chrome","processIdentifier":1,"playing":false,"title":"A video"}"#
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: pausedNoItem, stderr: ""))
       == .paused(.init(bundleID: "com.google.Chrome", identity: "A video")))
     let untitled = #"{"bundleIdentifier":"org.telegram.desktop","processIdentifier":1,"playing":true}"#
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: untitled, stderr: ""))
       == .playing(.init(bundleID: "org.telegram.desktop", identity: nil)))
+    let untitledWithID = #"{"bundleIdentifier":"org.telegram.desktop","processIdentifier":1,"playing":true,"contentItemIdentifier":"ABCD"}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: untitledWithID, stderr: ""))
+      == .playing(.init(bundleID: "org.telegram.desktop", identity: "ABCD")), "the id is the fallback")
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null\n", stderr: "")) == .nothing)
     // A live stream: a warning on stderr beside a full payload (live UAT 2026-09-15).
     let live = #"{"bundleIdentifier":"com.google.Chrome","processIdentifier":1,"playing":true,"title":"lofi","contentItemIdentifier":"C738"}"#
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: live, stderr: "Invalid JSON value type in dictionary for key 'duration': inf (__NSCFNumber)\n"))
-      == .playing(.init(bundleID: "com.google.Chrome", identity: "C738")))
+      == .playing(.init(bundleID: "com.google.Chrome", identity: "lofi")))
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: #"{"processIdentifier":1,"playing":true}"#, stderr: "")) == .nothing, "no bundle id: cannot be re-identified")
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "null", stderr: "Reading now playing information timed out after 2000 milliseconds")) == .unavailable(.timeout))
     #expect(MediaRemoteAdapter.parseGet(R(status: nil, stdout: "", stderr: "")) == .unavailable(.timeout))
