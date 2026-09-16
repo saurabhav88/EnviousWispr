@@ -45,7 +45,8 @@ let res := fetch(f'{inputs.workerUrl}/count', {
         'os': event.properties.$os ?? '',
         'lang': event.properties.$browser_language ?? '',
         'excludedReason': event.properties.excluded_reason ?? '',
-        'sourceBucket': event.properties.source_bucket ?? ''
+        'sourceBucket': event.properties.source_bucket ?? '',
+        'campaign': event.properties.utm_campaign ?? ''
     }
 })
 

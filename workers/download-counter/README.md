@@ -34,6 +34,14 @@ node --test
 Pure-logic tests only (mocked Durable Object storage, mocked `fetch` for
 Discord) — no network calls, no PostHog, no real Discord posts.
 
+## Upgrading an already-cut-over Worker
+
+For a change to an existing deployment (a new relayed field, a card-format change), never repeat the seed
+or send a synthetic production test event. Back up the destination's live `hog` field
+(`GET /api/projects/354235/hog_functions/019d35b0-c128-0000-30a8-5fc2570a8a88/`), run `npx wrangler deploy`
+from `workers/download-counter`, then PATCH only `hog` with the committed `hog-relay.hog`. Preserve
+`inputs`, `inputs_schema`, filters and secrets. Verify with a genuine download.
+
 ## Deploy (one-time)
 
 Cloudflare secrets are write-only — `wrangler secret put` accepts a value but
