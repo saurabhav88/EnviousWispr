@@ -429,6 +429,110 @@ test("off-site message uses the Source label and omits Platform/Page/Language", 
   }
 });
 
+test("off-site message ends with the Campaign line when the redirect carried utm_campaign (#2990)", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(
+      countRequest({
+        eventId: "evt-yt",
+        event: "download_redirect",
+        excludedReason: "",
+        ip: "8.8.4.4",
+        country: "Germany",
+        sourceBucket: "youtube",
+        referrer: "https://www.youtube.com/",
+        campaign: "enviouswispr-202609-live-demo",
+      }),
+    );
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.equal(
+      sent,
+      ":tada: **Download #1!** Someone just grabbed EnviousWispr\n" +
+        "> **Location:** Germany\n" +
+        "> **Source:** YouTube\n" +
+        "> **Referred by:** https://www.youtube.com/\n" +
+        "> **Campaign:** enviouswispr-202609-live-demo",
+    );
+  } finally {
+    mock.restore();
+  }
+});
+
+test("on-site message ends with the Campaign line after Language when the click carried utm_campaign (#2990)", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent({ campaign: "enviouswispr-evergreen-directory" })));
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.equal(
+      sent,
+      ":tada: **Download #1!** Someone just grabbed EnviousWispr\n" +
+        "> :flag_us: **Location:** Springfield, United States\n" +
+        "> **Platform:** Mac OS X / Chrome\n" +
+        "> **Referred by:** https://google.com\n" +
+        "> **Page:** /\n" +
+        "> **Language:** en-US\n" +
+        "> **Campaign:** enviouswispr-evergreen-directory",
+    );
+  } finally {
+    mock.restore();
+  }
+});
+
+test("an empty or missing campaign prints no Campaign line on either shape (#2990)", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent({ eventId: "evt-c1", ip: "1.1.1.1", campaign: "" })));
+    await counter.fetch(
+      countRequest({
+        eventId: "evt-c2",
+        event: "download_redirect",
+        excludedReason: "",
+        ip: "1.1.1.2",
+        country: "France",
+        sourceBucket: "reddit",
+      }),
+    );
+    for (const call of mock.calls) {
+      const sent = JSON.parse(call.init.body).content;
+      assert.ok(!sent.includes("Campaign"), `unexpected Campaign line in: ${sent}`);
+    }
+  } finally {
+    mock.restore();
+  }
+});
+
+test("campaign cannot inject formatting or extra card lines in either shape (#2990)", async () => {
+  for (const event of ["download_clicked", "download_redirect"]) {
+    const { counter } = makeCounter();
+    const mock = mockFetch(() => new Response(null, { status: 204 }));
+    try {
+      await counter.fetch(
+        countRequest(onSiteEvent({ event, sourceBucket: "youtube", campaign: "**sale**\n> fake" })),
+      );
+      const lines = JSON.parse(mock.calls[0].init.body).content.split("\n");
+      assert.equal(lines.at(-1), "> **Campaign:** \\*\\*sale\\*\\* \\> fake", event);
+      assert.equal(lines.filter((l) => l.startsWith("> **Campaign:**")).length, 1, event);
+    } finally {
+      mock.restore();
+    }
+  }
+});
+
+test("a non-string campaign prints no Campaign line (#2990)", async () => {
+  const { counter } = makeCounter();
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    await counter.fetch(countRequest(onSiteEvent({ campaign: { nested: true } })));
+    const sent = JSON.parse(mock.calls[0].init.body).content;
+    assert.ok(!sent.includes("Campaign"), sent);
+  } finally {
+    mock.restore();
+  }
+});
+
 test("an unrecognized sourceBucket falls back to a generic off-site label", async () => {
   const { counter } = makeCounter();
   const mock = mockFetch(() => new Response(null, { status: 204 }));

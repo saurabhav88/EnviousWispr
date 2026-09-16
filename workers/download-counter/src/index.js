@@ -225,6 +225,7 @@ export class DownloadCounter {
       os,
       lang,
       sourceBucket,
+      campaign,
     } = payload;
 
     // Qualification (#1243's definition; since #2953 owned by
@@ -323,6 +324,7 @@ export class DownloadCounter {
       os,
       lang,
       sourceBucket,
+      campaign,
     });
     // The smoke environment shares the production Discord webhook (README) so
     // it can prove a real post lands; every post it makes must be visually
@@ -375,11 +377,25 @@ async function hmacIp(ip, secret) {
     .join("");
 }
 
-function formatMessage({ total, isOffsite, city, country, countryCode, referrer, page, browser, os, lang, sourceBucket }) {
+function formatMessage({ total, isOffsite, city, country, countryCode, referrer, page, browser, os, lang, sourceBucket, campaign }) {
   const resolvedCountry = country || "Unknown location";
   const location = city ? `${city}, ${resolvedCountry}` : resolvedCountry;
   const flag = countryCode ? `:flag_${countryCode.toLowerCase()}: ` : "";
   const referrerValue = referrer && referrer !== "$direct" ? referrer : "Direct visit";
+  // The doorway records utm_campaign on every tagged link (#1240), and the
+  // page script's click carries it when the landing URL did. It is the only
+  // per-link signal a referrer cannot give: YouTube's referrer policy sends
+  // "https://www.youtube.com/" for every video, so the campaign is how the
+  // founder tells one video's description link from another (#2990).
+  // Query text, so it is flattened to one line and markdown-escaped before it
+  // becomes a card line; the message-wide cap and allowed_mentions cover the
+  // rest. (referrer and page predate this and are printed raw; their values
+  // are URLs and paths, where escaping would break Discord's auto-link.)
+  const campaignText =
+    typeof campaign === "string"
+      ? campaign.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/[\\`*_~|[\]()<>]/g, "\\$&")
+      : "";
+  const campaignLine = campaignText ? `\n> **Campaign:** ${campaignText}` : "";
 
   if (isOffsite) {
     const sourceLabel = SOURCE_LABELS[sourceBucket] ?? "an off-site link";
@@ -387,7 +403,8 @@ function formatMessage({ total, isOffsite, city, country, countryCode, referrer,
       `:tada: **Download #${total}!** Someone just grabbed EnviousWispr\n` +
       `> ${flag}**Location:** ${location}\n` +
       `> **Source:** ${sourceLabel}\n` +
-      `> **Referred by:** ${referrerValue}`
+      `> **Referred by:** ${referrerValue}` +
+      campaignLine
     );
   }
 
@@ -403,6 +420,7 @@ function formatMessage({ total, isOffsite, city, country, countryCode, referrer,
   if (lang) {
     content += `\n> **Language:** ${lang}`;
   }
+  content += campaignLine;
   return content;
 }
 
