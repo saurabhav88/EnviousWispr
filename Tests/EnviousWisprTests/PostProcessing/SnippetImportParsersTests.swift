@@ -51,6 +51,36 @@ struct SnippetImportParsersTests {
     #expect(result.skippedLines == 0)
   }
 
+  @Test("The earliest explicit separator wins, and a two-character arrow is never read as an equals")
+  func earliestExplicitSeparatorWins() throws {
+    let result = try SnippetLineListParser.parse("sig = A -> B\narrow => x = y\ntab\ta = b", limit: 10)
+    expectPairs(result.candidates, [("sig", "A -> B"), ("arrow", "x = y"), ("tab", "a = b")])
+  }
+
+  @Test("A quoted trigger followed by a separator is a list line, not CSV")
+  func quotedListSideIsNotCSV() throws {
+    #expect(SnippetPasteSniff.sniff("\"my email\" = \"hello@example.com\"") == .list)
+    #expect(SnippetPasteSniff.sniff("\"say \"\"hi\"\"\" -> x") == .list)
+    #expect(SnippetPasteSniff.sniff("\"sig\",\"x\"") == .csv)
+    let parsed = try PasteSnippetsImportSource.parse(
+      text: "\"my email\" = \"hello@example.com\"", format: .auto)
+    expectPairs(parsed.candidates, [("my email", "hello@example.com")])
+  }
+
+  @Test("The live preview refuses what Continue would refuse")
+  func previewValidates() {
+    #expect(throws: SnippetImportValidationError.unusableTrigger(trigger: "!!!")) {
+      try PasteSnippetsImportSource.preview(text: "!!! = hello", choice: .auto)
+    }
+    let long = String(repeating: "a", count: SnippetImportLimits.maximumExpansionScalars + 1)
+    #expect(
+      throws: SnippetImportValidationError.expansionTooLong(
+        trigger: "sig", limit: SnippetImportLimits.maximumExpansionScalars)
+    ) {
+      try PasteSnippetsImportSource.preview(text: "sig = \(long)", choice: .auto)
+    }
+  }
+
   @Test("An explicit separator wins over a comma, so the text keeps its comma")
   func explicitSeparatorBeatsComma() throws {
     let result = try SnippetLineListParser.parse("signature = Hello, world", limit: 10)

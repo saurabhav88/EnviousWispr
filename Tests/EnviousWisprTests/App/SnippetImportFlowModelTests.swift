@@ -358,10 +358,13 @@ struct SnippetImportFlowModelTests {
 
   // MARK: - Cancellation
 
-  @Test("Dismissing during the load discards the late completion")
-  func dismissDuringLoadDropsLateCompletion() async {
+  /// Both shapes, because a non-empty batch goes on to the comparison while an empty one
+  /// reaches a terminal at once: only the empty variant proves the generation guard on the
+  /// load itself (a removed guard would report `nothing_found` for the dismissed run).
+  @Test("Dismissing during the load discards the late completion", arguments: [false, true])
+  func dismissDuringLoadDropsLateCompletion(empty: Bool) async {
     let (stream, gate) = AsyncStream<Void>.makeStream()
-    let source = StubSource(candidates: [Self.candidate("sig")], gate: stream)
+    let source = StubSource(candidates: empty ? [] : [Self.candidate("sig")], gate: stream)
     let commit = CommitSpy()
     let report = ReportSpy()
     let model = Self.makeModel(commit: commit, report: report)

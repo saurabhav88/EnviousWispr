@@ -30,6 +30,12 @@ struct SnippetsView: View {
       listCard
     }
     .onAppear { keywordField = coordinator.keyword }
+    // A refresh from disk (an import's review, an export) can adopt a keyword another
+    // EnviousWispr process changed; the field follows unless the user is typing in it, or
+    // leaving the untouched field would write the old keyword back.
+    .onChange(of: coordinator.keyword) { _, keyword in
+      if !keywordFocused { keywordField = keyword }
+    }
     .sheet(item: $sheetRoute) { route in
       switch route {
       case .edit(let draft):

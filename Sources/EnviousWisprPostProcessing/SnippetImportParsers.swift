@@ -44,8 +44,8 @@ package enum SnippetLineListParser {
     package let skippedLines: Int
   }
 
-  /// Separators tried in order. The tab is first because a spreadsheet copy pastes tabs;
-  /// the arrows and `=` are unambiguous; the comma and colon come last.
+  /// The explicit separators, all tried before a quoted pair, the comma and the colon; the
+  /// earliest one in the line wins.
   static let explicitSeparators = ["\t", "=>", "->", "\u{2192}", "="]
 
   /// Lines by any line break: LF, CR, or CRLF as ONE break. `Character.isNewline` sees CRLF
@@ -78,10 +78,14 @@ package enum SnippetLineListParser {
   }
 
   private static func splitOnFirstSeparator(_ line: String) -> (String, String)? {
-    for separator in explicitSeparators {
-      if let range = line.range(of: separator) {
-        return (String(line[..<range.lowerBound]), String(line[range.upperBound...]))
-      }
+    // The EARLIEST explicit separator in the line wins, longest first on a tie, so
+    // `sig = A -> B` is `sig` / `A -> B` and `=>` is never read as `=` plus `>`.
+    let ranges = explicitSeparators.compactMap { line.range(of: $0) }
+    if let range = ranges.min(by: {
+      $0.lowerBound == $1.lowerBound
+        ? $0.upperBound > $1.upperBound : $0.lowerBound < $1.lowerBound
+    }) {
+      return (String(line[..<range.lowerBound]), String(line[range.upperBound...]))
     }
     // A quoted CSV pair on one line: "a","b". The left side is handed back WITH its quotes so
     // the caller strips exactly one pair, the same as for every other line.
@@ -338,6 +342,24 @@ package enum SnippetPasteSniff: Sendable, Equatable {
   /// it differently. The paste screen shows "Read as: List | CSV"; `auto` resolves to `list`.
   case ambiguous
 
+  /// True when the text after the leading quoted field's closing quote starts with an
+  /// explicit separator or a colon. A doubled quote inside the field is skipped.
+  private static func leadingQuotedFieldIsAListSide(_ line: String) -> Bool {
+    var tail = line.dropFirst()
+    while let quote = tail.firstIndex(of: "\"") {
+      tail = tail[tail.index(after: quote)...]
+      if tail.hasPrefix("\"") {
+        tail = tail.dropFirst()
+        continue
+      }
+      let suffix = tail.drop(while: { $0 == " " })
+      return (SnippetLineListParser.explicitSeparators + [":"]).contains {
+        suffix.hasPrefix($0)
+      }
+    }
+    return false
+  }
+
   package static func sniff(_ text: String) -> SnippetPasteSniff {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.hasPrefix("{") { return .transferDocument }
@@ -347,8 +369,12 @@ package enum SnippetPasteSniff: Sendable, Equatable {
     guard let firstLine = lines.first(where: { !$0.isEmpty }) else { return .list }
     // A quoted field: at the start of the line, or right after a comma (`sig,"Best,` followed
     // by more lines is a multi-line CSV expansion, and the line grammar would cut it at the
-    // first line break).
-    if firstLine.hasPrefix("\"") || firstLine.contains(",\"") { return .csv }
+    // first line break). A leading quote followed, after its closing quote, by an explicit
+    // separator or a colon is the LINE grammar's quoted side (`"my email" = "x@y"`), not CSV.
+    if firstLine.hasPrefix("\"") {
+      return leadingQuotedFieldIsAListSide(firstLine) ? .list : .csv
+    }
+    if firstLine.contains(",\"") { return .csv }
     if let record = try? SnippetCSVParser.records(firstLine).first, SnippetCSVParser.isHeader(record) {
       return .csv
     }
@@ -409,7 +435,10 @@ package struct PasteSnippetsImportSource: SnippetImportSource {
     case .list: resolved = .list
     case .csv: resolved = .csv
     }
-    let batch = try parse(text: text, as: resolved, limit: limit)
+    // Validated here too, so the live count can never disagree with Continue: a trigger
+    // nobody can say, or an expansion past its ceiling, is refused where it can still be
+    // edited rather than on the terminal failure screen.
+    let batch = try parse(text: text, as: resolved, limit: limit).validated()
     return (sniff, batch)
   }
 

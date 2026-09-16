@@ -172,7 +172,9 @@ public final class SnippetsManager: @unchecked Sendable {
   /// every snippet off for the session. Three-valued in, two-valued out, with the empty case
   /// kept out of reach.
   public func loadedVocabulary() -> SnippetVocabulary? {
-    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return nil }
+    // Non-blocking: this runs on the main actor, and another process holding the lock must
+    // not freeze the window. Contention reads as nil, and the caller's fallback holds.
+    guard let result = try? withLock(blocking: false, { loadWhileLocked() }) else { return nil }
     if case .loaded(let vocabulary) = result { return vocabulary }
     return nil
   }
@@ -185,7 +187,9 @@ public final class SnippetsManager: @unchecked Sendable {
   /// answer for an unreadable file would switch every snippet off for the session while the
   /// user's snippets still sit on disk. Missing and archived ARE empty, and are adopted.
   public func refreshedVocabulary() -> SnippetVocabulary? {
-    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return nil }
+    // Non-blocking, as `loadedVocabulary` is: contention reads as nil and the published
+    // list stands.
+    guard let result = try? withLock(blocking: false, { loadWhileLocked() }) else { return nil }
     switch result {
     case .loaded(let vocabulary): return vocabulary
     case .missing, .archivedCorrupt:

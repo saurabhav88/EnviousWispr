@@ -285,7 +285,7 @@ private struct SnippetImportPasteScreen: View {
           .foregroundStyle(.stAccent)
           .accessibilityHidden(true)
         Text(
-          "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. Exported JSON and CSV can be pasted straight in, which is the only way to bring over text that runs across several lines."
+          "One per line: the trigger, then =, then the text. A tab, an arrow, or a comma work too. For text on several lines, paste exported JSON or CSV, or type \\n where a line should break."
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
