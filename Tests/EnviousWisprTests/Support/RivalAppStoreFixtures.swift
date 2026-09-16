@@ -75,6 +75,42 @@ enum RivalAppStoreFixtures {
     return (url, db)
   }
 
+  /// A Wispr Flow `flow.sqlite` in WAL mode with auto-checkpoint OFF, matching a RUNNING
+  /// Wispr Flow (#3012): `baselineRows` are checkpointed (TRUNCATE) into the main file, then
+  /// `walOnlyRows`, when given, are written and live in the `-wal` alone. Returns the url AND
+  /// the open writer connection; the caller MUST keep it alive across the read and close it in
+  /// a `defer`, because closing it first checkpoints and drops the `-wal`, destroying the
+  /// live-writer state these tests reproduce (same contract as `makeTypeWhisperStore`).
+  static func makeWisprFlowDatabaseWAL(
+    in dir: URL, baselineRows: String, walOnlyRows: String? = nil
+  ) throws -> (url: URL, writer: OpaquePointer?) {
+    let url = dir.appendingPathComponent("flow.sqlite")
+    var db: OpaquePointer?
+    guard sqlite3_open(url.path, &db) == SQLITE_OK else {
+      sqlite3_close(db)
+      throw Failure(description: "could not create \(url.path)")
+    }
+    var transferred = false
+    defer {
+      if !transferred { sqlite3_close(db) }
+    }
+    try exec(db, "PRAGMA journal_mode=WAL;")
+    try exec(db, "PRAGMA wal_autocheckpoint=0;")
+    try exec(
+      db,
+      """
+      CREATE TABLE Dictionary (id VARCHAR(36) PRIMARY KEY, phrase VARCHAR(255) NOT NULL,
+        replacement VARCHAR(255), isDeleted TINYINT DEFAULT 0, isSnippet TINYINT DEFAULT 0);
+      """)
+    try exec(db, baselineRows)
+    try exec(db, "PRAGMA wal_checkpoint(TRUNCATE);")
+    if let walOnlyRows {
+      try exec(db, walOnlyRows)
+    }
+    transferred = true
+    return (url, db)
+  }
+
   private static func exec(_ db: OpaquePointer?, _ sql: String) throws {
     var message: UnsafeMutablePointer<CChar>?
     guard sqlite3_exec(db, sql, nil, nil, &message) == SQLITE_OK else {

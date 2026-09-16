@@ -429,60 +429,96 @@ struct SmartImportSourceTests {
     #expect(batch.candidates.isEmpty)
   }
 
-  @Test("a half-recovered database is refused rather than written into")
-  func walWithoutShmIsRefused() throws {
-    // -wal present but -shm missing means a crashed or mid-recovery Wispr
-    // Flow. A plain read-only connection would CREATE the missing -shm inside
-    // that app's directory, and immutable would skip real uncommitted content
-    // and call a stale view complete. Neither is honest, so refuse and let the
-    // error tell them to quit the app — which flushes the WAL and makes the
-    // next attempt both safe and complete.
-    let dir = makeDirectory()
+  @Test("a running Wispr Flow (WAL sidecars present) is imported, not refused (#3012)")
+  func liveWalDatabaseIsImported() throws {
+    // The exact case that used to refuse: Wispr Flow open, -wal/-shm on disk. The clone read
+    // brings both the checkpointed row and the WAL-only row across (completeness).
+    let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let url = try makeWisprFlowDatabase(in: dir)
-    try Data("pretend wal".utf8).write(to: URL(fileURLWithPath: url.path + "-wal"))
+    let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+      in: dir,
+      baselineRows: "INSERT INTO Dictionary VALUES ('1','base','baseword',0,0);",
+      walOnlyRows: "INSERT INTO Dictionary VALUES ('2','walword',NULL,0,0);")
+    defer { sqlite3_close(store.writer) }
+    #expect(FileManager.default.fileExists(atPath: store.url.path + "-wal"))
 
-    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
-      _ = try WisprFlowAdapter().loadWords(at: url)
-    }
-    // And nothing was created on the way out.
-    #expect(!FileManager.default.fileExists(atPath: url.path + "-shm"))
+    let result = try WisprFlowAdapter().loadWords(at: store.url)
+    let canonical = Set(result.words.map(\.canonical))
+    #expect(canonical.contains("baseword"))
+    #expect(canonical.contains("walword"))
   }
 
-  @Test("a live database with both sidecars is refused, not read WAL-aware")
-  func liveDatabaseWithSidecarsIsRefused() throws {
-    // Reading WAL-aware required a connection mode that can CREATE files, and
-    // that mode is the only way this can ever write into another app's folder.
-    // If the app quit between the check and the open, SQLite recreated empty
-    // sidecars there — and the after-read check then saw a WAL again and
-    // called the import good (Codex review, #1686).
-    //
-    // Refusing removes the writable mode entirely, so there is no window left
-    // to lose. The cost is one step the error already asks for: quit the app.
-    let dir = makeDirectory()
+  @Test("importing from a running Wispr Flow does not modify its durable files (#3012)")
+  func liveWalImportLeavesSourceUnchanged() throws {
+    // Writer held open but paused, so any change to the source is ours. Compare the file NAME
+    // set (an in-place edit keeps the name) plus the BYTES of the durable parts. -shm is a
+    // volatile rebuilt index owned by the open writer, so its bytes are not asserted.
+    let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let url = try makeWisprFlowDatabase(in: dir)
-    try Data("pretend wal".utf8).write(to: URL(fileURLWithPath: url.path + "-wal"))
-    try Data("pretend shm".utf8).write(to: URL(fileURLWithPath: url.path + "-shm"))
+    let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+      in: dir,
+      baselineRows: "INSERT INTO Dictionary VALUES ('1','base','baseword',0,0);",
+      walOnlyRows: "INSERT INTO Dictionary VALUES ('2','walword',NULL,0,0);")
+    defer { sqlite3_close(store.writer) }
+
+    func names() -> [String] {
+      ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+    }
+    func bytes(_ suffix: String) -> Data? {
+      FileManager.default.contents(atPath: store.url.path + suffix)
+    }
+    let namesBefore = names()
+    let mainBefore = bytes("")
+    let walBefore = bytes("-wal")
+
+    _ = try WisprFlowAdapter().loadWords(at: store.url)
+
+    #expect(names() == namesBefore)
+    #expect(bytes("") == mainBefore)
+    #expect(bytes("-wal") == walBefore)
+  }
+
+  @Test("a rollback -journal makes the source unavailable and is refused (#3012)")
+  func rollbackJournalIsRefused() throws {
+    // A DELETE-mode hot journal means the main file may be mid-transaction and needs recovery
+    // this read cannot perform, so acquisition is unavailable; a persistent one exhausts the
+    // retries and refuses rather than reading a torn main.
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try RivalAppStoreFixtures.makeWisprFlowDatabase(
+      in: dir, rows: "INSERT INTO Dictionary VALUES ('1','x','y',0,0);")
+    try Data("hot journal".utf8).write(to: URL(fileURLWithPath: url.path + "-journal"))
 
     #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
       _ = try WisprFlowAdapter().loadWords(at: url)
     }
   }
 
-  @Test("an -shm alone is refused too, whichever sidecar it is")
-  func shmWithoutWalIsRefused() throws {
-    // The rule is "any sidecar", not "the WAL": naming one of a pair is how
-    // the earlier version left a case uncovered.
-    let dir = makeDirectory()
+  @Test("a missing Wispr Flow database is refused, not read as empty (#3012)")
+  func missingDatabaseIsRefused() throws {
+    let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let url = try makeWisprFlowDatabase(in: dir)
-    try Data("pretend shm".utf8).write(to: URL(fileURLWithPath: url.path + "-shm"))
+    let url = dir.appendingPathComponent("flow.sqlite")  // deliberately never created
 
     #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
       _ = try WisprFlowAdapter().loadWords(at: url)
     }
-    #expect(!FileManager.default.fileExists(atPath: url.path + "-wal"))
+  }
+
+  @Test("a symlinked Wispr Flow database is refused, never followed to the live original (#3012)")
+  func symlinkedDatabaseIsRefused() throws {
+    // A symlinked source would be cloned AS a link and SQLite would follow it back to the
+    // live original, defeating the private clone. Non-regular sources are refused.
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let real = try RivalAppStoreFixtures.makeWisprFlowDatabase(
+      in: dir, rows: "INSERT INTO Dictionary VALUES ('1','sig','word',0,0);")
+    let link = dir.appendingPathComponent("flow-link.sqlite")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: link)
+    }
   }
 
   @Test("a cleanly closed database is read without creating sidecars")

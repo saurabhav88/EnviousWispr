@@ -94,20 +94,30 @@ struct SnippetImportAppAdaptersTests {
     #expect(rows.excludedCount == 5)
   }
 
-  @Test("a live Wispr Flow database (sidecars present) is refused with the snippet sentence")
-  func wisprFlowRefusesWhileLive() throws {
+  @Test("a running Wispr Flow (WAL sidecars present) imports its snippets, not refused (#3012)")
+  func wisprFlowImportsWhileLive() throws {
+    // The case the founder hit: Wispr Flow open, -wal/-shm on disk. The clone read imports the
+    // snippets (committed and WAL-only alike) instead of refusing.
     let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let url = try RivalAppStoreFixtures.makeWisprFlowDatabase(
-      in: dir, rows: "INSERT INTO Dictionary VALUES ('1','sig','text',0,1);")
-    try Data().write(to: URL(fileURLWithPath: url.path + "-wal"))
+    let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+      in: dir,
+      baselineRows: "INSERT INTO Dictionary VALUES ('1','sig','committed text',0,1);",
+      walOnlyRows: "INSERT INTO Dictionary VALUES ('2','wal sig','wal text',0,1);")
+    defer { sqlite3_close(store.writer) }
+    #expect(FileManager.default.fileExists(atPath: store.url.path + "-wal"))
 
-    #expect(throws: SnippetImportAppError.unreadable("Wispr Flow")) {
-      _ = try WisprFlowSnippetAdapter().loadSnippets(at: url)
-    }
-    // The refusal is the whole read: nothing was created beside the other app's files.
-    let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
-    #expect(contents == ["flow.sqlite", "flow.sqlite-wal"])
+    let rows = try WisprFlowSnippetAdapter().loadSnippets(at: store.url)
+    #expect(Set(rows.candidates.map(\.trigger)) == ["sig", "wal sig"])
+    #expect(rows.excludedCount == 0)
+    // The private clone lives in a system replacement directory, never beside the source, so
+    // the source folder gains nothing (no -journal, no stray copy).
+    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+    #expect(!names.contains("flow.sqlite-journal"))
+  }
+
+  @Test("the Wispr Flow unreadable sentence is unchanged (shared with other apps)")
+  func wisprFlowUnreadableSentenceUnchanged() {
     #expect(
       SnippetImportAppError.unreadable("Wispr Flow").errorDescription
         == "Couldn't read your Wispr Flow snippets. If Wispr Flow is open, try quitting it and importing again."
