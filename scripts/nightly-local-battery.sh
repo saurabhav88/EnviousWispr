@@ -42,13 +42,17 @@ mkdir -p "$LOG_DIR"
 # The gated suites run through the Xcode bundle, Bundle/Type, one per line. Add
 # a suite here when it gains a real-device or real-model `.enabled(if:)` gate.
 # The MICROPHONE suite (AudioCaptureManagerLiveInputTests) is deliberately not
-# here: it runs through scripts/test-real-microphone.sh below. Regenerate the
-# candidates with:
-#   grep -rlE "shippedModelIsInstalled|modelsInstalled|firstEligibleRealDevice|ShippedBackendLatency" Tests
+# here: it runs through scripts/test-real-microphone.sh below. Every suite here
+# is selected BECAUSE it carries a hardware or model receipt, so a skipped case
+# inside it is the receipt not running: any skip fails the battery (cloud
+# review r6). Regenerate the candidates with (the admitted/installed gates are
+# spelled differently per fixture, so the pattern names them all):
+#   grep -rlE "shippedModelIsAdmitted|shippedModelIsInstalled|modelsInstalled|firstEligibleRealDevice|ShippedBackendLatency" Tests
 SUITES=(
   "EnviousWisprASRTests/ParakeetRealBoundaryTests"
   "EnviousWisprASRTests/WhisperKitWordTimingRealBoundaryTests"
   "EnviousWisprTests/ShippedBackendLatencyTests"
+  "EnviousWisprTests/WhisperKitRealBoundaryTests"
   "EnviousWisprTests/FileImportRealBoundaryTests"
   "EnviousWisprTests/KernelFrozenBindGuardTests"
   "EnviousWisprTests/SpeakerLabelerTests"
@@ -230,12 +234,15 @@ for suite in "${SUITES[@]}"; do
     # not the ◇/✔ of started/passed); a description that merely contains the
     # word "skipped" is excluded by anchoring on the trailing ` skipped.`.
     skipped="$(/usr/bin/grep -acE '^[^a-zA-Z0-9]*➜ Test .* skipped\.$' "$run_log" || true)"
-    # A suite whose every case skipped proves nothing about the hardware; the
-    # runner exits 0 for it, so the battery must not.
-    if [ "${passed:-0}" -eq 0 ]; then
+    # These suites are listed for their hardware/model receipt, and that receipt
+    # is exactly the case that skips when the model is absent or the device is
+    # muted; the ordinary cases beside it still pass. So ANY skip, not only a
+    # fully skipped suite, is the receipt not running: the runner exits 0 for
+    # it, the battery must not.
+    if [ "${passed:-0}" -eq 0 ] || [ "${skipped:-0}" -gt 0 ]; then
       fails=$((fails + 1))
-      log "failed $suite: 0 passed, skipped=${skipped:-0}; a fully skipped suite is not a hardware result"
-      summary+=("$suite: NO PROOF (0 passed, ${skipped:-0} skipped)")
+      log "failed $suite: passed=${passed:-0} skipped=${skipped:-0}; a skipped receipt is not a hardware result"
+      summary+=("$suite: NO PROOF (passed=${passed:-0}, skipped=${skipped:-0})")
     else
       log "ran    $suite passed=${passed:-0} skipped=${skipped:-0}"
       summary+=("$suite: ran, passed=${passed:-0} skipped=${skipped:-0}")
