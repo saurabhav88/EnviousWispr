@@ -38,6 +38,24 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
   }
 }
 
+/// Where a competitor app keeps a store on disk, and whether it is there.
+///
+/// The one thing the word adapters (`SmartImportAdapter`) and the snippet
+/// adapters (`SnippetImportAppAdapter`, #2997) share below the read itself:
+/// probe the candidate locations in order and report the first that exists.
+package protocol ImportedAppLocator: Sendable {
+  /// Where this app keeps the store, in probe order.
+  var candidatePaths: [URL] { get }
+}
+
+extension ImportedAppLocator {
+  /// The first location that actually exists, or nil.
+  package var installedPath: URL? {
+    candidatePaths.first { FileManager.default.fileExists(atPath: $0.path) }
+  }
+  package var isInstalled: Bool { installedPath != nil }
+}
+
 /// One competitor app EnviousWispr can read vocabulary out of.
 ///
 /// A registry, like the file parsers: adding an app is a new conformer and one
@@ -47,14 +65,12 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
 /// launch or when the sheet opens — an installed competitor is never quietly
 /// inspected in the background. `isInstalled` is only consulted once the user
 /// is looking at the app picker, and `loadWords` only after they choose one.
-package protocol SmartImportAdapter: Sendable {
+package protocol SmartImportAdapter: ImportedAppLocator {
   /// Stable identifier carried in the import batch for source attribution.
   /// No consumer reads it today (#2052).
   var identifier: String { get }
   /// What the user sees.
   var displayName: String { get }
-  /// Where this app keeps vocabulary, in probe order.
-  var candidatePaths: [URL] { get }
   /// Read the canonical words, alongside any misspelling the source app
   /// itself records as correcting to that word.
   func loadWords(at url: URL) throws -> SmartImportReadResult
@@ -317,12 +333,6 @@ extension SmartImportAdapter {
     }
     return data
   }
-
-  /// The first location that actually exists, or nil.
-  package var installedPath: URL? {
-    candidatePaths.first { FileManager.default.fileExists(atPath: $0.path) }
-  }
-  package var isInstalled: Bool { installedPath != nil }
 }
 
 // MARK: - FluidVoice
@@ -436,6 +446,14 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 /// before the extraction. What differs per adapter is the SQL and the row
 /// mapping, which are passed in.
 package enum WisprFlowDatabase {
+  /// The one database, holding words and snippets alike.
+  static var candidatePaths: [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Wispr Flow/flow.sqlite")
+    ]
+  }
+
   /// Read `sql` against the database at `url` under Wispr Flow's acquisition
   /// policy. `mapRow` returning nil is an exclusion and is counted; a throw
   /// refuses the whole read (`SmartImportSQLiteReader.readRows`).
@@ -535,12 +553,7 @@ package struct WisprFlowAdapter: SmartImportAdapter {
   package let identifier = "wispr-flow"
   package let displayName = "Wispr Flow"
 
-  package var candidatePaths: [URL] {
-    [
-      FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Wispr Flow/flow.sqlite")
-    ]
-  }
+  package var candidatePaths: [URL] { WisprFlowDatabase.candidatePaths }
 
   package init() {}
 
@@ -657,6 +670,15 @@ package struct VoxAdapter: SmartImportAdapter {
 /// MODIFIES their `-shm` (verified by hash), and writing inside another app's
 /// data directory is what #1686 removed.
 package enum TypeWhisperStoreSnapshot {
+  /// TypeWhisper keeps one Core Data store per feature beside each other
+  /// (`dictionary.store`, `snippets.store`, ...), each with its own sidecars.
+  static func candidatePaths(store name: String) -> [URL] {
+    [
+      FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/TypeWhisper/\(name)")
+    ]
+  }
+
   /// `-shm` is deliberately absent: it is a regenerable shared-memory index,
   /// not durable vocabulary. Measured — copying main+`-wal` alone still
   /// returns every row, with SQLite rebuilding the index beside the copy.
@@ -771,10 +793,7 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
   private let readPart: PartReader
 
   package var candidatePaths: [URL] {
-    [
-      FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/TypeWhisper/dictionary.store")
-    ]
+    TypeWhisperStoreSnapshot.candidatePaths(store: "dictionary.store")
   }
 
   package init(readPart: @escaping PartReader = TypeWhisperAdapter.readPartFromDisk) {

@@ -237,23 +237,18 @@ struct SmartImportSourceTests {
 
   // MARK: - Wispr Flow
 
-  /// Builds a database with Wispr Flow's real column shape.
+  /// Builds a database with Wispr Flow's real column shape
+  /// (`RivalAppStoreFixtures`, shared with the snippet adapter suite).
   private func makeWisprFlowDatabase(in dir: URL) throws -> URL {
-    let url = dir.appendingPathComponent("flow.sqlite")
-    var db: OpaquePointer?
-    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
-    defer { sqlite3_close(db) }
-    let schema = """
-      CREATE TABLE Dictionary (id VARCHAR(36) PRIMARY KEY, phrase VARCHAR(255) NOT NULL,
-        replacement VARCHAR(255), isDeleted TINYINT DEFAULT 0, isSnippet TINYINT DEFAULT 0);
-      INSERT INTO Dictionary VALUES ('1','Wispr Flow',NULL,0,0);
-      INSERT INTO Dictionary VALUES ('2','btw','by the way',0,0);
-      INSERT INTO Dictionary VALUES ('3','deleted word',NULL,1,0);
-      INSERT INTO Dictionary VALUES ('4','sig','my long signature',0,1);
-      INSERT INTO Dictionary VALUES ('5','blank replacement','   ',0,0);
-      """
-    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
-    return url
+    try makeWisprFlowDatabase(
+      in: dir,
+      rows: """
+        INSERT INTO Dictionary VALUES ('1','Wispr Flow',NULL,0,0);
+        INSERT INTO Dictionary VALUES ('2','btw','by the way',0,0);
+        INSERT INTO Dictionary VALUES ('3','deleted word',NULL,1,0);
+        INSERT INTO Dictionary VALUES ('4','sig','my long signature',0,1);
+        INSERT INTO Dictionary VALUES ('5','blank replacement','   ',0,0);
+        """)
   }
 
   @Test("Wispr Flow never imports a word the user deleted there")
@@ -1000,40 +995,31 @@ struct SmartImportSourceTests {
 
   // MARK: - TypeWhisper
 
-  /// Builds a store with TypeWhisper's real Core Data column shape.
+  /// Builds a store with TypeWhisper's real Core Data column shape
+  /// (`RivalAppStoreFixtures`, shared with the snippet adapter suite).
   ///
   /// Returns the url AND the open writer connection. The caller must keep that
   /// connection alive across the read and close it in a `defer`: closing it
   /// first CHECKPOINTS the WAL into the main file (measured — `-wal` drops to
   /// zero bytes), which destroys the very state the WAL tests exist to
   /// reproduce and quietly makes them pass against the design they exist to
-  /// reject.
+  /// reject. With `walOnlyRow`, one more row is written after a checkpoint and
+  /// must stay in the WAL alone.
   private func makeTypeWhisperStore(
     in dir: URL, walOnlyRow: Bool
   ) throws -> (url: URL, writer: OpaquePointer?) {
-    let url = dir.appendingPathComponent("dictionary.store")
-    var db: OpaquePointer?
-    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
-    sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
-    sqlite3_exec(db, "PRAGMA wal_autocheckpoint=0;", nil, nil, nil)
-    let schema = """
-      CREATE TABLE ZDICTIONARYENTRY (Z_PK INTEGER PRIMARY KEY, ZISENABLED INTEGER,
-        ZCASESENSITIVE INTEGER, ZENTRYTYPE VARCHAR, ZORIGINAL VARCHAR, ZREPLACEMENT VARCHAR);
-      INSERT INTO ZDICTIONARYENTRY VALUES (1,1,1,'term','Nuxt',NULL);
-      INSERT INTO ZDICTIONARYENTRY VALUES (2,1,0,'correction','envius wisper','EnviousWispr');
-      INSERT INTO ZDICTIONARYENTRY VALUES (3,0,0,'term','DisabledWord',NULL);
-      INSERT INTO ZDICTIONARYENTRY VALUES (4,1,0,'snippet','sig','my long signature');
-      """
-    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
-    if walOnlyRow {
-      // Force everything so far into the main file, then write one more row
-      // that must stay in the WAL alone.
-      sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", nil, nil, nil)
-      sqlite3_exec(
-        db, "INSERT INTO ZDICTIONARYENTRY VALUES (5,1,0,'term','WalOnlyWord',NULL);",
-        nil, nil, nil)
-    }
-    return (url, db)
+    try RivalAppStoreFixtures.makeTypeWhisperStore(
+      named: "dictionary.store", in: dir,
+      schema: """
+        CREATE TABLE ZDICTIONARYENTRY (Z_PK INTEGER PRIMARY KEY, ZISENABLED INTEGER,
+          ZCASESENSITIVE INTEGER, ZENTRYTYPE VARCHAR, ZORIGINAL VARCHAR, ZREPLACEMENT VARCHAR);
+        INSERT INTO ZDICTIONARYENTRY VALUES (1,1,1,'term','Nuxt',NULL);
+        INSERT INTO ZDICTIONARYENTRY VALUES (2,1,0,'correction','envius wisper','EnviousWispr');
+        INSERT INTO ZDICTIONARYENTRY VALUES (3,0,0,'term','DisabledWord',NULL);
+        INSERT INTO ZDICTIONARYENTRY VALUES (4,1,0,'snippet','sig','my long signature');
+        """,
+      walOnlyInsert: walOnlyRow
+        ? "INSERT INTO ZDICTIONARYENTRY VALUES (5,1,0,'term','WalOnlyWord',NULL);" : nil)
   }
 
   @Test("TypeWhisper terms and corrections both map through one structural rule")
@@ -1703,17 +1689,7 @@ struct SmartImportSourceTests {
   }
 
   private func makeWisprFlowDatabase(in dir: URL, rows: String) throws -> URL {
-    let url = dir.appendingPathComponent("flow.sqlite")
-    var db: OpaquePointer?
-    #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
-    defer { sqlite3_close(db) }
-    let schema = """
-      CREATE TABLE Dictionary (id VARCHAR(36) PRIMARY KEY, phrase VARCHAR(255) NOT NULL,
-        replacement VARCHAR(255), isDeleted TINYINT DEFAULT 0, isSnippet TINYINT DEFAULT 0);
-      \(rows)
-      """
-    #expect(sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK)
-    return url
+    try RivalAppStoreFixtures.makeWisprFlowDatabase(in: dir, rows: rows)
   }
 
   // MARK: 1. Superwhisper dual representation, preview
