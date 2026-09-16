@@ -48,9 +48,9 @@ on:
 # guard may now wait up to 50 min for an in-flight push run and then take
 # over with a ~40 min matrix, so a takeover can still be running when the
 # next hour's schedule fires; cancelling it would throw that work away. The
-# new schedule's guard instead waits for the earlier one (post-merge-should-run.sh
-# waits on push AND schedule runs for the sha) and skips when it ends green.
-# Push and pull_request groups keep cancel-in-progress.
+# group still serialises scheduled runs, so the next one queues, and its
+# guard answers `no` (the earlier one went green) or `stale` (main moved on)
+# without spending a Mac. Push and pull_request groups keep cancel-in-progress.
 concurrency:
   group: main-post-merge-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
@@ -188,7 +188,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: scripts/ci/post-merge-should-run.sh --sha "${{ github.sha }}"
 
   # The long pole, and the cache WRITER. Builds both configurations (the cache
@@ -623,6 +623,15 @@ jobs:
             fi
             if [ "$SCHEDULE_GUARD" = "no" ]; then
               echo "Scheduled validation skipped: main HEAD already has a green full-matrix run"
+              exit 0
+            fi
+            # #3019: the guard waited for an in-flight run and main moved on
+            # meanwhile; validating the old sha would be wasted and would hold
+            # the next schedule in the concurrency queue. Not a green signal
+            # for this sha, and not a failure: the next schedule validates
+            # current HEAD.
+            if [ "$SCHEDULE_GUARD" = "stale" ]; then
+              echo "Scheduled validation skipped: main moved to a newer commit while this run waited; the next schedule validates current HEAD (this sha is NOT validated by this run)"
               exit 0
             fi
           fi

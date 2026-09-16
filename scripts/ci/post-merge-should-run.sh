@@ -21,8 +21,7 @@
 #                   timeout, or malformed response; a missing tool.
 #
 # In-flight run on this sha (#3019): when no green run exists yet but a PUSH
-# run, or another SCHEDULE run, for this exact sha is queued or in progress,
-# the guard WAITS for it (polling every POLL_SECONDS under one shared
+# run for this exact sha is queued or in progress, the guard WAITS for it (polling every POLL_SECONDS under one shared
 # WAIT_MAX_SECONDS budget for the whole decision) and then decides again by
 # the rule above. Measured 2026-09-16: the 20:07 schedule fired while the push
 # run for 4f4c8c8f was still building, answered "never validated", and spent
@@ -30,8 +29,20 @@
 # later. Waiting keeps the takeover the schedule exists for: a run that ends
 # failed or cancelled (a merge train cancels it) is not a green run, so the
 # re-decision answers yes. The budget running out, or an API error while
-# waiting, fails closed to yes. The run itself (GITHUB_RUN_ID) is never
-# waited for, and a pull_request run never validates main so it is ignored.
+# waiting, fails closed to yes. Scheduled runs are serialised by their own
+# concurrency group, and a pull_request run never validates main, so neither
+# is waited for.
+#
+# Stale sha (#3019, cloud review on PR #3021): the sha can stop being HEAD.
+# A scheduled run may start late (queued behind another scheduled run) or
+# wait here while a merge train lands a newer commit; validating the frozen
+# sha would spend a full matrix on an obsolete commit AND, because scheduled
+# runs no longer cancel each other, hold the next hourly schedule (which
+# fires on the new HEAD) in the concurrency queue behind it. When no green
+# run exists the guard reads the branch head; if it no longer equals the sha
+# it answers
+#   should_run=stale   the matrix skips; post-merge-result reports the skip
+#                      truthfully; the next schedule validates current HEAD.
 #
 # JSON shape (#3019): `gh run view <id> --json jobs` returns an OBJECT
 # `{"jobs":[...]}`, not an array. Until #3019 this script tested the object
@@ -47,7 +58,7 @@
 #   GH_TOKEN           gh auth (set by the calling step)
 #   GITHUB_REPOSITORY  owner/name (default for --repo; set by Actions)
 #   GITHUB_OUTPUT      receives should_run=yes|no when set
-#   GITHUB_RUN_ID      this run's id, excluded from the in-flight scan
+#   GITHUB_REF_NAME    the branch whose head is re-read after a wait (main)
 #   WAIT_MAX_SECONDS   one budget for every API call and wait in a decision
 #                      (default 3000, capped at 3000; the schedule-guard job's
 #                      timeout-minutes must exceed it)
@@ -76,9 +87,10 @@ usage() {
 Usage:
   post-merge-should-run.sh --sha <main-head-sha> [--repo <owner/name>]
       Answer whether a main-post-merge validation run is needed for <sha>.
-      Writes should_run=yes|no to $GITHUB_OUTPUT when set. Every determinate
-      answer (yes or no) exits 0 — yes is also the fail-closed answer for
-      anything indeterminate. Usage errors exit 2.
+      Writes should_run=yes|no|stale to $GITHUB_OUTPUT when set (stale: the
+      branch moved past <sha> during a wait). Every determinate answer exits
+      0 — yes is also the fail-closed answer for anything indeterminate.
+      Usage errors exit 2.
   post-merge-should-run.sh --self-test
       Run the verdict matrix against a stubbed GitHub API.
 EOF
@@ -183,8 +195,6 @@ decide() {
   POLL_SECONDS=$((10#$POLL_SECONDS))
   [ "$POLL_SECONDS" -le 3000 ] || fail_closed "POLL_SECONDS exceeds 3000"
   EW_GUARD_DEADLINE=$(( $(date +%s) + WAIT_MAX_SECONDS ))
-  local self_id="${GITHUB_RUN_ID:-0}"
-  case "$self_id" in ''|*[!0-9]*) self_id=0 ;; esac
   local waited=" " inflight
   EW_GUARD_GREEN_IDS=""
 
@@ -238,17 +248,32 @@ decide() {
       fi
     done
 
-    # #3019: nothing green yet. Is a push or another schedule run for this sha
-    # still in flight? Wait for the first one not yet waited for, then scan
-    # again. Ignore this run and pull_request runs. A schedule run is worth
-    # waiting for only when it is EARLIER than this one and actually running:
-    # a newer one queued behind this run in the concurrency group can never
-    # finish first (Codex r2 N1).
-    if ! inflight="$(jq -r --arg sha "$sha" --argjson self "$self_id" --arg waited "$waited" '
+    # #3019: nothing green yet. Is this sha still main's head? A scheduled
+    # run can start late (queued behind another scheduled run in the
+    # concurrency group) or wait here while a merge train lands a newer
+    # commit; validating a sha that is no longer HEAD is wasted work that also
+    # holds the next hourly schedule in the queue. A green completion is
+    # caught by the scan above BEFORE this check, so a validated sha still
+    # answers no. Cloud review on PR #3021 and Codex r4.
+    local branch="${GITHUB_REF_NAME:-main}" head_json head_sha
+    if ! head_json="$(run_api api "repos/$repo/branches/$branch" --jq '.commit.sha')"; then
+      fail_closed "could not read the head of $branch"
+    fi
+    head_sha="$(printf '%s' "$head_json" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+    if ! printf '%s' "$head_sha" | grep -qE '^[0-9a-f]{40}$'; then
+      fail_closed "head of $branch did not parse as a full commit sha ('$head_json')"
+    fi
+    if [ "$head_sha" != "$(printf '%s' "$sha" | tr '[:upper:]' '[:lower:]')" ]; then
+      emit stale "$branch moved to $head_sha; this scheduled sha $sha is not validated by this run; the next schedule validates current HEAD"
+    fi
+
+    # Is a PUSH run for this sha still in flight? Wait for the first one not
+    # yet waited for, then scan again. Only push runs: scheduled runs are
+    # serialised by their own concurrency group (main-post-merge.yml) so one
+    # never runs beside another, and a pull_request run never validates main.
+    if ! inflight="$(jq -r --arg sha "$sha" --arg waited "$waited" '
         [ .[]
-          | select(((.event // "") == "push") or ((.event // "") == "schedule"))
-          | select((.databaseId // 0) != $self)
-          | select((.event != "schedule") or ((.status == "in_progress") and ($self == 0 or (.databaseId // 0) < $self)))
+          | select((.event // "") == "push")
           | select(((.status // "") == "queued") or ((.status // "") == "in_progress") or ((.status // "") == "waiting") or ((.status // "") == "requested") or ((.status // "") == "pending"))
           | select(((.headSha // "") | ascii_downcase) == ($sha | ascii_downcase))
           | ((.databaseId // 0) | tostring) as $id
@@ -331,6 +356,18 @@ if [[ "${1:-}" == "run" && "${2:-}" == "view" ]]; then
   fi
   exit 0
 fi
+if [[ "${1:-}" == "api" && "${2:-}" == repos/*/branches/* ]]; then
+  # Branch head (#3019): MOCK_HEAD_SHA (default: the target sha); once any
+  # status poll has happened, MOCK_HEAD_SHA_AFTER_POLL when set (main moved
+  # DURING the wait).
+  [[ "${MOCK_HEAD_FAIL:-0}" == "1" ]] && exit 1
+  if [[ -n "${MOCK_HEAD_SHA_AFTER_POLL:-}" ]] && ls "${MOCK_JOBS_DIR:-/nonexistent}"/polls-*.log >/dev/null 2>&1; then
+    printf '%s\n' "$MOCK_HEAD_SHA_AFTER_POLL"
+  else
+    printf '%s\n' "${MOCK_HEAD_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"
+  fi
+  exit 0
+fi
 echo "mock gh: unsupported call: $*" >&2
 exit 1
 MOCK_GH
@@ -359,7 +396,7 @@ self_test() {
   mkdir -p "$root/jobs"
   export MOCK_JOBS_DIR="$root/jobs"
   export MOCK_RUNS_FILE=""
-  export POLL_SECONDS=0 WAIT_MAX_SECONDS=30 GITHUB_RUN_ID=999
+  export POLL_SECONDS=0 WAIT_MAX_SECONDS=30
   unset MOCK_GH_FAIL MOCK_GH_FAIL_RC MOCK_TIMEOUT_FAIL MOCK_POLL_FAIL 2>/dev/null || true
 
   # _expect <label> <expected:yes|no>: run the REAL script with the current
@@ -375,7 +412,7 @@ self_test() {
     out="$(mktemp)"
     rc=0
     ( PATH="$bin:$PATH" GITHUB_OUTPUT="$out" "$0" --sha "$sha" --repo "$repo" ) >/dev/null 2>&1 || rc=$?
-    verdict="$(grep -oE 'should_run=(yes|no)' "$out" | tail -n1 | cut -d= -f2 || true)"
+    verdict="$(grep -oE 'should_run=(yes|no|stale)' "$out" | tail -n1 | cut -d= -f2 || true)"
     rm -f "$out"
     if [ "$rc" -eq 0 ] && [ "$verdict" = "$expected" ]; then
       echo "ok   [$label] should_run=$verdict rc=0"
@@ -471,6 +508,33 @@ self_test() {
   unset MOCK_RUNS_FILE_AFTER_POLL
   _expect "run list lags a green completion -> still skip" no
 
+  # Main MOVED while we waited (a merge train cancelled the push run for
+  # this sha and landed a newer commit): do not validate the obsolete sha,
+  # and do not hold the next schedule behind it. Verdict: stale.
+  printf '[{"databaseId":506,"headSha":"%s","event":"push","conclusion":null,"status":"in_progress"}]\n' "$sha" >"$root/runs.json"
+  printf 'completed cancelled\n' >"$MOCK_JOBS_DIR/status-506.txt"
+  MOCK_RUNS_FILE="$root/runs.json"
+  MOCK_HEAD_SHA_AFTER_POLL=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb _expect "main moved past the sha during the wait -> stale (skip, truthfully)" stale
+  # The awaited run ended GREEN and main moved on: the sha IS validated, so
+  # the answer is no (skip), never stale.
+  printf '[{"databaseId":507,"headSha":"%s","event":"push","conclusion":null,"status":"in_progress"}]\n' "$sha" >"$root/runs.json"
+  printf 'completed success\n' >"$MOCK_JOBS_DIR/status-507.txt"
+  printf '%s\n' "$green_jobs" >"$MOCK_JOBS_DIR/jobs-507.json"
+  MOCK_RUNS_FILE="$root/runs.json"
+  MOCK_HEAD_SHA_AFTER_POLL=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb _expect "awaited run green AND main moved during the wait -> skip (validated), not stale" no
+  # A head that cannot be read after a wait fails closed to run.
+  printf '[{"databaseId":506,"headSha":"%s","event":"push","conclusion":null,"status":"in_progress"}]\n' "$sha" >"$root/runs.json"
+  printf 'completed cancelled\n' >"$MOCK_JOBS_DIR/status-506.txt"
+  MOCK_RUNS_FILE="$root/runs.json"
+  MOCK_HEAD_FAIL=1 _expect "branch head unreadable after the wait -> run" yes
+  # The head is checked whenever nothing green exists, wait or no wait: a
+  # scheduled run that started late (queued behind another) on a sha main
+  # has already left is stale too; an unreadable or short head fails closed.
+  printf '[]\n' >"$root/runs.json"; MOCK_RUNS_FILE="$root/runs.json"
+  MOCK_HEAD_FAIL=1 _expect "no wait + unreadable head -> run" yes
+  MOCK_HEAD_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb _expect "no wait + main moved -> stale" stale
+  MOCK_HEAD_SHA=deadbeef _expect "malformed (short) head -> run" yes
+
   # The in-flight push run ends FAILED (or cancelled by a merge train): the
   # takeover the schedule exists for. Wait, then run.
   printf '[{"databaseId":502,"headSha":"%s","event":"push","conclusion":null,"status":"queued"}]\n' "$sha" >"$root/runs.json"
@@ -501,24 +565,13 @@ self_test() {
   _expect "in-flight pull_request run -> no wait, run" yes
   [ ! -f "$MOCK_JOBS_DIR/polls-504.log" ] && echo "ok   [pull_request run was not polled]" || { echo "FAIL [pull_request run was not polled]"; SELFTEST_FAILS=$((SELFTEST_FAILS + 1)); }
 
-  # THIS run (GITHUB_RUN_ID=999) shows up in the list as in progress; it must
-  # never wait for itself.
-  printf '[{"databaseId":999,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"}]\n' "$sha" >"$root/runs.json"
+  # Scheduled runs are never waited for (their concurrency group serialises
+  # them): an in-progress schedule run on the same sha, this run included,
+  # is not polled. The absence of a polls log proves it.
+  printf '[{"databaseId":999,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"},{"databaseId":601,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"}]\n' "$sha" "$sha" >"$root/runs.json"
   MOCK_RUNS_FILE="$root/runs.json"
-  _expect "own run in the list -> no wait, run" yes
-  [ ! -f "$MOCK_JOBS_DIR/polls-999.log" ] && echo "ok   [own run was not polled]" || { echo "FAIL [own run was not polled]"; SELFTEST_FAILS=$((SELFTEST_FAILS + 1)); }
-
-  # Another SCHEDULE run (an earlier hourly takeover) is in flight and ends
-  # green: wait for it, then skip. Without this a second schedule would run
-  # the matrix beside the first.
-  printf '[{"databaseId":601,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"},{"databaseId":999,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"}]\n' "$sha" "$sha" >"$root/runs.json"
-  printf 'in_progress \ncompleted success\n' >"$MOCK_JOBS_DIR/status-601.txt"
-  printf '%s\n' "$green_jobs" >"$MOCK_JOBS_DIR/jobs-601.json"
-  printf '[{"databaseId":601,"headSha":"%s","event":"schedule","conclusion":"success","status":"completed"},{"databaseId":999,"headSha":"%s","event":"schedule","conclusion":null,"status":"in_progress"}]\n' "$sha" "$sha" >"$root/runs-after.json"
-  MOCK_RUNS_FILE="$root/runs.json" MOCK_RUNS_FILE_AFTER_POLL="$root/runs-after.json"
-  export MOCK_RUNS_FILE_AFTER_POLL
-  _expect "in-flight earlier schedule run ends green -> wait, then skip" no
-  unset MOCK_RUNS_FILE_AFTER_POLL
+  _expect "in-flight schedule runs -> no wait, run" yes
+  [ ! -f "$MOCK_JOBS_DIR/polls-999.log" ] && [ ! -f "$MOCK_JOBS_DIR/polls-601.log" ] && echo "ok   [schedule runs were not polled]" || { echo "FAIL [schedule runs were not polled]"; SELFTEST_FAILS=$((SELFTEST_FAILS + 1)); }
 
   # The awaited push run ends "success" but its matrix jobs were skipped (a
   # non-code-change push): still not validated, so run.
