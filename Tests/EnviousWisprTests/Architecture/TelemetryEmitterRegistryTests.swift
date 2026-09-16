@@ -99,6 +99,8 @@ struct TelemetryEmitterRegistryTests {
     /// Function names whose capture argument is one of their own parameters, with the
     /// POSITION of that parameter, so a caller's argument at the same position is read.
     var forwarders: [String: Int]
+    /// Bare names that map to conflicting positions, within this file or across files.
+    var conflictingForwarders: Set<String> = []
     let collect: Bool
     private var functionStack: [FunctionDeclSyntax] = []
     var emitters: Set<Emitter> = []
@@ -212,7 +214,10 @@ struct TelemetryEmitterRegistryTests {
       let identifier = reference.baseName.text
       if let position = Self.parameterNames(of: function).firstIndex(of: identifier) {
         // A forwarder: its callers carry the literal and are counted in pass 2.
-        forwarders[function.name.text] = position
+        let name = function.name.text
+        if forwarders[name] == Int.max { return }  // already marked conflicting by pass 1
+        if let known = forwarders[name], known != position { conflictingForwarders.insert(name) }
+        forwarders[name] = position
         return
       }
       switch Self.localLiteral(named: identifier, in: function) {
@@ -257,6 +262,12 @@ struct TelemetryEmitterRegistryTests {
         unresolved.append(
           ("`PostHogSDK.shared` escapes into an alias; call it directly", site(node).line))
       }
+      // Module-qualified `PostHog.PostHogSDK` used other than as the base of `.shared`.
+      if node.declName.baseName.text == "PostHogSDK", Self.isSDKType(ExprSyntax(node)),
+        node.parent?.as(MemberAccessExprSyntax.self)?.declName.baseName.text != "shared"
+      {
+        unresolved.append(("`PostHogSDK` used other than through `.shared`", site(node).line))
+      }
       // `PostHogSDK.shared.capture` as a VALUE (stored, passed) is a capture path whose
       // later calls carry no literal; only the callee position of a call is recognised.
       if let base = node.base, Self.isSingleton(base),
@@ -274,9 +285,23 @@ struct TelemetryEmitterRegistryTests {
     static func isSingleton(_ expression: ExprSyntax) -> Bool {
       guard let member = expression.as(MemberAccessExprSyntax.self),
         member.declName.baseName.text == "shared",
-        let base = member.base?.as(DeclReferenceExprSyntax.self)
+        let base = member.base
       else { return false }
-      return base.baseName.text == "PostHogSDK"
+      return isSDKType(base)
+    }
+
+    /// `PostHogSDK` bare, or module-qualified `PostHog.PostHogSDK`.
+    static func isSDKType(_ expression: ExprSyntax) -> Bool {
+      if let reference = expression.as(DeclReferenceExprSyntax.self) {
+        return reference.baseName.text == "PostHogSDK"
+      }
+      if let member = expression.as(MemberAccessExprSyntax.self),
+        member.declName.baseName.text == "PostHogSDK",
+        let module = member.base?.as(DeclReferenceExprSyntax.self)
+      {
+        return module.baseName.text == "PostHog"
+      }
+      return false
     }
 
     /// The SDK named in TYPE position (`typealias Client = PostHogSDK`, `let x: PostHogSDK`)
@@ -417,12 +442,22 @@ struct TelemetryEmitterRegistryTests {
   ) {
     let parsed = sources.map { (file: $0.file, tree: Parser.parse(source: $0.source)) }
     var forwarders: [String: Int] = [:]
+    var conflictingForwarders: Set<String> = []
     for (file, tree) in parsed {
       let discovery = CaptureVisitor(
         converter: SourceLocationConverter(fileName: file, tree: tree), file: file,
         forwarders: [:], collect: false)
       discovery.walk(tree)
-      forwarders.merge(discovery.forwarders) { current, _ in current }
+      // Two forwarders sharing a bare name with the event in different positions: no
+      // syntax-only attribution is safe, so every call to that name is reported.
+      conflictingForwarders.formUnion(discovery.conflictingForwarders)
+      for (name, position) in discovery.forwarders {
+        if let known = forwarders[name], known != position { conflictingForwarders.insert(name) }
+        forwarders[name] = position
+      }
+    }
+    for name in conflictingForwarders {
+      forwarders[name] = Int.max  // no argument index satisfies it: every call is unresolved
     }
     var emitters: Set<Emitter> = []
     var unresolved: [Unresolved] = []
@@ -594,6 +629,12 @@ struct TelemetryEmitterRegistryTests {
           let event = "thirteen.registered"
           for event in ["hidden.loop"] { PostHogSDK.shared.capture(event) }
         }
+        func u() { PostHog.PostHogSDK.shared.capture("fourteen.qualified") }
+        func v() { let c = PostHog.PostHogSDK.shared; c.capture("hidden.qualified_alias") }
+      }
+      struct Twin {
+        func second(event: String, v: String) { PostHogSDK.shared.capture(event) }
+        func w() { second(event: "hidden.conflict", v: "x") }
       }
       """
     let other = """
@@ -609,7 +650,7 @@ struct TelemetryEmitterRegistryTests {
       Set(result.emitters.map(\.name)) == [
         "one.literal", "two.local", "three.*", "four.forwarded", "five.self_forwarded",
         "six.second_position", "nine.cross_file", "ten.other_file", "eleven.trivia",
-        "twelve.a",
+        "twelve.a", "fourteen.qualified",
       ])
     #expect(
       result.emitters.filter { $0.name == "twelve.a" }.count == 2,
@@ -624,7 +665,7 @@ struct TelemetryEmitterRegistryTests {
       "`forward(dynamic)`, the shadowed `event`, the `var event`, the stored singleton, the "
       + "second instance, the function value, the typealias, the defaulted forwarder and the "
       + "loop-shadowed `event` must be reported, not dropped or guessed: \(result.unresolved)"
-    #expect(result.unresolved.count == 9, Comment(rawValue: unresolvedMessage))
+    #expect(result.unresolved.count == 12, Comment(rawValue: unresolvedMessage))
     #expect(
       !result.emitters.contains { $0.name.hasPrefix("hidden.") },
       "an aliased capture is never counted as a registered emitter")
