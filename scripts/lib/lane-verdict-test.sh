@@ -12,7 +12,7 @@
 # the shell owns arguments, the count guard and the verdict lines; the judge owns
 # classifying a result payload, and its documented interface already takes a file
 # path, so it needs no seam to be driven. Nothing here gives the gate a test-only
-# knob (`validation-discipline.md` RULE: a-test-seam-on-a-GUARD-is-a-bypass).
+# knob (`validation-discipline.md` RULE: a-test-seam-on-a-GUARD-is-a-bypass-unless-it-is-logged).
 #
 # Run: bash scripts/lib/lane-verdict-test.sh
 set -uo pipefail
