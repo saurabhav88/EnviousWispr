@@ -47,9 +47,7 @@ struct OtherAudioSettingsPanel: View {
           selection: $settings.otherAudioWhileDictating,
           comfortable: true
         )
-        .fixedSize(horizontal: true, vertical: false)
-        .reportingWidth()
-        .frame(width: matchedWidth)
+        .matchingSegmentedWidth(matchedWidth)
       }
       if let unavailableNote {
         Text(unavailableNote)

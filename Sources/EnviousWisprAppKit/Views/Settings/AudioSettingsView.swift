@@ -170,9 +170,7 @@ struct AudioSettingsView: View {
                 selection: $settings.warmEnginePolicy,
                 comfortable: true
               )
-              .fixedSize(horizontal: true, vertical: false)
-              .reportingWidth()
-              .frame(width: matchedSegmentedWidth)
+              .matchingSegmentedWidth(matchedSegmentedWidth)
             }
             if settings.warmEnginePolicy == .always {
               InsetNotice(
