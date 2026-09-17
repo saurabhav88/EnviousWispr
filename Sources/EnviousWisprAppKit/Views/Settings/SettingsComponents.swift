@@ -620,6 +620,16 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
           .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
           .padding(.vertical, verticalPadding)
           .padding(.horizontal, horizontalPadding)
+          // Each segment never shrinks below its OWN content's ideal width,
+          // only grows past it: without this, imposing a wider total on the
+          // HStack from outside (`.matchingSegmentedWidth`) divides the space
+          // EQUALLY among segments rather than by each one's own need, and
+          // the longest label in the bar (e.g. "Continue", "Always") wraps
+          // even though the bar as a whole has room to spare (founder,
+          // 2026-09-16, live app). Every other call site already wraps this
+          // whole picker in its own `.fixedSize(horizontal: true, ...)`, so
+          // this is a no-op for them.
+          .fixedSize(horizontal: true, vertical: false)
           .frame(maxWidth: .infinity)
           .contentShape(Rectangle())
           .background(
@@ -672,6 +682,29 @@ extension View {
         Color.clear.preference(key: SegmentedControlWidthKey.self, value: proxy.size.width)
       }
     )
+  }
+
+  /// Sizes this view to its own natural width until `matchedWidth` is known,
+  /// then to exactly `matchedWidth`, and always reports whichever width it
+  /// rendered at.
+  ///
+  /// **Not the same as `.fixedSize(...).frame(width: matchedWidth)`.** That
+  /// order looks right and does not work: `.fixedSize()` makes a view
+  /// IGNORE any width an enclosing `.frame(width:)` proposes, so the outer
+  /// frame reserves the matched width in the LAYOUT while the visible
+  /// content stays at its own, smaller, natural width, centered inside the
+  /// extra space — a mismatch invisible in a screenshot cropped to one bar,
+  /// caught only by putting both bars in the same frame (founder,
+  /// 2026-09-16, live app). Once `matchedWidth` is known, this applies ONLY
+  /// `.frame(width:)`, so the proposal reaches the view's `.frame(maxWidth:
+  /// .infinity)` segments and they actually stretch to fill it.
+  @ViewBuilder
+  func matchingSegmentedWidth(_ matchedWidth: CGFloat?) -> some View {
+    if let matchedWidth {
+      frame(width: matchedWidth).reportingWidth()
+    } else {
+      fixedSize(horizontal: true, vertical: false).reportingWidth()
+    }
   }
 }
 
