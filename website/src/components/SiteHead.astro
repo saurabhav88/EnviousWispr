@@ -61,6 +61,12 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
 <meta name="twitter:description" content={description} />
 <meta name="twitter:image" content={ogImageUrl} />
 <link rel="dns-prefetch" href="https://us.i.posthog.com" />
+<!-- PNG icons at their own URLs: Slack link previews kept showing a stale
+     icon for the domain while only the SVG was advertised; a raster logo
+     at a new address gives unfurlers a fresh candidate to pick up. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/favicon-192.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <meta name="theme-color" content="#f8f5ff" />
 <link rel="alternate" type="application/rss+xml" title="EnviousWispr Blog" href="/rss.xml" />
