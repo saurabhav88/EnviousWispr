@@ -7,7 +7,7 @@ import Foundation
 public struct SnippetExpansionRecord: Sendable, Equatable {
   /// The opaque token substituted into the text. Unique within its run.
   public let sentinel: String
-  /// The user's saved text, byte-for-byte. Never sent to a model.
+  /// The text this snippet delivers, with fill-ins already resolved. Never sent to a model.
   public let expansion: String
   /// True when THIS SNIPPET OWNS ITS ENDING (#2637), so `SnippetFinalizer` must strip a
   /// sentence terminator sitting immediately after the sentinel in whatever polish returns.
@@ -40,10 +40,22 @@ public struct SnippetExpansionOutcome: Sendable, Equatable {
   /// One record per fired snippet, in the order they appear. Empty means nothing fired and
   /// every downstream stage is a no-op.
   public let records: [SnippetExpansionRecord]
+  /// The fill-ins used by the snippets that FIRED, read from their SAVED text (#3018).
+  ///
+  /// Read from the saved text because the resolved text no longer contains the token. It exists so
+  /// `SnippetExpansionStep` can decide whether THIS take needs the clipboard after matching rather
+  /// than before it: a clipboard snippet that is merely saved must not cost a pasteboard read on
+  /// every dictation.
+  public let usedPlaceholders: Set<SnippetPlaceholder>
 
-  public init(text: String, records: [SnippetExpansionRecord]) {
+  /// No default on `usedPlaceholders`. Both construction sites state it, so a third one cannot
+  /// silently report "no fill-ins" for a take that used some.
+  public init(
+    text: String, records: [SnippetExpansionRecord], usedPlaceholders: Set<SnippetPlaceholder>
+  ) {
     self.text = text
     self.records = records
+    self.usedPlaceholders = usedPlaceholders
   }
 
   public var didFire: Bool { !records.isEmpty }
@@ -100,9 +112,17 @@ public struct SnippetExpander: Sendable {
   ///
   /// Returns the input unchanged with no records when the vocabulary cannot fire, so a user
   /// with no snippets takes a byte-identical path.
-  public func expand(_ text: String, using vocabulary: SnippetVocabulary) -> SnippetExpansionOutcome
-  {
-    guard vocabulary.canFire else { return SnippetExpansionOutcome(text: text, records: []) }
+  ///
+  /// `values` has no default argument. Every caller states which instant, locale, zone and
+  /// clipboard its snippets are rendered against, because a defaulted one would hide from the call
+  /// site that this matcher now substitutes text at all
+  /// (`code-design-rules.md` RULE: plan-consumers-point-at-the-contract).
+  public func expand(
+    _ text: String, using vocabulary: SnippetVocabulary, values: SnippetDynamicValues
+  ) -> SnippetExpansionOutcome {
+    guard vocabulary.canFire else {
+      return SnippetExpansionOutcome(text: text, records: [], usedPlaceholders: [])
+    }
     let keyword = SnippetText.normalize(vocabulary.keyword)
     let pieces = Self.split(text)
     let wordIndices = pieces.indices.filter { !pieces[$0].isWhitespaceRun }
@@ -115,11 +135,22 @@ public struct SnippetExpander: Sendable {
     var out = pieces.first?.isWhitespaceRun == true ? pieces[0].text : ""
     var records: [SnippetExpansionRecord] = []
     var issued: Set<String> = []
+    var usedPlaceholders: Set<SnippetPlaceholder> = []
     // Decided ONCE per take, not once per fired snippet (#2759 site 2): the input and the saved
     // expansions do not change while this loop runs, and a scan of both per mint made a long
     // take with several triggers pay O(text x fired). Lazy, so a take that fires nothing, the
     // common case, pays no scan at all, as before.
-    lazy var expansions = vocabulary.snippets.map(\.expansion)
+    //
+    // RESOLVED rather than saved (#3018), and that is load-bearing: this is the sentinel-collision
+    // domain, and the clipboard is arbitrary user content — the only domain that can now contain
+    // the string `EWSNIP...`, because the user copied it.
+    //
+    // Held as SEGMENTS rather than as resolved strings. Building the strings copied the clipboard
+    // once per saved clipboard snippet, which measured 2161 ms for sixteen snippets and a 10 MiB
+    // clipboard against this step's 1 second backstop (#3018 §16). `SnippetResolvedExpansions`
+    // conservatively detects possible collisions and scans each value at most once per query.
+    lazy var expansions = SnippetResolvedExpansions(
+      savedTexts: vocabulary.snippets.map(\.expansion), using: values)
     lazy var domainCanCollide = Self.domainCanCollide(rawInput: text, expansions: expansions)
     var cursor = 0
 
@@ -154,14 +185,19 @@ public struct SnippetExpander: Sendable {
         rawInput: text, expansions: expansions, alreadyIssued: issued,
         domainCanCollide: domainCanCollide)
       issued.insert(sentinel)
+      // The fill-ins become text HERE, once, and everything downstream carries the result: the
+      // ending decision below reads the DELIVERED text because that is what the rule is about, and
+      // the record holds it because `SnippetFinalizer` substitutes the record back verbatim.
+      let resolved = SnippetPlaceholder.resolve(hit.snippet.expansion, using: values)
+      usedPlaceholders.formUnion(SnippetPlaceholder.placeholders(in: hit.snippet.expansion))
       let trailing = Self.trailingToRestore(
         lastToken: lastToken,
-        expansion: hit.snippet.expansion,
+        expansion: resolved,
         isWholeDictation: cursor == 0 && cursor + hit.length == wordIndices.count - 1)
       records.append(
         SnippetExpansionRecord(
           sentinel: sentinel,
-          expansion: hit.snippet.expansion,
+          expansion: resolved,
           suppressFollowingSentenceEnding: trailing.suppressed))
 
       // The punctuation the user actually spoke belongs AROUND the pasted text, not swallowed
@@ -183,7 +219,8 @@ public struct SnippetExpander: Sendable {
       cursor += hit.length + 1
     }
 
-    return SnippetExpansionOutcome(text: out, records: records)
+    return SnippetExpansionOutcome(
+      text: out, records: records, usedPlaceholders: usedPlaceholders)
   }
 
   /// The trailing punctuation to re-attach after the expansion (#2637).
@@ -233,8 +270,8 @@ public struct SnippetExpander: Sendable {
   /// take. `mintSentinel` still scans per candidate when this is true, and for a candidate that
   /// does not carry the prefix (an injected source), so the guarantee does not rest on the
   /// source.
-  static func domainCanCollide(rawInput: String, expansions: [String]) -> Bool {
-    rawInput.contains(prefix) || expansions.contains(where: { $0.contains(prefix) })
+  static func domainCanCollide(rawInput: String, expansions: SnippetResolvedExpansions) -> Bool {
+    rawInput.contains(prefix) || expansions.contains(prefix)
   }
 
   /// A sentinel that appears in NONE of: the raw input, any saved expansion, or the sentinels
@@ -250,14 +287,15 @@ public struct SnippetExpander: Sendable {
   /// once by the caller; `false` skips the two domain scans for a prefixed candidate, which is
   /// exact because such a candidate cannot occur in a domain the prefix does not occur in.
   func mintSentinel(
-    rawInput: String, expansions: [String], alreadyIssued: Set<String>, domainCanCollide: Bool
+    rawInput: String, expansions: SnippetResolvedExpansions, alreadyIssued: Set<String>,
+    domainCanCollide: Bool
   ) -> String {
     for _ in 0..<8 {
       let candidate = candidateSource()
       if alreadyIssued.contains(candidate) { continue }
       if domainCanCollide || !candidate.hasPrefix(Self.prefix) {
         if rawInput.contains(candidate) { continue }
-        if expansions.contains(where: { $0.contains(candidate) }) { continue }
+        if expansions.contains(candidate) { continue }
       }
       return candidate
     }
@@ -271,8 +309,7 @@ public struct SnippetExpander: Sendable {
       let collides =
         alreadyIssued.contains(candidate)
         || (domainCanCollide
-          && (rawInput.contains(candidate)
-            || expansions.contains(where: { $0.contains(candidate) })))
+          && (rawInput.contains(candidate) || expansions.contains(candidate)))
       if !collides { return candidate }
       suffix += 1
     }

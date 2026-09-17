@@ -23,6 +23,18 @@ struct SnippetExpanderTests {
       generation: 1)
   }
 
+  /// The fill-in snapshot for the cases below whose snippets contain no fill-in at all.
+  ///
+  /// Named rather than defaulted on `expand` itself: every call site states what its snippets are
+  /// rendered against, and this name says plainly that these cases are indifferent to it. The
+  /// cases that DO care build their own values with the instant, locale, zone or clipboard they
+  /// are about.
+  private static let noFillIns = SnippetDynamicValues(
+    now: Date(timeIntervalSince1970: 0),
+    locale: Locale(identifier: "en_US"),
+    timeZone: TimeZone(identifier: "UTC")!,
+    clipboard: nil)
+
   /// A predictable sentinel source so assertions can name the token. Real runs use random hex.
   private func fixedExpander(_ values: [String]) -> SnippetExpander {
     let box = Box(values)
@@ -50,7 +62,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPaaaa"])
     let out = expander.expand(
       "feel free to email me at backslash my email address any time",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "feel free to email me at EWSNIPaaaa any time")
     #expect(
@@ -61,7 +73,7 @@ struct SnippetExpanderTests {
   func triggerWithoutKeywordDoesNothing() {
     let input = "can you send me my email address from that form"
     let out = SnippetExpander().expand(
-      input, using: vocabulary([("my email address", "sam@example.com")]))
+      input, using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == input)
     #expect(out.records.isEmpty)
@@ -72,7 +84,7 @@ struct SnippetExpanderTests {
   func keywordWithoutMatchIsPreserved() {
     let input = "the path is backslash users backslash shared"
     let out = SnippetExpander().expand(
-      input, using: vocabulary([("my email address", "sam@example.com")]))
+      input, using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == input)
     #expect(out.records.isEmpty)
@@ -88,7 +100,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "SHORT"),
         ("my email address", "LONG"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPlong please")
     #expect(out.records.first?.expansion == "LONG")
@@ -99,7 +111,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPdot"])
     let out = expander.expand(
       "email me at backslash my email address.",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "email me at EWSNIPdot.")
   }
@@ -109,7 +121,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPcase"])
     let out = expander.expand(
       "Backslash My Email Address",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPcase")
   }
@@ -122,7 +134,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "sam@example.com"),
         ("support address", "help@example.com"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPone or EWSNIPtwo")
     #expect(out.records.count == 2)
@@ -134,7 +146,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPgap"])
     let out = expander.expand(
       "first line\n\nbackslash my email  trailing",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "first line\n\nEWSNIPgap  trailing")
   }
@@ -144,7 +156,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPend"])
     let out = expander.expand(
       "email me at backslash my email address",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "email me at EWSNIPend")
     #expect(out.records.count == 1)
@@ -158,9 +170,13 @@ struct SnippetExpanderTests {
     let vocab = vocabulary([("my email", "sam@example.com")])
     let expander = fixedExpander(["EWSNIPlead"])
 
-    #expect(expander.expand("\n  hello there", using: vocab).text == "\n  hello there")
     #expect(
-      fixedExpander(["EWSNIPlead"]).expand("  backslash my email", using: vocab).text
+      expander.expand("\n  hello there", using: vocab, values: Self.noFillIns).text
+        == "\n  hello there")
+    #expect(
+      fixedExpander(["EWSNIPlead"]).expand(
+        "  backslash my email", using: vocab, values: Self.noFillIns
+      ).text
         == "  EWSNIPlead")
   }
 
@@ -172,7 +188,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPq"])
     let out = expander.expand(
       "he said \u{201C}backslash my email\u{201D} and left",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "he said \u{201C}EWSNIPq\u{201D} and left")
   }
@@ -184,7 +200,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPt"])
     let out = expander.expand(
       "he said backslash \u{201C}my email\u{201D} and left",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "he said \u{201C}EWSNIPt\u{201D} and left")
   }
@@ -194,7 +210,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPb"])
     let out = expander.expand(
       "(backslash my email)",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "(EWSNIPb)")
   }
@@ -206,7 +222,7 @@ struct SnippetExpanderTests {
   func triggerDoesNotSpanASentenceBoundary() {
     let input = "send me backslash my. Email address is below"
     let out = SnippetExpander().expand(
-      input, using: vocabulary([("my email address", "sam@example.com")]))
+      input, using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == input)
     #expect(out.records.isEmpty)
@@ -217,7 +233,7 @@ struct SnippetExpanderTests {
   func keywordBoundaryBlocksTheMatch() {
     let input = "send me backslash. My email address is below"
     let out = SnippetExpander().expand(
-      input, using: vocabulary([("my email address", "sam@example.com")]))
+      input, using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == input)
     #expect(out.records.isEmpty)
@@ -230,7 +246,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPend2"])
     let out = expander.expand(
       "write to backslash my email address. Thanks.",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "write to EWSNIPend2. Thanks.")
   }
@@ -243,7 +259,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPcomma"])
     let out = expander.expand(
       "email me at backslash my, email today",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "email me at EWSNIPcomma today")
   }
@@ -260,7 +276,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPalone"])
     let out = expander.expand(
       "backslash my email address.",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPalone")
     #expect(out.records.count == 1)
@@ -275,7 +291,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPalone2"])
     let out = expander.expand(
       "backslash my email address",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPalone2")
     // The flag records the DECISION, not whether anything was removed here. A whole-dictation
@@ -292,7 +308,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPcomma2"])
     let out = expander.expand(
       "backslash my email address,",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPcomma2,")
   }
@@ -304,7 +320,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPmid"])
     let out = expander.expand(
       "please contact me at backslash my email address.",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "please contact me at EWSNIPmid.")
     #expect(!out.records[0].suppressFollowingSentenceEnding)
@@ -317,7 +333,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPsig"])
     let out = expander.expand(
       "tell them backslash my sign off. Then send it.",
-      using: vocabulary([("my sign off", "Let me know if that works.")]))
+      using: vocabulary([("my sign off", "Let me know if that works.")]), values: Self.noFillIns)
 
     #expect(out.text == "tell them EWSNIPsig Then send it.")
     #expect(out.records[0].expansion == "Let me know if that works.")
@@ -331,7 +347,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPnl"])
     let out = expander.expand(
       "tell them backslash my sign off. Then send it.",
-      using: vocabulary([("my sign off", "Speak soon.\n")]))
+      using: vocabulary([("my sign off", "Speak soon.\n")]), values: Self.noFillIns)
 
     #expect(out.text == "tell them EWSNIPnl Then send it.")
   }
@@ -343,7 +359,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPmid2"])
     let out = expander.expand(
       "tell them backslash my sign off. Then send it.",
-      using: vocabulary([("my sign off", "Best,\nSaurabh")]))
+      using: vocabulary([("my sign off", "Best,\nSaurabh")]), values: Self.noFillIns)
 
     #expect(out.text == "tell them EWSNIPmid2. Then send it.")
   }
@@ -355,7 +371,8 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPa", "EWSNIPb"])
     let out = expander.expand(
       "backslash my email. backslash my cell.",
-      using: vocabulary([("my email", "sam@example.com"), ("my cell", "555-0100")]))
+      using: vocabulary([("my email", "sam@example.com"), ("my cell", "555-0100")]),
+      values: Self.noFillIns)
 
     #expect(out.text == "EWSNIPa. EWSNIPb.")
     #expect(out.records.count == 2)
@@ -369,7 +386,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPmix"])
     let out = expander.expand(
       "he said \u{201C}backslash my sign off.\u{201D} Then he left.",
-      using: vocabulary([("my sign off", "Let me know if that works.")]))
+      using: vocabulary([("my sign off", "Let me know if that works.")]), values: Self.noFillIns)
 
     #expect(out.text == "he said \u{201C}EWSNIPmix\u{201D} Then he left.")
     #expect(out.records[0].suppressFollowingSentenceEnding)
@@ -386,7 +403,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPquote"])
     let out = expander.expand(
       "he said backslash my.\u{201D} Email address is below",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.text == "he said backslash my.\u{201D} Email address is below")
     #expect(out.records.isEmpty)
@@ -399,7 +416,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPparen"])
     let out = expander.expand(
       "he said (backslash my.) Email address is below",
-      using: vocabulary([("my email address", "sam@example.com")]))
+      using: vocabulary([("my email address", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.records.isEmpty)
   }
@@ -441,7 +458,7 @@ struct SnippetExpanderTests {
   @Test("An empty store returns the input unchanged and identical")
   func emptyStoreIsIdentity() {
     let input = "backslash my email address"
-    let out = SnippetExpander().expand(input, using: .empty)
+    let out = SnippetExpander().expand(input, using: .empty, values: Self.noFillIns)
 
     #expect(out.text == input)
     #expect(out.records.isEmpty)
@@ -456,7 +473,7 @@ struct SnippetExpanderTests {
       generation: 1)
 
     #expect(vocab.canFire == false)
-    #expect(SnippetExpander().expand(input, using: vocab).text == input)
+    #expect(SnippetExpander().expand(input, using: vocab, values: Self.noFillIns).text == input)
   }
 
   // MARK: - Sentinel uniqueness, all three domains
@@ -466,7 +483,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["EWSNIPdupe", "EWSNIPfresh"])
     let out = expander.expand(
       "the code is EWSNIPdupe and backslash my email",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.records.first?.sentinel == "EWSNIPfresh")
     #expect(out.text.contains("EWSNIPfresh"))
@@ -483,7 +500,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "sam@example.com"),
         ("my note", "reference EWSNIPinside for details"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.records.first?.sentinel == "EWSNIPclean")
   }
@@ -496,7 +513,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "sam@example.com"),
         ("support address", "help@example.com"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.records.count == 2)
     #expect(out.records[0].sentinel != out.records[1].sentinel)
@@ -513,7 +530,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "sam@example.com"),
         ("support address", "help@example.com"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.records.map(\.sentinel) == ["EWSNIPfallback1", "EWSNIPfallback2"])
   }
@@ -523,15 +540,29 @@ struct SnippetExpanderTests {
   /// every minted candidate carries, so the decision is bound here on both sides.
   @Test("The domains can only collide when they contain the sentinel prefix")
   func domainCanCollideIsThePrefixTest() {
+    func domain(_ savedTexts: [String], clipboard: String? = nil) -> SnippetResolvedExpansions {
+      SnippetResolvedExpansions(savedTexts: savedTexts, using: Self.fillIns(clipboard: clipboard))
+    }
+
     #expect(
       !SnippetExpander.domainCanCollide(
-        rawInput: "backslash my email", expansions: ["sam@example.com"]))
+        rawInput: "backslash my email", expansions: domain(["sam@example.com"])))
     #expect(
       SnippetExpander.domainCanCollide(
-        rawInput: "code EWSNIPx here", expansions: ["sam@example.com"]))
+        rawInput: "code EWSNIPx here", expansions: domain(["sam@example.com"])))
     #expect(
-      SnippetExpander.domainCanCollide(rawInput: "backslash my email", expansions: ["see EWSNIP"]))
-    #expect(!SnippetExpander.domainCanCollide(rawInput: "", expansions: []))
+      SnippetExpander.domainCanCollide(
+        rawInput: "backslash my email", expansions: domain(["see EWSNIP"])))
+    #expect(!SnippetExpander.domainCanCollide(rawInput: "", expansions: domain([])))
+    // The prefix arriving through a SUBSTITUTED value, which is the domain the fill-ins added.
+    #expect(
+      SnippetExpander.domainCanCollide(
+        rawInput: "backslash my link",
+        expansions: domain(["see {{clipboard}}"], clipboard: "EWSNIPx")))
+    // And assembled ACROSS the splice: neither piece holds the prefix, the resolved text does.
+    #expect(
+      SnippetExpander.domainCanCollide(
+        rawInput: "backslash my link", expansions: domain(["EWS{{clipboard}}"], clipboard: "NIPx")))
   }
 
   /// An injected source is not bound to the prefix, so a candidate without it is still scanned
@@ -541,7 +572,7 @@ struct SnippetExpanderTests {
     let expander = fixedExpander(["plain", "EWSNIPok"])
     let out = expander.expand(
       "the code is plain and backslash my email",
-      using: vocabulary([("my email", "sam@example.com")]))
+      using: vocabulary([("my email", "sam@example.com")]), values: Self.noFillIns)
 
     #expect(out.records.first?.sentinel == "EWSNIPok")
   }
@@ -554,7 +585,7 @@ struct SnippetExpanderTests {
       using: vocabulary([
         ("my email", "sam@example.com"),
         ("my note", "in plain words"),
-      ]))
+      ]), values: Self.noFillIns)
 
     #expect(out.records.first?.sentinel == "EWSNIPok")
   }
@@ -577,5 +608,168 @@ struct SnippetExpanderTests {
 
     #expect(blank.triggerTokens.isEmpty)
     #expect(!blank.collidesWith(blank))
+  }
+
+  // MARK: - Fill-ins (#3018)
+
+  /// The values a fill-in case renders against. Same frozen instant as the Core suite, whose
+  /// literals pin what these strings look like; this suite is about WHICH text ends up where.
+  private static func fillIns(clipboard: String? = nil) -> SnippetDynamicValues {
+    SnippetDynamicValues(
+      now: Date(timeIntervalSince1970: 1_789_584_300),
+      locale: Locale(identifier: "en_US"),
+      timeZone: TimeZone(identifier: "America/New_York")!,
+      clipboard: clipboard)
+  }
+
+  @Test("A fired snippet's record carries the RESOLVED text, never the token")
+  func theRecordCarriesTheResolvedText() {
+    let expander = fixedExpander(["EWSNIPaaaa"])
+    let out = expander.expand(
+      "please send it backslash my stamp today",
+      using: vocabulary([("my stamp", "Filed {{date}} at {{time}} from {{clipboard}}")]),
+      values: Self.fillIns(clipboard: "https://x.dev"))
+
+    #expect(out.text == "please send it EWSNIPaaaa today")
+    // U+202F, a narrow no-break space, is what `en_US` puts before PM. Read off the bytes.
+    #expect(
+      out.records.first?.expansion
+        == "Filed Sep 16, 2026 at 2:45\u{202F}PM from https://x.dev")
+    #expect(out.records.first?.expansion.contains("{{") == false)
+  }
+
+  @Test("usedPlaceholders is the union over the snippets that FIRED, and only those")
+  func usedPlaceholdersCoversFiredSnippetsOnly() {
+    let expander = fixedExpander(["EWSNIPaaaa", "EWSNIPbbbb"])
+    let vocab = vocabulary([
+      ("my stamp", "on {{date}}"),
+      ("my link", "see {{clipboard}}"),
+      ("my sign off", "thanks"),
+    ])
+
+    let onlyDate = expander.expand(
+      "backslash my stamp", using: vocab, values: Self.fillIns())
+    #expect(onlyDate.usedPlaceholders == [.date])
+
+    let both = expander.expand(
+      "backslash my stamp and backslash my link", using: vocab, values: Self.fillIns())
+    #expect(both.usedPlaceholders == [.date, .clipboard])
+
+    // The saved clipboard snippet is in the vocabulary and did not fire, so it is not here. This
+    // is the row the first design of the step got wrong.
+    let noFillIn = expander.expand(
+      "backslash my sign off", using: vocab, values: Self.fillIns())
+    #expect(noFillIn.didFire)
+    #expect(noFillIn.usedPlaceholders.isEmpty)
+
+    let nothing = expander.expand("no keyword here", using: vocab, values: Self.fillIns())
+    #expect(nothing.usedPlaceholders.isEmpty)
+  }
+
+  /// The collision domain must be the RESOLVED text, because the clipboard is the only domain a
+  /// user can put the string `EWSNIP...` into. The candidate here is the EXACT value the source
+  /// mints, not merely the prefix: `domainCanCollide` screens on the prefix, and the rejection
+  /// compares the whole candidate.
+  @Test("A sentinel candidate living in the CLIPBOARD text is rejected")
+  func aCandidateInsideTheClipboardIsRejected() {
+    let expander = fixedExpander(["EWSNIPinside", "EWSNIPclean"])
+    let out = expander.expand(
+      "backslash my link",
+      using: vocabulary([("my link", "see {{clipboard}} for details")]),
+      values: Self.fillIns(clipboard: "reference EWSNIPinside here"))
+
+    #expect(out.records.first?.sentinel == "EWSNIPclean")
+    // The user's copied bytes survive the rejection untouched.
+    #expect(out.records.first?.expansion == "see reference EWSNIPinside here for details")
+  }
+
+  /// The same candidate against a NIL clipboard is clean, which is exactly what makes the step's
+  /// probe pass accept it and the retained pass reject it. Both halves are asserted here so the
+  /// step's two-pass gate rests on measured behaviour rather than on an assumption about it.
+  @Test("The same candidate is clean with no clipboard and colliding with one")
+  func theProbePassAndTheRetainedPassDisagree() {
+    let probe = fixedExpander(["EWSNIPinside", "EWSNIPclean"])
+    let dry = probe.expand(
+      "backslash my link",
+      using: vocabulary([("my link", "see {{clipboard}} for details")]),
+      values: Self.fillIns(clipboard: nil))
+    #expect(dry.records.first?.sentinel == "EWSNIPinside")
+    #expect(dry.usedPlaceholders == [.clipboard])
+
+    let retained = fixedExpander(["EWSNIPinside", "EWSNIPclean"])
+    let wet = retained.expand(
+      "backslash my link",
+      using: vocabulary([("my link", "see {{clipboard}} for details")]),
+      values: Self.fillIns(clipboard: "EWSNIPinside"))
+    #expect(wet.records.first?.sentinel == "EWSNIPclean")
+  }
+
+  /// The fallback spelling is a SEQUENCE, and the clipboard can hold one of its members. The mint
+  /// must walk past it rather than issue a sentinel that already exists in the delivered text.
+  @Test("A fallback candidate that the clipboard already contains is skipped too")
+  func aFallbackCandidateInsideTheClipboardIsSkipped() {
+    let expander = fixedExpander(["EWSNIPsame"])
+    let out = expander.expand(
+      "backslash my link",
+      using: vocabulary([("my link", "see {{clipboard}}")]),
+      values: Self.fillIns(clipboard: "EWSNIPsame and EWSNIPfallback0 both appear"))
+
+    #expect(out.records.first?.sentinel == "EWSNIPfallback1")
+    #expect(out.records.first?.expansion == "see EWSNIPsame and EWSNIPfallback0 both appear")
+  }
+
+  // MARK: - Fill-ins and the ending rule (#2637 x #3018)
+
+  @Test("A date snippet spoken as the WHOLE dictation still owns its ending")
+  func aWholeDictationDateSnippetSuppresses() {
+    let expander = fixedExpander(["EWSNIPaaaa"])
+    let out = expander.expand(
+      "backslash my stamp.", using: vocabulary([("my stamp", "{{date}}")]),
+      values: Self.fillIns())
+
+    #expect(out.text == "EWSNIPaaaa")
+    #expect(out.records.first?.suppressFollowingSentenceEnding == true)
+    #expect(out.records.first?.expansion == "Sep 16, 2026")
+  }
+
+  /// The half the resolution changes: EMBEDDED, the decision reads the DELIVERED text. A date does
+  /// not end a sentence, so the user's own full stop is re-attached.
+  @Test("The same date snippet EMBEDDED keeps the user's own full stop")
+  func anEmbeddedDateSnippetKeepsTheStop() {
+    let expander = fixedExpander(["EWSNIPaaaa"])
+    let out = expander.expand(
+      "filed on backslash my stamp.", using: vocabulary([("my stamp", "{{date}}")]),
+      values: Self.fillIns())
+
+    #expect(out.text == "filed on EWSNIPaaaa.")
+    #expect(out.records.first?.suppressFollowingSentenceEnding == false)
+  }
+
+  /// And the inverse: the decision is made on the RESOLVED text, so a clipboard whose content ends
+  /// a sentence suppresses the duplicate terminator that the saved text `see {{clipboard}}` could
+  /// never have predicted.
+  @Test("An embedded clipboard snippet whose copied text ends a sentence suppresses the duplicate")
+  func aClipboardEndingASentenceSuppresses() {
+    let expander = fixedExpander(["EWSNIPaaaa"])
+    let out = expander.expand(
+      "here you go backslash my link. Thanks",
+      using: vocabulary([("my link", "see {{clipboard}}")]),
+      values: Self.fillIns(clipboard: "https://x.dev."))
+
+    #expect(out.text == "here you go EWSNIPaaaa Thanks")
+    #expect(out.records.first?.suppressFollowingSentenceEnding == true)
+    #expect(out.records.first?.expansion == "see https://x.dev.")
+  }
+
+  @Test("The same snippet with a clipboard that does NOT end a sentence keeps the stop")
+  func aClipboardNotEndingASentenceKeepsTheStop() {
+    let expander = fixedExpander(["EWSNIPaaaa"])
+    let out = expander.expand(
+      "here you go backslash my link. Thanks",
+      using: vocabulary([("my link", "see {{clipboard}}")]),
+      values: Self.fillIns(clipboard: "https://x.dev"))
+
+    #expect(out.text == "here you go EWSNIPaaaa. Thanks")
+    #expect(out.records.first?.suppressFollowingSentenceEnding == false)
   }
 }

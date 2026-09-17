@@ -1,7 +1,14 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 import OSLog
+
+/// Reads the plain text of the user's clipboard, for a snippet that pastes it (#3018).
+///
+/// `@MainActor` because the only real implementation asks `ClipboardCleanup`, which owns clipboard
+/// state on the main actor.
+public typealias ClipboardTextReader = @MainActor () -> String?
 
 /// Substitutes each fired snippet for a sentinel, FIRST in the post-ASR chain (#628).
 ///
@@ -12,11 +19,12 @@ import OSLog
 ///
 /// This step only MASKS. `SnippetFinalizer` — which is not a step, for reasons its own header
 /// gives — resolves every sentinel after the runner. The pair exists so the user's saved text
-/// never reaches a polish model at all, which makes "delivered exactly as written" true by
-/// construction rather than by an instruction in a prompt that nothing enforces.
+/// never reaches a polish model. Saved text with fill-ins already resolved is restored after
+/// processing, so AI Polish cannot rewrite it.
 ///
-/// Limb semantics: pure CPU string work, no model, no network. Disabled outright when the
-/// frozen vocabulary cannot fire, so a user with no snippets takes a byte-identical chain.
+/// Limb semantics: string work, no model, no network. One read of the user's clipboard, and only
+/// on a take where a snippet using the copied text actually fired (#3018). Disabled outright when
+/// the frozen vocabulary cannot fire, so a user with no snippets takes a byte-identical chain.
 @MainActor
 public final class SnippetExpansionStep: TextProcessingStep {
   public let name = "Snippet Expansion"
@@ -43,9 +51,10 @@ public final class SnippetExpansionStep: TextProcessingStep {
 
   /// One second, and the number is a measurement rather than a preference.
   ///
-  /// The work here is microseconds — the same call runs 55 unit tests in 0.15s. But the runner's
-  /// budget covers the actor HOP as well as the work, and the FIRST step in the chain is the one
-  /// that pays it: every later step is already on the main actor and hops for free.
+  /// The runner's budget covers actor scheduling as well as processing. Fill-in processing cost
+  /// depends on clipboard size and the saved snippets; the earlier literal-only suite timing does
+  /// not bound this workload (#3018, measured). The FIRST step in the chain is the one that pays
+  /// the hop: every later step is already on the main actor and hops for free.
   ///
   /// Measured on the real app, two consecutive live dictations, with the 50ms backstop this file
   /// originally copied from `EmojiFormatterStep`:
@@ -67,14 +76,75 @@ public final class SnippetExpansionStep: TextProcessingStep {
     subsystem: "com.enviouswispr.app", category: "SnippetExpansion")
 
   private let expander: SnippetExpander
+  private let now: @Sendable () -> Date
+  private let clipboardText: ClipboardTextReader
 
-  public init(expander: SnippetExpander = SnippetExpander()) {
+  /// The public entry point, unchanged in shape so every existing call site compiles as it was.
+  ///
+  /// The real seams live on the `package` initializer below rather than as default arguments
+  /// here, because a `public` initializer's default argument is evaluated at the CALL SITE and so
+  /// cannot name `ClipboardCleanup.userPlainText`, which is `internal`. An initializer BODY has no
+  /// such restriction, so the pair reaches the internal reader without widening it
+  /// (`swift-patterns.md` RULE: package-visibility-avoids-cross-module-unknown-default).
+  public convenience init(expander: SnippetExpander = SnippetExpander()) {
+    self.init(
+      expander: expander,
+      now: { Date() },
+      clipboardText: { ClipboardCleanup.userPlainText(from: .general) })
+  }
+
+  /// Fully injected. `package` so the test module reaches it on a plain import, and so no seam
+  /// becomes public surface.
+  package init(
+    expander: SnippetExpander,
+    now: @escaping @Sendable () -> Date,
+    clipboardText: @escaping ClipboardTextReader
+  ) {
     self.expander = expander
+    self.now = now
+    self.clipboardText = clipboardText
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-    let outcome = expander.expand(context.text, using: snippetVocabulary)
-    guard outcome.didFire else { return context }
+    // Frozen ONCE for the whole take, before the probe pass. `base(clipboard:)` varies the
+    // clipboard and nothing else, so the two passes below cannot disagree about what time it is.
+    let instant = now()
+    let locale = Locale.current
+    let timeZone = TimeZone.current
+    func base(clipboard: String?) -> SnippetDynamicValues {
+      SnippetDynamicValues(
+        now: instant, locale: locale, timeZone: timeZone, clipboard: clipboard)
+    }
+
+    // **The clipboard is read only on a take where a clipboard snippet actually FIRED.**
+    //
+    // This step runs on every dictation, so deciding from the SAVED vocabulary would mean reading
+    // the user's pasteboard on every take as soon as one clipboard snippet existed. Matching first
+    // and reading second closes that outright rather than documenting it
+    // (`code-design-rules.md` RULE: close-the-window-never-handle-it).
+    //
+    // The probe is not free and is not side-effect-free: minting a sentinel consumes the
+    // candidate source. What is true, and is what this needs, is narrower — nothing the user or
+    // the pipeline can observe changes, because only the SELECTED outcome updates the context,
+    // appends records and emits the log.
+    let dry = expander.expand(context.text, using: snippetVocabulary, values: base(clipboard: nil))
+    guard dry.didFire else {
+      // The NEGATIVE that Live UAT has to be able to see. Without it a take where a clipboard
+      // snippet is saved but not spoken emits nothing at all, and "no read happened" would be
+      // inferred from silence. A step the runner SKIPS is a different condition with its own
+      // cause, and this line does not cover it.
+      #if DEBUG
+        Self.logger.info("Snippet expansion did not fire; clipboard_read=false")
+      #endif
+      return context
+    }
+
+    let needsClipboard = dry.usedPlaceholders.contains(.clipboard)
+    let outcome =
+      needsClipboard
+      ? expander.expand(
+        context.text, using: snippetVocabulary, values: base(clipboard: clipboardText()))
+      : dry
 
     var updated = context
     updated.text = outcome.text
@@ -84,8 +154,20 @@ public final class SnippetExpansionStep: TextProcessingStep {
 
     // Counts only, never a trigger and never an expansion — `CLAUDE.md` privacy boundary, and
     // the same shape-not-content rule the emoji and ITN stamps follow.
-    Self.logger.info(
-      "Snippet expansion fired for \(outcome.records.count, privacy: .public) snippet(s)")
+    //
+    // `clipboard_read` is DEBUG-only and exists for Live UAT, which is the only instrument that
+    // can prove the SHIPPED default reader stayed away from the pasteboard. It is never the oracle
+    // for a test: the pre-merge suite runs Release, so a test reading this field would not execute
+    // there. Tests assert through the injected `clipboardText` seam instead.
+    #if DEBUG
+      Self.logger.info(
+        """
+        Snippet expansion fired for \(outcome.records.count, privacy: .public) snippet(s)         clipboard_read=\(needsClipboard, privacy: .public)
+        """)
+    #else
+      Self.logger.info(
+        "Snippet expansion fired for \(outcome.records.count, privacy: .public) snippet(s)")
+    #endif
     return updated
   }
 }

@@ -18,6 +18,10 @@ struct SnippetsExportRoundTripTests {
       Snippet(trigger: "my email", expansion: "sam@example.com"),
       Snippet(trigger: "sign off", expansion: "Best,\nSam\n"),
       Snippet(trigger: "tabbed", expansion: "a\tb  c"),
+      // A fill-in must survive the round trip as the TOKEN, not as the date it resolved to on
+      // the machine that exported it (#3018). Upper case, because that is what a TypeWhisper
+      // import writes and the matcher is case-insensitive.
+      Snippet(trigger: "stamp", expansion: "Filed {{DATE}} at {{time}} from {{CLIPBOARD}}"),
     ]
     let vocabulary = SnippetVocabulary(snippets: snippets, keyword: "hey", generation: 4)
     let dir = FileManager.default.temporaryDirectory
@@ -41,6 +45,12 @@ struct SnippetsExportRoundTripTests {
     let validated = try SnippetImportBatch(
       sourceID: "file_json", sourceDisplayName: "x", candidates: candidates
     ).validated()
-    #expect(validated.candidates.count == 3)
+    #expect(validated.candidates.count == snippets.count)
+    // The fill-in snippet is the reason this suite grew a fourth row: it must arrive as its
+    // TOKEN, so a restore on a new Mac still resolves the date on the day it is spoken rather
+    // than freezing the day it was exported.
+    #expect(
+      validated.candidates.map(\.expansion).contains(
+        "Filed {{DATE}} at {{time}} from {{CLIPBOARD}}"))
   }
 }

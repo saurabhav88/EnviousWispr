@@ -167,13 +167,14 @@ package struct TypeWhisperSnippetAdapter: SnippetImportAppAdapter {
         let replacement = try SmartImportSQLiteReader.optionalText(statement, 1, displayName)
         let isEnabled = try SmartImportSQLiteReader.requiredBoolean(statement, 2, displayName)
         guard isEnabled else { return nil }
-        // TypeWhisper's built-in snippets are placeholders the app fills in at paste time
-        // (`{{DATE}}`, `{{TIME}}`, `{{CLIPBOARD}}`). EnviousWispr pastes a snippet's text
-        // literally, so importing one would paste the letters `{{DATE}}`. Refused and
-        // counted; translating them is a non-goal (plan §2.2). A user's own template that
-        // legitimately carries `{{...}}` is refused by the same rule and is visible in the
-        // count.
-        guard let replacement, !Self.carriesPlaceholder(replacement) else { return nil }
+        // TypeWhisper's three built-ins — `{{DATE}}`, `{{TIME}}`, `{{CLIPBOARD}}` — are fill-ins
+        // EnviousWispr now has too, so they import verbatim and resolve at paste time (#3018).
+        // Anything ELSE inside `{{...}}` is still refused and still counted, because pasting it
+        // would paste the letters. `SnippetPlaceholder` answers both questions, so the import's
+        // idea of a fill-in and the matcher's cannot drift apart.
+        guard let replacement,
+          !SnippetPlaceholder.carriesUnsupportedPlaceholder(replacement)
+        else { return nil }
         return SnippetImportCandidate.literal(trigger: trigger, expansion: replacement)
       }
     } catch is SmartImportError {
@@ -182,12 +183,6 @@ package struct TypeWhisperSnippetAdapter: SnippetImportAppAdapter {
     return SnippetImportRows(candidates: read.rows, excludedCount: read.excludedCount)
   }
 
-  static func carriesPlaceholder(_ text: String) -> Bool {
-    // A closing `}}` must come AFTER an opening `{{`: a snippet whose text mentions both in
-    // the other order ("close with }} then open with {{") is a literal, not a placeholder.
-    guard let opening = text.range(of: "{{") else { return false }
-    return text.range(of: "}}", range: opening.upperBound..<text.endIndex) != nil
-  }
 }
 
 // MARK: - Registry and source

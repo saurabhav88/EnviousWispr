@@ -295,11 +295,13 @@ private struct SnippetImportAppPickerScreen: View {
       }
 
       // The honest shape before they commit to it: snippets come across as the other app
-      // holds them, and ones you already have are skip-only. Placeholders the other app
-      // fills in at paste time (today's date, the clipboard) cannot be a snippet here and
-      // are counted on the review screen rather than silently dropped.
+      // holds them, and ones you already have are skip-only. TypeWhisper entries using the
+      // supported date, time or clipboard fill-ins can be imported (#3018); entries containing
+      // unsupported fill-ins are counted on the review screen rather than silently dropped.
       Text(
-        "Snippets you already have are left as they are. Entries the other app fills in when pasting, like today's date, are left out and counted."
+        "Snippets you already have are left as they are. TypeWhisper entries using supported "
+          + "date, time or clipboard fill-ins can be imported. Entries containing unsupported "
+          + "fill-ins are left out and counted."
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
