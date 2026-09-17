@@ -125,6 +125,8 @@ struct ClipboardIsolationFreezeTests {
   ///                                                            test cannot practically invoke
   ///   ClipboardCleanup.beginTakeover(from:)            READ    #2465; boarded, and every test in
   ///                                                            `ClipboardCleanupTests` passes one
+  ///   SnippetExpansionStep.init(expander:)             READ    #3018; injected reader available;
+  ///                                                            general read gated on a fired clipboard snippet
   ///   PasteService.boundedSaveClipboard(from:)         READ    #2465; defaulted board, so it is in
   ///                                                            `clipboardFunctions` below
   ///   SelectionAcquisition.acquire(board:)             WRITE   #2465; boarded. No test calls it at

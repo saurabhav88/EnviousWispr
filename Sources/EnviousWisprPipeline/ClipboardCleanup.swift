@@ -304,6 +304,89 @@ public enum ClipboardCleanup {
     }
   }
 
+  /// The plain text of the logical clipboard `snapshotForDelivery` would select (#3018).
+  ///
+  /// **A READER. It claims nothing, cancels nothing and supersedes nothing.** A `{{clipboard}}`
+  /// snippet needs the same answer a delivery needs — what the user's clipboard really holds, as
+  /// opposed to whatever our own last payload left on the board — and `snapshotForDelivery` cannot
+  /// be called for it: that method claims the board and can cancel a pending task, so asking it a
+  /// question would abandon a Quick Add takeover mid-transaction.
+  ///
+  /// **Its contract is AGREEMENT with `snapshotForDelivery`, not a second set of clipboard rules.**
+  /// From equivalent starting states it returns the text that method would have selected. The
+  /// branches are deliberately not shared with it, for the reason `intendedPayload` already gives
+  /// on this type: one is a query and the other is a step in a transaction, and collapsing them is
+  /// how a refusal comes to have side effects. The agreement is enforced by test rather than by
+  /// this comment.
+  ///
+  /// Three limits, recorded because each is a real answer rather than a defect:
+  ///
+  /// - **The legacy-rewrite branch can return our own previous dictation.** With clipboard restore
+  ///   turned off, no pre-dictation user clipboard is retained anywhere, so the logical clipboard
+  ///   there is the text the delivery intends to leave behind — which is ours. That text genuinely
+  ///   IS what the user's clipboard will hold, so agreement is still the right answer. What must
+  ///   not be claimed is that every answer excludes our own text.
+  /// - **A stale pending task is left alone.** `snapshotForDelivery` cancels it; a reader must not,
+  ///   and need not: the retained restore re-checks the change count before writing, the legacy
+  ///   rewrite checks freshness before copying, and the scheduled task clears its own slot even
+  ///   when it declines. The worst outcome is a logged skip.
+  /// - **Reading a takeover payload breaks no invariant.** Superseding is what changes the token
+  ///   set and clears ownership; extracting text does neither.
+  ///
+  /// **Plain text only.** `PasteService.saveClipboard` collects every representation, which on a
+  /// clipboard holding a screenshot means copying megabytes to answer a question about text. This
+  /// needs one flavour, so it materializes one.
+  ///
+  /// **No default board.** `snapshotForDelivery` has one for historical reasons; a new entry point
+  /// that reaches the user's real clipboard does not get one, so no caller can arrive there by
+  /// omission and no test can reach the developer's own clipboard by writing `userPlainText()`
+  /// (`ClipboardIsolationFreezeTests`, whose first layer is a required seam rather than a scan).
+  ///
+  /// It promises nothing atomic against writes by other processes, and nothing here needs it to.
+  static func userPlainText(from board: NSPasteboard) -> String? {
+    guard var text = logicalPlainText(from: board) else { return nil }
+    // **Made contiguous here, once, and the reason is measured.** A string still bridged from
+    // `NSString` has no UTF-8 buffer to hand `memmem`, so the snippet matcher's search would fall
+    // back to `String.contains` at 126 ms per 10 MiB instead of 4 ms (#3018 §16b). The copy is
+    // paid once at the boundary; the matcher searches this text several times per take.
+    text.makeContiguousUTF8()
+    return text
+  }
+
+  private static func logicalPlainText(from board: NSPasteboard) -> String? {
+    // Checked FIRST, exactly as `snapshotForDelivery` checks it: a takeover has already cancelled
+    // any `pending`, so there is nothing below to find.
+    if let payload = activeTakeover?.payload { return plainText(in: payload) }
+
+    guard let current = pending, board.changeCount == current.changeCountAfterPaste else {
+      // Nothing pending, or the board moved on and the pending value is stale. Either way what is
+      // on the board now IS the user's clipboard.
+      return board.string(forType: .string)
+    }
+
+    switch current.operation {
+    case .restore(let snapshot):
+      // Our payload is still on the board and the real clipboard is held for it.
+      return plainText(in: snapshot)
+
+    case .legacyRewrite(let legacyText):
+      // The board holds the repaired payload; the legacy text is what it will hold.
+      return legacyText
+    }
+  }
+
+  /// The first plain-text representation in a held snapshot, or nil for a snapshot holding none.
+  ///
+  /// Decoded from the snapshot rather than read off the board, because in every branch that uses
+  /// it the board does NOT hold the text in question — that is the whole reason the snapshot is
+  /// being held.
+  private static func plainText(in snapshot: ClipboardSnapshot) -> String? {
+    for item in snapshot.items {
+      if let data = item[.string] { return String(decoding: data, as: UTF8.self) }
+    }
+    return nil
+  }
+
   // MARK: - Taking the board over for a non-delivery write (#2465)
 
   /// The answer to a takeover request.

@@ -628,4 +628,177 @@ struct ClipboardCleanupTests {
       #expect(pb2.string(forType: .string) == "user copied this")
     }
   }
+
+  // MARK: - userPlainText: the same answer, none of the side effects (#3018)
+  //
+  // A `{{clipboard}}` snippet needs the text `snapshotForDelivery` would select, and cannot call
+  // that method: it claims the board and can cancel a pending task. AGREEMENT is the contract, so
+  // these cases ARE the contract rather than a second reading of it.
+  //
+  // Every case builds the SAME starting state TWICE — once for the reader, once for the oracle —
+  // and never calls the mutating oracle first, which would compare the reader against a world the
+  // oracle had already changed.
+
+  @Test("With nothing pending, the reader agrees with delivery and moves nothing")
+  func readerAgreesWithNothingPending() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let before = pb.changeCount
+
+      #expect(ClipboardCleanup.userPlainText(from: pb) == "the user's own clipboard")
+      #expect(pb.changeCount == before)
+      #expect(ClipboardCleanup.hasPending == false)
+
+      ClipboardCleanup.resetPendingForTests()
+      let oracleBoard = board(holding: "the user's own clipboard")
+      #expect(
+        string(ClipboardCleanup.snapshotForDelivery(from: oracleBoard))
+          == "the user's own clipboard")
+    }
+  }
+
+  @Test("With a restore pending, the reader returns the held clipboard and the restore still runs")
+  func readerAgreesWithAPendingRestore() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let held = snapshot(of: pb)
+      put("dictation one", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        held, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+      let afterScheduling = pb.changeCount
+
+      // The board holds OUR text; the user's own clipboard is the one being held for them.
+      #expect(ClipboardCleanup.userPlainText(from: pb) == "the user's own clipboard")
+      #expect(pb.changeCount == afterScheduling)
+      #expect(ClipboardCleanup.hasPending, "the reader must not consume the pending restore")
+
+      // The strongest no-mutation proof available: the restore the reader saw still fires.
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+
+      ClipboardCleanup.resetPendingForTests()
+      let oraclePb = board(holding: "the user's own clipboard")
+      let oracleHeld = snapshot(of: oraclePb)
+      put("dictation one", on: oraclePb)
+      ClipboardCleanup.scheduleRestore(
+        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, tier: .cgEvent, on: oraclePb)
+      #expect(
+        string(ClipboardCleanup.snapshotForDelivery(from: oraclePb)) == "the user's own clipboard")
+    }
+  }
+
+  /// The case that separates a reader from a transaction. Both return what the user just copied;
+  /// only the oracle CANCELS the stale pending work as a side effect of being asked.
+  @Test("On a moved board the reader agrees, and leaves the stale pending work alone")
+  func readerAgreesOnAMovedBoard() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let held = snapshot(of: pb)
+      put("dictation one", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        held, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+      put("something the user just copied", on: pb)
+
+      #expect(ClipboardCleanup.userPlainText(from: pb) == "something the user just copied")
+      #expect(ClipboardCleanup.hasPending, "the reader must not cancel the stale restore")
+      // And the stale restore declines on its own, which is why the reader need not cancel it.
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "something the user just copied")
+
+      ClipboardCleanup.resetPendingForTests()
+      let oraclePb = board(holding: "the user's own clipboard")
+      let oracleHeld = snapshot(of: oraclePb)
+      put("dictation one", on: oraclePb)
+      ClipboardCleanup.scheduleRestore(
+        oracleHeld, changeCountAfterPaste: oraclePb.changeCount, tier: .cgEvent, on: oraclePb)
+      put("something the user just copied", on: oraclePb)
+      #expect(
+        string(ClipboardCleanup.snapshotForDelivery(from: oraclePb))
+          == "something the user just copied")
+      #expect(ClipboardCleanup.hasPending == false, "the oracle consumes it; the reader does not")
+    }
+  }
+
+  /// Restore is OFF on this path, so the text the reader returns is the one the rewrite will
+  /// leave behind — which is OURS. Recorded rather than hidden: the promise is that the answer
+  /// matches the user's clipboard, not that it can never contain our own text.
+  @Test("With a legacy rewrite pending, the reader returns the legacy text, as delivery does")
+  func readerAgreesWithAPendingLegacyRewrite() async {
+    await withFastCleanup {
+      let pb = NSPasteboard.withUniqueName()
+      put("repaired payload", on: pb)
+      ClipboardCleanup.scheduleLegacyRewrite(
+        legacyText: "legacy payload", submittedChangeCount: pb.changeCount,
+        tier: .cgEvent, on: pb)
+      let afterScheduling = pb.changeCount
+
+      #expect(ClipboardCleanup.userPlainText(from: pb) == "legacy payload")
+      #expect(pb.changeCount == afterScheduling)
+      #expect(ClipboardCleanup.hasPending)
+
+      // The rewrite the reader saw still RUNS. Cancelling it without clearing the slot would pass
+      // the `hasPending` check above, so the proof is the work completing, not the flag.
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "legacy payload")
+      #expect(ClipboardCleanup.hasPending == false)
+
+      ClipboardCleanup.resetPendingForTests()
+      let oraclePb = NSPasteboard.withUniqueName()
+      put("repaired payload", on: oraclePb)
+      ClipboardCleanup.scheduleLegacyRewrite(
+        legacyText: "legacy payload", submittedChangeCount: oraclePb.changeCount,
+        tier: .cgEvent, on: oraclePb)
+      #expect(string(ClipboardCleanup.snapshotForDelivery(from: oraclePb)) == "legacy payload")
+    }
+  }
+
+  /// The one that would be a real defect if the reader behaved like the oracle: asking what the
+  /// clipboard says must not abandon a Quick Add takeover mid-transaction.
+  @Test("During a takeover the reader returns the held clipboard and does not supersede it")
+  func readerAgreesDuringATakeover() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      guard
+        case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+          maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      put("the copied word", on: pb)
+      let afterTheFallbackWrote = pb.changeCount
+
+      #expect(ClipboardCleanup.userPlainText(from: pb) == "the user's own clipboard")
+      #expect(pb.changeCount == afterTheFallbackWrote)
+      #expect(!ClipboardCleanup.wasSuperseded(token), "a read must not take the board")
+      #expect(ClipboardCleanup.hasPending, "the takeover is still in flight")
+      ClipboardCleanup.endTakeover(token)
+
+      ClipboardCleanup.resetPendingForTests()
+      let oraclePb = board(holding: "the user's own clipboard")
+      guard
+        case .granted(_, _, let oracleToken) = ClipboardCleanup.beginTakeover(
+          maximumBytes: 1 << 20, from: oraclePb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      put("the copied word", on: oraclePb)
+      #expect(
+        string(ClipboardCleanup.snapshotForDelivery(from: oraclePb)) == "the user's own clipboard")
+      #expect(
+        ClipboardCleanup.wasSuperseded(oracleToken),
+        "the oracle takes the board; the reader does not")
+      ClipboardCleanup.endTakeover(oracleToken)
+    }
+  }
+
+  @Test("A board holding no plain text reads as nothing, rather than as a guess")
+  func readerReturnsNilForAnEmptyBoard() async {
+    await withFastCleanup {
+      let pb = NSPasteboard.withUniqueName()
+      pb.clearContents()
+      #expect(ClipboardCleanup.userPlainText(from: pb) == nil)
+    }
+  }
 }

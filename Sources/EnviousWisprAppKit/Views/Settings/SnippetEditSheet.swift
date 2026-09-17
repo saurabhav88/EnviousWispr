@@ -93,7 +93,49 @@ struct SnippetEditSheet: View {
         .overlay(
           RoundedRectangle(cornerRadius: 8)
             .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1))
-      Text("Pasted exactly as written. AI Polish never rewrites it.").settingsHelperCopy()
+      fillInButtons
+      Text(
+        """
+        A fill-in becomes the date, the time, or what you copied. Everything else is pasted as \
+        written, and AI Polish never rewrites it. Buttons add a fill-in at the end; you can move \
+        it anywhere.
+        """
+      ).settingsHelperCopy()
+    }
+  }
+
+  /// One button per fill-in (#3018).
+  ///
+  /// Written over `SnippetPlaceholder.allCases` with an exhaustive switch for the label, so a
+  /// fourth fill-in cannot ship without someone naming it, and appending `.token` rather than a
+  /// spelling written here, so the editor and the matcher cannot disagree about what a fill-in
+  /// looks like.
+  ///
+  /// **Appends rather than inserting at the caret**, because SwiftUI's `TextEditor` exposes no
+  /// selection binding on macOS 14. The helper copy above says so, because for someone editing an
+  /// existing template that is a real cost rather than a detail.
+  ///
+  /// A fixed-height row under a `TextEditor` that takes `maxHeight: .infinity`, so the editor
+  /// gives up the space and the footer stays on screen. That is the failure this sheet has had
+  /// before; see the type's own header.
+  private var fillInButtons: some View {
+    HStack(spacing: 8) {
+      ForEach(SnippetPlaceholder.allCases, id: \.self) { placeholder in
+        SettingsActionButton(title: Self.fillInTitle(for: placeholder), isEnabled: true) {
+          expansion += placeholder.token
+        }
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  /// The words on each button. An exhaustive switch, so the compiler asks for a label when a new
+  /// fill-in is added rather than the button quietly going missing.
+  private static func fillInTitle(for placeholder: SnippetPlaceholder) -> String {
+    switch placeholder {
+    case .date: return "Today's date"
+    case .time: return "Time now"
+    case .clipboard: return "Last copied"
     }
   }
 

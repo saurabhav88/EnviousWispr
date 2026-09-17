@@ -4,9 +4,9 @@ description: "Say a short keyword and a trigger, and EnviousWispr pastes the tex
 category: "features"
 section: "Text Processing"
 order: 7
-keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text"]
+keywords: ["snippets", "text expansion", "voice shortcut", "paste my email", "keyword", "backslash", "signature", "expand phrase", "saved text", "today's date", "paste the time", "paste what I copied", "clipboard snippet", "fill-in"]
 related: ["adding-custom-words", "ai-polish-and-cloud-data"]
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. An email address, a sign-off, a link you send people every week.
 
@@ -56,6 +56,34 @@ The same is true if you say the keyword and nothing after it matches a snippet y
 3. Type the words you will say in **Snippet**, and the text you want pasted in **Expands to**. Your keyword sits to the left of the **Snippet** box, so you can read the whole phrase you will say.
 4. Click **Save**.
 
+### Fill in the date, the time, or what you copied
+
+Most of a snippet is fixed text. Three parts do not have to be. EnviousWispr can fill in today's date, the time right now, and the last thing you copied.
+
+Write them inside your snippet's text:
+
+| Write this | You get |
+| --- | --- |
+| `{{date}}` | Sep 17, 2026 |
+| `{{time}}` | 2:45 PM |
+| `{{clipboard}}` | whatever you copied last |
+
+So a snippet saved as `Filed {{date}} at {{time}}. Link: {{clipboard}}` pastes today's date, the time you spoke, and the link sitting on your clipboard.
+
+The **Expands to** box has a button for each one: **Today's date**, **Time now** and **Last copied**. A button adds the fill-in at the end of your text, and you can move it anywhere you like afterwards. Capital letters make no difference, so `{{DATE}}` works the same way.
+
+The date and the time follow your Mac's language and time zone, so they read the way you and the person you are writing to expect.
+
+A fill-in is worked out when you speak, not when you save. A snippet saved today still says the right day next month, and one you export and bring to a new Mac keeps working the same way.
+
+If your clipboard has no plain text, `{{clipboard}}` contributes no text. If that leaves the entire dictation empty, EnviousWispr returns the words you spoke.
+
+If EnviousWispr recovers a recording after a crash, fill-ins use the values available when recovery processes it.
+
+Snippet fill-ins read your clipboard only when a snippet using `{{clipboard}}` fires. Clipboard preservation is separate: when enabled, EnviousWispr saves your clipboard during delivery so it can restore it afterwards.
+
+Unsupported placeholders, such as `{{cursor}}` or `{{DATE:yyyy-MM-dd}}`, stay literal in saved snippets. When importing from TypeWhisper, entries containing unsupported placeholders are left out and counted.
+
 ### Change your keyword
 
 The keyword field is at the top of the Snippets screen. Pick a word you would not say by accident. `backslash` is the default because most people rarely say it out loud.
@@ -66,11 +94,11 @@ If you turn on **Convert spoken punctuation**, a `backslash` that no snippet cla
 
 ### What EnviousWispr will not do to your snippet
 
-The text you save is pasted word for word, with a space after it like any other dictation. AI Polish never rewrites it, so an email address, a web link or a signature arrives as you saved it. Everything else you dictate is still polished as normal.
+The text you save is pasted word for word, with a space after it like any other dictation. The only exception is a fill-in you asked for, which becomes the date, the time or what you copied before anything else happens. AI Polish never rewrites any of it, so an email address, a web link or a signature arrives as you saved it. Everything else you dictate is still polished as normal.
 
 Line breaks are kept, so a two-line sign-off arrives as two lines, and a snippet with line breaks is inserted where you are typing like any other dictation.
 
-Your saved text also decides how it ends. Say nothing but the keyword and the trigger, into a search box or an empty field, and the full stop the speech engine adds to a complete sentence is dropped, so an email address does not arrive with a full stop welded on. The same happens when your saved text already ends a sentence, so a canned reply does not end in two full stops. In the middle of a sentence of your own, your own punctuation is kept.
+Your saved text also decides how it ends. Say nothing but the keyword and the trigger, into a search box or an empty field, and the full stop the speech engine adds to a complete sentence is dropped, so an email address does not arrive with a full stop welded on. The same happens when your saved text already ends a sentence, so a canned reply does not end in two full stops. In the middle of a sentence of your own, your own punctuation is kept. When your snippet ends in a fill-in, the filled-in text is what decides, so a snippet ending in `{{clipboard}}` counts as ending a sentence when the text you copied does.
 
 ### One thing worth knowing
 
@@ -86,4 +114,4 @@ Your saved text also decides how it ends. Say nothing but the keyword and the tr
 
 **Export** writes your snippets and your keyword to a file you choose. Useful when you move to a new Mac. EnviousWispr will refuse to save over its own snippets file, because that would erase the snippets you were trying to back up.
 
-**Import** brings snippets in from four places: the file you exported, a CSV with a trigger column and a text column, a list you paste (one snippet per line, the trigger, then `=`, then the text; a tab, an arrow, or a comma work too), or another dictation app on the same Mac (Wispr Flow and TypeWhisper today; quit Wispr Flow before importing from it). You review the list before anything is saved: snippets you already have are marked and skipped, and you can untick any you do not want. Entries the other app fills in when pasting, like today's date or the clipboard, cannot be a snippet here and are counted as left out. Your keyword is never changed by an import; only the snippets come across.
+**Import** brings snippets in from four places: the file you exported, a CSV with a trigger column and a text column, a list you paste (one snippet per line, the trigger, then `=`, then the text; a tab, an arrow, or a comma work too), or another dictation app on the same Mac (Wispr Flow and TypeWhisper today; quit Wispr Flow before importing from it). You review the list before anything is saved: snippets you already have are marked and skipped, and you can untick any you do not want. TypeWhisper entries that use today's date, the time or the clipboard come across and keep filling in here. TypeWhisper entries containing unsupported fill-ins are left out and counted. Your keyword is never changed by an import; only the snippets come across.

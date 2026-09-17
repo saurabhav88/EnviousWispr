@@ -150,14 +150,14 @@ struct SnippetImportAppAdaptersTests {
       rows: [
         Self.typeWhisperRow(
           1, enabled: true, trigger: "braces", replacement: "close with }} then open with {{"),
-        Self.typeWhisperRow(2, enabled: true, trigger: "date", replacement: "{{DATE}}"),
+        Self.typeWhisperRow(2, enabled: true, trigger: "cursor", replacement: "{{CURSOR}}"),
       ])
     defer { sqlite3_close(store.writer) }
 
     let rows = try TypeWhisperSnippetAdapter().loadSnippets(at: store.url)
     #expect(rows.candidates.map(\.trigger) == ["braces"])
     #expect(rows.candidates.map(\.expansion) == ["close with }} then open with {{"])
-    #expect(rows.excludedCount == 1, "only the real {{DATE}} placeholder is left out")
+    #expect(rows.excludedCount == 1, "only the real {{CURSOR}} placeholder is left out")
   }
 
   @Test("a Wispr Flow column of the wrong type refuses the whole read rather than guessing")
@@ -180,7 +180,7 @@ struct SnippetImportAppAdaptersTests {
   // MARK: - TypeWhisper
 
   @Test(
-    "TypeWhisper enabled literal snippets come across; disabled, placeholder and empty rows are counted"
+    "TypeWhisper snippets come across, including the three fill-ins; the rest are counted"
   )
   func typeWhisperImportsLiteralRowsAndCountsTheRest() throws {
     let dir = RivalAppStoreFixtures.makeDirectory()
@@ -198,16 +198,70 @@ struct SnippetImportAppAdaptersTests {
           7, enabled: true, trigger: "sig", replacement: "Thanks, Saurabh's team"),
         Self.typeWhisperRow(
           8, enabled: true, trigger: "brace", replacement: "one { brace } is fine"),
+        Self.typeWhisperRow(9, enabled: true, trigger: "cursor", replacement: "{{CURSOR}}"),
+        Self.typeWhisperRow(
+          10, enabled: true, trigger: "mixed", replacement: "on {{DATE}} at {{CURSOR}}"),
       ])
     defer { sqlite3_close(store.writer) }
 
     let rows = try TypeWhisperSnippetAdapter().loadSnippets(at: store.url)
-    // The three built-ins are the founder's real store on 2026-09-15: every one a
-    // placeholder TypeWhisper fills in at paste time, which here would paste the letters.
-    #expect(rows.excludedCount == 6)
-    #expect(rows.candidates.map(\.trigger) == ["sig", "brace"])
+    // The three built-ins are the founder's real store on 2026-09-15, and since #3018 all three
+    // are fill-ins EnviousWispr has too, so they come across UNCHANGED and resolve at paste time.
+    // What is still refused is a token this app cannot fill in, on its own or beside one it can.
+    #expect(rows.excludedCount == 5)
     #expect(
-      rows.candidates.map(\.expansion) == ["Thanks, Saurabh's team", "one { brace } is fine"])
+      rows.candidates.map(\.trigger) == ["Date", "Time", "Clipboard", "sig", "brace"])
+    #expect(
+      rows.candidates.map(\.expansion) == [
+        "{{DATE}}", "{{TIME}}", "{{CLIPBOARD}}", "Thanks, Saurabh's team", "one { brace } is fine",
+      ], "the saved spelling is carried over byte for byte, uppercase included")
+  }
+
+  /// The row the founder actually hit: a TypeWhisper store holding nothing but its three
+  /// built-ins. Before #3018 this imported nothing and said so; now all three come across.
+  @Test("A store of nothing but the three fill-ins imports all of them, with nothing excluded")
+  func typeWhisperSupportedFillInsImportVerbatim() throws {
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(
+      in: dir,
+      rows: [
+        Self.typeWhisperRow(1, enabled: true, trigger: "Date", replacement: "{{DATE}}"),
+        Self.typeWhisperRow(2, enabled: true, trigger: "Time", replacement: "{{TIME}}"),
+        Self.typeWhisperRow(3, enabled: true, trigger: "Clipboard", replacement: "{{CLIPBOARD}}"),
+        Self.typeWhisperRow(
+          4, enabled: true, trigger: "stamp", replacement: "Filed {{ date }} at {{Time}}"),
+      ])
+    defer { sqlite3_close(store.writer) }
+
+    let rows = try TypeWhisperSnippetAdapter().loadSnippets(at: store.url)
+    #expect(rows.excludedCount == 0)
+    #expect(rows.candidates.map(\.trigger) == ["Date", "Time", "Clipboard", "stamp"])
+    // Byte for byte, including the case and the padding the other app wrote.
+    #expect(
+      rows.candidates.map(\.expansion) == [
+        "{{DATE}}", "{{TIME}}", "{{CLIPBOARD}}", "Filed {{ date }} at {{Time}}",
+      ])
+  }
+
+  /// Format arguments are outside EnviousWispr's supported grammar, so this row stays excluded
+  /// even though the name before the colon is a supported fill-in.
+  @Test("A fill-in carrying a format argument is still excluded and still counted")
+  func typeWhisperFormatArgumentsStayExcluded() throws {
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try makeTypeWhisperStore(
+      in: dir,
+      rows: [
+        Self.typeWhisperRow(
+          1, enabled: true, trigger: "fancy", replacement: "{{DATE:yyyy-MM-dd}}"),
+        Self.typeWhisperRow(2, enabled: true, trigger: "plain", replacement: "{{DATE}}"),
+      ])
+    defer { sqlite3_close(store.writer) }
+
+    let rows = try TypeWhisperSnippetAdapter().loadSnippets(at: store.url)
+    #expect(rows.excludedCount == 1)
+    #expect(rows.candidates.map(\.trigger) == ["plain"])
   }
 
   @Test("TypeWhisper rows held only in the un-checkpointed WAL still come across")
@@ -376,17 +430,22 @@ struct SnippetImportAppAdaptersTests {
 
   @Test("a store that refused every row says how many, instead of claiming it was empty")
   func allExcludedEmitsACountedNotice() async throws {
-    // The founder's real TypeWhisper store: three placeholders, nothing importable. "No
-    // snippets were found" would be false; the notice count is what lets the result screen
-    // say "Found 3 entries, but none could be imported".
+    // A store where every row carries a token this app cannot fill in. "No snippets were found"
+    // would be false; the notice count is what lets the result screen say "Found 3 entries, but
+    // none could be imported".
+    //
+    // These were the founder's own three built-ins until #3018 taught EnviousWispr the same
+    // fill-ins, at which point they began importing. The ROW still needs covering, so it is
+    // written with tokens that remain unsupported rather than deleted.
     let dir = RivalAppStoreFixtures.makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = try makeTypeWhisperStore(
       in: dir,
       rows: [
-        Self.typeWhisperRow(1, enabled: true, trigger: "Date", replacement: "{{DATE}}"),
-        Self.typeWhisperRow(2, enabled: true, trigger: "Time", replacement: "{{TIME}}"),
-        Self.typeWhisperRow(3, enabled: true, trigger: "Clipboard", replacement: "{{CLIPBOARD}}"),
+        Self.typeWhisperRow(1, enabled: true, trigger: "Cursor", replacement: "{{CURSOR}}"),
+        Self.typeWhisperRow(2, enabled: true, trigger: "Form", replacement: "{{FORMFIELD}}"),
+        Self.typeWhisperRow(
+          3, enabled: true, trigger: "Fancy", replacement: "{{DATE:yyyy-MM-dd}}"),
       ])
     defer { sqlite3_close(store.writer) }
     let source = AppSnippetImportSource(
@@ -415,7 +474,7 @@ struct SnippetImportAppAdaptersTests {
   enum Exclusion: String, CaseIterable {
     case wisprFlowWordRow, wisprFlowDeleted, wisprFlowEmptyText, wisprFlowNullText,
       wisprFlowBlankTrigger
-    case typeWhisperDisabled, typeWhisperPlaceholder, typeWhisperEmptyText,
+    case typeWhisperDisabled, typeWhisperUnsupportedPlaceholder, typeWhisperEmptyText,
       typeWhisperNullText, typeWhisperBlankTrigger
   }
 
@@ -444,10 +503,10 @@ struct SnippetImportAppAdaptersTests {
       (app, excludedRow) = (
         .typeWhisper, Self.typeWhisperRow(2, enabled: false, trigger: "off", replacement: "text")
       )
-    case .typeWhisperPlaceholder:
+    case .typeWhisperUnsupportedPlaceholder:
       (app, excludedRow) = (
         .typeWhisper,
-        Self.typeWhisperRow(2, enabled: true, trigger: "Date", replacement: "{{DATE}}")
+        Self.typeWhisperRow(2, enabled: true, trigger: "Cursor", replacement: "{{CURSOR}}")
       )
     case .typeWhisperEmptyText:
       (app, excludedRow) = (
