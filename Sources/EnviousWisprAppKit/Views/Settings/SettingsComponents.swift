@@ -620,16 +620,19 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
           .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
           .padding(.vertical, verticalPadding)
           .padding(.horizontal, horizontalPadding)
-          // Each segment never shrinks below its OWN content's ideal width,
-          // only grows past it: without this, imposing a wider total on the
+          // Only the two width-MATCHED `comfortable` pickers (Microphone page)
+          // get a no-shrink floor: without it, imposing a wider total on the
           // HStack from outside (`.matchingSegmentedWidth`) divides the space
-          // EQUALLY among segments rather than by each one's own need, and
-          // the longest label in the bar (e.g. "Continue", "Always") wraps
-          // even though the bar as a whole has room to spare (founder,
-          // 2026-09-16, live app). Every other call site already wraps this
-          // whole picker in its own `.fixedSize(horizontal: true, ...)`, so
-          // this is a no-op for them.
-          .fixedSize(horizontal: true, vertical: false)
+          // EQUALLY among segments rather than by each one's own need, and the
+          // longest label in the bar ("Continue", "Always") wraps even though
+          // the bar as a whole has room to spare (founder, 2026-09-16, live
+          // app). Codex correctly rejected making this unconditional (PR
+          // #3022 r1): a non-`comfortable` call site (ProviderSetup's AI
+          // Polish tone picker) relies on being able to COMPRESS below its
+          // segments' ideal width in a narrow detail column at the app's
+          // 750pt minimum, and a floor there would push its right-hand
+          // choices out of reach instead.
+          .conditionalFixedWidth(comfortable)
           .frame(maxWidth: .infinity)
           .contentShape(Rectangle())
           .background(
@@ -704,6 +707,20 @@ extension View {
       frame(width: matchedWidth).reportingWidth()
     } else {
       fixedSize(horizontal: true, vertical: false).reportingWidth()
+    }
+  }
+
+  /// `.fixedSize(horizontal: true, ...)` only when `enabled`; otherwise the
+  /// view stays free to compress below its own ideal width, exactly as
+  /// before this modifier existed. See the call site in
+  /// `BrandedSegmentedPicker` for why this must be OPT-IN per instance
+  /// rather than applied to every segment unconditionally.
+  @ViewBuilder
+  func conditionalFixedWidth(_ enabled: Bool) -> some View {
+    if enabled {
+      fixedSize(horizontal: true, vertical: false)
+    } else {
+      self
     }
   }
 }
