@@ -27,6 +27,9 @@ let package = Package(
         "AliasRunnerKit",
         .product(name: "EnviousWisprCore", package: "EnviousWispr"),
         .product(name: "EnviousWisprPostProcessing", package: "EnviousWispr"),
+        // #996 chunk 2b: the tokenizer-parity door for the edit-judge
+        // compatibility probe lives in LLM (`CorrectionJudgeBenchmark`).
+        .product(name: "EnviousWisprLLM", package: "EnviousWispr"),
       ],
       path: "Sources/AliasRunner"
     ),

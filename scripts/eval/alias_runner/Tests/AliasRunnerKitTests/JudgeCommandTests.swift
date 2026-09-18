@@ -180,7 +180,7 @@ struct JudgeFixtureTests {
 @Suite("HarnessContract: execute end to end on temp files", .tags(.harnessContract))
 struct JudgeExecuteTests {
   @Test("fixture judge exits 0 with records; a named unbuilt judge exits 3 with unimplemented records; a bad corpus exits 2")
-  func exitCodes() throws {
+  func exitCodes() async throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("judge-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let corpus = dir.appendingPathComponent("c.jsonl")
@@ -190,16 +190,48 @@ struct JudgeExecuteTests {
       """.write(to: corpus, atomically: true, encoding: .utf8)
     try "{\"a\":{\"vocabulary_correction\":true,\"safe_alias\":true}}".write(to: fixture, atomically: true, encoding: .utf8)
 
-    let ok = JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .fixture, fixturePath: fixture.path))
+    let ok = await JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .fixture, fixturePath: fixture.path))
     #expect(ok.exitCode == 0)
     #expect(ok.records.map(\.outcome) == [.verdict])
 
-    let unbuilt = JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .rules, fixturePath: nil))
+    let unbuilt = await JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .rules, fixturePath: nil))
     #expect(unbuilt.exitCode == 3)
     #expect(unbuilt.records.map(\.outcome) == [.unimplemented])
 
-    let bad = JudgeCLI.execute(args: JudgeArgs(corpusPath: dir.appendingPathComponent("missing.jsonl").path, outPath: nil, judge: .fixture, fixturePath: fixture.path))
+    let bad = await JudgeCLI.execute(args: JudgeArgs(corpusPath: dir.appendingPathComponent("missing.jsonl").path, outPath: nil, judge: .fixture, fixturePath: fixture.path))
     #expect(bad.exitCode == 2)
     #expect(bad.records.isEmpty)
+  }
+
+  @Test("a candidate with a wired arm runs every row through it, in order, and exits 0")
+  func armDispatch() async throws {
+    struct EchoArm: JudgeArm {
+      func judge(row: EditCorpusRow) async -> JudgeRecord {
+        JudgeRecord(
+          id: row.id, judge: JudgeCandidate.rules.rawValue, outcome: .verdict,
+          decision: JudgeDecision(vocabularyCorrection: row.correction, safeAlias: row.safeAlias),
+          latencyMs: 1, note: nil, executionIdentity: ["config_sha256": "x", "environment": "test"])
+      }
+    }
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("judge-arm-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let corpus = dir.appendingPathComponent("c.jsonl")
+    try """
+      {"id":"a","stratum":"person","language":"en","pasted":"p","edited":"e","original":"o","replacement":"r","correction":true,"safe_alias":true,"label_source":"t"}
+      {"id":"b","stratum":"person","language":"en","pasted":"p2","edited":"e2","original":"o2","replacement":"r2","correction":false,"safe_alias":false,"label_source":"t"}
+      """.write(to: corpus, atomically: true, encoding: .utf8)
+    let result = await JudgeCLI.execute(
+      args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .rules, fixturePath: nil),
+      arms: [.rules: EchoArm()])
+    #expect(result.exitCode == 0)
+    #expect(result.records.map(\.id) == ["a", "b"])
+    #expect(result.records.map(\.outcome) == [.verdict, .verdict])
+    #expect(result.records[0].executionIdentity?["environment"] == "test")
+    // The arm is keyed by candidate: asking for another candidate stays unimplemented.
+    let other = await JudgeCLI.execute(
+      args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .afmMacOS27, fixturePath: nil),
+      arms: [.rules: EchoArm()])
+    #expect(other.exitCode == 3)
+    #expect(other.records.map(\.outcome) == [.unimplemented, .unimplemented])
   }
 }

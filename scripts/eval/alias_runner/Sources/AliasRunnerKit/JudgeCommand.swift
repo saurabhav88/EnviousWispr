@@ -257,6 +257,17 @@ package enum JudgeRunner {
   }
 }
 
+// MARK: - Judge arms
+
+/// A real judge the executable wires in: it answers one corpus row (one
+/// candidate, the pasted sentence as context) with a record carrying the
+/// judge's own execution identity. The kit stays free of root products; the
+/// executable supplies the arms it can build (AFM through the benchmark
+/// door in chunk 2b, Core ML in 2d).
+package protocol JudgeArm: Sendable {
+  func judge(row: EditCorpusRow) async -> JudgeRecord
+}
+
 // MARK: - Corpus loading
 
 package enum CorpusLoadError: Error, Equatable {
@@ -369,7 +380,13 @@ package enum JudgeCLI {
   /// bypass; 2 usage/infra (matches the alias command); 3 the named judge is
   /// unimplemented in this build (records still written so the scorer sees
   /// the denominator).
-  package static func execute(args: JudgeArgs) -> (records: [JudgeRecord], exitCode: Int32) {
+  /// `arms` are the judges this build can actually run, keyed by candidate;
+  /// a candidate with no arm is reported `unimplemented` (exit 3). Rows are
+  /// judged sequentially so one arm's permit and deadline are measured per
+  /// row, never overlapped.
+  package static func execute(
+    args: JudgeArgs, arms: [JudgeCandidate: any JudgeArm] = [:]
+  ) async -> (records: [JudgeRecord], exitCode: Int32) {
     let rows: [EditCorpusRow]
     do {
       rows = try EditCorpus.load(path: args.corpusPath)
@@ -385,7 +402,15 @@ package enum JudgeCLI {
       return (JudgeRunner.run(rows: rows, fixture: fixture), 0)
     case .rules, .afmMacOS26, .afmMacOS27, .xencMMBERTSmall, .xencMDeBERTaV3Base, .xencXLMRBase,
       .qwen3_0_6B:
-      return (JudgeRunner.unimplemented(rows: rows, judge: args.judge), 3)
+      guard let arm = arms[args.judge] else {
+        return (JudgeRunner.unimplemented(rows: rows, judge: args.judge), 3)
+      }
+      var records: [JudgeRecord] = []
+      records.reserveCapacity(rows.count)
+      for row in rows {
+        records.append(await arm.judge(row: row))
+      }
+      return (records, 0)
     }
   }
 

@@ -5,6 +5,7 @@
 
 import AliasRunnerKit
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprPostProcessing
 import Foundation
 
@@ -168,7 +169,10 @@ struct RunnerMain {
     // #996: `judge` is a separate subcommand with its own parser so the alias
     // CLI (flags, ordering, exit meanings) stays byte-for-byte as it was.
     if CommandLine.arguments.dropFirst().first == "judge" {
-      runJudge(Array(CommandLine.arguments.dropFirst(2)))
+      await runJudge(Array(CommandLine.arguments.dropFirst(2)))
+    }
+    if CommandLine.arguments.dropFirst().first == "tokenize" {
+      await runTokenize(Array(CommandLine.arguments.dropFirst(2)))
     }
     let args = parseArgs()
     let cases = loadCorpus(path: args.corpusPath)
@@ -412,7 +416,7 @@ func write(record: OutRecord, to sink: FileHandle, encoder: JSONEncoder) {
 
 /// Never returns. Exit codes are `JudgeCLI.execute`'s: 0 ok, 2 usage/infra,
 /// 3 named judge unimplemented (records still written).
-func runJudge(_ argv: [String]) -> Never {
+func runJudge(_ argv: [String]) async -> Never {
   let judgeArgs: JudgeArgs
   do {
     judgeArgs = try JudgeCLI.parse(argv)
@@ -420,7 +424,7 @@ func runJudge(_ argv: [String]) -> Never {
     FileHandle.standardError.write(Data(("AliasRunner judge: \(error)\n" + JudgeCLI.usage + "\n").utf8))
     exit(2)
   }
-  let (records, code) = JudgeCLI.execute(args: judgeArgs)
+  let (records, code) = await JudgeCLI.execute(args: judgeArgs, arms: AFMJudgeArm.arms())
   if code == 2 {
     FileHandle.standardError.write(
       Data("AliasRunner judge: could not load the corpus or the fixture (see usage)\n".utf8))
@@ -448,4 +452,126 @@ func runJudge(_ argv: [String]) -> Never {
       Data("AliasRunner judge: \(judgeArgs.judge.rawValue) is unimplemented in this build; every row written as unimplemented\n".utf8))
   }
   exit(code)
+}
+
+// MARK: - AFM judge arms (#996 chunk 2b)
+
+/// The Apple FoundationModels comparison arms, one per OS the plan names.
+/// An arm only EXECUTES on the OS it is named for: asking for `afm-macos26`
+/// on a macOS 27 Mac writes `unavailable` rows that say so, never a result
+/// relabelled as the other arm. Each executed row calls the benchmark door
+/// on the shipped `WordSuggestionService` (one instance, one permit queue),
+/// with the row's single candidate and the pasted sentence as context, and
+/// carries the service's execution identity.
+struct AFMJudgeArm: JudgeArm {
+  let candidate: JudgeCandidate
+  let requiredMajor: Int
+  let service: WordSuggestionService
+
+  static func arms() -> [JudgeCandidate: any JudgeArm] {
+    let service = WordSuggestionService()
+    return [
+      .afmMacOS26: AFMJudgeArm(candidate: .afmMacOS26, requiredMajor: 26, service: service),
+      .afmMacOS27: AFMJudgeArm(candidate: .afmMacOS27, requiredMajor: 27, service: service),
+    ]
+  }
+
+  private struct DoorDecision: Decodable {
+    let id: Int
+    let vocabulary_correction: Bool
+    let safe_alias: Bool
+  }
+  private struct DoorResponse: Decodable {
+    let outcome: String
+    let decisions: [DoorDecision]?
+    let latency_ms: Double
+    let execution_identity: [String: String]
+    let note: String?
+  }
+
+  func judge(row: EditCorpusRow) async -> JudgeRecord {
+    let actual = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+    guard actual == requiredMajor else {
+      return JudgeRecord(
+        id: row.id, judge: candidate.rawValue, outcome: .unavailable, decision: nil, latencyMs: 0,
+        note: "this Mac runs macOS \(actual); \(candidate.rawValue) requires macOS \(requiredMajor) and was not executed",
+        executionIdentity: nil)
+    }
+    let request: [String: Any] = [
+      "candidates": [["id": 1, "original": row.original, "replacement": row.replacement]],
+      "context": row.pasted,
+      "language": row.language,
+    ]
+    guard let requestJSON = try? JSONSerialization.data(withJSONObject: request) else {
+      return JudgeRecord(
+        id: row.id, judge: candidate.rawValue, outcome: .malformed, decision: nil, latencyMs: 0,
+        note: "could not encode the request", executionIdentity: nil)
+    }
+    let responseData = await service.benchmarkJudgeCorrections(requestJSON: requestJSON)
+    guard let response = try? JSONDecoder().decode(DoorResponse.self, from: responseData) else {
+      return JudgeRecord(
+        id: row.id, judge: candidate.rawValue, outcome: .malformed, decision: nil, latencyMs: 0,
+        note: "benchmark door returned an undecodable response", executionIdentity: nil)
+    }
+    if response.outcome == "verdict" {
+      guard let decisions = response.decisions, decisions.count == 1, decisions[0].id == 1 else {
+        return JudgeRecord(
+          id: row.id, judge: candidate.rawValue, outcome: .malformed, decision: nil,
+          latencyMs: response.latency_ms, note: "verdict without exactly one decision for id 1",
+          executionIdentity: response.execution_identity)
+      }
+      return JudgeRecord(
+        id: row.id, judge: candidate.rawValue, outcome: .verdict,
+        decision: JudgeDecision(
+          vocabularyCorrection: decisions[0].vocabulary_correction, safeAlias: decisions[0].safe_alias),
+        latencyMs: response.latency_ms, note: nil, executionIdentity: response.execution_identity)
+    }
+    // Bypass names are the Core `CorrectionJudgeBypass` raw values, which are
+    // the kit's `JudgeOutcome` names in camel case (`notGranted`).
+    let outcome: JudgeOutcome
+    switch response.outcome {
+    case "unavailable": outcome = .unavailable
+    case "notGranted": outcome = .notGranted
+    case "deadline": outcome = .deadline
+    case "cancelled": outcome = .cancelled
+    default: outcome = .malformed
+    }
+    return JudgeRecord(
+      id: row.id, judge: candidate.rawValue, outcome: outcome, decision: nil,
+      latencyMs: response.latency_ms, note: response.note ?? "afm arm bypass \(response.outcome)",
+      executionIdentity: response.execution_identity)
+  }
+}
+
+// MARK: - tokenize subcommand (#996 chunk 2b)
+
+/// `AliasRunner tokenize --request <json> --out <json>`: hands the request to
+/// the LLM module's benchmark door (`CorrectionJudgeBenchmark.tokenizerParity`)
+/// and writes its answer. Never returns.
+func runTokenize(_ argv: [String]) async -> Never {
+  var request: String?
+  var out: String?
+  var it = argv.makeIterator()
+  while let arg = it.next() {
+    switch arg {
+    case "--request": request = it.next()
+    case "--out": out = it.next()
+    default:
+      FileHandle.standardError.write(Data("AliasRunner tokenize: unknown argument \(arg)\n".utf8))
+      exit(2)
+    }
+  }
+  guard let request, let out, let data = FileManager.default.contents(atPath: request) else {
+    FileHandle.standardError.write(
+      Data("usage: AliasRunner tokenize --request <json> --out <json>\n".utf8))
+    exit(2)
+  }
+  let response = await CorrectionJudgeBenchmark.tokenizerParity(requestJSON: data)
+  do {
+    try response.write(to: URL(fileURLWithPath: out))
+  } catch {
+    FileHandle.standardError.write(Data("AliasRunner tokenize: could not write \(out)\n".utf8))
+    exit(2)
+  }
+  exit(0)
 }

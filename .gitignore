@@ -369,6 +369,7 @@ scripts/eval/alias_runner/Package.resolved
 !scripts/eval/edit_judge_gate.py
 !scripts/eval/edit_judge_data.py
 !scripts/eval/build_edit_judge_corpus.py
+!scripts/eval/probe_edit_judge_compatibility.py
 !scripts/eval/corpus/edit-corpus-a.jsonl
 !scripts/eval/corpus/edit-corpus-a-holdout.jsonl
 !scripts/eval/corpus/edit-judge-frozen-manifest.json
