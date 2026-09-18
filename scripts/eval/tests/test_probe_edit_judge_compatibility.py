@@ -129,3 +129,11 @@ def test_build_contract_shapes_follow_the_template():
 
 def test_toolchain_pin_names_the_shipped_converters_versions():
     assert probe.EXPECTED_TOOLCHAIN == {"transformers": "4.50.0", "coremltools": "9.0"}
+
+
+def test_upstream_tokenizer_is_pinned_in_the_runner_only():
+    runner = (ROOT / "scripts/eval/alias_runner/Package.swift").read_text()
+    assert 'url: "https://github.com/huggingface/swift-transformers", exact: "1.3.4"' in runner
+    assert '.product(name: "Tokenizers", package: "swift-transformers")' in runner
+    root = (ROOT / "Package.swift").read_text()
+    assert "swift-transformers" not in root, "the app must not take the upstream tokenizer until parity is proven and the founder approves"

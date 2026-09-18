@@ -11,7 +11,12 @@ let package = Package(
     .macOS(.v14)
   ],
   dependencies: [
-    .package(name: "EnviousWispr", path: "../../..")
+    .package(name: "EnviousWispr", path: "../../.."),
+    // #996 chunk 2b-ii (founder decision 2026-09-18, option 1): the upstream
+    // Hugging Face tokenizer, RUNNER ONLY, to measure parity for the
+    // cross-encoder candidates. The app keeps its Argmax dependency until
+    // this proves exact multilingual parity. Pinned to an exact tag.
+    .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.3.4"),
   ],
   targets: [
     // #996: the `judge` subcommand's contract (corpus rows, candidate names,
@@ -30,6 +35,7 @@ let package = Package(
         // #996 chunk 2b: the tokenizer-parity door for the edit-judge
         // compatibility probe lives in LLM (`CorrectionJudgeBenchmark`).
         .product(name: "EnviousWisprLLM", package: "EnviousWispr"),
+        .product(name: "Tokenizers", package: "swift-transformers"),
       ],
       path: "Sources/AliasRunner"
     ),

@@ -8,6 +8,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPostProcessing
 import Foundation
+import Tokenizers
 
 // MARK: - IO shapes
 
@@ -545,28 +546,40 @@ struct AFMJudgeArm: JudgeArm {
 
 // MARK: - tokenize subcommand (#996 chunk 2b)
 
-/// `AliasRunner tokenize --request <json> --out <json>`: hands the request to
-/// the LLM module's benchmark door (`CorrectionJudgeBenchmark.tokenizerParity`)
-/// and writes its answer. Never returns.
+/// `AliasRunner tokenize --request <json> --out <json> [--stack vendored|upstream]`:
+/// `vendored` (default) hands the request to the LLM module's benchmark door
+/// (`CorrectionJudgeBenchmark.tokenizerParity`, the shipped Argmax stack);
+/// `upstream` encodes the texts with the pinned Hugging Face
+/// `swift-transformers` tokenizer that ONLY this runner links (#996
+/// chunk 2b-ii experiment), texts only, no pair assembly. Never returns.
 func runTokenize(_ argv: [String]) async -> Never {
   var request: String?
   var out: String?
+  var stack = "vendored"
   var it = argv.makeIterator()
   while let arg = it.next() {
     switch arg {
     case "--request": request = it.next()
     case "--out": out = it.next()
+    case "--stack": stack = it.next() ?? ""
     default:
       FileHandle.standardError.write(Data("AliasRunner tokenize: unknown argument \(arg)\n".utf8))
       exit(2)
     }
   }
-  guard let request, let out, let data = FileManager.default.contents(atPath: request) else {
+  guard let request, let out, let data = FileManager.default.contents(atPath: request),
+    ["vendored", "upstream"].contains(stack)
+  else {
     FileHandle.standardError.write(
-      Data("usage: AliasRunner tokenize --request <json> --out <json>\n".utf8))
+      Data("usage: AliasRunner tokenize --request <json> --out <json> [--stack vendored|upstream]\n".utf8))
     exit(2)
   }
-  let response = await CorrectionJudgeBenchmark.tokenizerParity(requestJSON: data)
+  let response: Data
+  if stack == "upstream" {
+    response = await UpstreamTokenizerProbe.encode(requestJSON: data)
+  } else {
+    response = await CorrectionJudgeBenchmark.tokenizerParity(requestJSON: data)
+  }
   do {
     try response.write(to: URL(fileURLWithPath: out))
   } catch {
@@ -574,4 +587,53 @@ func runTokenize(_ argv: [String]) async -> Never {
     exit(2)
   }
   exit(0)
+}
+
+// MARK: - Upstream tokenizer experiment (#996 chunk 2b-ii)
+
+/// The same request/response shape as the vendored door, answered by the
+/// pinned upstream `swift-transformers` tokenizer (strict load from the local
+/// folder). Texts only: pair assembly stays with the shipped adapter, which
+/// this experiment does not touch.
+enum UpstreamTokenizerProbe {
+  struct Request: Decodable {
+    let tokenizer_folder: String
+    let texts: [String]
+  }
+  struct EncodedText: Encodable {
+    let text: String
+    let ids: [Int]
+  }
+  struct Response: Encodable {
+    let loaded: Bool
+    let stack: String
+    let error: String?
+    let texts: [EncodedText]?
+    let special_tokens: [String: Int]?
+  }
+
+  static func encode(requestJSON: Data) async -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    func emit(_ r: Response) -> Data { (try? encoder.encode(r)) ?? Data() }
+    let request: Request
+    do {
+      request = try JSONDecoder().decode(Request.self, from: requestJSON)
+    } catch {
+      return emit(Response(loaded: false, stack: "upstream-1.3.4", error: "request rejected: \(error)", texts: nil, special_tokens: nil))
+    }
+    let folder = URL(fileURLWithPath: request.tokenizer_folder, isDirectory: true)
+    let tokenizer: any Tokenizer
+    do {
+      tokenizer = try await AutoTokenizer.from(modelFolder: folder, strict: true)
+    } catch {
+      return emit(Response(loaded: false, stack: "upstream-1.3.4", error: "tokenizer load failed (strict): \(error)", texts: nil, special_tokens: nil))
+    }
+    let texts = request.texts.map { EncodedText(text: $0, ids: tokenizer.encode(text: $0, addSpecialTokens: false)) }
+    var specials: [String: Int] = [:]
+    for name in ["<s>", "</s>", "<pad>", "[CLS]", "[SEP]", "[PAD]", "<bos>", "<eos>", "<unk>", "[UNK]"] {
+      if let id = tokenizer.convertTokenToId(name) { specials[name] = id }
+    }
+    return emit(Response(loaded: true, stack: "upstream-1.3.4", error: nil, texts: texts, special_tokens: specials))
+  }
 }

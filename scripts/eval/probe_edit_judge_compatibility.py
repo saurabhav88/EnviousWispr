@@ -264,15 +264,18 @@ def placement_verdict(reference: list[list[float]], observed: list[list[float]],
 # --- Runner bridge ---
 
 
-def swift_tokenize(tokenizer_dir: Path, texts: list[str], contract_path: Optional[Path], pairs: Optional[list[tuple[str, str]]], workdir: Path) -> dict:
+def swift_tokenize(tokenizer_dir: Path, texts: list[str], contract_path: Optional[Path], pairs: Optional[list[tuple[str, str]]], workdir: Path, stack: str = "vendored") -> dict:
+    """`stack` is `vendored` (the shipped Argmax stack through the LLM
+    benchmark door) or `upstream` (the pinned Hugging Face swift-transformers
+    tokenizer the runner alone links, #996 2b-ii experiment; texts only)."""
     request = {"tokenizer_folder": str(tokenizer_dir), "texts": texts}
-    if contract_path is not None and pairs is not None:
+    if stack == "vendored" and contract_path is not None and pairs is not None:
         request["contract"] = str(contract_path)
         request["pairs"] = [{"input": a, "output": b} for a, b in pairs]
-    req = workdir / "tokenize-request.json"
-    out = workdir / "tokenize-response.json"
+    req = workdir / f"tokenize-request-{stack}.json"
+    out = workdir / f"tokenize-response-{stack}.json"
     req.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-    proc = subprocess.run([str(RUNNER_BIN), "tokenize", "--request", str(req), "--out", str(out)], capture_output=True, text=True)
+    proc = subprocess.run([str(RUNNER_BIN), "tokenize", "--request", str(req), "--out", str(out), "--stack", stack], capture_output=True, text=True)
     if proc.returncode != 0:
         return {"loaded": False, "error": f"runner exit {proc.returncode}: {proc.stderr.strip()[:300]}"}
     return json.loads(out.read_text(encoding="utf-8"))
@@ -291,9 +294,11 @@ class CandidateReport:
     tokenizer_loaded_in_swift: bool = False
     tokenizer_error: Optional[str] = None
     text_parity: dict = field(default_factory=dict)
+    upstream: dict = field(default_factory=dict)
     pair_parity: dict = field(default_factory=dict)
     conversion: dict = field(default_factory=dict)
     placement: dict = field(default_factory=dict)
+    upstream_text_parity_ok: bool = False
     verdict: str = "not-run"
     notes: list = field(default_factory=list)
 
@@ -342,6 +347,9 @@ def probe_tokenizer(name: str, spec: dict, models_dir: Path, workdir: Path, repo
     contract_path = workdir / f"{name}-contract.json"
     contract_path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
 
+    # The upstream stack is measured for every candidate, whatever the
+    # vendored stack does with it.
+    report.upstream = upstream_text_parity(tok_dir, texts, expected, workdir)
     swift = swift_tokenize(tok_dir, texts, contract_path, PAIR_FIXTURES, workdir)
     report.tokenizer_loaded_in_swift = bool(swift.get("loaded"))
     if not swift.get("loaded"):
@@ -385,6 +393,26 @@ def probe_tokenizer(name: str, spec: dict, models_dir: Path, workdir: Path, repo
         else:
             pair_matched += 1
     report.pair_parity = {"compared": len(PAIR_FIXTURES), "matched": pair_matched, "mismatches": pair_mismatches, "contract": str(contract_path)}
+
+
+def upstream_text_parity(tok_dir: Path, texts: list[str], expected: dict[str, list[int]], workdir: Path) -> dict:
+    """Text parity through the pinned upstream tokenizer (runner only)."""
+    swift = swift_tokenize(tok_dir, texts, None, None, workdir, stack="upstream")
+    if not swift.get("loaded"):
+        return {"stack": swift.get("stack", "upstream"), "loaded": False, "error": swift.get("error"), "compared": 0, "matched": 0, "mismatches": []}
+    got_texts = [e.get("text") for e in swift.get("texts") or []]
+    if sorted(got_texts) != sorted(texts) or len(set(got_texts)) != len(texts):
+        return {"stack": swift.get("stack"), "loaded": True, "error": "runner returned a different text set", "compared": 0, "matched": 0, "mismatches": []}
+    matched = 0
+    mismatches = []
+    for entry in swift["texts"]:
+        problem = compare_ids(expected[entry["text"]], entry["ids"])
+        if problem is None:
+            matched += 1
+        else:
+            lang = next(l for l, t in TEXT_FIXTURES if t == entry["text"])
+            mismatches.append({"language": lang, "problem": problem})
+    return {"stack": swift.get("stack"), "loaded": True, "compared": len(texts), "matched": matched, "mismatches": mismatches, "special_tokens": swift.get("special_tokens")}
 
 
 def probe_conversion(name: str, spec: dict, models_dir: Path, workdir: Path, report: CandidateReport, n_inputs: int) -> None:
@@ -523,6 +551,7 @@ def probe_candidate(name: str, spec: dict, artifacts: Path, run_root: Path, n_in
         except Exception as exc:
             report.conversion = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:400]}"}
     tokenizer_ok = report.tokenizer_loaded_in_swift and report.text_parity.get("matched") == report.text_parity.get("compared") and report.pair_parity.get("matched") == report.pair_parity.get("compared") and report.pair_parity.get("compared", 0) > 0
+    report.upstream_text_parity_ok = bool(report.upstream.get("loaded")) and report.upstream.get("matched") == report.upstream.get("compared") and report.upstream.get("compared", 0) > 0
     conversion_ok = bool(report.conversion.get("ok"))
     placement_ok = bool(report.placement) and all(v.get("ok") for v in report.placement.values())
     if skip_conversion:
@@ -578,7 +607,9 @@ def main() -> int:
     out = run_root / "report.json"
     out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     for r in reports:
-        print(f"{r.name}: {r.verdict}; tokenizer {r.tokenizer_class} loaded={r.tokenizer_loaded_in_swift} texts {r.text_parity.get('matched')}/{r.text_parity.get('compared')} pairs {r.pair_parity.get('matched')}/{r.pair_parity.get('compared')}; conversion {r.conversion.get('ok')} {r.conversion.get('size_mb', '')}MB; placement {{{', '.join(f'{k}:{v.get('ok')}' for k, v in r.placement.items())}}}")
+        print(f"{r.name}: {r.verdict}; vendored tokenizer {r.tokenizer_class} loaded={r.tokenizer_loaded_in_swift} texts {r.text_parity.get('matched')}/{r.text_parity.get('compared')} pairs {r.pair_parity.get('matched')}/{r.pair_parity.get('compared')}; upstream texts {r.upstream.get('matched')}/{r.upstream.get('compared')} loaded={r.upstream.get('loaded')}; conversion {r.conversion.get('ok')} {r.conversion.get('size_mb', '')}MB; placement {{{', '.join(f'{k}:{v.get('ok')}' for k, v in r.placement.items())}}}")
+        if r.upstream.get("error"):
+            print(f"  upstream tokenizer error: {r.upstream['error']}")
         if r.tokenizer_error:
             print(f"  tokenizer error: {r.tokenizer_error}")
         if r.conversion.get("error"):
