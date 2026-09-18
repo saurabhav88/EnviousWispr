@@ -24,7 +24,7 @@ Importing adds new words to your list without changing the words you already hav
 - **Juno** ships with around 400 built-in words of its own. Only the words you added are imported, so your list stays yours.
 - **Spokenly** can store find-and-replace rules written as patterns rather than plain words. Those are skipped, because a pattern is not a word.
 - **TypeWhisper** entries you have switched off stay off, and its case-sensitivity setting for each word comes across with it. Its match-strictness setting does not.
-- **Wispr Flow** text shortcuts are skipped. Those are text expansions rather than vocabulary. EnviousWispr's own version of those is [Snippets](/help/using-snippets/), which you add by hand under **Settings** \> **Snippets**.
+- **Wispr Flow** text shortcuts are skipped. Those are text expansions rather than vocabulary. EnviousWispr's own version of those is [Snippets](/help/using-snippets/), and you can import them from Wispr Flow separately under **Settings** \> **Snippets**.
 
 If an app holds entries but none of them can come across, EnviousWispr tells you how many it found rather than saying it found nothing.
 

@@ -25,8 +25,13 @@ package enum SmartImportError: LocalizedError, Sendable, Equatable {
     case .appNotFound(let app):
       return "Couldn't find any \(app) words on this Mac."
     case .unreadable(let app):
+      // "can help", not "the cause": every reader failure lands here, including a store the
+      // rival app is not touching (#3032 hit it with Wispr Flow quit), a malformed JSON file
+      // and a schema drift. The remedy is kept for the one case it fits and is no longer
+      // asserted as the reason. Shared by all eight word adapters; founder decision 2026-09-18.
       return
-        "Couldn't read your \(app) words. If \(app) is open, try quitting it and importing again."
+        "Couldn't read your \(app) words, so nothing was imported. If \(app) is running, "
+        + "quitting it and trying again can help."
     case .legacyMigrationRequired(let app):
       return
         "\(app)'s older App Store data can't be imported directly yet. In \(app), choose "
@@ -167,31 +172,15 @@ private func acquireStableSnapshot<Snapshot, Accepted>(
 /// The one owner of a SQLite read: open, prepare, step, verify completion,
 /// finalize, close.
 ///
-/// ACQUISITION — how the database being opened came to be safe to open — is
-/// deliberately NOT here. Wispr Flow validates a 151 MB live database in place
-/// and refuses when its sidecars say another process holds uncommitted content;
+/// ACQUISITION — how the private copy being opened came to exist — is
+/// deliberately NOT here. Wispr Flow clones its ~1 GB live database with APFS
+/// clonefile and proves the source did not move across the clone (#3012);
 /// TypeWhisper takes a bounded stable copy of its 296 KB store because it never
 /// checkpoints its WAL. Those are two measured answers to one question, and
 /// folding them into a single "policy" would be a false single authority. What
-/// they genuinely share is the read sequence below.
+/// they genuinely share is the read sequence below, which takes the copy.
 package enum SmartImportSQLiteReader {
-  /// Step every row through `mapRow` as a word, then hand control back to the
-  /// caller while the connection is still open. The word-shaped wrapper every
-  /// word adapter calls; the sequence itself is `readRows`.
-  static func read(
-    uri: String,
-    sql: String,
-    appName: String,
-    mapRow: (OpaquePointer?) throws -> SmartImportWord?,
-    afterRowsRead: () throws -> Void = {}
-  ) throws -> SmartImportReadResult {
-    let read = try readRows(
-      uri: uri, sql: sql, appName: appName, mapRow: mapRow, afterRowsRead: afterRowsRead)
-    return SmartImportReadResult(words: read.rows, excludedCount: read.excludedCount)
-  }
-
-  /// Step every row through `mapRow`, then hand control back to the caller
-  /// while the connection is still open.
+  /// Step every row of a PRIVATE COPY through `mapRow`, then hand control back to the caller.
   ///
   /// Generic over the row type (#2997): the word adapters map rows to
   /// `SmartImportWord` and the snippet adapters to `SnippetImportCandidate`
@@ -202,28 +191,47 @@ package enum SmartImportSQLiteReader {
   /// `mapRow` returning nil is an ordinary EXCLUSION and is counted; a THROW is
   /// a malformed source and refuses the whole read. Those are different things.
   ///
-  /// `afterRowsRead` runs after `SQLITE_DONE` and BEFORE this scope's finalize
-  /// and close defers, which is exactly where Wispr Flow's post-read sidecar
-  /// recheck sat when that adapter owned the whole sequence. Passing the hook
-  /// through the reader rather than letting the caller run it after `read`
-  /// returns is the entire reason this parameter exists: returning first would
-  /// move the check past cleanup and widen the window it exists to close.
+  /// `privateCopy` is a file the caller made and will delete, never a rival app's own store.
+  /// It is opened READ-WRITE, deliberately, and the copy is what makes that safe. A database
+  /// whose header says WAL needs a `-shm` wal-index before it can be read, and a strictly
+  /// read-only connection may not create one, so a store left in WAL mode with its sidecars
+  /// removed — which is how Wispr Flow rests after it quits — answered `SQLITE_CANTOPEN` at
+  /// prepare under the old `SQLITE_OPEN_READONLY` open and the import told the user to quit an
+  /// app that was not running (#3032; measured on macOS SQLite 3.54.0). Read-write lets SQLite
+  /// build the wal-index beside the copy. Two things keep that honest:
+  ///
+  /// - NO `SQLITE_OPEN_CREATE`, so a missing copy still fails instead of silently becoming an
+  ///   empty database that would import as "nothing found".
+  /// - `PRAGMA query_only=ON` immediately after the open, so the connection can still recover
+  ///   the WAL but a caller-supplied statement cannot change a row: a stray `DELETE` answers
+  ///   `SQLITE_READONLY` instead of succeeding against the copy. A pragma that fails refuses
+  ///   the read rather than continuing writable.
+  ///
+  /// NOT `immutable=1`, which looks like the read-only-safe answer and is not: it skips WAL
+  /// processing entirely, so a copy whose `-wal` holds committed frames reads as though the
+  /// table were not there (measured: `no such table` against a fixture with 95 committed rows
+  /// in the WAL; plan §2.5.5 for #3032).
   static func readRows<Row>(
-    uri: String,
+    privateCopy: URL,
     sql: String,
     appName: String,
-    mapRow: (OpaquePointer?) throws -> Row?,
-    afterRowsRead: () throws -> Void = {}
+    mapRow: (OpaquePointer?) throws -> Row?
   ) throws -> (rows: [Row], excludedCount: Int) {
     var db: OpaquePointer?
     guard
-      sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+      sqlite3_open_v2(
+        fileURI(privateCopyPath: privateCopy.path), &db,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_URI, nil) == SQLITE_OK,
       let db
     else {
       sqlite3_close(db)
       throw SmartImportError.unreadable(appName)
     }
     defer { sqlite3_close(db) }
+
+    guard sqlite3_exec(db, "PRAGMA query_only=ON", nil, nil, nil) == SQLITE_OK else {
+      throw SmartImportError.unreadable(appName)
+    }
 
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -246,7 +254,6 @@ package enum SmartImportSQLiteReader {
     // partial read presented as a complete one is the same false-pass shape as
     // a test that never runs.
     guard result == SQLITE_DONE else { throw SmartImportError.unreadable(appName) }
-    try afterRowsRead()
     return (rows, excludedCount)
   }
 
@@ -272,9 +279,13 @@ package enum SmartImportSQLiteReader {
   /// fragment: SQLite percent-decodes the path, so an unescaped `%` or `#` resolves to a
   /// different file (#2997). `.urlPathAllowed` keeps `/` and every ordinary path character and
   /// encodes exactly those three plus space; SQLite decodes them back to the real path.
-  static func fileURI(path: String, query: String) -> String {
+  ///
+  /// Private, and the mode is fixed here rather than passed in: a caller cannot spell
+  /// `mode=ro` again and reintroduce #3032, and `mode=rw` (no `c`) refuses to create a missing
+  /// file for the same reason the open flags omit `SQLITE_OPEN_CREATE`.
+  private static func fileURI(privateCopyPath path: String) -> String {
     let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
-    return "file:\(encoded)?\(query)"
+    return "file:\(encoded)?mode=rw"
   }
 
   // MARK: - Strict column reads
@@ -466,18 +477,20 @@ package struct SuperwhisperAdapter: SmartImportAdapter {
 // MARK: - Wispr Flow
 
 /// How Wispr Flow's database is read, shared by the word adapter and the snippet
-/// adapter (#2997, #3012). Wispr Flow runs its store in WAL while open (leaving
-/// `-wal`/`-shm`) and reverts to a `delete`-mode header with no sidecars once
-/// fully quit, so the earlier "refuse whenever a sidecar exists, else open
-/// `immutable=1`" policy refused every import made while Wispr Flow was running —
-/// which is the normal state for someone migrating away from it (#3012).
+/// adapter (#2997, #3012, #3032). Its store has three observed shapes: a
+/// delete-mode header with no sidecars, a WAL header with `-wal` and `-shm`, and
+/// a WAL header with no sidecars after quitting. The earlier "refuse whenever a
+/// sidecar exists, else open `immutable=1`" policy refused the running shape and
+/// could silently ignore committed WAL content.
 ///
 /// Instead we read a private APFS clone: clone the main file plus any `-wal` into
 /// a same-volume scratch directory, prove the source did not change across the
-/// clone, then open the clone `mode=ro` (WAL-aware; SQLite rebuilds `-shm` beside
-/// the writable clone). This works whether Wispr Flow is open or closed and never
-/// writes into Wispr Flow's directory. What differs per adapter is the SQL and the
-/// row mapping, which are passed in.
+/// clone, then hand the clone to `SmartImportSQLiteReader`, which opens it read-write
+/// under `PRAGMA query_only` so SQLite can build the `-shm` wal-index beside OUR copy
+/// (a read-only open could not, and refused the founder's quit-and-checkpointed store,
+/// #3032). This works whether Wispr Flow is open or closed and never writes into
+/// Wispr Flow's directory. What differs per adapter is the SQL and the row mapping,
+/// which are passed in.
 package enum WisprFlowDatabase {
   /// The one database, holding words and snippets alike.
   static var candidatePaths: [URL] {
@@ -543,11 +556,9 @@ package enum WisprFlowDatabase {
     let copyMain = try acquireStableClone(source: url, into: scratchParent, appName: appName)
 
     // The clone is private and cannot change under us, so there is no live-file
-    // window left to guard: the old `afterRowsRead` sidecar recheck is dropped
-    // for this path (the shared hook stays for TypeWhisper).
+    // window left to guard after the read.
     return try SmartImportSQLiteReader.readRows(
-      uri: SmartImportSQLiteReader.fileURI(path: copyMain.path, query: "mode=ro"),
-      sql: sql, appName: appName, mapRow: mapRow)
+      privateCopy: copyMain, sql: sql, appName: appName, mapRow: mapRow)
   }
 
   /// Acquire a byte-stable clone of main (+ `-wal`) via the shared retry loop.
@@ -688,9 +699,9 @@ package struct WisprFlowAdapter: SmartImportAdapter {
       LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
 
-    // Acquisition (the sidecar guard, the immutable connection, the post-read
-    // recheck) is `WisprFlowDatabase.read`, shared with the snippet adapter
-    // (#2997). Only the SQL and the row mapping are this adapter's.
+    // Acquisition, stable cloning, and the shared query-only read live in
+    // `WisprFlowDatabase.read`, shared with the snippet adapter (#2997, #3012, #3032).
+    // Only the SQL and row mapping belong to this adapter.
     let read = try WisprFlowDatabase.read(at: url, appName: displayName, sql: sql) {
       statement -> SmartImportWord? in
       let phrase = try SmartImportSQLiteReader.requiredText(statement, 0, displayName)
@@ -754,19 +765,15 @@ package struct VoxAdapter: SmartImportAdapter {
 /// behaviour, so one acquisition serves both. What differs per adapter is the
 /// SQL and the row mapping, which are passed in.
 ///
-/// Wispr Flow's policy — refuse when a sidecar exists, else open `immutable=1`
-/// — does NOT transfer here, and the difference is measured rather than
-/// assumed. TypeWhisper never checkpoints its WAL: quit the app and
-/// `dictionary.store-wal` remains, 193 KB on the machine this was written
-/// against, holding rows the main file does not have. So refusing on a sidecar
-/// would refuse forever after its first run, and `immutable=1` — which skips
-/// WAL processing — returned 36 rows against a true 38, silently, opened in
-/// place with both sidecars present. Wispr Flow leaves no sidecars once quit,
-/// which is why its own policy is still right for it.
+/// Both apps now share the same reader contract: open only a private copy read-write under
+/// `PRAGMA query_only`. Their acquisition remains deliberately different. TypeWhisper reads
+/// its bounded main and WAL bytes twice and accepts only two agreeing snapshots; Wispr Flow
+/// uses a forced APFS clone because its store is roughly 1 GB.
 ///
-/// Copying is cheap here and was not there: 296 KB against 151 MB. That number
-/// is the whole reason the same reasoning reaches the opposite answer, so it is
-/// stated rather than the conclusion alone.
+/// TypeWhisper never checkpoints its WAL: after quitting, `dictionary.store-wal` can still
+/// hold rows absent from main. The snapshot therefore retains both parts. `immutable=1` is
+/// not an alternative because it skips WAL processing and measured 36 rows against the true
+/// 38. The shared reader handles the accepted private copy without losing those rows.
 ///
 /// The copy is also what makes this read-only in the sense a user would
 /// recognise. Opening the SOURCE read-only returns the right rows too, but it
@@ -826,8 +833,7 @@ package enum TypeWhisperStoreSnapshot {
     }
 
     return try SmartImportSQLiteReader.readRows(
-      uri: SmartImportSQLiteReader.fileURI(path: copy.path, query: "mode=ro"), sql: sql,
-      appName: appName, mapRow: mapRow)
+      privateCopy: copy, sql: sql, appName: appName, mapRow: mapRow)
   }
 
   /// Read every store part twice and accept only a byte-identical pair.
@@ -941,9 +947,9 @@ package struct TypeWhisperAdapter: SmartImportAdapter {
       LIMIT \(CustomWordsImportLimits.maximumCandidates + 1)
       """
 
-    // Acquisition (two agreeing passes over main plus WAL, a private copy, a
-    // `mode=ro` open) is `TypeWhisperStoreSnapshot.read`, shared with the
-    // snippet adapter (#2997). Only the SQL and the row mapping are this
+    // Acquisition (two agreeing passes over main plus WAL, a private copy, the
+    // shared query-only read) is `TypeWhisperStoreSnapshot.read`, shared with
+    // the snippet adapter (#2997). Only the SQL and the row mapping are this
     // adapter's.
     let read = try TypeWhisperStoreSnapshot.read(
       at: url, readPart: readPart, appName: displayName, sql: sql
