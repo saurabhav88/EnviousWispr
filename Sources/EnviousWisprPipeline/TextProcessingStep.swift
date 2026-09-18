@@ -65,6 +65,14 @@ public struct TextProcessingContext: Sendable {
   /// the wiring, not by `LLMPolishStep.polishFallbackReason`).
   /// Invariant: `(polishFallbackReason != nil) == pipelineFellBackToRaw`.
   public var polishFallbackReason: String?
+  /// #3038: which `validatePolishOutput` guard discarded the model's output (`expansion`,
+  /// `content_drop`, `question_flip`, `symbol_drop`); nil when the output stood or when the
+  /// fallback came from somewhere else (a sentinel loss in `SnippetFinalizer`, the empty-output
+  /// floor in finalization), which must not claim a validator guard.
+  public var polishValidatorGuard: String?
+  /// #3038: the number of `/word` and `\word` tokens the deterministic text carried when
+  /// Guard 4 ran (zero is a measurement); nil when polish did not reach Guard 4.
+  public var symbolTokens: Int?
   /// #1914: whether the Ollama daemon reported the polishing model as running on
   /// Ollama's servers. Stamped after generation and validation return.
   ///

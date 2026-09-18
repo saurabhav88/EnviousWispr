@@ -864,12 +864,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       let llmEnd = CFAbsoluteTimeGetCurrent()
       logPolishCompletion(
         result: result, duration: llmEnd - llmStart, provider: provider, model: model)
-      let validatedText = validatePolishOutput(
+      let validation = validatePolishOutput(
         polished: result.polishedText, original: context.text, mode: .message,
         provider: provider, model: model
       )
+      let validatedText = validation.text
       var ctx = context
       ctx.polishedText = validatedText
+      ctx.polishValidatorGuard = validation.guardName
+      ctx.symbolTokens = validation.symbolTokens
       ctx.llmProvider = provider.rawValue
       ctx.llmModel = model
       ctx.polishMetadata = result.polishMetadata
@@ -967,12 +970,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         "prompt_family": plan.family.rawValue,
       ])
 
-    let validatedText = validatePolishOutput(
+    let validation = validatePolishOutput(
       polished: result.polishedText,
       original: context.text,
       mode: plan.mode,
       provider: provider, model: model
     )
+    let validatedText = validation.text
 
     // #2093: the round trip completed, so this (provider, model) is warm and the
     // next take inside the window needs no warm-up request. Without this call
@@ -989,6 +993,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     var ctx = context
     ctx.polishedText = validatedText
+    ctx.polishValidatorGuard = validation.guardName
+    ctx.symbolTokens = validation.symbolTokens
     ctx.llmProvider = provider.rawValue
     ctx.llmModel = model
     ctx.polishMetadata = result.polishMetadata
@@ -1051,14 +1057,53 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   // MARK: - Output Validation
 
+  /// What `validatePolishOutput` decided (#3038). `text` is what the pipeline delivers;
+  /// `guardName` names the guard that discarded the model's output (`expansion`,
+  /// `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
+  /// `symbolTokens` is the number of `/word` and `\word` tokens the ORIGINAL carried when
+  /// Guard 4 ran (zero is a measurement), nil when an earlier guard returned first. Counts
+  /// and names only, never text (`telemetry-privacy-boundary`).
+  struct PolishValidation: Equatable {
+    let text: String
+    let guardName: String?
+    let symbolTokens: Int?
+  }
+
+  /// A slash or backslash with the run of ordinary characters glued to its right: `/exit`,
+  /// `/oranges`, `\Users`. The run stops at whitespace, another slash, sentence punctuation,
+  /// closing brackets and quotes, and markdown emphasis (`*`, backtick), so a decorated
+  /// command (`` `/exit` ``, `**and/or**`) yields the same token as the plain one. A bare
+  /// trailing `/` (`docs/`) yields no token and is not guarded. Fragments by design:
+  /// `https://example.com/docs` is `{/example, /docs}`, `4/6/2021` is `{/6, /2021}`.
+  nonisolated static let symbolTokenPattern = #"[/\\][^\s/\\,.;:!?)\]}"'`*]+"#
+  nonisolated private static let symbolTokenRegex = try? NSRegularExpression(
+    pattern: symbolTokenPattern)
+
+  /// The symbol tokens of `text`, lower-cased, as a set: presence is what Guard 4 compares,
+  /// never multiplicity or the left-hand attachment (a polish that re-spaces or backticks a
+  /// command keeps its token). A regex that failed to compile would make the guard blind, so
+  /// it is a build-time constant and the failure is loud in DEBUG.
+  nonisolated static func symbolTokens(in text: String) -> Set<String> {
+    guard let regex = symbolTokenRegex else {
+      assertionFailure("symbol token regex failed to compile")
+      return []
+    }
+    let ns = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    return Set(matches.map { ns.substring(with: $0.range).lowercased() })
+  }
+
   /// Validate LLM polish output with mode-aware thresholds.
   /// Falls back to original text when the output looks like a hallucination,
-  /// content drop, or question-to-answer conversion.
+  /// content drop, question-to-answer conversion, or (#3038, Guard 4) when it lost a
+  /// slash or backslash token the deterministic text carried.
   func validatePolishOutput(
     polished: String, original: String, mode: PolishMode,
     provider: LLMProvider, model: String
-  ) -> String {
-    guard !original.isEmpty else { return polished }
+  ) -> PolishValidation {
+    guard !original.isEmpty else {
+      return PolishValidation(text: polished, guardName: nil, symbolTokens: nil)
+    }
 
     // Mode-aware thresholds (from plan Appendix C).
     //
@@ -1098,7 +1143,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           level: .info, category: "LLM"
         )
       }
-      return original
+      return PolishValidation(text: original, guardName: "expansion", symbolTokens: nil)
     }
 
     // Guard 2: Content drop
@@ -1115,7 +1160,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           level: .info, category: "LLM"
         )
       }
-      return original
+      return PolishValidation(text: original, guardName: "content_drop", symbolTokens: nil)
     }
 
     // Guard 3: Question-to-answer conversion (unchanged across modes)
@@ -1127,10 +1172,34 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           level: .info, category: "LLM"
         )
       }
-      return original
+      return PolishValidation(text: original, guardName: "question_flip", symbolTokens: nil)
     }
 
-    return polished
+    // Guard 4 (#3038): a slash or backslash the deterministic text carried must survive.
+    // This validator protects symbols before later finalization, and nothing downstream puts
+    // one back: EG-1 rewrote
+    // "apples/oranges/bananas" as "apples, oranges, or bananas" and `users\shared` as
+    // `users/shared` (#2957). Whole-token presence, lower-cased: `/clear-all` does not stand
+    // in for `/clear`; a scheme stripped from a URL (`/example` gone) falls back too, the
+    // conservative direction. The fallback delivers the whole deterministic text, like the
+    // three guards above.
+    let originalTokens = Self.symbolTokens(in: original)
+    if !originalTokens.isEmpty {
+      let missing = originalTokens.subtracting(Self.symbolTokens(in: polished)).count
+      if missing > 0 {
+        let total = originalTokens.count
+        Task {
+          await AppLogger.shared.log(
+            "LLM polish validator: symbol drop (\(missing) of \(total) slash/backslash tokens "
+              + "missing) — falling back (provider=\(provider.rawValue), model=\(model))",
+            level: .info, category: "LLM"
+          )
+        }
+        return PolishValidation(text: original, guardName: "symbol_drop", symbolTokens: total)
+      }
+    }
+
+    return PolishValidation(text: polished, guardName: nil, symbolTokens: originalTokens.count)
   }
 
   /// Conservative question detection using strong signals only.

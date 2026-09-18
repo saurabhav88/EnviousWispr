@@ -44,6 +44,10 @@ final class KernelFinalizationOutcome {
   var pipelineFellBackToRaw = false
   /// #1050 honest disaggregation of `pipelineFellBackToRaw`; AFM-gated downstream.
   var polishFallbackReason: String?
+  /// #3038: carried straight through from the context, never re-derived here. See
+  /// `TextProcessingContext`.
+  var polishValidatorGuard: String?
+  var symbolTokens: Int?
   /// #1914: carried straight through from the context, never re-derived here.
   /// Nil unless an Ollama polish completed. See `TextProcessingContext`.
   var polishRanRemote: Bool?
@@ -467,6 +471,8 @@ struct KernelFinalizationWiring {
       outcome.polishMetadata = ctx.polishMetadata
       outcome.pipelineFellBackToRaw = ctx.pipelineFellBackToRaw
       outcome.polishFallbackReason = ctx.polishFallbackReason
+      outcome.polishValidatorGuard = ctx.polishValidatorGuard
+      outcome.symbolTokens = ctx.symbolTokens
       outcome.polishRanRemote = ctx.polishRanRemote
       outcome.polishError = result.polishError
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
@@ -501,6 +507,8 @@ struct KernelFinalizationWiring {
         // are retained — honest facts that a polish was attempted.
         outcome.pipelineFellBackToRaw = true
         outcome.polishFallbackReason = "empty_output_floor"
+        // #3038: the floor is not a validator verdict; the token count, if Guard 4 ran, stays.
+        outcome.polishValidatorGuard = nil
       }
       return floor
     }
@@ -1316,7 +1324,11 @@ struct KernelFinalizationWiring {
       // the per-attempt fact after generation and validation; empty-output
       // recovery above clears it when finalization reclassifies the result as
       // skipped. `emitFallbackFields` owns different telemetry.
-      polishRanRemote: outcome.polishRanRemote
+      polishRanRemote: outcome.polishRanRemote,
+      // #3038: same transport as `polishRanRemote`: stamped by `LLMPolishStep`, cleared by the
+      // two non-validator fallbacks above, projected here without another policy.
+      polishValidatorGuard: outcome.polishValidatorGuard,
+      symbolTokens: outcome.symbolTokens
     )
 
     // #1946: assigned AFTER construction, not as eight more initialiser

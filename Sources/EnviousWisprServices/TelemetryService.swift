@@ -391,6 +391,8 @@ public final class TelemetryService {
         fellBackToRaw: m?.polishFellBackToRaw,
         fallbackReason: m?.polishFallbackReason,
         ollamaRemote: m?.polishRanRemote,
+        validatorGuard: m?.polishValidatorGuard,
+        symbolTokens: m?.symbolTokens,
         takeID: takeID
       )
     }
@@ -2256,6 +2258,13 @@ public final class TelemetryService {
     /// skipped events carry no equivalent field under the founder's
     /// 2026-08-03 tabling recorded in plan §3a.
     ollamaRemote: Bool? = nil,
+    /// #3038: the validator guard that discarded the polish, and the slash/backslash token
+    /// count Guard 4 measured on the deterministic text. Both omit-when-nil; a measured zero is
+    /// emitted. Read `symbol_drop` over takes whose `symbol_tokens` is nonzero, never as "how
+    /// often polish destroys a slash" (a take without a token in the deterministic text cannot
+    /// observe one).
+    validatorGuard: String? = nil,
+    symbolTokens: Int? = nil,
     /// #1846: which dictation this event belongs to. Omit-when-nil.
     takeID: String? = nil
   ) {
@@ -2270,6 +2279,8 @@ public final class TelemetryService {
     if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
     if let fr = fallbackReason { props["fallback_reason"] = fr }
     if let ollamaRemote { props["ollama_remote"] = ollamaRemote }
+    if let validatorGuard { props["polish_validator_guard"] = validatorGuard }
+    if let symbolTokens { props["symbol_tokens"] = symbolTokens }
     if let takeID { props["take_id"] = takeID }
     #if DEBUG
       var stringProps: [String: String] = [
@@ -2288,10 +2299,16 @@ public final class TelemetryService {
       // PARAMETER instead would keep passing if the `props` write were deleted,
       // which is exactly the mutation this hook has to be able to fail.
       if let emitted = props["ollama_remote"] as? Bool { boolProps["ollama_remote"] = emitted }
+      // #3038: read BACK OUT of `props`, same reason as `ollama_remote`.
+      if let emitted = props["polish_validator_guard"] as? String {
+        stringProps["polish_validator_guard"] = emitted
+      }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "llm.polish_completed",
           stringProps: stringProps,
+          // #3038: `symbol_tokens` travels as an Int; the seam keeps its shape.
+          intProps: props.compactMapValues { $0 as? Int },
           doubleProps: props.compactMapValues { $0 as? Double },
           boolProps: boolProps))
     #endif

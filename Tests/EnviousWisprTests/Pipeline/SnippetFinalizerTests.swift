@@ -204,6 +204,8 @@ struct SnippetFinalizerTests {
   func missingSentinelRejectsPolish() {
     var ctx = context(
       text: "email me at EWSNIPaaa", polished: "Email me at your address.", records: [email])
+    ctx.polishValidatorGuard = nil
+    ctx.symbolTokens = 1
 
     SnippetFinalizer.finalize(&ctx)
 
@@ -211,6 +213,9 @@ struct SnippetFinalizerTests {
     #expect(ctx.polishedText == nil)
     #expect(ctx.pipelineFellBackToRaw == true)
     #expect(ctx.polishFallbackReason == SnippetFinalizer.sentinelLossReason)
+    // #3038: a sentinel loss is not a validator verdict; the token count Guard 4 measured stays.
+    #expect(ctx.polishValidatorGuard == nil)
+    #expect(ctx.symbolTokens == 1)
     expectNoSentinelSurvives(ctx)
   }
 
