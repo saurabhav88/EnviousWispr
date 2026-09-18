@@ -116,12 +116,60 @@ struct SnippetImportAppAdaptersTests {
     #expect(!names.contains("flow.sqlite-journal"))
   }
 
-  @Test("the Wispr Flow unreadable sentence is unchanged (shared with other apps)")
-  func wisprFlowUnreadableSentenceUnchanged() {
-    #expect(
-      SnippetImportAppError.unreadable("Wispr Flow").errorDescription
-        == "Couldn't read your Wispr Flow snippets. If Wispr Flow is open, try quitting it and importing again."
-    )
+  @Test("the shared unreadable sentence reaches every snippet adapter and offers, never asserts, the quit remedy (#3032)")
+  func unreadableSentenceCoversEverySnippetAdapter() {
+    // The population is the registry's, not a list typed here, and it is asserted closed so a
+    // third adapter cannot arrive without this test noticing. The expected text is a literal,
+    // never derived from production, so a drifted production sentence cannot pass itself.
+    let population = SnippetImportAppRegistry.v1.displayNames
+    #expect(population == ["Wispr Flow", "TypeWhisper"])
+    for app in population {
+      #expect(
+        SnippetImportAppError.unreadable(app).errorDescription
+          == "Couldn't read your \(app) snippets, so nothing was imported. If \(app) is running, "
+          + "quitting it and trying again can help.",
+        "\(app)")
+    }
+  }
+
+  @Test("the founder's shape: WAL header, no sidecars, and Wispr Flow quit, imports its snippets (#3032)")
+  func wisprFlowWALHeaderWithNoSidecarsImportsSnippets() throws {
+    // The exact state on the founder's Mac on 2026-09-18, which the shipped read-only open
+    // refused with a sentence telling him to quit an app that was not running. The fixture is
+    // the shared one from the word suite; there is no second copy of it here.
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try RivalAppStoreFixtures.makeWisprFlowDatabaseWALHeaderNoSidecars(
+      in: dir,
+      rows: """
+        INSERT INTO Dictionary VALUES ('1','sig','Best regards,\nSaurabh  ',0,1);
+        INSERT INTO Dictionary VALUES ('2','btw','by the way',0,0);
+        INSERT INTO Dictionary VALUES ('3','old sig','gone',1,1);
+        INSERT INTO Dictionary VALUES ('4','blank','   ',0,1);
+        INSERT INTO Dictionary VALUES ('5','addr','1 Example Street',0,1);
+        """)
+    try RivalAppStoreFixtures.requireWALHeaderWithNoSidecars(at: url)
+
+    let fm = FileManager.default
+    let entriesBefore = try fm.contentsOfDirectory(atPath: dir.path).sorted()
+    let mainBytesBefore = try Data(contentsOf: url)
+    #expect(entriesBefore == ["flow.sqlite"])
+
+    let rows = try WisprFlowSnippetAdapter().loadSnippets(at: url)
+
+    // Exact order (id order) and verbatim text: the line break and the two trailing spaces in
+    // the first expansion must arrive as saved. The word row, the deleted snippet and the
+    // whitespace-only snippet are excluded and COUNTED.
+    #expect(rows.candidates.map(\.trigger) == ["sig", "addr"])
+    #expect(rows.candidates.map(\.expansion) == ["Best regards,\nSaurabh  ", "1 Example Street"])
+    #expect(rows.excludedCount == 3)
+
+    let entriesAfter = try fm.contentsOfDirectory(atPath: dir.path).sorted()
+    #expect(entriesAfter == entriesBefore)
+    #expect(!fm.fileExists(atPath: url.path + "-wal"))
+    #expect(!fm.fileExists(atPath: url.path + "-shm"))
+    #expect(!fm.fileExists(atPath: url.path + "-journal"))
+    #expect(try Data(contentsOf: url) == mainBytesBefore)
   }
 
   @Test("a Wispr Flow snippet whose text holds an embedded NUL is refused, not truncated")

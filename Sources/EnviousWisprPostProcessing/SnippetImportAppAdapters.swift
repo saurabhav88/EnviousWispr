@@ -26,8 +26,11 @@ package enum SnippetImportAppError: LocalizedError, Sendable, Equatable {
     case .appNotFound(let app):
       return "Couldn't find any \(app) snippets on this Mac."
     case .unreadable(let app):
+      // Same shape and reason as `SmartImportError.unreadable` (#3032): the remedy is offered,
+      // not asserted as the cause, because the founder hit this sentence with Wispr Flow quit.
       return
-        "Couldn't read your \(app) snippets. If \(app) is open, try quitting it and importing again."
+        "Couldn't read your \(app) snippets, so nothing was imported. If \(app) is running, "
+        + "quitting it and trying again can help."
     case .tooManySourceEntries(let app, let limit):
       // "entries", not "snippets": the count is of every row scanned where the app keeps
       // its snippets, and in Wispr Flow that table holds the words too.

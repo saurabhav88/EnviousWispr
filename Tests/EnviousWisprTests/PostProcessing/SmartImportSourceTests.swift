@@ -521,7 +521,7 @@ struct SmartImportSourceTests {
     }
   }
 
-  @Test("a cleanly closed database is read without creating sidecars")
+  @Test("a DELETE-mode database is read without creating sidecars")
   func cleanDatabaseLeavesNoSidecarsBehind() throws {
     let dir = makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -532,6 +532,400 @@ struct SmartImportSourceTests {
     // Reading another app's data must never write into its folder.
     #expect(!FileManager.default.fileExists(atPath: url.path + "-wal"))
     #expect(!FileManager.default.fileExists(atPath: url.path + "-shm"))
+  }
+
+  @Test("the shared unreadable sentence reaches all eight word adapters and offers, never asserts, the quit remedy (#3032)")
+  func unreadableSentenceCoversEveryWordAdapter() {
+    // `SmartImportError.unreadable` is ONE owner reached by every word adapter, including the
+    // JSON and plist ones where "quit the app" is not a plausible cause at all, so the sentence
+    // has to be true in front of a malformed settings file as well as a busy database. The
+    // population is the registry's and is asserted closed; the expected text is a literal.
+    let population = SmartImportRegistry.v1.displayNames
+    #expect(
+      population == [
+        "Wispr Flow", "FluidVoice", "Superwhisper", "Vox", "TypeWhisper", "Spokenly", "Juno",
+        "Handy",
+      ])
+    for app in population {
+      #expect(
+        SmartImportError.unreadable(app).errorDescription
+          == "Couldn't read your \(app) words, so nothing was imported. If \(app) is running, "
+          + "quitting it and trying again can help.",
+        "\(app)")
+    }
+  }
+
+  // MARK: - WAL header with no sidecars (#3032)
+
+  /// One `Dictionary` row as the strict comparator maps it: the four columns the adapters
+  /// read, decoded with the SAME strict readers, so both arms of a comparison decode alike.
+  private struct RawDictionaryRow: Equatable {
+    let phrase: String
+    let replacement: String?
+    let isDeleted: Bool
+    let isSnippet: Bool
+  }
+
+  private static let dictionaryProbeSQL =
+    "SELECT phrase, replacement, isDeleted, isSnippet FROM Dictionary ORDER BY id COLLATE BINARY ASC"
+
+  private static func mapRawRow(_ statement: OpaquePointer?) throws -> RawDictionaryRow? {
+    RawDictionaryRow(
+      phrase: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"),
+      replacement: try SmartImportSQLiteReader.optionalText(statement, 1, "Probe"),
+      isDeleted: try SmartImportSQLiteReader.requiredBoolean(statement, 2, "Probe"),
+      isSnippet: try SmartImportSQLiteReader.requiredBoolean(statement, 3, "Probe"))
+  }
+
+  /// What one reader arm produced. A refusal is a DISTINCT outcome carrying the real SQLite
+  /// code; it is never an empty row list, so "both arms returned nothing" cannot pass.
+  private enum ArmOutcome: Equatable {
+    case rows([RawDictionaryRow])
+    case refused(step: String, code: Int32)
+  }
+
+  /// The contract this change REPLACED, kept private to the test file as the comparator:
+  /// a `mode=ro` URI opened `SQLITE_OPEN_READONLY | SQLITE_OPEN_URI`, then prepare, step,
+  /// finalize, close. This is the shipped open before #3032, reproduced so the table can say
+  /// on which shapes it succeeded and on which it refused.
+  private static func oldReadOnlyArm(_ copy: URL) throws -> ArmOutcome {
+    let encoded =
+      copy.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? copy.path
+    var db: OpaquePointer?
+    let openResult = sqlite3_open_v2(
+      "file:\(encoded)?mode=ro", &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+    guard openResult == SQLITE_OK, let db else {
+      sqlite3_close(db)
+      return .refused(step: "open", code: openResult)
+    }
+    defer { sqlite3_close(db) }
+    var statement: OpaquePointer?
+    let prepareResult = sqlite3_prepare_v2(db, dictionaryProbeSQL, -1, &statement, nil)
+    guard prepareResult == SQLITE_OK else {
+      sqlite3_finalize(statement)
+      return .refused(step: "prepare", code: prepareResult)
+    }
+    defer { sqlite3_finalize(statement) }
+    var rows: [RawDictionaryRow] = []
+    var result = sqlite3_step(statement)
+    while result == SQLITE_ROW {
+      if let row = try mapRawRow(statement) { rows.append(row) }
+      result = sqlite3_step(statement)
+    }
+    guard result == SQLITE_DONE else { return .refused(step: "step", code: result) }
+    return .rows(rows)
+  }
+
+  /// The production reader as the new arm. Its refusal is `SmartImportError.unreadable`, which
+  /// carries no code; the step is enough to keep it distinct from an empty success.
+  private static func newProductionArm(_ copy: URL) -> ArmOutcome {
+    do {
+      let read = try SmartImportSQLiteReader.readRows(
+        privateCopy: copy, sql: dictionaryProbeSQL, appName: "Probe", mapRow: mapRawRow)
+      return .rows(read.rows)
+    } catch {
+      return .refused(step: "readRows", code: -1)
+    }
+  }
+
+  /// A main-only probe under `immutable=1`: the ONLY sanctioned use of that flag in this file,
+  /// and only ever as a NEGATIVE control proving a row is absent from the main file alone. It is
+  /// never a reader arm (plan §2.5.5 for #3032: it silently drops committed WAL content).
+  private static func mainFileAloneHoldsRow(phrase: String, main: URL, in dir: URL) throws -> Bool
+  {
+    let probeCopy = dir.appendingPathComponent("main-only-probe-\(UUID().uuidString).sqlite")
+    try FileManager.default.copyItem(at: main, to: probeCopy)
+    defer { try? FileManager.default.removeItem(at: probeCopy) }
+
+    let encoded =
+      probeCopy.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+      ?? probeCopy.path
+    var db: OpaquePointer?
+    let openResult = sqlite3_open_v2(
+      "file:\(encoded)?immutable=1", &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+    guard openResult == SQLITE_OK, let db else {
+      sqlite3_close(db)
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable probe open returned \(openResult)")
+    }
+    defer { sqlite3_close(db) }
+
+    // A main file whose schema lives only in the WAL has no Dictionary table at all; that is
+    // "does not hold the row". Anything else that stops the probe is a probe FAILURE and
+    // throws, so corruption or I/O trouble cannot masquerade as "row absent".
+    var tableStatement: OpaquePointer?
+    let tablePrepare = sqlite3_prepare_v2(
+      db,
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Dictionary' LIMIT 1",
+      -1, &tableStatement, nil)
+    guard tablePrepare == SQLITE_OK else {
+      sqlite3_finalize(tableStatement)
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable schema probe prepare returned \(tablePrepare)")
+    }
+    let tableStep = sqlite3_step(tableStatement)
+    guard tableStep == SQLITE_ROW || tableStep == SQLITE_DONE else {
+      sqlite3_finalize(tableStatement)
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable schema probe step returned \(tableStep)")
+    }
+    let hasDictionaryTable = tableStep == SQLITE_ROW
+    let tableFinalize = sqlite3_finalize(tableStatement)
+    guard tableFinalize == SQLITE_OK else {
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable schema probe finalize returned \(tableFinalize)")
+    }
+    guard hasDictionaryTable else { return false }
+
+    var statement: OpaquePointer?
+    let prepareResult = sqlite3_prepare_v2(
+      db, "SELECT COUNT(*) FROM Dictionary WHERE phrase = ?", -1, &statement, nil)
+    guard prepareResult == SQLITE_OK else {
+      sqlite3_finalize(statement)
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable row probe prepare returned \(prepareResult)")
+    }
+    defer { sqlite3_finalize(statement) }
+
+    let bindResult = sqlite3_bind_text(
+      statement, 1, phrase, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+    guard bindResult == SQLITE_OK else {
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable row probe bind returned \(bindResult)")
+    }
+    let stepResult = sqlite3_step(statement)
+    guard stepResult == SQLITE_ROW else {
+      throw RivalAppStoreFixtures.Failure(
+        description: "immutable row probe step returned \(stepResult)")
+    }
+    return sqlite3_column_int(statement, 0) > 0
+  }
+
+  /// Two byte-identical fresh private copies of a source shape (main and, when present, its
+  /// `-wal`), one per arm, proven equal BEFORE either reader runs.
+  private static func twoIdenticalCopies(
+    of source: URL, in dir: URL
+  ) throws -> (old: URL, new: URL) {
+    let fm = FileManager.default
+    let oldDir = dir.appendingPathComponent("arm-old", isDirectory: true)
+    let newDir = dir.appendingPathComponent("arm-new", isDirectory: true)
+    try fm.createDirectory(at: oldDir, withIntermediateDirectories: true)
+    try fm.createDirectory(at: newDir, withIntermediateDirectories: true)
+    let old = oldDir.appendingPathComponent(source.lastPathComponent)
+    let new = newDir.appendingPathComponent(source.lastPathComponent)
+    for suffix in ["", "-wal"] where fm.fileExists(atPath: source.path + suffix) {
+      let bytes = try Data(contentsOf: URL(fileURLWithPath: source.path + suffix))
+      try bytes.write(to: URL(fileURLWithPath: old.path + suffix))
+      try bytes.write(to: URL(fileURLWithPath: new.path + suffix))
+      let a = try Data(contentsOf: URL(fileURLWithPath: old.path + suffix))
+      let b = try Data(contentsOf: URL(fileURLWithPath: new.path + suffix))
+      guard a == b, a == bytes else {
+        throw RivalAppStoreFixtures.Failure(description: "copies of \(suffix) differ")
+      }
+    }
+    return (old, new)
+  }
+
+  @Test("the founder's shape: WAL header, no sidecars, and Wispr Flow quit, imports every word (#3032)")
+  func wisprFlowWALHeaderWithNoSidecarsImports() throws {
+    // The exact state measured on the founder's Mac on 2026-09-18: `flow.sqlite` with header
+    // bytes 18,19 = 2,2 and no `-wal`/`-shm`/`-journal`, no process holding it. Every existing
+    // Wispr Flow fixture failed to produce it (delete mode, or WAL with the writer still open),
+    // which is how the shipped read-only open refused it for days without a red test.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try RivalAppStoreFixtures.makeWisprFlowDatabaseWALHeaderNoSidecars(
+      in: dir,
+      rows: """
+        INSERT INTO Dictionary VALUES ('1','Wispr Flow',NULL,0,0);
+        INSERT INTO Dictionary VALUES ('2','btw','by the way',0,0);
+        INSERT INTO Dictionary VALUES ('3','deleted word',NULL,1,0);
+        INSERT INTO Dictionary VALUES ('4','sig','my long signature',0,1);
+        INSERT INTO Dictionary VALUES ('5','ew','EnviousWispr',0,0);
+        """)
+    // Re-prove the shape here, independently of the fixture's own check and of the reader.
+    try RivalAppStoreFixtures.requireWALHeaderWithNoSidecars(at: url)
+
+    let fm = FileManager.default
+    let entriesBefore = try fm.contentsOfDirectory(atPath: dir.path).sorted()
+    let mainBytesBefore = try Data(contentsOf: url)
+    #expect(entriesBefore == ["flow.sqlite"])
+
+    let result = try WisprFlowAdapter().loadWords(at: url)
+
+    // Exact ordered mapping, not "contains": id order, deleted and snippet rows excluded and
+    // COUNTED, a NULL replacement becomes a bare canonical, a replacement becomes the canonical
+    // with the phrase as its alias.
+    #expect(
+      result.words == [
+        SmartImportWord(canonical: "Wispr Flow"),
+        SmartImportWord(canonical: "by the way", aliases: ["btw"]),
+        SmartImportWord(canonical: "EnviousWispr", aliases: ["ew"]),
+      ])
+    #expect(result.excludedCount == 2)
+
+    // Reading another app's data must never write into its folder, and must not touch the
+    // file: same directory listing, same bytes, no sidecar and no scratch entry beside it.
+    let entriesAfter = try fm.contentsOfDirectory(atPath: dir.path).sorted()
+    #expect(entriesAfter == entriesBefore)
+    #expect(!fm.fileExists(atPath: url.path + "-wal"))
+    #expect(!fm.fileExists(atPath: url.path + "-shm"))
+    #expect(!fm.fileExists(atPath: url.path + "-journal"))
+    #expect(try Data(contentsOf: url) == mainBytesBefore)
+  }
+
+  @Test("across five store shapes the query-only read returns exactly what read-only did, and reads the one read-only refused (#3032)")
+  func readWriteQueryOnlyNeverReturnsDifferentRowsThanReadOnly() throws {
+    // The premise the whole fix rests on: moving the private copy from READONLY to READWRITE
+    // plus `query_only` never changes WHICH rows come back. Each row builds one verified source
+    // shape, splits it into two byte-identical fresh copies, reads one the OLD way and one
+    // through the production reader, and requires the same ordered rows wherever the old way
+    // succeeded, against a literal oracle so two wrong arms cannot agree their way to green.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let a = RawDictionaryRow(phrase: "alpha", replacement: nil, isDeleted: false, isSnippet: false)
+    let b = RawDictionaryRow(
+      phrase: "bravo", replacement: "Bravo Corp", isDeleted: false, isSnippet: false)
+    let c = RawDictionaryRow(phrase: "charlie", replacement: nil, isDeleted: true, isSnippet: false)
+    let d = RawDictionaryRow(phrase: "delta", replacement: "signature", isDeleted: false, isSnippet: true)
+    let baselineSQL = """
+      INSERT INTO Dictionary VALUES ('1','alpha',NULL,0,0);
+      INSERT INTO Dictionary VALUES ('2','bravo','Bravo Corp',0,0);
+      """
+    let laterSQL = """
+      INSERT INTO Dictionary VALUES ('3','charlie',NULL,1,0);
+      INSERT INTO Dictionary VALUES ('4','delta','signature',0,1);
+      """
+
+    struct Shape {
+      let name: String
+      let expected: [RawDictionaryRow]
+      let oldArmRefuses: Bool
+      let build: (URL) throws -> URL  // returns the source main; `-wal` may sit beside it
+    }
+
+    /// Writers a row must keep open across its copy: closing one checkpoints the WAL away and
+    /// destroys the shape. Local to this test and closed in its `defer`, never shared state.
+    final class WriterBag {
+      var writers: [OpaquePointer?] = []
+    }
+    let bag = WriterBag()
+    defer {
+      for writer in bag.writers { sqlite3_close(writer) }
+    }
+
+    let shapes: [Shape] = [
+      Shape(
+        name: "DELETE mode", expected: [a, b, c, d], oldArmRefuses: false,
+        build: { shapeDir in
+          let url = try RivalAppStoreFixtures.makeWisprFlowDatabase(
+            in: shapeDir, rows: baselineSQL + laterSQL)
+          // Precondition: legacy header, no sidecars.
+          let header = try Data(contentsOf: url).prefix(100)
+          guard header[header.startIndex + 18] == 1, header[header.startIndex + 19] == 1 else {
+            throw RivalAppStoreFixtures.Failure(description: "DELETE mode header not 1,1")
+          }
+          return url
+        }),
+      Shape(
+        name: "committed WAL-only rows", expected: [a, b, c, d], oldArmRefuses: false,
+        build: { shapeDir in
+          // Auto-checkpoint OFF and the writer left open, so every row, and the schema, is in
+          // the WAL and the main file alone holds none of it.
+          let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+            in: shapeDir, baselineRows: "", walOnlyRows: baselineSQL + laterSQL)
+          // The writer must outlive the copy; it is closed when the shape directory is removed
+          // by the test's defer, and closing it earlier would checkpoint the WAL away.
+          bag.writers.append(store.writer)
+          guard FileManager.default.fileExists(atPath: store.url.path + "-wal") else {
+            throw RivalAppStoreFixtures.Failure(description: "no -wal beside the WAL-only source")
+          }
+          guard try !Self.mainFileAloneHoldsRow(phrase: "alpha", main: store.url, in: shapeDir)
+          else { throw RivalAppStoreFixtures.Failure(description: "alpha is NOT WAL-only") }
+          return store.url
+        }),
+      Shape(
+        name: "partially checkpointed WAL", expected: [a, b, c, d], oldArmRefuses: false,
+        build: { shapeDir in
+          // Baseline committed and CHECKPOINTED into main; later rows committed only to the WAL.
+          let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+            in: shapeDir, baselineRows: baselineSQL, walOnlyRows: laterSQL)
+          bag.writers.append(store.writer)
+          guard try Self.mainFileAloneHoldsRow(phrase: "alpha", main: store.url, in: shapeDir)
+          else { throw RivalAppStoreFixtures.Failure(description: "alpha did not checkpoint") }
+          guard try !Self.mainFileAloneHoldsRow(phrase: "delta", main: store.url, in: shapeDir)
+          else { throw RivalAppStoreFixtures.Failure(description: "delta is NOT WAL-only") }
+          return store.url
+        }),
+      Shape(
+        name: "valid committed WAL then a torn tail", expected: [a, b, c, d], oldArmRefuses: false,
+        build: { shapeDir in
+          // The partially checkpointed shape, copied out from under its writer, then a
+          // deliberately incomplete frame appended: a 24-byte WAL frame header with no page
+          // behind it and a salt that cannot match. SQLite stops at the last valid commit.
+          let live = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+            in: shapeDir, baselineRows: baselineSQL, walOnlyRows: laterSQL)
+          bag.writers.append(live.writer)
+          let tornDir = shapeDir.appendingPathComponent("torn", isDirectory: true)
+          try FileManager.default.createDirectory(at: tornDir, withIntermediateDirectories: true)
+          let torn = tornDir.appendingPathComponent("flow.sqlite")
+          try Data(contentsOf: live.url).write(to: torn)
+          var wal = try Data(contentsOf: URL(fileURLWithPath: live.url.path + "-wal"))
+          let validWALBytes = wal.count
+          guard validWALBytes > 32 else {
+            throw RivalAppStoreFixtures.Failure(description: "WAL has no frames to tear after")
+          }
+          wal.append(contentsOf: [UInt8](repeating: 0xEE, count: 24))  // header, no page
+          try wal.write(to: URL(fileURLWithPath: torn.path + "-wal"))
+          guard try Data(contentsOf: URL(fileURLWithPath: torn.path + "-wal")).count
+            == validWALBytes + 24
+          else { throw RivalAppStoreFixtures.Failure(description: "tail was not appended") }
+          guard try !Self.mainFileAloneHoldsRow(phrase: "delta", main: torn, in: shapeDir)
+          else { throw RivalAppStoreFixtures.Failure(description: "delta is NOT WAL-only") }
+          return torn
+        }),
+      Shape(
+        name: "WAL header with no sidecars", expected: [a, b, c, d], oldArmRefuses: true,
+        build: { shapeDir in
+          let url = try RivalAppStoreFixtures.makeWisprFlowDatabaseWALHeaderNoSidecars(
+            in: shapeDir, rows: baselineSQL + laterSQL)
+          try RivalAppStoreFixtures.requireWALHeaderWithNoSidecars(at: url)
+          return url
+        }),
+    ]
+    #expect(shapes.count == 5)
+
+    var oldSuccesses = 0
+    var oldRefusals = 0
+    for (index, shape) in shapes.enumerated() {
+      let shapeDir = dir.appendingPathComponent("shape-\(index)", isDirectory: true)
+      try FileManager.default.createDirectory(at: shapeDir, withIntermediateDirectories: true)
+      let source = try shape.build(shapeDir)
+      let copies = try Self.twoIdenticalCopies(of: source, in: shapeDir)
+
+      let old = try Self.oldReadOnlyArm(copies.old)
+      let new = Self.newProductionArm(copies.new)
+
+      // The literal oracle first, so agreement between two wrong arms cannot pass. The totals
+      // count what the old arm actually DID, not what the row was configured to expect.
+      #expect(new == .rows(shape.expected), "\(shape.name): new arm")
+      switch old {
+      case .rows:
+        oldSuccesses += 1
+        #expect(!shape.oldArmRefuses, "\(shape.name): old arm unexpectedly succeeded")
+        #expect(old == .rows(shape.expected), "\(shape.name): old arm")
+        #expect(old == new, "\(shape.name): arms disagree")
+
+      case .refused(let step, let code):
+        oldRefusals += 1
+        #expect(
+          shape.oldArmRefuses,
+          "\(shape.name): old arm unexpectedly refused at \(step) with code \(code)")
+      }
+    }
+    #expect(oldSuccesses == 4)
+    #expect(oldRefusals == 1)
   }
 
   // MARK: - Source contract
@@ -947,47 +1341,21 @@ struct SmartImportSourceTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = try makeReaderDatabase(in: dir)
 
-    let excluded = try SmartImportSQLiteReader.read(
-      uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T ORDER BY a", appName: "Probe"
+    let excluded = try SmartImportSQLiteReader.readRows(
+      privateCopy: url, sql: "SELECT a, b FROM T ORDER BY a", appName: "Probe"
     ) { statement in
       let a = try SmartImportSQLiteReader.requiredText(statement, 0, "Probe")
       return a == "one" ? nil : SmartImportWord(canonical: a)
     }
-    #expect(excluded.words.map(\.canonical) == ["two"])
+    #expect(excluded.rows.map(\.canonical) == ["two"])
     #expect(excluded.excludedCount == 1)
 
     struct Boom: Error {}
     #expect(throws: Boom.self) {
-      _ = try SmartImportSQLiteReader.read(
-        uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T", appName: "Probe"
-      ) { _ in throw Boom() }
+      _ = try SmartImportSQLiteReader.readRows(
+        privateCopy: url, sql: "SELECT a, b FROM T", appName: "Probe"
+      ) { _ -> SmartImportWord? in throw Boom() }
     }
-  }
-
-  @Test("afterRowsRead runs while the connection is still open, and its throw refuses the read")
-  func readerRunsValidationBeforeCleanup() throws {
-    // Wispr Flow's post-read sidecar recheck sits exactly here. Running it
-    // after the reader returned would move it past finalize and close and
-    // widen the window it exists to close.
-    let dir = makeDirectory()
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let url = try makeReaderDatabase(in: dir)
-
-    struct Refused: Error {}
-    var sawRows = false
-    #expect(throws: Refused.self) {
-      _ = try SmartImportSQLiteReader.read(
-        uri: "file:\(url.path)?mode=ro", sql: "SELECT a, b FROM T", appName: "Probe",
-        mapRow: { statement in
-          sawRows = true
-          return SmartImportWord(
-            canonical: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"))
-        },
-        afterRowsRead: { throw Refused() })
-    }
-    // Ordering: every row was stepped BEFORE validation ran, and no partial
-    // result escaped.
-    #expect(sawRows)
   }
 
   @Test("a result other than SQLITE_DONE refuses rather than returning a prefix")
@@ -997,9 +1365,9 @@ struct SmartImportSourceTests {
     let url = dir.appendingPathComponent("corrupt.sqlite")
     try Data("SQLite format 3\u{0}garbage-not-a-real-database".utf8).write(to: url)
     #expect(throws: SmartImportError.unreadable("Probe")) {
-      _ = try SmartImportSQLiteReader.read(
-        uri: "file:\(url.path)?mode=ro", sql: "SELECT a FROM T", appName: "Probe"
-      ) { _ in nil }
+      _ = try SmartImportSQLiteReader.readRows(
+        privateCopy: url, sql: "SELECT a FROM T", appName: "Probe"
+      ) { _ -> SmartImportWord? in nil }
     }
   }
 
@@ -1020,13 +1388,76 @@ struct SmartImportSourceTests {
     sqlite3_close(db)
 
     #expect(throws: SmartImportError.unreadable("Probe")) {
-      _ = try SmartImportSQLiteReader.read(
-        uri: "file:\(url.path)?mode=ro", sql: "SELECT required, flag FROM T", appName: "Probe"
+      _ = try SmartImportSQLiteReader.readRows(
+        privateCopy: url, sql: "SELECT required, flag FROM T", appName: "Probe"
       ) { statement in
         SmartImportWord(
           canonical: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"))
       }
     }
+  }
+
+  @Test("a missing private copy is refused and is NOT created by the open (#3032)")
+  func readerDoesNotCreateAMissingCopy() throws {
+    // The reader opens read-write so SQLite can build a wal-index beside the copy. Without
+    // `SQLITE_OPEN_CREATE` (and with `mode=rw`, not `rwc`) a missing file must still fail
+    // rather than become an empty database that would import as "nothing found". The oracle
+    // is the filesystem, not the error: both halves have to hold.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let missing = dir.appendingPathComponent("never-written.sqlite")
+    #expect(!FileManager.default.fileExists(atPath: missing.path))
+
+    #expect(throws: SmartImportError.unreadable("Probe")) {
+      _ = try SmartImportSQLiteReader.readRows(
+        privateCopy: missing, sql: "SELECT 1", appName: "Probe"
+      ) { _ -> SmartImportWord? in nil }
+    }
+    #expect(!FileManager.default.fileExists(atPath: missing.path))
+    #expect(!FileManager.default.fileExists(atPath: missing.path + "-wal"))
+    #expect(!FileManager.default.fileExists(atPath: missing.path + "-shm"))
+  }
+
+  @Test("a write attempted through the reader's connection answers SQLITE_READONLY (#3032)")
+  func readerRefusesAWriteThroughItsConnection() throws {
+    // The read-write open is what lets a WAL-header copy be read at all; `PRAGMA
+    // query_only=ON` is what keeps a caller-supplied statement from changing a row. The Live
+    // UAT cannot catch the pragma being dropped, because every query it runs is a SELECT, so
+    // this asks for the real SQLite return code of a DELETE and requires exactly
+    // SQLITE_READONLY. Without the pragma this DELETE returns SQLITE_OK and empties the table
+    // (measured, plan §3 for #3032). The connection is reached through the statement the
+    // mapper is handed, which is public SQLite API, not a test seam.
+    let dir = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = try makeReaderDatabase(in: dir)
+
+    var deleteResult: Int32 = -1
+    var deleteMessage = ""
+    let read = try SmartImportSQLiteReader.readRows(
+      privateCopy: url, sql: "SELECT a, b FROM T ORDER BY a", appName: "Probe"
+    ) { statement -> SmartImportWord? in
+      if deleteResult == -1 {
+        let db = sqlite3_db_handle(statement)
+        deleteResult = sqlite3_exec(db, "DELETE FROM T", nil, nil, nil)
+        deleteMessage = String(cString: sqlite3_errmsg(db))
+      }
+      return SmartImportWord(
+        canonical: try SmartImportSQLiteReader.requiredText(statement, 0, "Probe"))
+    }
+    #expect(deleteResult == SQLITE_READONLY, "DELETE answered \(deleteResult): \(deleteMessage)")
+    // And the rows are all still there, read through the same connection after the refusal.
+    #expect(read.rows.map(\.canonical) == ["one", "two"])
+
+    // Independent oracle: reopen the copy and count, so a refused-but-somehow-applied delete
+    // cannot hide behind the in-flight statement's snapshot.
+    var probe: OpaquePointer?
+    #expect(sqlite3_open(url.path, &probe) == SQLITE_OK)
+    var count: OpaquePointer?
+    #expect(sqlite3_prepare_v2(probe, "SELECT COUNT(*) FROM T", -1, &count, nil) == SQLITE_OK)
+    #expect(sqlite3_step(count) == SQLITE_ROW)
+    #expect(sqlite3_column_int(count, 0) == 2)
+    sqlite3_finalize(count)
+    sqlite3_close(probe)
   }
 
   // MARK: - TypeWhisper
