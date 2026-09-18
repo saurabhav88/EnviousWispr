@@ -240,6 +240,10 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("Use slash help (e.g. in chat) and slash exit.")
         == "Use /help (e.g. In chat) and /exit.")
+    // A title's period is not a sentence end either.
+    #expect(
+      Self.off("Use slash help with Dr. Smith and slash exit when finished.")
+        == "Use /help with Dr. Smith and /exit when finished.")
     // A name with an accent ends its sentence like any word.
     #expect(
       Self.off("Run slash help with Anaïs. They trim packaging and slash shipping costs.")

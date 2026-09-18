@@ -2503,14 +2503,20 @@ public struct InverseTextNormalizer: Sendable {
 
   /// A sentence end (terminal mark, optional closing quotes or brackets, then whitespace) or a
   /// line break: the boundary past which one marker's reading no longer informs the next. A
-  /// period after a single letter is an abbreviation ("e.g.", "i.e.", "p.m."), not an end, so
+  /// period after a single letter ("e.g.", "i.e.", "p.m.") or after a title or Latin
+  /// abbreviation from `slashAbbreviations` ("Dr. Smith", "vs. them") is not an end, so
   /// "use slash help (e.g. in chat) and slash exit" keeps its command list; the cost is a
-  /// sentence ending in a lone letter ("plan B. Then ..."), which does not reset. Letters are
-  /// `\p{L}` with combining marks, so "Anaïs." ends a sentence in either normalisation form.
-  /// Matched through `firstMatch` (NSRegularExpression): `String.range(of:options:)` with
-  /// `.regularExpression` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
+  /// sentence ending in a lone letter or in "etc." ("plan B. Then ..."), which does not reset.
+  /// Letters are `\p{L}` with combining marks, so "Anaïs." ends a sentence in either
+  /// normalisation form. Matched through `firstMatch` (NSRegularExpression):
+  /// `String.range(of:options:)` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
   static let slashSentenceBreak =
-    #"(?:(?<![^\p{L}\p{M}][\p{L}\p{M}])(?<!^[\p{L}\p{M}])\.|[!?…])["'”’»)\]}]*\s|\R"#
+    #"(?:(?<![^\p{L}\p{M}][\p{L}\p{M}])(?<!^[\p{L}\p{M}])(?<!\b(?i:"#
+    + slashAbbreviations.joined(separator: "|") + #"))\.|[!?…])["'”’»)\]}]*\s|\R"#
+
+  /// Titles and Latin abbreviations a recogniser writes with a period mid-sentence. Closed
+  /// list; the single-letter rule in `slashSentenceBreak` covers "e.g.", "i.e." and "p.m.".
+  static let slashAbbreviations = ["mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc"]
 
   /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
   ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless
