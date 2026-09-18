@@ -49,7 +49,7 @@ def test_bypass_on_a_positive_counts_against_recall_not_out_of_the_population():
 def test_scorecard_name_must_match_the_records():
     rows = _rows()
     records = [_verdict(r["id"], r["correction"], r["safe_alias"]) for r in rows]
-    card = gate.score(rows, records, "j3-afm-macos27")
+    card = gate.score(rows, records, "afm-macos27")
     assert any("judge mismatch" in p for p in card.problems)
     assert card.verdict()[0] is False
 

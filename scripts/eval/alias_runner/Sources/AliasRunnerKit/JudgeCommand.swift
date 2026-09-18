@@ -2,10 +2,10 @@
 //
 // Runs one correction-judge candidate over the labelled edit corpus and emits
 // one JSONL record per row for `scripts/eval/edit_judge_gate.py` to score.
-// Chunk 1 ships the CONTRACT and a fixture executor only: every real judge
-// (J1 rules, J2 AFM on macOS 26, J3 AFM on macOS 27, J4 Ollama, J5 the user's
-// cloud provider) reports `unimplemented` explicitly. Nothing here ever falls
-// back to another judge: an unavailable judge is a row outcome, never a
+// Chunks 1 and 2a ship the CONTRACT and a fixture executor only: every real
+// judge (rules, AFM on macOS 26 and 27, the three cross-encoder classifiers,
+// the deferred Qwen arm) reports `unimplemented` explicitly. Nothing here ever
+// falls back to another judge: an unavailable judge is a row outcome, never a
 // silently substituted answer, because the scorer counts a bypass against
 // recall and a silent substitution would score the wrong judge.
 //
@@ -46,18 +46,46 @@ package struct EditCorpusRow: Decodable, Sendable, Equatable {
 
 // MARK: - Judge candidates
 
-/// The closed set of judges the eval can name. Matches plan §2.2 J1-J5 plus
-/// the fixture executor the harness tests use. A judge that is not built yet
-/// is still a MEMBER so that asking for it produces an explicit
-/// `unimplemented` outcome instead of an unknown-argument error that could be
-/// mistaken for a typo.
+/// The closed set of judges the eval can name: plan §2.2 (revised 2026-09-18
+/// after the council round and Codex build round 2) plus the fixture executor
+/// the harness tests use. The user's Ollama polish model and cloud polish
+/// provider were removed as candidates (founder: the judge is a very specific
+/// job). A judge that is not built yet is still a MEMBER so that asking for it
+/// produces an explicit `unimplemented` outcome instead of an unknown-argument
+/// error that could be mistaken for a typo.
 package enum JudgeCandidate: String, CaseIterable, Sendable {
   case fixture
-  case j1Rules = "j1-rules"
-  case j2AFM26 = "j2-afm-macos26"
-  case j3AFM27 = "j3-afm-macos27"
-  case j4Ollama = "j4-ollama"
-  case j5CloudProvider = "j5-cloud-provider"
+  /// Deterministic rules only (macOS 14+).
+  case rules
+  /// Apple FoundationModels on real macOS 26 hardware (comparison arm).
+  case afmMacOS26 = "afm-macos26"
+  /// Apple FoundationModels on macOS 27 (comparison arm).
+  case afmMacOS27 = "afm-macos27"
+  /// Cross-encoder pair classifiers fine-tuned by us, run through Core ML.
+  case xencMMBERTSmall = "xenc-mmbert-small"
+  case xencMDeBERTaV3Base = "xenc-mdeberta-v3-base"
+  case xencXLMRBase = "xenc-xlmr-base"
+  /// Qwen3-0.6B Q4 through the bundled llama-server. DEFERRED: built only if
+  /// every cross-encoder fails feasibility or the §3a bar.
+  case qwen3_0_6B = "qwen3-0.6b-q4"
+
+  package enum Status: String, Sendable {
+    /// Answers rows from a JSON file; harness tests only.
+    case fixture
+    /// A real candidate this build does not implement yet.
+    case unimplemented
+    /// A comparison arm the plan defers; not built unless the others fail.
+    case deferred
+  }
+
+  package var status: Status {
+    switch self {
+    case .fixture: return .fixture
+    case .rules, .afmMacOS26, .afmMacOS27, .xencMMBERTSmall, .xencMDeBERTaV3Base, .xencXLMRBase:
+      return .unimplemented
+    case .qwen3_0_6B: return .deferred
+    }
+  }
 
   package static var usageList: String {
     allCases.map(\.rawValue).joined(separator: "|")
@@ -103,10 +131,32 @@ package struct JudgeRecord: Codable, Sendable, Equatable {
   package let latencyMs: Double
   /// Human-readable reason for a bypass; never the row's text.
   package let note: String?
+  /// What actually ran: immutable digests (checkpoint, tokenizer, decision
+  /// configuration) or, for an AFM arm, the OS/model environment and prompt
+  /// digest, DERIVED by the judge from what it loaded. The scorer requires
+  /// every frozen-report record to carry the training manifest's identity,
+  /// so results from one checkpoint cannot be scored under another's clean
+  /// training declaration. `nil` means unexecuted (fixture, unimplemented,
+  /// deferred): such records are never acceptance evidence.
+  package let executionIdentity: [String: String]?
 
   enum CodingKeys: String, CodingKey {
     case id, judge, outcome, decision, note
     case latencyMs = "latency_ms"
+    case executionIdentity = "execution_identity"
+  }
+
+  package init(
+    id: String, judge: String, outcome: JudgeOutcome, decision: JudgeDecision?, latencyMs: Double,
+    note: String?, executionIdentity: [String: String]? = nil
+  ) {
+    self.id = id
+    self.judge = judge
+    self.outcome = outcome
+    self.decision = decision
+    self.latencyMs = latencyMs
+    self.note = note
+    self.executionIdentity = executionIdentity
   }
 }
 
@@ -189,11 +239,20 @@ package enum JudgeRunner {
   /// Records for a judge that is not built yet: one explicit `unimplemented`
   /// row per corpus row, so the scorer sees the full denominator and a 0%
   /// recall, never an empty results file that could pass a "no failures" read.
+  /// A deferred arm says so in its note, so a reader can tell "not built yet"
+  /// from "not built on purpose".
   package static func unimplemented(rows: [EditCorpusRow], judge: JudgeCandidate) -> [JudgeRecord] {
-    rows.map { row in
+    let note: String
+    switch judge.status {
+    case .deferred:
+      note = "judge \(judge.rawValue) is deferred by plan §2.2; not built in this build"
+    case .unimplemented, .fixture:
+      note = "judge \(judge.rawValue) is not implemented in this build"
+    }
+    return rows.map { row in
       JudgeRecord(
         id: row.id, judge: judge.rawValue, outcome: .unimplemented, decision: nil,
-        latencyMs: 0, note: "judge \(judge.rawValue) is not implemented in this build")
+        latencyMs: 0, note: note)
     }
   }
 }
@@ -324,7 +383,8 @@ package enum JudgeCLI {
         let fixture = try? JudgeFixture.load(from: data)
       else { return ([], 2) }
       return (JudgeRunner.run(rows: rows, fixture: fixture), 0)
-    case .j1Rules, .j2AFM26, .j3AFM27, .j4Ollama, .j5CloudProvider:
+    case .rules, .afmMacOS26, .afmMacOS27, .xencMMBERTSmall, .xencMDeBERTaV3Base, .xencXLMRBase,
+      .qwen3_0_6B:
       return (JudgeRunner.unimplemented(rows: rows, judge: args.judge), 3)
     }
   }

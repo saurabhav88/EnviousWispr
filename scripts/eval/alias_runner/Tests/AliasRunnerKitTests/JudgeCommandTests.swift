@@ -42,19 +42,27 @@ struct JudgeCLIParseTests {
     #expect(throws: JudgeArgsError.unknownJudge("j9")) {
       try JudgeCLI.parse(["--corpus", "c", "--judge", "j9"])
     }
+    // The dropped candidates (the user's Ollama polish model, the user's
+    // cloud provider) are unknown names, never silently mapped.
+    #expect(throws: JudgeArgsError.unknownJudge("j4-ollama")) {
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "j4-ollama"])
+    }
+    #expect(throws: JudgeArgsError.unknownJudge("j5-cloud-provider")) {
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "j5-cloud-provider"])
+    }
     #expect(throws: JudgeArgsError.missingCorpus) { try JudgeCLI.parse(["--judge", "fixture", "--fixture", "f"]) }
     #expect(throws: JudgeArgsError.missingJudge) { try JudgeCLI.parse(["--corpus", "c"]) }
     #expect(throws: JudgeArgsError.unknownArgument("--disable-timeout")) {
-      try JudgeCLI.parse(["--corpus", "c", "--judge", "j1-rules", "--disable-timeout"])
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "rules", "--disable-timeout"])
     }
-    #expect(throws: JudgeArgsError.missingValue("--out")) { try JudgeCLI.parse(["--corpus", "c", "--judge", "j1-rules", "--out"]) }
+    #expect(throws: JudgeArgsError.missingValue("--out")) { try JudgeCLI.parse(["--corpus", "c", "--judge", "rules", "--out"]) }
   }
 
   @Test("fixture judge needs a fixture path and other judges refuse one")
   func fixturePairing() {
     #expect(throws: JudgeArgsError.fixtureRequiresFixturePath) { try JudgeCLI.parse(["--corpus", "c", "--judge", "fixture"]) }
     #expect(throws: JudgeArgsError.fixturePathOnlyWithFixtureJudge) {
-      try JudgeCLI.parse(["--corpus", "c", "--judge", "j1-rules", "--fixture", "f"])
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "rules", "--fixture", "f"])
     }
   }
 }
@@ -118,9 +126,29 @@ struct JudgeFixtureTests {
 
   @Test("an unimplemented judge writes one explicit row per corpus row and never a verdict")
   func unimplemented() {
-    let records = JudgeRunner.unimplemented(rows: [row("a"), row("b")], judge: .j3AFM27)
+    let records = JudgeRunner.unimplemented(rows: [row("a"), row("b")], judge: .afmMacOS27)
     #expect(records.count == 2)
-    #expect(records.allSatisfy { $0.outcome == .unimplemented && $0.decision == nil && $0.judge == "j3-afm-macos27" })
+    #expect(records.allSatisfy { $0.outcome == .unimplemented && $0.decision == nil && $0.judge == "afm-macos27" })
+    #expect(records.allSatisfy { $0.note == "judge afm-macos27 is not implemented in this build" })
+  }
+
+  @Test("the deferred Qwen arm is a member that says it is deferred, not merely unbuilt")
+  func deferredArm() {
+    #expect(JudgeCandidate.qwen3_0_6B.status == .deferred)
+    let records = JudgeRunner.unimplemented(rows: [row("a")], judge: .qwen3_0_6B)
+    #expect(records.map(\.outcome) == [.unimplemented])
+    #expect(records[0].note == "judge qwen3-0.6b-q4 is deferred by plan §2.2; not built in this build")
+  }
+
+  @Test("the candidate set is the revised plan §2.2 set: fixture, rules, two AFM arms, three cross-encoders, deferred Qwen")
+  func candidateSet() {
+    #expect(JudgeCandidate.allCases.map(\.rawValue) == [
+      "fixture", "rules", "afm-macos26", "afm-macos27",
+      "xenc-mmbert-small", "xenc-mdeberta-v3-base", "xenc-xlmr-base", "qwen3-0.6b-q4",
+    ])
+    #expect(JudgeCandidate.allCases.filter { $0.status == .fixture } == [.fixture])
+    #expect(JudgeCandidate.allCases.filter { $0.status == .deferred } == [.qwen3_0_6B])
+    #expect(JudgeCandidate.allCases.filter { $0.status == .unimplemented }.count == 6)
   }
 
   @Test("records encode with sorted snake_case keys, one JSON object per line")
@@ -130,6 +158,22 @@ struct JudgeFixtureTests {
         decision: JudgeDecision(vocabularyCorrection: true, safeAlias: true), latencyMs: 1.5, note: nil)
     ])
     #expect(text == "{\"decision\":{\"safe_alias\":true,\"vocabulary_correction\":true},\"id\":\"a\",\"judge\":\"fixture\",\"latency_ms\":1.5,\"outcome\":\"verdict\"}\n")
+  }
+
+  @Test("execution identity is encoded when a judge derives one and omitted for an unexecuted record")
+  func executionIdentityEncoding() throws {
+    let executed = JudgeRecord(
+      id: "a", judge: "xenc-xlmr-base", outcome: .verdict,
+      decision: JudgeDecision(vocabularyCorrection: true, safeAlias: false), latencyMs: 2,
+      note: nil, executionIdentity: ["checkpoint_sha256": "abc", "tokenizer_sha256": "def"])
+    let text = try JudgeCLI.encode([executed])
+    #expect(text.contains("\"execution_identity\":{\"checkpoint_sha256\":\"abc\",\"tokenizer_sha256\":\"def\"}"))
+    let unexecuted = JudgeRunner.unimplemented(rows: [row("a")], judge: .rules)
+    #expect(unexecuted[0].executionIdentity == nil)
+    #expect(try JudgeCLI.encode(unexecuted).contains("execution_identity") == false)
+    let fixtureRecords = JudgeRunner.run(
+      rows: [row("a")], fixture: JudgeFixture(entries: ["a": .decision(JudgeDecision(vocabularyCorrection: true, safeAlias: true))]))
+    #expect(fixtureRecords[0].executionIdentity == nil)
   }
 }
 
@@ -150,7 +194,7 @@ struct JudgeExecuteTests {
     #expect(ok.exitCode == 0)
     #expect(ok.records.map(\.outcome) == [.verdict])
 
-    let unbuilt = JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .j1Rules, fixturePath: nil))
+    let unbuilt = JudgeCLI.execute(args: JudgeArgs(corpusPath: corpus.path, outPath: nil, judge: .rules, fixturePath: nil))
     #expect(unbuilt.exitCode == 3)
     #expect(unbuilt.records.map(\.outcome) == [.unimplemented])
 

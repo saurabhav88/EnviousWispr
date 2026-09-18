@@ -367,8 +367,11 @@ scripts/eval/alias_runner/Package.resolved
 # corpus are tracked for the same reason the alias files are, so the judge
 # scores cited in the plan can be re-run from a fresh clone.
 !scripts/eval/edit_judge_gate.py
+!scripts/eval/edit_judge_data.py
+!scripts/eval/build_edit_judge_corpus.py
 !scripts/eval/corpus/edit-corpus-a.jsonl
 !scripts/eval/corpus/edit-corpus-a-holdout.jsonl
+!scripts/eval/corpus/edit-judge-frozen-manifest.json
 !scripts/eval/corpus/alias-corpus-a.jsonl
 !scripts/eval/corpus/alias-corpus-b.jsonl
 !scripts/eval/corpus/alias-corpus-c.jsonl
