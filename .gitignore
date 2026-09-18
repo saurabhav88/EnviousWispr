@@ -363,6 +363,12 @@ scripts/eval/alias_runner/.build/
 scripts/eval/alias_runner/Package.resolved
 !scripts/eval/alias_suggestion_gate.py
 !scripts/eval/golden_alias_scores.json
+# #996 edit-judge eval (learn custom words from edits): the gate and the labelled
+# corpus are tracked for the same reason the alias files are, so the judge
+# scores cited in the plan can be re-run from a fresh clone.
+!scripts/eval/edit_judge_gate.py
+!scripts/eval/corpus/edit-corpus-a.jsonl
+!scripts/eval/corpus/edit-corpus-a-holdout.jsonl
 !scripts/eval/corpus/alias-corpus-a.jsonl
 !scripts/eval/corpus/alias-corpus-b.jsonl
 !scripts/eval/corpus/alias-corpus-c.jsonl

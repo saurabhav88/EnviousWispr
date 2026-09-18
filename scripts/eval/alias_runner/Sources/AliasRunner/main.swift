@@ -3,6 +3,7 @@
 // timing, and error metadata. Invoked by scripts/eval/alias_suggestion_gate.py.
 // See issue #637.
 
+import AliasRunnerKit
 import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
@@ -164,6 +165,11 @@ func fail(_ msg: String) -> Never {
 @main
 struct RunnerMain {
   static func main() async {
+    // #996: `judge` is a separate subcommand with its own parser so the alias
+    // CLI (flags, ordering, exit meanings) stays byte-for-byte as it was.
+    if CommandLine.arguments.dropFirst().first == "judge" {
+      runJudge(Array(CommandLine.arguments.dropFirst(2)))
+    }
     let args = parseArgs()
     let cases = loadCorpus(path: args.corpusPath)
 
@@ -400,4 +406,46 @@ func write(record: OutRecord, to sink: FileHandle, encoder: JSONEncoder) {
   var payload = encoded
   payload.append(0x0A)
   sink.write(payload)
+}
+
+// MARK: - judge subcommand (#996)
+
+/// Never returns. Exit codes are `JudgeCLI.execute`'s: 0 ok, 2 usage/infra,
+/// 3 named judge unimplemented (records still written).
+func runJudge(_ argv: [String]) -> Never {
+  let judgeArgs: JudgeArgs
+  do {
+    judgeArgs = try JudgeCLI.parse(argv)
+  } catch {
+    FileHandle.standardError.write(Data(("AliasRunner judge: \(error)\n" + JudgeCLI.usage + "\n").utf8))
+    exit(2)
+  }
+  let (records, code) = JudgeCLI.execute(args: judgeArgs)
+  if code == 2 {
+    FileHandle.standardError.write(
+      Data("AliasRunner judge: could not load the corpus or the fixture (see usage)\n".utf8))
+    exit(2)
+  }
+  let text: String
+  do {
+    text = try JudgeCLI.encode(records)
+  } catch {
+    FileHandle.standardError.write(Data("AliasRunner judge: encode failed: \(error)\n".utf8))
+    exit(2)
+  }
+  if let outPath = judgeArgs.outPath {
+    do {
+      try text.write(toFile: outPath, atomically: true, encoding: .utf8)
+    } catch {
+      FileHandle.standardError.write(Data("AliasRunner judge: could not write \(outPath)\n".utf8))
+      exit(2)
+    }
+  } else {
+    FileHandle.standardOutput.write(Data(text.utf8))
+  }
+  if code == 3 {
+    FileHandle.standardError.write(
+      Data("AliasRunner judge: \(judgeArgs.judge.rawValue) is unimplemented in this build; every row written as unimplemented\n".utf8))
+  }
+  exit(code)
 }

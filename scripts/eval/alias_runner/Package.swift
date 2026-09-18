@@ -14,14 +14,27 @@ let package = Package(
     .package(name: "EnviousWispr", path: "../../..")
   ],
   targets: [
+    // #996: the `judge` subcommand's contract (corpus rows, candidate names,
+    // outcome vocabulary, fixture executor). A library so it is testable; it
+    // depends on no root product in Chunk 1. Real judges arrive in Chunk 2.
+    .target(
+      name: "AliasRunnerKit",
+      path: "Sources/AliasRunnerKit"
+    ),
     .executableTarget(
       name: "AliasRunner",
       dependencies: [
+        "AliasRunnerKit",
         .product(name: "EnviousWisprCore", package: "EnviousWispr"),
         .product(name: "EnviousWisprPostProcessing", package: "EnviousWispr"),
       ],
       path: "Sources/AliasRunner"
-    )
+    ),
+    .testTarget(
+      name: "AliasRunnerKitTests",
+      dependencies: ["AliasRunnerKit"],
+      path: "Tests/AliasRunnerKitTests"
+    ),
   ],
   swiftLanguageModes: [.v6]
 )
