@@ -240,6 +240,10 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("Use slash help (e.g. in chat) and slash exit.")
         == "Use /help (e.g. In chat) and /exit.")
+    // A name with an accent ends its sentence like any word.
+    #expect(
+      Self.off("Run slash help with Anaïs. They trim packaging and slash shipping costs.")
+        == "Run /help with Anaïs. They trim packaging and slash shipping costs.")
   }
 
   @Test("A chain spoken as \"forward slash\" is the same chain")
