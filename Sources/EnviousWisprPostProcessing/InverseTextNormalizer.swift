@@ -2510,7 +2510,7 @@ public struct InverseTextNormalizer: Sendable {
   /// Matched through `firstMatch` (NSRegularExpression): `String.range(of:options:)` with
   /// `.regularExpression` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
   static let slashSentenceBreak =
-    #"(?:(?<![^\p{L}\p{M}][\p{L}\p{M}])(?<!^[\p{L}\p{M}])\.|[!?])["'”’)\]]*\s|\R"#
+    #"(?:(?<![^\p{L}\p{M}][\p{L}\p{M}])(?<!^[\p{L}\p{M}])\.|[!?…])["'”’»)\]}]*\s|\R"#
 
   /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
   ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless

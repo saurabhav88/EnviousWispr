@@ -244,6 +244,16 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("Run slash help with Anaïs. They trim packaging and slash shipping costs.")
         == "Run /help with Anaïs. They trim packaging and slash shipping costs.")
+    // An ellipsis, a closing guillemet or bracket after the mark, and a digit before it.
+    #expect(
+      Self.off("Run slash help… They trim packaging and slash shipping costs.")
+        == "Run /help… They trim packaging and slash shipping costs.")
+    #expect(
+      Self.off("He said slash help.” They trim packaging and slash shipping costs.")
+        == "He said /help.” They trim packaging and slash shipping costs.")
+    #expect(
+      Self.off("Run slash help on version 2. They trim packaging and slash shipping costs.")
+        == "Run /help on version 2. They trim packaging and slash shipping costs.")
   }
 
   @Test("A chain spoken as \"forward slash\" is the same chain")
