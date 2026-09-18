@@ -2106,7 +2106,7 @@
 {"input": "https: slash slash example.com slash docs", "expected": "https://example.com/docs", "category": "negative", "slice": "negative"}
 {"input": "example.com slash search? q equals test", "expected": "example.com/search? Q equals test", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs- slash next", "expected": "example.com/docs-/next", "category": "url", "slice": "gold"}
-{"input": "example.com slash docs slash", "expected": "example.com/docs/", "category": "negative", "slice": "negative"}
+{"input": "example.com slash docs slash", "expected": "example.com/docs slash", "category": "negative", "slice": "negative"}
 {"input": "example.com slash docs:", "expected": "example.com/docs:", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs?", "expected": "example.com/docs?", "category": "url", "slice": "gold"}
 {"input": "3m dot com slash products", "expected": "3m.com/products", "category": "url", "slice": "gold"}

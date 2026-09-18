@@ -1,0 +1,49 @@
+{"id": "T00", "input": "We switched to slash compact.", "expected": "We switched to slash compact."}
+{"id": "T01", "input": "Use to slash from in the label.", "expected": "Use to slash from in the label.", "documented_miss": "to never pairs"}
+{"id": "T02", "input": "We need to slash from five days to three.", "expected": "We need to slash from five days to three."}
+{"id": "T03", "input": "We slash our prices.", "expected": "We slash our prices."}
+{"id": "T04", "input": "We slash costs using slash audit.", "expected": "We slash costs using /audit."}
+{"id": "T05", "input": "I slash costs.", "expected": "I slash costs."}
+{"id": "T06", "input": "Invoke slash exit now.", "expected": "Invoke /exit now."}
+{"id": "T07", "input": "They will slash prices next week.", "expected": "They will slash prices next week."}
+{"id": "T08", "input": "Slash prices now.", "expected": "/prices now."}
+{"id": "T09", "input": "Favorite Claude Code command is slash wfp.", "expected": "Favorite Claude Code command is /wfp."}
+{"id": "T10", "input": "It is a his slash her bathroom.", "expected": "It is a his/her bathroom."}
+{"id": "T11", "input": "He slash she can decide.", "expected": "He/she can decide."}
+{"id": "T12", "input": "You slash your bill in half.", "expected": "You slash your bill in half."}
+{"id": "T13", "input": "The on slash off switch broke.", "expected": "The on/off switch broke."}
+{"id": "T14", "input": "Check the input slash output folder.", "expected": "Check the input/output folder."}
+{"id": "T15", "input": "Put a slash between the two words.", "expected": "Put a slash between the two words."}
+{"id": "T16", "input": "Move it to src slash auth slash handler.", "expected": "Move it to src/auth/handler."}
+{"id": "T17", "input": "Type slash help please.", "expected": "Type /help please."}
+{"id": "T18", "input": "Slash exit.", "expected": "/exit"}
+{"id": "T19", "input": "Then slash clear and then slash exit.", "expected": "Then /clear and then /exit."}
+{"id": "T20", "input": "The pros slash cons list is ready.", "expected": "The pros/cons list is ready."}
+{"id": "T21", "input": "It's a yes slash no question.", "expected": "It's a yes/no question."}
+{"id": "T22", "input": "Send it to the CEO slash founder.", "expected": "Send it to the CEO/founder."}
+{"id": "T23", "input": "I need to finish this essay slash I really want to watch TV.", "expected": "I need to finish this essay slash I really want to watch TV."}
+{"id": "T24", "input": "Go ahead and slash exit now.", "expected": "Go ahead and slash exit now.", "documented_miss": "a command after a conjunction with no earlier command is unresolved (B4)"}
+{"id": "T25", "input": "Use and slash or in that clause.", "expected": "Use and/or in that clause."}
+{"id": "T26", "input": "The meeting ends with slash", "expected": "The meeting ends with slash"}
+{"id": "T27", "input": "apples, slash bananas, slash strawberries.", "expected": "apples/bananas/strawberries."}
+{"id": "T28", "input": "Run slash compact and then slash exit.", "expected": "Run /compact and then /exit."}
+{"id": "T29", "input": "is /wfp slash foo", "expected": "is /wfp/foo"}
+{"id": "T30", "input": "Use he slash him pronouns.", "expected": "Use he/him pronouns."}
+{"id": "T31", "input": "She goes by she slash her.", "expected": "She goes by she/her."}
+{"id": "T32", "input": "They slash them works for me.", "expected": "They/them works for me."}
+{"id": "T33", "input": "Raise the sword and slash down.", "expected": "Raise the sword and slash down."}
+{"id": "T34", "input": "Slash and burn.", "expected": "Slash and burn."}
+{"id": "T35", "input": "In Slack I use slash away a lot.", "expected": "In Slack I use /away a lot."}
+{"id": "T36", "input": "The in slash out tray is full.", "expected": "The in/out tray is full."}
+{"id": "T37", "input": "Bring apples slash oranges slash the fruit in the fridge.", "expected": "Bring apples/oranges slash the fruit in the fridge."}
+{"id": "T38", "input": "Tea slash coffee slash I don't mind either.", "expected": "Tea/coffee slash I don't mind either."}
+{"id": "T39", "input": "The manager said slash prices, not staff.", "expected": "The manager said /prices, not staff.", "documented_miss": "a reported instruction with a bare object reads as a command"}
+{"id": "T40", "input": "Bring apples, slash bananas.", "expected": "Bring apples, /bananas.", "documented_miss": "a two-item list with a recogniser comma reads as a command (B7)"}
+{"id": "T41", "input": "Put it in docs slash next slash for the team.", "expected": "Put it in docs/next slash for the team."}
+{"id": "T42", "input": "I slash a price.", "expected": "I slash a price."}
+{"id": "T43", "input": "The note says: slash slash is the delimiter.", "expected": "The note says: /slash is the delimiter."}
+{"id": "T44", "input": "tea slash coffee slash.", "expected": "tea/coffee slash."}
+{"id": "T45", "input": "use slash to slash beta", "expected": "use slash to slash beta"}
+{"id": "T46", "input": "slash list, sorry, slash inspect slash detail", "expected": "/list, sorry, /inspect/detail"}
+{"id": "T47", "input": "example.com slash docs slash", "expected": "example.com/docs slash", "documented_miss": "a trailing slash at the end of a spoken path keeps the word (row 0)"}
+{"id": "T48", "input": "alpha slash to slash beta", "expected": "alpha slash to slash beta"}

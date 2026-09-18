@@ -41,7 +41,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// Spoken-punctuation sub-feature gate (#1794). Distinct from `isEnabled`, which
   /// stays `true`: the ITN limb keeps running either way, because numbers, currency,
   /// dates, times, phone, email, URL and ordinal formatting are unaffected by this
-  /// setting. Only the nine bare command rewrites are gated.
+  /// setting. Only the nine bare mark rewrites and the backslash joiner are gated; the spoken
+  /// slash is read in both switch positions (#3038, `InverseTextNormalizer.slashReading`).
   ///
   /// Default `false` — the safe state for a step built in isolation (tests, and
   /// recovery before `applySettings` runs), and it matches the shipped product

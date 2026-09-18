@@ -4,7 +4,10 @@ import Testing
 @testable import EnviousWisprPostProcessing
 
 /// #1794: the spoken-punctuation toggle gates the bare command rewrites and NOTHING else in
-/// the inverse-text normalizer. #2955 added the joiners "slash" and "backslash" to the same table.
+/// the inverse-text normalizer. #2955 added the joiners "slash" and "backslash" to the same table;
+/// #3038 took the spoken SLASH out of the toggle: it is read in both switch positions by
+/// `InverseTextNormalizer.slashReading` (see `SpokenSlashReadingTests` below), and only
+/// backslash still follows the setting.
 ///
 /// These tests deliberately do NOT characterise how badly the rules misfire on
 /// content words ("the grace period expires", "in a coma"). `matcher-set-adversarial-tests`
@@ -16,22 +19,31 @@ struct SpokenPunctuationToggleTests {
 
   private static let itn = InverseTextNormalizer()
 
-  /// The spoken phrases `punct` and `joinerCommands` produce, line breaks aside. Mirrors
-  /// `SpokenPunctuationCopy.phrases` plus the two-word "back slash" alias the panel does not list;
-  /// the copy-freeze test in the AppKit suite pins the user-facing side.
-  static let triggers: [(spoken: String, mark: String)] = [
+  /// The spoken phrases the SETTING gates, line breaks aside: the nine marks in `punct` and the
+  /// backslash joiner. Mirrors `SpokenPunctuationCopy.phrases` plus the two-word "back slash"
+  /// alias the panel does not list; the copy-freeze test in the AppKit suite pins the
+  /// user-facing side.
+  static let gatedTriggers: [(spoken: String, mark: String)] = [
     ("comma", ","), ("period", "."), ("full stop", "."),
     ("question mark", "?"), ("exclamation mark", "!"), ("exclamation point", "!"),
     ("colon", ":"), ("semicolon", ";"),
-    ("slash", "/"), ("forward slash", "/"), ("backslash", "\\"), ("back slash", "\\"),
+    ("backslash", "\\"), ("back slash", "\\"),
   ]
 
-  /// Marks that glue to BOTH neighbours; every other mark keeps the space after it.
+  /// The spoken slash converts in BOTH switch positions (#3038); it is listed apart so the OFF
+  /// tests below cannot accidentally require it to stay literal.
+  static let alwaysOnCommands: [(spoken: String, mark: String)] = [
+    ("slash", "/"), ("forward slash", "/"),
+  ]
+
+  /// Marks that glue to BOTH neighbours in the "alpha <phrase> beta" frame used below (two
+  /// content words either side: `.glue` for the slash, the joiner rule for the backslash); every
+  /// other mark keeps the space after it.
   static let joiners: Set<String> = ["/", "\\"]
 
   // MARK: - The switch works
 
-  @Test("OFF leaves every trigger phrase as ordinary words", arguments: triggers)
+  @Test("OFF leaves every gated trigger phrase as ordinary words", arguments: gatedTriggers)
   func offLeavesTriggersLiteral(trigger: (spoken: String, mark: String)) {
     let input = "alpha \(trigger.spoken) beta"
     let out = Self.itn.normalize(input, spokenPunctuation: false)
@@ -42,7 +54,7 @@ struct SpokenPunctuationToggleTests {
     #expect(out.contains(trigger.mark) == false, "no mark expected, got \(out.debugDescription)")
   }
 
-  @Test("ON converts every trigger phrase", arguments: triggers)
+  @Test("ON converts every trigger phrase", arguments: gatedTriggers + alwaysOnCommands)
   func onConvertsTriggers(trigger: (spoken: String, mark: String)) {
     let input = "alpha \(trigger.spoken) beta"
     let out = Self.itn.normalize(input, spokenPunctuation: true)
@@ -51,6 +63,13 @@ struct SpokenPunctuationToggleTests {
     #expect(
       out.contains(trigger.spoken) == false,
       "trigger word should be consumed, got \(out.debugDescription)")
+  }
+
+  /// #3038: the slash no longer waits for the setting. Same frame as the ON test, OFF.
+  @Test("OFF converts the spoken slash too", arguments: alwaysOnCommands)
+  func offConvertsSlash(trigger: (spoken: String, mark: String)) {
+    let out = Self.itn.normalize("alpha \(trigger.spoken) beta", spokenPunctuation: false)
+    #expect(out == "alpha/beta", "got \(out.debugDescription)")
   }
 
   @Test("Line-break triggers convert only when ON")
@@ -108,20 +127,62 @@ struct SpokenPunctuationToggleTests {
     )
   }
 
+  /// The `negative` and `url` parity rows whose bare spoken "slash" made the toggle diverge
+  /// before #3038 (measured 2026-09-18 by running the pre-change oracle with and without its
+  /// joiner). Listed by input so a row that stops converting, or starts converting differently,
+  /// is named rather than counted.
+  static let formerlyGatedBareSlashRows: [String] = [
+      "So we need to stop worrying about oh don't worry it hasn't reached any users yet. No shit. We are we've not cut a release. We're just building in our sandbox slash dev environment.",
+      "So I'm logged in right now under app.nbstaging.com slash dashboard.",
+      "w w w dot c o m d a i l y n e w s dot a b slash s m",
+      "c o m d a i l y n e w s dot a b slash s m",
+      "example.com slash blog",
+      "example dot ai slash docs",
+      "example dot app slash download",
+      "docs-2 dot xyz slash page-4",
+      "docs-2.xyz slash page-4",
+      "example.io slash docs",
+      "alice at startup dot ai slash docs",
+      "alice@sub.example.com slash docs",
+      "alice@a.b.example.com slash docs",
+      "find it at docs dot xyz slash page",
+      "bob at example dot com slash unsubscribe",
+      "bob at example.com slash unsubscribe",
+      "bob at  example.com slash unsubscribe",
+      "alice@example dot ai slash unsubscribe",
+      "alice@sub.example dot ai slash unsubscribe",
+      "find it at docs.xyz slash page",
+      "look inside the dot app slash Contents slash MacOS folder",
+      "plot the X dot XYZ slash Y coordinates",
+      "www dot example.com slash docs",
+      "my dash site.com slash docs",
+      "alice @ example.com slash unsubscribe",
+      "example.com slash docs dot html",
+      "example.com slash user underscore settings",
+      "https: slash slash example.com slash docs",
+      "example.com slash search? q equals test",
+      "example.com slash docs- slash next",
+      "example.com slash docs slash",
+      "example.com slash docs:",
+      "example.com slash docs?",
+      "3m dot com slash products",
+      "check out 1password.com slash downloads",
+  ]
+
   /// The strongest isolation proof: run the ENTIRE parity corpus both ways and pin exactly
-  /// which rows the toggle changes. Any row outside the pinned set means the gate leaked; an
-  /// empty set means the test went vacuous.
+  /// which rows the toggle changes, BY IDENTITY. Any row outside the pinned set means the gate
+  /// leaked; an empty set means the test went vacuous.
   ///
-  /// The pinned counts are derived from a real run, never predicted. Three categories move:
-  /// the punctuation-category rows that carry a trigger; `url` rows whose spelled-out or
-  /// refused input still carries "colon", "question mark" or a bare "slash" the URL passes
-  /// left behind (#2257 guard fixtures and the degenerate "h t t p colon slash slash" rows);
-  /// and `negative` rows that carry a bare "slash" the URL passes deliberately refused to
-  /// convert (#2955). None of them is URL handling changing with the toggle — the URL rules
-  /// are untouched by `spokenPunctuation`; the applyPunct pass beside them is what moves.
-  /// Two pins, both required: the category+count pin catches a rule firing on a row it
-  /// should not touch, and the trigger-presence pin catches a row moving for a reason that
-  /// is not in the table at all.
+  /// The pinned rows come from a real run (2026-09-18), never a prediction. Since #3038 the
+  /// spoken slash is read in both switch positions, so the only corpus rows the toggle still
+  /// moves are the `punctuation` rows that carry one of the nine marks and five `url` rows: four
+  /// whose protocol carries a spoken "colon" (the reading sees a scheme with its colon ON and a
+  /// bare "colon" word OFF: `h t t p://` versus `h t t p colon slash slash`) and one #2257 guard
+  /// fixture carrying "question mark". The 20 `negative` rows and 4 `url` rows that used to
+  /// diverge on a bare "slash" (#2955) no longer do, because the slash reading does not consult
+  /// the setting. Two pins, both required: the identity pin
+  /// catches a rule firing on a row it should not touch, and the trigger-presence pin catches a
+  /// row moving for a reason that is not in the table at all.
   @Test("Toggle changes exactly the pinned corpus rows and no others")
   func corpusIsolation() throws {
     let rows = try InverseTextNormalizerParityTests.loadRows()
@@ -133,34 +194,66 @@ struct SpokenPunctuationToggleTests {
     }
     #expect(divergent.isEmpty == false, "vacuous: the toggle changed nothing across the corpus")
 
-    let allowed: Set<String> = ["punctuation", "url", "negative"]
+    let allowed: Set<String> = ["punctuation", "url"]
     let unexpected = divergent.filter { !allowed.contains($0.category) }
     let leaked = unexpected.prefix(10)
       .map { "[\($0.category)] \($0.input.debugDescription)" }
       .joined(separator: ", ")
-    #expect(unexpected.isEmpty, "toggle leaked outside punctuation/url/negative: \(leaked)")
+    #expect(unexpected.isEmpty, "toggle leaked outside punctuation/url: \(leaked)")
 
+    // The url rows, by identity, with what each switch position writes.
     let urlDivergent = divergent.filter { $0.category == "url" }
-    let negativeDivergent = divergent.filter { $0.category == "negative" }
-    let urlSample = urlDivergent.prefix(5).map { $0.input.debugDescription }.joined(separator: ", ")
-    let negSample = negativeDivergent.prefix(5).map { $0.input.debugDescription }
-      .joined(separator: ", ")
+    let pinnedURL: [String: (off: String, on: String)] = [
+      "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m": (
+        "h t t p colon slash slash w w w dot o u r d a i l y n e w s.com dot s m",
+        "h t t p://w w w dot o u r d a i l y n e w s.com dot s m"),
+      "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m": (
+        "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b dot s m",
+        "h t t p://w w w dot c o m d a i l y n e w s dot a b dot s m"),
+      "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b slash s m": (
+        "h t t p colon slash slash w w w dot c o m d a i l y n e w s dot a b/s m",
+        "h t t p://w w w dot c o m d a i l y n e w s dot a b/s m"),
+      "https colon slash slash example.com slash docs": (
+        "https colon slash slash example.com/docs",
+        "https://example.com/docs"),
+      // A #2257 guard fixture: "question mark" is a gated command; the slash is not.
+      "example.com slash search question mark q equals test": (
+        "example.com/search question mark q equals test",
+        "example.com/search? Q equals test"),
+    ]
     #expect(
-      urlDivergent.count == 9,
-      "expected exactly the 9 pinned url rows (3 degenerate colon spellouts, 2 #2257 guard fixtures, 4 refused spelled-out paths with a bare slash), got \(urlDivergent.count): \(urlSample)")
-    #expect(
-      negativeDivergent.count == 20,
-      "expected exactly the 20 pinned negative rows (bare slash after a refused URL conversion, #2955), got \(negativeDivergent.count): \(negSample)")
+      Set(urlDivergent.map(\.input)) == Set(pinnedURL.keys),
+      Comment(
+        rawValue: "url rows the toggle moves: "
+          + urlDivergent.map {
+            "\($0.input.debugDescription) OFF=\(Self.itn.normalize($0.input, spokenPunctuation: false).debugDescription) ON=\(Self.itn.normalize($0.input, spokenPunctuation: true).debugDescription)"
+          }.joined(separator: " | ")))
     for row in urlDivergent {
-      let reasonMessage =
-        "a url row diverged for a reason other than colon/question mark/slash: "
-        + "\(row.input.debugDescription)"
+      guard let pin = pinnedURL[row.input] else { continue }
       #expect(
-        row.input.contains("colon") || row.input.contains("question mark")
-          || row.input.contains("slash"), "\(reasonMessage)")
+        Self.itn.normalize(row.input, spokenPunctuation: false) == pin.off,
+        "OFF: \(row.input.debugDescription) -> \(Self.itn.normalize(row.input, spokenPunctuation: false).debugDescription)")
+      #expect(
+        Self.itn.normalize(row.input, spokenPunctuation: true) == pin.on,
+        "ON: \(row.input.debugDescription) -> \(Self.itn.normalize(row.input, spokenPunctuation: true).debugDescription)")
     }
 
-    let phrases = Self.triggers.map(\.spoken) + ["new line", "new paragraph"]
+    // The bare-slash rows that DID diverge before #3038 (the joiner followed the setting), by
+    // identity: both switch positions now write the baked fixture expectation, which is an
+    // independent oracle output, not this implementation's.
+    let byInput = Dictionary(rows.map { ($0.input, $0.expected) }, uniquingKeysWith: { first, _ in first })
+    for input in Self.formerlyGatedBareSlashRows {
+      guard let expected = byInput[input] else {
+        Issue.record("formerly gated row is no longer in parity.jsonl: \(input.debugDescription)")
+        continue
+      }
+      let off = Self.itn.normalize(input, spokenPunctuation: false)
+      let on = Self.itn.normalize(input, spokenPunctuation: true)
+      #expect(off == expected, "OFF \(input.debugDescription) -> \(off.debugDescription)")
+      #expect(on == expected, "ON \(input.debugDescription) -> \(on.debugDescription)")
+    }
+
+    let phrases = Self.gatedTriggers.map(\.spoken) + ["new line", "new paragraph"]
     for row in divergent {
       let carriesTrigger = phrases.contains { phrase in
         let pattern = #"\b"# + NSRegularExpression.escapedPattern(for: phrase) + #"\b"#
@@ -171,13 +264,17 @@ struct SpokenPunctuationToggleTests {
   }
 
   /// #2955: the list-marker guard reads a spoken "slash"/"backslash" as the word it is, so the
-  /// marker after it converts in both switch positions; only the joiner itself follows the
-  /// toggle. Pins the deliberate decision NOT to add the joiners to `punctCommandTails`.
+  /// marker after it converts in both switch positions; the backslash joiner itself follows the
+  /// toggle and the slash (#3038) does not. Pins the deliberate decision NOT to add the joiners
+  /// to `punctCommandTails`.
   @Test(
     "A list marker after a spoken joiner converts whether or not the joiner does",
     arguments: [
-      ("docs slash A one", "docs/A1", "docs slash A1"),
+      ("docs slash A one", "docs/A1", "docs/A1"),
       ("docs backslash A one", "docs\\A1", "docs backslash A1"),
+      // #3038 R2: the recogniser's comma before a spoken slash is dropped when the slash glues;
+      // the backslash keeps it in both positions.
+      ("docs, back slash A one", "docs,\\A1", "docs, back slash A1"),
     ])
   func joinerDoesNotShieldListMarker(input: String, on: String, off: String) {
     #expect(Self.itn.normalize(input, spokenPunctuation: true) == on)

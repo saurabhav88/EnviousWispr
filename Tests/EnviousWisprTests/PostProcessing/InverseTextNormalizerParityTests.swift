@@ -267,12 +267,10 @@ struct InverseTextNormalizerParityTests {
   //
   // Expected values are ITN-ONLY output (this test calls `normalize(_:)` directly, not the
   // full pipeline) with the spoken-punctuation setting OFF: these rows measure the URL
-  // passes, which run whatever the setting says, and since #2955 a bare "slash" the URL
-  // passes leave behind follows the setting (see `SpokenPunctuationToggleTests`), so running
-  // them ON would fold that rule into every expectation. ITN converts spoken dot/slash into real punctuation and strips the
-  // recognizer's own trailing-period/stray-dot artifacts, but it does not materialize a
-  // spoken "slash slash" protocol connector into "://" — that reconstruction is LLM polish's
-  // job downstream, unchanged by this fix.
+  // passes, which run whatever the setting says. Since #3038 a bare "slash" the URL passes
+  // leave behind is read in both switch positions (`InverseTextNormalizer.slashReading`); a
+  // spoken "https slash slash" before a SPOKEN domain stays words there too (row B2 glues a
+  // scheme only before a written domain), so these expectations are unchanged.
   //
   // KNOWN, PRE-EXISTING, OUT-OF-SCOPE BOUNDARY: a domain immediately preceded by "slash" —
   // as in a spoken "https slash slash" protocol prefix — never reaches spokenPat/joinedPat's
@@ -376,7 +374,9 @@ struct InverseTextNormalizerParityTests {
       ("open backslash.txt", "open backslash.txt"),
       // sentence punctuation after the spoken word is fine when it ends the clause
       ("the pros slash cons list.", "the pros/cons list."),
-      ("say slash, then", "say/, then"),
+      // #3038 row 0: punctuation glued to the marker itself means there is nothing to join to,
+      // so the word stays (it used to become the odd "say/, then").
+      ("say slash, then", "say slash, then"),
       // adjacent MIXED joiners are one pass, so the second still sees its whitespace (local
       // review r2)
       ("backslash slash", "\\/"),
@@ -398,13 +398,14 @@ struct InverseTextNormalizerParityTests {
     #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: false) == expected)
   }
 
+  /// #3038 moved the spoken SLASH out of the setting (`SpokenSlashReadingTests`); only the
+  /// backslash still waits for it.
   @Test(
-    "#2955 spoken slash and backslash stay words when the setting is off",
-    arguments: ["and slash or", "C colon backslash Users", "forward slash home", "back slash temp"])
+    "#2955 spoken backslash stays a word when the setting is off",
+    arguments: ["C colon backslash Users", "back slash temp"])
   func issue2955JoinersStayWordsOff(input: String) {
     let out = InverseTextNormalizer().normalize(input, spokenPunctuation: false)
     #expect(out.contains("slash"), "expected the word to survive, got \(out.debugDescription)")
-    #expect(
-      out.contains("/") == false && out.contains("\\") == false, "got \(out.debugDescription)")
+    #expect(out.contains("\\") == false, "got \(out.debugDescription)")
   }
 }
