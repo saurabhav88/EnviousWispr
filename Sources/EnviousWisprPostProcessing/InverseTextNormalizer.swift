@@ -2502,10 +2502,14 @@ public struct InverseTextNormalizer: Sendable {
   static let loneCommandPeriod = #"^\s*(/[\p{L}\p{N}_][\p{L}\p{N}_-]*)\s*\.\s*$"#
 
   /// A sentence end (terminal mark, optional closing quotes or brackets, then whitespace) or a
-  /// line break: the boundary past which one marker's reading no longer informs the next.
+  /// line break: the boundary past which one marker's reading no longer informs the next. A
+  /// period after a single letter is an abbreviation ("e.g.", "i.e.", "p.m."), not an end, so
+  /// "use slash help (e.g. in chat) and slash exit" keeps its command list; the cost is a
+  /// sentence ending in a lone letter ("plan B. Then ..."), which does not reset.
   /// Matched through `firstMatch` (NSRegularExpression): `String.range(of:options:)` with
   /// `.regularExpression` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
-  static let slashSentenceBreak = #"[.!?][\"'”’)\]]*\s|\R"#
+  static let slashSentenceBreak =
+    #"(?:(?<![^A-Za-z][A-Za-z])(?<!^[A-Za-z])\.|[!?])["'”’)\]]*\s|\R"#
 
   /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
   ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless

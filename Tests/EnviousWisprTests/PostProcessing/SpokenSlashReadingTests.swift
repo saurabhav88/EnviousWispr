@@ -14,8 +14,8 @@ import Testing
 ///   264-case external benchmark (`docs/audits/2026-09-18-3038-benchmark/`), expected outputs
 ///   authored independently of this implementation; the six documented misses carry their
 ///   ACTUAL output too, so a change in either direction is visible;
-/// - `spoken-slash-traps.jsonl`: the 42 sentences the external and grounded reviews used to
-///   break earlier versions of the table.
+/// - `spoken-slash-traps.jsonl`: the sentences the external and grounded reviews used to break
+///   earlier versions of the table (`wc -l` the file for the count).
 ///
 /// The setting is OFF in every row unless stated: that is the shipped default and the whole
 /// point of the change.
@@ -235,6 +235,11 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("slash list, sorry, slash inspect") == "/list, sorry, /inspect")
     // Two commands in two sentences still each read as a command on their own (B7).
     #expect(Self.off("slash clear. slash exit.") == "/clear. /exit.")
+    // An abbreviation's period is not a sentence end for the reading. (The capital after
+    // "e.g." is the older sentence-capitalisation pass, unchanged by #3038.)
+    #expect(
+      Self.off("Use slash help (e.g. in chat) and slash exit.")
+        == "Use /help (e.g. In chat) and /exit.")
   }
 
   @Test("A chain spoken as \"forward slash\" is the same chain")
