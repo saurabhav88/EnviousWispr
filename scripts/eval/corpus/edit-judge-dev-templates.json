@@ -1,6 +1,6 @@
 {
   "_about": "Generated DEVELOPMENT data for the edit judge (#996 chunk 2c). Sentence templates per language with one {X} slot, plus entity tables whose class is decided at the table level. Every generated row's label_source names the template and table; review_status is template-reviewed (labels drafted by Claude 2026-09-18 at table level, never per row). The frozen report rows are never read here; the builder drops any generated family that is frozen. Aliases are plausible mishears written by hand, not recogniser output. v2 (2026-09-18): explicit per-pair pack reviews (21 formatting-only pairs omitted, single dictionary-word originals unsafe), single dictionary-word term aliases moved to terms_unsafe.",
-  "version": "edit-judge-dev-templates-v5",
+  "version": "edit-judge-dev-templates-v6",
   "languages": {
     "en": {
       "term_templates": [
@@ -9500,12 +9500,11 @@
     }
   },
   "calibration_only": {
-    "_about": "CALIBRATION-ONLY tables (v4, 2026-09-18): fresh families never used for training or threshold selection; generated once into a family-disjoint calibration set for the complete two-stage judge (Codex 2c r2 step 4). Used as the POLICY-DEVELOPMENT set for the veto (v4); the final report uses calibration_only_final (v5).",
+    "_about": "CALIBRATION-ONLY tables (v4, 2026-09-18): fresh families never used for training or threshold selection; generated once into a family-disjoint calibration set for the complete two-stage judge (Codex 2c r2 step 4). Used as the POLICY-DEVELOPMENT set for the veto (v4); the final report uses calibration_only_final (v5). Multi-word alias class rule (council-adjudicated 2026-09-18, GPT+Gemini, session ew-996-calibration-labels-2026-09-18): a multi-word original is SAFE when the exact written sequence is implausible as literal dictation (`post hog`, `key cloak`, `tray fik`); UNSAFE when it is a natural phrase, compound or meaningful sequence (`pine cone`, `low key`, `night shift`); when the two adjudicators split, the rubric's own tie-break applies (unsure -> false) and the pair is UNSAFE.",
     "terms_safe": [
       {
         "canonical": "Backblaze",
         "aliases": [
-          "back blaze",
           "bak blaze"
         ]
       },
@@ -9529,12 +9528,6 @@
         ]
       },
       {
-        "canonical": "Nomad",
-        "aliases": [
-          "no mad"
-        ]
-      },
-      {
         "canonical": "Traefik",
         "aliases": [
           "tray fik"
@@ -9553,19 +9546,6 @@
         ]
       },
       {
-        "canonical": "Syncthing",
-        "aliases": [
-          "sink thing"
-        ]
-      },
-      {
-        "canonical": "Ollama",
-        "aliases": [
-          "oh llama",
-          "all llama"
-        ]
-      },
-      {
         "canonical": "Mistral",
         "aliases": [
           "miss trawl"
@@ -9580,8 +9560,7 @@
       {
         "canonical": "Weaviate",
         "aliases": [
-          "wee vee ate",
-          "weave 8"
+          "wee vee ate"
         ]
       },
       {
@@ -9656,9 +9635,33 @@
         [
           "console",
           "Consul K/V"
+        ],
+        [
+          "back blaze",
+          "Backblaze"
+        ],
+        [
+          "no mad",
+          "Nomad"
+        ],
+        [
+          "sink thing",
+          "Syncthing"
+        ],
+        [
+          "oh llama",
+          "Ollama"
+        ],
+        [
+          "all llama",
+          "Ollama"
+        ],
+        [
+          "weave 8",
+          "Weaviate"
         ]
       ],
-      "_about": "unsafe: single common words (the veto's job) plus two common PHRASES ('low key', 'pine cone') the multi-token convention does not veto: an honest probe of that gap, counted against the judge if it grants them."
+      "_about": "unsafe: single common words (the veto's job) plus two common PHRASES ('low key', 'pine cone') the multi-token convention does not veto: an honest probe of that gap, counted against the judge if it grants them. Council-split pairs moved here on 2026-09-18 under the tie-break: back blaze, no mad, sink thing, oh llama, all llama, weave 8."
     },
     "names_safe": {
       "en": [
@@ -10122,7 +10125,7 @@
     }
   },
   "calibration_only_final": {
-    "_about": "FINAL fresh calibration tables (v5, 2026-09-18): families never used for training, threshold selection or veto policy development. Generated once, scored once with the frozen policy.",
+    "_about": "FINAL fresh calibration tables (v5, 2026-09-18): families never used for training, threshold selection or veto policy development. Generated once, scored once with the frozen policy. Both tables were exposed before the labels were adjudicated (v4 policy development, v5 scored once); they are development material now, and a qualifying report needs a table authored after the rule below. Multi-word alias class rule (council-adjudicated 2026-09-18, GPT+Gemini, session ew-996-calibration-labels-2026-09-18): a multi-word original is SAFE when the exact written sequence is implausible as literal dictation (`post hog`, `key cloak`, `tray fik`); UNSAFE when it is a natural phrase, compound or meaningful sequence (`pine cone`, `low key`, `night shift`); when the two adjudicators split, the rubric's own tie-break applies (unsure -> false) and the pair is UNSAFE.",
     "terms_safe": [
       {
         "canonical": "Garage",
@@ -10133,8 +10136,7 @@
       {
         "canonical": "Minio",
         "aliases": [
-          "min eye oh",
-          "mini o"
+          "min eye oh"
         ]
       },
       {
@@ -10165,20 +10167,13 @@
       {
         "canonical": "Gitea",
         "aliases": [
-          "git tea",
-          "gee tee ah"
+          "git tea"
         ]
       },
       {
         "canonical": "Forgejo",
         "aliases": [
           "forge ho"
-        ]
-      },
-      {
-        "canonical": "Vaultwarden",
-        "aliases": [
-          "vault warden"
         ]
       },
       {
@@ -10220,7 +10215,7 @@
       }
     ],
     "terms_unsafe": {
-      "_about": "single common words and lexicalised compounds; the joined-form rule is the policy under test",
+      "_about": "single common words and lexicalised compounds; the joined-form rule is the policy under test Council-split pairs moved here on 2026-09-18 under the tie-break: mini o, gee tee ah, vault warden.",
       "pairs": [
         [
           "garage",
@@ -10237,10 +10232,6 @@
         [
           "jelly",
           "Jellyfin"
-        ],
-        [
-          "key cloak",
-          "Keycloak"
         ],
         [
           "night shift",
@@ -10265,6 +10256,18 @@
         [
           "paper less",
           "Paperless-ngx"
+        ],
+        [
+          "mini o",
+          "Minio"
+        ],
+        [
+          "gee tee ah",
+          "Gitea"
+        ],
+        [
+          "vault warden",
+          "Vaultwarden"
         ]
       ]
     },

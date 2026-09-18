@@ -18,14 +18,14 @@ def _resource(tmp_path: Path) -> Path:
     d = tmp_path / "edit-judge-veto-test"
     d.mkdir(parents=True)
     files = {}
-    for lang, rows in {"en": [("basil", 3.65), ("elena", 3.75), ("bluetooth", 3.75), ("pinecone", 2.07), ("lowkey", 2.74), ("rare", 2.2)], "de": [("ampel", 3.5)]}.items():
+    for lang, rows in {"en": [("basil", 3.65), ("elena", 3.75), ("bluetooth", 3.75), ("pinecone", 2.07), ("lowkey", 2.74), ("rare", 2.2)], "de": [("ampel", 3.5)], "ko": [("하준", 3.2)]}.items():
         path = d / f"{lang}.tsv"
         path.write_text("".join(f"{w}\t{z:.2f}\n" for w, z in sorted(rows)), encoding="utf-8")
         files[lang] = {"path": path.name, "words": len(rows), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     dpath = d / "en-dictionary.txt"
     dpath.write_text("mastodont\nsnowplow\n", encoding="utf-8")
     files["en-dictionary"] = {"path": dpath.name, "words": 2, "sha256": hashlib.sha256(dpath.read_bytes()).hexdigest()}
-    manifest = {"version": "edit-judge-veto-test", "policy": {"zipf_list_min": 2.0, "zipf_single_min": 3.0, "zipf_joined_min": 2.0, "dictionary_min_letters": 3}, "languages": ["en", "de"], "files": files}
+    manifest = {"version": "edit-judge-veto-test", "policy": {"zipf_list_min": 2.0, "zipf_single_min": 3.0, "zipf_joined_min": 2.0, "dictionary_min_letters": 3, "alias_languages": ["en", "de"], "alias_languages_evidence": "synthetic"}, "languages": ["en", "de", "ko"], "files": files}
     (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return d
 
@@ -61,6 +61,31 @@ def test_uncovered_language_abstains_and_apply_moves_safe_mass(tmp_path):
     assert v.apply([0.1, 0.2, 0.7], "basil", "en") == pytest.approx([0.1, 0.9, 0.0])  # vetoed
     assert v.apply([0.1, 0.2, 0.7], "cuber netties", "en") == [0.1, 0.2, 0.7]  # untouched
     assert v.covers("en-US") and not v.covers("sw")
+
+
+def test_listed_language_with_unproven_name_coverage_abstains(tmp_path):
+    v = AliasVeto(_resource(tmp_path))
+    assert v.has_frequency_list("ko") and not v.covers("ko")
+    d = v.veto("서아름", "ko")
+    assert d.covered is False and d.vetoed is False and "name coverage unproven" in d.reason
+    assert v.apply([0.1, 0.2, 0.7], "서아름", "ko") == pytest.approx([0.1, 0.9, 0.0])  # no alias, canonical still learnable
+    assert "has no list" in v.veto("hello", "sw").reason
+    for bad in (
+        {"alias_languages": []},
+        {"alias_languages": ["en", "fr"]},
+        {"alias_languages": ["en", ""]},
+        {"alias_languages": None},
+        {"alias_languages": ["en"], "alias_languages_evidence": " "},
+        {"alias_languages": ["en"], "alias_languages_evidence": None},  # str(None) == "None" must not count as evidence
+        {"alias_languages": ["en"], "alias_languages_evidence": 3},
+        {"alias_languages": ["en"], "alias_languages_evidence": {"source": "x"}},
+    ):
+        d2 = _resource(tmp_path / str(abs(hash(json.dumps(bad)))))
+        m = json.loads((d2 / "manifest.json").read_text())
+        m["policy"].update(bad)
+        (d2 / "manifest.json").write_text(json.dumps(m))
+        with pytest.raises(RuntimeError, match="alias_languages"):
+            AliasVeto(d2)
 
 
 def test_resource_digest_mismatch_is_refused(tmp_path):

@@ -173,7 +173,7 @@ def test_generated_dev_rows_are_valid_labelled_and_frozen_disjoint():
     assert counts["pack_unreviewed_omitted"] == len(templates["pack_reviews"]["omitted"]) == 21
     assert not any(r["id"].startswith("DEV-PACK") and r["original"].lower().replace("'", "") == r["replacement"].lower().replace("'", "") for r in rows)
     assert all(v["reason"].strip() for v in templates["pack_reviews"]["decisions"].values())
-    assert templates["version"] == "edit-judge-dev-templates-v5"
+    assert templates["version"] == "edit-judge-dev-templates-v6"
     classes = {data.three_class(r["correction"], r["safe_alias"]) for r in rows}
     assert classes == set(data.THREE_CLASSES)
     assert {r["language"] for r in rows} >= {"en", "de", "es", "fr", "it", "pt", "hi", "ar", "zh", "ja", "ru", "ko"}
@@ -189,3 +189,18 @@ def test_generated_dev_rows_are_valid_labelled_and_frozen_disjoint():
     # Instruction-like rows never carry the safe class; unsafe tables never carry it either.
     assert all(not r["safe_alias"] for r in rows if r["stratum"] in ("instruction_like", "ambiguous_name"))
     assert all(r["correction"] and not r["safe_alias"] for r in rows if r["id"].startswith("DEV-TERMU"))
+
+
+def test_a_pair_listed_with_two_labels_is_refused_at_build_time():
+    import build_edit_judge_corpus as b
+
+    def row(orig, canon, safe):
+        return {"original": orig, "replacement": canon, "correction": True, "safe_alias": safe}
+
+    b.refuse_label_conflicts([row("key cloak", "Keycloak", True), row("post hog", "PostHog", True), row("pine cone", "Pinecone", False)])
+    with pytest.raises(ValueError, match="key cloak"):
+        b.refuse_label_conflicts([row("key cloak", "Keycloak", True), row("Key Cloak", "keycloak", False)])
+    # the live training tables and the v4 calibration-only tables are conflict-free
+    templates = json.loads((ROOT / "scripts/eval/corpus/edit-judge-dev-templates.json").read_text(encoding="utf-8"))
+    for tables in (None, templates["calibration_only"]):
+        b.generate_dev_rows(templates, [], tables=tables, id_prefix="X")

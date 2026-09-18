@@ -19,7 +19,13 @@ Sources, both versioned and digested into `manifest.json`:
 
 Output: `<out>/<version>/{<lang>.tsv, en-dictionary.txt, manifest.json}`.
 Languages outside the resource are UNCOVERED: the veto abstains there and
-the judge grants no alias (plan §3.1 step 7).
+the judge grants no alias (plan §3.1 step 7). Since v4 (v5 corrects the evidence wording) an alias is granted
+ONLY in `--alias-languages`: the languages whose lists were measured to
+carry that language's common given names (wordfreq lists words, not names;
+the Korean and Chinese lists missed half the unsafe-name rows on the
+2026-09-18 calibration sets). Every other language, listed or not, abstains
+on the alias and the corrected spelling is still learned (founder decision
+2026-09-18: no automatic alias where name coverage is unproven).
 """
 from __future__ import annotations
 
@@ -30,7 +36,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-RESOURCE_VERSION = "edit-judge-veto-v3"
+RESOURCE_VERSION = "edit-judge-veto-v5"
 # Lists carry every word at or above `--zipf-list` with its Zipf value, so
 # the two policy floors below can both be answered from one file per language:
 #   single-token originals are vetoed at >= `--zipf-single` (about one per
@@ -54,7 +60,13 @@ def main() -> int:
     p.add_argument("--zipf-single", type=float, default=DEFAULT_ZIPF_SINGLE)
     p.add_argument("--zipf-joined", type=float, default=DEFAULT_ZIPF_JOINED)
     p.add_argument("--top-n", type=int, default=300_000, help="wordfreq candidates per language before the Zipf filter")
+    p.add_argument("--alias-languages", required=True, help="comma-separated languages whose name coverage was measured; only these may grant an alias")
+    p.add_argument("--alias-languages-evidence", required=True, help="where the name-coverage measurement lives (calibration ids or a file)")
     args = p.parse_args()
+    alias_languages = sorted({x.strip().casefold() for x in args.alias_languages.split(",") if x.strip()})
+    if not alias_languages or not args.alias_languages_evidence.strip():
+        print("INFRA-ERROR: --alias-languages and --alias-languages-evidence must both be non-empty", file=sys.stderr)
+        return 2
     import wordfreq
     from importlib.metadata import version as pkg_version
 
@@ -66,6 +78,10 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=False)
     files: dict[str, dict] = {}
     languages = sorted(wordfreq.available_languages("best"))
+    unknown = sorted(set(alias_languages) - set(languages))
+    if unknown:
+        print(f"INFRA-ERROR: alias languages without a wordfreq list: {unknown}", file=sys.stderr)
+        return 2
     for lang in languages:
         seen: dict[str, float] = {}
         for w in wordfreq.top_n_list(lang, args.top_n):
@@ -95,6 +111,9 @@ def main() -> int:
             "multi_token": "vetoed when the tokens joined without spaces are a listed word at zipf_joined_min or a dictionary word; otherwise not vetoed",
             "languages_checked": "row language plus en (tech vocabulary crosses languages)",
             "uncovered_language": "abstain: the judge grants no alias",
+            "alias_languages": alias_languages,
+            "alias_languages_evidence": args.alias_languages_evidence.strip(),
+            "unproven_name_coverage": "a listed language outside alias_languages abstains on the alias; the corrected spelling is still learned",
             "dictionary_min_letters": DICTIONARY_MIN_LETTERS,
         },
         "sources": {

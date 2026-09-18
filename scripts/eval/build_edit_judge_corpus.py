@@ -143,7 +143,23 @@ def generate_dev_rows(templates: dict, packs: list[dict], tables: dict | None = 
         pool = en["name_templates"] if stratum == "person" else en["term_templates"]
         template = pool[i % len(pool)]
         add(_row(f"{id_prefix}-PACK-{c['pack']}-{i}", stratum, "en", template, c["original"], c["replacement"], correction, safe_alias, f"packs/{c['pack']}.json pair reviewed: {review['reason']}"), "pack_reviewed")
+    refuse_label_conflicts(rows)
     return rows, counts
+
+
+def refuse_label_conflicts(rows: list[dict]) -> None:
+    """One (original, replacement) pair carries ONE label. The tables are
+    hand-written and the same pair can be listed as a safe alias and as an
+    unsafe probe by mistake (`key cloak -> Keycloak` in the v5 final
+    calibration table: 49 unsafe rows against 24 safe rows of the same
+    pair, which made the set unmeasurable); a set with such a pair is
+    refused at build time rather than discovered in the score."""
+    labels: dict[tuple[str, str], set[tuple[bool, bool]]] = {}
+    for r in rows:
+        labels.setdefault((r["original"].casefold(), r["replacement"].casefold()), set()).add((r["correction"], r["safe_alias"]))
+    conflicts = sorted(k for k, v in labels.items() if len(v) > 1)
+    if conflicts:
+        raise ValueError(f"{len(conflicts)} pair(s) carry more than one label: {conflicts[:5]}")
 
 
 def build_calibration_fresh(args, frozen: dict) -> int:

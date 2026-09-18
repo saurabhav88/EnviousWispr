@@ -7,8 +7,11 @@ decision is granted (plan §3.1 step 7). It never touches
 `correctionButUnsafe`.
 
   veto(original, language) ->
-    covered=False           the row's language has no list: ABSTAIN, and the
-                            judge grants no alias for that row (fail closed)
+    covered=False           the row's language has no list, or its list was
+                            never measured to carry that language's common
+                            given names (`policy.alias_languages`): ABSTAIN,
+                            and the judge grants no alias for that row while
+                            the corrected spelling is still learned
     vetoed=True, reason     a single-token original that is a word people
                             use (row language or English, Zipf >= the single
                             floor), or a multi-token original whose tokens
@@ -90,6 +93,21 @@ class AliasVeto:
             raise RuntimeError("veto resource: advertised languages differ from loaded tables")
         if "en" not in self.languages or any(not table for table in self._zipf.values()):
             raise RuntimeError("veto resource has missing or empty required coverage")
+        # Alias grants are limited to languages whose NAME coverage was
+        # measured (founder decision 2026-09-18); the list must be explicit,
+        # non-empty and a subset of the loaded tables.
+        alias = self.policy.get("alias_languages")
+        evidence = self.policy.get("alias_languages_evidence")
+        if (
+            not isinstance(alias, list)
+            or not alias
+            or not all(isinstance(x, str) and x.strip() for x in alias)
+            or not set(alias) <= self.languages
+            or not isinstance(evidence, str)
+            or not evidence.strip()
+        ):
+            raise RuntimeError("veto resource: policy.alias_languages requires loaded tables and non-empty string alias_languages_evidence")
+        self.alias_languages = set(alias)
 
     def has_frequency_list(self, language: str) -> bool:
         """True when the row's language has a frequency list. This is list
@@ -99,12 +117,17 @@ class AliasVeto:
         return language.split("-")[0].casefold() in self.languages
 
     def covers(self, language: str) -> bool:
-        return self.has_frequency_list(language)
+        """True only when the language may grant an alias: it has a list AND
+        its name coverage was measured (`policy.alias_languages`)."""
+        lang = language.split("-")[0].casefold()
+        return self.has_frequency_list(lang) and lang in self.alias_languages
 
     def veto(self, original: str, language: str) -> VetoDecision:
         lang = language.split("-")[0].casefold()
+        if not self.has_frequency_list(lang):
+            return VetoDecision(covered=False, vetoed=False, reason=f"language {lang!r} has no list in {self.version}: abstain, no alias")
         if not self.covers(lang):
-            return VetoDecision(covered=False, vetoed=False, reason=f"language {lang!r} not covered by {self.version}: abstain, no alias")
+            return VetoDecision(covered=False, vetoed=False, reason=f"language {lang!r} name coverage unproven in {self.version}: abstain, no alias")
         tokens = [normalise_token(t) for t in original.split()]
         tokens = [t for t in tokens if t]
         if not tokens:
