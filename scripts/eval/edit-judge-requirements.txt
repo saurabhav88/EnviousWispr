@@ -1,0 +1,14 @@
+# Pinned toolchain for the #996 edit-judge probe, trainer and converter (uv venv, Python 3.13).
+# Recreate: uv venv --python 3.13 <main>/artifacts/issue-996-edit-judge/.venv
+#           uv pip install --python <venv>/bin/python -r scripts/eval/edit-judge-requirements.txt
+# The probe and converter refuse any other transformers/coremltools version
+# (probe_edit_judge_compatibility.EXPECTED_TOOLCHAIN).
+torch==2.12.1
+transformers==4.50.0
+coremltools==9.0
+numpy==2.5.3
+safetensors==0.8.0
+huggingface-hub==0.36.2
+tokenizers==0.21.4
+sentencepiece==0.2.2
+protobuf
