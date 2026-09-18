@@ -173,7 +173,7 @@ def test_generated_dev_rows_are_valid_labelled_and_frozen_disjoint():
     assert counts["pack_unreviewed_omitted"] == len(templates["pack_reviews"]["omitted"]) == 21
     assert not any(r["id"].startswith("DEV-PACK") and r["original"].lower().replace("'", "") == r["replacement"].lower().replace("'", "") for r in rows)
     assert all(v["reason"].strip() for v in templates["pack_reviews"]["decisions"].values())
-    assert templates["version"] == "edit-judge-dev-templates-v3"
+    assert templates["version"] == "edit-judge-dev-templates-v5"
     classes = {data.three_class(r["correction"], r["safe_alias"]) for r in rows}
     assert classes == set(data.THREE_CLASSES)
     assert {r["language"] for r in rows} >= {"en", "de", "es", "fr", "it", "pt", "hi", "ar", "zh", "ja", "ru", "ko"}

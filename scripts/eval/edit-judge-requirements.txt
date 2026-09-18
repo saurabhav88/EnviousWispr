@@ -12,3 +12,5 @@ huggingface-hub==0.36.2
 tokenizers==0.21.4
 sentencepiece==0.2.2
 protobuf
+# alias veto resource (chunk 3): wordfreq with CJK tokenizers
+wordfreq[cjk]==3.1.1

@@ -76,14 +76,17 @@ def _row(rid: str, stratum: str, language: str, template: str, original: str, re
     }
 
 
-def generate_dev_rows(templates: dict, packs: list[dict]) -> tuple[list[dict], dict]:
+def generate_dev_rows(templates: dict, packs: list[dict], tables: dict | None = None, id_prefix: str = "DEV") -> tuple[list[dict], dict]:
     """Every template x entity combination the tables allow. Deterministic:
-    no sampling, so the same tables always give the same rows. Returns the
-    rows and per-source counts."""
+    no sampling, so the same tables always give the same rows. `tables`
+    defaults to the templates file's own training tables; the
+    calibration-only tables are passed instead for the fresh calibration
+    set (then `packs` is empty). Returns the rows and per-source counts."""
     rows: list[dict] = []
     counts: dict[str, int] = {}
     langs = templates["languages"]
     version = templates["version"]
+    tables = tables if tables is not None else templates
 
     def add(row: dict, source_key: str) -> None:
         rows.append(row)
@@ -95,31 +98,31 @@ def generate_dev_rows(templates: dict, packs: list[dict]) -> tuple[list[dict], d
     for lang, t in langs.items():
         n_templates = len(t["term_templates"])
         k = 0
-        for term in templates["terms_safe"]:
+        for term in tables["terms_safe"]:
             for ai, alias in enumerate(term["aliases"]):
                 for j in range(2):
                     ti = (k + j) % n_templates
                     template = t["term_templates"][ti]
-                    add(_row(f"DEV-TERM-{lang}-{ti}-{term['canonical']}-{ai}", "domain", lang, template, alias, term["canonical"], True, True, f"{version} terms_safe x {lang} term_templates[{ti}]"), "terms_safe")
+                    add(_row(f"{id_prefix}-TERM-{lang}-{ti}-{term['canonical']}-{ai}", "domain", lang, template, alias, term["canonical"], True, True, f"{version} terms_safe x {lang} term_templates[{ti}]"), "terms_safe")
                 k += 1
     # correctionButUnsafe: common-word originals for terms, real-name originals for names.
     for lang, t in langs.items():
         for ti, template in enumerate(t["term_templates"]):
-            for pi, (orig, canon) in enumerate(templates["terms_unsafe"]["pairs"]):
-                add(_row(f"DEV-TERMU-{lang}-{ti}-{pi}", "domain", lang, template, orig, canon, True, False, f"{version} terms_unsafe[{pi}] x {lang} term_templates[{ti}]"), "terms_unsafe")
+            for pi, (orig, canon) in enumerate(tables["terms_unsafe"]["pairs"]):
+                add(_row(f"{id_prefix}-TERMU-{lang}-{ti}-{pi}", "domain", lang, template, orig, canon, True, False, f"{version} terms_unsafe[{pi}] x {lang} term_templates[{ti}]"), "terms_unsafe")
         for ti, template in enumerate(t["name_templates"]):
-            for pi, (orig, canon) in enumerate(templates["names_unsafe"].get(lang, [])):
-                add(_row(f"DEV-NAMEU-{lang}-{ti}-{pi}", "ambiguous_name", lang, template, orig, canon, True, False, f"{version} names_unsafe[{lang}][{pi}] x name_templates[{ti}]"), "names_unsafe")
-            for pi, (orig, canon) in enumerate(templates["names_safe"].get(lang, [])):
-                add(_row(f"DEV-NAME-{lang}-{ti}-{pi}", "person", lang, template, orig, canon, True, True, f"{version} names_safe[{lang}][{pi}] x name_templates[{ti}]"), "names_safe")
+            for pi, (orig, canon) in enumerate(tables["names_unsafe"].get(lang, [])):
+                add(_row(f"{id_prefix}-NAMEU-{lang}-{ti}-{pi}", "ambiguous_name", lang, template, orig, canon, True, False, f"{version} names_unsafe[{lang}][{pi}] x name_templates[{ti}]"), "names_unsafe")
+            for pi, (orig, canon) in enumerate(tables["names_safe"].get(lang, [])):
+                add(_row(f"{id_prefix}-NAME-{lang}-{ti}-{pi}", "person", lang, template, orig, canon, True, True, f"{version} names_safe[{lang}][{pi}] x name_templates[{ti}]"), "names_safe")
         # notCorrection: rewordings/formatting and instruction-like replacements in context templates.
         for ti, template in enumerate(t["context_templates"]):
-            for pi, (orig, repl) in enumerate(templates["rewordings"].get(lang, [])):
+            for pi, (orig, repl) in enumerate(tables["rewordings"].get(lang, [])):
                 stratum = "grammar_punctuation" if any(ch.isdigit() for ch in repl) else "rewording"
-                add(_row(f"DEV-REWORD-{lang}-{ti}-{pi}", stratum, lang, template, orig, repl, False, False, f"{version} rewordings[{lang}][{pi}] x context_templates[{ti}]"), "rewordings")
-            for pi, injection in enumerate(templates["injections"].get(lang, [])):
-                orig = templates["rewordings"][lang][pi % len(templates["rewordings"][lang])][0]
-                add(_row(f"DEV-INJECT-{lang}-{ti}-{pi}", "instruction_like", lang, template, orig, injection, False, False, f"{version} injections[{lang}][{pi}] x context_templates[{ti}]"), "injections")
+                add(_row(f"{id_prefix}-REWORD-{lang}-{ti}-{pi}", stratum, lang, template, orig, repl, False, False, f"{version} rewordings[{lang}][{pi}] x context_templates[{ti}]"), "rewordings")
+            for pi, injection in enumerate(tables["injections"].get(lang, [])):
+                orig = tables["rewordings"][lang][pi % len(tables["rewordings"][lang])][0]
+                add(_row(f"{id_prefix}-INJECT-{lang}-{ti}-{pi}", "instruction_like", lang, template, orig, injection, False, False, f"{version} injections[{lang}][{pi}] x context_templates[{ti}]"), "injections")
     # Vocabulary-pack aliases enter ONLY through an explicit per-pair review
     # (`pack_reviews.decisions`); a pair with no review stays an unreviewed
     # candidate. English templates, one per pair (round robin) so the pack
@@ -139,8 +142,61 @@ def generate_dev_rows(templates: dict, packs: list[dict]) -> tuple[list[dict], d
         stratum = PACK_STRATUM.get(c["pack"], "domain") if correction else "rewording"
         pool = en["name_templates"] if stratum == "person" else en["term_templates"]
         template = pool[i % len(pool)]
-        add(_row(f"DEV-PACK-{c['pack']}-{i}", stratum, "en", template, c["original"], c["replacement"], correction, safe_alias, f"packs/{c['pack']}.json pair reviewed: {review['reason']}"), "pack_reviewed")
+        add(_row(f"{id_prefix}-PACK-{c['pack']}-{i}", stratum, "en", template, c["original"], c["replacement"], correction, safe_alias, f"packs/{c['pack']}.json pair reviewed: {review['reason']}"), "pack_reviewed")
     return rows, counts
+
+
+def build_calibration_fresh(args, frozen: dict) -> int:
+    """A calibration set from the CALIBRATION-ONLY tables: fresh families
+    that never entered training or threshold selection. Refuses any family
+    shared with the given split manifest or the frozen rows."""
+    import edit_judge_gate as gate_mod
+
+    templates = json.loads(args.templates.read_text(encoding="utf-8"))
+    rows, source_counts = generate_dev_rows(templates, [], tables=templates[args.calibration_tables], id_prefix="CAL")
+    for r in rows:
+        r["label_source"] = r["label_source"].replace("(class decided at table level)", "(calibration-only table, class decided at table level)")
+    rows = [r for r in rows if gate_mod.validate_rows([r], "cal") == []]
+    rows, dropped_frozen = drop_frozen(rows, frozen)
+    seen: set[str] = set()
+    rows = [r for r in rows if not (data.content_hash(r) in seen or seen.add(data.content_hash(r)))]
+    problems = gate_mod.validate_rows(rows, "cal")
+    if problems:
+        print("INFRA-ERROR: generated calibration rows invalid: " + "; ".join(problems[:5]), file=sys.stderr)
+        return 2
+    gate_mod.require_clean_dev(rows, frozen)
+    split = json.loads(args.split_manifest.read_text(encoding="utf-8"))
+    used_families = {f for p in split["partitions"].values() for f in p["families"]}
+    used_hashes = {h for p in split["partitions"].values() for h in p["hashes"]}
+    shared_f = sorted({data.family_key(r) for r in rows} & used_families)
+    shared_h = [r["id"] for r in rows if data.content_hash(r) in used_hashes]
+    if shared_f or shared_h:
+        print(f"INFRA-ERROR: calibration set shares {len(shared_f)} families / {len(shared_h)} rows with the training split: {shared_f[:5]}", file=sys.stderr)
+        return 2
+    out = args.calibration_out
+    out.mkdir(parents=True, exist_ok=False)
+    path = out / "calibration.jsonl"
+    data.write_jsonl(path, rows)
+    classes: dict[str, int] = {}
+    langs: dict[str, int] = {}
+    for r in rows:
+        c = data.three_class(r["correction"], r["safe_alias"])
+        classes[c] = classes.get(c, 0) + 1
+        langs[r["language"]] = langs.get(r["language"], 0) + 1
+    manifest = {
+        "hash_version": data.HASH_VERSION,
+        "templates_version": templates["version"],
+        "templates_sha256": data.sha256_file(args.templates),
+        "tables": args.calibration_tables,
+        "disjoint_from_split_manifest_sha256": data.sha256_file(args.split_manifest),
+        "review_status": REVIEW_STATUS,
+        "source_counts": source_counts,
+        "dropped_frozen": dropped_frozen,
+        "partitions": {"calibration": {"path": path.name, "file_sha256": data.sha256_file(path), "rows": len(rows), "classes": dict(sorted(classes.items())), "languages": dict(sorted(langs.items())), **data.partition_manifest(rows)}},
+    }
+    (out / "split-manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(json.dumps({k: v for k, v in manifest.items() if k != "partitions"} | {"calibration": {k: v for k, v in manifest["partitions"]["calibration"].items() if k not in ("hashes", "families")}}, indent=2, ensure_ascii=False))
+    return 0
 
 
 def build_dev(args, frozen: dict) -> int:
@@ -246,9 +302,13 @@ def main() -> int:
     p.add_argument("--templates", type=Path, default=DEV_TEMPLATES)
     p.add_argument("--dev-out", type=Path, default=DEFAULT_DEV_OUT)
     p.add_argument("--seed", default="chunk-2c", help="--dev: family split seed")
+    p.add_argument("--calibration-fresh", action="store_true", help="build the calibration-only set from the templates' calibration_only tables")
+    p.add_argument("--split-manifest", type=Path, help="--calibration-fresh: the training split the set must be disjoint from")
+    p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")
+    p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final"], help="--calibration-fresh: which calibration-only tables")
     args = p.parse_args()
 
-    required = (args.packs, args.frozen_manifest) + ((args.templates,) if args.dev else (args.polish,))
+    required = (args.packs, args.frozen_manifest) + ((args.templates,) if (args.dev or args.calibration_fresh) else (args.polish,))
     for path in required:
         if not path.exists():
             print(f"INFRA-ERROR: missing {path}", file=sys.stderr)
@@ -259,6 +319,11 @@ def main() -> int:
     if problems:
         print("INFRA-ERROR: frozen partitions are not intact: " + "; ".join(problems), file=sys.stderr)
         return 2
+    if args.calibration_fresh:
+        if not args.split_manifest or not args.calibration_out:
+            print("INFRA-ERROR: --calibration-fresh needs --split-manifest and --calibration-out", file=sys.stderr)
+            return 2
+        return build_calibration_fresh(args, frozen)
     if args.dev:
         return build_dev(args, frozen)
 

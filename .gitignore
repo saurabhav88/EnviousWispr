@@ -372,6 +372,9 @@ scripts/eval/alias_runner/Package.resolved
 !scripts/eval/probe_edit_judge_compatibility.py
 !scripts/eval/train_edit_judge.py
 !scripts/eval/convert_edit_judge.py
+!scripts/eval/calibrate_edit_judge.py
+!scripts/eval/edit_judge_veto.py
+!scripts/eval/build_edit_judge_veto_resource.py
 !scripts/eval/edit-judge-requirements.txt
 !scripts/eval/corpus/edit-judge-dev-templates.json
 !scripts/eval/corpus/edit-corpus-a.jsonl
