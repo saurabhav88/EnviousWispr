@@ -22,8 +22,8 @@ struct SpokenPunctuationCopyTests {
       ("exclamation point", "!"),
       ("colon", ":"),
       ("semicolon", ";"),
-      ("slash", "/"),
-      ("forward slash", "/"),
+      // #3038: "slash" and "forward slash" left this table; the slash converts in both switch
+      // positions and the footnote below says so.
       ("backslash", "\\"),
       ("new line", "a line break"),
       ("new paragraph", "a blank line"),
@@ -41,6 +41,21 @@ struct SpokenPunctuationCopyTests {
   func spokenPhrasesAreUnique() {
     let spoken = SpokenPunctuationCopy.phrases.map(\.spoken)
     #expect(Set(spoken).count == spoken.count, "duplicate spoken phrase would collapse a panel row")
+  }
+
+  /// #3038: the footnote is the only place the panel describes the always-on slash, so its exact
+  /// wording is pinned: the three shapes (a command, a command in a sentence, a pair), the verb
+  /// that stays words, and the non-categorical "can still" for the known miss.
+  @Test("The footnote describes the always-on slash without a categorical promise")
+  func footnoteIsFrozen() {
+    #expect(
+      SpokenPunctuationCopy.helpFootnote
+        == "These words become marks even when you meant the word itself, like \"the grace "
+        + "period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, "
+        + "\"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes "
+        + "pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", "
+        + "can still become a symbol.")
+    #expect(SpokenPunctuationCopy.helpFootnote.contains("always") == false)
   }
 
   /// Brand rule: no em-dashes or en-dashes in user-facing copy.

@@ -2,10 +2,12 @@ import Foundation
 
 /// #1794: canonical copy for the spoken-punctuation setting and its in-app help panel.
 ///
-/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` plus its
-/// `joinerCommands` sibling (one rule can yield more than one spoken phrase: `exclamation
-/// (mark|point)` and the optional "forward" on slash both do; the two-word "back slash" alias
-/// is accepted but not listed). The regex table
+/// `phrases` is a HAND-MAINTAINED mirror of `InverseTextNormalizer.punct` plus the backslash
+/// half of its `joinerCommands` sibling (one rule can yield more than one spoken phrase:
+/// `exclamation (mark|point)` does; the two-word "back slash" alias is accepted but not
+/// listed). The spoken SLASH is not in this table since #3038: it converts in both switch
+/// positions (`InverseTextNormalizer.slashReading`), so the panel, which documents what the
+/// setting does, describes it in the footnote instead. The regex table
 /// is `private` and deliberately stays that way: deriving this list from it at runtime
 /// would mean widening the engine's internals across a module boundary to render a
 /// static help panel. The cost of the mirror is drift; the guard is
@@ -27,7 +29,10 @@ enum SpokenPunctuationCopy {
   /// by having a sentence quietly broken.
   static let helpFootnote =
     "These words become marks even when you meant the word itself, like \"the grace "
-    + "period expires\"."
+    + "period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, "
+    + "\"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes "
+    + "pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", "
+    + "can still become a symbol."
 
   /// Spoken phrase paired with what the user sees. Order is the order shown.
   /// `result` is display copy, not the literal replacement: "new line" inserts a real
@@ -47,8 +52,6 @@ enum SpokenPunctuationCopy {
     Phrase(spoken: "exclamation point", result: "!"),
     Phrase(spoken: "colon", result: ":"),
     Phrase(spoken: "semicolon", result: ";"),
-    Phrase(spoken: "slash", result: "/"),
-    Phrase(spoken: "forward slash", result: "/"),
     Phrase(spoken: "backslash", result: "\\"),
     Phrase(spoken: "new line", result: "a line break"),
     Phrase(spoken: "new paragraph", result: "a blank line"),
