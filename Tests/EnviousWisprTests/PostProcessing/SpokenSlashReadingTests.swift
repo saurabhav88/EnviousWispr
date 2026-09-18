@@ -220,6 +220,32 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("Go ahead and slash exit now.") == "Go ahead and slash exit now.")
   }
 
+  @Test("An earlier command informs the next marker only within its sentence")
+  func earlierReadingStopsAtASentenceEnd() {
+    // Same words as the B4 verb row, with a command in the sentence before: the verb survives.
+    #expect(
+      Self.off("Run slash help. They trim packaging and slash shipping costs.")
+        == "Run /help. They trim packaging and slash shipping costs.")
+    #expect(
+      Self.off("Run slash help! Trim packaging and slash shipping costs.")
+        == "Run /help! Trim packaging and slash shipping costs.")
+    // A line break is a boundary too; a comma is not (B5).
+    #expect(Self.off("Run slash help\nand slash budgets") == "Run /help\nand slash budgets")
+    #expect(Self.off("Run slash help\r\nand slash budgets") == "Run /help\r\nand slash budgets")
+    #expect(Self.off("slash list, sorry, slash inspect") == "/list, sorry, /inspect")
+    // Two commands in two sentences still each read as a command on their own (B7).
+    #expect(Self.off("slash clear. slash exit.") == "/clear. /exit.")
+  }
+
+  @Test("A chain spoken as \"forward slash\" is the same chain")
+  func forwardSlashChain() {
+    #expect(Self.off("output to forward slash tmp forward slash wispr") == "output to /tmp/wispr")
+    #expect(Self.off("output to slash tmp forward slash wispr") == "output to /tmp/wispr")
+    #expect(Self.off("output to forward slash tmp slash wispr") == "output to /tmp/wispr")
+    // Row 5 without a chain still keeps the verb reading.
+    #expect(Self.off("we need to forward slash costs") == "we need to forward slash costs")
+  }
+
   @Test("Row B7: a clause boundary before the marker is a command; a comma before a chain is not")
   func rowB7Comma() {
     #expect(

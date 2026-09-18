@@ -55,6 +55,13 @@ struct PolishSymbolGuardTests {
     let bold = validate("Use **and/or** in that clause.", original: "Use and/or in that clause.")
     #expect(bold.guardName == nil)
     #expect(bold.text == "Use **and/or** in that clause.")
+    // Typographic quotes around the command are decoration too.
+    let curly = validate("Please use \u{201C}/exit\u{201D} now.", original: "please use /exit now")
+    #expect(curly.guardName == nil)
+    #expect(curly.text == "Please use \u{201C}/exit\u{201D} now.")
+    #expect(
+      LLMPolishStep.symbolTokens(in: "\u{2018}/exit\u{2019} and \u{AB}/clear\u{BB}")
+        == ["/exit", "/clear"])
   }
 
   @Test("A retained URL path passes; a stripped scheme falls back")

@@ -204,7 +204,9 @@ struct SnippetFinalizerTests {
   func missingSentinelRejectsPolish() {
     var ctx = context(
       text: "email me at EWSNIPaaa", polished: "Email me at your address.", records: [email])
-    ctx.polishValidatorGuard = nil
+    // Seeded non-nil so the assertion below observes the clear. The wiring cannot reach this
+    // pair (a fired validator guard delivers the cleaned text, which keeps its sentinels).
+    ctx.polishValidatorGuard = "symbol_drop"
     ctx.symbolTokens = 1
 
     SnippetFinalizer.finalize(&ctx)

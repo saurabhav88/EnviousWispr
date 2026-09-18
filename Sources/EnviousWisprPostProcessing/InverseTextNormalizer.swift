@@ -2501,6 +2501,12 @@ public struct InverseTextNormalizer: Sendable {
   /// this pass agree, and both leave a decomposed combining mark alone.
   static let loneCommandPeriod = #"^\s*(/[\p{L}\p{N}_][\p{L}\p{N}_-]*)\s*\.\s*$"#
 
+  /// A sentence end (terminal mark, optional closing quotes or brackets, then whitespace) or a
+  /// line break: the boundary past which one marker's reading no longer informs the next.
+  /// Matched through `firstMatch` (NSRegularExpression): `String.range(of:options:)` with
+  /// `.regularExpression` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
+  static let slashSentenceBreak = #"[.!?][\"'”’)\]]*\s|\R"#
+
   /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
   ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless
   ///   (#3038). Sentence capitalization below runs REGARDLESS: it keys off `.!?` whoever produced
@@ -2514,8 +2520,18 @@ public struct InverseTextNormalizer: Sendable {
       }
     }
     var previous: SlashReading? = nil
+    var previousMarkerEnd = 0
     t = reSub(Self.joinerCommands, t) { m in
       guard let command = m.g(1) else { return nil }
+      // A reading carries only within a sentence: "Run slash help. They trim packaging and slash
+      // shipping costs." must not let the first command's `.prefix` turn the verb after "and"
+      // into `/shipping` (row B4). A sentence end or a line break between two markers forgets
+      // the earlier reading; a comma keeps it (row B5, "slash list, sorry, slash inspect").
+      let markerSpan = m.result.range(at: 1)
+      let gap = m.ns.substring(
+        with: NSRange(location: previousMarkerEnd, length: markerSpan.location - previousMarkerEnd))
+      if firstMatch(Self.slashSentenceBreak, gap, caseInsensitive: false) != nil { previous = nil }
+      previousMarkerEnd = NSMaxRange(markerSpan)
       if command.lowercased().hasPrefix("back") {
         // Backslash stays toggle-gated (#2955 decision; "backslash" is the snippet keyword).
         // ON keeps the comma the pattern consumed: "docs, back slash A one" -> "docs,\A1".
@@ -2544,7 +2560,15 @@ public struct InverseTextNormalizer: Sendable {
             ns, endingAt: beforeLeft.edge + beforeLeft.raw.utf16.count)
         }
       }
-      if !right.raw.isEmpty { ctx.afterRight = Self.slashNeighbour(ns, after: right.edge).core }
+      if !right.raw.isEmpty {
+        let next = Self.slashNeighbour(ns, after: right.edge)
+        ctx.afterRight = next.core
+        // The next marker may be spoken as two words ("output to forward slash tmp forward slash
+        // wispr"); the table reads a chain as the single word "slash".
+        if next.core == "forward", Self.slashNeighbour(ns, after: next.edge).core == "slash" {
+          ctx.afterRight = "slash"
+        }
+      }
       ctx.capitalisedMidSentence =
         command.hasPrefix("S") && !Self.slashStartsSentence(ns, at: span.location)
       ctx.previous = previous

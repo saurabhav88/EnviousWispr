@@ -1071,11 +1071,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   /// A slash or backslash with the run of ordinary characters glued to its right: `/exit`,
   /// `/oranges`, `\Users`. The run stops at whitespace, another slash, sentence punctuation,
-  /// closing brackets and quotes, and markdown emphasis (`*`, backtick), so a decorated
-  /// command (`` `/exit` ``, `**and/or**`) yields the same token as the plain one. A bare
+  /// closing brackets and quotes (straight and typographic, since a model may write “/exit”),
+  /// and markdown emphasis (`*`, backtick), so a decorated command (`` `/exit` ``,
+  /// `**and/or**`) yields the same token as the plain one. A bare
   /// trailing `/` (`docs/`) yields no token and is not guarded. Fragments by design:
   /// `https://example.com/docs` is `{/example, /docs}`, `4/6/2021` is `{/6, /2021}`.
-  nonisolated static let symbolTokenPattern = #"[/\\][^\s/\\,.;:!?)\]}"'`*]+"#
+  nonisolated static let symbolTokenPattern = #"[/\\][^\s/\\,.;:!?)\]}"'‘’“”«»`*]+"#
   nonisolated private static let symbolTokenRegex = try? NSRegularExpression(
     pattern: symbolTokenPattern)
 
