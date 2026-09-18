@@ -318,8 +318,9 @@ struct SpokenPunctuationToggleTests {
     }
   }
 
-  /// The parameter defaults to `false` so a caller that forgets it gets the non-rewriting
-  /// behaviour, which is what keeps the gitignored local ASR benchmark source-compatible.
+  /// The parameter defaults to `false` so a caller that forgets it gets the shipped behaviour
+  /// (marks gated, slash read), which is what keeps the gitignored local ASR benchmark
+  /// source-compatible.
   @Test("The default argument is OFF")
   func defaultArgumentIsOff() {
     #expect(

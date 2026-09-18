@@ -250,10 +250,11 @@ public struct InverseTextNormalizer: Sendable {
   // MARK: - Public entry point
 
   /// - Parameter spokenPunctuation: gates ONLY the bare spoken-punctuation
-  ///   commands (see `punct`). Every other conversion — numbers, currency, dates,
-  ///   times, phone, email, URL, ordinals, ranges — and the sentence-capitalization
-  ///   pass run regardless. Defaults to `false`, matching the shipped product default
-  ///   (#1794) so a caller that forgets it gets the non-rewriting behaviour.
+  ///   commands (see `punct`) and the backslash joiner. Every other conversion — numbers,
+  ///   currency, dates, times, phone, email, URL, ordinals, ranges, the spoken slash
+  ///   (#3038, `slashReading`) — and the sentence-capitalization pass run regardless.
+  ///   Defaults to `false`, matching the shipped product default (#1794) so a caller that
+  ///   forgets it gets the shipped behaviour.
   public func normalize(_ text: String, spokenPunctuation: Bool = false) -> String {
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
 
@@ -1696,8 +1697,9 @@ public struct InverseTextNormalizer: Sendable {
   /// `punct` is the authority; a command added there that becomes a delimiter adds its last word
   /// here. The joiners "slash" and "backslash" (#2955) are deliberately ABSENT: `/` and `\` glue
   /// words rather than end a clause, so "docs slash A one" keeps the reading a spoken word gets
-  /// ("docs/A1" with the setting on, "docs slash A1" off), and leaving this set alone is what keeps
-  /// the setting-off output byte-identical. Applied unconditionally rather than gated on
+  /// ("docs/A1" in both switch positions since #3038; "docs backslash A one" is "docs\A1" on and
+  /// "docs backslash A1" off), and leaving this set alone is what keeps the setting-off output
+  /// for the gated commands byte-identical. Applied unconditionally rather than gated on
   /// `spokenPunctuation`, so this port and the Python oracle stay identical — with the setting off
   /// the cost is an under-conversion after a rare phrase ("the finish line A one"), which is the
   /// safe direction.
@@ -2194,7 +2196,8 @@ public struct InverseTextNormalizer: Sendable {
   /// itself followed by whitespace or the end (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other
   /// neighbour means the letters are part of a written token, so "example.com/slash/docs",
   /// "C:\backslash\Users", "slash.com" and "backslash.txt" are left alone and the pass stays
-  /// idempotent, while "and slash." and "slash, then" still convert. A third finding of this
+  /// idempotent, while "and slash." and "slash, then" still MATCH (the slash reading then keeps
+  /// the word: a marker carrying its own punctuation has no right neighbour, row 0). A third finding of this
   /// shape would have to name a neighbour that is neither whitespace, the end, nor terminal
   /// punctuation followed by one of those, and there is no such character. "slashing" and
   /// "slasher" fail the right-hand check. The backslash alternative is listed first so

@@ -82,6 +82,19 @@ struct SpokenSlashReadingTests {
         == "For tomorrow's meeting we need apples/oranges/bananas.")
   }
 
+  /// The exact phrases the settings footnote, the What's New card and the help article quote,
+  /// as standalone inputs, so the copy can never advertise an output the engine does not
+  /// produce (`SpokenPunctuationCopy.helpFootnote`).
+  @Test("The advertised examples are real outputs")
+  func advertisedExamples() {
+    #expect(Self.off("slash clear") == "/clear")
+    #expect(Self.off("command is slash wfp") == "command is /wfp")
+    #expect(Self.off("pros slash cons") == "pros/cons")
+    #expect(Self.off("slash the budget") == "slash the budget")
+    // The known miss the copy names.
+    #expect(Self.off("slash prices") == "/prices")
+  }
+
   // MARK: - The reading table, one row at a time
 
   @Test("Row 0: nothing after the marker keeps the word")
