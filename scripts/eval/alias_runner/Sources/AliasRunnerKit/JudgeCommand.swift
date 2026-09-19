@@ -82,6 +82,10 @@ package enum JudgeCandidate: String, CaseIterable, Sendable {
     switch self {
     case .fixture: return .fixture
     case .rules, .afmMacOS26, .afmMacOS27, .xencMMBERTSmall, .xencMDeBERTaV3Base, .xencXLMRBase:
+      // `.rules` and the two AFM arms are registered by the runner binary
+      // (`DoorJudgeArm.arms()`); this status describes the KIT alone, which
+      // implements nothing itself. A candidate with no registered arm is
+      // reported `unimplemented` by `execute`.
       return .unimplemented
     case .qwen3_0_6B: return .deferred
     }

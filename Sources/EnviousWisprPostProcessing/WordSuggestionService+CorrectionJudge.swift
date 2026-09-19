@@ -241,10 +241,17 @@ extension WordSuggestionService: CorrectionJudging {
   /// Benchmark-only entry point for `scripts/eval/alias_runner judge`
   /// (#996). JSON in, JSON out, so the runner package needs no production
   /// types: request `{"candidates":[{"id":1,"original":"…","replacement":"…"}],
-  /// "context":"…","language":"en"}`; response `{"outcome":"verdict"|<bypass>,
+  /// "context":"…","language":"en","arm":"afm"|"rules"?}`; response
+  /// `{"outcome":"verdict"|<bypass>,
   /// "decisions":[{"id":1,"vocabulary_correction":true,"safe_alias":false}],
   /// "latency_ms":123.4,"execution_identity":{…},"note":"…"}`. The production
-  /// seam is `judge(_:)` above; this calls it and adds nothing.
+  /// seams are `judge(_:)` above and `RulesCorrectionJudge.judge(_:)`; this
+  /// calls one of them and adds nothing. `arm` absent means this AFM arm
+  /// (the shipped default); `"rules"` routes to the production rules judge
+  /// (chunk 4a) so the runner, a separate package that cannot see `package`
+  /// declarations, still executes the exact implementation the app ships;
+  /// any other value is refused as `malformed` with a note, never silently
+  /// answered by a different judge.
   ///
   /// NEVER call from production code.
   // periphery:ignore - eval harness API (scripts/eval/alias_runner)
@@ -258,6 +265,7 @@ extension WordSuggestionService: CorrectionJudging {
       let candidates: [RequestCandidate]
       let context: String
       let language: String?
+      let arm: String?
     }
     struct ResponseDecision: Encodable {
       let id: Int
@@ -273,15 +281,42 @@ extension WordSuggestionService: CorrectionJudging {
     }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    let identity = await capabilities.executionIdentity
     let start = ContinuousClock.now
     func elapsedMs() -> Double {
       let d = start.duration(to: ContinuousClock.now)
       return Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
     }
+    let raw: Request
+    do {
+      raw = try JSONDecoder().decode(Request.self, from: requestJSON)
+    } catch {
+      let response = Response(
+        outcome: "malformed", decisions: nil, latency_ms: elapsedMs(),
+        execution_identity: await capabilities.executionIdentity,
+        note: "request rejected before the model: \(error)")
+      return (try? encoder.encode(response)) ?? Data()
+    }
+    // Which production judge answers. Unknown selectors are refused here,
+    // with the AFM identity attached so the record still names a real arm.
+    let rules: RulesCorrectionJudge?
+    switch raw.arm {
+    case nil, "afm": rules = nil
+    case "rules": rules = RulesCorrectionJudge()
+    case let other?:
+      let response = Response(
+        outcome: "malformed", decisions: nil, latency_ms: elapsedMs(),
+        execution_identity: await capabilities.executionIdentity,
+        note: "unknown arm selector \"\(other)\"; expected afm or rules")
+      return (try? encoder.encode(response)) ?? Data()
+    }
+    let identity: [String: String]
+    if let rules {
+      identity = await rules.capabilities.executionIdentity
+    } else {
+      identity = await capabilities.executionIdentity
+    }
     let request: CorrectionJudgeRequest
     do {
-      let raw = try JSONDecoder().decode(Request.self, from: requestJSON)
       request = try CorrectionJudgeRequest(
         candidates: raw.candidates.map {
           CorrectionCandidate(id: $0.id, original: $0.original, replacement: $0.replacement)
@@ -293,7 +328,14 @@ extension WordSuggestionService: CorrectionJudging {
         note: "request rejected before the model: \(error)")
       return (try? encoder.encode(response)) ?? Data()
     }
-    let (outcome, diagnostic) = await judgeWithDiagnostic(request)
+    let outcome: CorrectionJudgeOutcome
+    let diagnostic: String?
+    if let rules {
+      outcome = await rules.judge(request)
+      diagnostic = nil
+    } else {
+      (outcome, diagnostic) = await judgeWithDiagnostic(request)
+    }
     let response: Response
     switch outcome {
     case .verdict(let decisions):
@@ -308,7 +350,7 @@ extension WordSuggestionService: CorrectionJudging {
     case .bypass(let reason):
       response = Response(
         outcome: reason.rawValue, decisions: nil, latency_ms: elapsedMs(),
-        execution_identity: identity, note: diagnostic ?? "afm arm bypass")
+        execution_identity: identity, note: diagnostic ?? (rules == nil ? "afm arm bypass" : "rules arm bypass"))
     }
     return (try? encoder.encode(response)) ?? Data()
   }

@@ -233,6 +233,45 @@ struct WordSuggestionServiceCorrectionJudgeTests {
     #expect(r2["outcome"] as? String == "malformed")
   }
 
+  @Test("the benchmark door routes `arm: rules` to the production rules judge with its identity")
+  func benchmarkDoorRulesSelector() async throws {
+    let service = WordSuggestionService()
+    let body = """
+      {"candidates":[{"id":1,"original":"note shun","replacement":"Notion"},
+      {"id":2,"original":"very fast","replacement":"quickly"}],
+      "context":"we moved the docs to note shun very fast","language":"en","arm":"rules"}
+      """
+    let response = try #require(
+      try JSONSerialization.jsonObject(
+        with: await service.benchmarkJudgeCorrections(requestJSON: Data(body.utf8)))
+        as? [String: Any])
+    #expect(response["outcome"] as? String == "verdict")
+    let decisions = try #require(response["decisions"] as? [[String: Any]])
+    #expect(decisions.map { $0["id"] as? Int } == [1, 2])
+    #expect(decisions.map { $0["vocabulary_correction"] as? Bool } == [true, false])
+    let identity = try #require(response["execution_identity"] as? [String: String])
+    #expect(identity["arm"] == "rules")
+    #expect(identity["config_sha256"] == RulesCorrectionJudge.configDigest(policy: .v1))
+    #expect(identity["config_sha256"] != WordSuggestionService.correctionJudgeConfigDigest)
+  }
+
+  @Test("the benchmark door refuses an unknown arm selector")
+  func benchmarkDoorUnknownSelector() async throws {
+    let service = WordSuggestionService()
+    let unknown = Data(
+      "{\"candidates\":[{\"id\":1,\"original\":\"a\",\"replacement\":\"b\"}],\"context\":\"x\",\"arm\":\"xlmr\"}"
+        .utf8)
+    let refused = try #require(
+      try JSONSerialization.jsonObject(
+        with: await service.benchmarkJudgeCorrections(requestJSON: unknown))
+        as? [String: Any])
+    #expect(refused["outcome"] as? String == "malformed")
+    #expect((refused["note"] as? String)?.contains("unknown arm selector") == true)
+    let identity = try #require(refused["execution_identity"] as? [String: String])
+    #expect(identity["config_sha256"] == WordSuggestionService.correctionJudgeConfigDigest)
+    #expect(identity["arm"] == nil)
+  }
+
   /// Real boundary for this arm (testing-philosophy.md
   /// RULE: the-heart-crosses-a-real-boundary-at-least-once, applied to a limb):
   /// the three plan §3.3 smoke classes through the Xcode-built path on a

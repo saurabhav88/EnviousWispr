@@ -80,12 +80,20 @@ STRATA = (
 )
 MIN_WORKING_ROWS = 150
 MIN_HOLDOUT_ROWS = 50
+# Plan §3a after the 2026-09-19 pivot: the judge decides only whether an edit
+# is a vocabulary fix worth PROPOSING; a person confirms every write. So the
+# gate is correction recall, the false-proposal rate (`false_add_rate` keeps
+# its key so older receipts still read) and latency. Alias precision and
+# recall are ADVISORY: reported with denominators, never a verdict, including
+# when undefined.
 THRESHOLDS = {
     "correction_recall_min": 0.85,
     "false_add_rate_max": 0.05,
-    "alias_precision_min": 0.95,
     "latency_p50_ms_max": 2000.0,
     "latency_p95_ms_max": 5000.0,
+}
+ADVISORY = {
+    "alias_precision_reference": 0.95,
 }
 REQUIRED_ROW_KEYS = {
     "id": str,
@@ -295,6 +303,7 @@ class Scorecard:
     false_positives: int = 0
     predicted_safe_aliases: int = 0
     correct_safe_aliases: int = 0
+    labelled_safe_aliases: int = 0
     latencies_ms: list = field(default_factory=list)
     per_stratum: dict = field(default_factory=dict)
     languages: dict = field(default_factory=dict)
@@ -313,6 +322,10 @@ class Scorecard:
     @property
     def alias_precision(self) -> Optional[float]:
         return None if self.predicted_safe_aliases == 0 else self.correct_safe_aliases / self.predicted_safe_aliases
+
+    @property
+    def alias_recall(self) -> Optional[float]:
+        return None if self.labelled_safe_aliases == 0 else self.correct_safe_aliases / self.labelled_safe_aliases
 
     @property
     def acceptance_evidence(self) -> bool:
@@ -338,7 +351,6 @@ class Scorecard:
         checks = [
             ("correction_recall", self.correction_recall, ">=", THRESHOLDS["correction_recall_min"]),
             ("false_add_rate", self.false_add_rate, "<=", THRESHOLDS["false_add_rate_max"]),
-            ("alias_precision", self.alias_precision, ">=", THRESHOLDS["alias_precision_min"]),
             ("latency_p50_ms", self.percentile(50), "<=", THRESHOLDS["latency_p50_ms_max"]),
             ("latency_p95_ms", self.percentile(95), "<=", THRESHOLDS["latency_p95_ms_max"]),
         ]
@@ -365,6 +377,20 @@ class Scorecard:
             "pass": passed,
             "reasons": reasons,
             "thresholds": THRESHOLDS,
+            "advisory": {
+                "note": "alias metrics never decide the verdict (plan §3a, pivot 2026-09-19)",
+                "alias_precision_reference": ADVISORY["alias_precision_reference"],
+                "alias_precision": {
+                    "value": self.alias_precision,
+                    "num": self.correct_safe_aliases,
+                    "den": self.predicted_safe_aliases,
+                },
+                "alias_recall": {
+                    "value": self.alias_recall,
+                    "num": self.correct_safe_aliases,
+                    "den": self.labelled_safe_aliases,
+                },
+            },
             "hash_version": data.HASH_VERSION,
             "training": self.training,
             "attempted": self.attempted,
@@ -465,6 +491,11 @@ def score(
         else:
             card.negatives += 1
             st["negatives"] += 1
+        # Population, not answers: a bypassed safe-alias row still counts in
+        # the advisory recall denominator, the same way a bypassed correction
+        # row still counts against correction recall.
+        if row["safe_alias"]:
+            card.labelled_safe_aliases += 1
 
         rec = by_id.get(row["id"])
         if rec is None:
@@ -905,8 +936,9 @@ def mode_selftest() -> int:
     ]
     card = score(rows, unsafe)
     ok, reasons = card.verdict()
-    check("unsafe aliases fail precision", not ok and any(x.startswith("alias_precision") for x in reasons))
+    check("unsafe aliases are advisory: detection still passes", ok and not reasons)
     check("alias precision denominators", card.predicted_safe_aliases == 20 and card.correct_safe_aliases == 10)
+    check("alias precision is reported as advisory", card.to_dict()["advisory"]["alias_precision"]["value"] == 0.5)
 
     # (false, true) is not a class: a judge emitting it is malformed on that row.
     not_a_class = [dict(g) for g in good]
@@ -924,11 +956,24 @@ def mode_selftest() -> int:
     check("slow p95 fails", not ok and any(x.startswith("latency_p95") for x in reasons))
     check("slow p50 still fine", not any(x.startswith("latency_p50") for x in reasons))
 
-    # Undefined metric: no learned row at all means alias precision is undefined, and that FAILS.
-    none_learned = [_record(r["id"], False, False) for r in rows]
-    card = score(rows, none_learned)
+    # Undefined advisory metric: every correction accepted with no alias marked
+    # safe leaves alias precision undefined, and that still PASSES; the
+    # advisory block says so with a null value.
+    no_alias = [_record(r["id"], r["correction"], False, latency=50.0) for r in rows]
+    card = score(rows, no_alias)
     ok, reasons = card.verdict()
-    check("undefined alias precision fails", not ok and any("alias_precision undefined" in x for x in reasons))
+    check("undefined alias precision does not fail detection", ok and not reasons)
+    check("undefined alias precision is reported null", card.to_dict()["advisory"]["alias_precision"]["value"] is None)
+    # A required metric that is undefined still fails: no negatives at all.
+    only_positives = [r for r in rows if r["correction"]]
+    card = score(only_positives, [_record(r["id"], True, False, latency=50.0) for r in only_positives])
+    ok, reasons = card.verdict()
+    check("undefined false-add rate fails", not ok and any("false_add_rate undefined" in x for x in reasons))
+    # p50 over budget fails on its own.
+    slow_all = [_record(r["id"], r["correction"], r["safe_alias"], latency=2500.0) for r in rows]
+    card = score(rows, slow_all)
+    ok, reasons = card.verdict()
+    check("slow p50 fails", not ok and any(x.startswith("latency_p50") for x in reasons))
 
     # Structural refusals, each visible by name.
     missing = good[:-1]

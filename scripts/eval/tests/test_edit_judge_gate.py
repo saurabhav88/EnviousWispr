@@ -75,23 +75,43 @@ def test_alias_precision_only_counts_rows_the_judge_would_learn():
     assert card.alias_precision == 0.5
 
 
-def test_undefined_metric_fails_the_verdict():
+def test_undefined_required_metric_fails_but_undefined_advisory_does_not():
     rows = _rows()
-    records = [_verdict(r["id"], False, False) for r in rows]
+    # Every correction accepted, nothing marked as a safe alias: alias
+    # precision is undefined and that is advisory only (plan §3a, pivot).
+    records = [_verdict(r["id"], r["correction"], False, latency=5.0) for r in rows]
     card = gate.score(rows, records)
     ok, reasons = card.verdict()
+    assert ok, reasons
+    assert card.to_dict()["advisory"]["alias_precision"]["value"] is None
+    assert card.to_dict()["advisory"]["alias_recall"] == {"value": 0.0, "num": 0, "den": 2}
+    # No negative rows at all: the false-proposal rate is undefined and FAILS.
+    positives = [r for r in rows if r["correction"]]
+    card = gate.score(positives, [_verdict(r["id"], True, False, latency=5.0) for r in positives])
+    ok, reasons = card.verdict()
     assert not ok
-    assert "alias_precision undefined (zero denominator)" in reasons
+    assert "false_add_rate undefined (zero denominator)" in reasons
+
+
+def test_alias_precision_cannot_fail_an_otherwise_qualifying_arm():
+    rows = _rows()
+    # Every correction accepted and every alias marked safe, labels split.
+    records = [_verdict(r["id"], r["correction"], r["correction"], latency=5.0) for r in rows]
+    card = gate.score(rows, records)
+    ok, reasons = card.verdict()
+    assert ok, reasons
+    assert card.alias_precision == 0.5
+    assert not any("alias" in x for x in reasons)
 
 
 def test_thresholds_are_the_plan_values():
     assert gate.THRESHOLDS == {
         "correction_recall_min": 0.85,
         "false_add_rate_max": 0.05,
-        "alias_precision_min": 0.95,
         "latency_p50_ms_max": 2000.0,
         "latency_p95_ms_max": 5000.0,
     }
+    assert gate.ADVISORY == {"alias_precision_reference": 0.95}
     assert len(gate.STRATA) == 9
 
 
@@ -116,4 +136,24 @@ def test_scorecard_dict_carries_numerators_and_denominators():
     assert d["false_add_rate"] == {"value": 0.0, "num": 0, "den": 4}
     assert d["latency_ms"]["n"] == 8
     assert set(d["per_stratum"]) <= set(gate.STRATA)
-    assert d["pass"] is True or "alias_precision undefined (zero denominator)" in d["reasons"]
+    assert d["pass"] is True, d["reasons"]
+    assert d["advisory"]["alias_precision"] == {"value": 1.0, "num": 2, "den": 2}
+
+
+def test_bypassed_safe_alias_row_stays_in_the_advisory_recall_denominator():
+    # 4 positives: P0 and P2 are labelled safe aliases. P0 is answered
+    # correctly (alias found); P2 hits the deadline. Recall must be 1/2, not
+    # 1/1: the population is the labelled rows, not the answered rows.
+    rows = _rows()
+    records = []
+    for r in rows:
+        if r["id"] == "P2":
+            records.append(gate._record(r["id"], None, None, outcome="deadline", latency=5.0))
+        else:
+            records.append(_verdict(r["id"], r["correction"], r["safe_alias"], latency=5.0))
+    card = gate.score(rows, records)
+    assert card.bypass_counts == {"deadline": 1}
+    assert card.to_dict()["advisory"]["alias_recall"] == {"value": 0.5, "num": 1, "den": 2}
+    # The bypass reaches the detection verdict only through correction recall
+    # (3/4 answered positives), never through the advisory block.
+    assert card.correction_recall == 0.75

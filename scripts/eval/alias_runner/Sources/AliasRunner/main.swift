@@ -425,7 +425,7 @@ func runJudge(_ argv: [String]) async -> Never {
     FileHandle.standardError.write(Data(("AliasRunner judge: \(error)\n" + JudgeCLI.usage + "\n").utf8))
     exit(2)
   }
-  let (records, code) = await JudgeCLI.execute(args: judgeArgs, arms: AFMJudgeArm.arms())
+  let (records, code) = await JudgeCLI.execute(args: judgeArgs, arms: DoorJudgeArm.arms())
   if code == 2 {
     FileHandle.standardError.write(
       Data("AliasRunner judge: could not load the corpus or the fixture (see usage)\n".utf8))
@@ -457,23 +457,35 @@ func runJudge(_ argv: [String]) async -> Never {
 
 // MARK: - AFM judge arms (#996 chunk 2b)
 
-/// The Apple FoundationModels comparison arms, one per OS the plan names.
-/// An arm only EXECUTES on the OS it is named for: asking for `afm-macos26`
-/// on a macOS 27 Mac writes `unavailable` rows that say so, never a result
-/// relabelled as the other arm. Each executed row calls the benchmark door
-/// on the shipped `WordSuggestionService` (one instance, one permit queue),
-/// with the row's single candidate and the pasted sentence as context, and
-/// carries the service's execution identity.
-struct AFMJudgeArm: JudgeArm {
+/// The judge arms that answer through the shipped JSON benchmark door: the
+/// two Apple FoundationModels comparison arms, one per OS the plan names,
+/// and the production rules judge (#996 chunk 4a). An OS-bound arm only
+/// EXECUTES on the OS it is named for: asking for `afm-macos26` on a macOS 27
+/// Mac writes `unavailable` rows that say so, never a result relabelled as
+/// the other arm. Each executed row calls the door on the shipped
+/// `WordSuggestionService` (one instance, one permit queue), with the row's
+/// single candidate and the pasted sentence as context, and carries the
+/// answering judge's execution identity.
+struct DoorJudgeArm: JudgeArm {
   let candidate: JudgeCandidate
-  let requiredMajor: Int
+  /// The macOS major this arm may execute on; `nil` for an arm that runs on
+  /// every supported macOS (rules).
+  let requiredMajor: Int?
   let service: WordSuggestionService
+  /// The door's `arm` selector: absent for the shipped AFM default, `rules`
+  /// for the production rules judge (#996 chunk 4a). The door refuses any
+  /// other value, so a typo here surfaces as `malformed` rows, never as the
+  /// wrong judge's answers under this arm's name.
+  let doorArm: String?
 
   static func arms() -> [JudgeCandidate: any JudgeArm] {
     let service = WordSuggestionService()
     return [
-      .afmMacOS26: AFMJudgeArm(candidate: .afmMacOS26, requiredMajor: 26, service: service),
-      .afmMacOS27: AFMJudgeArm(candidate: .afmMacOS27, requiredMajor: 27, service: service),
+      .afmMacOS26: DoorJudgeArm(
+        candidate: .afmMacOS26, requiredMajor: 26, service: service, doorArm: nil),
+      .afmMacOS27: DoorJudgeArm(
+        candidate: .afmMacOS27, requiredMajor: 27, service: service, doorArm: nil),
+      .rules: DoorJudgeArm(candidate: .rules, requiredMajor: nil, service: service, doorArm: "rules"),
     ]
   }
 
@@ -492,17 +504,18 @@ struct AFMJudgeArm: JudgeArm {
 
   func judge(row: EditCorpusRow) async -> JudgeRecord {
     let actual = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-    guard actual == requiredMajor else {
+    if let requiredMajor, actual != requiredMajor {
       return JudgeRecord(
         id: row.id, judge: candidate.rawValue, outcome: .unavailable, decision: nil, latencyMs: 0,
         note: "this Mac runs macOS \(actual); \(candidate.rawValue) requires macOS \(requiredMajor) and was not executed",
         executionIdentity: nil)
     }
-    let request: [String: Any] = [
+    var request: [String: Any] = [
       "candidates": [["id": 1, "original": row.original, "replacement": row.replacement]],
       "context": row.pasted,
       "language": row.language,
     ]
+    if let doorArm { request["arm"] = doorArm }
     guard let requestJSON = try? JSONSerialization.data(withJSONObject: request) else {
       return JudgeRecord(
         id: row.id, judge: candidate.rawValue, outcome: .malformed, decision: nil, latencyMs: 0,
@@ -539,7 +552,7 @@ struct AFMJudgeArm: JudgeArm {
     }
     return JudgeRecord(
       id: row.id, judge: candidate.rawValue, outcome: outcome, decision: nil,
-      latencyMs: response.latency_ms, note: response.note ?? "afm arm bypass \(response.outcome)",
+      latencyMs: response.latency_ms, note: response.note ?? "\(candidate.rawValue) arm bypass \(response.outcome)",
       executionIdentity: response.execution_identity)
   }
 }
