@@ -1,4 +1,4 @@
-{"id": "T00", "input": "We switched to slash compact.", "expected": "We switched to slash compact."}
+{"id": "T00", "input": "We switched to slash compact.", "expected": "We switched to /compact."}
 {"id": "T01", "input": "Use to slash from in the label.", "expected": "Use to slash from in the label.", "documented_miss": "to never pairs"}
 {"id": "T02", "input": "We need to slash from five days to three.", "expected": "We need to slash from five days to three."}
 {"id": "T03", "input": "We slash our prices.", "expected": "We slash our prices."}
@@ -22,7 +22,7 @@
 {"id": "T21", "input": "It's a yes slash no question.", "expected": "It's a yes/no question."}
 {"id": "T22", "input": "Send it to the CEO slash founder.", "expected": "Send it to the CEO/founder."}
 {"id": "T23", "input": "I need to finish this essay slash I really want to watch TV.", "expected": "I need to finish this essay slash I really want to watch TV."}
-{"id": "T24", "input": "Go ahead and slash exit now.", "expected": "Go ahead and slash exit now.", "documented_miss": "a command after a conjunction with no earlier command is unresolved (B4)"}
+{"id": "T24", "input": "Go ahead and slash exit now.", "expected": "Go ahead and /exit now."}
 {"id": "T25", "input": "Use and slash or in that clause.", "expected": "Use and/or in that clause."}
 {"id": "T26", "input": "The meeting ends with slash", "expected": "The meeting ends with slash"}
 {"id": "T27", "input": "apples, slash bananas, slash strawberries.", "expected": "apples/bananas/strawberries."}

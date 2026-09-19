@@ -12,7 +12,7 @@ import Testing
 /// - the reading table, one row at a time, positive and nearest negative;
 /// - `spoken-slash-core.jsonl`: the 68 `core` and 9 `robustness` cases of the founder's
 ///   264-case external benchmark (`docs/audits/2026-09-18-3038-benchmark/`), expected outputs
-///   authored independently of this implementation; the six documented misses carry their
+///   authored independently of this implementation; the documented misses carry their
 ///   ACTUAL output too, so a change in either direction is visible;
 /// - `spoken-slash-traps.jsonl`: the sentences the external and grounded reviews used to break
 ///   earlier versions of the table (`wc -l` the file for the count).
@@ -93,6 +93,25 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("slash the budget") == "slash the budget")
     // The known miss the copy names.
     #expect(Self.off("slash prices") == "/prices")
+  }
+
+  /// The frames a Claude Code user says around a command name, each with the space before
+  /// the symbol kept. "start" and "right" stay out of the lists because they pair
+  /// ("start/stop", "right/left").
+  @Test("The frames around a command name")
+  func commandFrames() {
+    #expect(Self.off("okay slash compact") == "okay /compact")
+    #expect(Self.off("kick off slash wfp") == "kick off /wfp")
+    #expect(Self.off("launch slash wfp") == "launch /wfp")
+    #expect(Self.off("the slash compact command") == "the /compact command")
+    #expect(Self.off("run a slash wfp skill") == "run a /wfp skill")
+    #expect(Self.off("start slash stop") == "start/stop")
+    #expect(Self.off("right slash left") == "right/left")
+    #expect(Self.off("the slash commands") == "the slash commands")
+    #expect(Self.off("put a slash between them") == "put a slash between them")
+    // Documented misses: a determiner with nothing naming the command, and an infinitive.
+    #expect(Self.off("do a slash compact") == "do a slash compact")
+    #expect(Self.off("time to slash compact") == "time to slash compact")
   }
 
   // MARK: - The reading table, one row at a time
@@ -198,7 +217,9 @@ struct SpokenSlashReadingTests {
 
   @Test("Row 5: after \"to\" only a path chain converts")
   func row5To() {
-    #expect(Self.off("I switched to slash compact after lunch.") == "I switched to slash compact after lunch.")
+    #expect(Self.off("I switched to slash compact after lunch.") == "I switched to /compact after lunch.")
+    #expect(Self.off("go back to slash plan when done") == "go back to /plan when done")
+    #expect(Self.off("we are going to slash costs") == "we are going to slash costs")
     #expect(Self.off("The reviewer wants us to slash unnecessary jargon.") == "The reviewer wants us to slash unnecessary jargon.")
     #expect(
       Self.off("The runner writes its output to slash tmp slash wispr before moving on.")
@@ -216,8 +237,9 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("They trim the packaging and slash shipping costs.")
         == "They trim the packaging and slash shipping costs.")
-    // Documented miss: no earlier command, so the conjunction leaves the word alone.
-    #expect(Self.off("Go ahead and slash exit now.") == "Go ahead and slash exit now.")
+    // The "go ahead and" idiom introduces a command; a determiner after the marker still wins.
+    #expect(Self.off("Go ahead and slash exit now.") == "Go ahead and /exit now.")
+    #expect(Self.off("Go ahead and slash the budget.") == "Go ahead and slash the budget.")
   }
 
   @Test("An earlier command informs the next marker only within its sentence")
@@ -325,7 +347,9 @@ struct SpokenSlashReadingTests {
         misses.append("\(row.id): \(got.debugDescription)")
       }
     }
-    #expect(pinnedMisses == 6)
+    // The pinned misses are the rows carrying `actual`; the count is the fixture's own
+    // (`grep -c documented_miss spoken-slash-core.jsonl`), so a retired pin changes both.
+    #expect(pinnedMisses == 5)
     #expect(misses.isEmpty, "benchmark misses: \(misses)")
   }
 
