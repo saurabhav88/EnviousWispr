@@ -333,6 +333,12 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("output to forward slash tmp slash wispr") == "output to /tmp/wispr")
     // Row 5 without a chain still keeps the verb reading.
     #expect(Self.off("we need to forward slash costs") == "we need to forward slash costs")
+    // The alias also works inside a scheme's double marker, in any mix.
+    #expect(Self.off("https: forward slash forward slash example.com") == "https://example.com")
+    #expect(Self.off("https: slash forward slash example.com") == "https://example.com")
+    // A path whose first segment is command-shaped still continues.
+    #expect(Self.off("slash run slash app.log") == "/run/app.log")
+    #expect(Self.off("slash list, slash inspect") == "/list, /inspect")
   }
 
   @Test("Row B7: a clause boundary before the marker is a command; a comma before a chain is not")

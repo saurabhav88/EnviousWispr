@@ -2267,8 +2267,12 @@ public struct InverseTextNormalizer: Sendable {
     // The previous marker is adjacent when the token before the left neighbour is "slash", or
     // when the left neighbour IS the previous marker ("backslash slash" -> `\/`, #2955).
     let leftIsMarker = l == "backslash" || (l == "slash" && c.beforeLeft == "back")
+    let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
+    // A path continues after a leading command-shaped segment too ("slash run slash app.log"
+    // -> `/run/app.log`); a clause end after a `.prefix` is a command list instead (B5).
     let previousAdjacentGlued =
-      (c.beforeLeft == "slash" || leftIsMarker) && (c.previous == .glue || c.previous == .pair)
+      (c.beforeLeft == "slash" || leftIsMarker)
+      && (c.previous == .glue || c.previous == .pair || (c.previous == .prefix && !leftEndsClause))
     // Row 0: nothing after the marker keeps the word ("a missing slash.", "tea slash coffee
     // slash.", and a trailing "docs slash" at the end of a spoken path: the approved table has
     // no trailing-slash reading; polish may still write one). The one shape that still glues is
@@ -2303,7 +2307,6 @@ public struct InverseTextNormalizer: Sendable {
       }
       return c.previous == .prefix ? .word : .unresolved
     }
-    let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
     // A chain CONTINUING after this marker; a chain arriving from before it is B6 below.
     let chain = c.afterRight == "slash"
     // Row 1: listed function-word pairs, subject-or-object pronoun pairs, possessive pairs. A
@@ -2609,14 +2612,22 @@ public struct InverseTextNormalizer: Sendable {
       let span = m.result.range(at: 1)
       let ns = m.ns
       let left = Self.slashNeighbour(ns, before: span.location)
-      let right = Self.slashNeighbour(ns, after: NSMaxRange(span))
+      var right = Self.slashNeighbour(ns, after: NSMaxRange(span))
+      // A neighbouring marker spoken as "forward slash" is the single word "slash" to the table
+      // ("https: forward slash forward slash example.com" -> `https://example.com`).
+      if right.core == "forward", Self.slashNeighbour(ns, after: right.edge).core == "slash" {
+        right = Self.slashNeighbour(ns, after: right.edge)
+      }
       var ctx = SlashContext()
       ctx.left = left.core
       ctx.leftRaw = left.raw
       ctx.right = right.core
       ctx.markerCarriesPunctuation = right.core.isEmpty && !right.raw.isEmpty
       if !left.raw.isEmpty {
-        let beforeLeft = Self.slashNeighbour(ns, before: left.edge)
+        var beforeLeft = Self.slashNeighbour(ns, before: left.edge)
+        if left.core == "slash", beforeLeft.core == "forward" {
+          beforeLeft = Self.slashNeighbour(ns, before: beforeLeft.edge)
+        }
         ctx.beforeLeft = beforeLeft.core
         ctx.leftSpellsScheme = Self.slashSpelledScheme(ns, endingAt: left.edge + left.raw.utf16.count)
         if !beforeLeft.raw.isEmpty {
