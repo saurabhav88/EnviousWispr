@@ -2303,8 +2303,11 @@ public struct InverseTextNormalizer: Sendable {
       }
       return c.previous == .prefix ? .word : .unresolved
     }
-    // Row 1: listed function-word pairs, subject-or-object pronoun pairs, possessive pairs.
-    if isSlashPair(l, r) { return .pair }
+    let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
+    // Row 1: listed function-word pairs, subject-or-object pronoun pairs, possessive pairs. A
+    // pair is one phrase, so a clause end before the marker breaks it ("at the top, slash down
+    // the middle" is the verb).
+    if isSlashPair(l, r) && !leftEndsClause { return .pair }
     // Row B3: a written, punctuation-only neighbour (`..`, `<`) or the spoken letter "A".
     if !c.leftRaw.isEmpty && l.isEmpty { return .glue }
     if c.leftRaw == "A" { return .glue }
@@ -2355,7 +2358,6 @@ public struct InverseTextNormalizer: Sendable {
     if slashConjunctions.contains(l) {
       return c.previous == .prefix || c.beforeLeft == "ahead" ? .prefix : .unresolved
     }
-    let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
     // Row B5: a comma-separated command list ("slash list, slash inspect, and slash resume";
     // "slash list, sorry, slash inspect" too: an earlier command and a clause boundary suffice).
     if c.previous == .prefix && leftEndsClause { return .prefix }
