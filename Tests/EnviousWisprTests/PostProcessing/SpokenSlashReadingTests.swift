@@ -138,6 +138,11 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("The switch offers on, slash off, slash auto modes.")
         == "The switch offers on/off/auto modes.")
+    // Accepted (R2): a list comma before a listed pair inside a chain reads as the list, so a
+    // repeated verb instruction with the same shape joins. The two are the same words.
+    #expect(
+      Self.off("Hold the sword up, slash down, slash down again.")
+        == "Hold the sword up/down, slash down again.")
     #expect(Self.off("In Slack I use slash away a lot.") == "In Slack I use /away a lot.")
     // Same accepted class as "please slash prices": a bare object after a command context.
     #expect(Self.off("Go ahead and slash prices before the sale.") == "Go ahead and /prices before the sale.")
