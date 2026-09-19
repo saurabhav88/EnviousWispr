@@ -2242,8 +2242,6 @@ public struct InverseTextNormalizer: Sendable {
     var right: String = ""
     /// Sentence punctuation is glued to the marker itself ("slash." / "slash,").
     var markerCarriesPunctuation: Bool = false
-    /// The right neighbour ends its clause ("off,"), so the token after it is not its object.
-    var rightEndsClause: Bool = false
     /// The single-letter tokens before the left neighbour spell a scheme ("h t t p" before "p:"),
     /// or before the token before it (for the second marker of "slash slash").
     var leftSpellsScheme: Bool = false
@@ -2329,14 +2327,11 @@ public struct InverseTextNormalizer: Sendable {
       slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
       || slashObjectPronouns.contains(c.afterRight)
     if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
-    // A verb particle is the verb whenever an object follows it ("cars slash off the road") or
-    // the marker sits where a verb would ("Slash off dead branches", "then slash down."). After
-    // a content word with no object it is a pair ("auto slash off, the same", "auto slash off
-    // setting"). No command named /off or /down exists to compete.
-    if slashParticles.contains(r) {
-      if proseAfter && !c.rightEndsClause { return .word }
-      if l.isEmpty || isSlashPrefixLeft(l) { return .word }
-    }
+    // "slash off" and "slash down" are the verb with its particle ("Gardeners slash off dead
+    // branches", "then slash down."): the pairs that end in these words are listed in
+    // `slashFunctionPairs` (on/off, auto/off, up/down, top/down) and were read above, and no
+    // command named /off or /down exists to compete.
+    if slashParticles.contains(r) { return .word }
     // Row B8: the word after the command names it as one ("the slash compact command", "run a
     // slash wfp skill"), so a determiner before the marker is not about the character. After the
     // verb refusals above, so "should not slash the skills budget" keeps its verb.
@@ -2389,7 +2384,7 @@ public struct InverseTextNormalizer: Sendable {
   /// Explicit pairs, both orders, so "and slash down" (a verb with a particle) is not a pair.
   static let slashFunctionPairs: Set<String> = [
     "and/or", "or/and", "on/off", "off/on", "in/out", "out/in", "up/down", "down/up",
-    "yes/no", "no/yes", "before/after", "after/before",
+    "yes/no", "no/yes", "before/after", "after/before", "auto/off", "top/down", "bottom/up",
   ]
   static let slashDeterminers: Set<String> = [
     "a", "an", "the", "this", "that", "these", "those", "another", "one", "any", "each",
@@ -2416,8 +2411,8 @@ public struct InverseTextNormalizer: Sendable {
     "okay", "ok", "alright", "yes", "yeah", "yep", "sure", "hey", "oh", "anyway", "cool", "great",
     "thanks",
   ]
-  /// Particles the verb "slash" takes before an object ("slash off the", "slash down the").
-  /// "away" is absent: "I use slash away a lot" is the Slack command (T35).
+  /// Particles the verb "slash" takes ("slash off the", "slash down"). "away" is absent: "I use
+  /// slash away a lot" is the Slack command (T35).
   static let slashParticles: Set<String> = ["off", "down"]
   /// Verbs whose "off" particle precedes a command ("kick off slash wfp").
   static let slashParticleVerbs: Set<String> = ["kick", "kicked", "kicking", "fire", "fired", "firing"]
@@ -2613,7 +2608,6 @@ public struct InverseTextNormalizer: Sendable {
       ctx.leftRaw = left.raw
       ctx.right = right.core
       ctx.markerCarriesPunctuation = right.core.isEmpty && !right.raw.isEmpty
-      ctx.rightEndsClause = [",", ";", ":", ".", "!", "?"].contains { right.raw.hasSuffix($0) }
       if !left.raw.isEmpty {
         let beforeLeft = Self.slashNeighbour(ns, before: left.edge)
         ctx.beforeLeft = beforeLeft.core
