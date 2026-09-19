@@ -4156,6 +4156,214 @@ public final class TelemetryService {
     )
   }
 
+  // MARK: - Learn from edits (#996 §4, nine events)
+  //
+  // Counts, durations and closed enums only. No pasted text, no edited text, no
+  // word, no bundle id, no exception text: the boundary is the network
+  // (`sentry-operations.md` RULE: telemetry-privacy-boundary). Every enum below
+  // is `CaseIterable` so the payload test can enumerate the vocabulary, and
+  // every emitter has a registry row (`scripts/telemetry-emitter-registry.txt`).
+  // Not emitted by anything yet: the App watcher and coordinator (chunks 5e/5g)
+  // are the producers. Every plan §3.2 skip reason is COUNTED and emitted; the
+  // volume question is answered once, by `TelemetryVolumePolicy`, which samples
+  // `learn_skipped` and stamps the weight. Emission never runs inside the
+  // synchronous paste callback; the watcher emits from its deferred task.
+
+  /// Whether a learning event reached PostHog is decided by `TelemetryVolumePolicy`;
+  /// these helpers only describe what happened.
+  package enum LearnFromEditsTelemetry {
+    /// `custom_words.learn_skipped.reason` (plan §3.2, in gate order).
+    package enum SkipReason: String, Sendable, CaseIterable {
+      case toggleOff = "toggle_off"
+      case watchActive = "watch_active"
+      case modelUnavailable = "model_unavailable"
+      case languageUnsupported = "language_unsupported"
+      case appBlocklisted = "app_blocklisted"
+      case destinationMismatch = "destination_mismatch"
+      case secureField = "secure_field"
+      case noFocusedElement = "no_focused_element"
+    }
+
+    /// `app_class`: how the destination exposes text, never which app it is.
+    package enum AppClass: String, Sendable, CaseIterable {
+      /// A native AppKit/SwiftUI text element.
+      case native
+      /// An Electron/Chromium host that needed `AXManualAccessibility`.
+      case manualAccessibility = "manual_accessibility"
+      /// A browser (`BrowserAddressBarDetector` family).
+      case browser
+      case other
+    }
+
+    /// The runtime arm that answered (`CorrectionJudgeArmSelection`, chunk 5e).
+    package enum Arm: String, Sendable, CaseIterable {
+      case rules
+      case afm
+      case classifier
+    }
+
+    /// `learn_judged.outcome`: a verdict, or the bypass kind
+    /// (`CorrectionJudgeBypass`), so a bypass is never counted as "all false".
+    package enum JudgeOutcome: String, Sendable, CaseIterable {
+      case verdict
+      case unavailable
+      case notGranted = "not_granted"
+      case deadline
+      case cancelled
+      case malformed
+
+      package init(_ outcome: CorrectionJudgeOutcome) {
+        switch outcome {
+        case .verdict: self = .verdict
+        case .bypass(let kind):
+          switch kind {
+          case .unavailable: self = .unavailable
+          case .notGranted: self = .notGranted
+          case .deadline: self = .deadline
+          case .cancelled: self = .cancelled
+          case .malformed: self = .malformed
+          }
+        }
+      }
+    }
+
+    /// `state`: `CorrectionProposalTargetState` as a closed vocabulary.
+    package enum TargetState: String, Sendable, CaseIterable {
+      case existingWord = "existing_word"
+      case newWord = "new_word"
+    }
+
+    package enum Decision: String, Sendable, CaseIterable {
+      case accepted
+      case rejected
+    }
+
+    package enum Surface: String, Sendable, CaseIterable {
+      case card
+      case pending
+    }
+
+    /// `learn_resolved.outcome`: what the resolution did to the vocabulary.
+    package enum ResolutionOutcome: String, Sendable, CaseIterable {
+      /// A new word was added.
+      case added
+      /// The sound-alike was added to an existing word.
+      case aliasAdded = "alias_added"
+      /// A pack term became a user-owned override.
+      case packOverride = "pack_override"
+      /// Nothing to write: the target already carried it (reconciled).
+      case alreadyLanded = "already_landed"
+      /// A rejection tombstone was written.
+      case tombstoned
+    }
+
+    /// `learn_save_failed.reason`: fixed tokens, never the human message
+    /// (the Quick Add rule).
+    package enum SaveFailure: String, Sendable, CaseIterable {
+      case aliasOwnedElsewhere = "alias_owned_elsewhere"
+      case targetGone = "target_gone"
+      case vocabularyWriteFailed = "vocabulary_write_failed"
+      case ledgerWriteFailed = "ledger_write_failed"
+      case ledgerUntrusted = "ledger_untrusted"
+    }
+
+    /// `learn_ledger_untrusted.kind`: `CorrectionProposalStore.UntrustedKind`
+    /// raw values, restated as a closed wire vocabulary.
+    package enum LedgerUntrustedKind: String, Sendable, CaseIterable {
+      case unreadable
+      case corrupt
+      case unsupportedVersion = "unsupported_version"
+      case unknownStatus = "unknown_status"
+      case durabilityUnconfirmed = "durability_unconfirmed"
+    }
+  }
+
+  private func emitLearnEvent(_ name: String, _ props: [String: Any]) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: name,
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+      testRawPropertiesHook?(name, props)
+    #endif
+    PostHogSDK.shared.capture(name, properties: props)
+  }
+
+  /// A paste the watcher did not observe, and why (every §3.2 reason counts).
+  package func learnSkipped(reason: LearnFromEditsTelemetry.SkipReason) {
+    emitLearnEvent("custom_words.learn_skipped", ["reason": reason.rawValue])
+  }
+
+  /// One watched paste ended. `settledBursts` is how many settled snapshots
+  /// were taken (0, 1 or 2); `durationMs` is paste to end.
+  package func learnObservationEnded(
+    reason: PastedRegionEndReason, settledBursts: Int,
+    appClass: LearnFromEditsTelemetry.AppClass, durationMs: Int
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_observation_ended",
+      [
+        "reason": reason.rawValue, "settled_bursts": settledBursts,
+        "app_class": appClass.rawValue, "duration_ms": durationMs,
+      ])
+  }
+
+  /// One judge call. `candidates` were sent, `accepted` answered "correction";
+  /// on a bypass `accepted` is 0 and `outcome` names the bypass.
+  package func learnJudged(
+    arm: LearnFromEditsTelemetry.Arm, outcome: LearnFromEditsTelemetry.JudgeOutcome,
+    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_judged",
+      [
+        "arm": arm.rawValue, "outcome": outcome.rawValue, "candidates": candidates,
+        "accepted": accepted, "latency_ms": latencyMs, "queue_wait_ms": queueWaitMs,
+      ])
+  }
+
+  /// A durable NEW proposal (a refresh of an open one does not count).
+  package func learnProposed(state: LearnFromEditsTelemetry.TargetState) {
+    emitLearnEvent("custom_words.learn_proposed", ["state": state.rawValue])
+  }
+
+  /// The card was admitted to the overlay.
+  package func learnCardShown() {
+    emitLearnEvent("custom_words.learn_card_shown", [:])
+  }
+
+  /// The card left the overlay unanswered; the proposal moved to Pending.
+  package func learnCardExpired() {
+    emitLearnEvent("custom_words.learn_card_expired", [:])
+  }
+
+  /// A successful accepted/rejected transition from either surface. Expiry is
+  /// not resolution; a failed attempt is `learnSaveFailed`.
+  package func learnResolved(
+    decision: LearnFromEditsTelemetry.Decision, surface: LearnFromEditsTelemetry.Surface,
+    state: LearnFromEditsTelemetry.TargetState, outcome: LearnFromEditsTelemetry.ResolutionOutcome
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_resolved",
+      [
+        "decision": decision.rawValue, "surface": surface.rawValue, "state": state.rawValue,
+        "outcome": outcome.rawValue,
+      ])
+  }
+
+  /// An Accept or Reject that could not complete.
+  package func learnSaveFailed(reason: LearnFromEditsTelemetry.SaveFailure) {
+    emitLearnEvent("custom_words.learn_save_failed", ["reason": reason.rawValue])
+  }
+
+  /// The proposal ledger loaded untrusted (once per launch at most).
+  package func learnLedgerUntrusted(kind: LearnFromEditsTelemetry.LedgerUntrustedKind) {
+    emitLearnEvent("custom_words.learn_ledger_untrusted", ["kind": kind.rawValue])
+  }
+
   // MARK: - Other audio while dictating (#1413, folded onto the terminal row)
 
   /// Writes the hold's facts into the open take entry so they ride on that take's

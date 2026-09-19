@@ -19,11 +19,20 @@ public struct PasteCompletionEvent: Sendable {
   public let pastedText: String
   public let destinationBundleID: String?
   public let timestamp: Date
+  /// #996: the base language the cleanup chain resolved for THIS take
+  /// (`KernelFinalizationOutcome.cleanupLanguage`), nil when the take never
+  /// reached resolution. The learn-from-edits gate reads only this; nil is
+  /// `language_unsupported`, never a guess from settings.
+  public let language: String?
 
-  public init(pastedText: String, destinationBundleID: String?, timestamp: Date = Date()) {
+  public init(
+    pastedText: String, destinationBundleID: String?, timestamp: Date = Date(),
+    language: String? = nil
+  ) {
     self.pastedText = pastedText
     self.destinationBundleID = destinationBundleID
     self.timestamp = timestamp
+    self.language = language
   }
 }
 

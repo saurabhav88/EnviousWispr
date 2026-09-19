@@ -52,6 +52,10 @@ enum SettingsProjection {
     case emojiFormatter = "emoji_formatter"
     case spokenPunctuation = "spoken_punctuation"
     case crashRecovery = "crash_recovery"
+    /// #996: whether the "remember this correction?" card is on. Instrumented because
+    /// adoption of a default-ON toggle is measured by who turns it OFF, and that
+    /// decides whether the card is welcome. On/off only, never a word.
+    case learnFromEdits = "learn_from_edits"
     case languageMode = "language_mode"
     case streamingASR = "streaming_asr"
     // #1988. Instrumented because adoption is the question this feature was built
@@ -141,6 +145,7 @@ enum SettingsProjection {
     case .emojiFormatterEnabled: return [.emojiFormatter]
     case .spokenPunctuationEnabled: return [.spokenPunctuation]
     case .crashRecoveryEnabled: return [.crashRecovery]
+    case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
@@ -224,6 +229,7 @@ enum SettingsProjection {
     case .emojiFormatter: return onOff(settings.emojiFormatterEnabled)
     case .spokenPunctuation: return onOff(settings.spokenPunctuationEnabled)
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
+    case .learnFromEdits: return onOff(settings.learnFromEdits)
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .livePreview: return onOff(settings.livePreviewEnabled)

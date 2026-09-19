@@ -53,13 +53,8 @@ struct TelemetryEmitterRegistryTests {
   /// or MOVED call site for an already registered name (a per-buffer path reusing
   /// `dictation.completed`) changes the cadence without touching the registry; the fingerprint
   /// makes that a visible edit here.
-  /// #3038: `llmPolishCompleted` gained two parameters (`validatorGuard`, `symbolTokens`), which
-  /// changes the enclosing-function identity of the same single `llm.polish_completed` site. No
-  /// new site, no new event, same per-take cadence; two properties on the existing row (checklist
-  /// items 4-8: existing row, shape not content, Int on the wire, `take_id` unchanged, registry
-  /// row unchanged).
   static let sitesFingerprint =
-    "4731f6500283e80e3ee869dba129b21bd7b7f48287b99a4191261465d9190b26"
+    "5c99f27f08da16a5d029a072ebbd5631aa3fdab5e2d28b9225510fec6d1e8a42"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

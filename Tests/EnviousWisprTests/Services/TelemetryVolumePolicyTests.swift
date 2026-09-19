@@ -145,6 +145,33 @@ struct TelemetryVolumePolicyTests {
         == .keep)
   }
 
+  @Test("#996 learn_skipped: every known gate reason is sampled, an unknown reason is kept whole")
+  func learnSkipped() {
+    // Independent oracle: the plan §3.2 vocabulary spelled out, not read back from the enum.
+    let known = [
+      "toggle_off", "watch_active", "model_unavailable", "language_unsupported",
+      "app_blocklisted", "destination_mismatch", "secure_field", "no_focused_element",
+    ]
+    #expect(known.count == 8)
+    for reason in known {
+      #expect(
+        Policy.decide(
+          event: "custom_words.learn_skipped", properties: ["reason": reason],
+          uuid: Self.droppedUUID) == .drop, Comment(rawValue: reason))
+      #expect(
+        Policy.decide(
+          event: "custom_words.learn_skipped", properties: ["reason": reason],
+          uuid: Self.keptUUID) == .keepSampled(thresholdPercent: 10), Comment(rawValue: reason))
+    }
+    #expect(
+      Policy.decide(
+        event: "custom_words.learn_skipped", properties: ["reason": "brand_new_gate"],
+        uuid: Self.droppedUUID) == .keep)
+    #expect(
+      Policy.decide(event: "custom_words.learn_skipped", properties: [:], uuid: Self.droppedUUID)
+        == .keep)
+  }
+
   @Test("live preview: started is sampled, every other outcome is kept whole")
   func livePreview() {
     #expect(
@@ -232,7 +259,7 @@ struct TelemetryVolumePolicyTests {
       Policy.apply(
         event: "dictation.started", properties: ["take_id": "T", "backend": "parakeet"],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 2)
+    #expect(out["telemetry_policy_version"] as? Int == 3)
     #expect(out["take_id"] as? String == "T")
     #expect(out["$sample_threshold"] == nil)
     #expect(out.count == 3)
@@ -243,7 +270,7 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       Policy.apply(
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 2)
+    #expect(out["telemetry_policy_version"] as? Int == 3)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
     // A FRACTION, as posthog-js stores it: a percentage here would make the standard
     // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
@@ -278,7 +305,7 @@ struct TelemetryVolumePolicyTests {
           "note": "someone@example.com",
         ],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 2)
+    #expect(out["telemetry_policy_version"] as? Int == 3)
     // The two bundle stamps come from the CURRENT bundle, on every row, whether or not
     // `register()` has run: `Application Installed` rows carried no environment at all
     // before this (801 of 801 in the 30 days to 2026-09-15).

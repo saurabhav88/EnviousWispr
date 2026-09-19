@@ -379,6 +379,16 @@ struct KernelFinalizationWiring {
       // is a misheard form we correct FROM, never a spelling to protect.
       context.protectedSpellings = Set(
         steps.wordCorrection.correctorVocabulary.terms.map(\.canonical))
+      // #996: this take's cleanup language starts unknown. The three fields are
+      // stamped only when the chain reaches resolution below; a take that stops
+      // earlier (empty output, a thrown limb) must not carry the PREVIOUS take's
+      // language into its paste-completion event, where nil means
+      // `language_unsupported` and a stale code would judge edits under the
+      // wrong arm. Same shape as the `languageResolutionSource` clear in
+      // `deliver`; cleared to nil, never to a placeholder.
+      outcome.cleanupLanguage = nil
+      outcome.cleanupLanguageSource = nil
+      outcome.cleanupLanguageBucket = nil
       steps.llmPolish.onWillProcess = { onPolishStarted() }
       // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
       // Parakeet (no LID) returns nil through the cast; polish-step stays nil
@@ -1105,7 +1115,10 @@ struct KernelFinalizationWiring {
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
               pastedText: deliveredText,
-              destinationBundleID: context.targetApp?.bundleIdentifier))
+              destinationBundleID: context.targetApp?.bundleIdentifier,
+              // #996: THIS take's resolved language, cleared at `processText`
+              // entry so it can never be the previous take's.
+              language: outcome.cleanupLanguage))
           deliveryOutcome = .pasted
         } else {
           deliveryOutcome = .clipboardOnly
