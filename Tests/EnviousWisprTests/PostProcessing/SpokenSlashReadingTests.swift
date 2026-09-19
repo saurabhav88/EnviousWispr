@@ -74,6 +74,10 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("apples slash bananas. Slash clear") == "apples/bananas. /clear")
     // A line break starts a sentence, so a capitalised command there is not the name.
     #expect(Self.off("Run slash help\nSlash exit") == "Run /help\n/exit")
+    // So do a closing quote and an ellipsis; a title's period does not.
+    #expect(Self.off("He said hello.” Slash clear.") == "He said hello.” /clear.")
+    #expect(Self.off("Run slash help… Slash exit.") == "Run /help… /exit.")
+    #expect(Self.off("Talk to Dr. Slash help") == "Talk to Dr. Slash help")
   }
 
   @Test("A command in a sentence keeps the space before it")

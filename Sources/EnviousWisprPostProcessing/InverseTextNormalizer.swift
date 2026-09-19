@@ -2554,8 +2554,11 @@ public struct InverseTextNormalizer: Sendable {
       i -= 1
     }
     if i == 0 { return true }
-    let prev = ns.character(at: i - 1)
-    return prev == 46 || prev == 33 || prev == 63  // . ! ?
+    // The same boundary the reading uses: a closing quote or an ellipsis ends a sentence too,
+    // an abbreviation does not, and a punctuation-only token (`..`) is a written neighbour.
+    let before = slashNeighbour(ns, before: start)
+    return !before.core.isEmpty
+      && firstMatch(slashSentenceBreak, before.raw + " ", caseInsensitive: false) != nil
   }
 
   /// A lone spoken command, with or without the recogniser's sentence period, is lower-cased
