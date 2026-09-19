@@ -2304,10 +2304,13 @@ public struct InverseTextNormalizer: Sendable {
       return c.previous == .prefix ? .word : .unresolved
     }
     let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
+    // A chain CONTINUING after this marker; a chain arriving from before it is B6 below.
+    let chain = c.afterRight == "slash"
     // Row 1: listed function-word pairs, subject-or-object pronoun pairs, possessive pairs. A
     // pair is one phrase, so a clause end before the marker breaks it ("at the top, slash down
-    // the middle" is the verb).
-    if isSlashPair(l, r) && !leftEndsClause { return .pair }
+    // the middle" is the verb) unless the recogniser's list comma sits inside a chain ("on,
+    // slash off, slash auto" -> `on/off/auto`, R2).
+    if isSlashPair(l, r) && (!leftEndsClause || chain) { return .pair }
     // Row B3: a written, punctuation-only neighbour (`..`, `<`) or the spoken letter "A".
     if !c.leftRaw.isEmpty && l.isEmpty { return .glue }
     if c.leftRaw == "A" { return .glue }
@@ -2343,8 +2346,6 @@ public struct InverseTextNormalizer: Sendable {
     if slashDeterminers.contains(l) { return .word }
     // Row B6: a glued chain continues (`apples/bananas/strawberries`, `/tmp/wispr`).
     if previousAdjacentGlued { return .glue }
-    // A chain CONTINUING after this marker; a chain arriving from before it is B6 above.
-    let chain = c.afterRight == "slash"
     // Row 5: "need to slash costs" is an infinitive, so after "to" only a path chain ("output to
     // slash tmp slash wispr" -> `/tmp/wispr`) or a destination verb before it ("switched to slash
     // compact", "go back to slash plan") reads as a command.
