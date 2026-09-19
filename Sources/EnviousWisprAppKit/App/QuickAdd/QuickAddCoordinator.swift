@@ -308,75 +308,6 @@ final class QuickAddCoordinator {
     environment.emit(.failed(stage: "present", reason: "unmeasurable_panel"))
   }
 
-  /// What an accept should write INTO, decided against the library as it is NOW.
-  enum MergeTarget: Equatable {
-    /// A pack term, converted to a user-owned override. Nothing in the user library to merge into.
-    case override(CustomWord)
-    /// A user word still in the library. Carries the CURRENT entry, never the snapshot.
-    case live(CustomWord)
-    /// It was in the library when the panel was ranked and is not there now.
-    case gone
-  }
-
-  /// Resolve the merge target from the LIVE library rather than the ranking's snapshot.
-  ///
-  /// **`candidate.word` is a snapshot taken when the panel was ranked, and the panel is now
-  /// persistent.** `windowDidResignKey` is deliberately a no-op — because treating focus loss as a
-  /// dismissal cancelled the panel 339 ms after opening — so it can sit open across a visit to
-  /// Settings. Appending an alias to that snapshot and handing it to `CustomWordsManager.update`
-  /// replaces the WHOLE stored entry, so a canonical, alias, category, strictness or usage change
-  /// made in between is silently reverted: a write that reports success while undoing the user's own
-  /// edit.
-  ///
-  /// A third instance of two correct fixes composing into a defect neither had alone. Persistence
-  /// was the fix for self-cancellation, and persistence is what gives the snapshot time to go stale.
-  ///
-  /// `.gone` is the same defect pointing the other way and is why this returns three cases rather
-  /// than an optional: writing the snapshot back for a word deleted while the panel sat open would
-  /// RESURRECT it, which is a silent undo of a deletion rather than of an edit.
-  ///
-  /// Scope, stated rather than implied: this reads the in-memory library, which is the one the
-  /// editor writes through, so it covers every edit made inside this app. It is not a cross-process
-  /// claim, and the app does not support a second instance.
-  static func mergeTarget(
-    for candidate: QuickAddRanker.Candidate, in userWords: [CustomWord]
-  ) -> MergeTarget {
-    // ASKED BEFORE THE PACK BRANCH, and the order is the whole point. `ownedByUser()` PRESERVES the
-    // id, so a pack term the user overrode while this panel sat open is now a real user entry under
-    // that same id — and converting the snapshot again would overwrite the override they just made.
-    // A pack candidate that has not been overridden cannot be here: `packTermsNotOverridden` filters
-    // the ranking by exactly this id set, so a pack row reaching this line has no live twin.
-    if let current = userWords.first(where: { $0.id == candidate.word.id }) {
-      return .live(current)
-    }
-    // **A pack row whose CANONICAL the user already owns under a different id.** `ownedByUser()`
-    // keeps the pack's id, and `packTermsNotOverridden` filters the ranking by ID, so a user word
-    // called "Codec" and an enabled pack term called "Codec" are two rows with two ids and one name.
-    // Converting the pack snapshot then hands `CustomWordsManager.add` a colliding canonical, which
-    // it refuses SILENTLY (`guard !words.contains(sameCanonical) else { return }`) — and the
-    // post-write confirmation then finds the spelling on the USER word and reports success for an
-    // override that was never created.
-    //
-    // Merging into the user's own entry is not a consolation prize, it is the only action that can
-    // succeed: while that canonical is taken, no override under it is writable, and the end state
-    // the user asked for — this spelling maps to that word — is exactly what this produces.
-    //
-    // Scoped to pack rows deliberately. A USER candidate missing by id is `.gone`, which is a
-    // deletion the panel must not paper over by matching on a name that happens to be reused.
-    if candidate.isPackTerm,
-      let sameName = userWords.first(where: {
-        $0.canonical.caseInsensitiveCompare(candidate.word.canonical) == .orderedSame
-      })
-    {
-      return .live(sameName)
-    }
-    // A PACK term cannot be written through the words coordinator: `CustomWordsManager.update` looks
-    // the id up in the user library, does not find it, and returns having written NOTHING. Convert
-    // to a user-owned override first. The resulting override reaches the polish lane as well as the
-    // corrector lane, which the underlying pack term never did.
-    guard !candidate.isPackTerm else { return .override(candidate.word.ownedByUser()) }
-    return .gone
-  }
 
   /// What accepting a row actually did, which is not always what the row promised.
   ///
@@ -428,7 +359,7 @@ final class QuickAddCoordinator {
     // reporting it there is a metric asserting the opposite of what happened.
     var word: CustomWord
     let kind: QuickAddTargetKind
-    switch Self.mergeTarget(for: candidate, in: environment.userWords()) {
+    switch CustomWordSaveHelper.quickAddTarget(for: candidate, in: environment.userWords()) {
     case .override(let converted):
       word = converted
       kind = .packTerm
