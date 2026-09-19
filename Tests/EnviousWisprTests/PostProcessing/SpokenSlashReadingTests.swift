@@ -350,6 +350,11 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("Run slash help on version 2. They trim packaging and slash shipping costs.")
         == "Run /help on version 2. They trim packaging and slash shipping costs.")
+    // With the setting on, the recogniser's period after "New line" is left on its own before
+    // "Slash"; that bare mark is still a sentence start, so the command converts. (The line
+    // break itself does not survive that period today, with or without a slash: #3041, the
+    // tighten step after the punctuation pass. Update this output when #3041 lands.)
+    #expect(Self.on("Run slash help. New line. Slash exit.") == "Run /help../exit.")
   }
 
   @Test("A chain spoken as \"forward slash\" is the same chain")

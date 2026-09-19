@@ -2564,10 +2564,14 @@ public struct InverseTextNormalizer: Sendable {
     }
     if i == 0 { return true }
     // The same boundary the reading uses: a closing quote or an ellipsis ends a sentence too,
-    // an abbreviation does not, and a punctuation-only token (`..`) is a written neighbour.
+    // an abbreviation does not. A bare terminal mark is one as well: with the setting on,
+    // "Run slash help. New line. Slash exit." puts the recogniser's period at the start of the
+    // new line, so the token before "Slash" is "." on its own (whole-branch review, PR #3040).
     let before = slashNeighbour(ns, before: start)
-    return !before.core.isEmpty
-      && firstMatch(slashSentenceBreak, before.raw + " ", caseInsensitive: false) != nil
+    if before.core.isEmpty {
+      return [".", "!", "?", "…"].contains { before.raw.hasSuffix($0) }
+    }
+    return firstMatch(slashSentenceBreak, before.raw + " ", caseInsensitive: false) != nil
   }
 
   /// A lone spoken command, with or without the recogniser's sentence period, is lower-cased
