@@ -40,10 +40,10 @@ def package_digest(package: Path) -> str:
     return trainer.tree_digest(package)
 
 
-def decisions_equal(ref: list[list[float]], obs: list[list[float]], threshold: float) -> dict:
+def decisions_equal(ref: list[list[float]], obs: list[list[float]], threshold: float, objective: "trainer.Objective") -> dict:
     flips = 0
     for r, o in zip(ref, obs):
-        if trainer.decide(r, threshold) != trainer.decide(o, threshold):
+        if objective.decide(r, threshold) != objective.decide(o, threshold):
             flips += 1
     return {"decision_flips": flips, "rows": len(ref), "ok": flips == 0 and len(ref) == len(obs) and len(ref) > 0}
 
@@ -61,9 +61,10 @@ def main() -> int:
     from safetensors.torch import load_file
     from transformers import AutoModel, AutoTokenizer
 
-    actual = {"coremltools": ct.__version__}
-    if actual["coremltools"] != probe.EXPECTED_TOOLCHAIN["coremltools"]:
-        print(f"INFRA-ERROR: coremltools {actual['coremltools']} is not the pinned {probe.EXPECTED_TOOLCHAIN['coremltools']}", file=sys.stderr)
+    toolchain = probe.toolchain_report()
+    problems = probe.toolchain_problems(toolchain)
+    if problems:
+        print("INFRA-ERROR: toolchain is not the pinned one: " + "; ".join(problems), file=sys.stderr)
         return 2
     run = args.run
     experiment = json.loads((run / "experiment.json").read_text(encoding="utf-8"))
@@ -72,6 +73,7 @@ def main() -> int:
     model_dir = Path(manifest["checkpoint"])
     tok_dir = Path(manifest["tokenizer"])
     cfg = manifest["decision_config"]
+    objective = trainer.objective_from_config(cfg)
     identity = manifest["execution_identity"]
     # Every bound component is re-verified from the files actually used, so
     # a changed threshold, contract, class order, rule, tokenizer file or
@@ -82,9 +84,9 @@ def main() -> int:
         ({f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(tok_dir.iterdir()) if f.is_file()} == manifest.get("tokenizer_inventory"), "tokenizer file inventory differs from the training manifest"),
         (trainer.config_digest(cfg) == identity["config_sha256"], "decision configuration differs from execution identity"),
         (data.sha256_file(run / "tokenizer-contract.json") == cfg["contract_sha256"], "tokenizer contract differs from decision configuration"),
-        (cfg["class_order"] == list(trainer.CLASS_ORDER), "class order differs from converter implementation"),
-        (cfg["decision_rule"] == trainer.DECISION_RULE, "decision rule differs from converter implementation"),
-        (manifest["thresholds"]["safe_threshold"] == cfg["safe_threshold"], "threshold differs from decision configuration"),
+        (cfg["class_order"] == list(objective.class_order), "class order differs from converter implementation"),
+        (cfg["decision_rule"] == objective.decision_rule, "decision rule differs from converter implementation"),
+        (manifest["thresholds"][objective.threshold_key] == cfg[objective.threshold_key], "threshold differs from decision configuration"),
         (manifest["thresholds"].get("qualifying") is True, "run has no qualifying threshold"),
         (cfg.get("precision_variant") == "fp32-pytorch" and cfg.get("package_sha256") is None, "the run manifest is already bound to an exported package"),
     ]
@@ -92,7 +94,7 @@ def main() -> int:
         if not ok:
             print(f"INFRA-ERROR: {message}", file=sys.stderr)
             return 2
-    locked = cfg["safe_threshold"]
+    locked = cfg[objective.threshold_key]
     frozen, _, problems = gate.load_frozen()
     if problems:
         print("INFRA-ERROR: frozen partitions are not intact: " + "; ".join(problems), file=sys.stderr)
@@ -101,15 +103,23 @@ def main() -> int:
     # Verification rows: the run's dev partition (never frozen), padded and
     # truncated cases included by construction of the mirror.
     split_manifest_path = None
-    for candidate in (run.parent.parent / "dev" / "split-manifest.json",):
+    for candidate in (Path(experiment["dev_dir"]) / "split-manifest.json" if experiment.get("dev_dir") else run.parent.parent / "dev" / "split-manifest.json",):
         if candidate.exists() and data.sha256_file(candidate) == experiment["split_manifest_sha256"]:
             split_manifest_path = candidate
     if split_manifest_path is None:
-        print("INFRA-ERROR: the split manifest the run trained on is not at <artifacts>/dev/split-manifest.json with the recorded digest", file=sys.stderr)
+        print("INFRA-ERROR: the split manifest the run trained on is not at the recorded dev directory with the recorded digest", file=sys.stderr)
         return 2
     split_manifest = json.loads(split_manifest_path.read_text(encoding="utf-8"))
     partitions = {n: trainer.load_partition(split_manifest_path.parent, n, split_manifest) for n in ("train", "dev", "calibration")}
-    trainer.refuse_frozen_overlap(partitions, frozen)
+    if experiment.get("cross_dev"):
+        # The cross-author population selected the threshold: it must still be
+        # the recorded file and still be disjoint from every frozen exam.
+        cross_path = Path(experiment["cross_dev"]["path"])
+        if not cross_path.exists() or data.sha256_file(cross_path) != experiment["cross_dev"]["file_sha256"]:
+            print("INFRA-ERROR: the cross-author development partition is not at the recorded path with the recorded digest", file=sys.stderr)
+            return 2
+        partitions["cross_dev"] = trainer.load_cross_dev(cross_path)
+    trainer.refuse_frozen_overlap_all(partitions)
     dev_rows = partitions["dev"]
     rows = dev_rows[: args.rows]
     # Truncation boundaries: the probe's long non-frozen pair fixtures (a long
@@ -133,7 +143,7 @@ def main() -> int:
 
     backbone = AutoModel.from_pretrained(model_dir).eval()
     head_state = load_file(str(model_dir / "head.safetensors"))
-    head = torch.nn.Linear(backbone.config.hidden_size, len(trainer.CLASS_ORDER))
+    head = torch.nn.Linear(backbone.config.hidden_size, len(objective.class_order))
     head.load_state_dict(head_state)
 
     class Judge(torch.nn.Module):
@@ -165,7 +175,7 @@ def main() -> int:
     export_root.mkdir(parents=True, exist_ok=False)
     verification_inputs_sha256 = hashlib.sha256(json.dumps([[r["original"], r["replacement"], r["pasted"]] for r in rows], ensure_ascii=False).encode("utf-8")).hexdigest()
     source_manifest_sha256 = data.sha256_file(run / "training-manifest.json")
-    converter_identity = {"coremltools": ct.__version__, "torch": torch.__version__, "python": sys.version.split()[0], "platform": platform.platform(), "converter": data.sha256_file(Path(__file__))}
+    converter_identity = {**toolchain, "converter": data.sha256_file(Path(__file__))}
 
     def verify(package: Path, variant: str) -> dict:
         units = {"cpuOnly": ct.ComputeUnit.CPU_ONLY, "cpuAndGPU": ct.ComputeUnit.CPU_AND_GPU, "cpuAndNeuralEngine": ct.ComputeUnit.CPU_AND_NE, "all": ct.ComputeUnit.ALL}
@@ -186,9 +196,9 @@ def main() -> int:
                     pred = loaded.predict(feed)
                     latencies.append((time.time() - t1) * 1000)
                     observed.append([float(x) for x in np.asarray(pred["logits"]).reshape(-1)])
-                verdict = probe.placement_verdict(reference, observed, tolerance=1e-2)
+                verdict = probe.placement_verdict(reference, observed, tolerance=1e-2, classes=len(objective.class_order))
                 obs_probs = torch.softmax(torch.tensor(observed), dim=-1).tolist()
-                verdict["decisions"] = decisions_equal(ref_probs, obs_probs, locked)
+                verdict["decisions"] = decisions_equal(ref_probs, obs_probs, locked, objective)
                 verdict["ok"] = bool(verdict.get("ok")) and verdict["decisions"]["ok"]
                 verdict.update({"load_seconds": round(load_s, 2), "warm_latency_ms_p50": round(sorted(latencies)[len(latencies) // 2], 1), "warm_latency_ms_max": round(max(latencies), 1), "requested_compute_units": label})
                 placement[label] = verdict
@@ -198,9 +208,19 @@ def main() -> int:
         digest = package_digest(package)
         decision_config = dict(cfg, precision_variant=variant, package_sha256=digest)
         bound_identity = {"checkpoint_sha256": identity["checkpoint_sha256"], "tokenizer_sha256": identity["tokenizer_sha256"], "config_sha256": trainer.config_digest(decision_config)}
-        bound = dict(manifest, execution_identity=bound_identity, decision_config=decision_config, provenance=manifest["provenance"] + f"; exported {variant} package {digest[:12]} from manifest {source_manifest_sha256[:12]}")
+        # The exact bytes the config digest was taken over, so a Swift runner
+        # can re-hash them without re-implementing Python's float formatting.
+        canonical = json.dumps(decision_config, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == bound_identity["config_sha256"]
+        bound = dict(manifest, execution_identity=bound_identity, decision_config=decision_config, decision_config_canonical=canonical, package=str(package), contract=str(run / "tokenizer-contract.json"), provenance=manifest["provenance"] + f"; exported {variant} package {digest[:12]} from manifest {source_manifest_sha256[:12]}")
         out_dir = package.parent
         (out_dir / "training-manifest.json").write_text(json.dumps(bound, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # The planned proposal path (stage-1 shape rule, then this judge) is a
+        # distinct configuration: same artifact digests, identity extended by
+        # the shape policy, `path` declared so the gate passes it to the runner.
+        shaped_identity = dict(bound_identity, shape_policy="EditRunShape-v1", path="shape+judge")
+        shaped = dict(bound, execution_identity=shaped_identity, path="shape+judge", provenance=bound["provenance"] + "; measured behind the stage-1 shape rule EditRunShape-v1")
+        (out_dir / "training-manifest-shaped.json").write_text(json.dumps(shaped, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         loaded_manifest = data.load_training_manifest(out_dir / "training-manifest.json")
         verification = {
             "variant": variant,
@@ -211,7 +231,8 @@ def main() -> int:
             "verification_rows": len(rows),
             "padded_rows": padded,
             "truncated_rows": truncated,
-            "safe_threshold": locked,
+            objective.threshold_key: locked,
+            "objective": objective.name,
             "placement": placement,
             "all_placements_ok": all(v.get("ok") for v in placement.values()),
             "execution_identity": bound_identity,

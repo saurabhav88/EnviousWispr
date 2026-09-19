@@ -128,7 +128,22 @@ def test_build_contract_shapes_follow_the_template():
 
 
 def test_toolchain_pin_names_the_shipped_converters_versions():
-    assert probe.EXPECTED_TOOLCHAIN == {"transformers": "4.50.0", "coremltools": "9.0"}
+    assert probe.EXPECTED_TOOLCHAIN == {"transformers": "4.50.0", "coremltools": "9.0", "numpy": "2.3.5"}
+    # The pins and the requirements file are one fact: a drift here is a
+    # venv that the probe refuses or, worse, one it accepts with a NumPy the
+    # converter breaks on (apple/coremltools#2633).
+    reqs = (ROOT / "scripts/eval/edit-judge-requirements.txt").read_text()
+    for key, want in probe.EXPECTED_TOOLCHAIN.items():
+        assert f"{key}=={want}\n" in reqs, key
+
+
+def test_toolchain_problems_fail_closed_on_missing_and_wrong_keys():
+    good = {"transformers": "4.50.0", "coremltools": "9.0", "numpy": "2.3.5", "torch": "anything"}
+    assert probe.toolchain_problems(good) == []
+    assert probe.toolchain_problems({**good, "numpy": "2.5.3"}) == ["numpy '2.5.3' is not the pinned '2.3.5'"]
+    missing = dict(good)
+    del missing["numpy"]
+    assert probe.toolchain_problems(missing) == ["numpy None is not the pinned '2.3.5'"]
 
 
 def test_upstream_tokenizer_is_pinned_in_the_runner_only():

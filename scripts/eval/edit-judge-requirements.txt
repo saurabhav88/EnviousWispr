@@ -6,7 +6,12 @@
 torch==2.12.1
 transformers==4.50.0
 coremltools==9.0
-numpy==2.5.3
+# NumPy is pinned BELOW 2.4: coremltools 9.0's torch frontend casts a
+# 1-element array with dtype(x.val) in `_int`/`_cast` (ops.py:3048), which
+# NumPy >= 2.4 refuses ("only 0-dimensional arrays can be converted to
+# Python scalars", apple/coremltools#2633). mmBERT-small's graph carries
+# such a cast; XLM-R's does not, which is why only mmBERT failed in chunk 2b.
+numpy==2.3.5
 safetensors==0.8.0
 huggingface-hub==0.36.2
 tokenizers==0.21.4

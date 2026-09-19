@@ -53,7 +53,42 @@ RUNNER_BIN = ROOT / "scripts/eval/alias_runner/.build/release/AliasRunner"
 # Toolchain the probe's numbers are valid for. Anything else is refused
 # before conversion, never silently accepted (the shipped converter pins the
 # same way: `scripts/convert-output-classifier.py`).
-EXPECTED_TOOLCHAIN = {"transformers": "4.50.0", "coremltools": "9.0"}
+# The pinned subset every entrypoint (probe, trainer, converter) refuses to
+# run without; the rest of `toolchain_report()` is recorded, not enforced.
+# Source of the pins: scripts/eval/edit-judge-requirements.txt.
+EXPECTED_TOOLCHAIN = {"transformers": "4.50.0", "coremltools": "9.0", "numpy": "2.3.5"}
+
+
+def toolchain_report() -> dict:
+    """Every version a receipt must carry to be reproducible. Imports are
+    local so the gate and data modules stay importable without torch."""
+    import coremltools
+    import numpy
+    import safetensors
+    import tokenizers
+    import torch
+    import transformers
+
+    return {
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "numpy": numpy.__version__,
+        "torch": torch.__version__,
+        "transformers": transformers.__version__,
+        "tokenizers": tokenizers.__version__,
+        "safetensors": safetensors.__version__,
+        "coremltools": coremltools.__version__,
+    }
+
+
+def toolchain_problems(report: dict) -> list[str]:
+    """Empty when the pinned subset matches EXPECTED_TOOLCHAIN exactly; a
+    missing key is a problem, never a pass."""
+    return [
+        f"{key} {report.get(key)!r} is not the pinned {want!r}"
+        for key, want in EXPECTED_TOOLCHAIN.items()
+        if report.get(key) != want
+    ]
 
 # --- Candidates (plan §2.2, revised 2026-09-18) ---
 
@@ -227,22 +262,23 @@ def mirror_pair_encoding(contract: dict, encode, input_text: str, output_text: s
     return {"input_ids": ids, "attention_mask": mask, "token_type_ids": segments}
 
 
-def placement_verdict(reference: list[list[float]], observed: list[list[float]], tolerance: float = 1e-3) -> dict:
+def placement_verdict(reference: list[list[float]], observed: list[list[float]], tolerance: float = 1e-3, classes: int = 3) -> dict:
     """Compare one compute unit's logits against PyTorch: non-finite,
     constant (every row identical), argmax flips and max abs drift. The
-    batches must be complete (same row count, three logits per row, at
-    least two rows) and the reference itself finite and discriminating,
-    otherwise the verdict is a refusal, never `ok`."""
+    batches must be complete (same row count, `classes` logits per row: three
+    for the alias objective, two for detection; at least two rows) and the
+    reference itself finite and discriminating, otherwise the verdict is a
+    refusal, never `ok`."""
     import math
 
     shape_ok = (
         len(reference) >= 2
         and len(observed) == len(reference)
-        and all(len(row) == 3 for row in reference)
-        and all(len(row) == 3 for row in observed)
+        and all(len(row) == classes for row in reference)
+        and all(len(row) == classes for row in observed)
     )
     if not shape_ok:
-        return {"ok": False, "error": "expected matching nonempty batches of three-class logits", "reference_rows": len(reference), "observed_rows": len(observed)}
+        return {"ok": False, "error": f"expected matching nonempty batches of {classes}-class logits", "reference_rows": len(reference), "observed_rows": len(observed)}
     if not all(math.isfinite(x) for row in reference for x in row):
         return {"ok": False, "error": "reference logits are nonfinite"}
     if all(row == reference[0] for row in reference):
@@ -269,7 +305,9 @@ def swift_tokenize(tokenizer_dir: Path, texts: list[str], contract_path: Optiona
     benchmark door) or `upstream` (the pinned Hugging Face swift-transformers
     tokenizer the runner alone links, #996 2b-ii experiment; texts only)."""
     request = {"tokenizer_folder": str(tokenizer_dir), "texts": texts}
-    if stack == "vendored" and contract_path is not None and pairs is not None:
+    if contract_path is not None and pairs is not None:
+        # Both stacks assemble pairs through the shipped PairEncodingAdapter;
+        # only the encode function differs (#996 chunk 4a-ii for upstream).
         request["contract"] = str(contract_path)
         request["pairs"] = [{"input": a, "output": b} for a, b in pairs]
     req = workdir / f"tokenize-request-{stack}.json"
@@ -299,6 +337,7 @@ class CandidateReport:
     conversion: dict = field(default_factory=dict)
     placement: dict = field(default_factory=dict)
     upstream_text_parity_ok: bool = False
+    upstream_pair_parity_ok: bool = False
     verdict: str = "not-run"
     notes: list = field(default_factory=list)
 
@@ -348,8 +387,9 @@ def probe_tokenizer(name: str, spec: dict, models_dir: Path, workdir: Path, repo
     contract_path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
 
     # The upstream stack is measured for every candidate, whatever the
-    # vendored stack does with it.
-    report.upstream = upstream_text_parity(tok_dir, texts, expected, workdir)
+    # vendored stack does with it: texts AND contract-assembled pairs.
+    encode = lambda text: tok(text, add_special_tokens=False)["input_ids"]  # noqa: E731
+    report.upstream = upstream_text_parity(tok_dir, texts, expected, workdir, contract, contract_path, PAIR_FIXTURES, encode)
     swift = swift_tokenize(tok_dir, texts, contract_path, PAIR_FIXTURES, workdir)
     report.tokenizer_loaded_in_swift = bool(swift.get("loaded"))
     if not swift.get("loaded"):
@@ -377,27 +417,37 @@ def probe_tokenizer(name: str, spec: dict, models_dir: Path, workdir: Path, repo
     if swift.get("contract_error"):
         report.pair_parity = {"compared": 0, "matched": 0, "mismatches": [], "contract_error": swift["contract_error"]}
         return
-    got_pairs = swift.get("pairs") or []
-    if len(got_pairs) != len(PAIR_FIXTURES):
-        report.pair_parity = {"compared": 0, "matched": 0, "mismatches": [], "contract_error": f"runner returned {len(got_pairs)} pairs for {len(PAIR_FIXTURES)} fixtures"}
-        return
-    pair_matched = 0
-    pair_mismatches = []
-    encode = lambda text: tok(text, add_special_tokens=False)["input_ids"]  # noqa: E731
-    for i, ((a, b), got) in enumerate(zip(PAIR_FIXTURES, got_pairs)):
+    report.pair_parity = dict(pair_parity(contract, encode, PAIR_FIXTURES, swift.get("pairs") or []), contract=str(contract_path))
+
+
+def pair_parity(contract: dict, encode, pairs: list[tuple[str, str]], got_pairs: list[dict]) -> dict:
+    """Contract-assembled pairs from the runner against the Python mirror:
+    ids, mask and segment ids must all match, padded and truncated rows
+    included (the fixtures carry both)."""
+    if len(got_pairs) != len(pairs):
+        return {"compared": 0, "matched": 0, "mismatches": [], "contract_error": f"runner returned {len(got_pairs)} pairs for {len(pairs)} fixtures"}
+    matched = 0
+    mismatches = []
+    padded = truncated = 0
+    for i, ((a, b), got) in enumerate(zip(pairs, got_pairs)):
         want = mirror_pair_encoding(contract, encode, a, b)
+        if want["attention_mask"][-1] == 1:
+            truncated += 1
+        else:
+            padded += 1
         problems = {k: compare_ids(want[k], got[k]) for k in ("input_ids", "attention_mask", "token_type_ids")}
         problems = {k: v for k, v in problems.items() if v}
         if problems:
-            pair_mismatches.append({"pair": i, "problems": problems})
+            mismatches.append({"pair": i, "problems": problems})
         else:
-            pair_matched += 1
-    report.pair_parity = {"compared": len(PAIR_FIXTURES), "matched": pair_matched, "mismatches": pair_mismatches, "contract": str(contract_path)}
+            matched += 1
+    return {"compared": len(pairs), "matched": matched, "mismatches": mismatches, "padded": padded, "truncated": truncated}
 
 
-def upstream_text_parity(tok_dir: Path, texts: list[str], expected: dict[str, list[int]], workdir: Path) -> dict:
-    """Text parity through the pinned upstream tokenizer (runner only)."""
-    swift = swift_tokenize(tok_dir, texts, None, None, workdir, stack="upstream")
+def upstream_text_parity(tok_dir: Path, texts: list[str], expected: dict[str, list[int]], workdir: Path, contract: Optional[dict] = None, contract_path: Optional[Path] = None, pairs: Optional[list[tuple[str, str]]] = None, encode=None) -> dict:
+    """Text parity, and pair parity when a contract is given, through the
+    pinned upstream tokenizer (runner only)."""
+    swift = swift_tokenize(tok_dir, texts, contract_path, pairs, workdir, stack="upstream")
     if not swift.get("loaded"):
         return {"stack": swift.get("stack", "upstream"), "loaded": False, "error": swift.get("error"), "compared": 0, "matched": 0, "mismatches": []}
     got_texts = [e.get("text") for e in swift.get("texts") or []]
@@ -412,7 +462,13 @@ def upstream_text_parity(tok_dir: Path, texts: list[str], expected: dict[str, li
         else:
             lang = next(l for l, t in TEXT_FIXTURES if t == entry["text"])
             mismatches.append({"language": lang, "problem": problem})
-    return {"stack": swift.get("stack"), "loaded": True, "compared": len(texts), "matched": matched, "mismatches": mismatches, "special_tokens": swift.get("special_tokens")}
+    result = {"stack": swift.get("stack"), "loaded": True, "compared": len(texts), "matched": matched, "mismatches": mismatches, "special_tokens": swift.get("special_tokens")}
+    if contract is not None and pairs is not None:
+        if swift.get("contract_error"):
+            result["pairs"] = {"compared": 0, "matched": 0, "mismatches": [], "contract_error": swift["contract_error"]}
+        else:
+            result["pairs"] = pair_parity(contract, encode, pairs, swift.get("pairs") or [])
+    return result
 
 
 def probe_conversion(name: str, spec: dict, models_dir: Path, workdir: Path, report: CandidateReport, n_inputs: int) -> None:
@@ -552,6 +608,8 @@ def probe_candidate(name: str, spec: dict, artifacts: Path, run_root: Path, n_in
             report.conversion = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:400]}"}
     tokenizer_ok = report.tokenizer_loaded_in_swift and report.text_parity.get("matched") == report.text_parity.get("compared") and report.pair_parity.get("matched") == report.pair_parity.get("compared") and report.pair_parity.get("compared", 0) > 0
     report.upstream_text_parity_ok = bool(report.upstream.get("loaded")) and report.upstream.get("matched") == report.upstream.get("compared") and report.upstream.get("compared", 0) > 0
+    up_pairs = report.upstream.get("pairs") or {}
+    report.upstream_pair_parity_ok = up_pairs.get("matched") == up_pairs.get("compared") and up_pairs.get("compared", 0) > 0 and up_pairs.get("padded", 0) > 0 and up_pairs.get("truncated", 0) > 0
     conversion_ok = bool(report.conversion.get("ok"))
     placement_ok = bool(report.placement) and all(v.get("ok") for v in report.placement.values())
     if skip_conversion:
@@ -581,9 +639,10 @@ def main() -> int:
     import transformers
     import coremltools as ct
 
-    actual = {"transformers": transformers.__version__, "coremltools": ct.__version__}
-    if actual != EXPECTED_TOOLCHAIN:
-        print(f"INFRA-ERROR: toolchain {actual} is not the pinned {EXPECTED_TOOLCHAIN}", file=sys.stderr)
+    toolchain = toolchain_report()
+    problems = toolchain_problems(toolchain)
+    if problems:
+        print("INFRA-ERROR: toolchain is not the pinned one: " + "; ".join(problems), file=sys.stderr)
         return 2
     # One directory per run; earlier receipts are never overwritten.
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -599,7 +658,7 @@ def main() -> int:
         "probe": "edit-judge compatibility (#996 chunk 2b)",
         "not_acceptance_evidence": "compatibility only; no accuracy, no winner, frozen rows never read",
         "machine": {"platform": platform.platform(), "machine": platform.machine(), "python": sys.version.split()[0]},
-        "toolchain": {"torch": torch.__version__, "transformers": transformers.__version__, "coremltools": ct.__version__},
+        "toolchain": toolchain,
         "runner_sha256": hashlib.sha256(RUNNER_BIN.read_bytes()).hexdigest(),
         "fixtures": {"texts": len(TEXT_FIXTURES), "languages": sorted({l for l, _ in TEXT_FIXTURES}), "pairs": len(PAIR_FIXTURES)},
         "candidates": [r.__dict__ for r in reports],
@@ -607,7 +666,7 @@ def main() -> int:
     out = run_root / "report.json"
     out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     for r in reports:
-        print(f"{r.name}: {r.verdict}; vendored tokenizer {r.tokenizer_class} loaded={r.tokenizer_loaded_in_swift} texts {r.text_parity.get('matched')}/{r.text_parity.get('compared')} pairs {r.pair_parity.get('matched')}/{r.pair_parity.get('compared')}; upstream texts {r.upstream.get('matched')}/{r.upstream.get('compared')} loaded={r.upstream.get('loaded')}; conversion {r.conversion.get('ok')} {r.conversion.get('size_mb', '')}MB; placement {{{', '.join(f'{k}:{v.get('ok')}' for k, v in r.placement.items())}}}")
+        print(f"{r.name}: {r.verdict}; vendored tokenizer {r.tokenizer_class} loaded={r.tokenizer_loaded_in_swift} texts {r.text_parity.get('matched')}/{r.text_parity.get('compared')} pairs {r.pair_parity.get('matched')}/{r.pair_parity.get('compared')}; upstream texts {r.upstream.get('matched')}/{r.upstream.get('compared')} pairs {(r.upstream.get('pairs') or {}).get('matched')}/{(r.upstream.get('pairs') or {}).get('compared')} loaded={r.upstream.get('loaded')}; conversion {r.conversion.get('ok')} {r.conversion.get('size_mb', '')}MB; placement {{{', '.join(f'{k}:{v.get('ok')}' for k, v in r.placement.items())}}}")
         if r.upstream.get("error"):
             print(f"  upstream tokenizer error: {r.upstream['error']}")
         if r.tokenizer_error:
