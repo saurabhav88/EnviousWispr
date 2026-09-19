@@ -2546,6 +2546,15 @@ public struct InverseTextNormalizer: Sendable {
   /// A marker that starts a sentence is written capitalised by the recogniser ("Slash exit.");
   /// one capitalised mid-sentence is a name. Sentence start: only whitespace before it back to
   /// the beginning, or the previous non-blank character ends a sentence.
+  /// Every word starts with a capital and continues in lower case ("Slash", "Forward Slash").
+  static func isTitleCase(_ words: String) -> Bool {
+    let parts = words.split(whereSeparator: { $0.isWhitespace })
+    return !parts.isEmpty
+      && parts.allSatisfy { w in
+        (w.first?.isUppercase ?? false) && w.dropFirst().allSatisfy { !$0.isUppercase }
+      }
+  }
+
   static func slashStartsSentence(_ ns: NSString, at start: Int) -> Bool {
     var i = start
     while i > 0, isWhitespace(ns.character(at: i - 1)) {
@@ -2658,9 +2667,10 @@ public struct InverseTextNormalizer: Sendable {
           ctx.afterRight = "slash"
         }
       }
-      // "Slash" or "Forward Slash" capitalised mid-sentence is a name (the guitarist, a band).
+      // "Slash" or "Forward Slash" in title case mid-sentence is a name (the guitarist, a band);
+      // an all-caps transcript ("USE SLASH CLEAR") is not.
       ctx.capitalisedMidSentence =
-        (command.first?.isUppercase ?? false) && !Self.slashStartsSentence(ns, at: span.location)
+        Self.isTitleCase(command) && !Self.slashStartsSentence(ns, at: span.location)
       ctx.previous = previous
       let reading = Self.slashReading(ctx)
       previous = reading

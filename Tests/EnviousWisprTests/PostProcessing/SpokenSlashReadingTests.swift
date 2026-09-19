@@ -191,6 +191,9 @@ struct SpokenSlashReadingTests {
     // The two-word alias capitalised mid-sentence is a name too (cloud review, PR #3040).
     #expect(Self.off("The band Forward Slash rocked the venue.") == "The band Forward Slash rocked the venue.")
     #expect(Self.off("the band forward slash rocked") == "the band/rocked")
+    // An all-caps transcript is not a name (cloud review, PR #3040).
+    #expect(Self.off("USE SLASH CLEAR") == "USE /CLEAR")
+    #expect(Self.off("USE FORWARD SLASH CLEAR") == "USE /CLEAR")
   }
 
   @Test("Rows B2 and B2': two markers in a row")
