@@ -349,7 +349,7 @@ def main() -> int:
     p.add_argument("--calibration-fresh", action="store_true", help="build the calibration-only set from the templates' calibration_only tables")
     p.add_argument("--split-manifest", type=Path, action="append", help="--calibration-fresh: the training split, then every earlier calibration manifest, the set must be disjoint from (repeatable; the first is the training split)")
     p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")
-    p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8"], help="--calibration-fresh: which calibration-only tables")
+    p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8", "calibration_only_v9"], help="--calibration-fresh: which calibration-only tables")
     args = p.parse_args()
 
     required = (args.packs, args.frozen_manifest) + ((args.templates,) if (args.dev or args.calibration_fresh) else (args.polish,))

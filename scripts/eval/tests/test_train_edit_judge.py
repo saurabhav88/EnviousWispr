@@ -173,7 +173,7 @@ def test_generated_dev_rows_are_valid_labelled_and_frozen_disjoint():
     assert counts["pack_unreviewed_omitted"] == len(templates["pack_reviews"]["omitted"]) == 21
     assert not any(r["id"].startswith("DEV-PACK") and r["original"].lower().replace("'", "") == r["replacement"].lower().replace("'", "") for r in rows)
     assert all(v["reason"].strip() for v in templates["pack_reviews"]["decisions"].values())
-    assert templates["version"] == "edit-judge-dev-templates-v10"
+    assert templates["version"] == "edit-judge-dev-templates-v11"
     classes = {data.three_class(r["correction"], r["safe_alias"]) for r in rows}
     assert classes == set(data.THREE_CLASSES)
     assert {r["language"] for r in rows} >= {"en", "de", "es", "fr", "it", "pt", "hi", "ar", "zh", "ja", "ru", "ko"}
@@ -202,7 +202,7 @@ def test_a_pair_listed_with_two_labels_is_refused_at_build_time():
         b.refuse_label_conflicts([row("key cloak", "Keycloak", True), row("Key Cloak", "keycloak", False)])
     # the live training tables and the v4 calibration-only tables are conflict-free
     templates = json.loads((ROOT / "scripts/eval/corpus/edit-judge-dev-templates.json").read_text(encoding="utf-8"))
-    for tables in (None, templates["calibration_only"], templates["calibration_only_final"], templates["calibration_only_v6"], templates["calibration_only_v7"], templates["calibration_only_v8"]):
+    for tables in (None, templates["calibration_only"], templates["calibration_only_final"], templates["calibration_only_v6"], templates["calibration_only_v7"], templates["calibration_only_v8"], templates["calibration_only_v9"]):
         b.generate_dev_rows(templates, [], tables=tables, id_prefix="X")
 
 
@@ -220,7 +220,7 @@ def test_casing_only_and_no_op_rows_are_refused_at_build_time():
     with pytest.raises(ValueError, match="equals the replacement"):
         b.refuse_casing_only_corrections([row("e", "\u0924\u0928\u0935\u0940\u0930", "\u0924\u0928\u0935\u0940\u0930", False, False)])
     templates = json.loads((ROOT / "scripts/eval/corpus/edit-judge-dev-templates.json").read_text(encoding="utf-8"))
-    for name in ("calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8"):
+    for name in ("calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8", "calibration_only_v9"):
         rows, counts = b.generate_dev_rows(templates, [], tables=templates[name], id_prefix="X")
         assert counts["formatting_only"] > 0 and all(not r["correction"] for r in rows if r["id"].startswith("X-FORMAT"))
 
@@ -234,7 +234,7 @@ def test_kana_to_kanji_name_pairs_are_corrections_without_an_alias():
 
     kana = re.compile(r"^[\u3040-\u309f\u30a0-\u30ff\u30fc ]+$")
     templates = json.loads((ROOT / "scripts/eval/corpus/edit-judge-dev-templates.json").read_text(encoding="utf-8"))
-    tables = [templates] + [templates[k] for k in ("calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8")]
+    tables = [templates] + [templates[k] for k in ("calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8", "calibration_only_v9")]
     seen_unsafe = 0
     for tab in tables:
         assert not any(kana.match(o) for o, _ in tab["names_safe"].get("ja", [])), "kana original labelled a safe alias"
