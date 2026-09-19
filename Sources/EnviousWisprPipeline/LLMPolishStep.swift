@@ -1069,14 +1069,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let symbolTokens: Int?
   }
 
-  /// A slash or backslash with the run of ordinary characters glued to its right: `/exit`,
-  /// `/oranges`, `\Users`. The run stops at whitespace, another slash, sentence punctuation,
-  /// closing brackets and quotes (straight and typographic, since a model may write “/exit”),
-  /// and markdown emphasis (`*`, backtick), so a decorated command (`` `/exit` ``,
-  /// `**and/or**`) yields the same token as the plain one. A bare
-  /// trailing `/` (`docs/`) yields no token and is not guarded. Fragments by design:
-  /// `https://example.com/docs` is `{/example, /docs}`, `4/6/2021` is `{/6, /2021}`.
-  nonisolated static let symbolTokenPattern = #"[/\\][^\s/\\,.;:!?)\]}"'‘’“”«»`*]+"#
+  /// A complete adjacent slash/backslash run with the ordinary characters glued to its right:
+  /// `/exit`, `//example`, `\/delimiter`. The whole run is the key, so a polish that drops one
+  /// slash of `://` changes the key and is caught (cloud review PR #3040). The text stops at
+  /// whitespace, another slash, sentence punctuation, closing brackets and quotes (straight and
+  /// typographic, since a model may write “/exit”), guillemets, and markdown emphasis (`*`,
+  /// backtick), so a decorated command (`` `/exit` ``, `**and/or**`) yields the same token as
+  /// the plain one. A symbol run with no ordinary text after it (`docs/`, `docs//`, `/ exit`)
+  /// yields no token and is not guarded. Fragments by design: `https://example.com/docs` is
+  /// `{//example, /docs}`, `4/6/2021` is `{/6, /2021}`.
+  nonisolated static let symbolTokenPattern = #"[/\\]+[^\s/\\,.;:!?)\]}"'‘’“”«»`*]+"#
   nonisolated private static let symbolTokenRegex = try? NSRegularExpression(
     pattern: symbolTokenPattern)
 

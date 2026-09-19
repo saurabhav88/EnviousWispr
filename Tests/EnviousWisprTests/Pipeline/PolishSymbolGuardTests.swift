@@ -130,10 +130,27 @@ struct PolishSymbolGuardTests {
   func tokenSet() {
     #expect(
       LLMPolishStep.symbolTokens(in: "https://example.com/docs and 4/6/2021")
-        == ["/example": 1, "/docs": 1, "/6": 1, "/2021": 1])
+        == ["//example": 1, "/docs": 1, "/6": 1, "/2021": 1])
     #expect(LLMPolishStep.symbolTokens(in: "C:\\Users\\me") == ["\\users": 1, "\\me": 1])
     #expect(LLMPolishStep.symbolTokens(in: "`/exit`, **and/or**, (a/b)") == ["/exit": 1, "/or": 1, "/b": 1])
     #expect(LLMPolishStep.symbolTokens(in: "/clear and /clear") == ["/clear": 2])
     #expect(LLMPolishStep.symbolTokens(in: "docs/").isEmpty)
+    #expect(LLMPolishStep.symbolTokens(in: "docs//").isEmpty)
+    #expect(LLMPolishStep.symbolTokens(in: #"\/delimiter"#) == [#"\/delimiter"#: 1])
+  }
+
+  @Test("One slash dropped from an adjacent run is a drop (cloud review PR #3040)")
+  func adjacentRunDrop() {
+    for (original, polished) in [
+      ("Open https://example.com now.", "Open https:/example.com now."),
+      (#"Keep \/delimiter intact."#, "Keep /delimiter intact."),
+      ("Keep //name intact.", "Keep /name intact."),
+    ] {
+      let rejected = validate(polished, original: original)
+      #expect(rejected.guardName == "symbol_drop")
+      #expect(rejected.text == original)
+      #expect(rejected.symbolTokens == 1)
+      #expect(validate(original, original: original).guardName == nil)
+    }
   }
 }
