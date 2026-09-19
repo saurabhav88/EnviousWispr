@@ -251,7 +251,7 @@ struct WordSuggestionServiceCorrectionJudgeTests {
     #expect(decisions.map { $0["vocabulary_correction"] as? Bool } == [true, false])
     let identity = try #require(response["execution_identity"] as? [String: String])
     #expect(identity["arm"] == "rules")
-    #expect(identity["config_sha256"] == RulesCorrectionJudge.configDigest(policy: .v1))
+    #expect(identity["config_sha256"] == RulesCorrectionJudge.configDigest(policy: .v2))
     #expect(identity["config_sha256"] != WordSuggestionService.correctionJudgeConfigDigest)
   }
 

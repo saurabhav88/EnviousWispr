@@ -81,7 +81,7 @@ struct CorrectionJudgeArmSelectionTests {
 
   @Test("the shipped table binds live digests: an entry whose digest no longer matches is dead")
   func shippedTableBindsLiveDigests() async {
-    let liveRules = RulesCorrectionJudge.configDigest(policy: .v1)
+    let liveRules = RulesCorrectionJudge.configDigest(policy: .v2)
     let liveAFM = WordSuggestionService.correctionJudgeConfigDigest
     for entry in CorrectionJudgeArmSelection.qualified {
       switch entry.arm {
