@@ -221,6 +221,9 @@ def build_calibration_fresh(args, frozen: dict) -> int:
     for r in rows:
         r["label_source"] = r["label_source"].replace("(class decided at table level)", "(calibration-only table, class decided at table level)")
     rows = [r for r in rows if gate_mod.validate_rows([r], "cal") == []]
+    # Calibration never holds a single-labeller row (data.TRAIN_ONLY_STATUSES).
+    excluded_train_only = sum(1 for r in rows if r.get("review_status") in data.TRAIN_ONLY_STATUSES)
+    rows = [r for r in rows if r.get("review_status") not in data.TRAIN_ONLY_STATUSES]
     rows, dropped_frozen = drop_frozen(rows, frozen)
     seen: set[str] = set()
     rows = [r for r in rows if not (data.content_hash(r) in seen or seen.add(data.content_hash(r)))]
@@ -253,7 +256,7 @@ def build_calibration_fresh(args, frozen: dict) -> int:
         classes[c] = classes.get(c, 0) + 1
         langs[r["language"]] = langs.get(r["language"], 0) + 1
     manifest = {
-        "train_only_rows": {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "kept_in_train": len(train_only) - len(train_only_dropped), "dropped_family_in_dev_or_calibration": train_only_dropped},
+        "train_only_rows": {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "excluded_from_calibration": excluded_train_only},
         "hash_version": data.HASH_VERSION,
         "templates_version": templates["version"],
         "templates_sha256": data.sha256_file(args.templates),

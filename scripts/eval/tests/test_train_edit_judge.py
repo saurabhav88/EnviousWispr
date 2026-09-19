@@ -492,3 +492,27 @@ def test_single_labeller_rows_only_ever_train_and_never_split_a_family():
     assert all(r["id"] in {x["id"] for x in parts["train"]} for r in fresh)
     assert not data.cross_partition_families(parts)
     assert "harvest-jev-labelled" in data.TRAIN_ONLY_STATUSES <= data.REVIEWED_STATUSES
+
+
+def test_calibration_fresh_excludes_single_labeller_rows_and_counts_them(tmp_path, monkeypatch):
+    """The calibration-fresh path never holds a `harvest-jev-labelled` row, and its
+    manifest counts the exclusion (peer review of feat/996-jev-label-status)."""
+    manifest, _, problems = gate.load_frozen()
+    assert problems == []
+    def cal_row(i: int, status: str) -> dict:
+        return dict(_row(i, True, False), replacement=f"Calfresh{i}", edited=f"ctx {i} Calfresh{i}", review_status=status)
+    good = [cal_row(i, "template-reviewed") for i in range(3)]
+    single = cal_row(9, "harvest-jev-labelled")
+    monkeypatch.setattr(builder, "generate_dev_rows", lambda templates, packs, tables=None, id_prefix="CAL": (good + [single], {}))
+    templates = tmp_path / "templates.json"
+    templates.write_text(json.dumps({"version": "t", "cal_tables": {}}), encoding="utf-8")
+    split = tmp_path / "split-manifest.json"
+    split.write_text(json.dumps({"partitions": {"train": {"families": [], "hashes": []}}}), encoding="utf-8")
+    args = type("A", (), {})()
+    args.templates, args.calibration_tables, args.split_manifest, args.calibration_out = templates, "cal_tables", [split], tmp_path / "cal"
+    assert builder.build_calibration_fresh(args, manifest) == 0
+    written = data.read_jsonl(tmp_path / "cal" / "calibration.jsonl")
+    assert [r["id"] for r in written] == [r["id"] for r in good]
+    assert all(r["review_status"] not in data.TRAIN_ONLY_STATUSES for r in written)
+    m = json.loads((tmp_path / "cal" / "split-manifest.json").read_text(encoding="utf-8"))
+    assert m["train_only_rows"] == {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "excluded_from_calibration": 1}
