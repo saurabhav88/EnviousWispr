@@ -18,14 +18,14 @@ def _resource(tmp_path: Path) -> Path:
     d = tmp_path / "edit-judge-veto-test"
     d.mkdir(parents=True)
     files = {}
-    for lang, rows in {"en": [("basil", 3.65), ("elena", 3.75), ("bluetooth", 3.75), ("pinecone", 2.07), ("lowkey", 2.74), ("rare", 2.2)], "de": [("ampel", 3.5)], "ko": [("하준", 3.2)]}.items():
+    for lang, rows in {"en": [("basil", 3.65), ("elena", 3.75), ("bluetooth", 3.75), ("pinecone", 2.07), ("lowkey", 2.74), ("rare", 2.2), ("head", 5.1), ("scale", 4.3), ("post", 5.0), ("hog", 3.1), ("cuber", 2.1)], "de": [("ampel", 3.5)], "ko": [("하준", 3.2)]}.items():
         path = d / f"{lang}.tsv"
         path.write_text("".join(f"{w}\t{z:.2f}\n" for w, z in sorted(rows)), encoding="utf-8")
         files[lang] = {"path": path.name, "words": len(rows), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     dpath = d / "en-dictionary.txt"
     dpath.write_text("mastodont\nsnowplow\n", encoding="utf-8")
     files["en-dictionary"] = {"path": dpath.name, "words": 2, "sha256": hashlib.sha256(dpath.read_bytes()).hexdigest()}
-    manifest = {"version": "edit-judge-veto-test", "policy": {"zipf_list_min": 2.0, "zipf_single_min": 3.0, "zipf_joined_min": 2.0, "dictionary_min_letters": 3, "alias_languages": ["en", "de"], "alias_languages_evidence": "synthetic"}, "languages": ["en", "de", "ko"], "files": files}
+    manifest = {"version": "edit-judge-veto-test", "policy": {"zipf_list_min": 2.0, "zipf_single_min": 2.0, "zipf_joined_min": 2.0, "zipf_all_tokens_min": 3.0, "letter_names": ["ay", "bee", "cee", "dee", "ee", "gee", "tee", "are", "ess", "en", "ex"], "spelled_sequence_min": 2, "dictionary_min_letters": 3, "alias_languages": ["en", "de"], "alias_languages_evidence": "synthetic"}, "languages": ["en", "de", "ko"], "files": files}
     (d / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return d
 
@@ -34,7 +34,7 @@ def test_single_token_common_word_is_vetoed_and_rare_word_is_not(tmp_path):
     v = AliasVeto(_resource(tmp_path))
     assert v.veto("basil", "en").vetoed
     assert v.veto("Elena", "en").vetoed  # casefold
-    assert v.veto("rare", "en").vetoed is False  # 2.2 < single floor 3.0
+    assert v.veto("rare", "en").vetoed  # 2.2 >= single floor 2.0 (policy v6: any listed word; `guacamole` at 2.91 was granted under 3.0)
     assert v.veto("kubernetes", "en").vetoed is False
     assert v.veto("mastodont", "en").vetoed  # dictionary
     assert v.veto("ampel", "en").vetoed is False  # German word is not checked for an English row
@@ -48,9 +48,14 @@ def test_multi_token_joined_form_rule(tmp_path):
     assert v.veto("low key", "en").vetoed
     assert v.veto("blue tooth", "en").vetoed
     assert v.veto("snow plow", "en").vetoed  # joined form in the dictionary
-    assert v.veto("post hog", "en").vetoed is False
-    assert v.veto("cuber netties", "en").vetoed is False
-    assert v.veto("ra re", "en").vetoed  # joined 'rare' 2.2 >= 2.0: the joined floor is lower than the single floor
+    assert v.veto("cuber netties", "en").vetoed is False  # 'netties' is not a word: the classifier decides
+    assert v.veto("ra re", "en").vetoed  # joined 'rare' 2.2 >= joined floor 2.0
+    # all-tokens floor 3.0 (policy v6): every token a word people use is a plausible phrase
+    d = v.veto("head scale", "en")
+    assert d.vetoed and "every token" in d.reason
+    assert v.veto("post hog", "en").vetoed  # refused although the labels call it safe: the corrected spelling is still learned
+    assert v.veto("cuber scale", "en").vetoed is False  # 'cuber' 2.1 < 3.0
+    assert v.veto("Head Scale", "de").vetoed  # English tokens are checked for every row
 
 
 def test_uncovered_language_abstains_and_apply_moves_safe_mass(tmp_path):
@@ -100,7 +105,7 @@ def test_identity_names_version_digest_and_policy(tmp_path):
     ident = v.identity()
     assert ident["veto_version"] == "edit-judge-veto-test"
     assert len(ident["veto_manifest_sha256"]) == 64
-    assert ident["veto_policy"]["zipf_single_min"] == 3.0
+    assert ident["veto_policy"]["zipf_single_min"] == 2.0 and ident["veto_policy"]["zipf_all_tokens_min"] == 3.0
 
 
 def test_normalise_token_strips_punctuation_and_case():
@@ -165,7 +170,11 @@ def test_prior_exposure_refuses_renamed_and_relabelled_copies(tmp_path):
     same_family = dict(row, id="C", pasted="new ctx orig", edited="new ctx repl")
     fresh = {"id": "D", "stratum": "domain", "language": "en", "pasted": "x zz", "edited": "x yy", "original": "zz", "replacement": "yy", "correction": True, "safe_alias": True, "label_source": "t"}
     assert cal.exposed_rows([renamed, same_family, fresh], hashes, families) == ["B", "C"]
-    assert cal.prior_exposure(tmp_path / "no-run") == (set(), set())
+    # exposure carries across runs: a retrain in a new run directory sees the sibling's records
+    other = tmp_path / "run-retrain"
+    other.mkdir()
+    assert cal.prior_exposure(other) == (hashes, families)
+    assert cal.prior_exposure(tmp_path / "elsewhere" / "no-run") == (set(), set())
 
 
 def test_granted_unsafe_groups_by_family_not_template():
@@ -179,3 +188,29 @@ def test_granted_unsafe_groups_by_family_not_template():
         {"family": "tailscale", "safe_alias": True, "label_safe": True},
     ]
     assert cal.granted_unsafe_by_family(decisions) == [("keycloak", 2), ("하준우", 1)]
+
+
+def test_casing_only_edit_is_not_a_correction_before_the_classifier(tmp_path):
+    from edit_judge_veto import casing_only
+
+    v = AliasVeto(_resource(tmp_path))
+    assert casing_only("figma", "Figma") and casing_only("HEISST", "heisst") and not casing_only("fig ma", "Figma")
+    assert casing_only("heisst", "hei\u00dft")  # casefold folds the sharp s; the frozen row EC-NON_ENGLISH-003 labels that pair notCorrection too
+    assert v.apply([0.0, 0.1, 0.9], "figma", "en", "Figma") == [1.0, 0.0, 0.0]  # stage one: notCorrection whatever the classifier says
+    assert v.apply([0.0, 0.1, 0.9], "fig ma", "en", "Figma") == [0.0, 0.1, 0.9]  # a real mishear reaches the veto and the classifier
+    assert v.apply([0.0, 0.1, 0.9], "basil", "en", "Basil") == [1.0, 0.0, 0.0]  # casing-only beats the veto: it is formatting, not an unsafe alias
+
+
+def test_dictated_letter_or_number_sequences_are_vetoed(tmp_path):
+    v = AliasVeto(_resource(tmp_path))
+    for orig in ("scylla dee bee", "fresh are ess ess", "silla db", "weave 8", "mini o", "paperless en gee ex", "etsy d", "quadrant db"):
+        d = v.veto(orig, "en")
+        assert d.vetoed and "letter or number sequence" in d.reason, orig
+    for orig in ("wee vee ate", "git tea", "cuber netties", "ka veeta", "navi drome"):
+        assert "letter or number sequence" not in v.veto(orig, "en").reason, orig
+    assert v.veto("silla db", "de").vetoed  # the rule is language independent
+    d2 = _resource(tmp_path / "bad")
+    m = json.loads((d2 / "manifest.json").read_text()); m["policy"]["letter_names"] = []
+    (d2 / "manifest.json").write_text(json.dumps(m))
+    with pytest.raises(RuntimeError, match="letter_names"):
+        AliasVeto(d2)

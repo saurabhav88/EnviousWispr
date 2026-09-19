@@ -12,21 +12,35 @@ decision is granted (plan §3.1 step 7). It never touches
                             given names (`policy.alias_languages`): ABSTAIN,
                             and the judge grants no alias for that row while
                             the corrected spelling is still learned
-    vetoed=True, reason     a single-token original that is a word people
-                            use (row language or English, Zipf >= the single
+    vetoed=True, reason     a single-token original that is a listed word
+                            (row language or English, Zipf >= the single
                             floor), or a multi-token original whose tokens
                             JOINED are a word (Zipf >= the joined floor, so
-                            `pine cone`, `blue tooth`, `low key` are caught
-                            while `post hog` and `cuber netties` are not),
-                            or either form found in the English dictionary
+                            `pine cone`, `blue tooth`, `low key` are caught),
+                            or either form found in the English dictionary,
+                            or a multi-token original whose EVERY token is a
+                            word people use (Zipf >= the all-tokens floor:
+                            `head scale`, `wire guard`, `pie hole`; this also
+                            refuses `post hog` and `key cloak`, real-word
+                            mishears the labels call safe, and `cuber
+                            netties` stays with the classifier), or a
+                            dictated letter or number sequence (policy v7:
+                            two or more English letter names such as
+                            `scylla dee bee`, `fresh are ess ess`, or any
+                            single Latin letter, all-digit or vowelless
+                            2-3 letter token such as `silla db`, `weave 8`,
+                            `mini o`; adjudicated UNSAFE on the v8 set)
     vetoed=False            the veto has nothing to say; the classifier's
                             `safeAlias` stands
 
 Policy history: the joined-form rule was added after the v4
 policy-development set showed lexicalised compounds slipping through
 (resource v2); edge-only punctuation stripping with combining marks kept
-replaced the earlier normalisation (resource `edit-judge-veto-v3`, the
-current one). A qualifying report needs a calibration set never seen
+replaced the earlier normalisation (v3); alias languages (v4, v5); the
+all-tokens floor and the single floor at 2.0 came from the v6 set, where
+six two-word phrases (`head scale`, `pie hole`, `tan door`, `wire guard`,
+`next cloud`, `health checks`) and `guacamole` (Zipf 2.91) were granted
+(resource `edit-judge-veto-v6`, the current one). A qualifying report needs a calibration set never seen
 during that development. The Swift port (chunk 2d) must prove parity
 against this file; the resource manifest digest, policy and this file's
 digest are part of the judge's execution identity, so a different list,
@@ -52,6 +66,15 @@ def normalise_token(token: str) -> str:
     while end > start and unicodedata.category(value[end - 1]).startswith("P"):
         end -= 1
     return value[start:end].strip()
+
+
+def casing_only(original: str, replacement: str) -> bool:
+    """True when the edit changes only letter case (NFC, casefold): formatting,
+    never a vocabulary correction. Casefold also folds `heisst`/`heißt`, which
+    the frozen row EC-NON_ENGLISH-003 labels notCorrection. One authority for
+    the eval; the runtime alignment (`EditAlignment`) must agree with it
+    (parity proven in 2d)."""
+    return unicodedata.normalize("NFC", original).casefold() == unicodedata.normalize("NFC", replacement).casefold()
 
 
 @dataclass
@@ -108,6 +131,10 @@ class AliasVeto:
         ):
             raise RuntimeError("veto resource: policy.alias_languages requires loaded tables and non-empty string alias_languages_evidence")
         self.alias_languages = set(alias)
+        names = self.policy.get("letter_names")
+        if not isinstance(names, list) or not names or not all(isinstance(x, str) and x.strip() for x in names) or not isinstance(self.policy.get("spelled_sequence_min"), int):
+            raise RuntimeError("veto resource: policy.letter_names must be a non-empty list of strings with an integer spelled_sequence_min")
+        self._letter_names = {normalise_token(x) for x in names}
 
     def has_frequency_list(self, language: str) -> bool:
         """True when the row's language has a frequency list. This is list
@@ -142,12 +169,53 @@ class AliasVeto:
                 return VetoDecision(covered=True, vetoed=True, reason=f"{what} {token!r} is a word in {check_lang} (zipf {z:.2f} >= {floor})")
         if len(token) >= self.policy["dictionary_min_letters"] and token in self._dictionary:
             return VetoDecision(covered=True, vetoed=True, reason=f"{what} {token!r} is an English dictionary word")
+        if len(tokens) >= 2:
+            all_floor = self.policy["zipf_all_tokens_min"]
+            best = [max(self._zipf.get(l, {}).get(t, 0.0) for l in dict.fromkeys([lang, "en"])) for t in tokens]
+            if all(z >= all_floor for z in best):
+                return VetoDecision(covered=True, vetoed=True, reason=f"multi-token original: every token is a word people use (zipf {', '.join(f'{z:.2f}' for z in best)} >= {all_floor}), a plausible phrase")
+        spelled = self.spelled(tokens)
+        if spelled:
+            return VetoDecision(covered=True, vetoed=True, reason=f"original is a dictated letter or number sequence ({spelled})")
         return VetoDecision(covered=True, vetoed=False, reason=f"{what}: not a listed word, the classifier decides")
 
-    def apply(self, probs: list[float], original: str, language: str) -> list[float]:
-        """Probability triple after the veto: the safe mass moves to the
+    def spelled(self, tokens: list[str]) -> str:
+        """Policy v7: the reason string when the tokens read as a dictated
+        letter or number sequence, else ''. At least `spelled_sequence_min`
+        English letter names (`dee bee`), or any token that is one Latin
+        letter, all digits, or two to three Latin letters with no vowel
+        (`db`, `rss`, `ngx`, `8`).
+        This is a conservative PATTERN detector, not a reading of meaning
+        (Codex 3c r4): it sees `blarg cee pee` and not `blarg see pee`,
+        `blarg api` or `blarg q4`; homophone spellings of letter names are
+        deliberately absent because they are ordinary words (`see`, `tea`,
+        `you`). Do not extend the table to imply completeness; the
+        classifier decides what this branch does not see, and the exam
+        measures the result. Lost safe aliases under this branch:
+        `et cee dee -> etcd`, `paperless en gee ex`, `no co dee bee`."""
+        names = self._letter_names
+        letter_count = sum(1 for t in tokens if t in names)
+        if letter_count >= self.policy["spelled_sequence_min"]:
+            return f"{letter_count} letter names"
+        for t in tokens:
+            if t.isdigit():
+                return f"digit token {t!r}"
+            if t.isascii() and t.isalpha() and (len(t) == 1 or (len(t) <= 3 and not any(ch in "aeiouy" for ch in t))):
+                return f"spelled token {t!r}"
+        return ""
+
+    def apply(self, probs: list[float], original: str, language: str, replacement: str | None = None) -> list[float]:
+        """Probability triple after stage one. A casing-only edit
+        (`replacement` given and equal to `original` after NFC casefold) is
+        `notCorrection` outright: an evaluation override equivalent to the
+        runtime alignment drop before the judge (plan §3.1 step 5; frozen
+        convention EC-BRAND-006). The eval still computes the classifier
+        first; the runtime skip and its latency are 2d obligations.
+        Otherwise the safe mass moves to the
         unsafe class when vetoed or uncovered, so the downstream decision
-        rule sees `correctionButUnsafe`; otherwise unchanged."""
+        rule sees `correctionButUnsafe`; else unchanged."""
+        if replacement is not None and casing_only(original, replacement):
+            return [1.0, 0.0, 0.0]
         d = self.veto(original, language)
         if d.vetoed or not d.covered:
             return [probs[0], probs[1] + probs[2], 0.0]

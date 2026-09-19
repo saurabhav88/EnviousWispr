@@ -19,7 +19,7 @@ Sources, both versioned and digested into `manifest.json`:
 
 Output: `<out>/<version>/{<lang>.tsv, en-dictionary.txt, manifest.json}`.
 Languages outside the resource are UNCOVERED: the veto abstains there and
-the judge grants no alias (plan §3.1 step 7). Since v4 (v5 corrects the evidence wording) an alias is granted
+the judge grants no alias (plan §3.1 step 7). Since v4 (v5 corrects the evidence wording; v6 adds the all-tokens floor and lowers the single floor; v7 adds the spelled letter/number rule) an alias is granted
 ONLY in `--alias-languages`: the languages whose lists were measured to
 carry that language's common given names (wordfreq lists words, not names;
 the Korean and Chinese lists missed half the unsafe-name rows on the
@@ -36,15 +36,36 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-RESOURCE_VERSION = "edit-judge-veto-v5"
+RESOURCE_VERSION = "edit-judge-veto-v7"
 # Lists carry every word at or above `--zipf-list` with its Zipf value, so
-# the two policy floors below can both be answered from one file per language:
-#   single-token originals are vetoed at >= `--zipf-single` (about one per
-#   million words), joined multi-token forms (`pine cone` -> `pinecone`) at
-#   >= `--zipf-joined` (rarer lexicalised compounds still count as words).
+# the three policy floors below can all be answered from one file per language:
+#   single-token originals are vetoed at >= `--zipf-single` (policy v6: any
+#   listed word; `guacamole` sits at 2.91 and is a word people dictate),
+#   joined multi-token forms (`pine cone` -> `pinecone`) at >= `--zipf-joined`
+#   (rarer lexicalised compounds still count as words), and a multi-token
+#   original whose EVERY token is a word people use (>= `--zipf-all-tokens`,
+#   about one per million) is a plausible phrase (`head scale`, `wire guard`,
+#   `pie hole`) and is vetoed too. That last floor also refuses real-word
+#   mishears the labels call safe (`key cloak`, `git tea`): measured on the
+#   three 2026-09-18 development sets it is the only floor that meets the
+#   0.95 precision bar on all three (v6 set: 322 granted, 0 unsafe, LB 0.992,
+#   alias recall 0.535); the corrected spelling is still learned.
 DEFAULT_ZIPF_LIST = 2.0
-DEFAULT_ZIPF_SINGLE = 3.0
+DEFAULT_ZIPF_SINGLE = 2.0
 DEFAULT_ZIPF_JOINED = 2.0
+DEFAULT_ZIPF_ALL_TOKENS = 3.0
+# Policy v7: a dictated LETTER OR NUMBER SEQUENCE is unsafe (council class
+# rule, 2026-09-19: `scylla dee bee`, `fresh are ess ess`, `silla db`,
+# `weave 8`, `mini o` were granted by the v6 policy and adjudicated UNSAFE).
+# English letter names, spoken forms the recogniser writes; checked for every
+# row like the English word list. Two or more of them in one original, or
+# any token that is a single Latin letter, all digits, or two to three Latin
+# letters without a vowel (`db`, `rss`, `ngx`), makes the original spelled.
+LETTER_NAMES = sorted({
+    "ay", "bee", "cee", "dee", "ee", "eff", "gee", "aitch", "eye", "jay", "kay", "el", "ell", "em", "en",
+    "oh", "pee", "cue", "queue", "are", "ar", "ess", "es", "tee", "you", "vee", "double you", "ex", "why", "zee", "zed",
+})
+DEFAULT_SPELLED_SEQUENCE_MIN = 2
 DICTIONARY_PATH = Path("/usr/share/dict/words")
 DICTIONARY_MIN_LETTERS = 3
 
@@ -59,6 +80,8 @@ def main() -> int:
     p.add_argument("--zipf-list", type=float, default=DEFAULT_ZIPF_LIST)
     p.add_argument("--zipf-single", type=float, default=DEFAULT_ZIPF_SINGLE)
     p.add_argument("--zipf-joined", type=float, default=DEFAULT_ZIPF_JOINED)
+    p.add_argument("--zipf-all-tokens", type=float, default=DEFAULT_ZIPF_ALL_TOKENS)
+    p.add_argument("--spelled-sequence-min", type=int, default=DEFAULT_SPELLED_SEQUENCE_MIN)
     p.add_argument("--top-n", type=int, default=300_000, help="wordfreq candidates per language before the Zipf filter")
     p.add_argument("--alias-languages", required=True, help="comma-separated languages whose name coverage was measured; only these may grant an alias")
     p.add_argument("--alias-languages-evidence", required=True, help="where the name-coverage measurement lives (calibration ids or a file)")
@@ -106,9 +129,13 @@ def main() -> int:
             "zipf_list_min": args.zipf_list,
             "zipf_single_min": args.zipf_single,
             "zipf_joined_min": args.zipf_joined,
+            "zipf_all_tokens_min": args.zipf_all_tokens,
+            "letter_names": LETTER_NAMES,
+            "spelled_sequence_min": args.spelled_sequence_min,
+            "spelled": "vetoed when at least spelled_sequence_min tokens are letter names, or any token is a single Latin letter, all digits, or 2-3 Latin letters without a vowel (a dictated letter or number sequence)",
             "top_n": args.top_n,
             "normalisation": "edit_judge_veto.normalise_token: NFC, casefold, punctuation stripped from the edges only (combining marks kept)",
-            "multi_token": "vetoed when the tokens joined without spaces are a listed word at zipf_joined_min or a dictionary word; otherwise not vetoed",
+            "multi_token": "vetoed when the tokens joined without spaces are a listed word at zipf_joined_min or a dictionary word, or when EVERY token is a listed word at zipf_all_tokens_min (a plausible phrase); otherwise not vetoed",
             "languages_checked": "row language plus en (tech vocabulary crosses languages)",
             "uncovered_language": "abstain: the judge grants no alias",
             "alias_languages": alias_languages,

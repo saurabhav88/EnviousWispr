@@ -36,23 +36,23 @@ import edit_judge_data as data  # noqa: E402
 import edit_judge_gate as gate  # noqa: E402
 import probe_edit_judge_compatibility as probe  # noqa: E402
 import train_edit_judge as trainer  # noqa: E402
-from edit_judge_veto import AliasVeto  # noqa: E402
+from edit_judge_veto import AliasVeto, casing_only  # noqa: E402
 
 
 def prior_exposure(run: Path) -> tuple[set[str], set[str]]:
     """Content hashes and families of every calibration set already scored
-    under this run (from the rebound manifests), so an inspected set can
-    never qualify again, whatever `--policy-dev-dir` was passed and however
-    its rows were renamed or relabelled."""
+    under ANY run beside this one (`<runs root>/*/calibrations/*/
+    training-manifest.json`), so an inspected set can never qualify again:
+    not under this run, not under a retrain in a new run directory (Codex
+    3c r3), whatever `--policy-dev-dir` was passed and however its rows were
+    renamed or relabelled."""
     hashes: set[str] = set()
     families: set[str] = set()
-    cal_root = run / "calibrations"
-    if cal_root.exists():
-        for m in sorted(cal_root.glob("*/training-manifest.json")):
-            doc = json.loads(m.read_text(encoding="utf-8"))
-            for part in doc.get("partitions", {}).values():
-                hashes.update(part.get("hashes", []))
-                families.update(part.get("families", []))
+    for m in sorted(run.parent.glob("*/calibrations/*/training-manifest.json")):
+        doc = json.loads(m.read_text(encoding="utf-8"))
+        for part in doc.get("partitions", {}).values():
+            hashes.update(part.get("hashes", []))
+            families.update(part.get("families", []))
     return hashes, families
 
 
@@ -108,6 +108,7 @@ def main() -> int:
     p.add_argument("--veto-resource", type=Path, required=True, help="the <version> directory of the veto resource")
     p.add_argument("--calibration-dir", type=Path, required=True, help="a --calibration-fresh output directory")
     p.add_argument("--policy-dev-dir", type=Path, action="append", default=[], help="every calibration set inspected while developing the policy; their rows join the development population and must not overlap the fresh set")
+    p.add_argument("--dev-dir", type=Path, help="the split directory this run trained on (default <artifacts>/dev); its manifest digest must equal the run's")
     p.add_argument("--analysis-only", action="store_true", help="re-score an already-inspected set for accounting: never produces a qualifying manifest")
     args = p.parse_args()
 
@@ -136,9 +137,9 @@ def main() -> int:
     veto = AliasVeto(args.veto_resource)
 
     # The run's own split (dev is the selection set) and the fresh calibration set.
-    split_path = run.parent.parent / "dev" / "split-manifest.json"
+    split_path = (args.dev_dir or run.parent.parent / "dev") / "split-manifest.json"
     if data.sha256_file(split_path) != experiment["split_manifest_sha256"]:
-        print("INFRA-ERROR: <artifacts>/dev/split-manifest.json is not the split this run trained on", file=sys.stderr)
+        print(f"INFRA-ERROR: {split_path} is not the split this run trained on", file=sys.stderr)
         return 2
     split = json.loads(split_path.read_text(encoding="utf-8"))
     partitions = {n: trainer.load_partition(split_path.parent, n, split) for n in ("train", "dev", "calibration")}
@@ -156,26 +157,30 @@ def main() -> int:
         m = json.loads((d / "split-manifest.json").read_text(encoding="utf-8"))
         policy_dev_rows.extend(trainer.load_partition(d, "calibration", m))
         policy_dev_manifests.append({"dir": str(d), "sha256": data.sha256_file(d / "split-manifest.json"), "rows": m["partitions"]["calibration"]["rows"]})
-    development_rows = partitions["dev"] + partitions["calibration"] + policy_dev_rows
+    # One development population, deduplicated by content hash: two exposed
+    # sets can share rows (the v6 set and its relabelled rebuild), and a
+    # manifest partition must not carry a hash twice.
+    seen_dev: set[str] = set()
+    development_rows = [r for r in partitions["dev"] + partitions["calibration"] + policy_dev_rows if not (data.content_hash(r) in seen_dev or seen_dev.add(data.content_hash(r)))]
     try:
         trainer.refuse_frozen_overlap({"train": partitions["train"], "development": development_rows, "fresh_calibration": fresh}, frozen)
     except RuntimeError as exc:
         print(f"INFRA-ERROR: {exc}", file=sys.stderr)
         return 2
-    # A set already scored under this run is exposed, by content and by
+    # A set already scored under any run is exposed, by content and by
     # family; in qualification mode it is refused outright.
     seen_hashes, seen_families = prior_exposure(run)
     already = exposed_rows(fresh, seen_hashes, seen_families)
     if already and not args.analysis_only:
-        print(f"INFRA-ERROR: {len(already)} calibration row(s) were already scored under this run (first: {already[:3]}); a previously inspected set cannot qualify, use --analysis-only", file=sys.stderr)
+        print(f"INFRA-ERROR: {len(already)} calibration row(s) were already scored under an earlier calibration (first: {already[:3]}); a previously inspected set cannot qualify, use --analysis-only", file=sys.stderr)
         return 2
     uncovered = sorted({r["language"] for r in fresh + partitions["dev"] if not veto.covers(r["language"])})
 
     dev_rows = partitions["dev"]
     dev_probs = classifier_probs(run, manifest, contract, dev_rows)
     fresh_probs = classifier_probs(run, manifest, contract, fresh)
-    dev_vetoed = [veto.apply(p, r["original"], r["language"]) for r, p in zip(dev_rows, dev_probs)]
-    fresh_vetoed = [veto.apply(p, r["original"], r["language"]) for r, p in zip(fresh, fresh_probs)]
+    dev_vetoed = [veto.apply(p, r["original"], r["language"], r["replacement"]) for r, p in zip(dev_rows, dev_probs)]
+    fresh_vetoed = [veto.apply(p, r["original"], r["language"], r["replacement"]) for r, p in zip(fresh, fresh_probs)]
     selection = trainer.select_safe_threshold(dev_rows, dev_vetoed)
     locked = selection["selected"]["safe_threshold"] if selection["qualifying"] else None
     fresh_score = trainer.score_decisions(fresh, fresh_vetoed, locked) if locked is not None else None
@@ -196,7 +201,7 @@ def main() -> int:
     for r, p_raw, p_v in zip(fresh, fresh_probs, fresh_vetoed):
         vc, sa = trainer.decide(p_v, locked) if locked is not None else (None, None)
         vd = veto.veto(r["original"], r["language"])
-        decisions.append({"id": r["id"], "family": data.family_key(r), "language": r["language"], "stratum": r["stratum"], "label_correction": r["correction"], "label_safe": r["safe_alias"], "vetoed": vd.vetoed, "covered": vd.covered, "classifier_probs": [round(x, 4) for x in p_raw], "vocabulary_correction": vc, "safe_alias": sa})
+        decisions.append({"id": r["id"], "family": data.family_key(r), "language": r["language"], "stratum": r["stratum"], "label_correction": r["correction"], "label_safe": r["safe_alias"], "casing_only": casing_only(r["original"], r["replacement"]), "vetoed": vd.vetoed, "covered": vd.covered, "classifier_probs": [round(x, 4) for x in p_raw], "vocabulary_correction": vc, "safe_alias": sa})
     data.write_jsonl(out / "fresh-decisions.jsonl", decisions)
     granted_unsafe = [d for d in decisions if d["safe_alias"] and not d["label_safe"]]
     metrics = {
@@ -210,6 +215,12 @@ def main() -> int:
         "policy_development_sets": policy_dev_manifests,
         "granted_unsafe_by_family": granted_unsafe_by_family(decisions),
         "granted_unsafe_total": len(granted_unsafe),
+        # Family-level view: rows of one family share templates, so row counts
+        # overstate independent evidence (Codex 3c); the bar stays row-level.
+        "families_granted": len({d["family"] for d in decisions if d["safe_alias"]}),
+        "families_granted_unsafe": len({d["family"] for d in granted_unsafe}),
+        "families_labelled_safe": len({d["family"] for d in decisions if d["label_safe"]}),
+        "families_granted_safe": len({d["family"] for d in decisions if d["safe_alias"] and d["label_safe"]}),
         "policy": "classifier + alias veto (edit_judge_veto.AliasVeto.apply), then the trainer's decision rule; threshold selected on the run's dev partition with the veto applied; reported on the fresh calibration set",
         "veto": veto.identity(),
         "uncovered_languages": uncovered,
@@ -257,6 +268,7 @@ def main() -> int:
         "fresh_alias_precision_lb95": round(fresh_lb, 4) if fresh_lb is not None else None,
         "granted_unsafe_total": len(granted_unsafe),
         "granted_unsafe_by_family": metrics["granted_unsafe_by_family"][:6],
+        "families": {k: metrics[k] for k in ("families_granted", "families_granted_unsafe", "families_labelled_safe", "families_granted_safe")},
         "locked_threshold": locked,
         "uncovered_languages": uncovered,
         "veto_fired": veto_fired,

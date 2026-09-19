@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -110,6 +111,12 @@ def generate_dev_rows(templates: dict, packs: list[dict], tables: dict | None = 
         for ti, template in enumerate(t["term_templates"]):
             for pi, (orig, canon) in enumerate(tables["terms_unsafe"]["pairs"]):
                 add(_row(f"{id_prefix}-TERMU-{lang}-{ti}-{pi}", "domain", lang, template, orig, canon, True, False, f"{version} terms_unsafe[{pi}] x {lang} term_templates[{ti}]"), "terms_unsafe")
+            # notCorrection: casing-only edits (`garage -> Garage`). The frozen
+            # convention labels them notCorrection (EC-BRAND-006 `figma -> Figma`)
+            # and the runtime alignment drops them before the judge, so they are
+            # formatting negatives here, never unsafe corrections (Codex 3c).
+            for pi, (orig, canon) in enumerate(tables.get("formatting_only", {}).get("pairs", [])):
+                add(_row(f"{id_prefix}-FORMAT-{lang}-{ti}-{pi}", "grammar_punctuation", lang, template, orig, canon, False, False, f"{version} formatting_only[{pi}] x {lang} term_templates[{ti}]"), "formatting_only")
         for ti, template in enumerate(t["name_templates"]):
             for pi, (orig, canon) in enumerate(tables["names_unsafe"].get(lang, [])):
                 add(_row(f"{id_prefix}-NAMEU-{lang}-{ti}-{pi}", "ambiguous_name", lang, template, orig, canon, True, False, f"{version} names_unsafe[{lang}][{pi}] x name_templates[{ti}]"), "names_unsafe")
@@ -144,7 +151,22 @@ def generate_dev_rows(templates: dict, packs: list[dict], tables: dict | None = 
         template = pool[i % len(pool)]
         add(_row(f"{id_prefix}-PACK-{c['pack']}-{i}", stratum, "en", template, c["original"], c["replacement"], correction, safe_alias, f"packs/{c['pack']}.json pair reviewed: {review['reason']}"), "pack_reviewed")
     refuse_label_conflicts(rows)
+    refuse_casing_only_corrections(rows)
     return rows, counts
+
+
+def refuse_casing_only_corrections(rows: list[dict]) -> None:
+    """A casing-only edit is formatting, never a correction and never a safe
+    alias (frozen convention; the runtime alignment drops it before the
+    judge). Five such pairs sat in the v6 `terms_unsafe` table as
+    corrections and inflated correction recall while hiding 365 false
+    additions (Codex 3c); a table that labels one as a correction is refused."""
+    noop = [r["id"] for r in rows if unicodedata.normalize("NFC", r["original"]) == unicodedata.normalize("NFC", r["replacement"])]
+    if noop:
+        raise ValueError(f"{len(noop)} row(s) whose original equals the replacement (two such name pairs sat in the v5 table): {noop[:5]}")
+    bad = [r["id"] for r in rows if unicodedata.normalize("NFC", r["original"]).casefold() == unicodedata.normalize("NFC", r["replacement"]).casefold() and (r["correction"] or r["safe_alias"])]
+    if bad:
+        raise ValueError(f"{len(bad)} casing-only edit(s) labelled as corrections (must be notCorrection): {bad[:5]}")
 
 
 def refuse_label_conflicts(rows: list[dict]) -> None:
@@ -181,13 +203,18 @@ def build_calibration_fresh(args, frozen: dict) -> int:
         print("INFRA-ERROR: generated calibration rows invalid: " + "; ".join(problems[:5]), file=sys.stderr)
         return 2
     gate_mod.require_clean_dev(rows, frozen)
-    split = json.loads(args.split_manifest.read_text(encoding="utf-8"))
-    used_families = {f for p in split["partitions"].values() for f in p["families"]}
-    used_hashes = {h for p in split["partitions"].values() for h in p["hashes"]}
+    # Disjoint from EVERY manifest given: the training split and each
+    # earlier calibration set (exposed policy-development material).
+    used_families: set[str] = set()
+    used_hashes: set[str] = set()
+    for m in args.split_manifest:
+        split = json.loads(m.read_text(encoding="utf-8"))
+        used_families |= {f for p in split["partitions"].values() for f in p["families"]}
+        used_hashes |= {h for p in split["partitions"].values() for h in p["hashes"]}
     shared_f = sorted({data.family_key(r) for r in rows} & used_families)
     shared_h = [r["id"] for r in rows if data.content_hash(r) in used_hashes]
     if shared_f or shared_h:
-        print(f"INFRA-ERROR: calibration set shares {len(shared_f)} families / {len(shared_h)} rows with the training split: {shared_f[:5]}", file=sys.stderr)
+        print(f"INFRA-ERROR: calibration set shares {len(shared_f)} families / {len(shared_h)} rows with the given manifests: {shared_f[:5]}", file=sys.stderr)
         return 2
     out = args.calibration_out
     out.mkdir(parents=True, exist_ok=False)
@@ -204,7 +231,8 @@ def build_calibration_fresh(args, frozen: dict) -> int:
         "templates_version": templates["version"],
         "templates_sha256": data.sha256_file(args.templates),
         "tables": args.calibration_tables,
-        "disjoint_from_split_manifest_sha256": data.sha256_file(args.split_manifest),
+        "disjoint_from_split_manifest_sha256": data.sha256_file(args.split_manifest[0]),
+        "disjoint_from_manifests_sha256": [data.sha256_file(m) for m in args.split_manifest],
         "review_status": REVIEW_STATUS,
         "source_counts": source_counts,
         "dropped_frozen": dropped_frozen,
@@ -319,9 +347,9 @@ def main() -> int:
     p.add_argument("--dev-out", type=Path, default=DEFAULT_DEV_OUT)
     p.add_argument("--seed", default="chunk-2c", help="--dev: family split seed")
     p.add_argument("--calibration-fresh", action="store_true", help="build the calibration-only set from the templates' calibration_only tables")
-    p.add_argument("--split-manifest", type=Path, help="--calibration-fresh: the training split the set must be disjoint from")
+    p.add_argument("--split-manifest", type=Path, action="append", help="--calibration-fresh: the training split, then every earlier calibration manifest, the set must be disjoint from (repeatable; the first is the training split)")
     p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")
-    p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final"], help="--calibration-fresh: which calibration-only tables")
+    p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8"], help="--calibration-fresh: which calibration-only tables")
     args = p.parse_args()
 
     required = (args.packs, args.frozen_manifest) + ((args.templates,) if (args.dev or args.calibration_fresh) else (args.polish,))
