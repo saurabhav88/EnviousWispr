@@ -119,6 +119,10 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("The switch has an auto slash off setting.") == "The switch has an auto/off setting.")
     #expect(Self.off("The review was okay slash mediocre.") == "The review was okay/mediocre.")
     #expect(Self.off("The launch slash abort button is red.") == "The launch/abort button is red.")
+    // A verb particle before prose keeps the verb; a bare particle can still be a command.
+    #expect(Self.off("Slash off the dead branches.") == "Slash off the dead branches.")
+    #expect(Self.off("slash down the costs") == "slash down the costs")
+    #expect(Self.off("In Slack I use slash away a lot.") == "In Slack I use /away a lot.")
     // Same accepted class as "please slash prices": a bare object after a command context.
     #expect(Self.off("Go ahead and slash prices before the sale.") == "Go ahead and /prices before the sale.")
   }

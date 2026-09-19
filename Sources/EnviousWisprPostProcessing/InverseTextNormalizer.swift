@@ -2327,6 +2327,9 @@ public struct InverseTextNormalizer: Sendable {
       slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
       || slashObjectPronouns.contains(c.afterRight)
     if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
+    // A verb particle followed by prose is the verb ("slash off the dead branches"); alone it may
+    // be a command ("use slash away").
+    if slashParticles.contains(r) && proseAfter { return .word }
     // Row B8: the word after the command names it as one ("the slash compact command", "run a
     // slash wfp skill"), so a determiner before the marker is not about the character. After the
     // verb refusals above, so "should not slash the skills budget" keeps its verb.
@@ -2406,6 +2409,9 @@ public struct InverseTextNormalizer: Sendable {
     "okay", "ok", "alright", "yes", "yeah", "yep", "sure", "hey", "oh", "anyway", "cool", "great",
     "thanks",
   ]
+  /// Particles the verb "slash" takes before an object ("slash off the", "slash down the").
+  /// "away" is absent: "I use slash away a lot" is the Slack command (T35).
+  static let slashParticles: Set<String> = ["off", "down"]
   /// Verbs whose "off" particle precedes a command ("kick off slash wfp").
   static let slashParticleVerbs: Set<String> = ["kick", "kicked", "kicking", "fire", "fired", "firing"]
   /// Words before "to" that make it a destination and never an infinitive marker: "switched to
