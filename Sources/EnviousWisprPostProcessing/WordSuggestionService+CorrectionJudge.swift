@@ -238,10 +238,24 @@ extension WordSuggestionService: CorrectionJudging {
 
   // MARK: - Benchmark door (eval harness only)
 
+  /// Benchmark-only mirror of the stage-1 shape rule alignment applies
+  /// before any judge is asked (plan §3.1 step 5, `EditRunShape`), so the
+  /// runner, which cannot see `package` declarations, measures the shipped
+  /// path (shape drop, then judge) and not the judge on rows the product
+  /// would never send it. Adds nothing to the rule.
+  ///
+  /// NEVER call from production code.
+  // periphery:ignore - eval harness API (scripts/eval/alias_runner)
+  public static func benchmarkStageOneShapeDrop(original: String, replacement: String) -> Bool {
+    EditRunShape.isCasingOrPunctuationOnly(original: original, replacement: replacement)
+  }
+
   /// Benchmark-only entry point for `scripts/eval/alias_runner judge`
   /// (#996). JSON in, JSON out, so the runner package needs no production
   /// types: request `{"candidates":[{"id":1,"original":"…","replacement":"…"}],
-  /// "context":"…","language":"en","arm":"afm"|"rules"?}`; response
+  /// "context":"…","language":"en","arm":"afm"|"rules"?,"identity_only":true?}`
+  /// (`identity_only` asks for the arm's identity alone, outcome
+  /// `"identity"`, no model call); response
   /// `{"outcome":"verdict"|<bypass>,
   /// "decisions":[{"id":1,"vocabulary_correction":true,"safe_alias":false}],
   /// "latency_ms":123.4,"execution_identity":{…},"note":"…"}`. The production
@@ -266,6 +280,9 @@ extension WordSuggestionService: CorrectionJudging {
       let context: String
       let language: String?
       let arm: String?
+      /// Ask for the arm's execution identity only (no candidates judged,
+      /// no model call); the eval runner's stage-1 shape rule uses this.
+      let identity_only: Bool?
     }
     struct ResponseDecision: Encodable {
       let id: Int
@@ -314,6 +331,16 @@ extension WordSuggestionService: CorrectionJudging {
       identity = await rules.capabilities.executionIdentity
     } else {
       identity = await capabilities.executionIdentity
+    }
+    // Identity-only request (#996 chunk 4a-ii): the eval runner's stage-1
+    // shape rule answers a row without consulting any judge but still needs
+    // the arm's identity on the record. Explicit flag; an empty candidate
+    // list without it stays malformed.
+    if raw.identity_only == true {
+      let response = Response(
+        outcome: "identity", decisions: nil, latency_ms: elapsedMs(), execution_identity: identity,
+        note: "identity only; nothing was judged")
+      return (try? encoder.encode(response)) ?? Data()
     }
     let request: CorrectionJudgeRequest
     do {

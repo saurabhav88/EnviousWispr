@@ -270,6 +270,15 @@ package enum JudgeRunner {
 /// door in chunk 2b, Core ML in 2d).
 package protocol JudgeArm: Sendable {
   func judge(row: EditCorpusRow) async -> JudgeRecord
+  /// The execution identity this arm would put on a record, obtained
+  /// WITHOUT judging anything (#996 chunk 4a-ii: a stage-1 shape drop must
+  /// carry the arm's identity and call the judge zero times). `nil` when the
+  /// arm cannot say without inference.
+  func loadedIdentity() async -> [String: String]?
+}
+
+extension JudgeArm {
+  package func loadedIdentity() async -> [String: String]? { nil }
 }
 
 // MARK: - Corpus loading
@@ -317,13 +326,32 @@ package struct JudgeArgs: Equatable, Sendable {
   package var outPath: String?
   package var judge: JudgeCandidate
   package var fixturePath: String?
+  /// A trained classifier's bound export manifest (`training-manifest.json`
+  /// beside the `.mlpackage`, #996 chunk 4a-ii). Required for a `xenc-*`
+  /// candidate, refused for every other judge: the executable derives the
+  /// arm's execution identity from what this manifest points at.
+  package var modelManifestPath: String?
+  /// `judge` measures the judge alone; `shape+judge` puts the plan's
+  /// stage-1 shape rule in front of it (the planned proposal path). The
+  /// manifest the gate binds must declare the same path.
+  package var path: JudgePath
 
-  package init(corpusPath: String, outPath: String?, judge: JudgeCandidate, fixturePath: String?) {
+  package init(
+    corpusPath: String, outPath: String?, judge: JudgeCandidate, fixturePath: String?,
+    modelManifestPath: String? = nil, path: JudgePath = .judge
+  ) {
     self.corpusPath = corpusPath
     self.outPath = outPath
     self.judge = judge
     self.fixturePath = fixturePath
+    self.modelManifestPath = modelManifestPath
+    self.path = path
   }
+}
+
+package enum JudgePath: String, Sendable {
+  case judge
+  case shapeAndJudge = "shape+judge"
 }
 
 package enum JudgeArgsError: Error, Equatable {
@@ -334,12 +362,15 @@ package enum JudgeArgsError: Error, Equatable {
   case missingValue(String)
   case fixtureRequiresFixturePath
   case fixturePathOnlyWithFixtureJudge
+  case classifierRequiresModelManifest
+  case modelManifestOnlyWithClassifier
+  case unknownPath(String)
 }
 
 package enum JudgeCLI {
   package static let usage = """
     AliasRunner judge --corpus <path> --judge <\(JudgeCandidate.usageList)>
-                      [--out <path>] [--fixture <path>]
+                      [--out <path>] [--fixture <path>] [--model-manifest <path>] [--path judge|shape+judge]
 
     Emits one JSON object per corpus row (keys sorted). `--judge fixture`
     requires `--fixture <json>`. Every other judge is a named candidate; a
@@ -353,6 +384,8 @@ package enum JudgeCLI {
     var out: String?
     var judge: JudgeCandidate?
     var fixture: String?
+    var modelManifest: String?
+    var path: JudgePath = .judge
     var it = argv.makeIterator()
     while let arg = it.next() {
       switch arg {
@@ -369,6 +402,13 @@ package enum JudgeCLI {
       case "--fixture":
         guard let v = it.next() else { throw JudgeArgsError.missingValue(arg) }
         fixture = v
+      case "--model-manifest":
+        guard let v = it.next() else { throw JudgeArgsError.missingValue(arg) }
+        modelManifest = v
+      case "--path":
+        guard let v = it.next() else { throw JudgeArgsError.missingValue(arg) }
+        guard let p = JudgePath(rawValue: v) else { throw JudgeArgsError.unknownPath(v) }
+        path = p
       default:
         throw JudgeArgsError.unknownArgument(arg)
       }
@@ -377,7 +417,12 @@ package enum JudgeCLI {
     guard let judge else { throw JudgeArgsError.missingJudge }
     if judge == .fixture, fixture == nil { throw JudgeArgsError.fixtureRequiresFixturePath }
     if judge != .fixture, fixture != nil { throw JudgeArgsError.fixturePathOnlyWithFixtureJudge }
-    return JudgeArgs(corpusPath: corpus, outPath: out, judge: judge, fixturePath: fixture)
+    let isClassifier = judge.rawValue.hasPrefix("xenc-")
+    if isClassifier, modelManifest == nil { throw JudgeArgsError.classifierRequiresModelManifest }
+    if !isClassifier, modelManifest != nil { throw JudgeArgsError.modelManifestOnlyWithClassifier }
+    return JudgeArgs(
+      corpusPath: corpus, outPath: out, judge: judge, fixturePath: fixture,
+      modelManifestPath: modelManifest, path: path)
   }
 
   /// Exit codes: 0 records written and every row got a verdict or a fixture

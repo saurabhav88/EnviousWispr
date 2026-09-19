@@ -32,7 +32,9 @@ struct JudgeCLIParseTests {
   @Test("every named candidate parses, so an unbuilt judge is a member and not a typo")
   func everyCandidateParses() throws {
     for candidate in JudgeCandidate.allCases where candidate != .fixture {
-      let args = try JudgeCLI.parse(["--corpus", "c.jsonl", "--judge", candidate.rawValue])
+      // A trained classifier additionally needs its export manifest (#996 4a-ii).
+      let extra = candidate.rawValue.hasPrefix("xenc-") ? ["--model-manifest", "m.json"] : []
+      let args = try JudgeCLI.parse(["--corpus", "c.jsonl", "--judge", candidate.rawValue] + extra)
       #expect(args.judge == candidate)
     }
   }
@@ -64,6 +66,23 @@ struct JudgeCLIParseTests {
     #expect(throws: JudgeArgsError.fixturePathOnlyWithFixtureJudge) {
       try JudgeCLI.parse(["--corpus", "c", "--judge", "rules", "--fixture", "f"])
     }
+  }
+
+  /// A trained classifier runs from its bound export manifest and nothing
+  /// else does (#996 chunk 4a-ii): a `xenc-*` judge without one is a usage
+  /// error, never a silent `unimplemented`; a manifest on a door arm is a
+  /// typo, never ignored.
+  @Test("classifier judges need a model manifest and other judges refuse one")
+  func modelManifestPairing() throws {
+    #expect(throws: JudgeArgsError.classifierRequiresModelManifest) {
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "xenc-mmbert-small"])
+    }
+    #expect(throws: JudgeArgsError.modelManifestOnlyWithClassifier) {
+      try JudgeCLI.parse(["--corpus", "c", "--judge", "rules", "--model-manifest", "m.json"])
+    }
+    let args = try JudgeCLI.parse(["--corpus", "c", "--judge", "xenc-mmbert-small", "--model-manifest", "m.json", "--out", "o"])
+    #expect(args.modelManifestPath == "m.json" && args.judge == .xencMMBERTSmall && args.outPath == "o")
+    #expect(JudgeCLI.usage.contains("--model-manifest"))
   }
 }
 

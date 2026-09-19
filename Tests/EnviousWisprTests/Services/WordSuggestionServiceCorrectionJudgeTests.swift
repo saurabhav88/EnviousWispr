@@ -255,6 +255,23 @@ struct WordSuggestionServiceCorrectionJudgeTests {
     #expect(identity["config_sha256"] != WordSuggestionService.correctionJudgeConfigDigest)
   }
 
+  /// Identity without inference (#996 chunk 4a-ii): the eval runner's
+  /// stage-1 shape rule answers a row itself but records the arm's identity;
+  /// an empty candidate list must return that identity and judge nothing.
+  @Test("the benchmark door answers an empty candidate list with the arm's identity only")
+  func benchmarkDoorIdentityOnly() async throws {
+    let service = WordSuggestionService()
+    for (arm, expected) in [("rules", RulesCorrectionJudge.configDigest(policy: .v2)), ("afm", WordSuggestionService.correctionJudgeConfigDigest)] {
+      let request = Data("{\"candidates\":[],\"context\":\"\",\"language\":\"en\",\"arm\":\"\(arm)\",\"identity_only\":true}".utf8)
+      let response = try #require(
+        try JSONSerialization.jsonObject(with: await service.benchmarkJudgeCorrections(requestJSON: request)) as? [String: Any])
+      #expect(response["outcome"] as? String == "identity", "\(arm)")
+      #expect(response["decisions"] == nil || response["decisions"] is NSNull)
+      let identity = try #require(response["execution_identity"] as? [String: String])
+      #expect(identity["config_sha256"] == expected, "\(arm)")
+    }
+  }
+
   @Test("the benchmark door refuses an unknown arm selector")
   func benchmarkDoorUnknownSelector() async throws {
     let service = WordSuggestionService()

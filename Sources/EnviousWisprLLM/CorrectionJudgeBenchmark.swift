@@ -19,6 +19,25 @@ import Foundation
 /// silent fallback to another implementation).
 // periphery:ignore - eval harness API (scripts/eval/alias_runner)
 public enum CorrectionJudgeBenchmark {
+  /// The same pair assembly `tokenizerParity` performs, with the caller's
+  /// encode function instead of the vendored tokenizer (#996 chunk 4a-ii):
+  /// the eval runner passes its pinned upstream tokenizer so the SHIPPED
+  /// `PairEncodingAdapter` (specials, truncation, padding) is what Python
+  /// checks for parity, never a copy of it. Throws when the contract fails
+  /// to load or validate. Nothing production calls this.
+  public static func encodePairs(
+    contractJSON: Data, pairs: [(input: String, output: String)],
+    encode: @escaping @Sendable (String) -> [Int]
+  ) throws -> [EncodedClassifierInput] {
+    // Bytes, not a path: the caller verifies the contract's digest once and
+    // keeps the verified bytes, so a later edit of the file cannot change the
+    // encoding under the old identity.
+    let contract = try JSONDecoder().decode(TokenizerContract.self, from: contractJSON)
+    let adapter = PairEncodingAdapter(contract: contract, encode: encode)
+    try adapter.validate()
+    return pairs.map { adapter.encodePair(input: $0.input, output: $0.output) }
+  }
+
   public static func tokenizerParity(requestJSON: Data) async -> Data {
     struct Pair: Decodable {
       let input: String
