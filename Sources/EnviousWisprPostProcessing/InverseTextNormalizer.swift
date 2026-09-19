@@ -2242,6 +2242,8 @@ public struct InverseTextNormalizer: Sendable {
     var right: String = ""
     /// Sentence punctuation is glued to the marker itself ("slash." / "slash,").
     var markerCarriesPunctuation: Bool = false
+    /// The right neighbour ends its clause ("off,"), so the token after it is not its object.
+    var rightEndsClause: Bool = false
     /// The single-letter tokens before the left neighbour spell a scheme ("h t t p" before "p:"),
     /// or before the token before it (for the second marker of "slash slash").
     var leftSpellsScheme: Bool = false
@@ -2327,9 +2329,9 @@ public struct InverseTextNormalizer: Sendable {
       slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
       || slashObjectPronouns.contains(c.afterRight)
     if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
-    // A verb particle followed by prose is the verb ("slash off the dead branches"); alone it may
-    // be a command ("use slash away").
-    if slashParticles.contains(r) && proseAfter { return .word }
+    // A verb particle followed by its object is the verb ("slash off the dead branches"); before
+    // a clause end it is a pair ("auto slash off, the same as before").
+    if slashParticles.contains(r) && proseAfter && !c.rightEndsClause { return .word }
     // Row B8: the word after the command names it as one ("the slash compact command", "run a
     // slash wfp skill"), so a determiner before the marker is not about the character. After the
     // verb refusals above, so "should not slash the skills budget" keeps its verb.
@@ -2606,6 +2608,7 @@ public struct InverseTextNormalizer: Sendable {
       ctx.leftRaw = left.raw
       ctx.right = right.core
       ctx.markerCarriesPunctuation = right.core.isEmpty && !right.raw.isEmpty
+      ctx.rightEndsClause = [",", ";", ":", ".", "!", "?"].contains { right.raw.hasSuffix($0) }
       if !left.raw.isEmpty {
         let beforeLeft = Self.slashNeighbour(ns, before: left.edge)
         ctx.beforeLeft = beforeLeft.core
