@@ -67,6 +67,13 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("slash clear. slash exit.") == "/clear. /exit.")
     // A command followed by more words is not a lone command.
     #expect(Self.off("Slash exit please.") == "/exit please.")
+    // The previous sentence's last word is no neighbour: a pronoun or a chain before the period
+    // does not reach across it, and the sentence keeps its space.
+    #expect(Self.off("I agree with you. Slash clear.") == "I agree with you. /clear.")
+    #expect(Self.off("Start here. Slash tmp slash wispr.") == "Start here. /tmp/wispr.")
+    #expect(Self.off("apples slash bananas. Slash clear") == "apples/bananas. /clear")
+    // A line break starts a sentence, so a capitalised command there is not the name.
+    #expect(Self.off("Run slash help\nSlash exit") == "Run /help\n/exit")
   }
 
   @Test("A command in a sentence keeps the space before it")

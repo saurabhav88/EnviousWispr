@@ -2263,15 +2263,22 @@ public struct InverseTextNormalizer: Sendable {
   /// `slashCommandVerbs`, which is a curated list of verbs that introduce a command name and is
   /// the one open-ended member: a verb missing from it degrades to `.glue`, never to a lost word.
   static func slashReading(_ c: SlashContext) -> SlashReading {
-    let l = c.left, r = c.right
+    // A left neighbour that ends the previous sentence ("you." in "I agree with you. Slash
+    // clear.") is no neighbour at all for the reading: the marker starts fresh, the raw text
+    // still keeps its space in the render. `slashSentenceBreak` decides, so "Dr." is not an end.
+    // A punctuation-only neighbour (`..`, row B3) is a written token, not a sentence end.
+    let leftEndsSentence =
+      !c.left.isEmpty && firstMatch(slashSentenceBreak, c.leftRaw + " ", caseInsensitive: false) != nil
+    let l = leftEndsSentence ? "" : c.left, r = c.right
     // The previous marker is adjacent when the token before the left neighbour is "slash", or
     // when the left neighbour IS the previous marker ("backslash slash" -> `\/`, #2955).
     let leftIsMarker = l == "backslash" || (l == "slash" && c.beforeLeft == "back")
     let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
     // A path continues after a leading command-shaped segment too ("slash run slash app.log"
-    // -> `/run/app.log`); a clause end after a `.prefix` is a command list instead (B5).
+    // -> `/run/app.log`); a clause end after a `.prefix` is a command list instead (B5), and a
+    // sentence end never continues a chain.
     let previousAdjacentGlued =
-      (c.beforeLeft == "slash" || leftIsMarker)
+      !leftEndsSentence && (c.beforeLeft == "slash" || leftIsMarker)
       && (c.previous == .glue || c.previous == .pair || (c.previous == .prefix && !leftEndsClause))
     // Row 0: nothing after the marker keeps the word ("a missing slash.", "tea slash coffee
     // slash.", and a trailing "docs slash" at the end of a spoken path: the approved table has
@@ -2315,7 +2322,7 @@ public struct InverseTextNormalizer: Sendable {
     // slash off, slash auto" -> `on/off/auto`, R2).
     if isSlashPair(l, r) && (!leftEndsClause || chain) { return .pair }
     // Row B3: a written, punctuation-only neighbour (`..`, `<`) or the spoken letter "A".
-    if !c.leftRaw.isEmpty && l.isEmpty { return .glue }
+    if !c.leftRaw.isEmpty && l.isEmpty && !leftEndsSentence { return .glue }
     if c.leftRaw == "A" { return .glue }
     // Row 3: "will slash prices", "we slash costs"; "back" keeps "back slash" for the toggle.
     if slashModalsAndNegators.contains(l) || slashSubjectPronouns.contains(l) || l == "back" {
@@ -2541,7 +2548,11 @@ public struct InverseTextNormalizer: Sendable {
   /// the beginning, or the previous non-blank character ends a sentence.
   static func slashStartsSentence(_ ns: NSString, at start: Int) -> Bool {
     var i = start
-    while i > 0, isWhitespace(ns.character(at: i - 1)) { i -= 1 }
+    while i > 0, isWhitespace(ns.character(at: i - 1)) {
+      // A line break starts a sentence ("Run slash help\nSlash exit").
+      if ns.character(at: i - 1) == 10 || ns.character(at: i - 1) == 13 { return true }
+      i -= 1
+    }
     if i == 0 { return true }
     let prev = ns.character(at: i - 1)
     return prev == 46 || prev == 33 || prev == 63  // . ! ?
