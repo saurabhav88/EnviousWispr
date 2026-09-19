@@ -188,6 +188,9 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("We called the new internal tool Slash because its icon looked like a diagonal line.")
         == "We called the new internal tool Slash because its icon looked like a diagonal line.")
+    // The two-word alias capitalised mid-sentence is a name too (cloud review, PR #3040).
+    #expect(Self.off("The band Forward Slash rocked the venue.") == "The band Forward Slash rocked the venue.")
+    #expect(Self.off("the band forward slash rocked") == "the band/rocked")
   }
 
   @Test("Rows B2 and B2': two markers in a row")

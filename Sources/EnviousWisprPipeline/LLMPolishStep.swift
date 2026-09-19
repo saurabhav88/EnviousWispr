@@ -1060,7 +1060,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// What `validatePolishOutput` decided (#3038). `text` is what the pipeline delivers;
   /// `guardName` names the guard that discarded the model's output (`expansion`,
   /// `content_drop`, `question_flip`, `symbol_drop`) or is nil when the output stood;
-  /// `symbolTokens` is the number of `/word` and `\word` tokens the ORIGINAL carried when
+  /// `symbolTokens` is the number of `/word` and `\word` occurrences the ORIGINAL carried when
   /// Guard 4 ran (zero is a measurement), nil when an earlier guard returned first. Counts
   /// and names only, never text (`telemetry-privacy-boundary`).
   struct PolishValidation: Equatable {
@@ -1080,18 +1080,22 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   nonisolated private static let symbolTokenRegex = try? NSRegularExpression(
     pattern: symbolTokenPattern)
 
-  /// The symbol tokens of `text`, lower-cased, as a set: presence is what Guard 4 compares,
-  /// never multiplicity or the left-hand attachment (a polish that re-spaces or backticks a
-  /// command keeps its token). A regex that failed to compile would make the guard blind, so
-  /// it is a build-time constant and the failure is loud in DEBUG.
-  nonisolated static func symbolTokens(in text: String) -> Set<String> {
+  /// The symbol tokens of `text`, lower-cased, with how often each occurs. Guard 4 compares
+  /// occurrences per token, never the left-hand attachment (a polish that re-spaces or
+  /// backticks a command keeps its token): "Run /clear, then run /clear" polished to one
+  /// "/clear" lost one, while a polish that repeats a command lost nothing. A regex that
+  /// failed to compile would make the guard blind, so it is a build-time constant and the
+  /// failure is loud in DEBUG.
+  nonisolated static func symbolTokens(in text: String) -> [String: Int] {
     guard let regex = symbolTokenRegex else {
       assertionFailure("symbol token regex failed to compile")
-      return []
+      return [:]
     }
     let ns = text as NSString
     let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-    return Set(matches.map { ns.substring(with: $0.range).lowercased() })
+    var counts: [String: Int] = [:]
+    for m in matches { counts[ns.substring(with: m.range).lowercased(), default: 0] += 1 }
+    return counts
   }
 
   /// Validate LLM polish output with mode-aware thresholds.
@@ -1182,13 +1186,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // "apples/oranges/bananas" as "apples, oranges, or bananas" and `users\shared` as
     // `users/shared` (#2957). Whole-token presence, lower-cased: `/clear-all` does not stand
     // in for `/clear`; a scheme stripped from a URL (`/example` gone) falls back too, the
-    // conservative direction. The fallback delivers the whole deterministic text, like the
-    // three guards above.
+    // conservative direction. Occurrences count: one of two identical commands gone is a
+    // drop. The fallback delivers the whole deterministic text, like the three guards above.
     let originalTokens = Self.symbolTokens(in: original)
-    if !originalTokens.isEmpty {
-      let missing = originalTokens.subtracting(Self.symbolTokens(in: polished)).count
+    let total = originalTokens.values.reduce(0, +)
+    if total > 0 {
+      let polishedTokens = Self.symbolTokens(in: polished)
+      let missing = originalTokens.reduce(0) { $0 + max(0, $1.value - (polishedTokens[$1.key] ?? 0)) }
       if missing > 0 {
-        let total = originalTokens.count
         Task {
           await AppLogger.shared.log(
             "LLM polish validator: symbol drop (\(missing) of \(total) slash/backslash tokens "
@@ -1200,7 +1205,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
     }
 
-    return PolishValidation(text: polished, guardName: nil, symbolTokens: originalTokens.count)
+    return PolishValidation(text: polished, guardName: nil, symbolTokens: total)
   }
 
   /// Conservative question detection using strong signals only.

@@ -2658,8 +2658,9 @@ public struct InverseTextNormalizer: Sendable {
           ctx.afterRight = "slash"
         }
       }
+      // "Slash" or "Forward Slash" capitalised mid-sentence is a name (the guitarist, a band).
       ctx.capitalisedMidSentence =
-        command.hasPrefix("S") && !Self.slashStartsSentence(ns, at: span.location)
+        (command.first?.isUppercase ?? false) && !Self.slashStartsSentence(ns, at: span.location)
       ctx.previous = previous
       let reading = Self.slashReading(ctx)
       previous = reading

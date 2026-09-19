@@ -61,7 +61,7 @@ struct PolishSymbolGuardTests {
     #expect(curly.text == "Please use \u{201C}/exit\u{201D} now.")
     #expect(
       LLMPolishStep.symbolTokens(in: "\u{2018}/exit\u{2019} and \u{AB}/clear\u{BB}")
-        == ["/exit", "/clear"])
+        == ["/exit": 1, "/clear": 1])
   }
 
   @Test("A retained URL path passes; a stripped scheme falls back")
@@ -81,6 +81,10 @@ struct PolishSymbolGuardTests {
     let dup = validate("Run /clear /clear now.", original: "Run /clear now.")
     #expect(dup.guardName == nil)
     #expect(dup.text == "Run /clear /clear now.")
+    // One of two identical commands gone is a drop (cloud review, PR #3040).
+    let lost = validate("Run /clear if needed.", original: "Run /clear, then run /clear if needed.")
+    #expect(lost.guardName == "symbol_drop")
+    #expect(lost.symbolTokens == 2)
   }
 
   @Test("Case does not matter; a bare trailing slash is not a token; zero tokens is a measured zero")
@@ -122,11 +126,14 @@ struct PolishSymbolGuardTests {
     #expect(v.symbolTokens == nil)
   }
 
-  @Test("The token set is what the guard compares")
+  @Test("The token counts are what the guard compares")
   func tokenSet() {
-    #expect(LLMPolishStep.symbolTokens(in: "https://example.com/docs and 4/6/2021") == ["/example", "/docs", "/6", "/2021"])
-    #expect(LLMPolishStep.symbolTokens(in: "C:\\Users\\me") == ["\\users", "\\me"])
-    #expect(LLMPolishStep.symbolTokens(in: "`/exit`, **and/or**, (a/b)") == ["/exit", "/or", "/b"])
+    #expect(
+      LLMPolishStep.symbolTokens(in: "https://example.com/docs and 4/6/2021")
+        == ["/example": 1, "/docs": 1, "/6": 1, "/2021": 1])
+    #expect(LLMPolishStep.symbolTokens(in: "C:\\Users\\me") == ["\\users": 1, "\\me": 1])
+    #expect(LLMPolishStep.symbolTokens(in: "`/exit`, **and/or**, (a/b)") == ["/exit": 1, "/or": 1, "/b": 1])
+    #expect(LLMPolishStep.symbolTokens(in: "/clear and /clear") == ["/clear": 2])
     #expect(LLMPolishStep.symbolTokens(in: "docs/").isEmpty)
   }
 }
