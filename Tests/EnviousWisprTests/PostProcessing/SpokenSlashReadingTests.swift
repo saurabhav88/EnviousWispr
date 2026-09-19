@@ -60,6 +60,9 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("slash WFP") == "/wfp")
     // Mid-sentence the name keeps its case (a path segment may need it).
     #expect(Self.off("look in slash Users please") == "look in /Users please")
+    // A written path alone was not spoken and is left as is.
+    #expect(Self.off("/Users") == "/Users")
+    #expect(Self.off("/Users.") == "/Users.")
     // Two sentences are two commands, and each keeps its own period.
     #expect(Self.off("slash clear. slash exit.") == "/clear. /exit.")
     // A command followed by more words is not a lone command.

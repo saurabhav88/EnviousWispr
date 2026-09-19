@@ -2584,6 +2584,7 @@ public struct InverseTextNormalizer: Sendable {
     }
     var previous: SlashReading? = nil
     var previousMarkerEnd = 0
+    var wroteCommand = false
     t = reSub(Self.joinerCommands, t) { m in
       guard let command = m.g(1) else { return nil }
       // A reading carries only within a sentence: "Run slash help. They trim packaging and slash
@@ -2647,6 +2648,7 @@ public struct InverseTextNormalizer: Sendable {
         }
         return "/"
       case .prefix:
+        wroteCommand = true
         // At the start of the utterance or of a line there is nothing to keep a space from.
         if left.raw.isEmpty { return "/" }
         let leading = NSRange(
@@ -2654,9 +2656,12 @@ public struct InverseTextNormalizer: Sendable {
         return ns.substring(with: leading) + "/"
       }
     }
-    t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in
-      guard let command = m.g(1) else { return nil }
-      return " \(command.lowercased()) "
+    // Only a command this pass wrote from a spoken marker; a written `/Users` alone is left as is.
+    if wroteCommand {
+      t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in
+        guard let command = m.g(1) else { return nil }
+        return " \(command.lowercased()) "
+      }
     }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
     t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in
