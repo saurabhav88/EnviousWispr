@@ -128,6 +128,8 @@ struct SpokenSlashReadingTests {
     #expect(
       Self.off("Raise the sword, then slash down. The target is below you.")
         == "Raise the sword, then slash down. The target is below you.")
+    #expect(Self.off("Slash off dead branches with a machete.") == "Slash off dead branches with a machete.")
+    #expect(Self.off("cars slash off the road") == "cars slash off the road")
     #expect(Self.off("In Slack I use slash away a lot.") == "In Slack I use /away a lot.")
     // Same accepted class as "please slash prices": a bare object after a command context.
     #expect(Self.off("Go ahead and slash prices before the sale.") == "Go ahead and /prices before the sale.")
