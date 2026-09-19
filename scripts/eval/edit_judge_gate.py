@@ -43,6 +43,8 @@ Exit codes: 0 pass, 1 fail (a real verdict), 2 infra/usage.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+import hashlib
 import json
 import math
 import subprocess
@@ -61,6 +63,24 @@ WORKING_CORPUS = CORPUS_DIR / "edit-corpus-a.jsonl"
 HOLDOUT_CORPUS = CORPUS_DIR / "edit-corpus-a-holdout.jsonl"
 FROZEN_MANIFEST = CORPUS_DIR / "edit-judge-frozen-manifest.json"
 FROZEN_PARTITIONS = {"working": WORKING_CORPUS, "holdout": HOLDOUT_CORPUS}
+# Exam v2 (#996, founder 2026-09-19): about 100 rows per kind over the
+# taxonomy in `exam-v2-taxonomy.json`, Luna-authored, Terra+Sol blind-labelled,
+# Astra-adjudicated and quality-graded. A separate frozen manifest, append-only
+# beside the legacy one: freezing v2 never touches the legacy 209 rows, and
+# exposure is counted per exam.
+EXAM_V2_CORPUS = CORPUS_DIR / "edit-judge-exam-v2.jsonl"
+EXAM_V2_MANIFEST = CORPUS_DIR / "edit-judge-exam-v2-manifest.json"
+EXAM_V2_TAXONOMY = CORPUS_DIR / "edit-judge-exam-v2-taxonomy.json"
+EXAM_V2_PARTITIONS = {"exam": EXAM_V2_CORPUS}
+EXAMS = {
+    "legacy": {"manifest": FROZEN_MANIFEST, "partitions": FROZEN_PARTITIONS},
+    "v2": {"manifest": EXAM_V2_MANIFEST, "partitions": EXAM_V2_PARTITIONS},
+}
+# A kind below this floor is not measurable at all and is left out of the
+# exam file (recorded as absent); between the floor and the 100-row target a
+# kind is frozen with its shortage recorded and its wider interval shown.
+MIN_ROWS_PER_KIND = 20
+TARGET_ROWS_PER_KIND = 100
 RUNS_DIR = ROOT / "benchmark-results/eval/edit-judge/runs"
 RUNNER_BIN = ROOT / "scripts/eval/alias_runner/.build/release/AliasRunner"
 
@@ -86,11 +106,23 @@ MIN_HOLDOUT_ROWS = 50
 # its key so older receipts still read) and latency. Alias precision and
 # recall are ADVISORY: reported with denominators, never a verdict, including
 # when undefined.
+# Founder 2026-09-19 ("think about the human experience; no one will like the
+# feature if it keeps triggering for wrong examples"): the false-proposal bar
+# tightened from 0.05 to 0.02. Receipts scored before this change carry
+# their own `thresholds` block, so they still read under the bar they met.
 THRESHOLDS = {
     "correction_recall_min": 0.85,
-    "false_add_rate_max": 0.05,
+    "false_add_rate_max": 0.02,
     "latency_p50_ms_max": 2000.0,
     "latency_p95_ms_max": 5000.0,
+}
+# Per-kind guardrails (founder 2026-09-19, from the Codex exam-design round):
+# no positive kind below this recall, no negative kind above this
+# false-proposal rate. They apply to rows that carry a `kind` (exam v2) and
+# are reported, never invented, for rows that do not.
+KIND_GUARDRAILS = {
+    "kind_recall_min": 0.80,
+    "kind_false_add_rate_max": 0.05,
 }
 ADVISORY = {
     "alias_precision_reference": 0.95,
@@ -233,6 +265,72 @@ def validate_corpus(working: list[dict], holdout: list[dict]) -> list[str]:
     return problems
 
 
+def validate_exam_v2(rows: list[dict]) -> list[str]:
+    """Exam v2 shape: every row valid, carries a `kind` from the taxonomy
+    whose label and stratum it matches, `safe_alias` false (no alias claim
+    is made by this exam), and every judged kind has at least
+    MIN_ROWS_PER_KIND rows. Per-kind targets and shortages are reported by
+    the authoring pipeline; a kind below the floor is a refusal here."""
+    problems = validate_rows(rows, "exam")
+    if problems:
+        return problems
+    if not EXAM_V2_TAXONOMY.exists():
+        return [f"taxonomy missing: {EXAM_V2_TAXONOMY}"]
+    taxonomy = json.loads(EXAM_V2_TAXONOMY.read_text(encoding="utf-8"))
+    kinds = {k["kind"]: k for k in taxonomy["kinds"]}
+    counts: dict[str, int] = {}
+    for r in rows:
+        k = kinds.get(r.get("kind"))
+        if k is None:
+            problems.append(f"{r['id']}: kind {r.get('kind')!r} is not in the taxonomy")
+            continue
+        if r["correction"] is not k["correction"] or r["stratum"] != k["stratum"]:
+            problems.append(f"{r['id']}: label or stratum disagrees with kind {k['kind']}")
+        if r["safe_alias"] is not False:
+            problems.append(f"{r['id']}: exam v2 rows carry no alias claim (safe_alias must be false)")
+        counts[k["kind"]] = counts.get(k["kind"], 0) + 1
+    for name, n in counts.items():
+        if n < MIN_ROWS_PER_KIND:
+            problems.append(f"kind {name} has {n} rows, needs >= {MIN_ROWS_PER_KIND} (leave the kind out and record it as absent)")
+    if not any(r["correction"] for r in rows) or not any(not r["correction"] for r in rows):
+        problems.append("exam v2 needs both labels")
+    # Diversity the taxonomy declares: unique replacement, unique sentence,
+    # bounded frame reuse per kind and overall.
+    reps = Counter(data.family_key(r) for r in rows)
+    dup_reps = [k for k, n in reps.items() if n > 1]
+    if dup_reps:
+        problems.append(f"{len(dup_reps)} replacement(s) used by more than one row (first: {dup_reps[:3]})")
+    sents = Counter(data._nfc(r["pasted"]).casefold() for r in rows)
+    if any(n > 1 for n in sents.values()):
+        problems.append("a pasted sentence is used by more than one row")
+    per_kind_frame: dict = {}
+    overall_frame: Counter = Counter()
+    for r in rows:
+        fr = str(r.get("frame", "")).strip().lower() or "no-frame"
+        per_kind_frame.setdefault(r["kind"], Counter())[fr] += 1
+        overall_frame[fr] += 1
+    max_kind = taxonomy.get("max_rows_per_frame_per_kind", 2)
+    max_all = taxonomy.get("max_rows_per_frame_overall", 10)
+    over_kind = sum(1 for k, c in per_kind_frame.items() for fr, n in c.items() if n > max_kind)
+    over_all = sum(1 for fr, n in overall_frame.items() if n > max_all)
+    if over_kind or over_all:
+        problems.append(f"frame reuse over the declared caps: {over_kind} kind/frame pairs above {max_kind}, {over_all} frames above {max_all}")
+    return problems
+
+
+def exam_v2_coverage(rows: list[dict]) -> dict:
+    """Every kind's count against the target, including absent kinds: the
+    freeze records this and the receipt reports it; nothing is padded."""
+    taxonomy = json.loads(EXAM_V2_TAXONOMY.read_text(encoding="utf-8"))
+    counts = Counter(r["kind"] for r in rows)
+    return {
+        "target": TARGET_ROWS_PER_KIND,
+        "counts": dict(sorted(counts.items())),
+        "short_kinds": {k["kind"]: TARGET_ROWS_PER_KIND - counts.get(k["kind"], 0) for k in taxonomy["kinds"] if 0 < counts.get(k["kind"], 0) < TARGET_ROWS_PER_KIND},
+        "absent_kinds": sorted(k["kind"] for k in taxonomy["kinds"] if counts.get(k["kind"], 0) == 0),
+    }
+
+
 # --- Frozen partitions ---
 
 
@@ -248,11 +346,58 @@ def load_frozen(manifest_path: Path = FROZEN_MANIFEST, partitions: dict[str, Pat
     except json.JSONDecodeError as exc:
         return {}, {}, [f"frozen manifest not JSON: {exc}"]
     loaded = {name: load_jsonl(path) for name, path in partitions.items()}
-    problems = validate_corpus(loaded["working"], loaded["holdout"]) if set(loaded) == {"working", "holdout"} else []
+    if set(loaded) == {"working", "holdout"}:
+        problems = validate_corpus(loaded["working"], loaded["holdout"])
+    elif set(loaded) == {"exam"}:
+        problems = validate_exam_v2(loaded["exam"])
+    else:
+        problems = [f"unknown partition layout {sorted(loaded)}"]
     if problems:
         return manifest, loaded, problems
     problems = data.check_frozen(manifest, partitions, loaded)
+    if not problems and manifest.get("exam") == "v2":
+        # The v2 manifest also binds its taxonomy and its parent (legacy)
+        # manifest; a changed taxonomy or parent is not the frozen exam.
+        if not EXAM_V2_TAXONOMY.exists() or sha256_file(EXAM_V2_TAXONOMY) != manifest.get("taxonomy_sha256"):
+            problems.append("exam v2 taxonomy digest differs from the frozen manifest")
+        if not FROZEN_MANIFEST.exists() or sha256_file(FROZEN_MANIFEST) != manifest.get("parent_legacy_manifest_sha256"):
+            problems.append("exam v2 parent (legacy) manifest digest differs from the frozen manifest")
     return manifest, loaded, problems
+
+
+def exam_identity(exam: str) -> dict:
+    """Immutable identity of a frozen exam: its id and manifest digest."""
+    path = EXAMS[exam]["manifest"]
+    return {"exam": exam, "manifest_sha256": sha256_file(path) if path.exists() else None}
+
+
+def load_exam(exam: str) -> tuple[dict, dict[str, list[dict]], list[str]]:
+    """`load_frozen` for a named exam version."""
+    if exam not in EXAMS:
+        return {}, {}, [f"unknown exam {exam!r}; known: {sorted(EXAMS)}"]
+    return load_frozen(EXAMS[exam]["manifest"], EXAMS[exam]["partitions"])
+
+
+def frozen_manifests_present() -> list[dict]:
+    """Every REGISTERED frozen exam, validated (files on disk are the frozen
+    ones): dev inputs and training manifests must be disjoint from ALL of
+    them. An exam whose files are missing or altered is an infra error, never
+    a silently shorter list; only an exam that was never frozen (no manifest
+    at all) is skipped, and named."""
+    out = []
+    for exam, spec in EXAMS.items():
+        if not spec["manifest"].exists():
+            continue
+        manifest, _, problems = load_frozen(spec["manifest"], spec["partitions"])
+        if problems:
+            infra_error(f"frozen exam {exam} is not intact: " + "; ".join(problems[:5]))
+        manifest = dict(manifest, _exam=exam, _manifest_sha256=sha256_file(spec["manifest"]))
+        out.append(manifest)
+    return out
+
+
+def _same_exam(a: dict, b: dict) -> bool:
+    return a.get("_manifest_sha256") is not None and a.get("_manifest_sha256") == b.get("_manifest_sha256")
 
 
 def new_run_dir(stamp: str, judge: str, partition: str, runs_dir: Path = RUNS_DIR) -> Path:
@@ -270,7 +415,43 @@ def new_run_dir(stamp: str, judge: str, partition: str, runs_dir: Path = RUNS_DI
     infra_error(f"could not allocate a receipt directory under {runs_dir}")
 
 
-def frozen_exposure(judge: str, runs_dir: Path = RUNS_DIR) -> dict:
+ATTEMPTS_LOG = RUNS_DIR / "attempts.jsonl"
+
+
+def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: dict, command: list[str], attempts_log: Path = ATTEMPTS_LOG) -> dict:
+    """Append-only attempt ledger keyed by exam identity plus complete
+    candidate identity, written BEFORE the runner launches. A second
+    inference attempt for the same key is refused: one run per locked
+    candidate per exam version is enforced here, not by counting scorecards.
+    Returns the reservation record (status `started`)."""
+    key = {"exam": exam, "exam_manifest_sha256": exam_sha, "judge": judge, "execution_identity": identity}
+    key_digest = hashlib.sha256(json.dumps(key, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    prior = []
+    if attempts_log.exists():
+        for line in attempts_log.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                infra_error(f"{attempts_log}: unreadable line; the attempt ledger must be repaired by hand, never rewritten")
+            if rec.get("key_digest") == key_digest and rec.get("status") in ("started", "completed"):
+                prior.append(rec)
+    if prior:
+        infra_error(f"an inference attempt for this exam and candidate identity already exists ({prior[0].get('started_at')}, status {prior[0].get('status')}); one run per locked candidate per exam version")
+    rec = {"key_digest": key_digest, **key, "status": "started", "started_at": now_iso(), "command": command}
+    attempts_log.parent.mkdir(parents=True, exist_ok=True)
+    with attempts_log.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def complete_attempt(rec: dict, status: str, run_dir: Optional[Path], attempts_log: Path = ATTEMPTS_LOG) -> None:
+    """Append the terminal state of a reservation (`completed` or `infra`)."""
+    done = dict(rec, status=status, ended_at=now_iso(), run_dir=str(run_dir) if run_dir else None)
+    with attempts_log.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(done, ensure_ascii=False) + "\n")
+
+
+def frozen_exposure(judge: str, runs_dir: Path = RUNS_DIR, exam: str = "legacy") -> dict:
     """How many frozen-report receipts already exist for this judge. The
     frozen rows are exposed to a judge every time it is scored on them; the
     count is printed so a reader can see how often a candidate's authors
@@ -282,9 +463,10 @@ def frozen_exposure(judge: str, runs_dir: Path = RUNS_DIR) -> dict:
                 doc = json.loads(card.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
-            if doc.get("partition") == "frozen-report" and doc.get("judge") == judge:
+            # Scorecards written before exam v2 carry no `exam` key: legacy.
+            if doc.get("partition") == "frozen-report" and doc.get("judge") == judge and doc.get("exam", "legacy") == exam:
                 prior.append(card.parent.name)
-    return {"judge": judge, "prior_frozen_report_runs": len(prior), "receipts": prior}
+    return {"judge": judge, "exam": exam, "prior_frozen_report_runs": len(prior), "receipts": prior}
 
 
 # --- Scoring ---
@@ -306,9 +488,11 @@ class Scorecard:
     labelled_safe_aliases: int = 0
     latencies_ms: list = field(default_factory=list)
     per_stratum: dict = field(default_factory=dict)
+    per_kind: dict = field(default_factory=dict)
     languages: dict = field(default_factory=dict)
     probe_rows: int = 0
     training: Optional[dict] = None
+    exam: str = "legacy"
     problems: list = field(default_factory=list)
 
     @property
@@ -361,6 +545,18 @@ class Scorecard:
             ok = value >= bound if op == ">=" else value <= bound
             if not ok:
                 reasons.append(f"{name} {value:.4f} {op} {bound} failed")
+        # Per-kind guardrails (founder 2026-09-19) on rows that carry a kind:
+        # a big easy kind may not hide a failing one. A kind with no rows of
+        # its label is reported, never invented.
+        for kind, k in sorted(self.per_kind.items()):
+            if k["positives"] > 0:
+                recall = k["true_positives"] / k["positives"]
+                if recall < KIND_GUARDRAILS["kind_recall_min"]:
+                    reasons.append(f"kind {kind} recall {recall:.4f} >= {KIND_GUARDRAILS['kind_recall_min']} failed")
+            if k["negatives"] > 0:
+                far = k["false_positives"] / k["negatives"]
+                if far > KIND_GUARDRAILS["kind_false_add_rate_max"]:
+                    reasons.append(f"kind {kind} false_add_rate {far:.4f} <= {KIND_GUARDRAILS['kind_false_add_rate_max']} failed")
         return (not reasons, reasons)
 
     def to_dict(self) -> dict:
@@ -376,7 +572,10 @@ class Scorecard:
             ),
             "pass": passed,
             "reasons": reasons,
+            "exam": self.exam,
             "thresholds": THRESHOLDS,
+            "kind_guardrails": KIND_GUARDRAILS if self.per_kind else None,
+            "per_kind": self.per_kind,
             "advisory": {
                 "note": "alias metrics never decide the verdict (plan §3a, pivot 2026-09-19)",
                 "alias_precision_reference": ADVISORY["alias_precision_reference"],
@@ -411,13 +610,14 @@ class Scorecard:
 
 
 def score(
-    rows: list[dict], records: list[dict], judge_name: str = "", partition: str = "dev", training: Optional[dict] = None
+    rows: list[dict], records: list[dict], judge_name: str = "", partition: str = "dev", training: Optional[dict] = None,
+    exam: str = "legacy",
 ) -> Scorecard:
     """Score records against labelled rows. Structural defects become
     `problems`, which fail the verdict; they never shrink a denominator."""
     if partition not in PARTITIONS:
         raise ValueError(f"partition must be one of {PARTITIONS}")
-    card = Scorecard(judge=judge_name, partition=partition, training=training)
+    card = Scorecard(judge=judge_name, partition=partition, training=training, exam=exam)
     card.problems.extend(validate_rows(rows, "score"))
     if card.problems:
         return card
@@ -485,12 +685,18 @@ def score(
             {"rows": 0, "positives": 0, "true_positives": 0, "negatives": 0, "false_positives": 0, "bypass": 0},
         )
         st["rows"] += 1
+        kd = None
+        if isinstance(row.get("kind"), str):
+            kd = card.per_kind.setdefault(row["kind"], {"rows": 0, "positives": 0, "true_positives": 0, "negatives": 0, "false_positives": 0, "bypass": 0})
+            kd["rows"] += 1
         if row["correction"]:
             card.positives += 1
             st["positives"] += 1
+            if kd: kd["positives"] += 1
         else:
             card.negatives += 1
             st["negatives"] += 1
+            if kd: kd["negatives"] += 1
         # Population, not answers: a bypassed safe-alias row still counts in
         # the advisory recall denominator, the same way a bypassed correction
         # row still counts against correction recall.
@@ -502,11 +708,13 @@ def score(
             card.problems.append(f"missing result for {row['id']}")
             card.bypass_counts["missing"] = card.bypass_counts.get("missing", 0) + 1
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         outcome = rec.get("outcome")
         if outcome not in OUTCOMES:
             card.problems.append(f"{row['id']}: unknown outcome {outcome!r}")
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         # Latency is measured over EVERY attempt that reports one, bypasses
         # included: a slow deadline is exactly the latency the user waits for.
@@ -514,11 +722,13 @@ def score(
         if type(latency) not in (int, float) or not math.isfinite(latency) or latency < 0:
             card.problems.append(f"{row['id']}: latency_ms malformed")
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         card.latencies_ms.append(float(latency))
         if outcome != "verdict":
             card.bypass_counts[outcome] = card.bypass_counts.get(outcome, 0) + 1
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             if rec.get("decision") is not None:
                 card.problems.append(f"{row['id']}: bypass {outcome} carries a decision")
             continue
@@ -526,12 +736,14 @@ def score(
         if not isinstance(decision, dict):
             card.problems.append(f"{row['id']}: verdict without a decision")
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         vc = decision.get("vocabulary_correction")
         sa = decision.get("safe_alias")
         if type(vc) is not bool or type(sa) is not bool:
             card.problems.append(f"{row['id']}: decision booleans malformed")
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         if sa and not vc:
             # (false, true) is not one of the judge's three classes; a judge
@@ -539,14 +751,17 @@ def score(
             # silently repaired (false, false).
             card.problems.append(f"{row['id']}: decision safe_alias=true with vocabulary_correction=false is not a class")
             st["bypass"] += 1
+            if kd: kd["bypass"] += 1
             continue
         card.completed += 1
         if vc and row["correction"]:
             card.true_positives += 1
             st["true_positives"] += 1
+            if kd: kd["true_positives"] += 1
         if vc and not row["correction"]:
             card.false_positives += 1
             st["false_positives"] += 1
+            if kd: kd["false_positives"] += 1
         # An alias only exists if the word was learned, so precision is over
         # verdicts that both accept the correction and mark the alias safe.
         if vc and sa:
@@ -559,13 +774,33 @@ def score(
 # --- Runner ---
 
 
-def run_runner(corpus_path: Path, judge: str, out_path: Path) -> int:
+def manifest_path_mode(manifest: Optional[Path]) -> str:
+    """`judge` or `shape+judge`, as the bound manifest declares (default judge)."""
+    if manifest is None or not manifest.exists():
+        return "judge"
+    try:
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "judge"
+    mode = doc.get("path", "judge")
+    if mode not in ("judge", "shape+judge"):
+        infra_error(f"{manifest}: unknown path {mode!r}")
+    return mode
+
+
+def run_runner(corpus_path: Path, judge: str, out_path: Path, model_manifest: Optional[Path] = None) -> int:
     if not RUNNER_BIN.exists():
         infra_error(
             f"AliasRunner binary missing at {RUNNER_BIN}. "
             "Build it with: cd scripts/eval/alias_runner && swift build -c release"
         )
-    args = [str(RUNNER_BIN), "judge", "--corpus", str(corpus_path), "--judge", judge, "--out", str(out_path)]
+    args = [str(RUNNER_BIN), "judge", "--corpus", str(corpus_path), "--judge", judge, "--out", str(out_path), "--path", manifest_path_mode(model_manifest)]
+    if judge.startswith("xenc-"):
+        # A trained classifier runs from its bound export manifest; the runner
+        # derives the execution identity from what that manifest points at.
+        if model_manifest is None:
+            infra_error(f"{judge} needs --training-manifest <export training-manifest.json> (the runner loads the classifier from it)")
+        args += ["--model-manifest", str(model_manifest)]
     proc = subprocess.run(args, capture_output=True, text=True)
     if proc.returncode == 2:
         infra_error(f"AliasRunner judge exit 2 (usage/infra): {proc.stderr.strip()}")
@@ -605,10 +840,39 @@ def mode_validate(working_path: Path, holdout_path: Path, manifest_path: Path) -
     return 0 if not problems and not frozen["problems"] else 1
 
 
-def mode_freeze(working_path: Path, holdout_path: Path, manifest_path: Path, refreeze: bool, note: str) -> int:
+def mode_freeze(working_path: Path, holdout_path: Path, manifest_path: Path, refreeze: bool, note: str, exam: str = "legacy") -> int:
     """Write the frozen manifest. Refuses to overwrite: re-freezing means the
     report set changed, which is a founder-visible decision, so it takes an
-    explicit flag and prints what changed."""
+    explicit flag and prints what changed. Exam v2 freezes its OWN manifest
+    (append-only beside the legacy one) and must be disjoint from the legacy
+    rows by hash and family."""
+    if exam == "v2":
+        if not EXAM_V2_CORPUS.exists():
+            infra_error(f"corpus missing: {EXAM_V2_CORPUS}")
+        rows = load_jsonl(EXAM_V2_CORPUS)
+        problems = validate_exam_v2(rows)
+        if problems:
+            infra_error("cannot freeze an invalid exam v2: " + "; ".join(problems[:8]))
+        legacy, _, lp = load_exam("legacy")
+        if lp:
+            infra_error("legacy exam is not intact: " + "; ".join(lp))
+        _require_clean_dev_against(rows, legacy)
+        if EXAM_V2_MANIFEST.exists():
+            # Append-only: a changed exam is a NEW exam version with its own
+            # id, never a replacement of v2 under the same name.
+            infra_error(f"{EXAM_V2_MANIFEST} exists; exam v2 is frozen. A changed exam needs a new version (v3), not --refreeze")
+        manifest = data.build_frozen_manifest([("exam", EXAM_V2_CORPUS, rows)], frozen_at=now_iso(), note=note)
+        manifest["exam"] = "v2"
+        manifest["taxonomy_sha256"] = sha256_file(EXAM_V2_TAXONOMY)
+        manifest["parent_legacy_manifest_sha256"] = sha256_file(FROZEN_MANIFEST)
+        coverage = exam_v2_coverage(rows)
+        manifest["kinds"] = coverage["counts"]
+        manifest["target_rows_per_kind"] = TARGET_ROWS_PER_KIND
+        manifest["short_kinds"] = coverage["short_kinds"]
+        manifest["absent_kinds"] = coverage["absent_kinds"]
+        EXAM_V2_MANIFEST.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(json.dumps({"frozen": str(EXAM_V2_MANIFEST), "rows": len(rows), "kinds": manifest["kinds"]}, indent=2))
+        return 0
     for p in (working_path, holdout_path):
         if not p.exists():
             infra_error(f"corpus missing: {p}")
@@ -639,7 +903,16 @@ def require_clean_dev(rows: list[dict], frozen: dict) -> None:
     """Refuse a dev file that overlaps the frozen rows by content hash or
     alias family, BEFORE any inference or scoring. Uses the same leakage
     check a training manifest goes through, so a renamed frozen row or a
-    same-family sentence with different context is refused the same way."""
+    same-family sentence with different context is refused the same way.
+    Checked against the given exam AND every other frozen exam on disk."""
+    _require_clean_dev_against(rows, frozen)
+    for m in frozen_manifests_present():
+        if _same_exam(m, frozen) or m.get("frozen_at") == frozen.get("frozen_at"):
+            continue
+        _require_clean_dev_against(rows, m)
+
+
+def _require_clean_dev_against(rows: list[dict], frozen: dict) -> None:
     probe = data.TrainingManifest(
         judge="dev-check",
         kind="trained",
@@ -668,7 +941,14 @@ def _training_for(judge: str, manifest_path: Optional[Path], frozen: dict) -> di
     if not problems and tm.judge != judge:
         problems.append(f"training manifest judge {tm.judge!r} is not {judge!r}")
     if not problems:
-        problems.extend(data.leakage_problems(tm, frozen))
+        # Against the exam being run AND every other frozen exam on disk.
+        seen = set()
+        for other in [frozen] + frozen_manifests_present():
+            key = other.get("_manifest_sha256") or other.get("frozen_at")
+            if key in seen:
+                continue
+            seen.add(key)
+            problems.extend(data.leakage_problems(tm, other))
     if problems:
         infra_error("; ".join(problems))
     summary = tm.summary()
@@ -676,13 +956,13 @@ def _training_for(judge: str, manifest_path: Optional[Path], frozen: dict) -> di
     return summary
 
 
-def mode_score(corpus_path: Path, results_path: Path, judge_name: str, partition: str, training_path: Optional[Path]) -> int:
+def mode_score(corpus_path: Path, results_path: Path, judge_name: str, partition: str, training_path: Optional[Path], exam: str = "legacy") -> int:
     if not corpus_path.exists() or not results_path.exists():
         infra_error("corpus or results file missing")
     training: Optional[dict] = None
-    frozen, loaded, problems = load_frozen()
+    frozen, loaded, problems = load_exam(exam)
     if problems:
-        infra_error("frozen partitions are not intact: " + "; ".join(problems))
+        infra_error(f"exam {exam} partitions are not intact: " + "; ".join(problems))
     if partition == "dev":
         rows = load_jsonl(corpus_path)
         row_problems = validate_rows(rows, "dev")
@@ -696,15 +976,15 @@ def mode_score(corpus_path: Path, results_path: Path, judge_name: str, partition
         if not judge_name:
             infra_error("frozen-report scoring needs --judge to bind the training manifest")
         training = _training_for(judge_name, training_path, frozen)
-    card = score(load_jsonl(corpus_path), load_jsonl(results_path), judge_name, partition, training)
+    card = score(load_jsonl(corpus_path), load_jsonl(results_path), judge_name, partition, training, exam=exam)
     print(json.dumps(card.to_dict(), indent=2, ensure_ascii=False))
     return 0 if card.verdict()[0] else 1
 
 
-def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_path: Optional[Path]) -> int:
-    frozen, loaded, problems = load_frozen()
+def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_path: Optional[Path], exam: str = "legacy") -> int:
+    frozen, loaded, problems = load_exam(exam)
     if problems:
-        infra_error("frozen partitions are not intact: " + "; ".join(problems))
+        infra_error(f"exam {exam} partitions are not intact: " + "; ".join(problems))
     stamp = now_iso()
     if partition == "dev":
         if corpus_path is None:
@@ -718,7 +998,7 @@ def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_p
         require_clean_dev(rows, frozen)
         run_dir = new_run_dir(stamp, judge, "dev")
         out_path = run_dir / "records.jsonl"
-        rc = run_runner(corpus_path, judge, out_path)
+        rc = run_runner(corpus_path, judge, out_path, training_path)
         card = score(rows, load_jsonl(out_path), judge, "dev")
         summary = card.to_dict()
         summary["runner_exit"] = rc
@@ -730,31 +1010,41 @@ def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_p
         return 0 if summary["pass"] else 1
 
     training = _training_for(judge, training_path, frozen)
-    exposure = frozen_exposure(judge)
-    run_dir = new_run_dir(stamp, judge, "frozen-report")
+    exposure = frozen_exposure(judge, exam=exam)
+    ident = exam_identity(exam)
+    reservation = reserve_attempt(exam, ident["manifest_sha256"], judge, training.get("execution_identity") or {}, sys.argv)
+    run_dir = new_run_dir(stamp, judge, "frozen-report" if exam == "legacy" else f"exam-{exam}")
     per_partition: dict[str, dict] = {}
     all_rows: list[dict] = []
     all_records: list[dict] = []
     runner_exits: dict[str, int] = {}
-    for name, path in FROZEN_PARTITIONS.items():
-        out_path = run_dir / f"records-{name}.jsonl"
-        runner_exits[name] = run_runner(path, judge, out_path)
-        records = load_jsonl(out_path)
-        rows = loaded[name]
-        card = score(rows, records, judge, "frozen-report", training)
-        per_partition[name] = card.to_dict()
-        all_rows.extend(rows)
-        all_records.extend(records)
-    pooled = score(all_rows, all_records, judge, "frozen-report", training)
+    try:
+        for name, path in EXAMS[exam]["partitions"].items():
+            out_path = run_dir / f"records-{name}.jsonl"
+            runner_exits[name] = run_runner(path, judge, out_path, training_path)
+            records = load_jsonl(out_path)
+            rows = loaded[name]
+            card = score(rows, records, judge, "frozen-report", training, exam=exam)
+            per_partition[name] = card.to_dict()
+            all_rows.extend(rows)
+            all_records.extend(records)
+    except SystemExit:
+        complete_attempt(reservation, "infra", run_dir)
+        raise
+    complete_attempt(reservation, "completed", run_dir)
+    pooled = score(all_rows, all_records, judge, "frozen-report", training, exam=exam)
     summary = pooled.to_dict()
     summary["per_partition"] = per_partition
     summary["runner_exit"] = runner_exits
+    manifest_path = EXAMS[exam]["manifest"]
     summary["frozen"] = {
-        "manifest": str(FROZEN_MANIFEST),
-        "sha256": sha256_file(FROZEN_MANIFEST),
+        "exam": exam,
+        "manifest": str(manifest_path),
+        "sha256": sha256_file(manifest_path),
         "partitions": {p["name"]: {"file_sha256": p["file_sha256"], "rows": p["rows"]} for p in frozen["partitions"]},
     }
     summary["frozen_exposure_before_this_run"] = exposure
+    summary["attempt"] = {"key_digest": reservation["key_digest"], "ledger": str(ATTEMPTS_LOG)}
     (run_dir / "scorecard.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"receipt: {run_dir}", file=sys.stderr)
@@ -920,7 +1210,7 @@ def mode_selftest() -> int:
     check("score refuses a non-object row", any("row must be an object" in p for p in score(not_object, good).problems))
     check("score refuses a non-object record", any("result must be an object" in p for p in score(rows, good + ["oops"]).problems))
 
-    # False-add failure: two negatives accepted (0.10 > 0.05).
+    # False-add failure: two negatives accepted (0.10 > 0.02).
     fp = [
         _record(r["id"], True, False) if r["id"] in {"N0", "N1"} else _record(r["id"], r["correction"], r["safe_alias"])
         for r in rows
@@ -1247,24 +1537,25 @@ def main() -> int:
     p.add_argument("--judge", help="run: judge candidate name; score: label for the scorecard")
     p.add_argument("--partition", choices=PARTITIONS, help="run/score: dev (never evidence) or frozen-report (needs --training-manifest)")
     p.add_argument("--training-manifest", type=Path, help="frozen-report: the judge's training manifest (edit_judge_data.py)")
+    p.add_argument("--exam", choices=sorted(EXAMS), default="legacy", help="run/freeze: which frozen exam (legacy 209 rows, or v2)")
     args = p.parse_args()
 
     if args.mode == "validate-corpus":
         return mode_validate(args.working, args.holdout_corpus, args.frozen_manifest)
     if args.mode == "freeze":
-        return mode_freeze(args.working, args.holdout_corpus, args.frozen_manifest, args.refreeze, args.note)
+        return mode_freeze(args.working, args.holdout_corpus, args.frozen_manifest, args.refreeze, args.note, exam=args.exam)
     if args.mode == "score":
         if not args.results:
             infra_error("--mode score needs --results")
         if not args.partition:
             infra_error("--mode score needs --partition dev|frozen-report")
-        return mode_score(args.corpus or WORKING_CORPUS, args.results, args.judge or "", args.partition, args.training_manifest)
+        return mode_score(args.corpus or WORKING_CORPUS, args.results, args.judge or "", args.partition, args.training_manifest, exam=args.exam)
     if args.mode == "run":
         if not args.judge:
             infra_error("--mode run needs --judge")
         if not args.partition:
             infra_error("--mode run needs --partition dev|frozen-report")
-        return mode_run(args.judge, args.partition, args.corpus, args.training_manifest)
+        return mode_run(args.judge, args.partition, args.corpus, args.training_manifest, exam=args.exam)
     return mode_selftest()
 
 

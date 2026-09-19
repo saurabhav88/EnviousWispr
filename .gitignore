@@ -257,6 +257,7 @@ scripts/ci/**/*.pyc
 !scripts/eval/
 scripts/eval/*
 !scripts/eval/acceptance_gate.py
+!scripts/eval/edit_judge_authoring.py
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/language_gate_corpus.py
 !scripts/eval/overpolish-eval.py
@@ -266,6 +267,10 @@ scripts/eval/*
 !scripts/eval/corpus/
 scripts/eval/corpus/*
 !scripts/eval/corpus/ci_corpus.jsonl
+# #996 exam v2: Luna-authored rows (no founder words), manifest and taxonomy are
+# tracked like the legacy edit-judge corpus so CI and reviewers can validate them
+# (Codex 4a-ii round 2). Raw provider responses stay local under artifacts/.
+!scripts/eval/corpus/edit-judge-exam-v2*.json*
 # #2795: SHA-256 of every sealed_v1 INPUT (lowercased, trimmed), so a tracked test can prove no
 # shipped prompt example is an exam case without the exam itself leaving this machine.
 !scripts/eval/corpus/sealed_v1_input_hashes.txt

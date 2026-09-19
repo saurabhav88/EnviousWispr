@@ -55,6 +55,32 @@ DEFAULT_DEV_OUT = ROOT / "artifacts/issue-996-edit-judge/dev"
 
 PACK_STRATUM = {"brands": "brand", "names": "person", "tech": "domain", "legal": "domain", "medical": "domain"}
 REVIEW_STATUS = "template-reviewed"
+AUTHORED_REVIEW_STATUS = "authored-sample-reviewed"
+
+
+def load_authored_rows(paths: list[Path]) -> tuple[list[dict], dict]:
+    """Rows written by a model for #996 (gpt-6-astra on Azure, 2026-09-19),
+    already screened by the caller through the gate's validator and the
+    frozen family set, added as a labelled source next to the template
+    tables. Each row keeps its own `label_source`; the review status is set
+    here so a file that forgot it cannot pass as reviewed. A row whose
+    label_source does not name the author is refused: provenance is part of
+    the label."""
+    rows: list[dict] = []
+    counts: dict = {}
+    for path in paths:
+        loaded = data.read_jsonl(path)
+        for r in loaded:
+            src = r.get("label_source")
+            if not isinstance(src, str) or "authored by" not in src:
+                raise RuntimeError(f"{path}: row {r.get('id')} has no authoring provenance in label_source")
+            # A row that carries its own review status keeps it (a receipt
+            # may have set a stronger or weaker one); a row without one gets
+            # the sampled-review status this source was actually given.
+            status = r.get("review_status") if isinstance(r.get("review_status"), str) and r.get("review_status") in data.REVIEWED_STATUSES else AUTHORED_REVIEW_STATUS
+            rows.append(dict(r, review_status=status, authored_file=path.name))
+        counts[path.name] = len(loaded)
+    return rows, counts
 
 
 def _row(rid: str, stratum: str, language: str, template: str, original: str, replacement: str, correction: bool, safe_alias: bool, source: str) -> dict:
@@ -249,6 +275,10 @@ def build_dev(args, frozen: dict) -> int:
     templates = json.loads(args.templates.read_text(encoding="utf-8"))
     packs = data.pack_candidates(args.packs)
     rows, source_counts = generate_dev_rows(templates, packs)
+    if args.authored:
+        authored, authored_counts = load_authored_rows(args.authored)
+        rows += authored
+        source_counts["authored"] = authored_counts
     # Rows the frozen-corpus validator refuses (an original that appears
     # twice in its template, an unchanged run) are dropped by name.
     kept: list[dict] = []
@@ -260,16 +290,45 @@ def build_dev(args, frozen: dict) -> int:
             dropped_invalid += 1
     rows = kept
     rows, dropped_frozen = drop_frozen(rows, frozen)
+    # Every other frozen exam on disk (exam v2, #996) excludes its families
+    # and hashes from training the same way; counted separately.
+    for other in gate_mod.frozen_manifests_present():
+        if other.get("frozen_at") == frozen.get("frozen_at"):
+            continue
+        rows, dropped_other = drop_frozen(rows, other)
+        for k, v in dropped_other.items():
+            dropped_frozen[f"{other.get('exam', 'other')}_{k}"] = dropped_frozen.get(f"{other.get('exam', 'other')}_{k}", 0) + v
     # Duplicate cases across sources collapse to one row.
     seen: set[str] = set()
+    first_by_case: dict[tuple, dict] = {}
     unique: list[dict] = []
+    dropped_case_dups = 0
+    conflicts: list[dict] = []
     for r in rows:
         h = data.content_hash(r)
+        case = (r["pasted"], r["edited"])
         if h in seen:
+            dropped_case_dups += 1
+            continue
+        earlier = first_by_case.get(case)
+        if earlier is not None:
+            if earlier["correction"] == r["correction"]:
+                dropped_case_dups += 1          # same case, same label: the twin goes
+                continue
+            # Same case, different label: neither source is trusted; both go
+            # to quarantine for adjudication and neither trains.
+            conflicts.append({"case": {"pasted": r["pasted"], "edited": r["edited"]}, "a": {"id": earlier["id"], "correction": earlier["correction"], "label_source": earlier["label_source"]}, "b": {"id": r["id"], "correction": r["correction"], "label_source": r["label_source"]}})
             continue
         seen.add(h)
+        first_by_case[case] = r
         unique.append(r)
-    rows = unique
+    conflict_ids = {c["a"]["id"] for c in conflicts}
+    rows = [r for r in unique if r["id"] not in conflict_ids]
+    source_counts["dropped_case_duplicates"] = dropped_case_dups
+    source_counts["label_conflicts_quarantined"] = len(conflicts)
+    if conflicts:
+        args.dev_out.mkdir(parents=True, exist_ok=True)
+        (args.dev_out / "label-conflicts.json").write_text(json.dumps(conflicts, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     problems = gate_mod.validate_rows(rows, "dev")
     if problems:
         print("INFRA-ERROR: generated dev rows invalid: " + "; ".join(problems[:5]), file=sys.stderr)
@@ -298,15 +357,25 @@ def build_dev(args, frozen: dict) -> int:
         data.write_jsonl(path, part_rows)
         classes = {}
         langs = {}
+        detection = {"correction": 0, "notCorrection": 0}
+        strata: dict = {}
         for r in part_rows:
             c = data.three_class(r["correction"], r["safe_alias"])
             classes[c] = classes.get(c, 0) + 1
             langs[r["language"]] = langs.get(r["language"], 0) + 1
+            detection["correction" if r["correction"] else "notCorrection"] += 1
+            st = strata.setdefault(r["stratum"], {"correction": 0, "notCorrection": 0})
+            st["correction" if r["correction"] else "notCorrection"] += 1
+        if 0 in detection.values():
+            print(f"INFRA-ERROR: partition {name} lacks one detection class: {detection}", file=sys.stderr)
+            return 2
         manifest["partitions"][name] = {
             "path": path.name,
             "file_sha256": data.sha256_file(path),
             "rows": len(part_rows),
             "classes": dict(sorted(classes.items())),
+            "detection": detection,
+            "strata": dict(sorted(strata.items())),
             "languages": dict(sorted(langs.items())),
             **data.partition_manifest(part_rows),
         }
@@ -346,6 +415,7 @@ def main() -> int:
     p.add_argument("--templates", type=Path, default=DEV_TEMPLATES)
     p.add_argument("--dev-out", type=Path, default=DEFAULT_DEV_OUT)
     p.add_argument("--seed", default="chunk-2c", help="--dev: family split seed")
+    p.add_argument("--authored", type=Path, action="append", help="--dev: a JSONL of model-authored, gate-validated, frozen-screened rows to add as a labelled source (repeatable)")
     p.add_argument("--calibration-fresh", action="store_true", help="build the calibration-only set from the templates' calibration_only tables")
     p.add_argument("--split-manifest", type=Path, action="append", help="--calibration-fresh: the training split, then every earlier calibration manifest, the set must be disjoint from (repeatable; the first is the training split)")
     p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")

@@ -8,6 +8,7 @@ and the shipped corpus files themselves.
 from __future__ import annotations
 
 import json
+import pytest
 import sys
 from pathlib import Path
 
@@ -107,10 +108,11 @@ def test_alias_precision_cannot_fail_an_otherwise_qualifying_arm():
 def test_thresholds_are_the_plan_values():
     assert gate.THRESHOLDS == {
         "correction_recall_min": 0.85,
-        "false_add_rate_max": 0.05,
+        "false_add_rate_max": 0.02,
         "latency_p50_ms_max": 2000.0,
         "latency_p95_ms_max": 5000.0,
     }
+    assert gate.KIND_GUARDRAILS == {"kind_recall_min": 0.80, "kind_false_add_rate_max": 0.05}
     assert gate.ADVISORY == {"alias_precision_reference": 0.95}
     assert len(gate.STRATA) == 9
 
@@ -157,3 +159,103 @@ def test_bypassed_safe_alias_row_stays_in_the_advisory_recall_denominator():
     # The bypass reaches the detection verdict only through correction recall
     # (3/4 answered positives), never through the advisory block.
     assert card.correction_recall == 0.75
+
+
+def _kind_rows(kind, correction, n, stratum="person"):
+    rows = []
+    for i in range(n):
+        rows.append({"id": f"{kind}-{i}", "stratum": stratum, "language": "en", "pasted": f"call {kind} alpha {i} now", "edited": f"call {kind} beta{kind}{i} now",
+                     "original": f"alpha {i}", "replacement": f"beta{kind}{i}", "correction": correction, "safe_alias": False, "label_source": "test", "kind": kind, "frame": f"{kind} frame {i}"})
+    return rows
+
+
+def test_per_kind_guardrails_fail_a_pooled_pass():
+    # 200 easy positives carry the pooled numbers; one small negative kind
+    # gets 3 of 20 wrong (0.15 > 0.05): the pooled false rate is 3/220 but the
+    # kind guardrail fails the verdict and names the kind.
+    rows = _kind_rows("easy_pos", True, 200) + _kind_rows("easy_neg", False, 300, "rewording") + _kind_rows("hard_neg", False, 20, "rewording")
+    records = [_verdict(r["id"], True, False, latency=5.0) if r["correction"] or r["id"] in {"hard_neg-0", "hard_neg-1", "hard_neg-2"} else _verdict(r["id"], False, False, latency=5.0) for r in rows]
+    card = gate.score(rows, records, exam="v2")
+    ok, reasons = card.verdict()
+    # Pooled passes (3/320 = 0.009 <= 0.02, recall 1.0): ONLY the kind guardrail fails.
+    assert card.false_add_rate == 3 / 320 and card.correction_recall == 1.0
+    assert not ok and reasons == ["kind hard_neg false_add_rate 0.1500 <= 0.05 failed"]
+    d = card.to_dict()
+    assert d["exam"] == "v2" and d["per_kind"]["hard_neg"] == {"rows": 20, "positives": 0, "true_positives": 0, "negatives": 20, "false_positives": 3, "bypass": 0}
+    assert d["kind_guardrails"] == gate.KIND_GUARDRAILS
+    # Recall guardrail on a positive kind.
+    rows2 = _kind_rows("easy_neg", False, 200, "rewording") + _kind_rows("easy_pos2", True, 200) + _kind_rows("hard_pos", True, 20)
+    records2 = [_verdict(r["id"], r["correction"] and r["id"] not in {"hard_pos-0", "hard_pos-1", "hard_pos-2", "hard_pos-3", "hard_pos-4"}, False, latency=5.0) for r in rows2]
+    card2 = gate.score(rows2, records2, exam="v2")
+    ok2, reasons2 = card2.verdict()
+    # Pooled recall 215/220 = 0.977 passes; only the kind floor fails.
+    assert card2.correction_recall == 215 / 220
+    assert not ok2 and reasons2 == ["kind hard_pos recall 0.7500 >= 0.8 failed"]
+    # Rows without a kind (legacy) produce no per-kind block and no guardrail.
+    legacy = gate.score(_rows(), [_verdict(r["id"], r["correction"], r["safe_alias"], latency=5.0) for r in _rows()])
+    assert legacy.to_dict()["per_kind"] == {} and legacy.to_dict()["kind_guardrails"] is None and legacy.to_dict()["exam"] == "legacy"
+
+
+def test_exam_v2_validator_refuses_unknown_kind_label_mismatch_and_short_kinds(tmp_path, monkeypatch):
+    taxonomy = {"kinds": [{"kind": "k_pos", "correction": True, "stratum": "person"}, {"kind": "k_neg", "correction": False, "stratum": "rewording"}], "max_rows_per_frame_per_kind": 2, "max_rows_per_frame_overall": 10}
+    tpath = tmp_path / "taxonomy.json"
+    tpath.write_text(json.dumps(taxonomy))
+    monkeypatch.setattr(gate, "EXAM_V2_TAXONOMY", tpath)
+    good = _kind_rows("k_pos", True, gate.MIN_ROWS_PER_KIND) + _kind_rows("k_neg", False, gate.MIN_ROWS_PER_KIND, "rewording")
+    assert gate.validate_exam_v2(good) == []
+    bad_kind = [dict(good[0], kind="k_other", id="x1")] + good[1:]
+    assert any("not in the taxonomy" in p for p in gate.validate_exam_v2(bad_kind))
+    bad_label = [dict(good[0], correction=False, id="x2")] + good[1:]
+    assert any("disagrees with kind" in p for p in gate.validate_exam_v2(bad_label))
+    short = good[:gate.MIN_ROWS_PER_KIND] + _kind_rows("k_neg", False, gate.MIN_ROWS_PER_KIND - 1, "rewording")
+    assert any(f"needs >= {gate.MIN_ROWS_PER_KIND}" in p for p in gate.validate_exam_v2(short))
+    # A taxonomy kind with no rows at all is allowed (recorded as absent at freeze), not a refusal.
+    assert gate.validate_exam_v2(good[:gate.MIN_ROWS_PER_KIND] + good[gate.MIN_ROWS_PER_KIND:]) == []
+    alias = [dict(good[0], safe_alias=True, id="x3")] + good[1:]
+    assert any("safe_alias must be false" in p for p in gate.validate_exam_v2(alias))
+    # Diversity: a reused replacement, a reused sentence, a frame over its cap.
+    dup_rep = good + [dict(good[0], id="x4", pasted="another sentence alpha 0 here", edited=f"another sentence {good[0]['replacement']} here")]
+    assert any("replacement(s) used by more than one row" in p for p in gate.validate_exam_v2(dup_rep))
+    dup_sent = good + [dict(good[0], id="x5", replacement="gammaX", edited=good[0]["pasted"].replace("alpha 0", "gammaX"))]
+    assert any("pasted sentence is used by more than one row" in p for p in gate.validate_exam_v2(dup_sent))
+    frames = [dict(r, frame="one frame") for r in good]
+    assert any("frame reuse over the declared caps" in p for p in gate.validate_exam_v2(frames))
+    cov = gate.exam_v2_coverage(good) if False else None  # coverage needs the real taxonomy file; covered by the freeze path
+
+
+def test_frozen_exposure_is_counted_per_exam(tmp_path):
+    runs = tmp_path / "runs"
+    for name, doc in (("a", {"partition": "frozen-report", "judge": "j"}), ("b", {"partition": "frozen-report", "judge": "j", "exam": "v2"}), ("c", {"partition": "frozen-report", "judge": "j", "exam": "legacy"}), ("d", {"partition": "dev", "judge": "j"})):
+        (runs / name).mkdir(parents=True)
+        (runs / name / "scorecard.json").write_text(json.dumps(doc))
+    assert gate.frozen_exposure("j", runs)["prior_frozen_report_runs"] == 2          # legacy: a (no key) + c
+    assert gate.frozen_exposure("j", runs, exam="v2")["prior_frozen_report_runs"] == 1
+    assert gate.frozen_exposure("j", runs, exam="v2")["exam"] == "v2"
+
+
+def test_exam_registry_keeps_legacy_paths_unchanged():
+    assert gate.EXAMS["legacy"]["manifest"] == gate.FROZEN_MANIFEST
+    assert gate.EXAMS["legacy"]["partitions"] == {"working": gate.WORKING_CORPUS, "holdout": gate.HOLDOUT_CORPUS}
+    assert set(gate.EXAMS["v2"]["partitions"]) == {"exam"} and gate.EXAMS["v2"]["manifest"].name == "edit-judge-exam-v2-manifest.json"
+    manifest, loaded, problems = gate.load_exam("nope")
+    assert problems and "unknown exam" in problems[0]
+
+
+def test_attempt_ledger_reserves_once_per_exam_and_candidate(tmp_path):
+    ledger = tmp_path / "attempts.jsonl"
+    ident = {"checkpoint_sha256": "a" * 64, "tokenizer_sha256": "b" * 64, "config_sha256": "c" * 64, "path": "shape+judge"}
+    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+    assert rec["status"] == "started" and len(rec["key_digest"]) == 64
+    # A second reservation for the same exam + identity is refused (exit 2).
+    with pytest.raises(SystemExit) as exc:
+        gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+    assert exc.value.code == 2
+    # A different identity, a different exam digest or a different exam are new keys.
+    gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", dict(ident, config_sha256="e" * 64), ["cmd"], attempts_log=ledger)
+    gate.reserve_attempt("v2", "f" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+    gate.reserve_attempt("legacy", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+    gate.complete_attempt(rec, "completed", tmp_path / "run", attempts_log=ledger)
+    lines = [json.loads(l) for l in ledger.read_text().splitlines()]
+    assert [l["status"] for l in lines] == ["started", "started", "started", "started", "completed"]
+    # The ledger is append-only: the completed line repeats the key, never rewrites the started one.
+    assert lines[-1]["key_digest"] == rec["key_digest"] and lines[0]["status"] == "started"

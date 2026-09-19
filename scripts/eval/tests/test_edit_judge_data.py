@@ -277,3 +277,32 @@ def test_shipped_frozen_manifest_matches_the_shipped_files():
     assert sizes == {"working": len(loaded["working"]), "holdout": len(loaded["holdout"])}
     assert sizes["working"] + sizes["holdout"] == 209
     assert len(data.frozen_hashes(manifest)) == 209
+
+
+def test_stage_one_shape_drop_matches_the_swift_fixtures():
+    # The same pairs `EditRunShapeTests` pins on the Swift side.
+    dropped = [("monday", "Monday"), ("figma", "Figma"), ("json", "JSON"), ("Github", "GitHub"), ("its", "it's"), ("hello", "hello!"),
+               ("however", "however,"), ("the ceo", "the CEO"), ("Hello", "hello"), ("amanhã", "Amanhã"), ("sign up", "Sign Up"), ("e-mail", "E-Mail")]
+    kept = [("post hog", "PostHog"), ("e mail", "e-mail"), ("well-known", "well known"), ("git lab", "GitLab"), ("bird", "birds"),
+            ("Sarah", "Saira"), ("Mueller", "Müller"), ("pree yanka", "Priyanka"), ("tu", "tú"), ("same", "same"), ("", "x"), ("a b", "a b c")]
+    # Combining marks (Devanagari matras) are letters to Swift's Character
+    # and must stay in the comparison here too: an added matra is a real edit.
+    kept += [("अमित", "अमिता"), ("प्रियांका", "प्रियंका")]
+    for o, r in dropped:
+        assert data.stage_one_shape_drop(o, r), (o, r)
+    for o, r in kept:
+        assert not data.stage_one_shape_drop(o, r), (o, r)
+
+
+def test_training_manifest_accepts_the_optional_cross_dev_partition_and_nothing_else_unknown(tmp_path):
+    import json as _json
+    base = {"judge": "x", "kind": "trained", "checkpoint": "c", "tokenizer": "t", "thresholds": {}, "provenance": "p", "hash_version": data.HASH_VERSION,
+            "execution_identity": {"checkpoint_sha256": "0" * 64, "tokenizer_sha256": "0" * 64, "config_sha256": "0" * 64},
+            "partitions": {n: {"hashes": [c * 64], "families": [c]} for n, c in (("train", "a"), ("dev", "d"), ("calibration", "e"))}}
+    with_cross = dict(base, partitions={**base["partitions"], "cross_dev": {"hashes": ["b" * 64], "families": ["g"]}})
+    path = tmp_path / "m.json"
+    path.write_text(_json.dumps(with_cross))
+    assert data.load_training_manifest(path).problems == []
+    unknown = dict(base, partitions={**base["partitions"], "holdout": {"hashes": [], "families": []}})
+    path.write_text(_json.dumps(unknown))
+    assert any("unknown partition 'holdout'" in p for p in data.load_training_manifest(path).problems)

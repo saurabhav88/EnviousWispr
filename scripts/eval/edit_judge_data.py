@@ -50,6 +50,48 @@ CONTENT_FIELDS = ("language", "original", "replacement", "pasted")
 THREE_CLASSES = ("notCorrection", "correctionButUnsafe", "correctionAndSafe")
 
 
+# Review statuses a trainer may consume. Template rows are reviewed at the
+# table (every entity and sentence frame was read); authored rows are model
+# written (gpt-6-astra, 2026-09-19) and only a random sample was read by
+# hand, so their status says so and the receipt carries the sample size.
+# `blind-labelled-unanimous` rows were written by one model and labelled
+# blind (rows only, no kind or author label) by two different models; the
+# row is kept only when both blind labels equal the author label (founder
+# 2026-09-19: no human review, model quality grading).
+# `mined-heuristic-labelled` rows are real Parakeet outputs from the #685 TTS
+# round trip: the label is true by construction (canonical versus its
+# recorded mishearing) and the row was screened only by name-list membership
+# and string similarity; nobody read it. Consumable as training data with
+# that meaning, never as review evidence.
+# `unreviewed` rows (mined candidates with label null) are never training data.
+REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", "blind-labelled-unanimous", "mined-heuristic-labelled"})
+
+
+def stage_one_shape_drop(original: str, replacement: str) -> bool:
+    """Python mirror of the shipped `EditRunShape.isCasingOrPunctuationOnly`
+    (plan §3.1 step 5): the two runs differ only in letter case, punctuation
+    or symbols with the same word count. Alignment drops such runs before any
+    judge; the trainer's development scoring and the eval runner apply the
+    same rule so every number describes the shipped path. Parity with the
+    Swift rule is pinned by `test_stage_one_shape_drop_matches_the_swift_fixtures`."""
+    def words(text: str) -> list[str]:
+        out = []
+        for w in unicodedata.normalize("NFC", text).split():
+            # Swift filters grapheme Characters (a base letter keeps its
+            # combining marks); Python sees code points, so marks (category
+            # M*) are kept explicitly or Devanagari matras would vanish.
+            core = "".join(ch for ch in w if ch.isalnum() or unicodedata.category(ch).startswith("M")).lower()
+            if core:
+                out.append(core)
+        return out
+    o, r = words(original), words(replacement)
+    if not o or len(o) != len(r):
+        return False
+    if unicodedata.normalize("NFC", original) == unicodedata.normalize("NFC", replacement):
+        return False
+    return o == r
+
+
 def _nfc(text: str) -> str:
     return unicodedata.normalize("NFC", text)
 
@@ -192,6 +234,11 @@ def frozen_families(manifest: dict) -> set[str]:
 
 TRAINING_KINDS = ("trained", "untrained-arm")
 TRAINING_PARTITIONS = ("train", "dev", "calibration")
+# Optional declared population: the separately authored cross-author
+# development partition that co-selects the threshold (#996 chunk 4a-ii). A
+# trained judge need not have one; when it does, it is leakage-checked like
+# the three required partitions.
+OPTIONAL_TRAINING_PARTITIONS = ("cross_dev",)
 # Candidate families that can only be scored as TRAINED judges: a cross-encoder
 # with no training data is not a judge, so it cannot file an untrained-arm
 # manifest to slip past the leakage check.
@@ -304,7 +351,7 @@ def load_training_manifest(path: Path) -> TrainingManifest:
         problems.append("training manifest: partitions must be an object")
         partitions = {}
     for name, part in partitions.items():
-        if name not in TRAINING_PARTITIONS:
+        if name not in TRAINING_PARTITIONS + OPTIONAL_TRAINING_PARTITIONS:
             problems.append(f"training manifest: unknown partition {name!r}")
             continue
         if not isinstance(part, dict):
