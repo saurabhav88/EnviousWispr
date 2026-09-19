@@ -250,10 +250,11 @@ public struct InverseTextNormalizer: Sendable {
   // MARK: - Public entry point
 
   /// - Parameter spokenPunctuation: gates ONLY the bare spoken-punctuation
-  ///   commands (see `punct`). Every other conversion — numbers, currency, dates,
-  ///   times, phone, email, URL, ordinals, ranges — and the sentence-capitalization
-  ///   pass run regardless. Defaults to `false`, matching the shipped product default
-  ///   (#1794) so a caller that forgets it gets the non-rewriting behaviour.
+  ///   commands (see `punct`) and the backslash joiner. Every other conversion — numbers,
+  ///   currency, dates, times, phone, email, URL, ordinals, ranges, the spoken slash
+  ///   (#3038, `slashReading`) — and the sentence-capitalization pass run regardless.
+  ///   Defaults to `false`, matching the shipped product default (#1794) so a caller that
+  ///   forgets it gets the shipped behaviour.
   public func normalize(_ text: String, spokenPunctuation: Bool = false) -> String {
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
 
@@ -1696,8 +1697,9 @@ public struct InverseTextNormalizer: Sendable {
   /// `punct` is the authority; a command added there that becomes a delimiter adds its last word
   /// here. The joiners "slash" and "backslash" (#2955) are deliberately ABSENT: `/` and `\` glue
   /// words rather than end a clause, so "docs slash A one" keeps the reading a spoken word gets
-  /// ("docs/A1" with the setting on, "docs slash A1" off), and leaving this set alone is what keeps
-  /// the setting-off output byte-identical. Applied unconditionally rather than gated on
+  /// ("docs/A1" in both switch positions since #3038; "docs backslash A one" is "docs\A1" on and
+  /// "docs backslash A1" off), and leaving this set alone is what keeps the setting-off output
+  /// for the gated commands byte-identical. Applied unconditionally rather than gated on
   /// `spokenPunctuation`, so this port and the Python oracle stay identical — with the setting off
   /// the cost is an under-conversion after a rare phrase ("the finish line A one"), which is the
   /// safe direction.
@@ -2158,8 +2160,9 @@ public struct InverseTextNormalizer: Sendable {
   // MARK: - Punctuation
 
   /// The bare spoken-punctuation commands, gated by the user setting (#1794). One tuple can
-  /// yield more than one spoken phrase: `exclamation (mark|point)` and the optional "forward" /
-  /// two-word "back slash" aliases (#2955).
+  /// yield more than one spoken phrase: `exclamation (mark|point)` and the two-word "back slash"
+  /// alias (#2955). The spoken SLASH is no longer gated (#3038): it is read by `slashReading`
+  /// below in both switch positions; only backslash still needs the setting.
   ///
   /// Matching is case-INSENSITIVE (`reSub` defaults `caseInsensitive: true` and the
   /// loop below does not override it), so "Period" at a sentence start converts too.
@@ -2177,44 +2180,527 @@ public struct InverseTextNormalizer: Sendable {
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
   ]
 
-  /// #2955: the joiner commands "slash" / "forward slash" -> `/` and "backslash" / "back slash"
-  /// -> `\`, gated with `punct` and applied right after it in ONE pass, because a joiner that
-  /// follows another joiner has already lost its separating whitespace once the first is
-  /// rewritten ("backslash slash" must read `\/`, local review r2). Whitespace on BOTH sides is
-  /// consumed ("and slash or" -> "and/or"), but only horizontal whitespace, so a line break
-  /// "new line" just inserted survives (CR and LF; other Unicode line separators are ordinary
-  /// whitespace to this class; neither recogniser has been observed emitting one). The star, not
-  /// `\s+`, is what lets "slash slash" match twice ("://"); the alias gap is a run (not one
-  /// character) for the same reason (second-pass review).
+  /// #2955 / #3038: the joiner pattern for "slash" / "forward slash" and "backslash" / "back slash",
+  /// matched in ONE pass because a joiner that follows another joiner has already lost its
+  /// separating whitespace once the first is rewritten ("backslash slash" must read `\/`, local
+  /// review r2). Horizontal whitespace on BOTH sides is consumed, plus a comma the recogniser glued
+  /// to the previous word (#3038 R2: Parakeet writes "apples, slash bananas, slash strawberries");
+  /// only horizontal whitespace, so a line break "new line" just inserted survives (CR and LF;
+  /// other Unicode line separators are ordinary whitespace to this class; neither recogniser has
+  /// been observed emitting one). The star, not `\s+`, is what lets "slash slash" match twice
+  /// ("://"); the alias gap is a run (not one character) for the same reason (second-pass review).
   ///
   /// The word must be a SPOKEN word, and that is a closed question about its two neighbours
-  /// (cloud review PR #2960, two rounds, one on each side): on the LEFT only whitespace or the
-  /// start (`(?<!\S)`); on the RIGHT only whitespace, the end, or sentence punctuation that is
-  /// itself followed by whitespace or the end (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other
-  /// neighbour means the letters are part of a written token, so "example.com/slash/docs",
-  /// "C:\backslash\Users", "slash.com" and "backslash.txt" are left alone and the pass stays
-  /// idempotent, while "and slash." and "slash, then" still convert. A third finding of this
-  /// shape would have to name a neighbour that is neither whitespace, the end, nor terminal
-  /// punctuation followed by one of those, and there is no such character. "slashing" and
-  /// "slasher" fail the right-hand check. The backslash alternative is listed first so
-  /// "back slash" is one command, never "back" + `/`. User-facing copy mirrors these in
-  /// `SpokenPunctuationCopy` beside the `punct` rows.
+  /// (cloud review PR #2960, two rounds, one on each side): on the LEFT only whitespace, the
+  /// start, or an opening quote or bracket (`(?<![^\s"'(\[{“‘«])`: `"slash clear"` and
+  /// `(slash clear)`, cloud review PR #3040); on the RIGHT only whitespace, the end, or sentence
+  /// punctuation that is itself followed by whitespace or the end
+  /// (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other neighbour means the letters are part of a
+  /// written token, so "example.com/slash/docs", "C:\backslash\Users", "slash.com" and
+  /// "backslash.txt" are left alone and the pass stays idempotent, while "and slash." and
+  /// "slash, then" still MATCH (the slash reading then keeps the word: a marker carrying its own
+  /// punctuation has no right neighbour, row 0). "slashing" and "slasher" fail the right-hand
+  /// check. The backslash alternative is listed first so "back slash" is one command, never
+  /// "back" + `/`.
+  ///
+  /// WHAT EACH MATCH BECOMES is not decided here. Backslash: `\` when the setting is on, the span
+  /// kept verbatim (comma included) when it is off. Slash: `slashReading` decides, in both switch
+  /// positions, whether the word stays, glues, or takes a space before it. User-facing copy for
+  /// the gated rows lives in `SpokenPunctuationCopy`; the always-on slash is described there too.
   static let joinerCommands =
-    #"[^\S\r\n]*(?<!\S)(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
+    #"[^\S\r\n]*(?:(?<=\S),)?[^\S\r\n]*(?<![^\s"'(\[{“‘«])(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
 
-  /// - Parameter spokenPunctuation: when false, the command rewrites are skipped
-  ///   and their trigger words survive as ordinary text. Sentence capitalization below
-  ///   runs REGARDLESS: it keys off `.!?` whoever produced them, including the marks
-  ///   the speech recognizer adds on its own, so it is general formatting rather than
-  ///   part of the spoken-command feature.
+  // MARK: - Spoken slash reading (#3038)
+
+  /// What a spoken "slash" means in this position, decided BEFORE anything is written. Owner of
+  /// the table: `docs/feature-requests/issue-3038-2026-09-18-spoken-slash-always-on.md` §3 R1;
+  /// research and the 264-case benchmark that shaped it: `docs/audits/2026-09-18-3038-*`.
+  ///
+  /// Written English has three outcomes for the word, not two (CMOS 6.106; Woo 2019): glued
+  /// between two single words (`pros/cons`), a SPACE before a name that starts with `/`
+  /// (`command is /wfp`), and the word itself (the verb "slash the budget", the noun "a slash",
+  /// the clause connector "essay slash I really want"). `.unresolved` is the explicit "not
+  /// enough evidence" answer and keeps the word, which is today's behaviour, never a guess.
+  enum SlashReading: Equatable {
+    case word, pair, prefix, glue, unresolved
+  }
+
+  /// Everything `slashReading` may look at. Neighbours are read from the ORIGINAL string of the
+  /// pass, never from text already rewritten, so two markers in one utterance are decided
+  /// independently ("We slash costs using slash audit" -> "We slash costs using /audit").
+  struct SlashContext {
+    /// Core of the token before the marker: quotes/brackets and sentence punctuation stripped
+    /// from both ends, cut to the sub-token after the last `/` or `\` (so `alpha/to` reads `to`
+    /// on a second pass and the pass stays idempotent), U+2019 folded to `'`, lower-cased.
+    /// Empty when the marker starts the utterance.
+    var left: String = ""
+    /// The raw left token, untouched (for its trailing comma, a lone capital letter, or a
+    /// punctuation-only neighbour such as `..` or `<`).
+    var leftRaw: String = ""
+    /// Core of the token after the marker; empty at the end of the utterance or when sentence
+    /// punctuation is glued to the marker itself ("a missing slash.").
+    var right: String = ""
+    /// Sentence punctuation is glued to the marker itself ("slash." / "slash,").
+    var markerCarriesPunctuation: Bool = false
+    /// The single-letter tokens before the left neighbour spell a scheme ("h t t p" before "p:"),
+    /// or before the token before it (for the second marker of "slash slash").
+    var leftSpellsScheme: Bool = false
+    var beforeLeftSpellsScheme: Bool = false
+    /// Core of the token BEFORE the left neighbour (a scheme before "slash slash", or the
+    /// previous marker of a chain).
+    var beforeLeft: String = ""
+    /// Core of the token AFTER the right neighbour (the next marker of a chain, or the "the"
+    /// that turns a path segment back into prose).
+    var afterRight: String = ""
+    /// The marker itself is capitalised and does not start a sentence: a proper noun.
+    var capitalisedMidSentence: Bool = false
+    /// The reading the previous marker in this pass received, if any.
+    var previous: SlashReading? = nil
+  }
+
+  /// Rows are applied in order; the first match wins. Row names follow the plan table (B rows
+  /// were added from the external benchmark). Every set below is an English closed class except
+  /// `slashCommandVerbs`, which is a curated list of verbs that introduce a command name and is
+  /// the one open-ended member: a verb missing from it degrades to `.glue`, never to a lost word.
+  static func slashReading(_ c: SlashContext) -> SlashReading {
+    // A left neighbour that ends the previous sentence ("you." in "I agree with you. Slash
+    // clear.") is no neighbour at all for the reading: the marker starts fresh, the raw text
+    // still keeps its space in the render. `slashSentenceBreak` decides, so "Dr." is not an end.
+    // A punctuation-only neighbour (`..`, row B3) is a written token, not a sentence end.
+    let leftEndsSentence =
+      !c.left.isEmpty && firstMatch(slashSentenceBreak, c.leftRaw + " ", caseInsensitive: false) != nil
+    let l = leftEndsSentence ? "" : c.left, r = c.right
+    // The previous marker is adjacent when the token before the left neighbour is "slash", or
+    // when the left neighbour IS the previous marker ("backslash slash" -> `\/`, #2955).
+    let leftIsMarker = l == "backslash" || (l == "slash" && c.beforeLeft == "back")
+    let leftEndsClause = [",", ";", ":", ".", "!", "?"].contains { c.leftRaw.hasSuffix($0) }
+    // A path continues after a leading command-shaped segment too ("slash run slash app.log"
+    // -> `/run/app.log`); a clause end after a `.prefix` is a command list instead (B5), and a
+    // sentence end never continues a chain.
+    let previousAdjacentGlued =
+      !leftEndsSentence && (c.beforeLeft == "slash" || leftIsMarker)
+      && (c.previous == .glue || c.previous == .pair || (c.previous == .prefix && !leftEndsClause))
+    // Row 0: nothing after the marker keeps the word ("a missing slash.", "tea slash coffee
+    // slash.", and a trailing "docs slash" at the end of a spoken path: the approved table has
+    // no trailing-slash reading; polish may still write one). The one shape that still glues is
+    // a marker whose LEFT neighbour is the previous marker and glued ("backslash slash" -> `\/`,
+    // the #2955 mixed-joiner row): there is no word between them to keep.
+    if r.isEmpty { return leftIsMarker && c.previous == .glue ? .glue : .unresolved }
+    // Row B1: "I liked Slash on that live recording" (EN027, EN064).
+    if c.capitalisedMidSentence { return .word }
+    // Row B2: the first marker of "https colon slash slash" -> the pair glues into `://`. The
+    // scheme is either a known word or whatever carries the spoken colon ("p:" in a spelled-out
+    // "h t t p colon slash slash").
+    // A scheme is the word itself ("https", "https:") or its complete spelling as single letters
+    // ("h t t p colon" -> "p:" with "h t t" before it); a word carrying a colon ("says:") is not.
+    // The pair glues only when a WRITTEN domain follows ("https colon slash slash example.com");
+    // a spoken domain ("example dot com") stays words, because the URL passes ran before this
+    // reading and refused the domain after the word "slash" (#2315 boundary), and writing `://`
+    // now would make the second pass convert the domain (a non-idempotent output).
+    let leftIsScheme = slashSchemes.contains(l) || c.leftSpellsScheme
+    if r == "slash" {
+      // A spelled-out scheme is followed by a spelled-out host ("w w w"), so the letters decide.
+      if leftIsScheme { return c.afterRight.contains(".") || c.leftSpellsScheme ? .glue : .unresolved }
+      // "use slash slash" names the command `/slash` when a command is expected here;
+      // "the variable H slash slash is malformed" is nonsense and keeps its words.
+      return l.isEmpty || isSlashPrefixLeft(l) ? .prefix : .unresolved
+    }
+    // Row B2': the previous token is itself a marker: a scheme before it means `://`; after a
+    // `.prefix` this marker IS the command name and stays the word ("/slash", EN088); anything
+    // else stays unresolved with its predecessor.
+    if l == "slash" {
+      if (slashSchemes.contains(c.beforeLeft) || c.beforeLeftSpellsScheme) && c.previous == .glue {
+        return .glue
+      }
+      return c.previous == .prefix ? .word : .unresolved
+    }
+    // A chain CONTINUING after this marker; a chain arriving from before it is B6 below.
+    let chain = c.afterRight == "slash"
+    // Row 1: listed function-word pairs, subject-or-object pronoun pairs, possessive pairs. A
+    // pair is one phrase, so a clause end before the marker breaks it ("at the top, slash down
+    // the middle" is the verb) unless the recogniser's list comma sits inside a chain ("on,
+    // slash off, slash auto" -> `on/off/auto`, R2).
+    if isSlashPair(l, r) && (!leftEndsClause || chain) { return .pair }
+    // Row B3: a written, punctuation-only neighbour (`..`, `<`) or the spoken letter "A".
+    if !c.leftRaw.isEmpty && l.isEmpty && !leftEndsSentence { return .glue }
+    if c.leftRaw == "A" { return .glue }
+    // Row 3: "will slash prices", "we slash costs"; "back" keeps "back slash" for the toggle.
+    if slashModalsAndNegators.contains(l) || slashSubjectPronouns.contains(l) || l == "back" {
+      return .word
+    }
+    // Row 4: "slash the budget", "slash it", "essay slash I really", "slash and burn".
+    if slashDeterminers.contains(r) || slashObjectPronouns.contains(r)
+      || slashSubjectPronouns.contains(r) || slashAuxiliaries.contains(r)
+      || slashModalsAndNegators.contains(r) || slashConjunctions.contains(r)
+      || slashIndefinites.contains(r)
+    {
+      return .word
+    }
+    // Row 4': a preposition after the marker is prose ("the words forward slash in the
+    // instructions") unless it ends a glued path chain (`settings/general/about`); a determiner
+    // or pronoun after the preposition makes it prose again ("docs slash next slash for the team").
+    let proseAfter =
+      slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
+      || slashObjectPronouns.contains(c.afterRight)
+    if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
+    // "slash off" and "slash down" are the verb with its particle ("Gardeners slash off dead
+    // branches", "then slash down."): the pairs that end in these words are listed in
+    // `slashFunctionPairs` (on/off, auto/off, up/down, top/down) and were read above, and no
+    // command named /off or /down exists to compete.
+    if slashParticles.contains(r) { return .word }
+    // Row B8: the word after the command names it as one ("the slash compact command", "run a
+    // slash wfp skill"), so a determiner before the marker is not about the character. After the
+    // verb refusals above, so "should not slash the skills budget" keeps its verb.
+    if slashCommandNouns.contains(c.afterRight) { return .prefix }
+    // Row 2: "put a slash between", "the slash commands".
+    if slashDeterminers.contains(l) { return .word }
+    // Row B6: a glued chain continues (`apples/bananas/strawberries`, `/tmp/wispr`).
+    if previousAdjacentGlued { return .glue }
+    // Row 5: "need to slash costs" is an infinitive, so after "to" only a path chain ("output to
+    // slash tmp slash wispr" -> `/tmp/wispr`) or a destination verb before it ("switched to slash
+    // compact", "go back to slash plan") reads as a command.
+    if l == "to" {
+      return chain || slashDestinationWords.contains(c.beforeLeft) ? .prefix : .unresolved
+    }
+    // Row B4: a command after a conjunction only when an earlier command set the pattern
+    // ("are slash build and slash test" -> `/build and /test`) or the conjunction is the "go
+    // ahead and" idiom; otherwise the verb reading is as likely ("trim the packaging and slash
+    // shipping costs") and the word stays.
+    if slashConjunctions.contains(l) {
+      return c.previous == .prefix || c.beforeLeft == "ahead" ? .prefix : .unresolved
+    }
+    // Row B5: a comma-separated command list ("slash list, slash inspect, and slash resume";
+    // "slash list, sorry, slash inspect" too: an earlier command and a clause boundary suffice).
+    if c.previous == .prefix && leftEndsClause { return .prefix }
+    // Row B7: a clause boundary before the marker is a command ("sorry, slash inspect"); a comma
+    // before a CHAIN is the recogniser's list comma and the chain glues (R2).
+    if leftEndsClause && !chain { return .prefix }
+    // "kick off slash wfp": the particle is a command context only after its verb; "off" is not
+    // a preposition here, so "auto slash off" (row 7) still glues.
+    if l == "off" && slashParticleVerbs.contains(c.beforeLeft) { return .prefix }
+    // A discourse marker opens an instruction only at the start ("okay slash compact"); mid-
+    // sentence it is an adjective and glues ("was okay slash mediocre").
+    if slashDiscourse.contains(l) { return c.beforeLeft.isEmpty ? .prefix : .glue }
+    // A command verb after a determiner is a noun ("the launch slash abort button") and glues.
+    if slashCommandVerbs.contains(l) && slashDeterminers.contains(c.beforeLeft) { return .glue }
+    // Row 6: no left neighbour, or a copula/preposition/adverb/subordinator/command verb.
+    if l.isEmpty || isSlashPrefixLeft(l) { return .prefix }
+    // Row 7: two content words.
+    return .glue
+  }
+
+  static let slashSubjectPronouns: Set<String> = ["i", "you", "he", "she", "it", "we", "they"]
+  static let slashObjectPronouns: Set<String> = ["me", "you", "him", "her", "it", "us", "them"]
+  static let slashPossessives: Set<String> = [
+    "my", "your", "his", "her", "its", "our", "their", "mine", "yours", "hers", "ours", "theirs",
+  ]
+  /// Explicit pairs, both orders, so "and slash down" (a verb with a particle) is not a pair.
+  static let slashFunctionPairs: Set<String> = [
+    "and/or", "or/and", "on/off", "off/on", "in/out", "out/in", "up/down", "down/up",
+    "yes/no", "no/yes", "before/after", "after/before", "auto/off", "top/down", "bottom/up",
+  ]
+  static let slashDeterminers: Set<String> = [
+    "a", "an", "the", "this", "that", "these", "those", "another", "one", "any", "each",
+    "every", "some", "all", "both", "either", "neither", "my", "your", "his", "her", "its",
+    "our", "their",
+  ]
+  static let slashModalsAndNegators: Set<String> = [
+    "will", "would", "can", "could", "should", "must", "may", "might", "shall", "gonna",
+    "wanna", "let's", "not", "never", "don't", "doesn't", "didn't", "won't", "wouldn't",
+    "can't", "couldn't", "shouldn't", "cannot",
+  ]
+  static let slashAuxiliaries: Set<String> = [
+    "is", "are", "am", "was", "were", "be", "been", "being", "do", "does", "did", "have",
+    "has", "had",
+  ]
+  static let slashConjunctions: Set<String> = ["and", "or", "but", "so", "if"]
+  static let slashPrepositions: Set<String> = [
+    "with", "in", "on", "at", "for", "of", "by", "from", "into", "about", "via", "like", "as",
+    "than", "between", "after", "before", "until", "under", "over", "through", "to",
+  ]
+  /// Interjections and discourse markers that open a spoken instruction ("okay slash compact")
+  /// when they start the utterance. "right", "good" and "fine" are absent: they pair.
+  static let slashDiscourse: Set<String> = [
+    "okay", "ok", "alright", "yes", "yeah", "yep", "sure", "hey", "oh", "anyway", "cool", "great",
+    "thanks",
+  ]
+  /// Particles the verb "slash" takes ("slash off the", "slash down"). "away" is absent: "I use
+  /// slash away a lot" is the Slack command (T35).
+  static let slashParticles: Set<String> = ["off", "down"]
+  /// Verbs whose "off" particle precedes a command ("kick off slash wfp").
+  static let slashParticleVerbs: Set<String> = ["kick", "kicked", "kicking", "fire", "fired", "firing"]
+  /// Words before "to" that make it a destination and never an infinitive marker: "switched to
+  /// slash compact", "go back to slash plan", "straight to slash plan". Motion verbs ("moved to",
+  /// "went to") are absent: "the company moved to slash costs" is a purpose.
+  static let slashDestinationWords: Set<String> = [
+    "switch", "switched", "switching", "back", "over", "straight", "directly",
+  ]
+  /// A word after the command that names it as a command ("the slash compact command").
+  static let slashCommandNouns: Set<String> = [
+    "command", "commands", "skill", "skills", "shortcut", "shortcuts",
+  ]
+  static let slashIndefinites: Set<String> = [
+    "everything", "something", "anything", "nothing", "everyone", "someone", "anyone",
+    "everybody", "somebody", "anybody",
+  ]
+  static let slashAdverbs: Set<String> = [
+    "then", "just", "now", "also", "always", "simply", "first", "next", "please", "maybe",
+    "probably", "perhaps", "usually", "often", "sometimes",
+  ]
+  static let slashSubordinators: Set<String> = [
+    "after", "before", "until", "when", "once", "while", "whenever",
+  ]
+  /// The one open-ended member of the table (see `slashReading`).
+  static let slashCommandVerbs: Set<String> = [
+    "use", "using", "used", "type", "typed", "typing", "run", "ran", "running", "try", "tried",
+    "say", "said", "says", "hit", "send", "sent", "press", "pressed", "enter", "entered", "call",
+    "called", "invoke", "invoked", "add", "added", "remember", "forget", "forgot", "forgetting",
+    "document", "documented", "mention", "mentioned", "prefix", "replace", "replaced", "show",
+    "showed", "shows", "see", "saw", "recommend", "suggest", "prefer", "need", "needs", "want",
+    "wants", "know", "learn", "learned", "teach", "taught", "explain", "explained", "define",
+    "defined", "insert", "put", "choose", "chose", "pick", "picked", "select", "selected",
+    "execute", "executed", "write", "wrote", "means", "meaning", "launch", "launched", "trigger",
+    "triggered", "fire", "fired", "kick", "kicked", "issue", "issued", "apply", "applied",
+    "perform", "performed",
+  ]
+  /// URL schemes whose spoken "slash slash" is `//`. The reader strips a glued colon, so
+  /// "https:" and "https" read alike.
+  static let slashSchemes: Set<String> = ["http", "https", "ftp"]
+
+  static func isSlashPair(_ l: String, _ r: String) -> Bool {
+    if slashFunctionPairs.contains(l + "/" + r) { return true }
+    let subjectOrObject = slashSubjectPronouns.union(slashObjectPronouns)
+    if subjectOrObject.contains(l) && subjectOrObject.contains(r) { return true }
+    return slashPossessives.contains(l) && slashPossessives.contains(r)
+  }
+
+  static func isSlashPrefixLeft(_ l: String) -> Bool {
+    slashAuxiliaries.contains(l) || (slashPrepositions.contains(l) && l != "to")
+      || slashAdverbs.contains(l) || slashSubordinators.contains(l)
+      || slashCommandVerbs.contains(l)
+  }
+
+  /// The neighbour reader `slashReading` relies on. Not `tokenCore`: that helper returns "" for
+  /// any token that is not pure ASCII letters, which would silently drop every contraction and
+  /// every path. Returns the raw whitespace-delimited token and its core (see `SlashContext`).
+  /// `edge` is where the token starts (`before`) or ends (`after`), so a caller can read the
+  /// next token out from it.
+  static func slashNeighbour(_ ns: NSString, before start: Int) -> (raw: String, core: String, edge: Int) {
+    var end = start
+    while end > 0, isHorizontalWhitespace(ns.character(at: end - 1)) { end -= 1 }
+    var begin = end
+    while begin > 0, !isWhitespace(ns.character(at: begin - 1)) { begin -= 1 }
+    let raw = ns.substring(with: NSRange(location: begin, length: end - begin))
+    return (raw, slashCore(raw, keepAfterLastSlash: true), begin)
+  }
+
+  static func slashNeighbour(_ ns: NSString, after end: Int) -> (raw: String, core: String, edge: Int) {
+    let n = ns.length
+    var begin = end
+    if begin < n, !isWhitespace(ns.character(at: begin)) {
+      // Punctuation glued to the marker itself ("slash." / "slash,"): no right neighbour.
+      var k = begin
+      while k < n, !isWhitespace(ns.character(at: k)) { k += 1 }
+      let glued = ns.substring(with: NSRange(location: begin, length: k - begin))
+      let core = slashCore(glued, keepAfterLastSlash: false)
+      // A punctuation-only run keeps its raw form (the reading knows the marker carries it).
+      return (glued, core, k)
+    }
+    while begin < n, isHorizontalWhitespace(ns.character(at: begin)) { begin += 1 }
+    var finish = begin
+    while finish < n, !isWhitespace(ns.character(at: finish)) { finish += 1 }
+    let raw = ns.substring(with: NSRange(location: begin, length: finish - begin))
+    return (raw, slashCore(raw, keepAfterLastSlash: false), finish)
+  }
+
+  static func slashCore(_ raw: String, keepAfterLastSlash: Bool) -> String {
+    var core = raw.trimmingCharacters(in: tokenStripSet)
+    if keepAfterLastSlash {
+      if let cut = core.lastIndex(where: { $0 == "/" || $0 == "\\" }) {
+        core = String(core[core.index(after: cut)...])
+      }
+    } else if let cut = core.firstIndex(where: { $0 == "/" || $0 == "\\" }) {
+      core = String(core[..<cut])
+    }
+    return core.replacingOccurrences(of: "\u{2019}", with: "'").lowercased()
+  }
+
+  /// Do the single-letter tokens ending at `end` (the letter carrying the spoken colon included)
+  /// spell a scheme? "h t t p:" -> true. Reads at most five letters back and stops at any token
+  /// that is not one ASCII letter, so "says:" and "the p:" are not schemes.
+  static func slashSpelledScheme(_ ns: NSString, endingAt end: Int) -> Bool {
+    var letters: [Character] = []
+    var cursor = end
+    while letters.count < 5 {
+      let token = slashNeighbour(ns, before: cursor)
+      guard token.raw.isEmpty == false else { break }
+      let core = token.core
+      guard core.count == 1, let ch = core.first, ch.isASCII, ch.isLetter else { break }
+      letters.insert(ch, at: 0)
+      cursor = token.edge
+      if slashSchemes.contains(String(letters)) { return true }
+    }
+    return false
+  }
+
+  /// A marker that starts a sentence is written capitalised by the recogniser ("Slash exit.");
+  /// one capitalised mid-sentence is a name. Sentence start: only whitespace before it back to
+  /// the beginning, or the previous non-blank character ends a sentence.
+  /// Every word starts with a capital and continues in lower case ("Slash", "Forward Slash").
+  static func isTitleCase(_ words: String) -> Bool {
+    let parts = words.split(whereSeparator: { $0.isWhitespace })
+    return !parts.isEmpty
+      && parts.allSatisfy { w in
+        (w.first?.isUppercase ?? false) && w.dropFirst().allSatisfy { !$0.isUppercase }
+      }
+  }
+
+  static func slashStartsSentence(_ ns: NSString, at start: Int) -> Bool {
+    var i = start
+    while i > 0, isWhitespace(ns.character(at: i - 1)) {
+      // A line break starts a sentence ("Run slash help\nSlash exit").
+      if ns.character(at: i - 1) == 10 || ns.character(at: i - 1) == 13 { return true }
+      i -= 1
+    }
+    if i == 0 { return true }
+    // The same boundary the reading uses: a closing quote or an ellipsis ends a sentence too,
+    // an abbreviation does not. A bare terminal mark is one as well: with the setting on,
+    // "Run slash help. New line. Slash exit." puts the recogniser's period at the start of the
+    // new line, so the token before "Slash" is "." on its own (whole-branch review, PR #3040).
+    let before = slashNeighbour(ns, before: start)
+    if before.core.isEmpty {
+      return [".", "!", "?", "…"].contains { before.raw.hasSuffix($0) }
+    }
+    return firstMatch(slashSentenceBreak, before.raw + " ", caseInsensitive: false) != nil
+  }
+
+  /// A lone spoken command, with or without the recogniser's sentence period, is lower-cased
+  /// and loses the period: "Slash exit." -> `/exit`, "Slash Clear" -> `/clear` (#3038 R3; the
+  /// recogniser capitalised the command name in a live take, and command names are lower-case).
+  /// A lone `/Users` is not a shape anyone dictates. `\s*` before the period tolerates the
+  /// spacing the joiner leaves; the character class spells Python's Unicode `\w` (letters,
+  /// numbers, underscore) so the oracle mirror and this pass agree, and both leave a decomposed
+  /// combining mark alone.
+  static let loneCommandPeriod = #"^\s*(/[\p{L}\p{N}_][\p{L}\p{N}_-]*)\s*\.?\s*$"#
+
+  /// A sentence end (terminal mark, optional closing quotes or brackets, then whitespace) or a
+  /// line break: the boundary past which one marker's reading no longer informs the next. A
+  /// period after a single letter ("e.g.", "i.e.", "p.m.") or after a title or Latin
+  /// abbreviation from `slashAbbreviations` ("Dr. Smith", "vs. them") is not an end, so
+  /// "use slash help (e.g. in chat) and slash exit" keeps its command list; the cost is a
+  /// sentence ending in a lone letter or in "etc." ("plan B. Then ..."), which does not reset.
+  /// Letters are `\p{L}` with combining marks, so "Anaïs." ends a sentence in either
+  /// normalisation form. Matched through `firstMatch` (NSRegularExpression):
+  /// `String.range(of:options:)` misses a bare `\n` for the class `[\r\n]` (measured 2026-09-18).
+  static let slashSentenceBreak =
+    #"(?:(?<![^\p{L}\p{M}][\p{L}\p{M}])(?<!^[\p{L}\p{M}])(?<!\b(?i:"#
+    + slashAbbreviations.joined(separator: "|") + #"))\.|[!?…])["'”’»)\]}]*\s|\R"#
+
+  /// Titles and Latin abbreviations a recogniser writes with a period mid-sentence. Closed
+  /// list; the single-letter rule in `slashSentenceBreak` covers "e.g.", "i.e." and "p.m.".
+  static let slashAbbreviations = ["mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc"]
+
+  /// - Parameter spokenPunctuation: when false, the nine mark commands and backslash are skipped
+  ///   and their trigger words survive as ordinary text. The spoken SLASH is read regardless
+  ///   (#3038). Sentence capitalization below runs REGARDLESS: it keys off `.!?` whoever produced
+  ///   them, including the marks the speech recognizer adds on its own, so it is general
+  ///   formatting rather than part of the spoken-command feature.
   private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
     var t = t0
     if spokenPunctuation {
       for (pat, rep) in Self.punct {
         t = reSub(pat, t) { _ in rep }
       }
-      t = reSub(Self.joinerCommands, t) { m in
-        (m.g(1) ?? "").lowercased().hasPrefix("back") ? "\\" : "/"
+    }
+    var previous: SlashReading? = nil
+    var previousMarkerEnd = 0
+    var wroteCommand = false
+    t = reSub(Self.joinerCommands, t) { m in
+      guard let command = m.g(1) else { return nil }
+      // A reading carries only within a sentence: "Run slash help. They trim packaging and slash
+      // shipping costs." must not let the first command's `.prefix` turn the verb after "and"
+      // into `/shipping` (row B4). A sentence end or a line break between two markers forgets
+      // the earlier reading; a comma keeps it (row B5, "slash list, sorry, slash inspect").
+      let markerSpan = m.result.range(at: 1)
+      let gap = m.ns.substring(
+        with: NSRange(location: previousMarkerEnd, length: markerSpan.location - previousMarkerEnd))
+      if firstMatch(Self.slashSentenceBreak, gap, caseInsensitive: false) != nil { previous = nil }
+      previousMarkerEnd = NSMaxRange(markerSpan)
+      if command.lowercased().hasPrefix("back") {
+        // Backslash stays toggle-gated (#2955 decision; "backslash" is the snippet keyword).
+        // ON keeps the comma the pattern consumed: "docs, back slash A one" -> "docs,\A1".
+        guard spokenPunctuation else {
+          previous = .word
+          return nil
+        }
+        previous = .glue
+        return m.whole.contains(",") ? ",\\" : "\\"
+      }
+      let span = m.result.range(at: 1)
+      let ns = m.ns
+      let left = Self.slashNeighbour(ns, before: span.location)
+      var right = Self.slashNeighbour(ns, after: NSMaxRange(span))
+      // A neighbouring marker spoken as "forward slash" is the single word "slash" to the table
+      // ("https: forward slash forward slash example.com" -> `https://example.com`).
+      if right.core == "forward", Self.slashNeighbour(ns, after: right.edge).core == "slash" {
+        right = Self.slashNeighbour(ns, after: right.edge)
+      }
+      var ctx = SlashContext()
+      ctx.left = left.core
+      ctx.leftRaw = left.raw
+      ctx.right = right.core
+      ctx.markerCarriesPunctuation = right.core.isEmpty && !right.raw.isEmpty
+      if !left.raw.isEmpty {
+        var beforeLeft = Self.slashNeighbour(ns, before: left.edge)
+        if left.core == "slash", beforeLeft.core == "forward" {
+          beforeLeft = Self.slashNeighbour(ns, before: beforeLeft.edge)
+        }
+        ctx.beforeLeft = beforeLeft.core
+        ctx.leftSpellsScheme = Self.slashSpelledScheme(ns, endingAt: left.edge + left.raw.utf16.count)
+        if !beforeLeft.raw.isEmpty {
+          ctx.beforeLeftSpellsScheme = Self.slashSpelledScheme(
+            ns, endingAt: beforeLeft.edge + beforeLeft.raw.utf16.count)
+        }
+      }
+      if !right.raw.isEmpty {
+        let next = Self.slashNeighbour(ns, after: right.edge)
+        ctx.afterRight = next.core
+        // The next marker may be spoken as two words ("output to forward slash tmp forward slash
+        // wispr"); the table reads a chain as the single word "slash".
+        if next.core == "forward", Self.slashNeighbour(ns, after: next.edge).core == "slash" {
+          ctx.afterRight = "slash"
+        }
+      }
+      // "Slash" or "Forward Slash" in title case mid-sentence is a name (the guitarist, a band);
+      // an all-caps transcript ("USE SLASH CLEAR") is not.
+      ctx.capitalisedMidSentence =
+        Self.isTitleCase(command) && !Self.slashStartsSentence(ns, at: span.location)
+      ctx.previous = previous
+      let reading = Self.slashReading(ctx)
+      previous = reading
+      switch reading {
+      case .word, .unresolved:
+        return nil
+      case .pair, .glue:
+        // A scheme word spoken without its colon ("https slash slash") still writes `://`.
+        if right.core == "slash", Self.slashSchemes.contains(left.core), !left.raw.hasSuffix(":") {
+          return ":/"
+        }
+        return "/"
+      case .prefix:
+        wroteCommand = true
+        // At the start of the utterance or of a line there is nothing to keep a space from.
+        if left.raw.isEmpty { return "/" }
+        let leading = NSRange(
+          location: m.result.range.location, length: span.location - m.result.range.location)
+        return ns.substring(with: leading) + "/"
+      }
+    }
+    // Only a command this pass wrote from a spoken marker; a written `/Users` alone is left as is.
+    if wroteCommand {
+      t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in
+        guard let command = m.g(1) else { return nil }
+        return " \(command.lowercased()) "
       }
     }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)

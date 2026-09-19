@@ -69,6 +69,18 @@ enum WhatsNewContent {
       version: "2.5.1"
     ),
 
+    // #3038: the spoken slash left the spoken-punctuation setting; it is read in both switch
+    // positions. Same unshipped 2.5.1 group (no v2.5.1 tag yet), so the card reaches the
+    // people it is for. The help article is named in prose: `Entry` has no link field.
+    Entry(
+      id: "say-slash-get-a-slash",
+      icon: "slash.circle",
+      title: "Say slash, get a slash",
+      description:
+        "Slash works with the spoken punctuation setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol. Backslash still needs Convert spoken punctuation on. The Spoken punctuation and emoji help article has the details.",
+      version: "2.5.1"
+    ),
+
     // MARK: - v2.5.0
 
     // Cut by the founder on the 2.5.0 notes page (2026-09-14): custom-word-mishearings-easier, history-dictations-and-transcripts.

@@ -169,6 +169,39 @@ struct Issue1358EmptyRecoveryTests {
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.polishFellBackToRaw == true)
     #expect(metrics.polishFallbackReason == "empty_output_floor")
+    // #3038: the floor is not a validator verdict; Guard 4 ran on the empty output and measured
+    // zero symbol tokens in the deterministic text, and that measurement survives.
+    #expect(outcome.polishValidatorGuard == nil)
+    #expect(outcome.symbolTokens == 0)
+    #expect(metrics.polishValidatorGuard == nil)
+    #expect(metrics.symbolTokens == 0)
+  }
+
+  /// #3038: the validator's verdict and count must reach the transcript metrics from BOTH polish
+  /// call sites (Apple Intelligence has its own branch), through the same wiring the product
+  /// runs. Deleting either call-site assignment or the finalization projection turns this red;
+  /// the direct `ExecutionMetrics` tests in `PolishSymbolGuardTelemetryTests` cannot see that.
+  @Test(
+    "Validator metadata survives both polish paths and finalization", .tags(.observabilityContract))
+  func symbolGuardMetadataSurvivesWiring() async throws {
+    for provider in [LLMProvider.appleIntelligence, .openAI] {
+      let outcome = KernelFinalizationOutcome()
+      let steps = makeSteps()
+      steps.llmPolish.llmProvider = provider
+      steps.llmPolish.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
+      steps.llmPolish.makePolisher = { _, _, _ in EmptyPolisher() }
+      let wiring = makeWiring(outcome: outcome, steps: steps)
+      let input = "please use /clear right now"
+      let text = try await wiring.processText(input) {}
+      #expect(text == input, "\(provider.rawValue)")
+      #expect(outcome.polishValidatorGuard == "symbol_drop", "\(provider.rawValue)")
+      #expect(outcome.symbolTokens == 1, "\(provider.rawValue)")
+      try await wiring.store(text, UUID(), .ordinary)
+      _ = await wiring.deliver(text, .ordinary)
+      let metrics = try #require(outcome.transcript?.metrics)
+      #expect(metrics.polishValidatorGuard == "symbol_drop", "\(provider.rawValue)")
+      #expect(metrics.symbolTokens == 1, "\(provider.rawValue)")
+    }
   }
 
   @Test("a filler-only chain result returns empty from processText (kernel routes → .noSpeech)")

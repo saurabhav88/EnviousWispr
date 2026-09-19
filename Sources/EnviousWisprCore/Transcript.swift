@@ -187,6 +187,13 @@ public struct ExecutionMetrics: Codable, Sendable {
   /// `false` means the daemon did not report this model as remote. It is not an
   /// independent proof of local execution, and telemetry must not read it as one.
   public var polishRanRemote: Bool?
+  /// #3038: which `validatePolishOutput` guard discarded the polish (`expansion`,
+  /// `content_drop`, `question_flip`, `symbol_drop`), nil when the output stood or the fallback
+  /// was not a validator's; and the number of slash/backslash tokens the deterministic text
+  /// carried when Guard 4 ran. Additive optional Codable, nil on transcripts written before
+  /// #3038. Names and counts only, never text.
+  public var polishValidatorGuard: String?
+  public var symbolTokens: Int?
 
   public init(
     asrLatencySeconds: Double? = nil,
@@ -249,7 +256,9 @@ public struct ExecutionMetrics: Codable, Sendable {
     tailDecodeSec: Double? = nil,
     maxUnconfirmedWindowSec: Double? = nil,
     stopWhileDecodeInFlight: Bool? = nil,
-    polishRanRemote: Bool? = nil
+    polishRanRemote: Bool? = nil,
+    polishValidatorGuard: String? = nil,
+    symbolTokens: Int? = nil
   ) {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
@@ -312,6 +321,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.maxUnconfirmedWindowSec = maxUnconfirmedWindowSec
     self.stopWhileDecodeInFlight = stopWhileDecodeInFlight
     self.polishRanRemote = polishRanRemote
+    self.polishValidatorGuard = polishValidatorGuard
+    self.symbolTokens = symbolTokens
   }
 }
 

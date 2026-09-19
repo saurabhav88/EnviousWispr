@@ -57,6 +57,9 @@ enum SnippetFinalizer {
     // `(polishFallbackReason != nil) == pipelineFellBackToRaw`.
     context.pipelineFellBackToRaw = true
     context.polishFallbackReason = sentinelLossReason
+    // #3038: this fallback is not a validator verdict. The token count stays: it is a fact
+    // about the deterministic text Guard 4 measured, not about who rejected the output.
+    context.polishValidatorGuard = nil
     // Cleared because no remote polish survived into the delivered text. Provider, model and
     // `polishMetadata` are deliberately RETAINED: polish was genuinely attempted, and erasing
     // that would make an attempted-and-rejected take indistinguishable from one that never
