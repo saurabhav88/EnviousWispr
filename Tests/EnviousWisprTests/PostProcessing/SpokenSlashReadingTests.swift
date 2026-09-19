@@ -232,6 +232,15 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("Raise the sword and slash down.") == "Raise the sword and slash down.")
   }
 
+  /// A marker right after an opening quote or bracket is still a spoken word (cloud review, PR
+  /// #3040); a marker inside a written token is not.
+  @Test("An opening quote or bracket before the marker")
+  func openingDelimiter() {
+    #expect(Self.off("The docs say \"slash clear\" here.") == "The docs say \"/clear\" here.")
+    #expect(Self.off("Try (slash clear) now.") == "Try (/clear) now.")
+    #expect(Self.off("see example.com/slash/docs today") == "see example.com/slash/docs today")
+  }
+
   @Test("Row B3: written neighbours glue")
   func rowB3WrittenNeighbours() {
     #expect(Self.off("Keep the A slash B test name.") == "Keep the A/B test name.")

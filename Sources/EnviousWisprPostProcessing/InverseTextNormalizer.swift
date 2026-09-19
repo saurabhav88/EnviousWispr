@@ -2191,24 +2191,24 @@ public struct InverseTextNormalizer: Sendable {
   /// ("://"); the alias gap is a run (not one character) for the same reason (second-pass review).
   ///
   /// The word must be a SPOKEN word, and that is a closed question about its two neighbours
-  /// (cloud review PR #2960, two rounds, one on each side): on the LEFT only whitespace or the
-  /// start (`(?<!\S)`); on the RIGHT only whitespace, the end, or sentence punctuation that is
-  /// itself followed by whitespace or the end (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other
-  /// neighbour means the letters are part of a written token, so "example.com/slash/docs",
-  /// "C:\backslash\Users", "slash.com" and "backslash.txt" are left alone and the pass stays
-  /// idempotent, while "and slash." and "slash, then" still MATCH (the slash reading then keeps
-  /// the word: a marker carrying its own punctuation has no right neighbour, row 0). A third finding of this
-  /// shape would have to name a neighbour that is neither whitespace, the end, nor terminal
-  /// punctuation followed by one of those, and there is no such character. "slashing" and
-  /// "slasher" fail the right-hand check. The backslash alternative is listed first so
-  /// "back slash" is one command, never "back" + `/`.
+  /// (cloud review PR #2960, two rounds, one on each side): on the LEFT only whitespace, the
+  /// start, or an opening quote or bracket (`(?<![^\s"'(\[{“‘«])`: `"slash clear"` and
+  /// `(slash clear)`, cloud review PR #3040); on the RIGHT only whitespace, the end, or sentence
+  /// punctuation that is itself followed by whitespace or the end
+  /// (`(?![^\s.,;:!?])(?![.,;:!?]\S)`). Every other neighbour means the letters are part of a
+  /// written token, so "example.com/slash/docs", "C:\backslash\Users", "slash.com" and
+  /// "backslash.txt" are left alone and the pass stays idempotent, while "and slash." and
+  /// "slash, then" still MATCH (the slash reading then keeps the word: a marker carrying its own
+  /// punctuation has no right neighbour, row 0). "slashing" and "slasher" fail the right-hand
+  /// check. The backslash alternative is listed first so "back slash" is one command, never
+  /// "back" + `/`.
   ///
   /// WHAT EACH MATCH BECOMES is not decided here. Backslash: `\` when the setting is on, the span
   /// kept verbatim (comma included) when it is off. Slash: `slashReading` decides, in both switch
   /// positions, whether the word stays, glues, or takes a space before it. User-facing copy for
   /// the gated rows lives in `SpokenPunctuationCopy`; the always-on slash is described there too.
   static let joinerCommands =
-    #"[^\S\r\n]*(?:(?<=\S),)?[^\S\r\n]*(?<!\S)(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
+    #"[^\S\r\n]*(?:(?<=\S),)?[^\S\r\n]*(?<![^\s"'(\[{“‘«])(back[^\S\r\n]*slash|(?:forward[^\S\r\n]+)?slash)(?![^\s.,;:!?])(?![.,;:!?]\S)[^\S\r\n]*"#
 
   // MARK: - Spoken slash reading (#3038)
 
