@@ -473,3 +473,22 @@ def test_selection_rule_text_names_the_populations_that_select():
     assert "BOTH the dev partition and the cross_dev partition" in trainer.selection_rule_text(det, True)
     assert trainer.selection_rule_text(det, False).startswith("single population")
     assert "safe_threshold" in trainer.selection_rule_text(trainer.Objective("three-class"), False)
+
+
+def test_single_labeller_rows_only_ever_train_and_never_split_a_family():
+    """Founder 2026-09-19 hybrid review: a `harvest-jev-labelled` row (one model
+    labeller) may train but never lands in dev or calibration, and when its family
+    is held by dev or calibration it is dropped rather than crossing partitions."""
+    rows = [dict(_row(i, True, False), review_status="blind-labelled-unanimous") for i in range(60)]
+    # single-labeller rows: 30 with fresh families, 30 sharing families with the rows above
+    fresh = [dict(_row(100 + i, True, False), replacement=f"Fresh{i}", review_status="harvest-jev-labelled") for i in range(30)]
+    shared = [dict(_row(200 + i, True, False), replacement=rows[i]["replacement"], review_status="harvest-jev-labelled") for i in range(30)]
+    parts, train_only, dropped = builder.partition_rows(rows + fresh + shared, "test-seed")
+    assert len(train_only) == 60
+    for name in ("dev", "calibration"):
+        assert all(r["review_status"] != "harvest-jev-labelled" for r in parts[name])
+    held = {data.family_key(r) for n in ("dev", "calibration") for r in parts[n]}
+    assert set(dropped) == {r["id"] for r in shared if data.family_key(r) in held}
+    assert all(r["id"] in {x["id"] for x in parts["train"]} for r in fresh)
+    assert not data.cross_partition_families(parts)
+    assert "harvest-jev-labelled" in data.TRAIN_ONLY_STATUSES <= data.REVIEWED_STATUSES

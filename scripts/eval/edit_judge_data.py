@@ -63,8 +63,18 @@ THREE_CLASSES = ("notCorrection", "correctionButUnsafe", "correctionAndSafe")
 # recorded mishearing) and the row was screened only by name-list membership
 # and string similarity; nobody read it. Consumable as training data with
 # that meaning, never as review evidence.
+# `harvest-jev-labelled` rows (founder 2026-09-19, "1": hybrid review) are real
+# human speech through Parakeet (transcript run versus recogniser run, positive by
+# construction) whose blind label comes from ONE model labeller, Jev, agreeing
+# with the construction label; a random audit sample and every row that lands in
+# a dev or calibration partition additionally carry a second independent blind
+# labeller and are minted `blind-labelled-unanimous` instead. Consumable as
+# TRAINING data with that meaning; never review evidence, never a dev row.
 # `unreviewed` rows (mined candidates with label null) are never training data.
-REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", "blind-labelled-unanimous", "mined-heuristic-labelled"})
+REVIEWED_STATUSES = frozenset({"template-reviewed", "authored-sample-reviewed", "blind-labelled-unanimous", "mined-heuristic-labelled", "harvest-jev-labelled"})
+# Statuses whose label rests on one model labeller: the corpus builder keeps
+# these out of dev and calibration (they may only train).
+TRAIN_ONLY_STATUSES = frozenset({"harvest-jev-labelled"})
 
 
 def stage_one_shape_drop(original: str, replacement: str) -> bool:

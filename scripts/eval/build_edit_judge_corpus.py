@@ -253,6 +253,7 @@ def build_calibration_fresh(args, frozen: dict) -> int:
         classes[c] = classes.get(c, 0) + 1
         langs[r["language"]] = langs.get(r["language"], 0) + 1
     manifest = {
+        "train_only_rows": {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "kept_in_train": len(train_only) - len(train_only_dropped), "dropped_family_in_dev_or_calibration": train_only_dropped},
         "hash_version": data.HASH_VERSION,
         "templates_version": templates["version"],
         "templates_sha256": data.sha256_file(args.templates),
@@ -334,7 +335,7 @@ def build_dev(args, frozen: dict) -> int:
         print("INFRA-ERROR: generated dev rows invalid: " + "; ".join(problems[:5]), file=sys.stderr)
         return 2
     gate_mod.require_clean_dev(rows, frozen)
-    parts = data.split_by_family(rows, args.seed, fractions=(0.7, 0.15, 0.15))
+    parts, train_only, train_only_dropped = partition_rows(rows, args.seed)
     crossing = data.cross_partition_families(parts)
     if crossing:
         print("INFRA-ERROR: family crossed partitions: " + "; ".join(crossing[:3]), file=sys.stderr)
@@ -342,6 +343,7 @@ def build_dev(args, frozen: dict) -> int:
     out = args.dev_out
     out.mkdir(parents=True, exist_ok=True)
     manifest = {
+        "train_only_rows": {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "kept_in_train": len(train_only) - len(train_only_dropped), "dropped_family_in_dev_or_calibration": train_only_dropped},
         "hash_version": data.HASH_VERSION,
         "templates_version": templates["version"],
         "templates_sha256": data.sha256_file(args.templates),
@@ -403,6 +405,22 @@ def drop_frozen(cands: list[dict], frozen: dict) -> tuple[list[dict], dict]:
             continue
         kept.append(c)
     return kept, dropped
+
+
+def partition_rows(rows: list[dict], seed: str, fractions: tuple[float, float, float] = (0.7, 0.15, 0.15)) -> tuple[dict[str, list[dict]], list[dict], list[str]]:
+    """Family split with the train-only rule. Rows whose label rests on ONE model
+    labeller (`data.TRAIN_ONLY_STATUSES`, founder 2026-09-19 hybrid review) never take
+    part in the split: they may only train. After the split such a row joins train
+    unless its family already sits in dev or calibration, in which case it is dropped
+    and its id returned (a family lives in exactly one partition). Returns
+    (parts, train_only_rows, dropped_ids)."""
+    splittable = [r for r in rows if r.get("review_status") not in data.TRAIN_ONLY_STATUSES]
+    train_only = [r for r in rows if r.get("review_status") in data.TRAIN_ONLY_STATUSES]
+    parts = data.split_by_family(splittable, seed, fractions=fractions)
+    held = {data.family_key(r) for name, members in parts.items() if name != "train" for r in members}
+    dropped = [r["id"] for r in train_only if data.family_key(r) in held]
+    parts["train"].extend(r for r in train_only if data.family_key(r) not in held)
+    return parts, train_only, dropped
 
 
 def main() -> int:
