@@ -2308,11 +2308,6 @@ public struct InverseTextNormalizer: Sendable {
     // Row B3: a written, punctuation-only neighbour (`..`, `<`) or the spoken letter "A".
     if !c.leftRaw.isEmpty && l.isEmpty { return .glue }
     if c.leftRaw == "A" { return .glue }
-    // Row B8: the word after the command names it as one ("the slash compact command",
-    // "run a slash wfp skill"), so a determiner before the marker is not about the character.
-    if slashCommandNouns.contains(c.afterRight) { return .prefix }
-    // Row 2: "put a slash between", "the slash commands".
-    if slashDeterminers.contains(l) { return .word }
     // Row 3: "will slash prices", "we slash costs"; "back" keeps "back slash" for the toggle.
     if slashModalsAndNegators.contains(l) || slashSubjectPronouns.contains(l) || l == "back" {
       return .word
@@ -2332,6 +2327,12 @@ public struct InverseTextNormalizer: Sendable {
       slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
       || slashObjectPronouns.contains(c.afterRight)
     if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
+    // Row B8: the word after the command names it as one ("the slash compact command", "run a
+    // slash wfp skill"), so a determiner before the marker is not about the character. After the
+    // verb refusals above, so "should not slash the skills budget" keeps its verb.
+    if slashCommandNouns.contains(c.afterRight) { return .prefix }
+    // Row 2: "put a slash between", "the slash commands".
+    if slashDeterminers.contains(l) { return .word }
     // Row B6: a glued chain continues (`apples/bananas/strawberries`, `/tmp/wispr`).
     if previousAdjacentGlued { return .glue }
     // A chain CONTINUING after this marker; a chain arriving from before it is B6 above.
@@ -2356,6 +2357,14 @@ public struct InverseTextNormalizer: Sendable {
     // Row B7: a clause boundary before the marker is a command ("sorry, slash inspect"); a comma
     // before a CHAIN is the recogniser's list comma and the chain glues (R2).
     if leftEndsClause && !chain { return .prefix }
+    // "kick off slash wfp": the particle is a command context only after its verb; "off" is not
+    // a preposition here, so "auto slash off" (row 7) still glues.
+    if l == "off" && slashParticleVerbs.contains(c.beforeLeft) { return .prefix }
+    // A discourse marker opens an instruction only at the start ("okay slash compact"); mid-
+    // sentence it is an adjective and glues ("was okay slash mediocre").
+    if slashDiscourse.contains(l) { return c.beforeLeft.isEmpty ? .prefix : .glue }
+    // A command verb after a determiner is a noun ("the launch slash abort button") and glues.
+    if slashCommandVerbs.contains(l) && slashDeterminers.contains(c.beforeLeft) { return .glue }
     // Row 6: no left neighbour, or a copula/preposition/adverb/subordinator/command verb.
     if l.isEmpty || isSlashPrefixLeft(l) { return .prefix }
     // Row 7: two content words.
@@ -2389,21 +2398,21 @@ public struct InverseTextNormalizer: Sendable {
   static let slashConjunctions: Set<String> = ["and", "or", "but", "so", "if"]
   static let slashPrepositions: Set<String> = [
     "with", "in", "on", "at", "for", "of", "by", "from", "into", "about", "via", "like", "as",
-    "than", "between", "after", "before", "until", "under", "over", "through", "to", "off",
+    "than", "between", "after", "before", "until", "under", "over", "through", "to",
   ]
-  /// Interjections and discourse markers that open a spoken instruction ("okay slash compact").
-  /// "right", "good" and "fine" are absent: they pair ("right/left", "good/bad").
+  /// Interjections and discourse markers that open a spoken instruction ("okay slash compact")
+  /// when they start the utterance. "right", "good" and "fine" are absent: they pair.
   static let slashDiscourse: Set<String> = [
     "okay", "ok", "alright", "yes", "yeah", "yep", "sure", "hey", "oh", "anyway", "cool", "great",
     "thanks",
   ]
-  /// Words before "to" that make it a destination rather than an infinitive marker: "switched
-  /// to slash compact", "go back to slash plan". "going", "time" and "get" are absent: "going to
-  /// slash costs" is the verb.
+  /// Verbs whose "off" particle precedes a command ("kick off slash wfp").
+  static let slashParticleVerbs: Set<String> = ["kick", "kicked", "kicking", "fire", "fired", "firing"]
+  /// Words before "to" that make it a destination and never an infinitive marker: "switched to
+  /// slash compact", "go back to slash plan", "straight to slash plan". Motion verbs ("moved to",
+  /// "went to") are absent: "the company moved to slash costs" is a purpose.
   static let slashDestinationWords: Set<String> = [
-    "switch", "switched", "switching", "go", "goes", "went", "back", "over", "on", "move",
-    "moved", "moving", "jump", "jumped", "return", "returned", "change", "changed", "changing",
-    "straight", "directly",
+    "switch", "switched", "switching", "back", "over", "straight", "directly",
   ]
   /// A word after the command that names it as a command ("the slash compact command").
   static let slashCommandNouns: Set<String> = [
@@ -2447,7 +2456,7 @@ public struct InverseTextNormalizer: Sendable {
   static func isSlashPrefixLeft(_ l: String) -> Bool {
     slashAuxiliaries.contains(l) || (slashPrepositions.contains(l) && l != "to")
       || slashAdverbs.contains(l) || slashSubordinators.contains(l)
-      || slashDiscourse.contains(l) || slashCommandVerbs.contains(l)
+      || slashCommandVerbs.contains(l)
   }
 
   /// The neighbour reader `slashReading` relies on. Not `tokenCore`: that helper returns "" for

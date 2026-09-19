@@ -112,6 +112,15 @@ struct SpokenSlashReadingTests {
     // Documented misses: a determiner with nothing naming the command, and an infinitive.
     #expect(Self.off("do a slash compact") == "do a slash compact")
     #expect(Self.off("time to slash compact") == "time to slash compact")
+    // The prose each added context must leave alone (second pass round 6).
+    #expect(Self.off("We should not slash the skills budget.") == "We should not slash the skills budget.")
+    #expect(Self.off("Put a slash between commands.") == "Put a slash between commands.")
+    #expect(Self.off("The company moved to slash costs.") == "The company moved to slash costs.")
+    #expect(Self.off("The switch has an auto slash off setting.") == "The switch has an auto/off setting.")
+    #expect(Self.off("The review was okay slash mediocre.") == "The review was okay/mediocre.")
+    #expect(Self.off("The launch slash abort button is red.") == "The launch/abort button is red.")
+    // Same accepted class as "please slash prices": a bare object after a command context.
+    #expect(Self.off("Go ahead and slash prices before the sale.") == "Go ahead and /prices before the sale.")
   }
 
   // MARK: - The reading table, one row at a time
