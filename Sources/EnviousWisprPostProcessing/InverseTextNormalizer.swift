@@ -2544,11 +2544,14 @@ public struct InverseTextNormalizer: Sendable {
     return prev == 46 || prev == 33 || prev == 63  // . ! ?
   }
 
-  /// A lone spoken command with the recogniser's sentence period: "Slash exit." -> `/exit`
-  /// (#3038 R3). `\s*` before the period tolerates the spacing the joiner leaves; the character
-  /// class spells Python's Unicode `\w` (letters, numbers, underscore) so the oracle mirror and
-  /// this pass agree, and both leave a decomposed combining mark alone.
-  static let loneCommandPeriod = #"^\s*(/[\p{L}\p{N}_][\p{L}\p{N}_-]*)\s*\.\s*$"#
+  /// A lone spoken command, with or without the recogniser's sentence period, is lower-cased
+  /// and loses the period: "Slash exit." -> `/exit`, "Slash Clear" -> `/clear` (#3038 R3; the
+  /// recogniser capitalised the command name in a live take, and command names are lower-case).
+  /// A lone `/Users` is not a shape anyone dictates. `\s*` before the period tolerates the
+  /// spacing the joiner leaves; the character class spells Python's Unicode `\w` (letters,
+  /// numbers, underscore) so the oracle mirror and this pass agree, and both leave a decomposed
+  /// combining mark alone.
+  static let loneCommandPeriod = #"^\s*(/[\p{L}\p{N}_][\p{L}\p{N}_-]*)\s*\.?\s*$"#
 
   /// A sentence end (terminal mark, optional closing quotes or brackets, then whitespace) or a
   /// line break: the boundary past which one marker's reading no longer informs the next. A
@@ -2653,7 +2656,7 @@ public struct InverseTextNormalizer: Sendable {
     }
     t = reSub(Self.loneCommandPeriod, t, caseInsensitive: false) { m in
       guard let command = m.g(1) else { return nil }
-      return " \(command) "
+      return " \(command.lowercased()) "
     }
     // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
     t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in

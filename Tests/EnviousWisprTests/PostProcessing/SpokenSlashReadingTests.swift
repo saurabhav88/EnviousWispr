@@ -53,6 +53,13 @@ struct SpokenSlashReadingTests {
     #expect(Self.off("Slash exit.") == "/exit")
     #expect(Self.off("Slash clear.") == "/clear")
     #expect(Self.off("slash compact") == "/compact")
+    // The recogniser capitalised the name in a live take (2026-09-18): a lone command is
+    // lower-case, period or not.
+    #expect(Self.off("Slash Clear") == "/clear")
+    #expect(Self.off("Slash Clear.") == "/clear")
+    #expect(Self.off("slash WFP") == "/wfp")
+    // Mid-sentence the name keeps its case (a path segment may need it).
+    #expect(Self.off("look in slash Users please") == "look in /Users please")
     // Two sentences are two commands, and each keeps its own period.
     #expect(Self.off("slash clear. slash exit.") == "/clear. /exit.")
     // A command followed by more words is not a lone command.
