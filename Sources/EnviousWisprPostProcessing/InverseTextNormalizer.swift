@@ -2329,9 +2329,14 @@ public struct InverseTextNormalizer: Sendable {
       slashDeterminers.contains(c.afterRight) || slashSubjectPronouns.contains(c.afterRight)
       || slashObjectPronouns.contains(c.afterRight)
     if slashPrepositions.contains(r) && (!previousAdjacentGlued || proseAfter) { return .word }
-    // A verb particle followed by its object is the verb ("slash off the dead branches"); before
-    // a clause end it is a pair ("auto slash off, the same as before").
-    if slashParticles.contains(r) && proseAfter && !c.rightEndsClause { return .word }
+    // A verb particle, all four shapes: followed by its object it is the verb ("slash off the
+    // dead branches"); ending its clause after a prefix context it is the verb ("then slash
+    // down."); ending its clause after a content word it is a pair ("auto slash off, the same");
+    // bare after a prefix context it is a command ("use slash away", accepted).
+    if slashParticles.contains(r) {
+      if proseAfter && !c.rightEndsClause { return .word }
+      if c.rightEndsClause && (l.isEmpty || isSlashPrefixLeft(l)) { return .word }
+    }
     // Row B8: the word after the command names it as one ("the slash compact command", "run a
     // slash wfp skill"), so a determiner before the marker is not about the character. After the
     // verb refusals above, so "should not slash the skills budget" keeps its verb.
