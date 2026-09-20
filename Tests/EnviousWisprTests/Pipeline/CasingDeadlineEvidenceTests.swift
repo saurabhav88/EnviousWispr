@@ -24,7 +24,7 @@ import os
 struct CasingDeadlineEvidenceTests {
 
   static let resolution = DictationLanguageResolver.Resolution(
-    language: "en", source: .dictation, confidenceBucket: .ge90)
+    language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
 
   /// A clock the test advances by hand.
   private final class Clock: @unchecked Sendable {

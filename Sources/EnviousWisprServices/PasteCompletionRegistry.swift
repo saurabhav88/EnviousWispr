@@ -19,10 +19,13 @@ public struct PasteCompletionEvent: Sendable {
   public let pastedText: String
   public let destinationBundleID: String?
   public let timestamp: Date
-  /// #996: the base language the cleanup chain resolved for THIS take
-  /// (`KernelFinalizationOutcome.cleanupLanguage`), nil when the take never
-  /// reached resolution. The learn-from-edits gate reads only this; nil is
-  /// `language_unsupported`, never a guess from settings.
+  /// #996: the resolver-owned base language the learn-from-edits gate may use
+  /// for THIS take (`KernelFinalizationOutcome.learnLanguage`): the user's
+  /// lock, a detecting engine's answer, or the dictation text's top hypothesis
+  /// when the non-English veto permits it. Separate from the confidence-gated
+  /// cleanup language. Nil when the take never reached resolution or the veto
+  /// refused it; nil is `language_unsupported`, and consumers never re-derive
+  /// or guess it.
   public let language: String?
 
   public init(

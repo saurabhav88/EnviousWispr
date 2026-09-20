@@ -130,7 +130,11 @@ package struct CorrectionProposal: Sendable, Equatable, Codable, Identifiable {
   package let pairKey: String
   package let original: String
   package let corrected: String
-  package let state: CorrectionProposalTargetState
+  /// What Accept will do. Minted from the watcher's classification and moved
+  /// ONCE, at accept, to the live target when the word came to exist in the
+  /// meantime (a second pending proposal for a spelling the first one created
+  /// is an alias add, not a new word; cloud review of PR #3054).
+  package var state: CorrectionProposalTargetState
   package let language: String?
   /// At most 120 UTF-16 units of the sentence around the edit, local only.
   /// Refreshed by `refreshMetadata` when the same pair is seen again (§3.1

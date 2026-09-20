@@ -105,6 +105,20 @@ struct ObservedCorrectionWatcherDependencies {
   /// nothing above it would ever answer. Production: `correctionJudgeDeadlineSeconds`
   /// plus one, so the AFM judge's own deadline reports first. Tests shorten it.
   var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
+  /// Capture grace (#996, app matrix 2026-09-20): a key-event paste (Tier 2
+  /// Cmd+V into Slack, Word, Chrome) lands AFTER the completion event fires,
+  /// so the first read of the focused field can still show the pre-paste text
+  /// (Slack and Word: `dictated_text_not_found` 25 ms after the paste, the text
+  /// present a second later). The capture is retried this many more times,
+  /// `captureRetryDelayMs` apart, before `dictated_text_not_found` or
+  /// `no_focused_element` is final. 6 × 150 ms is under the 1.5 s settle, so
+  /// a person's first edit is still seen as an edit, not as the paste.
+  var captureRetries = 6
+  var captureRetryDelayMs = 150
+  /// The wait between capture attempts; tests inject an immediate one.
+  var sleepMs: (Int) async -> Void = { ms in
+    try? await Task.sleep(for: .milliseconds(ms))
+  }
   let telemetry: any LearnFromEditsTelemetrySink
 }
 
@@ -245,9 +259,27 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     }
     w.selected = selected
     w.supportedLanguages = capabilities.supportedLanguages
-    switch deps.observer.capture(
+    var outcome = deps.observer.capture(
       pid: frontmost.pid, pastedText: w.event.pastedText, pastedAtMs: w.pastedAtMs)
-    {
+    var retries = deps.captureRetries
+    while retries > 0, Self.deservesCaptureGrace(outcome) {
+      retries -= 1
+      await deps.sleepMs(deps.captureRetryDelayMs)
+      // Anything can have happened during the wait: a new paste, a dictation,
+      // the toggle. The same re-reads as after the capabilities await.
+      guard let live = watch, live.generation == gen, live.isLive else { return }
+      guard deps.isLearnFromEditsOn() else {
+        skip(.toggleOff, generation: gen)
+        return
+      }
+      guard let again = deps.frontmost(), again.pid == frontmost.pid else {
+        skip(.destinationMismatch, generation: gen)
+        return
+      }
+      outcome = deps.observer.capture(
+        pid: frontmost.pid, pastedText: w.event.pastedText, pastedAtMs: w.pastedAtMs)
+    }
+    switch outcome {
     case .skipped(let reason):
       switch reason {
       case .secureField: skip(.secureField, generation: gen)
@@ -276,6 +308,17 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       deps.observer.start(target) { [weak self] event in
         self?.handle(event, generation: gen)
       }
+    }
+  }
+
+  /// The two capture answers a slow host gives before the paste has landed:
+  /// no focused element yet, or a field that does not contain the text yet.
+  /// Everything else (secure field, wrong app, permission, unreadable value,
+  /// an ambiguous or oversize value, a captured target) is final at once.
+  static func deservesCaptureGrace(_ outcome: PastedRegionCaptureOutcome) -> Bool {
+    switch outcome {
+    case .ended(.dictatedTextNotFound), .skipped(.noFocusedElement): return true
+    case .captured, .skipped, .ended: return false
     }
   }
 
@@ -351,10 +394,16 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
     let prepared = CorrectionCandidateFilter.prepare(filtered)
     guard !prepared.candidates.isEmpty else { return }
-    // The judge's context is centred on a candidate it will actually see (the
-    // first PREPARED one), never on an earlier run the filter dropped.
+    // The judge was trained and examined on the PASTED sentence (`Sentence:`
+    // is the dictation, `Edit:` the pair; `train_edit_judge.py`, the exam,
+    // `CoreMLCorrectionJudge`), so its context is the immutable pasted text,
+    // centred on the candidate it will actually see (the first PREPARED one)
+    // through that run's ORIGINAL-side token range, never on an earlier run
+    // the filter dropped. The proposal excerpts stored below stay on the
+    // edited region: that is what the card and the Pending row show.
     let context = Self.contextExcerpt(
-      region, focusTokens: prepared.candidates.first.flatMap { prepared.byID[$0.id]?.run.editedRange })
+      target.pastedText,
+      focusTokens: prepared.candidates.first.flatMap { prepared.byID[$0.id]?.run.originalRange })
     let request: CorrectionJudgeRequest
     do {
       request = try CorrectionJudgeRequest(
@@ -404,6 +453,17 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       arm: arm, outcome: .init(outcome), candidates: prepared.candidates.count,
       accepted: accepted, latencyMs: latency, queueWaitMs: nil)
     guard case .verdict(let decisions) = outcome else { return }
+    #if DEBUG
+      // Local debug log only (plan §11 UAT tokens): what the judge was asked and
+      // what it answered, pair by pair, so a Live UAT can read a refusal from
+      // app.log the way it reads a proposal. Release logs no user text.
+      for decision in decisions {
+        let pair =
+          prepared.byID[decision.id].map { "\"\($0.run.coreOriginal)\" -> \"\($0.run.coreReplacement)\"" }
+          ?? "id \(decision.id)"
+        CorrectionProposalCoordinator.debugLog("judged \(pair) verdict=\(decision.verdict)")
+      }
+    #endif
     for decision in decisions where decision.verdict.vocabularyCorrection {
       guard let f = prepared.byID[decision.id], case .candidate(let state) = f.disposition else {
         continue

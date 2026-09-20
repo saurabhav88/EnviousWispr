@@ -166,6 +166,27 @@ struct PastedRegionLocatorTests {
   }
 
   @Test(
+    "#996 app matrix: a contenteditable stores the pasted trailing space as NO-BREAK SPACE, and a composer may drop it; both still locate, with offsets into the value as read"
+  )
+  func locateAcrossHostSpaceHabits() {
+    // Gmail in Chrome, measured 2026-09-20: "…to Sora.\u{00A0}" for a pasted "…to Sora. ".
+    #expect(L.locate(pasted: "to Sora. ", in: "Send it to Sora.\u{00A0}") == .unique(start: 8, end: 17))
+    // Slack: the trailing space is gone.
+    #expect(L.locate(pasted: "to Sora. ", in: "Send it to Sora.") == .unique(start: 8, end: 16))
+    // Inner no-break spaces fold too, and the value's own units are what the offsets count.
+    #expect(L.locate(pasted: "to Sora", in: "Send\u{00A0}it\u{00A0}to\u{00A0}Sora") == .unique(start: 8, end: 15))
+    // The trimmed retry never invents a match, and never trims to nothing.
+    #expect(L.locate(pasted: "to Sarah ", in: "Send it to Sora.") == .absent)
+    #expect(L.locate(pasted: "   ", in: "Send it to Sora.") == .absent)
+    // An exact hit is taken before any trimming; two exact hits are still ambiguous.
+    #expect(L.locate(pasted: "Sora. ", in: "Sora. and Sora.") == .unique(start: 0, end: 6))
+    #expect(L.locate(pasted: "Sora. ", in: "Sora. and Sora. ") == .ambiguous)
+    // Only when the exact text is absent does the trimmed text count, once.
+    #expect(L.locate(pasted: "Sora. ", in: "Sora.") == .unique(start: 0, end: 5))
+    #expect(L.locate(pasted: "Sora. ", in: "Sora.,Sora.") == .ambiguous)
+  }
+
+  @Test(
     "anchors keep up to 64 UTF-16 units a side, less at the edges, and never split a surrogate pair"
   )
   func anchors() {
@@ -657,7 +678,7 @@ struct PastedRegionObserverWatchTests {
     #expect(ax.readCount == 0, "another app's turn: nothing is read")
   }
 
-  @Test("a read failure at the settle instant does not settle; a focus loss at the settle instant ends")
+  @Test("a read failure at the settle instant does not settle; a focus loss at the settle instant flushes the pending edit and ends")
   func settleFailurePaths() throws {
     start()
     ax.reads = [.text("Note: Ask Saira today please")]
@@ -688,7 +709,13 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     ax.focused[pid] = .element(PastedRegionFakeAX.field(77))
     scheduler.advance(ms: 1500)
-    #expect(e2.list == [.changed(region: "Ask Saira today"), .ended(.focusChanged)])
+    // #996 flush: the focus loss ends the watch, and the edit that had not
+    // yet sat quiet is delivered first rather than lost (`flushesPendingEdit`).
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.focusChanged),
+      ])
   }
 
   @Test("a value-changed notification also re-validates the active application")
@@ -701,7 +728,7 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list == [.ended(.focusChanged)])
   }
 
-  @Test("an overdue poll, notification or settle after the deadline ends with ceiling_elapsed and emits no evidence")
+  @Test("an overdue poll, notification or settle after the deadline ends with ceiling_elapsed and reads nothing new; a change read before it is flushed")
   func deadlineEnforcedAtEveryCallback() throws {
     start()
     let registration = try #require(ax.registrations.first)
@@ -728,7 +755,13 @@ struct PastedRegionObserverWatchTests {
     #expect(e2.list == [.changed(region: "Ask Saira today")])
     scheduler.jump(ms: 60_000)
     scheduler.advance(ms: 0)
-    #expect(e2.list == [.changed(region: "Ask Saira today"), .ended(.ceilingElapsed)])
+    // Nothing is READ past the deadline; the change read before it is flushed
+    // (#996 `flushesPendingEdit`), then the ceiling ends the watch.
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.ceilingElapsed),
+      ])
     #expect(o2.isObserving == false)
   }
 
@@ -767,10 +800,15 @@ struct PastedRegionObserverWatchTests {
     scheduler.tickPerNowRead = 0
     #expect(e2.list == [.changed(region: "Ask Saira today")], "\(e2.list)")
 
-    // A destroyed-element notification after the deadline also ends as ceiling_elapsed.
+    // A destroyed-element notification after the deadline also ends as
+    // ceiling_elapsed, flushing the change that was read before the deadline.
     scheduler.jump(ms: 60_000)
     r2.fire(.elementDestroyed)
-    #expect(e2.list == [.changed(region: "Ask Saira today"), .ended(.ceilingElapsed)])
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.ceilingElapsed),
+      ])
   }
 
   @Test("the ceiling counts from the paste: a late start gets only the remainder, an expired deadline ends at once")
@@ -819,5 +857,134 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list.isEmpty && e2.list.isEmpty, "the superseded watch's callback is dropped")
     ax.registrations[1].fire(.elementDestroyed)
     #expect(e2.list == [.ended(.elementDestroyed)])
+  }
+
+  // MARK: #996 flush on a person-caused end (Wispr Flow parity, baseline 2026-09-20)
+
+  @Test(
+    "a fix typed and SENT inside the quiet interval is flushed as one settled burst before textbox_emptied"
+  )
+  func sendInsideSettleFlushes() {
+    start()
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.changed(region: "Ask Saira today")])
+    // Return sends the message 750 ms later, well inside the 1500 ms settle.
+    ax.reads = [.text("")]
+    scheduler.advance(ms: 750)
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.textboxEmptied),
+      ])
+    #expect(observer.isObserving == false)
+    scheduler.advance(ms: 3000)
+    #expect(events.list.count == 3, "the cancelled settle timer fires nothing after the end")
+  }
+
+  @Test("focus moving away and the app quitting flush the same way")
+  func focusChangeAndAppQuitFlush() {
+    start()
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.frontmost = 7
+    scheduler.advance(ms: 750)
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.focusChanged),
+      ])
+
+    let e2 = Events()
+    ax.frontmost = pid
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    observer.start(target) { e2.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.runningPIDs = []
+    scheduler.advance(ms: 750)
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.appTerminated),
+      ])
+  }
+
+  @Test("nothing pending, nothing flushed: an emptied box after an already settled edit ends plainly")
+  func noPendingEditNoFlush() {
+    start()
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    scheduler.advance(ms: 1500)
+    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    ax.reads = [.text("")]
+    scheduler.advance(ms: 750)
+    #expect(events.list.last == .ended(.textboxEmptied))
+    #expect(events.list.count == 3, "no second settle for the same text")
+  }
+
+  @Test("an untouched paste that is sent is not flushed: the last region equals the pasted text")
+  func untouchedSendNoFlush() {
+    start()
+    scheduler.advance(ms: 750)
+    ax.reads = [.text("")]
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.textboxEmptied)])
+  }
+
+  @Test(
+    "a send that leaves the composer's PLACEHOLDER (Discord) or a rewrite past the limit still flushes the fix typed before it; a field that stopped answering does not"
+  )
+  func placeholderAndRewriteFlushUnreadableDoesNot() {
+    func run(_ read: PastedRegionValueRead, _ expected: PastedRegionEndReason, flushes: Bool) {
+      let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+      let e = Events()
+      ax.reads = [.text("Note: Ask Sarah today please")]
+      o.start(target) { e.list.append($0) }
+      ax.reads = [.text("Note: Ask Saira today please")]
+      scheduler.advance(ms: 750)
+      ax.reads = [read]
+      scheduler.advance(ms: 750)
+      let want: [PastedRegionEvent] =
+        flushes
+        ? [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(expected)]
+        : [.changed(region: "Ask Saira today"), .ended(expected)]
+      #expect(e.list == want, "\(read)")
+    }
+    // Discord after Return: the box reads as its placeholder, not as "".
+    run(.text("Message #general"), .regionRemoved, flushes: true)
+    run(.text("Note: a completely rewritten sentence typed over the paste please"), .editDistanceExceeded, flushes: true)
+    run(.text("Note: Ask Saira today please Note: x please"), .anchorAmbiguous, flushes: true)
+    // Too long to read is a host that stopped answering usefully: nothing to act on.
+    run(.text(String(repeating: "x", count: 20_001)), .captureUnsupported, flushes: false)
+  }
+
+  @Test("the flush set is closed: every end where the last good read still stands flushes; an unreadable field or a lost permission does not")
+  func flushSetIsClosed() {
+    let flushing = PastedRegionEndReason.allCases.filter(\.flushesPendingEdit)
+    #expect(
+      Set(flushing) == [
+        .textboxEmptied, .focusChanged, .elementDestroyed, .appTerminated, .regionRemoved,
+        .anchorAmbiguous, .editDistanceExceeded, .ceilingElapsed,
+      ])
+    #expect(!PastedRegionEndReason.captureUnsupported.flushesPendingEdit)
+    #expect(!PastedRegionEndReason.permissionLost.flushesPendingEdit)
+  }
+
+  @Test("the ceiling flushes a fix typed just before it ran out")
+  func ceilingFlushesPendingEdit() {
+    start()
+    scheduler.advance(ms: 58_500)
+    #expect(events.list.isEmpty)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)  // the poll at 59 250 sees the fix; its settle would be due at 60 750
+    #expect(events.list == [.changed(region: "Ask Saira today")])
+    scheduler.advance(ms: 750)  // the 60 000 ceiling comes first
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.ceilingElapsed),
+      ])
+    #expect(observer.isObserving == false)
   }
 }

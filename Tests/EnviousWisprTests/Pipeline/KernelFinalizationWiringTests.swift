@@ -1972,7 +1972,7 @@ import os
 
   /// A resolution to hand the gate, distinct enough that its survival is visible.
   static let gateResolution = DictationLanguageResolver.Resolution(
-    language: "en", source: .dictation, confidenceBucket: .ge90)
+    language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
 
   @Test("#1921 The deadline gate's four phases, including the completed distinction")
   func deadlineGateFourPhaseMatrix() {
@@ -2112,7 +2112,7 @@ import os
       readCaretContext: { _, _, _ in Self.midSentenceCaret },
       resolveLanguage: { _, _, _, _, _ in
         DictationLanguageResolver.Resolution(
-          language: "de", source: .document, confidenceBucket: .f70to90)
+          language: "de", learnLanguage: nil, source: .document, confidenceBucket: .f70to90)
       })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
@@ -2174,7 +2174,7 @@ import os
           releaseOutcome.withLock { $0 = waited }
           exited.signal()
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
       let delivery = Task { await wiring.deliver("Warmer and summer starts.", .ordinary) }
@@ -2256,7 +2256,7 @@ import os
         seamCasingOracle: { _ in blockingOracle },
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
       let delivery = Task { await wiring.deliver("Review this before the meeting", .ordinary) }
@@ -2382,7 +2382,7 @@ import os
           let occupied = mainOccupied.wait(timeout: .now() + 5)
           occupiedMain.withLock { $0 = occupied }
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2533,7 +2533,7 @@ import os
           let occupied = mainOccupied.wait(timeout: .now() + 5)
           occupiedMain.withLock { $0 = occupied }
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2686,7 +2686,7 @@ import os
         // The release is the subject; injecting either would test the fixture.
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2838,7 +2838,7 @@ import os
         },
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in

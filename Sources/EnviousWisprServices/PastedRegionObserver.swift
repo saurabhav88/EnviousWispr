@@ -45,6 +45,36 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   case captureUnsupported = "capture_unsupported"
   case permissionLost = "permission_lost"
   case appTerminated = "app_terminated"
+
+  /// #996 (Wispr Flow parity, baseline 2026-09-20): whether an edit that was
+  /// seen but had not yet sat quiet for `settleMs` is FLUSHED as one last
+  /// `.settled` before this end. The flushed region is always the last GOOD
+  /// read: bounded, located, inside the edit-distance limit. What differs per
+  /// reason is whether the field is still telling us anything:
+  /// - true for the ends a person causes by moving on from a fix they just
+  ///   typed: the box emptied because the message was sent (Flow's dominant
+  ///   stop reason, 79% of its rows), focus moved, the field went away, the
+  ///   app quit, the ceiling ran out; and for the ends where the CURRENT read
+  ///   no longer resembles the paste (region gone, anchors doubled, distance
+  ///   exceeded). A chat composer that was just sent reads as its placeholder
+  ///   text, not as empty (Discord, app matrix 2026-09-20), so a send can
+  ///   arrive as `regionRemoved` or `editDistanceExceeded` as well as
+  ///   `textboxEmptied`; the fix typed a moment before is the same fix.
+  /// - false when the field could not be read at all (`captureUnsupported`
+  ///   after repeated failures, `permissionLost`): the host is wedged or the
+  ///   permission is gone, and nothing about it should be acted on.
+  /// `settled`, `dictatedTextNotFound` and `nextDictationStarted` are not
+  /// observer ends (see above).
+  package var flushesPendingEdit: Bool {
+    switch self {
+    case .textboxEmptied, .focusChanged, .elementDestroyed, .appTerminated, .regionRemoved,
+      .anchorAmbiguous, .editDistanceExceeded, .ceilingElapsed:
+      return true
+    case .settled, .dictatedTextNotFound, .nextDictationStarted, .captureUnsupported,
+      .permissionLost:
+      return false
+    }
+  }
 }
 
 /// One timing and bounds contract for the whole capture path. Values from the
@@ -270,16 +300,45 @@ package enum PastedRegionLocator {
 
   /// Where `pasted` occurs in `value`, as UTF-16 offsets. Empty pasted text is
   /// `absent`: nothing to observe.
+  ///
+  /// Two host habits are folded away before matching, both measured on the
+  /// 2026-09-20 app matrix (#996): a contenteditable (Gmail in Chrome, Slack)
+  /// stores a pasted trailing space as NO-BREAK SPACE, and some composers drop
+  /// the trailing space altogether. Fixed-width space variants are folded to
+  /// U+0020 on both sides (a 1:1 fold, so the offsets stay the value's own),
+  /// and when the exact text is absent the needle is retried without its
+  /// trailing whitespace. Offsets always describe `value` as read.
   package static func locate(pasted: String, in value: String) -> Location {
     guard !pasted.isEmpty else { return .absent }
-    let haystack = Array(value.utf16)
-    let needle = Array(pasted.utf16)
-    let hits = occurrences(of: needle, in: haystack, limit: 2)
+    let haystack = value.utf16.map(foldSpace)
+    let full = pasted.utf16.map(foldSpace)
+    var hits = occurrences(of: full, in: haystack, limit: 2)
+    var needle = full
+    if hits.isEmpty {
+      let trimmed = Array(full.reversed().drop(while: isSpaceUnit).reversed())
+      if !trimmed.isEmpty, trimmed.count < full.count {
+        needle = trimmed
+        hits = occurrences(of: trimmed, in: haystack, limit: 2)
+      }
+    }
     switch hits.count {
     case 0: return .absent
     case 1: return .unique(start: hits[0], end: hits[0] + needle.count)
     default: return .ambiguous
     }
+  }
+
+  /// NO-BREAK SPACE, NARROW NO-BREAK SPACE and FIGURE SPACE read as U+0020.
+  /// Same width in UTF-16, so a folded index is a real index into the value.
+  static func foldSpace(_ unit: UInt16) -> UInt16 {
+    switch unit {
+    case 0x00A0, 0x202F, 0x2007: return 0x0020
+    default: return unit
+    }
+  }
+
+  static func isSpaceUnit(_ unit: UInt16) -> Bool {
+    unit == 0x0020 || unit == 0x0009 || unit == 0x000A || unit == 0x000D
   }
 
   /// Anchors around `[start, end)`, at most `anchorUTF16` units each, shortened
@@ -775,9 +834,18 @@ package final class PastedRegionObserver: PastedRegionObserving {
     }
   }
 
+  /// A pending edit (changed, not yet settled) is flushed as one `.settled`
+  /// before the `.ended` when the reason `flushesPendingEdit`, so a fix typed
+  /// and sent inside the quiet interval is still judged. The watcher keeps
+  /// answering a burst after `.ended` (it drops answers only for a cancelled
+  /// or superseded watch), which is what makes the flush worth emitting.
   private func end(_ reason: PastedRegionEndReason) {
     guard let w = watch else { return }
+    let flush =
+      reason.flushesPendingEdit && w.changedSinceSettled && !w.lastRegion.isEmpty
+      && w.lastRegion != w.target.pastedText
     stop()
+    if flush { w.onEvent(.settled(region: w.lastRegion)) }
     w.onEvent(.ended(reason))
   }
 }

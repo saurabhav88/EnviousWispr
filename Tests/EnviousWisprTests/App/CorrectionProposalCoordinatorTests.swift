@@ -686,6 +686,30 @@ struct CorrectionProposalCoordinatorTests {
     #expect(library.saves.isEmpty, "nothing written to the vocabulary")
   }
 
+  @Test(
+    "two pending proposals minted as NEW for the same spelling: accepting the first creates the word, the second is then an alias add, and its card and Pending row say so"
+  )
+  func twoPendingNewWordProposalsForOneSpelling() throws {
+    let first = mint("kubernetees", "Kubernetes")
+    let second = mint("cubernetes", "Kubernetes")
+    #expect(coordinator.proposal(id: second)?.state == .newWord, "minted before the word existed")
+    #expect(coordinator.resolve(id: first, .accept, surface: .pending) == .accepted(.added))
+    let created = try #require(library.userWords.first { $0.canonical == "Kubernetes" })
+    // The stored record still says new; the card and the row read the live list.
+    let stale = try #require(coordinator.proposal(id: second))
+    #expect(stale.state == .newWord)
+    #expect(coordinator.cardState(for: stale) == .existingWord(name: "Kubernetes"))
+    #expect(coordinator.resolve(id: second, .accept, surface: .pending) == .accepted(.aliasAdded))
+    let landed = try #require(library.userWords.first { $0.canonical == "Kubernetes" })
+    #expect(landed.id == created.id && Set(landed.aliases) == ["kubernetees", "cubernetes"])
+    #expect(library.userWords.filter { $0.canonical == "Kubernetes" }.count == 1, "one word, not two")
+    // The ledger record and the telemetry carry the LIVE state the click acted on.
+    let resolved = try #require(coordinator.proposal(id: second))
+    #expect(resolved.state == .existingWord(created.id))
+    #expect(resolved.acceptingIntent?.operation == .addAlias)
+    #expect(telemetry.events.last == .resolved(.accepted, .pending, .existingWord, .aliasAdded))
+  }
+
   @Test("the card model carries the typed state for the target as it is now")
   func cardModel() throws {
     let id = mint()

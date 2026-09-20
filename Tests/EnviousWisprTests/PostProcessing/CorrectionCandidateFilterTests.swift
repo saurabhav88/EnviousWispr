@@ -297,4 +297,32 @@ import Testing
       inp.userWords == [word] && inp.openProposals == open && inp.rejectedPairKeys == rejected)
     #expect(word.aliases == ["Sarah"])
   }
+
+  // MARK: - #996 baseline 2026-09-20, W1: a file-name-shaped canonical
+
+  @Test(
+    "the one word of 42 the baseline never judged: a fix that changes only casing and punctuation (ClaudeMD → CLAUDE.md) is dropped at alignment BY DESIGN, before the filter, and never reaches the judge"
+  )
+  func dottedCasingOnlyFixIsShapeDropped() {
+    // Frozen convention (plan §3.1 step 5, `EditRunShape`): casing-only and
+    // punctuation-only runs are not mishearings; the exam was built on that
+    // rule, so the product path drops them before any judge is asked. This
+    // binds the disclosure in the PR: such a word is added by hand in
+    // Settings → Dictionary, not learned from an edit.
+    let aligned = EditAlignment.align(
+      pasted: "Please ask ClaudeMD about the invoices today.",
+      edited: "Please ask CLAUDE.md about the invoices today.")
+    #expect(aligned.limitExceeded == false)
+    #expect(aligned.runs.isEmpty)
+    #expect(aligned.dropped.map(\.reason) == [.casingOrPunctuationOnly])
+    #expect(aligned.dropped.first?.run.coreReplacement == "CLAUDE.md")
+    // A real respelling of the same shape IS a candidate: the dot is not the reason.
+    let respelt = EditAlignment.align(
+      pasted: "Please ask cloud md about the invoices today.",
+      edited: "Please ask CLAUDE.md about the invoices today.")
+    #expect(respelt.runs.map(\.coreReplacement) == ["CLAUDE.md"])
+    let filtered = F.filter(runs: respelt.runs, inputs: inputs())
+    #expect(filtered.map(\.disposition) == [.candidate(.newWord)])
+    #expect(F.prepare(filtered).candidates.map(\.replacement) == ["CLAUDE.md"])
+  }
 }

@@ -543,7 +543,23 @@ final class CorrectionProposalCoordinator {
         ?? vocabulary.packTerms().first { $0.id == id }?.canonical ?? proposal.corrected
       return .existingWord(name: name)
     case .newWord:
-      return .newWord
+      // Minted as new, but the word may exist by now (another proposal for
+      // the same spelling was accepted first): the card and the Pending row
+      // promise what Accept will actually do.
+      let target = CustomWordSaveHelper.proposalTarget(
+        for: proposal.corrected, in: vocabulary.userWords(), packTerms: vocabulary.packTerms())
+      switch target {
+      case .existing(let word), .packOverride(let word): return .existingWord(name: word.canonical)
+      case .new: return .newWord
+      }
+    }
+  }
+
+  /// The persisted state a live target implies; `nil` when the target is new.
+  static func liveState(for target: CustomWordSaveHelper.ProposalTarget) -> CorrectionProposalTargetState? {
+    switch target {
+    case .existing(let word), .packOverride(let word): return .existingWord(word.id)
+    case .new: return nil
     }
   }
 
@@ -618,12 +634,17 @@ final class CorrectionProposalCoordinator {
 
   private func accept(_ pending: CorrectionProposal, surface: Surface) -> ResolveOutcome {
     let wireSurface = Self.wireSurface(surface)
-    let wireState = Self.wireState(pending.state)
     // 1. Resolve the target NOW and persist the intent before any vocabulary
     //    write. A created word's id is allocated here, once, so a crash after
     //    the write and before the ledger update can be reconciled by id.
     let target = CustomWordSaveHelper.proposalTarget(
       for: pending.corrected, in: vocabulary.userWords(), packTerms: vocabulary.packTerms())
+    // The state reported and shown is the LIVE one: a second pending proposal
+    // for a word the first one just created is an alias add, not a new word,
+    // whatever its record said when it was minted (cloud review of PR #3054).
+    var pending = pending
+    if case .newWord = pending.state, let live = Self.liveState(for: target) { pending.state = live }
+    let wireState = Self.wireState(pending.state)
     // The card promised "adds a sound-alike to <word>"; if no word with that
     // canonical exists any more, the promise cannot be kept and nothing is
     // invented in its place. Refused before any intent is written.

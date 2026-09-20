@@ -479,3 +479,85 @@ extension DictationLanguageResolverTests {
     #expect(document.source == .document && document.englishVeto == false)
   }
 }
+
+// MARK: - #996 the learn-from-edits language (Wispr Flow parity, baseline 2026-09-20)
+//
+// The learn gate asks a person before it changes anything, so it may act on the
+// recogniser's top hypothesis at ANY confidence; cleanup rewrites text and keeps
+// the 0.90 floor. One misheard name took a plain English sentence from 0.98 to
+// 0.73 in the baseline ("Please send the invoices for this month to Sorat."),
+// which gated off exactly the takes that had something to learn.
+@Suite("DictationLanguageResolver learnLanguage", .tags(.productOutcome))
+struct DictationLanguageResolverLearnLanguageTests {
+
+  @Test("A resolved answer (lock, engine, confident text) is also the learn language")
+  func resolvedAnswersCarryThrough() {
+    let locked = DictationLanguageResolver.resolve(
+      lockedLanguage: "fr", engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identify: { _ in nil })
+    #expect(locked.learnLanguage == "fr")
+    let engine = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "de",
+      text: "x", identify: { _ in nil })
+    #expect(engine.learnLanguage == "de")
+    let text = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identify: DictationLanguageResolverTests.fixed("en", 0.95))
+    #expect(text.learnLanguage == "en" && text.language == "en")
+  }
+
+  @Test("An English top hypothesis under the cleanup floor abstains for cleanup but still names English for learning")
+  func lowConfidenceEnglishLearns() {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "Please send the invoices for this month to Sorat.",
+      identify: DictationLanguageResolverTests.fixed("en", 0.73))
+    #expect(resolved.language == nil, "cleanup keeps its floor")
+    #expect(resolved.learnLanguage == "en", "learning may ask")
+    #expect(resolved.englishVeto == false)
+  }
+
+  @Test("The real recogniser on the baseline sentence: cleanup abstains, learning gets English")
+  func realRecogniserOnTheBaselineSentence() {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "Please send the invoices for this month to Sorat.")
+    #expect(resolved.learnLanguage == "en")
+  }
+
+  @Test("The non-English veto is the one hard stop: a confident foreign top hypothesis leaves the learn language nil")
+  func vetoLeavesNil() {
+    let vetoed = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "Rat war gut heute", identify: DictationLanguageResolverTests.fixed("de", 0.8))
+    #expect(vetoed.englishVeto == true)
+    #expect(vetoed.learnLanguage == nil)
+  }
+
+  @Test("A foreign top hypothesis too weak to veto is still reported, so an unsupported language is refused by name, not by silence")
+  func weakForeignHypothesisIsReported() {
+    let weak = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identify: DictationLanguageResolverTests.fixed("id", 0.3))
+    #expect(weak.englishVeto == false)
+    #expect(weak.learnLanguage == "id")
+  }
+
+  @Test("The document rung says nothing about the insertion: learn language nil")
+  func documentRungLeavesNil() {
+    let document = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", surroundingText: "a much longer surrounding window",
+      identify: { $0.count > 1 ? ("de", 0.95) : ("de", 0.6) })
+    #expect(document.source == .document)
+    #expect(document.learnLanguage == nil)
+  }
+
+  @Test("Nothing identified: learn language nil")
+  func nothingIdentified() {
+    let none = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "", identify: { _ in nil })
+    #expect(none.learnLanguage == nil)
+  }
+}
