@@ -33,6 +33,15 @@ Run from the worktree:
   <main>/artifacts/issue-996-edit-judge/.venv/bin/python scripts/eval/train_edit_judge.py \\
       --artifacts <main>/artifacts/issue-996-edit-judge --candidate xenc-xlmr-base
 Add `--smoke` for the pipeline smoke (a few steps on a few rows; never a result).
+
+Training on a machine without the Swift runner (the CUDA rig, 2026-09-20): the two
+parity checks are properties of (tokenizer files, contract, split, seed), not of
+the training, so a Mac first runs `--parity-only <dir>` for the same dev-dir, seed,
+candidate and cross-dev and writes `<dir>/parity-receipt.json`; the rig then trains
+with `--parity-receipt <that file>`. The trainer refuses a receipt whose tokenizer
+digest, contract, split manifest, cross-dev file, seed or shape-row set differs
+from what it is about to train on, and records the receipt in `experiment.json`
+(`parity_source`). Device order: cuda, mps, cpu.
 """
 from __future__ import annotations
 
@@ -533,6 +542,16 @@ def encode_rows(rows: list[dict], contract: dict, encode) -> list[dict]:
     return out
 
 
+def receipt_mismatches(binding: dict, receipt: dict) -> list[str]:
+    """Every binding key the receipt does not carry with an equal value. A
+    receipt without a binding mismatches on every key; extra receipt keys are
+    ignored, missing ones are mismatches (never a pass by omission)."""
+    bound = receipt.get("binding")
+    if not isinstance(bound, dict):
+        return sorted(binding)
+    return [k for k, v in binding.items() if k not in bound or bound[k] != v]
+
+
 def verify_shape_parity(rows: list[dict], runner: Path, workdir: Path) -> dict:
     """The Python mirror of the stage-1 shape rule against the shipped Swift
     rule on EVERY row the trainer will score, through the runner's `shape`
@@ -609,6 +628,8 @@ def main() -> int:
     p.add_argument("--compat-receipt", type=Path, required=True, help="retained compatibility report.json that clears the candidate (revision is taken from it)")
     p.add_argument("--objective", choices=list(OBJECTIVES), default="three-class", help="detection: two-way head on `correction` with the predeclared false-proposal/recall selection (pivot); three-class: the chunk 2c alias objective")
     p.add_argument("--cross-dev", type=Path, help="detection: a separately authored, independently labelled cross-author development partition (jsonl); threshold selection must then qualify on BOTH dev and this partition (Codex 4a-ii round 3 rule)")
+    p.add_argument("--parity-only", type=Path, help="run the two runner parity checks for this dev-dir/seed/candidate and write <dir>/parity-receipt.json; no training, no run directory")
+    p.add_argument("--parity-receipt", type=Path, help="a parity-receipt.json written by --parity-only on a machine with the Swift runner; trains here without the runner when every bound digest matches")
     p.add_argument("--loss-normalisation", choices=["global", "batch"], default="global", help="detection: `global` = mean(loss*w) with global family weights (the declared objective); `batch` = sum(loss*w)/sum(w) per minibatch (the pre-2026-09-19 behaviour, kept for a controlled comparison and recorded in the experiment)")
     args = p.parse_args()
     objective = Objective(args.objective)
@@ -626,9 +647,19 @@ def main() -> int:
     if toolchain_problems:
         print("INFRA-ERROR: toolchain is not the pinned one: " + "; ".join(toolchain_problems), file=sys.stderr)
         return 2
-    if not probe.RUNNER_BIN.exists():
+    if args.parity_only and args.parity_receipt:
+        print("INFRA-ERROR: --parity-only and --parity-receipt are exclusive", file=sys.stderr)
+        return 2
+    if not args.parity_receipt and not probe.RUNNER_BIN.exists():
         print(f"INFRA-ERROR: runner missing at {probe.RUNNER_BIN}", file=sys.stderr)
         return 2
+    receipt: Optional[dict] = None
+    if args.parity_receipt:
+        try:
+            receipt = json.loads(args.parity_receipt.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"INFRA-ERROR: parity receipt unreadable: {exc}", file=sys.stderr)
+            return 2
 
     dev_dir = args.dev_dir or (args.artifacts / "dev")
     split_manifest = json.loads((dev_dir / "split-manifest.json").read_text(encoding="utf-8"))
@@ -656,8 +687,19 @@ def main() -> int:
     spec = probe.CANDIDATES[args.candidate]
     revision = compat["revision"]
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8] + ("-smoke" if args.smoke else "")
-    run_dir = args.artifacts / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
+    if args.parity_only:
+        run_id = "parity-only"
+        run_dir = args.parity_only
+        run_dir.mkdir(parents=True, exist_ok=True)
+        for stale in ("checkpoint", "tokenizer-contract.json", "parity-receipt.json"):
+            if (run_dir / stale).is_file():
+                (run_dir / stale).unlink()
+        if (run_dir / "checkpoint").is_dir():
+            import shutil
+            shutil.rmtree(run_dir / "checkpoint")
+    else:
+        run_dir = args.artifacts / "runs" / run_id
+        run_dir.mkdir(parents=True, exist_ok=False)
     ckpt_dir = run_dir / "checkpoint"
     ckpt_dir.mkdir()
     tok_dir = ckpt_dir / "tokenizer"
@@ -670,6 +712,14 @@ def main() -> int:
     torch.manual_seed(args.seed)
     tok = AutoTokenizer.from_pretrained(spec["hf"], revision=revision)
     tok.save_pretrained(tok_dir)
+    # save_pretrained writes JSON in text mode, so Windows lands CRLF and the
+    # inventory digests (part of the execution identity, checked against the
+    # compat receipt by the converter) would differ by platform. LF only.
+    for f in sorted(tok_dir.iterdir()):
+        if f.suffix == ".json":
+            raw = f.read_bytes()
+            if b"\r\n" in raw:
+                f.write_bytes(raw.replace(b"\r\n", b"\n"))
     tokenizer_digest = tree_digest(tok_dir)
     tokenizer_inventory = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(tok_dir.iterdir()) if f.is_file()}
     specials = {"pad": tok.pad_token_id, "cls": tok.cls_token_id, "sep": tok.sep_token_id, "bos": tok.bos_token_id if tok.bos_token_id is not None else tok.cls_token_id, "eos": tok.eos_token_id if tok.eos_token_id is not None else tok.sep_token_id}
@@ -696,18 +746,63 @@ def main() -> int:
     # output = pasted), plus the probe's long fixtures so truncation is
     # exercised and an empty side so the specials still assemble.
     parity_pairs = [(f"{r['original']} → {r['replacement']}", r["pasted"]) for r in sample[:12]] + list(probe.PAIR_FIXTURES) + [("", sample[0]["pasted"]), (f"{sample[0]['original']} → {sample[0]['replacement']}", "")]
-    parity = verify_upstream_parity(tok_dir, parity_texts, probe.RUNNER_BIN, run_dir, run_dir / "tokenizer-contract.json", parity_pairs)
-    if not parity.get("ok"):
-        print(f"INFRA-ERROR: upstream tokenizer parity failed on training segments: {parity}", file=sys.stderr)
-        return 2
-    shape_parity = {"skipped": "three-class objective"}
-    if objective.name == "detection":
-        shape_parity = verify_shape_parity(train_rows + dev_rows + cal_rows + cross_rows, probe.RUNNER_BIN, run_dir)
-        if not shape_parity.get("ok"):
-            print(f"INFRA-ERROR: stage-1 shape rule mirror disagrees with the Swift rule: {shape_parity}", file=sys.stderr)
+    shape_rows = train_rows + dev_rows + cal_rows + cross_rows
+    # What a parity receipt is bound to: every input of the two checks. A
+    # receipt for any other tokenizer, contract, split, cross-dev, seed or
+    # sample is refused, never reinterpreted.
+    binding = {
+        "candidate": args.candidate,
+        "revision": revision,
+        "seed": args.seed,
+        "objective": objective.name,
+        "smoke": args.smoke,
+        "tokenizer_sha256": tokenizer_digest,
+        "tokenizer_inventory": tokenizer_inventory,
+        "contract": contract,
+        "split_manifest_sha256": data.sha256_file(dev_dir / "split-manifest.json"),
+        "cross_dev_sha256": data.sha256_file(args.cross_dev) if args.cross_dev else None,
+        "parity_texts_sha256": hashlib.sha256(json.dumps(parity_texts, ensure_ascii=False).encode("utf-8")).hexdigest(),
+        "parity_pairs_sha256": hashlib.sha256(json.dumps(parity_pairs, ensure_ascii=False).encode("utf-8")).hexdigest(),
+        "shape_rows_sha256": hashlib.sha256(json.dumps([[r["original"], r["replacement"]] for r in shape_rows], ensure_ascii=False).encode("utf-8")).hexdigest(),
+        "shape_rows": len(shape_rows),
+    }
+    parity_source: dict
+    if receipt is not None:
+        differs = receipt_mismatches(binding, receipt)
+        if differs:
+            print(f"INFRA-ERROR: parity receipt {args.parity_receipt} is bound to different inputs: {differs}", file=sys.stderr)
             return 2
+        parity = receipt["upstream_parity"]
+        shape_parity = receipt["shape_parity"]
+        runner_sha256 = receipt["runner_sha256"]
+        if not parity.get("ok") or (objective.name == "detection" and not shape_parity.get("ok")):
+            print("INFRA-ERROR: parity receipt records a failed check", file=sys.stderr)
+            return 2
+        (run_dir / "parity-receipt.json").write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        parity_source = {"receipt": str(args.parity_receipt), "receipt_sha256": data.sha256_file(args.parity_receipt), "runner_machine": receipt.get("machine")}
+    else:
+        parity = verify_upstream_parity(tok_dir, parity_texts, probe.RUNNER_BIN, run_dir, run_dir / "tokenizer-contract.json", parity_pairs)
+        if not parity.get("ok"):
+            print(f"INFRA-ERROR: upstream tokenizer parity failed on training segments: {parity}", file=sys.stderr)
+            return 2
+        shape_parity = {"skipped": "three-class objective"}
+        if objective.name == "detection":
+            shape_parity = verify_shape_parity(shape_rows, probe.RUNNER_BIN, run_dir)
+            if not shape_parity.get("ok"):
+                print(f"INFRA-ERROR: stage-1 shape rule mirror disagrees with the Swift rule: {shape_parity}", file=sys.stderr)
+                return 2
+        runner_sha256 = hashlib.sha256(probe.RUNNER_BIN.read_bytes()).hexdigest()
+        parity_source = {"runner": str(probe.RUNNER_BIN)}
+    if args.parity_only:
+        doc = {"binding": binding, "runner_sha256": runner_sha256, "upstream_parity": parity, "shape_parity": shape_parity,
+               "machine": {"platform": platform.platform(), "machine": platform.machine(), "python": sys.version.split()[0]},
+               "dev_dir": str(dev_dir), "cross_dev": str(args.cross_dev) if args.cross_dev else None,
+               "created_at": datetime.now(timezone.utc).isoformat()}
+        (run_dir / "parity-receipt.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(json.dumps({"parity_receipt": str(run_dir / "parity-receipt.json"), "upstream_parity_ok": parity.get("ok"), "shape_parity_ok": shape_parity.get("ok"), "shape_rows": len(shape_rows)}))
+        return 0
 
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     needs_types = spec["token_types"] == "bert_segments"
     counts = [sum(1 for r in train_rows if objective.label(r) == i) for i in range(len(objective.class_order))]
     total = sum(counts)
@@ -722,7 +817,8 @@ def main() -> int:
         "tokenizer_sha256": tokenizer_digest,
         "tokenizer_inventory": tokenizer_inventory,
         "toolchain": {**toolchain, "device": device},
-        "runner_sha256": hashlib.sha256(probe.RUNNER_BIN.read_bytes()).hexdigest(),
+        "runner_sha256": runner_sha256,
+        "parity_source": parity_source,
         "upstream_parity": parity,
         "shape_parity": shape_parity,
         "seed": args.seed,

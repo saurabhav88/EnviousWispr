@@ -516,3 +516,14 @@ def test_calibration_fresh_excludes_single_labeller_rows_and_counts_them(tmp_pat
     assert all(r["review_status"] not in data.TRAIN_ONLY_STATUSES for r in written)
     m = json.loads((tmp_path / "cal" / "split-manifest.json").read_text(encoding="utf-8"))
     assert m["train_only_rows"] == {"statuses": sorted(data.TRAIN_ONLY_STATUSES), "excluded_from_calibration": 1}
+
+
+def test_parity_receipt_binding_refuses_every_changed_or_missing_input():
+    binding = {"seed": 996, "tokenizer_sha256": "abc", "contract": {"maxLength": 128}, "cross_dev_sha256": None}
+    assert trainer.receipt_mismatches(binding, {"binding": dict(binding)}) == []
+    assert trainer.receipt_mismatches(binding, {"binding": {**binding, "seed": 7}}) == ["seed"]
+    assert trainer.receipt_mismatches(binding, {"binding": {**binding, "contract": {"maxLength": 256}}}) == ["contract"]
+    missing = {k: v for k, v in binding.items() if k != "cross_dev_sha256"}
+    assert trainer.receipt_mismatches(binding, {"binding": missing}) == ["cross_dev_sha256"]
+    assert trainer.receipt_mismatches(binding, {}) == sorted(binding)
+    assert trainer.receipt_mismatches(binding, {"binding": {**binding, "extra": 1}}) == []
