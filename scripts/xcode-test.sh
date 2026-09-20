@@ -14,13 +14,19 @@ set -euo pipefail
 # inputs to scripts/ci/debug-only-inventory.py.
 #
 # Usage:
-#   scripts/xcode-test.sh                 # Debug lane (matches the PR gate)
-#   scripts/xcode-test.sh --filter Foo    # -> -only-testing:Foo
-#   scripts/xcode-test.sh --release       # also run the Release-config lane
-#   scripts/xcode-test.sh --filter Foo --result-bundle-path build/foo.xcresult
+#   scripts/xcode-test.sh                 # everyday local Debug lane
+#   scripts/xcode-test.sh --filter Target/SuiteA --filter Target/SuiteB
+#                                         # one Debug run for both suites
+#   scripts/xcode-test.sh --configuration Release  # release-cut validation only
+#   scripts/xcode-test.sh --release       # legacy: Debug AND Release
+#   scripts/xcode-test.sh --filter Target/Suite --result-bundle-path build/foo.xcresult
 #                                         # Debug receipt at an explicit path
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ "${1:-}" = "--self-test" ]; then
+  shift
+  exec python3 "$PROJECT_ROOT/scripts/xcode-test-self-test.py" "$@"
+fi
 # #2157 chunk C: shared owner for conditional project generation.
 # shellcheck source=scripts/lib/ensure-generated.sh
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
@@ -41,17 +47,37 @@ PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
 RELEASE_SCHEME="EnviousWispr-Release"
 DEST='platform=macOS,arch=arm64'
-FILTER=""
-RUN_RELEASE=0
+TEST_ARGS=()
+CONFIGURATION="Debug"
+CONFIGURATION_SELECTED=0
 RESULT_BUNDLE_PATH=""
-# Default keeps every existing invocation byte-identical: `build/` under the
-# worktree, the two filenames unchanged.
+# Default keeps the existing per-invocation log directory and lane filenames.
 LOG_DIR=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --filter) FILTER="${2:?--filter needs a value}"; shift 2 ;;
-    --release) RUN_RELEASE=1; shift ;;
+    --filter)
+      TEST_ARGS+=("-only-testing:${2:?--filter needs a value}")
+      shift 2 ;;
+    --configuration|--release)
+      if [ "$CONFIGURATION_SELECTED" = 1 ]; then
+        echo "ERROR: choose one configuration option" >&2; exit 2
+      fi
+      CONFIGURATION_SELECTED=1
+      if [ "$1" = "--release" ]; then
+        CONFIGURATION="both"; shift
+      else
+        CONFIGURATION="${2:?--configuration needs Debug, Release or both}"
+        shift 2
+      fi
+      case "$CONFIGURATION" in
+        Debug|Release|both) ;;
+        *) echo "ERROR: configuration must be Debug, Release or both" >&2; exit 2 ;;
+      esac ;;
+    --help|-h)
+      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]"
+      echo "Default: one Debug run. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
+      exit 0 ;;
     --result-bundle-path) RESULT_BUNDLE_PATH="${2:?--result-bundle-path needs a value}"; shift 2 ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
     # `Test run with N test` line in its log, so two runs sharing one fixed path
@@ -60,12 +86,12 @@ while [ "$#" -gt 0 ]; do
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
     --log-dir) LOG_DIR="${2:?--log-dir needs a value}"; shift 2 ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TEST] [--release] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
   esac
 done
 
-if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$RUN_RELEASE" = "1" ]; then
-  echo "ERROR: --result-bundle-path may only be used for the Debug lane" >&2
+if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$CONFIGURATION" = "both" ]; then
+  echo "ERROR: --result-bundle-path requires a single configuration" >&2
   exit 2
 fi
 
@@ -109,8 +135,7 @@ fi
 # generation input actually changed (#2157 chunk C).
 ew_ensure_generated "$PROJECT_ROOT"
 
-TEST_ARGS=()
-[ -n "$FILTER" ] && TEST_ARGS=(-only-testing:"$FILTER")
+printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "$DERIVED_DATA"
 # EVERY lane now names its result bundle, because the verdict is read from it
 # (#2401). `-resultBundlePath` does not CREATE the artifact — `xcodebuild test`
 # writes one into `<derivedData>/Logs/Test/` on every run regardless, measured at
@@ -118,7 +143,7 @@ TEST_ARGS=()
 # Naming it also avoids that directory's "newest wins" hazard, which is the same
 # shared-path problem `--log-dir` exists for one artifact over.
 DEBUG_RESULT_BUNDLE="${RESULT_BUNDLE_PATH:-$LOG_DIR/xcode-test-debug.xcresult}"
-RELEASE_RESULT_BUNDLE="$LOG_DIR/xcode-test-release.xcresult"
+RELEASE_RESULT_BUNDLE="${RESULT_BUNDLE_PATH:-$LOG_DIR/xcode-test-release.xcresult}"
 
 # Run one test lane and hand its verdict to the shared owner.
 #
@@ -175,10 +200,10 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   [ "$config" = "Debug" ] && expected="${EW_EXPECTED_DEBUG_TESTS:-}"
   [ "$config" = "Release" ] && expected="${EW_EXPECTED_RELEASE_TESTS:-}"
 
-  # #2455 C5: a --filter run executes ONE suite on purpose, so the
+  # #2455 C5: a --filter run executes selected suites on purpose, so the
   # required-bundle check must not fire. An empty list disables it; a full run
   # leaves it at the default.
-  if [ -n "$FILTER" ]; then
+  if [ "${#TEST_ARGS[@]}" -gt 0 ]; then
     EW_LANE_REQUIRED_BUNDLES="" ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
   else
     ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
@@ -190,15 +215,19 @@ ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
 # Same fallback as the dev-app script: a seeded tree proves it resolves before
 # either lane depends on it, so a damaged clone degrades to a slow run instead of
 # a wedged DerivedData nobody can clear without deleting it by hand.
+RESOLVE_SCHEME="$DEBUG_SCHEME"
+[ "$CONFIGURATION" = "Release" ] && RESOLVE_SCHEME="$RELEASE_SCHEME"
 ew_seed_resolve_or_unseed "$DERIVED_DATA" \
   xcodebuild -resolvePackageDependencies \
     -project "$PROJECT" \
-    -scheme "$DEBUG_SCHEME" \
+    -scheme "$RESOLVE_SCHEME" \
     -derivedDataPath "$DERIVED_DATA"
 
-run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
+if [ "$CONFIGURATION" != "Release" ]; then
+  run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
+fi
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
-if [ "$RUN_RELEASE" = "1" ]; then
+if [ "$CONFIGURATION" != "Debug" ]; then
   run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" \
     "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
 fi
