@@ -263,6 +263,12 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events.last == .skipped(.modelUnavailable))
 
+    // A second paste with no judge clears its watch but reports nothing: the
+    // selection is fixed for the launch and the first row already said it.
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { !watcher.isWatching })
+    #expect(telemetry.events.count == 1, "model_unavailable is reported once per launch")
+
     knobs.judgeAvailable = true
     watcher.pasteCompleted(paste(language: "xx"))
     #expect(await waitForEvents(telemetry, count: 2))

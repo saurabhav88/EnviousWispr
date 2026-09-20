@@ -139,6 +139,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private(set) var staleResults = 0
   /// Diagnostics: watches cut short because the toggle went off mid-watch.
   private(set) var toggledOffMidWatch = 0
+  /// `learn_skipped{model_unavailable}` is reported ONCE per launch. The arm
+  /// selection is fixed for the process (production has no judge on every
+  /// macOS today), so a row per paste would add one contentless event to
+  /// every dictation for every user; the first row already says it.
+  private var reportedModelUnavailable = false
 
   init(dependencies: ObservedCorrectionWatcherDependencies) {
     self.deps = dependencies
@@ -210,7 +215,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       return
     }
     guard let selected = deps.selectJudge() else {
-      skip(.modelUnavailable, generation: gen)
+      skip(.modelUnavailable, generation: gen, report: !reportedModelUnavailable)
+      reportedModelUnavailable = true
       return
     }
     let capabilities = await selected.judge.capabilities
@@ -258,11 +264,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   }
 
   private func skip(
-    _ reason: TelemetryService.LearnFromEditsTelemetry.SkipReason, generation gen: UInt64
+    _ reason: TelemetryService.LearnFromEditsTelemetry.SkipReason, generation gen: UInt64,
+    report: Bool = true
   ) {
     guard watch?.generation == gen else { return }
     watch = nil
-    deps.telemetry.learnSkipped(reason: reason)
+    if report { deps.telemetry.learnSkipped(reason: reason) }
   }
 
   // MARK: Step 4: observation events
