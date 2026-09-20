@@ -671,6 +671,7 @@ struct CorrectionProposalOverlayPresenterTests {
     let refused = mint()
     #expect(host.requests.count == 1 && telemetry.events.contains(.cardShown) == false)
     #expect(coordinator.currentPresentation[refused] == nil)
+    #expect(coordinator.presentations[refused] == nil, "a declined offer keeps no record (and no proposal text)")
     #expect(coordinator.proposal(id: refused)?.overlayAttempted == true, "the one attempt is spent")
 
     host.admitAs = PresentationID()

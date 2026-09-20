@@ -327,16 +327,21 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       dictationLanguage: language,
       supportedLanguages: w.supportedLanguages)
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
-    let context = Self.contextExcerpt(region, around: filtered.first?.run.replacement)
     for f in filtered {
       if case .refreshOpen(let id) = f.disposition {
+        // An open proposal's excerpt is centred on ITS run.
         deps.coordinator.refresh(
-          id: id, contextExcerpt: context, sourceBundleID: w.event.destinationBundleID)
+          id: id, contextExcerpt: Self.contextExcerpt(region, focusTokens: f.run.editedRange),
+          sourceBundleID: w.event.destinationBundleID)
       }
     }
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
     let prepared = CorrectionCandidateFilter.prepare(filtered)
     guard !prepared.candidates.isEmpty else { return }
+    // The judge's context is centred on a candidate it will actually see (the
+    // first PREPARED one), never on an earlier run the filter dropped.
+    let context = Self.contextExcerpt(
+      region, focusTokens: prepared.candidates.first.flatMap { prepared.byID[$0.id]?.run.editedRange })
     let request: CorrectionJudgeRequest
     do {
       request = try CorrectionJudgeRequest(
@@ -416,20 +421,20 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// At most `CorrectionJudgeRequest.maxContextUTF16` units of the settled
   /// text, cut on a Character boundary so no grapheme is split.
   /// The judge's `Sentence:` context, at most `maxContextUTF16` units of the
-  /// settled region. A region longer than that is CENTRED on `focus` (the
-  /// first candidate's replacement as it appears in the region), then backed
-  /// up to a word boundary, so a fix late in a long dictation is judged with
-  /// its own sentence and not with the paragraph's opening (cloud review of
-  /// PR #3054). With no focus, or a focus the region does not contain, the
-  /// prefix is kept, as before.
-  static func contextExcerpt(_ text: String, around focus: String? = nil) -> String {
+  /// settled region. A region longer than that is CENTRED on `focusTokens`
+  /// (the edited-side TOKEN range of the candidate the judge will see, from
+  /// `EditAlignment.Run.editedRange`, counted the way the aligner counts:
+  /// whitespace-separated words), then moved forward to a word boundary, so a
+  /// fix late in a long dictation is judged with its own sentence and not
+  /// with the paragraph's opening (cloud review of PR #3054, two rounds: a
+  /// text search for the replacement found an EARLIER occurrence belonging to
+  /// a run the filter had dropped). With no focus the prefix is kept.
+  static func contextExcerpt(_ text: String, focusTokens: Range<Int>? = nil) -> String {
     let limit = CorrectionJudgeRequest.maxContextUTF16
     let total = text.utf16.count
     guard total > limit else { return text }
     var start = text.startIndex
-    if let focus, !focus.isEmpty,
-      let hit = text.range(of: focus) ?? focus.split(separator: " ").first.flatMap({ text.range(of: String($0)) })
-    {
+    if let focusTokens, !focusTokens.isEmpty, let hit = Self.tokenSpan(focusTokens, in: text) {
       let hitStart = text.utf16.distance(from: text.startIndex, to: hit.lowerBound)
       let hitLength = text.utf16.distance(from: hit.lowerBound, to: hit.upperBound)
       // Leave the hit in the middle of the window, and never start past the
@@ -460,5 +465,29 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       index = text.index(after: index)
     }
     return out
+  }
+
+  /// The character span of whitespace-separated tokens `range` in `text`, the
+  /// same tokenisation `EditAlignment.align` uses (`splitWords`: split on
+  /// `Character.isWhitespace`). `nil` when the text has fewer tokens.
+  static func tokenSpan(_ range: Range<Int>, in text: String) -> Range<String.Index>? {
+    var tokenIndex = -1
+    var inToken = false
+    var spanStart: String.Index?
+    var index = text.startIndex
+    while index < text.endIndex {
+      let isSpace = text[index].isWhitespace
+      if !isSpace, !inToken {
+        tokenIndex += 1
+        if tokenIndex == range.lowerBound { spanStart = index }
+      }
+      if isSpace, inToken, tokenIndex == range.upperBound - 1, let spanStart {
+        return spanStart..<index
+      }
+      inToken = !isSpace
+      index = text.index(after: index)
+    }
+    if let spanStart, tokenIndex == range.upperBound - 1 { return spanStart..<text.endIndex }
+    return nil
   }
 }

@@ -63,7 +63,10 @@ final class CorrectionProposalOverlayPresenter: CorrectionProposalPresenting {
         coordinator.presentationEnded(id: model.id, token: token, reason: reason)
       })
     host.present(request) { result in
-      guard case .presented(let receipt) = result else { return }
+      guard case .presented(let receipt) = result else {
+        coordinator.presentationDeclined(id: model.id)
+        return
+      }
       coordinator.presentationAdmitted(
         id: model.id, token: CorrectionPresentationToken(id: receipt.presentationID.rawValue))
     }

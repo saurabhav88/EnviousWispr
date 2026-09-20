@@ -501,6 +501,14 @@ final class CorrectionProposalCoordinator {
     telemetry.learnCardShown()
   }
 
+  /// The overlay declined the offer (a busy slot, a busy pipeline, or a
+  /// deferred render superseded): the presentation record is dropped with
+  /// its proposal text, and the proposal waits in Pending with no second
+  /// attempt (the durable `overlayAttempted` already says so).
+  func presentationDeclined(id: UUID) {
+    closeUnadmittedOffer(id: id)
+  }
+
   /// A terminal resolution closes an offer that was never admitted, so a
   /// delayed admission callback counts nothing and holds no current token.
   private func closeUnadmittedOffer(id: UUID) {

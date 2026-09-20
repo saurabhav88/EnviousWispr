@@ -627,12 +627,48 @@ struct ObservedCorrectionWatcherTests {
     // so a fix at the END of a paragraph reaches the judge with its sentence.
     let filler = String(repeating: "word ", count: 300)  // 1,500 units
     let long = filler + "please ask Saira about the invoices today"
-    let centred = ObservedCorrectionWatcher.contextExcerpt(long, around: "Saira")
+    // "Saira" is token 302 (300 fillers, "please", "ask").
+    let centred = ObservedCorrectionWatcher.contextExcerpt(long, focusTokens: 302..<303)
     #expect(centred.utf16.count <= 600 && centred.contains("ask Saira about the invoices today"))
     #expect(centred.hasPrefix("word "), "starts on a word boundary")
     #expect(centred.hasSuffix("today"), "the end of the text is kept when the window is clamped there")
-    #expect(ObservedCorrectionWatcher.contextExcerpt(long, around: "absent").hasPrefix("word word"), "no hit: the prefix")
+    #expect(ObservedCorrectionWatcher.contextExcerpt(long, focusTokens: 900..<901).hasPrefix("word word"), "no such token: the prefix")
+    #expect(ObservedCorrectionWatcher.contextExcerpt(long).hasPrefix("word word"), "no focus: the prefix")
     let early = "ask Saira today " + filler
-    #expect(ObservedCorrectionWatcher.contextExcerpt(early, around: "Saira").hasPrefix("ask Saira today"))
+    #expect(ObservedCorrectionWatcher.contextExcerpt(early, focusTokens: 1..<2).hasPrefix("ask Saira today"))
+    // tokenSpan counts the way the aligner splits: any whitespace, runs collapsed.
+    let spaced = "a  b\tc\nd"
+    let span = ObservedCorrectionWatcher.tokenSpan(2..<4, in: spaced)
+    #expect(span.map { String(spaced[$0]) } == "c\nd")
+    #expect(ObservedCorrectionWatcher.tokenSpan(4..<5, in: spaced) == nil)
+  }
+
+  @Test("a long region's judge context is centred on a PREPARED candidate, not on an earlier run the filter dropped")
+  func contextCentredOnAPreparedCandidate() async throws {
+    let watcher = makeWatcher()
+    // The first edit is a pair the person already rejected (the filter drops
+    // it before the judge); the second, 1,500 units later, is the candidate.
+    guard
+      case .minted(let rejected) = coordinator.propose(
+        original: "sara", corrected: "Saira", state: .existingWord(saira.id), language: "en",
+        contextExcerpt: nil, sourceBundleID: nil, advisorySafeAlias: nil)
+    else {
+      Issue.record("expected minted")
+      return
+    }
+    #expect(coordinator.resolve(id: rejected, .reject, surface: .pending) == .rejected)
+    let filler = String(repeating: "word ", count: 300)
+    let pasted = "ask sara today " + filler + "call sarah tonight"
+    let edited = "ask Saira today " + filler + "call Saira tonight"
+    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.changed(region: edited))
+    observer.fire(.settled(region: edited))
+    #expect(await waitUntil { !judge.requests.isEmpty })
+    let request = try #require(judge.requests.first)
+    #expect(request.candidates.map(\.original) == ["sarah"])
+    #expect(request.context.contains("call Saira tonight"), "the judge sees the sentence it is asked about")
+    #expect(request.context.utf16.count <= CorrectionJudgeRequest.maxContextUTF16)
   }
 }
