@@ -527,3 +527,32 @@ def test_parity_receipt_binding_refuses_every_changed_or_missing_input():
     assert trainer.receipt_mismatches(binding, {"binding": missing}) == ["cross_dev_sha256"]
     assert trainer.receipt_mismatches(binding, {}) == sorted(binding)
     assert trainer.receipt_mismatches(binding, {"binding": {**binding, "extra": 1}}) == []
+
+
+def test_run_checkpoint_dirs_resolve_by_construction_whatever_machine_recorded_them(tmp_path):
+    run = tmp_path / "run"
+    (run / "checkpoint" / "model").mkdir(parents=True)
+    (run / "checkpoint" / "tokenizer").mkdir()
+    rig = {"checkpoint": r"C:\Users\saura\ew-judge\runs\x\checkpoint\model", "tokenizer": r"C:\Users\saura\ew-judge\runs\x\checkpoint\tokenizer"}
+    assert trainer.run_checkpoint_dirs(run, rig) == (run / "checkpoint" / "model", run / "checkpoint" / "tokenizer")
+    mac = {"checkpoint": "/Users/x/runs/y/checkpoint/model", "tokenizer": "/Users/x/runs/y/checkpoint/tokenizer"}
+    assert trainer.run_checkpoint_dirs(run, mac) == (run / "checkpoint" / "model", run / "checkpoint" / "tokenizer")
+    with pytest.raises(RuntimeError):
+        trainer.run_checkpoint_dirs(run, {"checkpoint": "/elsewhere/model", "tokenizer": mac["tokenizer"]})
+    (run / "checkpoint" / "tokenizer").rmdir()
+    with pytest.raises(RuntimeError):
+        trainer.run_checkpoint_dirs(run, mac)
+
+
+def test_locate_recorded_file_trusts_the_digest_not_the_path(tmp_path):
+    good = tmp_path / "a.jsonl"
+    good.write_text("row\n", encoding="utf-8")
+    digest = data.sha256_file(good)
+    assert trainer.locate_recorded_file(str(good), digest, None, "file") == good
+    assert trainer.locate_recorded_file(r"C:\gone\a.jsonl", digest, good, "file") == good
+    other = tmp_path / "b.jsonl"
+    other.write_text("different\n", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        trainer.locate_recorded_file(str(other), digest, None, "file")
+    with pytest.raises(RuntimeError):
+        trainer.locate_recorded_file(r"C:\gone\a.jsonl", digest, other, "file")

@@ -51,11 +51,13 @@ import json
 import math
 import platform
 import random
+import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -552,6 +554,36 @@ def receipt_mismatches(binding: dict, receipt: dict) -> list[str]:
     return [k for k, v in binding.items() if k not in bound or bound[k] != v]
 
 
+RECEIPT_RESULT_KEYS = ("upstream_parity", "shape_parity", "runner_sha256")
+
+
+def run_checkpoint_dirs(run: Path, manifest: dict) -> tuple[Path, Path]:
+    """The checkpoint and tokenizer of a run live at `run/checkpoint/model` and
+    `run/checkpoint/tokenizer` by construction; the manifest records the
+    absolute paths of the machine that trained, unusable once a rig run is
+    copied to the Mac. Resolve by construction and refuse when the recorded
+    paths do not end in those directories or they are missing."""
+    model_dir, tok_dir = run / "checkpoint" / "model", run / "checkpoint" / "tokenizer"
+    for recorded, resolved in ((manifest.get("checkpoint"), model_dir), (manifest.get("tokenizer"), tok_dir)):
+        tail = str(recorded or "").replace("\\", "/").rstrip("/").split("/")[-2:]
+        if tail != ["checkpoint", resolved.name]:
+            raise RuntimeError(f"training manifest records {recorded!r}, not a run checkpoint {resolved.name} directory")
+        if not resolved.is_dir():
+            raise RuntimeError(f"{resolved} is missing")
+    return model_dir, tok_dir
+
+
+def locate_recorded_file(recorded: Optional[str], expected_sha256: str, override: Optional[Path], what: str) -> Path:
+    """The recorded absolute path when it still holds the recorded digest;
+    otherwise `override` when IT holds the digest (a run trained elsewhere
+    records that machine's paths); otherwise refuse. The digest is the
+    authority, the path is only where to look."""
+    for candidate in (Path(recorded) if recorded else None, override):
+        if candidate is not None and candidate.is_file() and data.sha256_file(candidate) == expected_sha256:
+            return candidate
+    raise RuntimeError(f"the {what} the run used is neither at the recorded path {recorded!r} nor at {str(override) if override else 'no override'} with digest {expected_sha256[:12]}")
+
+
 def verify_shape_parity(rows: list[dict], runner: Path, workdir: Path) -> dict:
     """The Python mirror of the stage-1 shape rule against the shipped Swift
     rule on EVERY row the trainer will score, through the runner's `shape`
@@ -695,7 +727,6 @@ def main() -> int:
             if (run_dir / stale).is_file():
                 (run_dir / stale).unlink()
         if (run_dir / "checkpoint").is_dir():
-            import shutil
             shutil.rmtree(run_dir / "checkpoint")
     else:
         run_dir = args.artifacts / "runs" / run_id
@@ -768,6 +799,9 @@ def main() -> int:
     }
     parity_source: dict
     if receipt is not None:
+        if not isinstance(receipt, dict) or any(k not in receipt for k in RECEIPT_RESULT_KEYS):
+            print(f"INFRA-ERROR: parity receipt {args.parity_receipt} is missing one of {RECEIPT_RESULT_KEYS}", file=sys.stderr)
+            return 2
         differs = receipt_mismatches(binding, receipt)
         if differs:
             print(f"INFRA-ERROR: parity receipt {args.parity_receipt} is bound to different inputs: {differs}", file=sys.stderr)
@@ -778,8 +812,9 @@ def main() -> int:
         if not parity.get("ok") or (objective.name == "detection" and not shape_parity.get("ok")):
             print("INFRA-ERROR: parity receipt records a failed check", file=sys.stderr)
             return 2
-        (run_dir / "parity-receipt.json").write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        parity_source = {"receipt": str(args.parity_receipt), "receipt_sha256": data.sha256_file(args.parity_receipt), "runner_machine": receipt.get("machine")}
+        # byte copy: a text-mode rewrite would land CRLF on Windows and the digest below would no longer name this file
+        shutil.copyfile(args.parity_receipt, run_dir / "parity-receipt.json")
+        parity_source = {"receipt": str(args.parity_receipt), "receipt_sha256": data.sha256_file(run_dir / "parity-receipt.json"), "runner_machine": receipt.get("machine")}
     else:
         parity = verify_upstream_parity(tok_dir, parity_texts, probe.RUNNER_BIN, run_dir, run_dir / "tokenizer-contract.json", parity_pairs)
         if not parity.get("ok"):

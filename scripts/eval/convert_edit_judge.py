@@ -52,6 +52,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--run", type=Path, required=True, help="a train_edit_judge.py run directory")
     p.add_argument("--rows", type=int, default=64, help="non-frozen verification rows (from the run's dev partition)")
+    p.add_argument("--dev-dir", type=Path, help="where the run's split directory is on THIS machine when the run was trained elsewhere; its split-manifest digest must equal the run's")
+    p.add_argument("--cross-dev", type=Path, help="where the run's cross-author partition is on THIS machine when the run was trained elsewhere; its digest must equal the run's")
     p.add_argument("--embedding-8bit", action="store_true", help="also build and verify the embedding-only 8-bit variant")
     args = p.parse_args()
 
@@ -70,8 +72,11 @@ def main() -> int:
     experiment = json.loads((run / "experiment.json").read_text(encoding="utf-8"))
     manifest = json.loads((run / "training-manifest.json").read_text(encoding="utf-8"))
     contract = json.loads((run / "tokenizer-contract.json").read_text(encoding="utf-8"))
-    model_dir = Path(manifest["checkpoint"])
-    tok_dir = Path(manifest["tokenizer"])
+    try:
+        model_dir, tok_dir = trainer.run_checkpoint_dirs(run, manifest)
+    except RuntimeError as exc:
+        print(f"INFRA-ERROR: {exc}", file=sys.stderr)
+        return 2
     cfg = manifest["decision_config"]
     objective = trainer.objective_from_config(cfg)
     identity = manifest["execution_identity"]
@@ -102,21 +107,22 @@ def main() -> int:
 
     # Verification rows: the run's dev partition (never frozen), padded and
     # truncated cases included by construction of the mirror.
-    split_manifest_path = None
-    for candidate in (Path(experiment["dev_dir"]) / "split-manifest.json" if experiment.get("dev_dir") else run.parent.parent / "dev" / "split-manifest.json",):
-        if candidate.exists() and data.sha256_file(candidate) == experiment["split_manifest_sha256"]:
-            split_manifest_path = candidate
-    if split_manifest_path is None:
-        print("INFRA-ERROR: the split manifest the run trained on is not at the recorded dev directory with the recorded digest", file=sys.stderr)
+    try:
+        split_manifest_path = trainer.locate_recorded_file(
+            str(Path(experiment["dev_dir"]) / "split-manifest.json") if experiment.get("dev_dir") else str(run.parent.parent / "dev" / "split-manifest.json"),
+            experiment["split_manifest_sha256"], (args.dev_dir / "split-manifest.json") if args.dev_dir else None, "split manifest")
+    except RuntimeError as exc:
+        print(f"INFRA-ERROR: {exc}", file=sys.stderr)
         return 2
     split_manifest = json.loads(split_manifest_path.read_text(encoding="utf-8"))
     partitions = {n: trainer.load_partition(split_manifest_path.parent, n, split_manifest) for n in ("train", "dev", "calibration")}
     if experiment.get("cross_dev"):
         # The cross-author population selected the threshold: it must still be
         # the recorded file and still be disjoint from every frozen exam.
-        cross_path = Path(experiment["cross_dev"]["path"])
-        if not cross_path.exists() or data.sha256_file(cross_path) != experiment["cross_dev"]["file_sha256"]:
-            print("INFRA-ERROR: the cross-author development partition is not at the recorded path with the recorded digest", file=sys.stderr)
+        try:
+            cross_path = trainer.locate_recorded_file(experiment["cross_dev"]["path"], experiment["cross_dev"]["file_sha256"], args.cross_dev, "cross-author development partition")
+        except RuntimeError as exc:
+            print(f"INFRA-ERROR: {exc}", file=sys.stderr)
             return 2
         partitions["cross_dev"] = trainer.load_cross_dev(cross_path)
     trainer.refuse_frozen_overlap_all(partitions)

@@ -79,10 +79,11 @@ def classifier_probs(run: Path, manifest: dict, contract: dict, rows: list[dict]
     from safetensors.torch import load_file
     from transformers import AutoModel, AutoTokenizer
 
-    tok = AutoTokenizer.from_pretrained(manifest["tokenizer"])
-    backbone = AutoModel.from_pretrained(manifest["checkpoint"]).eval()
+    model_dir, tok_dir = trainer.run_checkpoint_dirs(run, manifest)
+    tok = AutoTokenizer.from_pretrained(tok_dir)
+    backbone = AutoModel.from_pretrained(model_dir).eval()
     head = torch.nn.Linear(backbone.config.hidden_size, len(trainer.CLASS_ORDER))
-    head.load_state_dict(load_file(str(Path(manifest["checkpoint"]) / "head.safetensors")))
+    head.load_state_dict(load_file(str(model_dir / "head.safetensors")))
     encode = lambda t: tok(t, add_special_tokens=False)["input_ids"]  # noqa: E731
     enc = trainer.encode_rows(rows, contract, encode)
     needs_types = probe.CANDIDATES[manifest["judge"]]["token_types"] == "bert_segments"
@@ -118,9 +119,14 @@ def main() -> int:
     contract = json.loads((run / "tokenizer-contract.json").read_text(encoding="utf-8"))
     cfg = manifest["decision_config"]
     identity = manifest["execution_identity"]
+    try:
+        model_dir, tok_dir = trainer.run_checkpoint_dirs(run, manifest)
+    except RuntimeError as exc:
+        print(f"INFRA-ERROR: {exc}", file=sys.stderr)
+        return 2
     checks = [
-        (trainer.tree_digest(Path(manifest["checkpoint"])) == identity["checkpoint_sha256"], "checkpoint digest differs from the training manifest"),
-        (trainer.tree_digest(Path(manifest["tokenizer"])) == identity["tokenizer_sha256"], "tokenizer digest differs from the training manifest"),
+        (trainer.tree_digest(model_dir) == identity["checkpoint_sha256"], "checkpoint digest differs from the training manifest"),
+        (trainer.tree_digest(tok_dir) == identity["tokenizer_sha256"], "tokenizer digest differs from the training manifest"),
         (trainer.config_digest(cfg) == identity["config_sha256"], "decision configuration differs from execution identity"),
         (data.sha256_file(run / "tokenizer-contract.json") == cfg["contract_sha256"], "tokenizer contract differs from decision configuration"),
         (cfg["class_order"] == list(trainer.CLASS_ORDER) and cfg["decision_rule"] == trainer.DECISION_RULE, "class order or decision rule differs from the implementation"),
