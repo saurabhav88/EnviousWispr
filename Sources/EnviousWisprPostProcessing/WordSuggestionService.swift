@@ -748,7 +748,9 @@ public final class WordSuggestionService: Sendable {
   /// domains with digits/dots/symbols (S3, OAuth2, github.com, K8s,
   /// C++, C#, F#, R&D) and lowercase-start-with-uppercase patterns
   /// (gRPC, iOS).
-  static func classifyByHeuristic(_ word: String) -> WordCategory? {
+  /// `package` since #996 chunk 5e: the proposal coordinator classifies a
+  /// created word with the same heuristic the manual add path uses.
+  package static func classifyByHeuristic(_ word: String) -> WordCategory? {
     let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
 

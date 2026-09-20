@@ -150,9 +150,9 @@ struct TelemetryVolumePolicyTests {
     // Independent oracle: the plan §3.2 vocabulary spelled out, not read back from the enum.
     let known = [
       "toggle_off", "watch_active", "model_unavailable", "language_unsupported",
-      "app_blocklisted", "destination_mismatch", "secure_field", "no_focused_element",
+      "destination_mismatch", "secure_field", "no_focused_element",
     ]
-    #expect(known.count == 8)
+    #expect(known.count == 7)
     for reason in known {
       #expect(
         Policy.decide(

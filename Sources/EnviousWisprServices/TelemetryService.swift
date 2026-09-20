@@ -4178,7 +4178,6 @@ public final class TelemetryService {
       case watchActive = "watch_active"
       case modelUnavailable = "model_unavailable"
       case languageUnsupported = "language_unsupported"
-      case appBlocklisted = "app_blocklisted"
       case destinationMismatch = "destination_mismatch"
       case secureField = "secure_field"
       case noFocusedElement = "no_focused_element"
@@ -4312,17 +4311,19 @@ public final class TelemetryService {
   }
 
   /// One judge call. `candidates` were sent, `accepted` answered "correction";
-  /// on a bypass `accepted` is 0 and `outcome` names the bypass.
+  /// on a bypass `accepted` is 0 and `outcome` names the bypass. `queueWaitMs`
+  /// is the arm's permit wait when the arm measures it; nil means "not
+  /// measured" and the key is OMITTED, never written as zero.
   package func learnJudged(
     arm: LearnFromEditsTelemetry.Arm, outcome: LearnFromEditsTelemetry.JudgeOutcome,
-    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int
+    candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?
   ) {
-    emitLearnEvent(
-      "custom_words.learn_judged",
-      [
-        "arm": arm.rawValue, "outcome": outcome.rawValue, "candidates": candidates,
-        "accepted": accepted, "latency_ms": latencyMs, "queue_wait_ms": queueWaitMs,
-      ])
+    var props: [String: Any] = [
+      "arm": arm.rawValue, "outcome": outcome.rawValue, "candidates": candidates,
+      "accepted": accepted, "latency_ms": latencyMs,
+    ]
+    if let queueWaitMs { props["queue_wait_ms"] = queueWaitMs }
+    emitLearnEvent("custom_words.learn_judged", props)
   }
 
   /// A durable NEW proposal (a refresh of an open one does not count).
