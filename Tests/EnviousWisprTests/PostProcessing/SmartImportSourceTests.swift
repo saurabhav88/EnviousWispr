@@ -521,6 +521,34 @@ struct SmartImportSourceTests {
     }
   }
 
+  @Test("a symlinked -shm sidecar is refused even though it is never cloned (#3014 row 2)")
+  func symlinkedShmSidecarIsRefused() throws {
+    // -shm is MONITORED (readSourceMetadata's S_IFREG guard) but not CLONED (clonedSuffixes is
+    // ["", "-wal"] only), so unlike a symlinked MAIN file, no post-clone defence-in-depth check
+    // ever runs on it -- this guard is the ONLY thing standing between a symlinked -shm and an
+    // import that treats it as present. A live WAL writer creates a real -shm on disk; replace
+    // it with a symlink before reading.
+    let dir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try RivalAppStoreFixtures.makeWisprFlowDatabaseWAL(
+      in: dir, baselineRows: "INSERT INTO Dictionary VALUES ('1','sig','word',0,0);")
+    defer { sqlite3_close(store.writer) }
+    let shmPath = store.url.path + "-shm"
+    #expect(FileManager.default.fileExists(atPath: shmPath))
+    let elsewhereDir = RivalAppStoreFixtures.makeDirectory()
+    defer { try? FileManager.default.removeItem(at: elsewhereDir) }
+    let elsewhere = try RivalAppStoreFixtures.makeWisprFlowDatabase(
+      in: elsewhereDir,
+      rows: "INSERT INTO Dictionary VALUES ('2','other','elsewhere',0,0);")
+    try FileManager.default.removeItem(atPath: shmPath)
+    try FileManager.default.createSymbolicLink(
+      at: URL(fileURLWithPath: shmPath), withDestinationURL: elsewhere)
+
+    #expect(throws: SmartImportError.unreadable("Wispr Flow")) {
+      _ = try WisprFlowAdapter().loadWords(at: store.url)
+    }
+  }
+
   @Test("a DELETE-mode database is read without creating sidecars")
   func cleanDatabaseLeavesNoSidecarsBehind() throws {
     let dir = makeDirectory()
