@@ -670,6 +670,29 @@ import Testing
     }
   }
 
+  @Test(".asrFailed carries the coreml.* keys for a raw CoreML error and none otherwise (#3027)")
+  func asrFailedCarriesCoreMLKeys() {
+    let coreML = KernelTelemetryState()
+    coreML.transcriptionFailureError = NSError(
+      domain: "com.apple.CoreML", code: 0,
+      userInfo: [NSLocalizedDescriptionKey: "Error computing NN outputs."])
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder, telemetryState: coreML)
+    sink.emit(.failed(.asrFailed))
+    #expect(recorder.captureErrors.count == 1)
+    #expect(recorder.captureErrors.first?.category == .asrFailed)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("coreml.code") == true)
+    #expect(recorder.captureErrors.first?.extraKeys.contains("coreml.description") == true)
+
+    let other = KernelTelemetryState()
+    other.transcriptionFailureError = NSError(domain: NSPOSIXErrorDomain, code: 5, userInfo: nil)
+    let recorder2 = Recorder()
+    let sink2 = makeSink(recorder: recorder2, telemetryState: other)
+    sink2.emit(.failed(.asrFailed))
+    #expect(recorder2.captureErrors.count == 1)
+    #expect(recorder2.captureErrors.first?.extraKeys.contains("coreml.code") == false)
+  }
+
   @Test(".asrInterrupted(wasRecording: true) emits captureError + state(false)")
   func asrInterruptedEmissionFromRecording() {
     let recorder = Recorder()
