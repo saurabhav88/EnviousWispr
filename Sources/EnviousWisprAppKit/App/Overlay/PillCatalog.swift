@@ -52,6 +52,10 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// The one request with no matching `OverlayIntent`. It is minted by a feature
   /// path rather than by the pipeline, which is why it announces nothing.
   case importStatus(message: String)
+  /// #996: the correction card, a feature route with no matching pipeline
+  /// intent. Unlike import status it IS announced: the catalog supplies the
+  /// sentence directly (plan §3.1 step 9).
+  case correctionProposal(CorrectionProposalCardModel)
 
   // **SEVENTEEN cases: `.recording` plus sixteen non-recording.** C2 staged
   // `.recording` out because the catalog's recording arm needs a RESOLVED design
@@ -135,6 +139,12 @@ enum PillCatalog {
     // `.advisory` arm below.
     if case .advisory(let reason, let hint?) = request {
       return .high(DictationNarrator.announcement(for: .advisory(reason: reason), hint: hint))
+    }
+    // #996: a direct sentence for the one feature route that must be audible
+    // although no pipeline intent matches it. Medium, like the Bluetooth card:
+    // nothing went wrong, and the offer waits in Pending if it is missed.
+    if case .correctionProposal(let model) = request {
+      return .medium(CorrectionProposalCardCopy.announcement(for: model))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -324,6 +334,14 @@ enum PillCatalog {
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
         requestedWidth: .fixed(320))
 
+    case .correctionProposal(let model):
+      // Plan §3.1 step 9: the language chip's hover-pause form, a fixed 400
+      // (the Live Preview width), content-driven height. The result phase
+      // re-arms its own 3-second dwell in the reducer.
+      return PillDefinition(
+        id: id, content: .correctionProposal(model),
+        expiry: .after(seconds: 8, pausesOnHover: true), requestedWidth: .fixed(440))
+
     case .escapeRecovery(let transcriptID):
       return PillDefinition(
         // **THIS expiry is the only one. The director owns it; the view draws
@@ -438,7 +456,7 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus: return nil
+    case .importStatus, .correctionProposal: return nil
     }
   }
 

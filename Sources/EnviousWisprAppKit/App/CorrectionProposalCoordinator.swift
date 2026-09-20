@@ -66,9 +66,8 @@ import Foundation
 // every refusal morphs the still-current card into its typed result.
 
 /// The typed result the card morphs into (plan §3.1 step 9); the overlay owns
-/// the copy ("Saved to Your Words", "Won't ask again", "Already in Your Words",
-/// "Couldn't save. It's waiting in Dictionary → Pending", "Saved, but couldn't
-/// record it").
+/// the sentences (`CorrectionProposalCardCopy.result`), so this type carries no
+/// prose and the two cannot drift apart.
 enum CorrectionCardResult: Equatable, Sendable {
   case saved
   case wontAskAgain
@@ -79,6 +78,13 @@ enum CorrectionCardResult: Equatable, Sendable {
 
 /// The card the overlay draws (5f). App-local; the reducer owns the
 /// presentation identity separately.
+/// The two Accept outcomes as the card names them. `existingWord` carries the
+/// canonical the sound-alike joins, read at offer time; Accept re-resolves it.
+enum CorrectionCardState: Equatable, Sendable {
+  case existingWord(name: String)
+  case newWord
+}
+
 struct CorrectionProposalCardModel: Equatable, Sendable {
   enum Phase: Equatable, Sendable {
     case offer
@@ -88,8 +94,9 @@ struct CorrectionProposalCardModel: Equatable, Sendable {
   let pairKey: String
   let original: String
   let corrected: String
-  /// "Adds a sound-alike to Saira" / "Creates a new word".
-  let stateLine: String
+  /// Which of the two Accept outcomes this card offers (founder's mock, 19 Sep):
+  /// the overlay writes the state line and the result sentence from it.
+  let state: CorrectionCardState
   let phase: Phase
 }
 
@@ -428,18 +435,18 @@ final class CorrectionProposalCoordinator {
   {
     CorrectionProposalCardModel(
       id: proposal.id, pairKey: proposal.pairKey, original: proposal.original,
-      corrected: proposal.corrected, stateLine: stateLine(for: proposal), phase: phase)
+      corrected: proposal.corrected, state: cardState(for: proposal), phase: phase)
   }
 
-  func stateLine(for proposal: CorrectionProposal) -> String {
+  func cardState(for proposal: CorrectionProposal) -> CorrectionCardState {
     switch proposal.state {
     case .existingWord(let id):
       let name =
         vocabulary.userWords().first { $0.id == id }?.canonical
         ?? vocabulary.packTerms().first { $0.id == id }?.canonical ?? proposal.corrected
-      return "Adds a sound-alike to \(name)"
+      return .existingWord(name: name)
     case .newWord:
-      return "Creates a new word"
+      return .newWord
     }
   }
 

@@ -66,7 +66,13 @@ final class OverlayDirector {
   /// them is showing; this holds the binding for the presentation that is
   /// actually on screen and drops it when that presentation goes.
   private var activeBinding:
-    (id: PresentationID, deliver: (PillAction) -> Void, onExpire: (() -> Void)?)?
+    (
+      id: PresentationID, deliver: (PillAction) -> Void, onExpire: (() -> Void)?,
+      onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)?,
+      /// #996: read immediately before this presentation is committed to the
+      /// screen; false rolls it back unrendered. nil for every other pill.
+      isStillWanted: (() -> Bool)?
+    )?
 
   /// Custody of the cancelled-transcript payload.
   ///
@@ -120,6 +126,20 @@ final class OverlayDirector {
         return
       }
       onExpire()
+
+    case .correctionProposalEnded(_, let presentation, let reason):
+      // #996: same scope rule as the chip. Effects route BEFORE `apply` replaces
+      // the binding, so the binding here is the card's own; a mismatch means the
+      // reducer named a presentation this director never bound, which is a
+      // wiring defect and not a case to route elsewhere.
+      guard let binding = activeBinding, binding.id == presentation,
+        let onEnded = binding.onProposalEnded
+      else {
+        assertionFailure(
+          "correctionProposalEnded reached a presentation with no typed owner")
+        return
+      }
+      onEnded(presentation, reason)
     }
   }
 
@@ -422,7 +442,10 @@ final class OverlayDirector {
   /// enforced, and a window in which the pill was on screen with no handler.
   private enum BindingInput {
     case none
-    case install(deliver: (PillAction) -> Void, onExpire: (() -> Void)?)
+    case install(
+      deliver: (PillAction) -> Void, onExpire: (() -> Void)?,
+      onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)? = nil,
+      isStillWanted: (() -> Bool)? = nil)
   }
 
   private func handle(
@@ -572,6 +595,21 @@ final class OverlayDirector {
         for: definition, design: acceptedDesign, position: at,
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
+      // The recording effects went out at RESOLVE. COMMIT's plan carries only
+      // what is new at commit time: a correction card the recording displaced
+      // (#996). Routed here, before `apply` replaces the card's binding, and
+      // the card's owner may re-enter: if the slot moved while it ran, the
+      // committed recording has already been superseded and this plan is
+      // stale (same rule as `apply`'s own guard).
+      let revisionAfterCommit = reducer.state.slotRevision
+      for effect in plan.effects {
+        route(effect)
+      }
+      guard reducer.state.slotRevision == revisionAfterCommit else {
+        relay?.disarm()
+        reconcileRecordingBridge()
+        return
+      }
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
     }
   }
@@ -767,10 +805,22 @@ final class OverlayDirector {
     // The announcement used to sit here too, matching the shipped panel. It now
     // runs at the END, once the window has accepted the presentation — see the
     // note at that call for why mirroring the shipped order was wrong.
+    // **Effects run caller code, and caller code may re-enter.** The chip's
+    // `onExpire` and the card's `onEnded` (#996) both hand control to a feature
+    // owner, who may present a newer pill or start a recording before this
+    // returns. The reducer has already applied THIS plan, so a re-entrant event
+    // reduces on top of it and its own `apply` installs the newer binding,
+    // expiry and frame. If the slot moved under us, this plan is stale and is
+    // discarded here: applying it would overwrite the newer presentation.
+    let revisionBeforeEffects = reducer.state.slotRevision
     if !effectsAlreadyDelivered {
       for effect in plan.effects {
         route(effect)
       }
+    }
+    guard reducer.state.slotRevision == revisionBeforeEffects else {
+      relay?.disarm()
+      return
     }
     // The expiry rules — a dwell starts when the pill is VISIBLE, a cancel takes
     // effect immediately, one armed timer at a time — are owned by
@@ -838,8 +888,10 @@ final class OverlayDirector {
       // morph of that presentation; replacement or dismissal ends its binding.
       if let presentation = plan.presentation {
         switch binding {
-        case .install(let deliver, let onExpire):
-          activeBinding = (id: presentation.id, deliver: deliver, onExpire: onExpire)
+        case .install(let deliver, let onExpire, let onProposalEnded, let isStillWanted):
+          activeBinding = (
+            id: presentation.id, deliver: deliver, onExpire: onExpire,
+            onProposalEnded: onProposalEnded, isStillWanted: isStillWanted)
         case .none:
           if activeBinding?.id != presentation.id { activeBinding = nil }
         }
@@ -1165,6 +1217,44 @@ final class OverlayDirector {
     _ presentation: PillDefinition, root: NSView, relays: [PresentationRelay],
     expiryStart: (() -> Void)?, announcement: OverlayAnnouncement?
   ) -> RenderSubmission {
+    // #996: a presentation may carry a precondition its owner re-checks at the
+    // last moment. A deferred first render lands a run loop later, and a
+    // Pending click can resolve the proposal in between; a card offering a
+    // decision already made must never reach the screen, be spoken, or count
+    // as shown. Same rollback as a host refusal, so "nothing is on screen" keeps
+    // its one definition, and the relays hear `false`.
+    //
+    // Only content that asks for it (`reChecksOwnerBeforeRender`): the card's
+    // offer. Its result morph keeps the binding for lifecycle callbacks but is
+    // the outcome of a decision already made, and the owner's predicate would
+    // refuse it every time.
+    //
+    // The predicate runs OWNER code, which may present something newer or move
+    // the slot (the same reentrancy `apply` guards around effect routing). The
+    // revision and the published presentation are read before and after; if
+    // either moved, this render is stale and owes its callers only `false`,
+    // without a rollback that would undo the newer occupant. A refused offer is
+    // rolled back only while it still owns the slot.
+    if presentation.content.reChecksOwnerBeforeRender,
+      let binding = activeBinding, binding.id == presentation.id,
+      let isStillWanted = binding.isStillWanted
+    {
+      let revisionBefore = reducer.state.slotRevision
+      let wanted = isStillWanted()
+      let moved =
+        reducer.state.slotRevision != revisionBefore
+        || model.state.presentation?.id != presentation.id
+        || activeBinding?.id != presentation.id
+      if moved {
+        relays.forEach { $0.resolve(false) }
+        return .completed
+      }
+      if !wanted {
+        rollBackRefusedPresentation()
+        relays.forEach { $0.resolve(false) }
+        return .completed
+      }
+    }
     if performRender(presentation, rootView: root) {
       expiryStart?()
       if let announcement { announce(announcement) }
@@ -1545,6 +1635,44 @@ extension OverlayDirector: OverlayPresenting {
           },
           onExpire: nil),
         relay: relay)
+    // #996: the correction card. Admission is the reducer's (idle pipeline, an
+    // empty slot or this exact proposal); the binding is scoped to the admitted
+    // presentation and reads the CURRENT presentation id for its token, which
+    // `apply` guarantees is the card's own when it delivers. Escape never
+    // reaches `deliver`: the reducer ends the card and reports `.dismissed`
+    // through `onEnded`.
+    case .correctionProposal(let model, let isStillWanted, let onAccept, let onReject, let onEnded):
+      // **A same-proposal refresh keeps the ORIGINAL binding.** The reducer
+      // keeps the presentation identity and dwell for it; installing the new
+      // request's closures would silently re-own the buttons and the end
+      // report. `.none` on a same-id plan leaves the existing binding in place.
+      let isRefresh: Bool = {
+        if case .correctionProposal(let shown)? = reducer.state.current?.content,
+          shown.id == model.id
+        {
+          return true
+        }
+        return false
+      }()
+      let binding: BindingInput =
+        isRefresh
+        ? .none
+        : .install(
+          deliver: { [weak self] action in
+            guard let self, let current = self.reducer.state.current?.id else { return }
+            let token = CorrectionPresentationToken(id: current.rawValue)
+            switch action {
+            case .acceptCorrectionProposal(let id) where id == model.id: onAccept(token)
+            case .rejectCorrectionProposal(let id) where id == model.id: onReject(token)
+            default: break
+            }
+          },
+          onExpire: nil,
+          onProposalEnded: { presentation, reason in
+            onEnded(CorrectionPresentationToken(id: presentation.rawValue), reason)
+          },
+          isStillWanted: isStillWanted)
+      handle(.correctionProposed(model), binding: binding, relay: relay)
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot
@@ -1587,6 +1715,17 @@ extension OverlayDirector: OverlayPresenting {
     case .inPanelNotice(let reason, let dismissAfter):
       handle(.inPanelNotice(reason, dismissAfter: dismissAfter), binding: .none)
     }
+  }
+
+  /// #996: morph the still-current card for `id` into its typed result. Same
+  /// presentation identity, so the card's binding survives for Escape; a stale
+  /// pair is a no-op in the reducer.
+  func resolveCorrectionProposal(
+    id: UUID, presentation: PresentationID, outcome: CorrectionCardResult
+  ) {
+    handle(
+      .correctionProposalResolved(id: id, presentation: presentation, outcome: outcome),
+      binding: .none)
   }
 
   func dismissCurrent(_ mode: PillDismissal) {

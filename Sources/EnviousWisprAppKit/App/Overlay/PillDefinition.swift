@@ -450,6 +450,22 @@ enum OverlayContent: Equatable, Sendable {
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
   case escapeRecovery(transcriptID: UUID)
+  /// #996: the learn-from-edits card. The model carries the proposal UUID and
+  /// its phase (offer with two buttons, or a typed result line); the reducer
+  /// owns the `PresentationID` separately.
+  case correctionProposal(CorrectionProposalCardModel)
+
+  /// Whether the director must ask the owner `isStillWanted` immediately before
+  /// this content reaches the screen (#996 chunk 5f, review round 2). Only the
+  /// card's OFFER: it asks a question, and a Pending click can answer it while
+  /// a deferred first render is in flight. The card's RESULT is the outcome of
+  /// a decision already made; it follows the reducer's same-id morph contract
+  /// and must render whether or not the proposal is still pending, which it
+  /// never is by then.
+  var reChecksOwnerBeforeRender: Bool {
+    if case .correctionProposal(let model) = self, case .offer = model.phase { return true }
+    return false
+  }
 }
 
 /// An optional notice that belongs to, and morphs with, a live recording.

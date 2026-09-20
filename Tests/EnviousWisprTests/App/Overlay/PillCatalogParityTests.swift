@@ -55,6 +55,7 @@ struct PillCatalogParityTests {
     case .languageChip: return "languageChip"
     case .bluetoothAwareness: return "bluetoothAwareness"
     case .escapeRecovery: return "escapeRecovery"
+    case .correctionProposal: return "correctionProposal"
     }
   }
 
@@ -99,6 +100,9 @@ struct PillCatalogParityTests {
     case .acknowledgeBluetoothAwareness: return "acknowledgeBluetoothAwareness"
     case .closeBluetoothAwareness: return "closeBluetoothAwareness"
     case .openBluetoothSettings: return "openBluetoothSettings"
+    case .acceptCorrectionProposal: return "acceptCorrectionProposal"
+    case .rejectCorrectionProposal: return "rejectCorrectionProposal"
+    case .dismissCorrectionProposal: return "dismissCorrectionProposal"
     }
   }
 

@@ -593,15 +593,15 @@ struct CorrectionProposalCoordinatorTests {
     #expect(c.openProposalsByPairKey.isEmpty && c.rejectedPairKeys.isEmpty)
   }
 
-  @Test("the card model carries the state line for the target as it is now")
+  @Test("the card model carries the typed state for the target as it is now")
   func cardModel() throws {
     let id = mint()
     let model = try #require(presenter.offers.first)
-    #expect(model.stateLine == "Adds a sound-alike to Saira")
+    #expect(model.state == .existingWord(name: "Saira"))
     #expect(model.original == "sarah" && model.corrected == "Saira" && model.phase == .offer)
     let id2 = mint("kubernetees", "Kubernetes")
     #expect(
-      presenter.offers.last?.id == id2 && presenter.offers.last?.stateLine == "Creates a new word")
+      presenter.offers.last?.id == id2 && presenter.offers.last?.state == .newWord)
     _ = id
   }
 }
