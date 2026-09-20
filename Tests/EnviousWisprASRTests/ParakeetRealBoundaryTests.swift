@@ -5,7 +5,10 @@ import Testing
 
 @testable import EnviousWisprASR
 
-private enum ParakeetRealBoundaryFixture {
+/// #2714: internal rather than `private` — `ParakeetStreamingGenerationTests` in this same
+/// target reuses `shippedModelIsInstalled`/`installDirectory` for its own real-model rows,
+/// rather than a second hand-built path to the shipped model directory.
+enum ParakeetRealBoundaryFixture {
   static let repoRoot = URL(filePath: #filePath)
     .deletingLastPathComponent()  // EnviousWisprASRTests
     .deletingLastPathComponent()  // Tests
