@@ -158,14 +158,15 @@ protocol TextProcessingStep {
   var isEnabled: Bool { get }
   /// Maximum time this step may run before being skipped.
   ///
-  /// The FIXED policy for steps whose cost does not depend on the input. Five
-  /// of the six steps declare only this; the runner always calls
-  /// `maxDuration(for:)` below, whose default returns this value.
+  /// The FIXED policy for steps whose cost does not depend on the input. Most
+  /// steps declare only this; the runner always calls `maxDuration(for:)`
+  /// below, whose default returns this value.
   var maxDuration: Duration { get }
   /// Maximum time this step may run, given the text it is about to process
   /// (#1770).
   ///
-  /// Exists because LLM polish is the one step whose cost tracks input length:
+  /// Exists because LLM polish was the first step whose cost tracks input length
+  /// (inverse text normalization joined it in #2770):
   /// measured live, a 10-minute dictation polishes in 6.1s and the longest
   /// transcript we have recorded in 50.7s, against a former flat 5s budget that
   /// timed out both (visibly, for cloud providers — the user gets the "AI
@@ -187,6 +188,7 @@ protocol TextProcessingStep {
 extension TextProcessingStep {
   var errorSurfacePolicy: ErrorSurfacePolicy { .swallow }
   /// Default: the step's cost does not depend on its input, so the fixed
-  /// policy applies. Only `LLMPolishStep` overrides this.
+  /// policy applies. `LLMPolishStep` (#1770) and `InverseTextNormalizationStep`
+  /// (#2770) override this.
   func maxDuration(for context: TextProcessingContext) -> Duration { maxDuration }
 }

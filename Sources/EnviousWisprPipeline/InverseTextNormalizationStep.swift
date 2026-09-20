@@ -26,17 +26,39 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// Always-on safety floor (#145, founder Gate-1 2026-06-02: ON for all, no toggle).
   var isEnabled: Bool { true }
 
-  /// The step's own wall-clock budget: the `withDeadline` in `process(...)`, the seconds the
-  /// `TimeoutError` reports, and the line the timeout breadcrumb's `engine_started` is decided
-  /// against. Named once so those three cannot drift apart (#2758).
-  static let deadlineSeconds: Double = 0.5
+  /// The step's own wall-clock budget, a function of length (#2770). Measured in
+  /// production over 30 days (issue #2770, 2026-09-20): above 5k characters the
+  /// normalizer runs at 13 to 16 µs per character at the p99/max tail, so a fixed
+  /// 500 ms was exhausted by honest work at about 31k characters and a 43,449-
+  /// character take lost its formatting at 511 ms. The floor stays 0.5 s: the
+  /// sub-500-character outlier (459 ms, 17,966 µs/char) is the pathology this
+  /// deadline exists to abandon. 40,000 chars/s is 25 µs/char, 1.6x the slowest
+  /// measured tail rate. The 5 s cap covers file-import transcripts up to about
+  /// 280k characters at the measured tail rate; 60-minute live takes remain below
+  /// the cap. Named once so `withDeadline`, the `engine_started` comparison,
+  /// `TimeoutError` and the runner backstop cannot drift apart (#2758).
+  nonisolated static let floorSeconds: Double = 0.5
+  nonisolated static let charsPerSecond: Double = 40_000
+  nonisolated static let maxDeadlineSeconds: Double = 5
 
-  /// Runner-level runaway BACKSTOP only. The real cap is the step's own 0.5s
-  /// `withDeadline` in `process(...)` — a TRUE wall-clock bound that abandons a
-  /// pathological `normalize` so the heart path's paste is never held. This outer
-  /// bound sits comfortably above 0.5s so the runner never preempts the step's
-  /// own deadline (which also owns the anomaly breadcrumb).
-  var maxDuration: Duration { .seconds(2) }
+  nonisolated static func deadlineSeconds(forCharacterCount count: Int) -> Double {
+    min(maxDeadlineSeconds, floorSeconds + Double(count) / charsPerSecond)
+  }
+
+  /// Runner-level runaway BACKSTOP only, 1.5 s above the step's own deadline so
+  /// the runner never preempts the step (which owns the anomaly breadcrumb). The
+  /// real cap is the step's own `withDeadline` in `process(...)`, a TRUE
+  /// wall-clock bound that abandons a pathological `normalize` so the heart
+  /// path's paste is never held.
+  nonisolated static let backstopMarginSeconds: Double = 1.5
+  var maxDuration: Duration {
+    .seconds(Self.deadlineSeconds(forCharacterCount: 0) + Self.backstopMarginSeconds)
+  }
+  func maxDuration(for context: TextProcessingContext) -> Duration {
+    .seconds(
+      Self.deadlineSeconds(forCharacterCount: context.text.utf16.count)
+        + Self.backstopMarginSeconds)
+  }
 
   /// Spoken-punctuation sub-feature gate (#1794). Distinct from `isEnabled`, which
   /// stays `true`: the ITN limb keeps running either way, because numbers, currency,
@@ -78,14 +100,42 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   private(set) var lastRun: RunOutcome?
 
   private let normalizer: InverseTextNormalizer
+  /// The normalization work `withDeadline` runs. Production: `normalizer.normalize`.
+  /// Tests inject slow work to exercise the length-scaled budget in milliseconds
+  /// (#2770), the same seam shape as `SpeakerLabeler.makeAnalysisTask`.
+  private let work: @Sendable (String, Bool) async -> String
+  /// Test seam only: observes the timeout breadcrumb's extra on THIS instance, so a
+  /// test never installs the process-global `captureErrorDelegate`
+  /// (`swift-patterns` RULE: tests-no-process-global-mutable-delegate). Production
+  /// leaves it nil; the real capture below always runs.
+  private let onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)?
 
   init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
     self.normalizer = normalizer
+    self.work = { text, spokenPunctuation in
+      normalizer.normalize(text, spokenPunctuation: spokenPunctuation)
+    }
+    self.onTimeoutForTesting = nil
+  }
+
+  /// Test seam only: `work` replaces the normalizer call under the same deadline.
+  init(
+    normalizer: InverseTextNormalizer = InverseTextNormalizer(),
+    work: @escaping @Sendable (String, Bool) async -> String,
+    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
+  ) {
+    self.normalizer = normalizer
+    self.work = work
+    self.onTimeoutForTesting = onTimeoutForTesting
   }
 
   func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     let input = context.text
     let lenBefore = input.count
+    // Budget from UTF-16 units, never below the grapheme count: the regex engine
+    // walks storage, and a grapheme can span many units (a family emoji is one
+    // grapheme and eleven units). `lenBefore` stays graphemes for telemetry.
+    let deadline = Self.deadlineSeconds(forCharacterCount: input.utf16.count)
 
     // Backend-aware language gate (plan §"What changes" #4). On skip, no-op.
     if let skip = skipReason(
@@ -98,7 +148,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     }
 
     // Pure-CPU regex chain runs OFF the main actor with a TRUE wall-clock deadline.
-    // `withDeadline` ABANDONS a pathological/hung `normalize` at 0.5s and resumes
+    // `withDeadline` ABANDONS a pathological/hung `normalize` at the computed
+    // length-scaled deadline (#2770) and resumes
     // immediately (unlike `withThrowingTimeout`, whose task-group scope awaits the
     // losing child — Codex r1 #1), so the heart path's paste is never held past the
     // cap. Snapshot the Sendable engine into a LOCAL first so the `@Sendable`
@@ -107,7 +158,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // Snapshot the flag alongside the normalizer BEFORE the actor hop: a toggle
     // landing mid-run must not tear this take, which completes under the value it
     // started with (`swift-concurrency-patterns` telemetry-snapshot-not-shared-property).
-    let normalizer = self.normalizer
+    let work = self.work
     let spokenPunctuation = self.spokenPunctuationEnabled
     // `withDeadline` is a FIRST-CLAIM RACE on a shared executor, so a take still queued for a
     // cooperative thread can burn the budget without the engine ever running, and `latency_ms`
@@ -121,9 +172,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     // `withDeadline` returns, back on this actor.
     let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
-    let maybeConverted = await withDeadline(seconds: Self.deadlineSeconds) {
+    let maybeConverted = await withDeadline(seconds: deadline) {
       engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
-      return normalizer.normalize(input, spokenPunctuation: spokenPunctuation)
+      return await work(input, spokenPunctuation)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
     guard let converted = maybeConverted else {
@@ -132,29 +183,33 @@ final class InverseTextNormalizationStep: TextProcessingStep {
       // scheduled. Compare the stamp against the NOMINAL BUDGET, not against `elapsedMs`:
       // `elapsedMs` is the caller's own resume time and on a loaded machine runs well past the
       // budget, so comparing against an 800 ms `elapsedMs` would accept a 600 ms entry even
-      // though that entry missed the nominal 500 ms budget.
+      // though that entry missed the nominal budget (0.5 s floor, more for a long take, #2770).
       let engineStartMs = engineStart.withLock { $0 }.map { ($0 - start) * 1000 }
-      let queueWaitMs = engineStartMs.flatMap { $0 <= Self.deadlineSeconds * 1000 ? $0 : nil }
+      let queueWaitMs = engineStartMs.flatMap { $0 <= deadline * 1000 ? $0 : nil }
       // Deadline hit — the (pathological) normalize was abandoned; the user gets
       // the pre-ITN text. Anomaly-only breadcrumb (Gemini: a slow run currently
       // looks like a fast no-op). Metadata only (`telemetry-privacy-boundary`).
+      let timeoutExtra: [String: Any] = [
+        "latency_ms": elapsedMs,
+        "len_before": lenBefore,
+        // #2770: the budget that applied to THIS take, so an event states its own bound.
+        "deadline_ms": deadline * 1000,
+        // `engine_started` = an entry stamp was observed WITHIN THE NOMINAL BUDGET. `false`
+        // therefore covers both "never entered" and "entered late", and `queue_wait_ms` carries
+        // the entry delay only for a qualifying start, -1 otherwise. Read as evidence, not as a
+        // verdict: neither field establishes the state at the timer's own decision instant, nor
+        // rules a slow `normalize` in or out, and `latency_ms` includes the caller's resumption
+        // delay — so `latency_ms - queue_wait_ms` is NOT engine execution time. Timing the
+        // engine itself needs a stamp at that decision, inside `withDeadline`.
+        "engine_started": queueWaitMs != nil,
+        "queue_wait_ms": queueWaitMs ?? -1,
+      ]
       SentryBreadcrumb.captureError(
-        TimeoutError(seconds: Self.deadlineSeconds),
+        TimeoutError(seconds: deadline),
         category: .inverseNormalizationTimeout,
         stage: "inverse_text_normalization",
-        extra: [
-          "latency_ms": elapsedMs,
-          "len_before": lenBefore,
-          // `engine_started` = an entry stamp was observed WITHIN THE NOMINAL BUDGET. `false`
-          // therefore covers both "never entered" and "entered late", and `queue_wait_ms` carries
-          // the entry delay only for a qualifying start, -1 otherwise. Read as evidence, not as a
-          // verdict: neither field establishes the state at the timer's own decision instant, nor
-          // rules a slow `normalize` in or out, and `latency_ms` includes the caller's resumption
-          // delay — so `latency_ms - queue_wait_ms` is NOT engine execution time. Timing the
-          // engine itself needs a stamp at that decision, inside `withDeadline`.
-          "engine_started": queueWaitMs != nil,
-          "queue_wait_ms": queueWaitMs ?? -1,
-        ])
+        extra: timeoutExtra)
+      onTimeoutForTesting?(timeoutExtra)
       lastRun = RunOutcome(
         ran: true, changed: false, skipReason: nil,
         latencyMs: elapsedMs, lenBefore: lenBefore, lenAfter: lenBefore)
