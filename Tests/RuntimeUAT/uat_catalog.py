@@ -48,6 +48,20 @@ RECIPES = {
         "audio": True,
         "needs": "push-to-talk mode in Settings; speaker unmuted; Accessibility",
     },
+    "learn-from-edits": {
+        # Script-backed (#996): a multi-case drill with its own restore, not one
+        # wispr_eyes call. `uat.py run learn-from-edits --run-dir D --export E`
+        # delegates to the script and returns its exit code.
+        "script": "learn_from_edits_uat.py",
+        "purpose": "Learn-from-edits end to end on the real Debug app: dictate into TextEdit, fix a misheard word "
+                   "through accessibility, card Accept / Reject / expiry into Pending, Pending Accept, the learned "
+                   "word on the next take, a negative control, toggle off, and a new recording cancelling a watch.",
+        "verdict": "app.log `[LearnFromEdits] learn_*` tokens per arm plus custom-words.json / correction-proposals.json "
+                   "content; exit 0 PASS, 1 FAIL, 2 INSTRUMENT, 3 restore unverified (overrides all)",
+        "audio": True,
+        "needs": "screen unlocked and hands off; one debug instance of THIS worktree's build or none; BlackHole 2ch "
+                 "installed (the drill routes audio through it and restores); --export <locked candidate fp32 dir>",
+    },
     "quality": {
         "function": "record_tts",
         "purpose": "One dictation whose raw ASR and polished output are read from the log. For transcription/polish quality questions.",
@@ -208,7 +222,8 @@ def public_names(path=WISPR_EYES):
 def render(entries=None, include_docs=True):
     lines = ["== RECIPES (uat.py run <id>) =="]
     for rid, r in RECIPES.items():
-        lines.append(f"  {rid:13} -> {r['function']}()  [{'audio' if r['audio'] else 'no audio'}]")
+        target = f"{r['function']}()" if "function" in r else f"script {r['script']}"
+        lines.append(f"  {rid:13} -> {target}  [{'audio' if r['audio'] else 'no audio'}]")
         lines.append(f"      {r['purpose']}")
         lines.append(f"      verdict: {r['verdict']}")
         lines.append(f"      needs:   {r['needs']}")
@@ -249,8 +264,14 @@ def _self_test():
           all(r["status"] in ("recipe", "primitive", "unreliable", "broken") for r in HARNESS_STATUS.values()))
     check("broken/unreliable rows cite an issue",
           all(r["issue"] for r in HARNESS_STATUS.values() if r["status"] in ("broken", "unreliable")))
-    check("every recipe function is a `recipe`-status row",
-          all(HARNESS_STATUS.get(r["function"], {}).get("status") == "recipe" for r in RECIPES.values()))
+    check("every function-backed recipe is a `recipe`-status row",
+          all(HARNESS_STATUS.get(r["function"], {}).get("status") == "recipe"
+              for r in RECIPES.values() if "function" in r))
+    check("every recipe is function-backed XOR script-backed",
+          all(("function" in r) != ("script" in r) for r in RECIPES.values()))
+    check("every script-backed recipe names a script beside this catalog",
+          all(os.path.isfile(os.path.join(HERE, r["script"])) for r in RECIPES.values() if "script" in r))
+    check("learn-from-edits is script-backed", RECIPES["learn-from-edits"].get("script") == "learn_from_edits_uat.py")
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
     check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
 

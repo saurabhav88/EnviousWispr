@@ -407,6 +407,22 @@ def cmd_run(args):
               "Rebuild + relaunch via /wispr-rebuild-debug before trusting the saved revision.")
     run_dir = resolve_run_dir(args.run_dir, worktree)
 
+    # Script-backed recipe (#996 learn-from-edits): the script owns its cases,
+    # verdicts, restore and receipt files; the front door only resolves the run
+    # directory, forwards the recipe's own arguments and returns its exit code.
+    if "script" in recipe:
+        if args.audio or args.sentence or args.expect:
+            raise SystemExit(f"REFUSED: recipe {args.recipe!r} is script-backed and takes no --audio / --sentence / "
+                             "--expect; it speaks its own sentences")
+        if not run_dir:
+            raise SystemExit(f"REFUSED: recipe {args.recipe!r} writes its receipts into --run-dir; pass an existing directory")
+        if not args.export:
+            raise SystemExit(f"REFUSED: recipe {args.recipe!r} needs --export <locked candidate fp32 directory>")
+        script = os.path.join(HERE, recipe["script"])
+        print(f"== RUN {args.recipe} -> {recipe['script']} (run dir {run_dir}) ==", flush=True)
+        completed = subprocess.run([sys.executable, "-u", script, "--run-dir", run_dir, "--export", args.export])
+        return completed.returncode
+
     import wispr_eyes as w
 
     # silent-probe always plays its OWN generated silence and derives its own
@@ -570,6 +586,7 @@ def main(argv=None):
     run.add_argument("--expect")
     run.add_argument("--audio")
     run.add_argument("--run-dir")
+    run.add_argument("--export", help="script-backed recipes only: the locked candidate's fp32 export directory")
     run.set_defaults(fn=cmd_run)
     v = sub.add_parser("verdict", help="dictation verdicts from app.log since the mark")
     v.add_argument("--mark", action="store_true")
