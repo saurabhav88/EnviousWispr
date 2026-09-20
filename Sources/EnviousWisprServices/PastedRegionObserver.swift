@@ -66,6 +66,11 @@ package enum PastedRegionTiming {
   /// A region that moved further than this fraction of the pasted length from
   /// the pasted text is a rewrite, not an edit (`editDistanceExceeded`).
   package static let editDistanceLimitFraction = 0.5
+  /// The budget never drops below this many UTF-16 units: a one-word paste
+  /// ("Zorab", limit 2 by the fraction alone) must still admit its full
+  /// replacement ("Saurabh", distance 4); a rewrite of a short paste is the
+  /// judge's to refuse. Cloud review of PR #3054.
+  package static let editDistanceLimitFloor = 12
   /// The banded distance costs about `pasted × (2 × limit + 1)` cells; above
   /// this budget the check is INCONCLUSIVE and the watch ends as
   /// `captureUnsupported` (a processing limit), never "within budget".
@@ -339,11 +344,12 @@ package enum PastedRegionLocator {
   package static func editDistance(
     pasted: String, region: String,
     limitFraction: Double = PastedRegionTiming.editDistanceLimitFraction,
+    limitFloor: Int = PastedRegionTiming.editDistanceLimitFloor,
     cellBudget: Int = PastedRegionTiming.editDistanceCellBudget
   ) -> EditDistanceVerdict {
     let a = Array(pasted.utf16)
     let b = Array(region.utf16)
-    let limit = Int((Double(a.count) * limitFraction).rounded(.down))
+    let limit = max(Int((Double(a.count) * limitFraction).rounded(.down)), limitFloor)
     if abs(a.count - b.count) > limit { return .exceeded }
     if a == b { return .within }
     guard a.count * (2 * limit + 1) <= cellBudget else { return .inconclusive }
@@ -463,6 +469,15 @@ package final class PastedRegionObserver: PastedRegionObserving {
     guard ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
     else { return .ended(.captureUnsupported) }
 
+    // Electron/Chromium hosts expose nothing until asked, INCLUDING the focused
+    // element: asked after the focus query, the opt-in would never run for a
+    // host that answers `.noFocus` until it is on (cloud review of PR #3054).
+    // Once per process.
+    let isManualHost = ax.supportsManualAccessibility(application)
+    if isManualHost, !manualAccessibilityEnabled.contains(pid) {
+      if ax.enableManualAccessibility(application) { manualAccessibilityEnabled.insert(pid) }
+    }
+
     let element: AXUIElement
     switch ax.focusedElement(pid: pid) {
     case .element(let focused): element = focused
@@ -475,12 +490,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
     // Secure fields are never observed. `unreadable` is secure (fail closed).
     if SelectionReader.isSecureField(ax.subrole(of: element)) { return .skipped(.secureField) }
-
-    // Electron/Chromium hosts expose nothing until asked. Once per process.
-    let isManualHost = ax.supportsManualAccessibility(application)
-    if isManualHost, !manualAccessibilityEnabled.contains(pid) {
-      if ax.enableManualAccessibility(application) { manualAccessibilityEnabled.insert(pid) }
-    }
 
     switch ax.readValue(of: element) {
     case .text(let value):

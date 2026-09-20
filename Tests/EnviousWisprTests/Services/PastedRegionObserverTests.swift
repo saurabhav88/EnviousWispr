@@ -33,7 +33,13 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func isTrusted() -> Bool { trusted }
   func isProcessRunning(_ pid: pid_t) -> Bool { runningPIDs.contains(pid) }
   func applicationElement(pid: pid_t) -> AXUIElement { Self.app(pid) }
-  func focusedElement(pid: pid_t) -> PastedRegionFocus { focused[pid] ?? .noFocus }
+  /// Electron-shaped: a pid listed here answers `.noFocus` until
+  /// `enableManualAccessibility` has been called for it.
+  var focusOnlyAfterOptIn: Set<pid_t> = []
+  func focusedElement(pid: pid_t) -> PastedRegionFocus {
+    if focusOnlyAfterOptIn.contains(pid), !enableCalls.contains(pid) { return .noFocus }
+    return focused[pid] ?? .noFocus
+  }
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool {
     var pid: pid_t = 0
     AXUIElementGetPid(element, &pid)
@@ -220,10 +226,14 @@ struct PastedRegionLocatorTests {
     #expect(L.editDistance(pasted: pasted, region: "completely different sentence typed over the paste") == .exceeded)
     #expect(L.editDistance(pasted: pasted, region: "") == .exceeded)
     #expect(L.editDistance(pasted: pasted, region: pasted) == .within)
-    #expect(L.editDistance(pasted: "ab", region: "abc") == .within, "one insert within limit 1")
-    #expect(L.editDistance(pasted: "ab", region: "abcd") == .exceeded, "two inserts over limit 1")
+    // The floor: a short paste keeps a budget that admits a full-token fix
+    // (cloud review of PR #3054); the fraction alone would give "Zorab" 2.
+    #expect(L.editDistance(pasted: "Zorab", region: "Saurabh") == .within)
+    #expect(L.editDistance(pasted: "Zorab", region: "a completely different sentence") == .exceeded)
+    #expect(L.editDistance(pasted: "ab", region: "abc", limitFloor: 0) == .within, "one insert within limit 1")
+    #expect(L.editDistance(pasted: "ab", region: "abcd", limitFloor: 0) == .exceeded, "two inserts over limit 1")
     // Exact banded distance vs its length lower bound: equal lengths, all letters changed.
-    #expect(L.editDistance(pasted: "abcdefgh", region: "ABCDEFGH") == .exceeded)
+    #expect(L.editDistance(pasted: "abcdefgh", region: "ABCDEFGH", limitFloor: 0) == .exceeded)
     // Over the cell budget the answer is INCONCLUSIVE, never "within": a same-length
     // rewrite of a long paste cannot pass as an edit. The length bound still decides
     // what it can.
@@ -375,6 +385,18 @@ struct PastedRegionObserverCaptureTests {
     ax.enableSucceeds = false
     _ = o2.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
     #expect(o2.hasEnabledManualAccessibility(for: pid) == false)
+  }
+
+  @Test("an Electron host whose focused element appears only after the opt-in is still captured: the opt-in runs before the focus query")
+  func manualAccessibilityBeforeFocus() {
+    ax.manualHosts = [pid]
+    ax.focusOnlyAfterOptIn = [pid]
+    let o = observer
+    guard case .captured(let target) = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("expected captured; the focus query ran before AXManualAccessibility was enabled")
+      return
+    }
+    #expect(target.isManualAccessibilityHost && ax.enableCalls == [pid])
   }
 }
 
