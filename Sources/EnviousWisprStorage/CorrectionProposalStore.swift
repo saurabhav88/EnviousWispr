@@ -22,13 +22,22 @@ package enum CorrectionLedgerUntrustedKind: String, Sendable, Equatable, CaseIte
 }
 
 /// What `load()` found. `empty` is ONLY a genuinely absent file (first
-/// launch). Everything that is not a well-formed, supported document is
-/// `untrusted`, with the evidence archived beside the file and the original
-/// left in place so the next launch reads the same verdict rather than a
-/// fresh empty ledger (§4).
+/// launch).
+///
+/// A DAMAGED document (corrupt, unsupported version, unknown status) is
+/// `recovered`: the file is MOVED aside as evidence and the store starts
+/// trusted and empty, the process `CustomWordsManager` already applies to the
+/// words file (founder 2026-09-20, replacing §4's leave-in-place-and-pause:
+/// there is no server to restore from, the waiting list is cheap to lose, and
+/// the next fix the person makes is offered again). If the move fails the old
+/// verdict stands: `untrusted`, evidence copied, original in place.
+///
+/// A file that cannot be READ (permissions, I/O) is `untrusted` with nothing
+/// archived: its content is unknown, so nothing may replace it.
 package enum CorrectionLedgerLoadOutcome: Sendable, Equatable {
   case empty
   case trusted(CorrectionProposalLedger)
+  case recovered(kind: CorrectionLedgerUntrustedKind, archivedTo: URL)
   case untrusted(kind: CorrectionLedgerUntrustedKind, archivedTo: URL?)
 }
 
@@ -64,19 +73,32 @@ package final class CorrectionProposalStore {
     package var commit: @Sendable (URL, URL) throws -> Void
     package var syncDirectory: @Sendable (URL) throws -> Void
     package var cleanupTemp: @Sendable (URL) -> Void
+    /// The recovery move's two stages (5g review r3): owner-only the damaged
+    /// file IN PLACE, then rename it to the archive name. Injected so a test
+    /// can fail each and prove neither escape reaches a trusted ledger.
+    package var setOwnerOnly: @Sendable (URL) throws -> Void
+    package var move: @Sendable (URL, URL) throws -> Void
 
     package init(
       read: @escaping @Sendable (URL) throws -> Data,
       writeTemp: @escaping @Sendable (URL, Data) throws -> Void,
       commit: @escaping @Sendable (URL, URL) throws -> Void,
       syncDirectory: @escaping @Sendable (URL) throws -> Void,
-      cleanupTemp: @escaping @Sendable (URL) -> Void
+      cleanupTemp: @escaping @Sendable (URL) -> Void,
+      setOwnerOnly: @escaping @Sendable (URL) throws -> Void = { url in
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+      },
+      move: @escaping @Sendable (URL, URL) throws -> Void = { from, to in
+        try FileManager.default.moveItem(at: from, to: to)
+      }
     ) {
       self.read = read
       self.writeTemp = writeTemp
       self.commit = commit
       self.syncDirectory = syncDirectory
       self.cleanupTemp = cleanupTemp
+      self.setOwnerOnly = setOwnerOnly
+      self.move = move
     }
 
     package static let live = FileOps(
@@ -164,13 +186,14 @@ package final class CorrectionProposalStore {
 
   package var isTrusted: Bool { ledger != nil }
 
-  /// Reads the file and classifies it (§4). Untrusted evidence is COPIED to
-  /// `correction-proposals.untrusted-<stamp>.json` beside it; the original
-  /// stays, so the verdict repeats on the next launch until someone restores
-  /// a trusted ledger. A missing archive never changes the verdict.
-  /// Every exit of `load()` either restores trust through `trust(_:)` (which
-  /// alone clears the recovery obligation, after the directory sync it
-  /// requires) or leaves the obligation as it was.
+  /// Reads the file and classifies it (§4, amended 2026-09-20). A damaged
+  /// document is MOVED to `correction-proposals.untrusted-<stamp>-<kind>.json`
+  /// beside it and the store starts empty and trusted (`recovered`); an
+  /// unreadable path, or a damaged document that cannot be moved, is
+  /// `untrusted` and the original stays. Every exit of `load()` either
+  /// restores trust through `trust(_:)` (which alone clears the recovery
+  /// obligation, after the directory sync it requires) or leaves the
+  /// obligation as it was.
   package func load() -> CorrectionLedgerLoadOutcome {
     let data: Data
     do {
@@ -191,25 +214,68 @@ package final class CorrectionProposalStore {
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let version = object["version"] as? Int
     else {
-      return untrusted(.corrupt, evidence: data)
+      return recover(.corrupt, evidence: data)
     }
     guard version == CorrectionProposalLedger.currentVersion else {
-      return untrusted(.unsupportedVersion, evidence: data)
+      return recover(.unsupportedVersion, evidence: data)
     }
     do {
       let ledger = try decoder.decode(CorrectionProposalLedger.self, from: data)
       guard ledger.validationProblems().isEmpty else {
-        return untrusted(.corrupt, evidence: data)
+        return recover(.corrupt, evidence: data)
       }
       return trust(ledger, outcome: .trusted(ledger))
     } catch let error as CorrectionProposalDecodingError {
       // JSONDecoder rethrows a custom error from a nested `init(from:)`
       // unwrapped, so an unknown status arrives here as itself.
-      if case .unknownStatus = error { return untrusted(.unknownStatus, evidence: data) }
-      return untrusted(.corrupt, evidence: data)
+      if case .unknownStatus = error { return recover(.unknownStatus, evidence: data) }
+      return recover(.corrupt, evidence: data)
     } catch {
-      return untrusted(.corrupt, evidence: data)
+      return recover(.corrupt, evidence: data)
     }
+  }
+
+  /// Founder 2026-09-20: a damaged document is moved aside and the ledger
+  /// starts fresh. The move is a rename, so the evidence is the original
+  /// bytes and nothing is copied; a failed move (a name collision, a
+  /// read-only directory) falls back to the untrusted verdict, because a
+  /// document that cannot be moved must not be silently overwritten either.
+  private func recover(_ kind: CorrectionLedgerUntrustedKind, evidence: Data)
+    -> CorrectionLedgerLoadOutcome
+  {
+    let archive = archiveURL(for: kind)
+    guard !FileManager.default.fileExists(atPath: archive.path) else {
+      return untrusted(kind, evidence: evidence)
+    }
+    // The archive is evidence about the person's edits: owner-only, like every
+    // document this store writes. Made so IN PLACE, before the rename, so a
+    // failed chmod leaves the file exactly where and as it was, under the
+    // untrusted verdict (review r3: a chmod after the move could fail, and the
+    // next load, finding the original gone, would trust an empty ledger while
+    // the archive stayed readable to others).
+    do {
+      try fileOps.setOwnerOnly(fileURL)
+      try fileOps.move(fileURL, archive)
+    } catch {
+      return untrusted(kind, evidence: evidence)
+    }
+    // A rename is a directory change that is not durable until the directory
+    // is synced, so the fresh ledger is trusted through the same gate a
+    // recovered write passes (`trust` syncs while `recoveryPending`); a failed
+    // sync leaves the store non-writable as `durabilityUnconfirmed`, archive
+    // path retained, and the next load tries the sync again.
+    recoveryPending = true
+    switch trust(.empty, outcome: .recovered(kind: kind, archivedTo: archive)) {
+    case .untrusted(let k, _): return .untrusted(kind: k, archivedTo: archive)
+    case let outcome: return outcome
+    }
+  }
+
+  private func archiveURL(for kind: CorrectionLedgerUntrustedKind) -> URL {
+    let stamp = ISO8601DateFormatter().string(from: now()).replacingOccurrences(
+      of: ":", with: "-")
+    return fileURL.deletingLastPathComponent()
+      .appendingPathComponent("correction-proposals.untrusted-\(stamp)-\(kind.rawValue).json")
   }
 
   /// The only way back to a writable ledger. While a recovery is pending the
@@ -246,10 +312,7 @@ package final class CorrectionProposalStore {
     state = .untrusted(kind)
     var archived: URL? = nil
     if let evidence {
-      let stamp = ISO8601DateFormatter().string(from: now()).replacingOccurrences(
-        of: ":", with: "-")
-      let url = fileURL.deletingLastPathComponent()
-        .appendingPathComponent("correction-proposals.untrusted-\(stamp)-\(kind.rawValue).json")
+      let url = archiveURL(for: kind)
       if !FileManager.default.fileExists(atPath: url.path),
         FileManager.default.createFile(
           atPath: url.path, contents: evidence, attributes: [.posixPermissions: 0o600])

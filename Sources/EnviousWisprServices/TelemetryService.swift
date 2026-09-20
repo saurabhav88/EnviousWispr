@@ -4266,6 +4266,12 @@ public final class TelemetryService {
       case ledgerUntrusted = "ledger_untrusted"
     }
 
+    /// `learn_ledger_untrusted.disposition`: what the load did about it.
+    package enum LedgerDisposition: String, Sendable, CaseIterable {
+      case recovered
+      case blocked
+    }
+
     /// `learn_ledger_untrusted.kind`: `CorrectionProposalStore.UntrustedKind`
     /// raw values, restated as a closed wire vocabulary.
     package enum LedgerUntrustedKind: String, Sendable, CaseIterable {
@@ -4361,8 +4367,16 @@ public final class TelemetryService {
   }
 
   /// The proposal ledger loaded untrusted (once per launch at most).
-  package func learnLedgerUntrusted(kind: LearnFromEditsTelemetry.LedgerUntrustedKind) {
-    emitLearnEvent("custom_words.learn_ledger_untrusted", ["kind": kind.rawValue])
+  /// `disposition` says what happened next: `recovered` (a damaged file was
+  /// moved aside and the ledger started fresh; founder 2026-09-20) or
+  /// `blocked` (nothing moved, the path is disabled until a trusted load).
+  package func learnLedgerUntrusted(
+    kind: LearnFromEditsTelemetry.LedgerUntrustedKind,
+    disposition: LearnFromEditsTelemetry.LedgerDisposition
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_ledger_untrusted",
+      ["kind": kind.rawValue, "disposition": disposition.rawValue])
   }
 
   // MARK: - Other audio while dictating (#1413, folded onto the terminal row)

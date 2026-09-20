@@ -64,9 +64,9 @@ import Testing
   }
 
   @Test(
-    "corrupt, unsupported-version and unknown-status files are untrusted, archived, kept in place, and untrusted again next launch"
+    "corrupt, unsupported-version and unknown-status files are moved aside as evidence and the ledger starts fresh and writable; the next launch is an ordinary empty one"
   )
-  func untrustedFilesAreArchivedAndStayUntrusted() throws {
+  func damagedFilesAreMovedAsideAndRecovered() throws {
     let cases: [(String, CorrectionLedgerUntrustedKind)] = [
       ("{not json", .corrupt),
       (#"{"version":2,"proposals":[],"rejectedPairs":[]}"#, .unsupportedVersion),
@@ -83,32 +83,129 @@ import Testing
       try Data(text.utf8).write(to: file)
       let store = CorrectionProposalStore(directory: dir, now: { Self.t0 })
       let outcome = store.load()
-      guard case .untrusted(let gotKind, let archived) = outcome else {
-        Issue.record("expected untrusted for \(kind), got \(outcome)")
+      guard case .recovered(let gotKind, let archive) = outcome else {
+        Issue.record("expected recovered for \(kind), got \(outcome)")
         continue
       }
       #expect(gotKind == kind, "\(text)")
-      let archive = try #require(archived, "\(text)")
       #expect(
-        try Data(contentsOf: archive) == Data(text.utf8), "archive is the evidence, byte for byte")
-      #expect(try permissions(archive) == 0o600)
-      #expect(try Data(contentsOf: file) == Data(text.utf8), "the original stays in place")
-      #expect(throws: CorrectionProposalStoreError.ledgerUntrusted) {
-        try store.upsert(proposal("a", "b"))
-      }
-      #expect(throws: CorrectionProposalStoreError.ledgerUntrusted) {
-        try store.prune(now: Self.t0)
-      }
-      // Next launch: same verdict, and the earlier archive is not overwritten.
+        try Data(contentsOf: archive) == Data(text.utf8), "the archive IS the original, byte for byte")
+      #expect(FileManager.default.fileExists(atPath: file.path) == false, "moved, not copied")
+      #expect(store.isTrusted && store.ledger?.proposals.isEmpty == true, "fresh and trusted")
+      // Writable at once, and the write lands as a new document.
+      try store.upsert(proposal("a", "b"))
+      #expect(try readLedger(file).proposals.count == 1)
+      // Next launch reads the new document; the archive is untouched.
       let relaunch = CorrectionProposalStore(
         directory: dir, now: { Self.t0.addingTimeInterval(60) })
-      guard case .untrusted(let again, let archived2) = relaunch.load() else {
-        Issue.record("relaunch read the untrusted file as trusted or empty")
+      guard case .trusted(let ledger) = relaunch.load() else {
+        Issue.record("relaunch did not read the fresh ledger as trusted")
         continue
       }
-      #expect(again == kind)
-      #expect(archived2 != nil && archived2 != archive)
+      #expect(ledger.proposals.count == 1)
+      #expect(try Data(contentsOf: archive) == Data(text.utf8))
     }
+  }
+
+  @Test("a recovery is durable and private: the archive is owner-only whatever the source mode was, and a failed post-move sync withholds trust until a later load syncs")
+  func recoveryIsDurableAndPrivate() throws {
+    let dir = tempDir()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent(CorrectionProposalStore.fileName)
+    try Data("{not json".utf8).write(to: file)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+    var ops = CorrectionProposalStore.FileOps.live
+    final class Gate: @unchecked Sendable {
+      let lock = NSLock()
+      var failSync = true
+      var get: Bool { lock.withLock { failSync } }
+    }
+    let gate = Gate()
+    let liveSync = ops.syncDirectory
+    ops.syncDirectory = { url in
+      if gate.get { throw CocoaError(.fileWriteUnknown) }
+      try liveSync(url)
+    }
+    let store = CorrectionProposalStore(directory: dir, fileOps: ops, now: { Self.t0 })
+    let first = store.load()
+    guard case .untrusted(.durabilityUnconfirmed, let archived) = first, let archive = archived else {
+      Issue.record("a failed post-move sync must withhold trust with the archive path, got \(first)")
+      return
+    }
+    #expect(try permissions(archive) == 0o600, "owner-only even though the source was 0o644")
+    #expect(FileManager.default.fileExists(atPath: file.path) == false, "the move itself happened")
+    #expect(throws: CorrectionProposalStoreError.recoveryRequired) {
+      try store.upsert(proposal("a", "b"))
+    }
+    // The sync works on the next load: trusted, empty, writable.
+    gate.lock.withLock { gate.failSync = false }
+    #expect(store.load() == .empty)
+    try store.upsert(proposal("a", "b"))
+    #expect(try readLedger(file).proposals.count == 1)
+  }
+
+  @Test("a damaged file whose permissions cannot be tightened is left in place and untrusted, and the next load cannot trust an empty ledger by mistake")
+  func permissionFailureCannotEscapeRecovery() throws {
+    let dir = tempDir()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent(CorrectionProposalStore.fileName)
+    try Data("{not json".utf8).write(to: file)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+    var ops = CorrectionProposalStore.FileOps.live
+    ops.setOwnerOnly = { _ in throw CocoaError(.fileWriteNoPermission) }
+    let store = CorrectionProposalStore(directory: dir, fileOps: ops, now: { Self.t0 })
+    guard case .untrusted(.corrupt, let archived) = store.load() else {
+      Issue.record("a failed chmod must keep the untrusted verdict")
+      return
+    }
+    #expect(archived != nil, "evidence copied as before")
+    #expect(try Data(contentsOf: file) == Data("{not json".utf8), "the original stays in place, untouched")
+    #expect(try permissions(file) == 0o644, "not moved, not changed")
+    #expect(throws: CorrectionProposalStoreError.ledgerUntrusted) {
+      try store.upsert(proposal("a", "b"))
+    }
+    // The next load sees the same damaged file, not a missing one: the same
+    // verdict again, never `.empty`.
+    let relaunch = CorrectionProposalStore(directory: dir, fileOps: ops, now: { Self.t0.addingTimeInterval(60) })
+    guard case .untrusted(.corrupt, _) = relaunch.load() else {
+      Issue.record("the relaunch trusted a ledger it must not")
+      return
+    }
+    #expect(relaunch.isTrusted == false)
+  }
+
+  @Test("a damaged file that cannot be moved aside keeps the old verdict: untrusted, evidence copied, original in place")
+  func damagedFileThatCannotMoveStaysUntrusted() throws {
+    let dir = tempDir()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent(CorrectionProposalStore.fileName)
+    try Data("{not json".utf8).write(to: file)
+    // Occupy the archive name this clock would choose, so the move is refused.
+    let stamp = ISO8601DateFormatter().string(from: Self.t0).replacingOccurrences(of: ":", with: "-")
+    let taken = dir.appendingPathComponent("correction-proposals.untrusted-\(stamp)-corrupt.json")
+    try Data("earlier evidence".utf8).write(to: taken)
+    let store = CorrectionProposalStore(directory: dir, now: { Self.t0 })
+    #expect(store.load() == .untrusted(kind: .corrupt, archivedTo: nil))
+    #expect(try Data(contentsOf: file) == Data("{not json".utf8), "the original stays in place")
+    #expect(try Data(contentsOf: taken) == Data("earlier evidence".utf8), "nothing overwritten")
+    #expect(throws: CorrectionProposalStoreError.ledgerUntrusted) {
+      try store.upsert(proposal("a", "b"))
+    }
+
+    // The rename itself refused (a read-only directory): same verdict, the
+    // evidence copy is made, the original stays.
+    let dir2 = tempDir()
+    try FileManager.default.createDirectory(at: dir2, withIntermediateDirectories: true)
+    let file2 = dir2.appendingPathComponent(CorrectionProposalStore.fileName)
+    try Data("{not json".utf8).write(to: file2)
+    var ops = CorrectionProposalStore.FileOps.live
+    ops.move = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+    let store2 = CorrectionProposalStore(directory: dir2, fileOps: ops, now: { Self.t0 })
+    guard case .untrusted(.corrupt, let archived2) = store2.load() else {
+      Issue.record("a refused rename must keep the untrusted verdict")
+      return
+    }
+    #expect(archived2 != nil && FileManager.default.fileExists(atPath: file2.path))
   }
 
   @Test("only a confirmed missing file is `empty`; a path that cannot be inspected is untrusted")
@@ -155,12 +252,12 @@ import Testing
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       try Data(text.utf8).write(to: dir.appendingPathComponent(CorrectionProposalStore.fileName))
       let store = CorrectionProposalStore(directory: dir)
-      guard case .untrusted(let kind, let archived) = store.load() else {
-        Issue.record("\(name): read as trusted")
+      guard case .recovered(let kind, let archived) = store.load() else {
+        Issue.record("\(name): read as trusted, or left untrusted")
         continue
       }
       #expect(kind == .corrupt, "\(name)")
-      #expect(archived != nil, "\(name)")
+      #expect(FileManager.default.fileExists(atPath: archived.path), "\(name)")
     }
     // The same authority guards the write side: an in-memory record that
     // breaks an invariant is refused before any byte is written.

@@ -3,8 +3,9 @@ import EnviousWisprServices
 import SwiftUI
 
 /// Learn from... tab of the Dictionary page. Two ways the app can pick up words
-/// without being told each one: auto-learn from transcripts (Phase 7 #629, not
-/// built yet) and Contacts import (Phase 6 #636, live). Bible §10.2.
+/// without being told each one: learn from the user's own edits (#996, live
+/// since chunk 5g; the "Coming soon" pill of Phase 7 #629 is gone) and Contacts
+/// import (Phase 6 #636, live). Bible §10.2.
 ///
 /// **Two features, two cards, and that is the fix.** The first build put both
 /// inside one `BrandedSection` as `BrandedRow`s separated by a hairline, so a
@@ -12,14 +13,16 @@ import SwiftUI
 /// paragraph ran together as one column of text with nothing saying where one
 /// feature ended (founder, 2026-08-29: "just blends together with no clear UX
 /// design"). The approved mockup draws each as its own recessed card
-/// (`.learn-row`), and a `COMING SOON` pill on the title line rather than a
-/// grey sentence hanging under the paragraph. "Keep in sync on launch" is not
+/// (`.learn-row`). "Keep in sync on launch" is not
 /// a peer of those two features — it is a setting BELONGING to Contacts, so it
 /// sits inside that card under a divider, which is what the mockup's
 /// `.sync-row` is.
 struct LearningSection: View {
   @Environment(ContactsImportCoordinator.self) private var contactsImport
   @Environment(SettingsManager.self) private var settings
+  /// #996 §3.9: the row's enabled state and its reason line come from the
+  /// step 7 arm selection, injected once; this view never reads availability.
+  @Environment(\.learnFromEditsPresentation) private var learnFromEdits
 
   var body: some View {
     @Bindable var settings = settings
@@ -32,7 +35,7 @@ struct LearningSection: View {
       description: "Let EnviousWispr pick up new words on its own, from things you already have."
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        transcriptsCard
+        editsCard(settings: $settings)
         contactsCard(settings: $settings)
       }
     }
@@ -46,33 +49,38 @@ struct LearningSection: View {
     }
   }
 
-  /// Auto-learn from transcripts — announced, not built. The disabled toggle
-  /// stays because it shows the SHAPE of the eventual control, and the pill
-  /// says on the title line that it does not work yet, so nobody clicks a dead
-  /// switch and wonders.
-  private var transcriptsCard: some View {
+  /// Learn from my edits (#996 §3.9). The toggle is the stored choice; the
+  /// injected presentation says whether this Mac can act on it and, when it
+  /// cannot, why, on one line under the paragraph. A disabled row keeps
+  /// showing the stored value rather than snapping it off: the choice
+  /// survives an OS without a qualified judge and applies again on one with.
+  private func editsCard(settings: Bindable<SettingsManager>) -> some View {
     learnCard {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .center, spacing: 8) {
           Text("Learn from my edits")
             .settingsRowLabel()
-          comingSoonPill
           Spacer(minLength: 8)
-          Toggle("", isOn: .constant(false))
+          Toggle("", isOn: settings.learnFromEdits)
             .toggleStyle(BrandedToggleStyle())
-            .disabled(true)
+            .disabled(!learnFromEdits.isEnabled)
             .labelsHidden()
             // BrandedToggleStyle wraps label-Spacer-track in a content shape so
             // a labelled row is clickable end to end. With the label hidden its
             // Spacer claims the whole remaining row, which would make the empty
             // middle of this card toggle the switch. `fixedSize` collapses it.
             .fixedSize()
+            .accessibilityLabel("Learn from my edits")
         }
-        Text(
-          "EnviousWispr will watch for edits to text it just pasted, to suggest new words. Edits stay on this Mac."
-        )
-        .settingsReadingCopy()
-        .fixedSize(horizontal: false, vertical: true)
+        Text(LearnFromEditsSettingsPresentation.rowCopy)
+          .settingsReadingCopy()
+          .fixedSize(horizontal: false, vertical: true)
+        if let reason = learnFromEdits.secondaryLine {
+          Text(reason)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
   }
@@ -166,17 +174,6 @@ struct LearningSection: View {
           // toggles and a button.
           .allowsHitTesting(false)
       )
-  }
-
-  private var comingSoonPill: some View {
-    Text("COMING SOON")
-      .font(.system(size: 11, weight: .bold))
-      .tracking(0.4)
-      .foregroundStyle(.stTextSecondary)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 3)
-      .background(Capsule().fill(Color.stTextPrimary.opacity(0.07)))
-      .fixedSize()
   }
 
   private var contactsRowLabel: some View {

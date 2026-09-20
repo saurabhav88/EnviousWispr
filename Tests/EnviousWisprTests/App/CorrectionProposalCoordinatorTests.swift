@@ -21,7 +21,7 @@ final class LearnTelemetrySpy: LearnFromEditsTelemetrySink {
     case cardExpired
     case resolved(T.Decision, T.Surface, T.TargetState, T.ResolutionOutcome)
     case saveFailed(T.SaveFailure)
-    case ledgerUntrusted(T.LedgerUntrustedKind)
+    case ledgerUntrusted(T.LedgerUntrustedKind, T.LedgerDisposition)
   }
   private(set) var events: [Event] = []
 
@@ -46,7 +46,9 @@ final class LearnTelemetrySpy: LearnFromEditsTelemetrySink {
     events.append(.resolved(decision, surface, state, outcome))
   }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
-  func learnLedgerUntrusted(kind: T.LedgerUntrustedKind) { events.append(.ledgerUntrusted(kind)) }
+  func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition) {
+    events.append(.ledgerUntrusted(kind, disposition))
+  }
 }
 
 /// Stands in for the overlay (5f): records offers and result morphs.
@@ -574,8 +576,8 @@ struct CorrectionProposalCoordinatorTests {
     #expect(coordinator.proposal(id: id2)?.status == .rejected)
   }
 
-  @Test("an untrusted ledger disables the path and is reported once")
-  func untrustedLedger() throws {
+  @Test("a damaged ledger is moved aside and the path starts fresh, reported once; an unreadable one disables the path")
+  func damagedAndUnreadableLedgers() throws {
     let (badStore, _, badDir) = makeFaultableStore()
     try FileManager.default.createDirectory(at: badDir, withIntermediateDirectories: true)
     try Data("not json".utf8).write(to: badStore.fileURL)
@@ -583,14 +585,36 @@ struct CorrectionProposalCoordinatorTests {
     let c = C(store: badStore, vocabulary: library.access, presenter: presenter, telemetry: spy)
     c.initialize()
     c.initialize()
-    #expect(c.ledgerState == .untrusted(.corrupt))
-    #expect(spy.events == [.ledgerUntrusted(.corrupt)])
+    #expect(c.ledgerState == .ready, "founder 2026-09-20: a damaged file moves aside and the ledger starts fresh")
+    #expect(c.recoveredAtLaunch == .corrupt)
+    #expect(spy.events == [.ledgerUntrusted(.corrupt, .recovered)], "reported once, as recovered")
+    #expect(FileManager.default.fileExists(atPath: badStore.fileURL.path) == false, "moved aside")
+    guard
+      case .minted = c.propose(
+        original: "a", corrected: "B", state: .newWord, language: "en", contextExcerpt: nil,
+        sourceBundleID: nil, advisorySafeAlias: nil)
+    else {
+      Issue.record("a fresh ledger accepts a proposal")
+      return
+    }
+
+    // Unreadable (a directory where the file should be): nothing moves, the path is disabled.
+    let (blindStore, _, blindDir) = makeFaultableStore()
+    try FileManager.default.createDirectory(at: blindStore.fileURL, withIntermediateDirectories: true)
+    let spy2 = LearnTelemetrySpy()
+    let c2 = C(store: blindStore, vocabulary: library.access, presenter: presenter, telemetry: spy2)
+    c2.initialize()
+    c2.initialize()
+    #expect(c2.ledgerState == .untrusted(.unreadable))
+    #expect(c2.recoveredAtLaunch == nil)
+    #expect(spy2.events == [.ledgerUntrusted(.unreadable, .blocked)])
     #expect(
-      c.propose(
+      c2.propose(
         original: "a", corrected: "B", state: .newWord, language: "en", contextExcerpt: nil,
         sourceBundleID: nil, advisorySafeAlias: nil) == .ledgerUnavailable)
-    #expect(c.resolve(id: UUID(), .accept, surface: .pending) == .ledgerUnavailable)
-    #expect(c.openProposalsByPairKey.isEmpty && c.rejectedPairKeys.isEmpty)
+    #expect(c2.resolve(id: UUID(), .accept, surface: .pending) == .ledgerUnavailable)
+    _ = blindDir
+    #expect(c2.openProposalsByPairKey.isEmpty && c2.rejectedPairKeys.isEmpty, "an untrusted ledger reads as nothing")
   }
 
   @Test("the card model carries the typed state for the target as it is now")

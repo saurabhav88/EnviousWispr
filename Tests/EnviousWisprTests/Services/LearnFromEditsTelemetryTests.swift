@@ -61,7 +61,7 @@ import Testing
       "custom_words.learn_card_expired": [],
       "custom_words.learn_resolved": ["decision", "surface", "state", "outcome"],
       "custom_words.learn_save_failed": ["reason"],
-      "custom_words.learn_ledger_untrusted": ["kind"],
+      "custom_words.learn_ledger_untrusted": ["kind", "disposition"],
     ]
 
     @MainActor
@@ -80,7 +80,7 @@ import Testing
         t.learnCardExpired()
         t.learnResolved(decision: .accepted, surface: .card, state: .newWord, outcome: .added)
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
-        t.learnLedgerUntrusted(kind: .corrupt)
+        t.learnLedgerUntrusted(kind: .corrupt, disposition: .recovered)
       }
       let events = box.values
       #expect(events.count == 9)
@@ -183,6 +183,7 @@ struct LearnFromEditsTelemetryVocabularyTests {
         "unreadable", "corrupt", "unsupported_version", "unknown_status",
         "durability_unconfirmed",
       ])
+    #expect(T.LedgerDisposition.allCases.map(\.rawValue) == ["recovered", "blocked"])
     // Every bypass kind has its own outcome; the mapping is total.
     for bypass in CorrectionJudgeBypass.allCases {
       let mapped = T.JudgeOutcome(.bypass(bypass))

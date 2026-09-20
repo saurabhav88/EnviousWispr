@@ -3,6 +3,7 @@ import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
+import Observation
 
 // MARK: - Correction proposal coordinator (#996 §3.1 steps 8–10)
 //
@@ -174,10 +175,10 @@ protocol LearnFromEditsTelemetrySink: AnyObject {
   func learnResolved(
     decision: T.Decision, surface: T.Surface, state: T.TargetState, outcome: T.ResolutionOutcome)
   func learnSaveFailed(reason: T.SaveFailure)
-  func learnLedgerUntrusted(kind: T.LedgerUntrustedKind)
+  func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition)
 }
 
-@MainActor
+@MainActor @Observable
 final class CorrectionProposalCoordinator {
 
   enum LedgerState: Equatable {
@@ -229,12 +230,27 @@ final class CorrectionProposalCoordinator {
 
   private let store: CorrectionProposalStore
   private let vocabulary: CorrectionVocabularyAccess
-  private weak var presenter: (any CorrectionProposalPresenting)?
+  @ObservationIgnored private weak var presenter: (any CorrectionProposalPresenting)?
   private let telemetry: any LearnFromEditsTelemetrySink
   private let now: () -> Date
   private let makeID: () -> UUID
 
   private(set) var ledgerState: LedgerState = .notLoaded
+
+  /// Observation instrumentation for the Pending tab (5g). The store is the
+  /// one ledger source and its `ledger` is not an observed property, so a
+  /// SwiftUI view reading `openProposalsNewestFirst` would never be told a
+  /// write landed. Every computed ledger accessor reads this revision and
+  /// every successful store write and every load bumps it; no second proposal
+  /// array, cache or timer. A revision, not a copy: the list is still read
+  /// from the store at the moment the view asks.
+  private(set) var ledgerRevision: UInt64 = 0
+
+  /// Set when this launch's load found a damaged file and started fresh
+  /// (`CorrectionLedgerLoadOutcome.recovered`); the Pending tab shows the
+  /// one banner for it. Same shape as `CustomWordsCoordinator
+  /// .wordsLoadFailureAtLaunch`.
+  private(set) var recoveredAtLaunch: CorrectionLedgerUntrustedKind?
 
   /// The life of one offer, tracked apart from the proposal's durable status.
   struct Presentation: Equatable {
@@ -290,22 +306,49 @@ final class CorrectionProposalCoordinator {
   /// `accepting` proposal. Untrusted storage disables this path: no proposal
   /// is minted or resolved until a trusted ledger is restored.
   func initialize() {
+    defer { ledgerRevision &+= 1 }
     switch store.load() {
     case .empty, .trusted:
       ledgerState = .ready
       for proposal in store.ledger?.proposals ?? [] where proposal.status == .accepting {
         _ = reconcile(id: proposal.id)
       }
+    case .recovered(let kind, _):
+      // A damaged file moved aside; the ledger is empty and trusted. The tab
+      // says so once; the wire event keeps its name (the ledger WAS untrusted
+      // at load) and is reported once per launch like before.
+      ledgerState = .ready
+      recoveredAtLaunch = kind
+      if !reportedUntrusted {
+        reportedUntrusted = true
+        telemetry.learnLedgerUntrusted(kind: Self.wireKind(kind), disposition: .recovered)
+      }
     case .untrusted(let kind, _):
       ledgerState = .untrusted(kind)
       if !reportedUntrusted {
         reportedUntrusted = true
-        telemetry.learnLedgerUntrusted(kind: Self.wireKind(kind))
+        telemetry.learnLedgerUntrusted(kind: Self.wireKind(kind), disposition: .blocked)
       }
     }
   }
 
-  var ledger: CorrectionProposalLedger? { ledgerState == .ready ? store.ledger : nil }
+  var ledger: CorrectionProposalLedger? {
+    _ = ledgerRevision
+    return ledgerState == .ready ? store.ledger : nil
+  }
+
+  /// The two store writes, wrapped so a landed write always invalidates the
+  /// observed accessors above; a thrown write leaves the revision alone and
+  /// the caller's error path speaks for it.
+  private func persistProposal(_ proposal: CorrectionProposal) throws {
+    try store.upsert(proposal)
+    ledgerRevision &+= 1
+  }
+
+  private func persistRejection(id: UUID, at time: Date) throws {
+    try store.reject(id: id, at: time)
+    ledgerRevision &+= 1
+  }
 
   /// Open (`pending`/`accepting`) proposals by pair key, for the filter.
   var openProposalsByPairKey: [String: UUID] {
@@ -337,7 +380,7 @@ final class CorrectionProposalCoordinator {
     proposal.refreshMetadata(
       contextExcerpt: contextExcerpt, sourceBundleID: sourceBundleID, at: now())
     do {
-      try store.upsert(proposal)
+      try persistProposal(proposal)
     } catch {
       noteWriteFailure(error)
       return .writeFailed
@@ -366,7 +409,7 @@ final class CorrectionProposalCoordinator {
       contextExcerpt: contextExcerpt, sourceBundleID: sourceBundleID, createdAt: now(),
       advisorySafeAlias: advisorySafeAlias)
     do {
-      try store.upsert(proposal)
+      try persistProposal(proposal)
     } catch {
       noteWriteFailure(error)
       return .writeFailed
@@ -387,7 +430,7 @@ final class CorrectionProposalCoordinator {
     proposal.overlayAttempted = true
     proposal.updatedAt = now()
     do {
-      try store.upsert(proposal)
+      try persistProposal(proposal)
     } catch {
       noteWriteFailure(error)
       return
@@ -527,7 +570,7 @@ final class CorrectionProposalCoordinator {
     accepting.acceptingIntent = intent
     accepting.updatedAt = now()
     do {
-      try store.upsert(accepting)
+      try persistProposal(accepting)
     } catch {
       noteWriteFailure(error)
       telemetry.learnSaveFailed(reason: .ledgerWriteFailed)
@@ -614,7 +657,7 @@ final class CorrectionProposalCoordinator {
     done.resolvedAt = now()
     done.updatedAt = done.resolvedAt ?? now()
     do {
-      try store.upsert(done)
+      try persistProposal(done)
     } catch {
       noteWriteFailure(error)
       telemetry.learnSaveFailed(reason: .ledgerWriteFailed)
@@ -639,7 +682,7 @@ final class CorrectionProposalCoordinator {
     back.acceptingIntent = nil
     back.updatedAt = now()
     do {
-      try store.upsert(back)
+      try persistProposal(back)
     } catch {
       noteWriteFailure(error)
       telemetry.learnSaveFailed(reason: .ledgerWriteFailed)
@@ -653,7 +696,7 @@ final class CorrectionProposalCoordinator {
 
   private func reject(_ pending: CorrectionProposal, surface: Surface) -> ResolveOutcome {
     do {
-      try store.reject(id: pending.id, at: now())
+      try persistRejection(id: pending.id, at: now())
     } catch {
       noteWriteFailure(error)
       telemetry.learnSaveFailed(reason: .ledgerWriteFailed)
@@ -695,7 +738,7 @@ final class CorrectionProposalCoordinator {
       proposal.resolvedAt = now()
       proposal.updatedAt = now()
       do {
-        try store.upsert(proposal)
+        try persistProposal(proposal)
       } catch {
         noteWriteFailure(error)
         return .unresolved
@@ -710,7 +753,7 @@ final class CorrectionProposalCoordinator {
     proposal.acceptingIntent = nil
     proposal.updatedAt = now()
     do {
-      try store.upsert(proposal)
+      try persistProposal(proposal)
     } catch {
       noteWriteFailure(error)
       return .unresolved
