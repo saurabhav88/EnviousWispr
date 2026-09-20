@@ -265,8 +265,9 @@ struct CorrectionProposalCoordinatorTests {
     #expect(telemetry.events.filter { $0 == .cardShown }.count == 1, "a terminal proposal is not shown")
 
     // A refusal leaves the proposal PENDING, and its result card expiring is
-    // still not an unanswered offer: the phase, not the status, decides.
-    library.userWords = []
+    // still not an unanswered offer: the phase, not the status, decides. The
+    // target goes missing AFTER the mint (the mint reads the live list), so the
+    // stored state names a word that Accept can no longer find.
     guard
       case .minted(let gone) = coordinator.propose(
         original: "sairah", corrected: "Saira", state: .existingWord(saira.id), language: "en",
@@ -275,6 +276,8 @@ struct CorrectionProposalCoordinatorTests {
       Issue.record("expected minted")
       return
     }
+    #expect(coordinator.proposal(id: gone)?.state == .existingWord(saira.id))
+    library.userWords = []
     let goneToken = admit(gone)
     #expect(telemetry.events.filter { $0 == .cardShown }.count == 2)
     #expect(coordinator.resolve(id: gone, .accept, surface: .card(goneToken)) == .refused(.targetGone))
@@ -615,6 +618,72 @@ struct CorrectionProposalCoordinatorTests {
     #expect(c2.resolve(id: UUID(), .accept, surface: .pending) == .ledgerUnavailable)
     _ = blindDir
     #expect(c2.openProposalsByPairKey.isEmpty && c2.rejectedPairKeys.isEmpty, "an untrusted ledger reads as nothing")
+  }
+
+  @Test("launch prunes resolved payloads after the retention window and keeps pending ones")
+  func initializePrunesResolvedPayloads() throws {
+    let done = mint("sarah", "Saira")
+    #expect(coordinator.resolve(id: done, .reject, surface: .pending) == .rejected)
+    let open = mint("nadya", "Nadia")
+    #expect(store.ledger?.proposals.count == 2)
+    let later = Date(timeIntervalSince1970: 1_000_000 + CorrectionProposalStore.retentionAfterResolution + 1)
+    let c = C(
+      store: store, vocabulary: library.access, presenter: presenter, telemetry: LearnTelemetrySpy(),
+      now: { later })
+    c.initialize()
+    #expect(c.ledgerState == .ready)
+    #expect(c.proposal(id: done) == nil, "the rejected payload left at launch")
+    #expect(c.proposal(id: open)?.status == .pending, "pending is never pruned")
+    #expect(c.rejectedPairKeys.count == 1, "the tombstone outlives its payload")
+  }
+
+  @Test("the minted state follows the LIVE word list, not the classification the watcher made before the judge ran")
+  func stateFollowsTheLiveListAtMint() {
+    // The watcher said "new word"; the person added Saira while the judge thought.
+    guard
+      case .minted(let id) = coordinator.propose(
+        original: "sarah", corrected: "Saira", state: .newWord, language: "en",
+        contextExcerpt: nil, sourceBundleID: nil, advisorySafeAlias: nil)
+    else {
+      Issue.record("expected minted")
+      return
+    }
+    #expect(coordinator.proposal(id: id)?.state == .existingWord(saira.id))
+    #expect(telemetry.events.last == .proposed(.existingWord))
+    #expect(presenter.offers.last?.state == .existingWord(name: "Saira"), "the card promises what Accept will do")
+    // And the other way: a stale "existing" id for a word that is gone mints a new word.
+    guard
+      case .minted(let id2) = coordinator.propose(
+        original: "nadya", corrected: "Nadia", state: .existingWord(UUID()), language: "en",
+        contextExcerpt: nil, sourceBundleID: nil, advisorySafeAlias: nil)
+    else {
+      Issue.record("expected minted")
+      return
+    }
+    #expect(coordinator.proposal(id: id2)?.state == .newWord)
+    #expect(telemetry.events.last == .proposed(.newWord))
+  }
+
+  @Test("a click on a card still on screen after the ledger went untrusted answers with couldNotSave and is counted")
+  func clickOnACardAfterTheLedgerWentUntrusted() throws {
+    let shown = mint()
+    let token = admit(shown)
+    // Another row's write fails past the temp stage: the ledger is untrusted.
+    let other = mint("nadya", "Nadia")
+    faults.failCommit = true
+    #expect(coordinator.resolve(id: other, .reject, surface: .pending) == .refused(.ledgerWriteFailed))
+    #expect(coordinator.ledgerState == .untrusted(.durabilityUnconfirmed))
+    // The retry inside resolve re-reads the ledger; make that re-read fail too so
+    // the click meets an untrusted ledger, as it would after a real disk fault.
+    try FileManager.default.removeItem(at: store.fileURL)
+    try FileManager.default.createDirectory(at: store.fileURL, withIntermediateDirectories: true)
+    let before = presenter.results.count
+    #expect(coordinator.resolve(id: shown, .accept, surface: .card(token)) == .ledgerUnavailable)
+    #expect(telemetry.events.last == .saveFailed(.ledgerUntrusted))
+    #expect(presenter.results.count == before + 1, "the card is answered, not left looking live")
+    #expect(presenter.results.last?.0.phase == .result(.couldNotSave))
+    #expect(presenter.results.last?.1 == token)
+    #expect(library.saves.isEmpty, "nothing written to the vocabulary")
   }
 
   @Test("the card model carries the typed state for the target as it is now")

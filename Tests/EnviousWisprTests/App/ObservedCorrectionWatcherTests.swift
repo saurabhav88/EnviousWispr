@@ -187,6 +187,9 @@ struct ObservedCorrectionWatcherTests {
   final class Knobs {
     var toggle = true
     var judgeAvailable = true
+    /// Production: the AFM judge's own deadline plus one second. A test that
+    /// holds the judge shortens it so a wedged judge is proven bounded fast.
+    var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
     var frontmost: FrontmostApplication? = FrontmostApplication(
       pid: 42, bundleID: "com.apple.Notes")
   }
@@ -206,8 +209,7 @@ struct ObservedCorrectionWatcherTests {
     let observer = observer
     let clock = clock
     let library = library
-    return ObservedCorrectionWatcher(
-      dependencies: ObservedCorrectionWatcherDependencies(
+    var deps = ObservedCorrectionWatcherDependencies(
         isLearnFromEditsOn: { knobs.toggle },
         selectJudge: {
           knobs.judgeAvailable ? SelectedCorrectionJudge(arm: .rules, judge: judge) : nil
@@ -218,7 +220,9 @@ struct ObservedCorrectionWatcherTests {
         userWords: { library.userWords },
         packTerms: { library.packTerms },
         coordinator: coordinator,
-        telemetry: telemetry))
+        telemetry: telemetry)
+    deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
+    return ObservedCorrectionWatcher(dependencies: deps)
   }
 
   func paste(
@@ -369,6 +373,27 @@ struct ObservedCorrectionWatcherTests {
     #expect(judge.requests.count == 2)
     observer.fire(.ended(.ceilingElapsed))
     #expect(telemetry.events.last == .observationEnded(.ceilingElapsed, 2, .native))
+  }
+
+  @Test("a judge that never answers is bounded: the call is reported as a deadline bypass and nothing is proposed")
+  func wedgedJudgeIsBounded() async throws {
+    knobs.judgeDeadlineSeconds = 0.05
+    let watcher = makeWatcher()
+    judge.holdAnswers = true
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(judge.requests.count == 1, "the judge was asked once")
+    #expect(telemetry.events.last == .judged(.rules, .deadline, 1, 0))
+    #expect(presenter.offers.isEmpty && coordinator.openProposalsNewestFirst.isEmpty)
+    judge.release()  // the abandoned call finishes in the background; its answer is discarded
+    await Task.yield()
+    #expect(telemetry.events.filter { if case .judged = $0 { true } else { false } }.count == 1)
   }
 
   @Test("a judge answer for a superseded paste is dropped as stale and proposes nothing")

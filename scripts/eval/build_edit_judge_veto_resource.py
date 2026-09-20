@@ -98,13 +98,18 @@ def main() -> int:
         print(f"INFRA-ERROR: wordfreq {wf_version} is not the pinned 3.1.1", file=sys.stderr)
         return 2
     out = args.out / RESOURCE_VERSION
-    out.mkdir(parents=True, exist_ok=False)
     files: dict[str, dict] = {}
     languages = sorted(wordfreq.available_languages("best"))
     unknown = sorted(set(alias_languages) - set(languages))
     if unknown:
         print(f"INFRA-ERROR: alias languages without a wordfreq list: {unknown}", file=sys.stderr)
         return 2
+    if not DICTIONARY_PATH.exists():
+        print(f"INFRA-ERROR: dictionary missing at {DICTIONARY_PATH}", file=sys.stderr)
+        return 2
+    # Every input check passed: only now is the version directory created, so a
+    # refused run leaves nothing behind that blocks the corrected rerun.
+    out.mkdir(parents=True, exist_ok=False)
     for lang in languages:
         seen: dict[str, float] = {}
         for w in wordfreq.top_n_list(lang, args.top_n):
@@ -115,9 +120,6 @@ def main() -> int:
         path = out / f"{lang}.tsv"
         path.write_text("".join(f"{w}\t{seen[w]:.2f}\n" for w in sorted(seen)), encoding="utf-8")
         files[lang] = {"path": path.name, "words": len(seen), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    if not DICTIONARY_PATH.exists():
-        print(f"INFRA-ERROR: dictionary missing at {DICTIONARY_PATH}", file=sys.stderr)
-        return 2
     dictionary = sorted({normalise(w) for w in DICTIONARY_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if len(w.strip()) >= DICTIONARY_MIN_LETTERS and w.strip().isalpha()})
     dpath = out / "en-dictionary.txt"
     dpath.write_text("\n".join(dictionary) + "\n", encoding="utf-8")

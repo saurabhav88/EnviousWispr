@@ -263,6 +263,10 @@ final class CorrectionProposalCoordinator {
     var phase: Phase
     /// A typed result morphed the card; its later expiry is not an unanswered offer.
     var resultShown = false
+    /// The proposal as it was offered: what the card on screen shows. Kept here
+    /// so a click can still be answered on the card when the ledger has gone
+    /// untrusted meanwhile and `proposal(id:)` reads nothing.
+    let offered: CorrectionProposal
   }
   private(set) var presentations: [UUID: Presentation] = [:]
   /// The presentation the overlay says is on screen, per proposal.
@@ -313,6 +317,14 @@ final class CorrectionProposalCoordinator {
       ledgerState = .ready
       for proposal in store.ledger?.proposals ?? [] where proposal.status == .accepting {
         _ = reconcile(id: proposal.id)
+      }
+      // The 30-day policy (plan §3.1 step 5) has to be spent somewhere: resolved
+      // payloads (the original and corrected text) leave here, once per launch.
+      // Pending, accepting and tombstones are never pruned (store contract).
+      do {
+        _ = try store.prune(now: now())
+      } catch {
+        noteWriteFailure(error)
       }
     case .recovered(let kind, _):
       // A damaged file moved aside; the ledger is empty and trusted. The tab
@@ -420,6 +432,17 @@ final class CorrectionProposalCoordinator {
       case .writeFailed: return .writeFailed
       }
     }
+    // The watcher classified the target BEFORE the judge ran; the word list can
+    // have changed meanwhile (the person adds the word while the judge thinks).
+    // The card's promise ("New word" / "Already in your words") and the wire
+    // state come from the list as it is NOW, the same lookup Accept revalidates.
+    let state: CorrectionProposalTargetState =
+      switch CustomWordSaveHelper.proposalTarget(
+        for: corrected, in: vocabulary.userWords(), packTerms: vocabulary.packTerms())
+      {
+      case .existing(let word), .packOverride(let word): .existingWord(word.id)
+      case .new: .newWord
+      }
     let proposal = CorrectionProposal(
       id: makeID(), original: original, corrected: corrected, state: state, language: language,
       contextExcerpt: contextExcerpt, sourceBundleID: sourceBundleID, createdAt: now(),
@@ -451,7 +474,7 @@ final class CorrectionProposalCoordinator {
       noteWriteFailure(error)
       return
     }
-    presentations[id] = Presentation(phase: .offered)
+    presentations[id] = Presentation(phase: .offered, offered: proposal)
     presenter?.offer(cardModel(for: proposal, phase: .offer))
   }
 
@@ -544,7 +567,14 @@ final class CorrectionProposalCoordinator {
     // A recovery obligation left by an earlier failed write is retried here:
     // one trusted re-load, then the attempt proceeds; still untrusted refuses.
     if case .untrusted(.durabilityUnconfirmed) = ledgerState { initialize() }
-    guard ledgerState == .ready else { return .ledgerUnavailable }
+    guard ledgerState == .ready else {
+      // A card can still be on screen from before the ledger went untrusted
+      // (another row's failed sync). Its click must answer: the card morphs to
+      // "Couldn't save" and the failure is counted, instead of a silent no-op.
+      telemetry.learnSaveFailed(reason: .ledgerUntrusted)
+      if let shown = presentations[id]?.offered { showResult(for: shown, .couldNotSave) }
+      return .ledgerUnavailable
+    }
     guard var proposal = proposal(id: id) else { return .unknownProposal }
     if case .card(let token) = surface, currentPresentation[id] != token {
       return .stalePresentation

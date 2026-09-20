@@ -628,7 +628,7 @@ def probe_candidate(name: str, spec: dict, artifacts: Path, run_root: Path, n_in
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--artifacts", type=Path, required=True, help="main-checkout artifacts/issue-996-edit-judge")
-    p.add_argument("--candidates", nargs="*", default=list(CANDIDATES), choices=list(CANDIDATES))
+    p.add_argument("--candidates", nargs="+", default=list(CANDIDATES), choices=list(CANDIDATES))
     p.add_argument("--inputs", type=int, default=8, help="synthetic inputs per placement check")
     p.add_argument("--skip-conversion", action="store_true", help="tokenizer half only; the report says so")
     args = p.parse_args()

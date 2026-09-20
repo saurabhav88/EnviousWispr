@@ -881,28 +881,43 @@ def main():
         # The app's mic picker is restored through the UI, so the app must be
         # up (it is: every case leaves it running) before it is stopped for
         # the file restore.
+        # Every part of the restore counts toward `restored` (exit 3 overrides
+        # everything): the sound devices, the app being down before shared files
+        # are touched, and the files/defaults/launchctl themselves. Shared data is
+        # NOT rewritten under a running app: a stop failure leaves it as the
+        # cases left it and says so, rather than racing the app's own writes.
+        audio_restored = route is None
         try:
             if route is not None:
                 route.restore()
+                audio_restored = True
         except Exception as error:
             record("audio-restore", "FAIL", str(error))
+        app_stopped = False
         try:
             stop_app()
+            app_stopped = True
         except Aborted as error:
-            record("restore", "FAIL", str(error))
-        file_restore(WORDS, snaps["words"])
-        file_restore(LEDGER, snaps["ledger"])
-        defaults_restore(snaps["defaults"])
-        launchctl_set(snaps["launchctl"])
-        ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
-        ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
+            record("app-stop", "FAIL", str(error))
+        if app_stopped:
+            file_restore(WORDS, snaps["words"])
+            file_restore(LEDGER, snaps["ledger"])
+            defaults_restore(snaps["defaults"])
+            launchctl_set(snaps["launchctl"])
+            ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
+            ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
+        else:
+            ok_w, why_w = False, "not restored: the app did not stop"
+            ok_l, why_l = False, "not restored: the app did not stop"
         after_defaults = defaults_snapshot()
         ok_d = after_defaults == snaps["defaults"]
         ok_e = launchctl_get() == snaps["launchctl"]
-        save("restore-verification.json", {"words": [ok_w, why_w], "ledger": [ok_l, why_l],
+        save("restore-verification.json", {"audio": audio_restored, "app_stopped": app_stopped,
+                                           "words": [ok_w, why_w], "ledger": [ok_l, why_l],
                                            "defaults": [ok_d, after_defaults], "launchctl": [ok_e, launchctl_get()]})
-        restored = ok_w and ok_l and ok_d and ok_e
-        record("restore", "PASS" if restored else "FAIL", f"words={why_w}; ledger={why_l}; defaults={ok_d}; launchctl={ok_e}")
+        restored = audio_restored and app_stopped and ok_w and ok_l and ok_d and ok_e
+        record("restore", "PASS" if restored else "FAIL",
+               f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; ledger={why_l}; defaults={ok_d}; launchctl={ok_e}")
         save("app-log.txt", log_since(log_start))
         statuses = [r["status"] for r in results]
         if not restored:

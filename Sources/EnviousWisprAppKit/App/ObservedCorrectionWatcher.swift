@@ -100,6 +100,11 @@ struct ObservedCorrectionWatcherDependencies {
   let userWords: () -> [CustomWord]
   let packTerms: () -> [CustomWord]
   let coordinator: CorrectionProposalCoordinator
+  /// Bound on ONE judge call, whatever the arm: the AFM judge bounds itself,
+  /// the rules judge is immediate, but a Core ML `prediction` can wedge and
+  /// nothing above it would ever answer. Production: `correctionJudgeDeadlineSeconds`
+  /// plus one, so the AFM judge's own deadline reports first. Tests shorten it.
+  var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
   let telemetry: any LearnFromEditsTelemetrySink
 }
 
@@ -362,7 +367,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // that is no longer about the current text is not asked at all.
     guard stillWanted(generation: gen, revision: revision) else { return }
     let started = deps.nowMs()
-    let outcome = await judge.judge(request)
+    let outcome =
+      await withDeadline(seconds: deps.judgeDeadlineSeconds) { await judge.judge(request) }
+      ?? .bypass(.deadline)
     let latency = max(0, deps.nowMs() - started)
     // B5: the paste, the watch, the toggle or the text may have moved on while
     // the judge thought; a superseded, cancelled or revised watch drops the answer.
