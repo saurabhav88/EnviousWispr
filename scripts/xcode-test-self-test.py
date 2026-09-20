@@ -32,8 +32,8 @@ class RunnerContract(unittest.TestCase):
         (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / 'spm-seed.sh').write_text('''ew_seed_release_all() { :; }
 ew_seed_consume() { echo seed >> "$TRACE"; }
-ew_seed_publish() { :; }
-ew_seed_resolve_or_unseed() { shift; "$@"; }
+ew_seed_publish() { cp "$PACKAGE_STATE" "$PUBLISHED_STATE"; echo publish >> "$TRACE"; }
+ew_seed_resolve_or_unseed() { [ "${STUB_SEEDED:-1}" = 1 ] || return 0; shift; "$@"; }
 ''')
         (lib / 'log-dir.sh').write_text('''ew_resolve_log_dir() { echo "$2"; }
 ew_take_default_lane() { mkdir -p "$1"; }
@@ -56,13 +56,17 @@ with open(os.environ['CALLS'], 'a') as f:
     f.write(json.dumps(args) + '\\n')
 if args[0] == 'test':
     Path(args[args.index('-resultBundlePath') + 1]).mkdir()
+    Path(os.environ['PACKAGE_STATE']).write_text('current lockfile dependencies')
     print('Test run with 2 tests passed.')
     sys.exit(int(os.environ.get('XCODE_RC', '0')))
 ''')
         xcode.chmod(0o755)
         self.env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                         TRACE=str(self.root / 'trace'), CALLS=str(self.root / 'calls'),
-                        DERIVED_DATA_PATH=str(self.root / 'derived'))
+                        DERIVED_DATA_PATH=str(self.root / 'derived'),
+                        PACKAGE_STATE=str(self.root / 'package-state'),
+                        PUBLISHED_STATE=str(self.root / 'published-state'), STUB_SEEDED='1')
+        (self.root / 'package-state').write_text('old lockfile dependencies')
         self.env.pop('XCODE_RC', None)
         self.env.pop('VERDICT_RC', None)
         self.sentinel = self.root / 'derived/keep-cache'
@@ -109,6 +113,17 @@ if args[0] == 'test':
         self.assertIn('ENABLE_TESTABILITY=YES', self.tests[0])
         self.assertIn(bundle, self.tests[0])
 
+    def test_release_retained_packages_are_published_after_refresh(self):
+        # A retained complete tree is not freshly seeded; the real helper skips
+        # explicit resolution here. Only the selected test build refreshes it.
+        self.run_runner('--configuration', 'Release', STUB_SEEDED='0')
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual((self.root / 'published-state').read_text(),
+                         'current lockfile dependencies')
+        trace = (self.root / 'trace').read_text().splitlines()
+        self.assertTrue(trace[-2].startswith('verdict:Release lane:'))
+        self.assertEqual(trace[-1], 'publish')
+
     def test_legacy_release_preserves_both_lanes(self):
         self.run_runner('--release', '--filter', 'Target/Suite')
         self.assertEqual(self.configurations(), ['Debug', 'Release'])
@@ -133,10 +148,12 @@ if args[0] == 'test':
     def test_xcode_failure_is_not_swallowed(self):
         self.run_runner('--release', rc=65, XCODE_RC='65')
         self.assertEqual(self.configurations(), ['Debug'])
+        self.assertFalse((self.root / 'published-state').exists())
 
     def test_verdict_failure_is_not_swallowed(self):
         self.run_runner('--release', rc=1, VERDICT_RC='1')
         self.assertEqual(self.configurations(), ['Debug'])
+        self.assertFalse((self.root / 'published-state').exists())
 
 
 if __name__ == '__main__':

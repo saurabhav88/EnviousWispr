@@ -226,8 +226,11 @@ ew_seed_resolve_or_unseed "$DERIVED_DATA" \
 if [ "$CONFIGURATION" != "Release" ]; then
   run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
 fi
-ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 if [ "$CONFIGURATION" != "Debug" ]; then
   run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" \
     "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
 fi
+# A retained package tree may predate the current lockfile; the seed resolver
+# only runs for a freshly consumed snapshot. Publish after the selected test
+# build refreshed packages and passed, never before a Release-only run (#3044).
+ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
