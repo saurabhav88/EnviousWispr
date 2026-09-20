@@ -1031,6 +1031,9 @@ final class KernelLifecycleTelemetrySink {
       if let retryOutcome = telemetryState.asrRetryOutcome {
         asrFailedExtra["asr_retry_outcome"] = retryOutcome.rawValue
       }
+      // #3027: the raw error, BEFORE normalization folds a CoreML NSError down
+      // to `.coreML(code:)`; empty for anything that is not CoreML.
+      asrFailedExtra.merge(CoreMLFailureExtras.build(error)) { _, new in new }
       emitCaptureError(
         SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
         .asrFailed, "transcription",

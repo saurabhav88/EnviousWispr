@@ -51,6 +51,15 @@ public struct RecoveryKeyStore: Sendable {
     self.fileDirectory = fileDirectory
   }
 
+  /// #1873: which store a failure report names. Closed vocabulary: `keychain`
+  /// (signed release, data-protection keychain) or `file` (DEBUG / dev bundle).
+  package var backendName: String {
+    switch backend {
+    case .file: return "file"
+    case .keychain: return "keychain"
+    }
+  }
+
   /// Generate a fresh 256-bit key.
   public static func makeKey() -> Data {
     SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }

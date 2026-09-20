@@ -261,6 +261,31 @@ final class RecoveryCoordinator {
 
   enum RecoveryArmError: Error { case keyStoreFailed }
 
+  /// #1873: the extra on `recovery_key_store_failed`. `recovery.key_store_status`
+  /// carries the `OSStatus` the store threw (`errSecInteractionNotAllowed` for a
+  /// locked keychain, -34018 for a missing entitlement, `errSecIO` when the file
+  /// backend cannot open or write the key file). Any other error lands as
+  /// `recovery.key_store_error` (domain#code), which is where the file backend's
+  /// directory preparation reports (`ensureFileDirectory` throws the Cocoa error
+  /// itself, deliberately not folded to `errSecIO`: the Cocoa code is the fact).
+  /// Nothing is ever silent. No producer-side clipping; the beforeSend
+  /// sanitizer stays the privacy authority.
+  nonisolated static func keyStoreFailureExtra(
+    _ error: any Error, backend: ASRBackendType, store: RecoveryKeyStore
+  ) -> [String: Any] {
+    var extra: [String: Any] = [
+      "backend": backend.rawValue,
+      "recovery.key_store_backend": store.backendName,
+    ]
+    if case RecoveryKeyStoreError.storeFailed(let status) = error {
+      extra["recovery.key_store_status"] = Int(status)
+    } else {
+      let ns = error as NSError
+      extra["recovery.key_store_error"] = "\(ns.domain)#\(ns.code)"
+    }
+    return extra
+  }
+
   /// Build the recovery directive for a recording about to start, or nil when
   /// recovery is off / could not arm (capture is byte-identical either way).
   ///
@@ -328,10 +353,28 @@ final class RecoveryCoordinator {
     // Durably store the key off the MainActor BEFORE returning an enabled
     // payload. Fail-open: a store failure disables recovery for this take.
     let keyStore = self.keyStore
-    let stored: Bool = await Task.detached(priority: .utility) {
-      (try? keyStore.store(keyData: keyData, for: recoverySessionID)) != nil
+    // #1873: keep the thrown error, not a Bool. Fourteen events across six
+    // users said only that the store failed; the OSStatus is the fact that
+    // separates a locked keychain from a missing entitlement from a file
+    // IO failure.
+    // `Task.detached` (task-detached-proof): the store is a synchronous
+    // Keychain/file write that must run OFF the MainActor (`RecoveryKeyStore`
+    // is documented keychain-not-mainactor). `Task {}` would inherit this
+    // method's MainActor isolation and block the UI on securityd IPC; a
+    // one-child `withTaskGroup` adds nothing over one detached child and still
+    // inherits isolation for its body; `@concurrent` does not apply to a
+    // synchronous throwing method on a `Sendable` struct. The arm awaits the
+    // value, so cancellation propagation is not needed: an abandoned arm
+    // simply reads a result nobody uses.
+    let storeFailure: (any Error)? = await Task.detached(priority: .utility) {
+      do {
+        try keyStore.store(keyData: keyData, for: recoverySessionID)
+        return nil
+      } catch {
+        return error
+      }
     }.value
-    guard stored else {
+    if let storeFailure {
       // No durable key landed — un-protect so the scan isn't guarding a
       // phantom and a later non-saved cleanup is a no-op. Keyed by this exact
       // fresh UUID, so a concurrent double-arm (a different id) is unaffected
@@ -340,7 +383,7 @@ final class RecoveryCoordinator {
       pendingSessions.removeValue(forKey: recoverySessionID)
       SentryBreadcrumb.captureError(
         RecoveryArmError.keyStoreFailed, category: .recoveryKeyStoreFailed, stage: "recording",
-        extra: ["backend": backendType.rawValue])
+        extra: Self.keyStoreFailureExtra(storeFailure, backend: backendType, store: keyStore))
       return nil
     }
 
