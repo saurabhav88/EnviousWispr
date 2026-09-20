@@ -260,7 +260,18 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       emitEnded(reason: reason, generation: gen)
     case .captured(let target):
       w.target = target
-      w.appClass = target.isManualAccessibilityHost ? .manualAccessibility : .native
+      // A recognised browser (Safari, or a Chromium family member, which is
+      // also a manual-accessibility host) is counted as `browser` so the
+      // funnel can be read per destination class; other Electron hosts are
+      // `manual_accessibility`; everything else `native`.
+      w.appClass =
+        if BrowserAddressBarDetector.family(forBundleIdentifier: w.event.destinationBundleID) != nil {
+          .browser
+        } else if target.isManualAccessibilityHost {
+          .manualAccessibility
+        } else {
+          .native
+        }
       watch = w
       deps.observer.start(target) { [weak self] event in
         self?.handle(event, generation: gen)
@@ -331,7 +342,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       if case .refreshOpen(let id) = f.disposition {
         // An open proposal's excerpt is centred on ITS run.
         deps.coordinator.refresh(
-          id: id, contextExcerpt: Self.contextExcerpt(region, focusTokens: f.run.editedRange),
+          id: id,
+          contextExcerpt: Self.contextExcerpt(
+            region, focusTokens: f.run.editedRange, limit: CorrectionProposal.contextExcerptLimit),
           sourceBundleID: w.event.destinationBundleID)
       }
     }
@@ -358,15 +371,15 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     Task { @MainActor [weak self] in
       await self?.ask(
         judge, arm: arm, request: request, prepared: prepared, language: language,
-        context: context, bundleID: bundleID, generation: gen, revision: revision)
+        context: context, region: region, bundleID: bundleID, generation: gen, revision: revision)
     }
   }
 
   private func ask(
     _ judge: any CorrectionJudging, arm: TelemetryService.LearnFromEditsTelemetry.Arm,
     request: CorrectionJudgeRequest, prepared: CorrectionCandidateFilter.Prepared,
-    language: String?, context: String, bundleID: String?, generation gen: UInt64,
-    revision: UInt64
+    language: String?, context: String, region: String, bundleID: String?,
+    generation gen: UInt64, revision: UInt64
   ) async {
     // B4: the queued call may run after the watch moved on. A reserved call
     // that is no longer about the current text is not asked at all.
@@ -398,10 +411,14 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       // B6: the emission above and each proposal below run injected callbacks
       // synchronously; any of them may have cancelled or superseded the watch.
       guard stillWanted(generation: gen, revision: revision) else { return }
+      // The proposal keeps an excerpt around ITS OWN edit (the Pending row and
+      // the card read it), not the judge's window around the first candidate.
       _ = deps.coordinator.propose(
         original: f.run.coreOriginal, corrected: f.run.coreReplacement, state: state,
-        language: language, contextExcerpt: context, sourceBundleID: bundleID,
-        advisorySafeAlias: decision.verdict.safeAlias)
+        language: language,
+        contextExcerpt: Self.contextExcerpt(
+          region, focusTokens: f.run.editedRange, limit: CorrectionProposal.contextExcerptLimit),
+        sourceBundleID: bundleID, advisorySafeAlias: decision.verdict.safeAlias)
     }
   }
 
@@ -429,8 +446,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// with the paragraph's opening (cloud review of PR #3054, two rounds: a
   /// text search for the replacement found an EARLIER occurrence belonging to
   /// a run the filter had dropped). With no focus the prefix is kept.
-  static func contextExcerpt(_ text: String, focusTokens: Range<Int>? = nil) -> String {
-    let limit = CorrectionJudgeRequest.maxContextUTF16
+  static func contextExcerpt(
+    _ text: String, focusTokens: Range<Int>? = nil,
+    limit: Int = CorrectionJudgeRequest.maxContextUTF16
+  ) -> String {
     let total = text.utf16.count
     guard total > limit else { return text }
     var start = text.startIndex

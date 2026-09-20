@@ -670,5 +670,23 @@ struct ObservedCorrectionWatcherTests {
     #expect(request.candidates.map(\.original) == ["sarah"])
     #expect(request.context.contains("call Saira tonight"), "the judge sees the sentence it is asked about")
     #expect(request.context.utf16.count <= CorrectionJudgeRequest.maxContextUTF16)
+    // The minted proposal keeps ITS OWN 120-unit excerpt around the edit, not the
+    // judge's window around the first candidate.
+    #expect(await waitUntil { !coordinator.openProposalsNewestFirst.isEmpty })
+    let stored = try #require(coordinator.openProposalsNewestFirst.first)
+    #expect(stored.original == "sarah")
+    #expect(stored.contextExcerpt?.contains("call Saira tonight") == true, "\(stored.contextExcerpt ?? "nil")")
+    #expect((stored.contextExcerpt?.utf16.count ?? 0) <= CorrectionProposal.contextExcerptLimit)
+  }
+
+  @Test("a recognised browser destination is counted as `browser`; another Electron host as `manual_accessibility`; the rest `native`")
+  func appClass() async {
+    let watcher = makeWatcher()
+    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
+    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(telemetry.events.last == .observationEnded(.focusChanged, 0, .browser))
   }
 }
