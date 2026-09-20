@@ -510,15 +510,60 @@ public actor WhisperKitBackend: ASRBackend {
     return kit as? WhisperKit
   }
 
-  // MARK: - Transcription progress (#2918)
+  // MARK: - Transcription progress (#2918, #2952)
 
-  /// The fraction of the input reached, given the `end` seconds of every segment discovered
-  /// so far: the MAX over them, over the unpadded duration, clamped to 0...1. The max and
-  /// not the last value: on the chunked file path up to 16 windows decode in parallel and
-  /// finish out of order, so "last segment end" would jump backwards.
-  static func fractionReached(segmentEnds: [Float], totalSeconds: Double) -> Double {
-    guard totalSeconds > 0, let maxEnd = segmentEnds.max() else { return 0 }
-    return min(1, max(0, Double(maxEnd) / totalSeconds))
+  /// The running max the engine's progress callbacks keep across windows that finish out
+  /// of order: the value it reports never decreases, and the report itself is made under
+  /// the lock so two windows completing on two threads cannot deliver out of order
+  /// (a raise on thread A that reported after thread B's higher raise would have moved
+  /// the bar backwards). Internal (not private) so a test can drive
+  /// `observeEngineProgress` with a plain Foundation `Progress`.
+  final class ProgressHighWater: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Double = 0
+    /// Raises the mark to `fraction` and reports it through `observer` while still holding
+    /// the lock, so reports are delivered in ascending order. No-op when `fraction` does
+    /// not raise the mark (NaN compares false and is dropped).
+    func raiseAndReport(to fraction: Double, observer: (Double) -> Void) {
+      lock.lock()
+      defer { lock.unlock() }
+      guard fraction > value else { return }
+      value = fraction
+      observer(fraction)
+    }
+  }
+
+  /// #2952: the bar's number is the kit's own Foundation `Progress`. WhisperKit keeps one
+  /// per transcription: on the chunked path `totalUnitCount` is the VAD window count and
+  /// every window adds a one-unit child that advances as it decodes and completes when
+  /// it finishes (`WhisperKit.swift:1035`, `:1141-1143`, `TranscribeTask.swift:277,282` at
+  /// the pin); on the single-window path the one child rides the window. So
+  /// `fractionCompleted` is decode work done over decode work total, whether or not a
+  /// window held speech, which is what "the engine's own progress" (#2918) means. The
+  /// former speech-segment source (max segment end over length, #2918) was retired here:
+  /// with up to 16 windows decoding in parallel, a late window finishing first put the bar
+  /// near the end of the file while most of the work remained, then stalled it there;
+  /// a silent window could not move it at all. Foundation delivers `fractionCompleted`
+  /// KVO on the thread that mutates the observed progress, so the handler touches only
+  /// the locked high-water box and the `@Sendable` observer. Internal so a test can drive
+  /// it with a plain `Progress`.
+  static func observeEngineProgress(
+    _ progress: Progress, highWater: ProgressHighWater,
+    observer: @escaping @Sendable (Double) -> Void
+  ) -> NSKeyValueObservation {
+    progress.observe(\.fractionCompleted, options: [.new]) { progress, _ in
+      highWater.raiseAndReport(to: min(1, max(0, progress.fractionCompleted)), observer: observer)
+    }
+  }
+
+  /// A `Progress` the kit has already used is not a clean instrument: WhisperKit swaps in
+  /// a fresh object when a call finishes or is cancelled, but a call that threw for any
+  /// other reason leaves the old one in place (`WhisperKit.swift:1167-1178` at the pin),
+  /// with completed units from that call and a total that the next call can only raise.
+  /// Observing it would start the bar part-way along and then freeze it below the truth.
+  /// Fresh means untouched; a used object is left alone and the bar sweeps for that call.
+  static func isFreshProgress(_ progress: Progress) -> Bool {
+    progress.totalUnitCount == 0 && progress.completedUnitCount == 0
   }
 
   private var transcriptionProgressObserver: (@Sendable (Double) -> Void)?
@@ -527,48 +572,27 @@ public actor WhisperKitBackend: ASRBackend {
     transcriptionProgressObserver = observer
   }
 
-  /// The running max a `@Sendable` segment callback can keep across windows that finish out
-  /// of order: the value it reports never decreases.
-  private final class ProgressHighWater: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value: Double = 0
-    /// Returns the new high-water mark when `fraction` raised it, else nil.
-    func raise(to fraction: Double) -> Double? {
-      lock.lock()
-      defer { lock.unlock() }
-      guard fraction > value else { return nil }
-      value = fraction
-      return fraction
-    }
-  }
-
   public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
     -> ASRResult
   {
     // #2918: captured and cleared BEFORE the readiness guard suspends, so a refused call
     // leaves nothing installed for a later caller's decode and a replacement during the
-    // suspension cannot be picked up (grounded round 2). The denominator is the UNPADDED
-    // input (the padding below adds 500 ms a segment can report an end inside).
+    // suspension cannot be picked up (grounded round 2).
     let progressObserver = transcriptionProgressObserver
     transcriptionProgressObserver = nil
     guard let kit = await readyKitAfterWarmupDrain() else { throw ASRError.notReady }
-    let totalSeconds = Double(audioSamples.count) / Double(WhisperKit.sampleRate)
-    let highWater = ProgressHighWater()
-    // The kit's INSTANCE property, not the per-call `segmentCallback:` parameter: on the
-    // chunked `.vad` path (every file over one window) `transcribeWithOptions` builds its
-    // per-chunk callback from `self.segmentDiscoveryCallback` and never reads the parameter
-    // (WhisperKit.swift:755-767, :896-903 at the pin); the parameter reaches only the
-    // single-window path. Measured 2026-09-14 on the 100-minute file: the parameter alone
-    // produced zero ticks. Set for this call, cleared on every exit; the import holds the
-    // engine claim, so no other decode shares the kit meanwhile.
-    if let observer = progressObserver {
-      kit.segmentDiscoveryCallback = { (segments: [TranscriptionSegment]) -> Void in
-        let ends: [Float] = segments.map { $0.end }
-        let fraction = WhisperKitBackend.fractionReached(segmentEnds: ends, totalSeconds: totalSeconds)
-        if let raised = highWater.raise(to: fraction) { observer(raised) }
-      }
+    // #2952: the bar's one source is the kit's own `Progress`. Observe the object the kit
+    // holds NOW, only if it is fresh (see `isFreshProgress`). The token stays attached to
+    // it even if WhisperKit swaps in a new object before returning (it does so on finish
+    // and on cancel); invalidating in `defer` guarantees no callback after this method
+    // exits. The import holds the engine claim, so no other decode shares the kit
+    // meanwhile.
+    let engineProgress: NSKeyValueObservation? = progressObserver.flatMap { observer in
+      let progress = kit.progress
+      guard Self.isFreshProgress(progress) else { return nil }
+      return Self.observeEngineProgress(progress, highWater: ProgressHighWater(), observer: observer)
     }
-    defer { if progressObserver != nil { kit.segmentDiscoveryCallback = nil } }
+    defer { engineProgress?.invalidate() }
 
     let paddedSamples = Self.padAudioWithSilence(audioSamples)
     let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
