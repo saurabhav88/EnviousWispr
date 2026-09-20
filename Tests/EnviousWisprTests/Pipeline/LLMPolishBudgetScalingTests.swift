@@ -125,16 +125,19 @@ struct LLMPolishBudgetScalingTests {
     #expect(budget(ollama, chars: 66896) == .seconds(15))
   }
 
-  /// The five non-LLM steps inherit the protocol default, which returns their
-  /// fixed `maxDuration` — they must not have been disturbed by adding the
-  /// context-aware form.
+  /// The non-LLM steps whose cost does not track length inherit the protocol
+  /// default, which returns their fixed `maxDuration` — they must not have been
+  /// disturbed by adding the context-aware form. Inverse text normalization left
+  /// this set in #2770 (its budget scales with characters; own suite
+  /// `InverseTextNormalizationBudgetTests`), so it is asserted here only as
+  /// NOT fixed, to keep this list honest.
   @Test("fixed-duration steps are unaffected by the context-aware form")
   func fixedDurationStepsUnchanged() {
     let context = TextProcessingContext(text: String(repeating: "a", count: 66896), language: "en")
     let filler = FillerRemovalStep()
     #expect(filler.maxDuration(for: context) == filler.maxDuration)
     let itn = InverseTextNormalizationStep()
-    #expect(itn.maxDuration(for: context) == itn.maxDuration)
+    #expect(itn.maxDuration(for: context) > itn.maxDuration)
     let wordCorrection = WordCorrectionStep()
     #expect(wordCorrection.maxDuration(for: context) == .seconds(3))
     let emojiFormatter = EmojiFormatterStep()
