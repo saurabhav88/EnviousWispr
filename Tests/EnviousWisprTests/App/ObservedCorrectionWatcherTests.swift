@@ -623,5 +623,16 @@ struct ObservedCorrectionWatcherTests {
     #expect(excerpt.utf16.count == 600 && excerpt.count == 150)
     let odd = String(repeating: "x", count: 599) + "🇩🇪"
     #expect(ObservedCorrectionWatcher.contextExcerpt(odd).utf16.count == 599)
+    // A long region is centred on the candidate, backed up to a word boundary,
+    // so a fix at the END of a paragraph reaches the judge with its sentence.
+    let filler = String(repeating: "word ", count: 300)  // 1,500 units
+    let long = filler + "please ask Saira about the invoices today"
+    let centred = ObservedCorrectionWatcher.contextExcerpt(long, around: "Saira")
+    #expect(centred.utf16.count <= 600 && centred.contains("ask Saira about the invoices today"))
+    #expect(centred.hasPrefix("word "), "starts on a word boundary")
+    #expect(centred.hasSuffix("today"), "the end of the text is kept when the window is clamped there")
+    #expect(ObservedCorrectionWatcher.contextExcerpt(long, around: "absent").hasPrefix("word word"), "no hit: the prefix")
+    let early = "ask Saira today " + filler
+    #expect(ObservedCorrectionWatcher.contextExcerpt(early, around: "Saira").hasPrefix("ask Saira today"))
   }
 }

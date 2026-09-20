@@ -416,11 +416,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
   private let ax: any PastedRegionAXOperations
   private let scheduler: any PastedRegionScheduling
 
-  /// Processes whose `AXManualAccessibility` has been switched on by this
-  /// observer. Once per observed process lifetime: a pid is dropped when a
-  /// watch on it ends with `appTerminated`.
-  private var manualAccessibilityEnabled: Set<pid_t> = []
-
   private struct Watch {
     let target: PastedRegionTarget
     let generation: UInt64
@@ -448,12 +443,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   package var isObserving: Bool { watch != nil }
 
-  /// Whether `pid` has had `AXManualAccessibility` enabled by this observer.
-  /// Test seam for the once-per-process rule.
-  package func hasEnabledManualAccessibility(for pid: pid_t) -> Bool {
-    manualAccessibilityEnabled.contains(pid)
-  }
-
   // MARK: Capture (§3.1 step 2)
 
   package func capture(pid: pid_t, pastedText: String, pastedAtMs: Int)
@@ -471,12 +460,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
     // Electron/Chromium hosts expose nothing until asked, INCLUDING the focused
     // element: asked after the focus query, the opt-in would never run for a
-    // host that answers `.noFocus` until it is on (cloud review of PR #3054).
-    // Once per process.
+    // host that answers `.noFocus` until it is on. Asked on EVERY capture, not
+    // once per pid: a pid cache outlives the process it names and macOS reuses
+    // pids, so a later Electron process under a remembered number would never
+    // be asked; one attribute write per paste is nothing (cloud review of
+    // PR #3054, both rounds).
     let isManualHost = ax.supportsManualAccessibility(application)
-    if isManualHost, !manualAccessibilityEnabled.contains(pid) {
-      if ax.enableManualAccessibility(application) { manualAccessibilityEnabled.insert(pid) }
-    }
+    if isManualHost { _ = ax.enableManualAccessibility(application) }
 
     let element: AXUIElement
     switch ax.focusedElement(pid: pid) {
@@ -656,7 +646,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
       return .ended
     }
     guard ax.isProcessRunning(target.pid) else {
-      manualAccessibilityEnabled.remove(target.pid)
       end(.appTerminated)
       return .ended
     }

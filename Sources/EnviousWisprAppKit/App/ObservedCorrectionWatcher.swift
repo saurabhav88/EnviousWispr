@@ -326,8 +326,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       rejectedPairKeys: deps.coordinator.rejectedPairKeys,
       dictationLanguage: language,
       supportedLanguages: w.supportedLanguages)
-    let context = Self.contextExcerpt(region)
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
+    let context = Self.contextExcerpt(region, around: filtered.first?.run.replacement)
     for f in filtered {
       if case .refreshOpen(let id) = f.disposition {
         deps.coordinator.refresh(
@@ -415,13 +415,49 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   /// At most `CorrectionJudgeRequest.maxContextUTF16` units of the settled
   /// text, cut on a Character boundary so no grapheme is split.
-  static func contextExcerpt(_ text: String) -> String {
+  /// The judge's `Sentence:` context, at most `maxContextUTF16` units of the
+  /// settled region. A region longer than that is CENTRED on `focus` (the
+  /// first candidate's replacement as it appears in the region), then backed
+  /// up to a word boundary, so a fix late in a long dictation is judged with
+  /// its own sentence and not with the paragraph's opening (cloud review of
+  /// PR #3054). With no focus, or a focus the region does not contain, the
+  /// prefix is kept, as before.
+  static func contextExcerpt(_ text: String, around focus: String? = nil) -> String {
     let limit = CorrectionJudgeRequest.maxContextUTF16
-    guard text.utf16.count > limit else { return text }
+    let total = text.utf16.count
+    guard total > limit else { return text }
+    var start = text.startIndex
+    if let focus, !focus.isEmpty,
+      let hit = text.range(of: focus) ?? focus.split(separator: " ").first.flatMap({ text.range(of: String($0)) })
+    {
+      let hitStart = text.utf16.distance(from: text.startIndex, to: hit.lowerBound)
+      let hitLength = text.utf16.distance(from: hit.lowerBound, to: hit.upperBound)
+      // Leave the hit in the middle of the window, and never start past the
+      // point where a full window would run off the end.
+      var want = max(0, hitStart - (limit - min(hitLength, limit)) / 2)
+      want = min(want, max(0, total - limit))
+      var walked = 0
+      var index = text.startIndex
+      while index < text.endIndex, walked < want {
+        walked += String(text[index]).utf16.count
+        index = text.index(after: index)
+      }
+      start = index
+      // Forward to the next word start, never back: backing up would push the
+      // window's END before the text's end when the start was clamped there.
+      while start < text.endIndex, start > text.startIndex,
+        !text[text.index(before: start)].isWhitespace
+      {
+        start = text.index(after: start)
+      }
+    }
     var out = ""
-    for character in text {
-      if out.utf16.count + String(character).utf16.count > limit { break }
-      out.append(character)
+    var index = start
+    while index < text.endIndex {
+      let unit = String(text[index]).utf16.count
+      if out.utf16.count + unit > limit { break }
+      out.append(text[index])
+      index = text.index(after: index)
     }
     return out
   }

@@ -368,7 +368,7 @@ struct PastedRegionObserverCaptureTests {
     #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
   }
 
-  @Test("an Electron host gets AXManualAccessibility once per process, before the first read")
+  @Test("an Electron host gets AXManualAccessibility on every capture, before the first read; a non-Electron host is never asked")
   func manualAccessibility() {
     ax.manualHosts = [pid]
     let o = observer
@@ -377,14 +377,12 @@ struct PastedRegionObserverCaptureTests {
       return
     }
     #expect(first.isManualAccessibilityHost)
-    #expect(ax.enableCalls == [pid] && o.hasEnabledManualAccessibility(for: pid))
+    #expect(ax.enableCalls == [pid])
     _ = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
-    #expect(ax.enableCalls == [pid], "second capture on the same process does not re-enable")
-    // A failed write is not remembered as done.
-    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
-    ax.enableSucceeds = false
-    _ = o2.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
-    #expect(o2.hasEnabledManualAccessibility(for: pid) == false)
+    #expect(ax.enableCalls == [pid, pid], "asked again: no per-pid memory can go stale across a pid reuse")
+    ax.manualHosts = []
+    _ = o.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0)
+    #expect(ax.enableCalls == [pid, pid], "a host that does not need it is not asked")
   }
 
   @Test("an Electron host whose focused element appears only after the opt-in is still captured: the opt-in runs before the focus query")
@@ -554,12 +552,11 @@ struct PastedRegionObserverWatchTests {
   }
 
   @Test(
-    "lost permission and a terminated app end at once; the Electron opt-in is forgotten with the process"
+    "lost permission and a terminated app end at once"
   )
   func permissionAndProcess() {
     ax.manualHosts = [pid]
     _ = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0)
-    #expect(observer.hasEnabledManualAccessibility(for: pid))
     start()
     ax.reads = [.failed(.apiDisabled)]
     scheduler.advance(ms: 750)
@@ -570,7 +567,6 @@ struct PastedRegionObserverWatchTests {
     ax.runningPIDs = []
     scheduler.advance(ms: 750)
     #expect(e2.list == [.ended(.appTerminated)])
-    #expect(observer.hasEnabledManualAccessibility(for: pid) == false)
 
     let e3 = Events()
     ax.runningPIDs = [pid]
