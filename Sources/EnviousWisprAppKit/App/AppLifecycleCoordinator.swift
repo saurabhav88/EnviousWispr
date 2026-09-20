@@ -88,6 +88,13 @@ final class AppLifecycleCoordinator {
   /// #2455 C3: required and non-defaulted. The one call this type makes moves the
   /// app to accessory at launch, which a unit test must never do to the real app.
   private let application: any ApplicationActivating
+  /// #996: what each real transition into `.recording` tells the learn-from-edits
+  /// watcher (a new dictation cancels a live edit watch, plan §3.1 step 4). One
+  /// closure, stored because the pipeline-state closure is installed in
+  /// `applicationDidFinishLaunching`, after `init` has returned; a deliberate
+  /// allowlist addition (`AppLifecycleCoordinatorCeilingsTests`), one narrow
+  /// callback rather than a second pipeline observer.
+  private let onRecordingStarted: @MainActor () -> Void
 
   init(
     application: any ApplicationActivating,
@@ -114,9 +121,13 @@ final class AppLifecycleCoordinator {
     // this coordinator's stored-property ceiling clean).
     onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
+    batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    // Required and non-defaulted (review r1): a composition that forgets it
+    // must fail to compile, not silently drop the watcher's cancellation.
+    onRecordingStarted: @escaping @MainActor () -> Void
   ) {
     self.application = application
+    self.onRecordingStarted = onRecordingStarted
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
@@ -203,6 +214,8 @@ final class AppLifecycleCoordinator {
       // pending, matching Claude Desktop / Slack / Cursor conventions.
       if state == .recording {
         self.audioEnvironmentSnapshotter?.recordingStarted()
+        // #996: a new dictation cancels a live edit watch (plan §3.1 step 4).
+        self.onRecordingStarted()
       }
       // #1480: any pipeline-state change re-evaluates the Bluetooth card — a
       // record start supersedes + dismisses it (records `record_started`); a

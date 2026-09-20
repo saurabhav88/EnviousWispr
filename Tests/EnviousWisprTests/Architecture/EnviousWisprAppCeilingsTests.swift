@@ -182,6 +182,10 @@ import Testing
   ///   top-level Settings section with its own on-disk store, and the coordinator must outlive
   ///   any one view so the pipeline can be re-seeded on every change. Sibling of
   ///   `customWordsCoordinator`, placed here for the same reason.
+  /// - 44 → 45 in #996 (2026-09-20): App-owned `learnFromEdits` (`LearnFromEditsWiring`),
+  ///   one slot for the whole learn-from-edits runtime. Its two weakly-held
+  ///   collaborators (the overlay presenter, the paste-registry subscriber) need an
+  ///   app-lifetime owner, and the composition root is the only object with one.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
@@ -203,9 +207,15 @@ import Testing
       // lifetime and the two lifecycle hooks that install and remove the observer;
       // a view could not own it (there is no view), and the coordinator must not
       // (it would put notification parsing inside a production type).
-      count <= 44,
+      // #996 chunk 5h: 44 -> 45. `learnFromEdits`, learn-from-edits as ONE slot
+      // (the Quick Add shape): ledger, proposal coordinator, overlay presenter,
+      // paste observer, watcher and arm selection inside `LearnFromEditsWiring`.
+      // Held here because the coordinator and the paste registry hold their
+      // collaborators WEAKLY: without an app-lifetime owner the presenter and
+      // the watcher would be released the moment `init` returned.
+      count <= 45,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 44. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 45. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
