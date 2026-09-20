@@ -258,14 +258,15 @@ final class CorrectionProposalCoordinator {
     enum Phase: Equatable {
       case offered
       case admitted(CorrectionPresentationToken)
-      case ended
     }
     var phase: Phase
     /// A typed result morphed the card; its later expiry is not an unanswered offer.
     var resultShown = false
     /// The proposal as it was offered: what the card on screen shows. Kept here
     /// so a click can still be answered on the card when the ledger has gone
-    /// untrusted meanwhile and `proposal(id:)` reads nothing.
+    /// untrusted meanwhile and `proposal(id:)` reads nothing. A record lives
+    /// only while its card can still be on screen: an ended presentation is
+    /// REMOVED, so user text never accumulates here for the life of the process.
     let offered: CorrectionProposal
   }
   private(set) var presentations: [UUID: Presentation] = [:]
@@ -413,8 +414,14 @@ final class CorrectionProposalCoordinator {
       contextExcerpt: contextExcerpt, sourceBundleID: sourceBundleID, advisorySafeAlias: advisorySafeAlias)
     #if DEBUG
       // Local debug log only (plan §11 UAT tokens): the pair itself, so a Live
-      // UAT can read the verdict from app.log. Release logs no user text.
-      Self.debugLog("proposed original=\"\(original)\" corrected=\"\(corrected)\" state=\(state) outcome=\(outcome)")
+      // UAT can read the verdict from app.log. Release logs no user text. The
+      // state logged is the MINTED one (read from the live list), not the input.
+      let logged: CorrectionProposalTargetState =
+        switch outcome {
+        case .minted(let id), .refreshed(let id): proposal(id: id)?.state ?? state
+        default: state
+        }
+      Self.debugLog("proposed original=\"\(original)\" corrected=\"\(corrected)\" state=\(logged) outcome=\(outcome)")
     #endif
     return outcome
   }
@@ -487,7 +494,7 @@ final class CorrectionProposalCoordinator {
     guard let record = presentations[id], record.phase == .offered else { return }
     // Resolved from Pending before the overlay got to it: the offer is spent.
     guard proposal(id: id)?.status == .pending else {
-      presentations[id]?.phase = .ended
+      presentations.removeValue(forKey: id)
       return
     }
     presentations[id]?.phase = .admitted(token)
@@ -497,7 +504,7 @@ final class CorrectionProposalCoordinator {
   /// A terminal resolution closes an offer that was never admitted, so a
   /// delayed admission callback counts nothing and holds no current token.
   private func closeUnadmittedOffer(id: UUID) {
-    if presentations[id]?.phase == .offered { presentations[id]?.phase = .ended }
+    if presentations[id]?.phase == .offered { presentations.removeValue(forKey: id) }
   }
 
   /// The card left the screen. Expiry counts only for the offer itself: a
@@ -508,7 +515,7 @@ final class CorrectionProposalCoordinator {
     id: UUID, token: CorrectionPresentationToken, reason: CorrectionPresentationEnd
   ) {
     guard let record = presentations[id], record.phase == .admitted(token) else { return }
-    presentations[id]?.phase = .ended
+    presentations.removeValue(forKey: id)
     if reason == .expired, !record.resultShown { telemetry.learnCardExpired() }
   }
 

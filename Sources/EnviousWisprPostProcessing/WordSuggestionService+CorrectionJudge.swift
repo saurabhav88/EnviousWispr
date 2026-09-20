@@ -457,8 +457,20 @@ extension WordSuggestionService: CorrectionJudging {
             safeAlias: try $0.value(Bool.self, forProperty: "safeAlias")
           )
         }
-        return JudgeRun(
-          outcome: Self.correctionJudgeOutcome(raw: raw, for: request), diagnostic: nil)
+        let outcome = Self.correctionJudgeOutcome(raw: raw, for: request)
+        // A well-formed call whose ANSWER is malformed (a class no pair names,
+        // an id set that does not match the request) carries the shape it
+        // answered with, never the text: the eval receipt and the smoke test
+        // read a diagnostic for every `.malformed`, thrown or answered.
+        let diagnostic: String? =
+          if case .bypass(.malformed) = outcome {
+            "answer shape: "
+              + raw.map { "\($0.id):\($0.vocabularyCorrection ? "c" : "n")\($0.safeAlias ? "s" : "u")" }
+              .joined(separator: ",") + " for ids \(request.candidates.map(\.id))"
+          } else {
+            nil
+          }
+        return JudgeRun(outcome: outcome, diagnostic: diagnostic)
       } catch is CancellationError {
         return JudgeRun(outcome: .bypass(.cancelled), diagnostic: nil)
       } catch {

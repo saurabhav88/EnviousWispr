@@ -899,11 +899,13 @@ def main():
             app_stopped = True
         except Aborted as error:
             record("app-stop", "FAIL", str(error))
+        # The launch environment is safe to restore whether or not the app is
+        # down (launchd state, not the app's files); the rest waits for a stop.
+        launchctl_set(snaps["launchctl"])
         if app_stopped:
             file_restore(WORDS, snaps["words"])
             file_restore(LEDGER, snaps["ledger"])
             defaults_restore(snaps["defaults"])
-            launchctl_set(snaps["launchctl"])
             ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
             ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
         else:
@@ -930,7 +932,7 @@ def main():
         # Leave the Mac as found: the launch environment is the RESTORED value
         # (never re-set to --export here), and the app comes back only if it was
         # running when the drill began.
-        if initially_running:
+        if initially_running and app_stopped:
             try:
                 subprocess.run(["open", "-n", APP], check=False)
             except Exception:
