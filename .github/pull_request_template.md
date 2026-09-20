@@ -19,7 +19,7 @@ Recipe:
 
 ### Build Verification
 - [ ] Dev build passes locally (`scripts/build-dev-app.sh`, Xcode/Tuist engine)
-- [ ] Logic tests pass locally (`scripts/xcode-test.sh`; use `--release` to reproduce a Release-config failure locally)
+- [ ] Required local Debug tests pass (`scripts/xcode-test.sh`; batch related suites with repeated `--filter` flags; GitHub owns the full Release PR check)
 - [ ] CI `build-check` status is green
 
 ### Behavioral Testing (Local UAT)
