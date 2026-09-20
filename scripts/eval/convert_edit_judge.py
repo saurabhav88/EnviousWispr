@@ -218,7 +218,10 @@ def main() -> int:
         # can re-hash them without re-implementing Python's float formatting.
         canonical = json.dumps(decision_config, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == bound_identity["config_sha256"]
-        bound = dict(manifest, execution_identity=bound_identity, decision_config=decision_config, decision_config_canonical=canonical, package=str(package), contract=str(run / "tokenizer-contract.json"), provenance=manifest["provenance"] + f"; exported {variant} package {digest[:12]} from manifest {source_manifest_sha256[:12]}")
+        # The exported manifest is what the Swift runner loads on THIS machine: rebind the
+        # tokenizer and checkpoint to the resolved local run paths (a rig-trained run records
+        # the rig's paths, and the runner then digests an empty tree and refuses).
+        bound = dict(manifest, tokenizer=str(tok_dir), checkpoint=str(model_dir), execution_identity=bound_identity, decision_config=decision_config, decision_config_canonical=canonical, package=str(package), contract=str(run / "tokenizer-contract.json"), provenance=manifest["provenance"] + f"; exported {variant} package {digest[:12]} from manifest {source_manifest_sha256[:12]}")
         out_dir = package.parent
         (out_dir / "training-manifest.json").write_text(json.dumps(bound, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         # The planned proposal path (stage-1 shape rule, then this judge) is a
