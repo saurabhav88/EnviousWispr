@@ -887,8 +887,29 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
         print(f"{len(dupes)} section ids appear in more than one pack of {args.pack.name}: "
               f"{dupes[:5]}", file=sys.stderr)
         return 2
+    packs_total = len(packs)
     if args.limit:
-        packs = packs[: args.limit]
+        # `--limit` is a SECTION bound in both modes (#2909). Whole packs only: a pack is
+        # the unit the packing experiment measures, so it is never cut to fit. Refuse when
+        # the leading pack does not fit rather than skip it: this flag caps cloud spend
+        # without changing packer order.
+        kept, total = [], 0
+        for p in packs:
+            if total + len(p["section_ids"]) > args.limit:
+                break
+            kept.append(p)
+            total += len(p["section_ids"])
+        if not kept:
+            first = packs[0]
+            first_size = len(first["section_ids"])
+            print(
+                f"--limit {args.limit} admits no leading whole pack of {args.pack.name}; "
+                f"the first pack {first.get('file')}:{first.get('pack_index')} has "
+                f"{first_size} sections, so pass --limit {first_size} or more",
+                file=sys.stderr,
+            )
+            return 2
+        packs = kept
     print(f"packs    : {args.pack.name} ({len(packs)} packs, "
           f"{sum(len(p['section_ids']) for p in packs)} sections)", file=sys.stderr)
     print("validate : every section carries production's fallback on a rejection; run the "
@@ -918,6 +939,10 @@ def run_pack_mode(args, api_key: str, azure_endpoint: str, prompt_body: str | No
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     receipt = run_receipt(args, thinking, prompt_body)
+    # Packs available before `--limit`; the `.packs.jsonl` row count says how many ran.
+    # Truncation, not the typed flag, is the fact worth persisting (same stance as the
+    # isolated path's probe reasoning in main()).
+    receipt["packs_total"] = packs_total
     summaries: list[dict] = []
     rows_by_id: dict[str, dict] = {}
     t0 = time.monotonic()
@@ -980,6 +1005,15 @@ def load_corpus(path: Path) -> list[dict]:
     return cases
 
 
+def nonnegative_int(text: str) -> int:
+    """`--limit` is a bound; a negative one would silently drop the LAST case in isolated
+    mode (`cases[:-1]`) and refuse every pack in pack mode with a misleading message."""
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"--limit must be 0 or more, got {value}")
+    return value
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", required=True,
@@ -988,7 +1022,9 @@ def main() -> int:
     ap.add_argument("--corpus", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--limit", type=int, default=0, help="first N cases only (smoke)")
+    ap.add_argument("--limit", type=nonnegative_int, default=0,
+                    help="first N cases only (smoke); in --pack mode, the leading whole packs "
+                         "while their sections total at most N; 0 (the default) means no limit")
     ap.add_argument(
         "--pack", type=Path, default=None,
         help="#2851 phase 2: a packs-*.jsonl beside --corpus (sections.jsonl); several "

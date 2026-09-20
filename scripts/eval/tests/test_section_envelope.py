@@ -22,7 +22,7 @@ from section_envelope import (  # noqa: E402
 )
 import run_cloud_type_b as runner  # noqa: E402
 
-EXPECTED_TESTS = 14
+EXPECTED_TESTS = 16
 _failures = 0
 
 
@@ -369,6 +369,118 @@ def test_dry_run_writes_bodies_and_calls_nobody() -> None:
             check("no output directory created on a dry run", not (d / "nested").exists())
         finally:
             runner.call_once = original
+
+
+def test_pack_limit_bounds_sections_not_packs() -> None:
+    """`--limit N` is a SECTION bound in pack mode too (#2909): the leading whole packs while
+    their sections total at most N, never a cut pack, and a refusal (not a skip to a later,
+    smaller pack) when the first pack alone exceeds N. The receipt records `packs_total`."""
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        ids = [f"f:{i}" for i in range(1, 8)]
+        (d / "sections.jsonl").write_text(
+            "".join(json.dumps({"id": i, "asr_input": f"words for {i}"}) + "\n" for i in ids))
+
+        def packs_file(name: str, sizes: list[int]) -> Path:
+            rows, cursor = [], 0
+            for n, size in enumerate(sizes):
+                rows.append({"file": "f", "pack_index": n, "section_ids": ids[cursor:cursor + size],
+                             "words": size * 3})
+                cursor += size
+            (d / name).write_text("".join(json.dumps(r) + "\n" for r in rows))
+            return d / name
+
+        original = runner.call_once
+
+        def boom(*a, **k):
+            raise AssertionError("dry-run must not call a provider")
+        runner.call_once = boom
+        try:
+            class Args:
+                provider, model = "openai", "m"
+                corpus, pack, out = d / "sections.jsonl", packs_file("p232.jsonl", [2, 3, 2]), d / "out.jsonl"
+                dry_run, limit, workers = d / "dry5.jsonl", 5, 1
+                system_prompt = "production"
+            rc = runner.run_pack_mode(Args, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            kept = [json.loads(l)["section_ids"] for l in (d / "dry5.jsonl").read_text().splitlines()]
+            check("limit 5 over packs [2, 3, 2] keeps the leading two whole packs (5 sections), exit 0",
+                  rc == 0 and kept == [ids[0:2], ids[2:5]], f"rc={rc} kept={kept}")
+
+            class Limit4(Args):
+                limit, dry_run = 4, d / "dry4.jsonl"
+            rc = runner.run_pack_mode(Limit4, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            kept = [json.loads(l)["section_ids"] for l in (d / "dry4.jsonl").read_text().splitlines()]
+            check("limit 4 stops at the first pack that does not fit; the second pack is never cut",
+                  rc == 0 and kept == [ids[0:2]], f"rc={rc} kept={kept}")
+
+            class NoLimit(Args):
+                limit, dry_run = 0, d / "dry0.jsonl"
+            rc = runner.run_pack_mode(NoLimit, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            check("limit 0 (the default, no limit) keeps every pack",
+                  rc == 0 and len((d / "dry0.jsonl").read_text().splitlines()) == 3)
+
+            class Exact(Args):
+                limit, dry_run = 2, d / "dry2.jsonl"
+            rc = runner.run_pack_mode(Exact, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            kept = [json.loads(l)["section_ids"] for l in (d / "dry2.jsonl").read_text().splitlines()]
+            check("a limit equal to the first pack's size admits exactly that pack",
+                  rc == 0 and kept == [ids[0:2]], f"rc={rc} kept={kept}")
+            try:
+                runner.nonnegative_int("-1")
+                check("a negative --limit is rejected at parse time", False)
+            except Exception as e:  # argparse.ArgumentTypeError
+                check("a negative --limit is rejected at parse time", "0 or more" in str(e), str(e))
+            check("--limit 0 parses as the no-limit default", runner.nonnegative_int("0") == 0)
+
+            import io
+            from contextlib import redirect_stderr
+
+            class Refused(Args):
+                pack, limit, dry_run = packs_file("p52.jsonl", [5, 2]), 2, d / "dry-refused.jsonl"
+            err = io.StringIO()
+            with redirect_stderr(err):
+                rc = runner.run_pack_mode(Refused, api_key="", azure_endpoint="", prompt_body=None, thinking=None)
+            check("limit 2 over packs [5, 2] refuses rather than skipping to the smaller second pack",
+                  rc == 2 and not (d / "dry-refused.jsonl").exists() and not (d / "out.jsonl").exists(),
+                  f"rc={rc}")
+            check("the refusal names the FIRST pack and recommends its size",
+                  "f:0 has 5 sections" in err.getvalue() and "--limit 5 or more" in err.getvalue(),
+                  err.getvalue()[-300:])
+        finally:
+            runner.call_once = original
+
+        # Live path with a fake provider: the receipt on every written row carries packs_total,
+        # the count BEFORE the limit, so a limited run is distinguishable from a full one.
+        runner.call_once = lambda *a, **k: ("<s1>x</s1>\n<s2>y</s2>", {"outTok": 2})
+        try:
+            class Live(Args):
+                limit, dry_run, out = 2, None, d / "live" / "out.jsonl"
+            rc = runner.run_pack_mode(Live, api_key="k", azure_endpoint="", prompt_body=None, thinking=None)
+            rows = [json.loads(l) for l in (d / "live" / "out.jsonl").read_text().splitlines()]
+            check("live limited run wrote the first pack's two rows only",
+                  rc == 0 and [r["id"] for r in rows] == ids[0:2], f"rc={rc} ids={[r.get('id') for r in rows]}")
+            check("every row's receipt records packs_total = 3 (packs available before --limit)",
+                  all(r["run"].get("packs_total") == 3 for r in rows), str(rows[:1])[:300])
+        finally:
+            runner.call_once = original
+
+
+def test_json_out_creates_parent() -> None:
+    """`compare_arms_paired.py --json-out` into a directory that does not exist yet writes the
+    report instead of raising after the comparison already ran (#2911)."""
+    import subprocess
+    report = Path(__file__).resolve().parents[1] / "compare_arms_paired.py"
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        graded = json.dumps({"id": "x", "verdict": "pass", "candidate_output": "t"}) + "\n"
+        (d / "a.jsonl").write_text(graded)
+        (d / "b.jsonl").write_text(graded)
+        target = d / "new" / "dir" / "report.json"
+        r = subprocess.run([sys.executable, str(report), "--a", str(d / "a.jsonl"), "--b", str(d / "b.jsonl"),
+                            "--json-out", str(target)], capture_output=True, text=True)
+        check("comparison exits 0 with --json-out in a new directory", r.returncode == 0, (r.stdout + r.stderr)[-300:])
+        check("the report exists and parses, with the shared count",
+              target.exists() and json.loads(target.read_text()).get("n_shared") == 1)
 
 
 def main() -> int:

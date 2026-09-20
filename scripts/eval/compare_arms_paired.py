@@ -225,6 +225,9 @@ def main() -> int:
                   f"/{A[i].get('severity','')}  {str(A[i].get('reason',''))[:90]}")
 
     if args.json_out:
+        # Same as the runner's own --out: a report path in a new directory is written,
+        # not lost after the comparison already ran (#2911).
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps({
             "n_shared": n, "a_name": args.a_name, "b_name": args.b_name,
             "a_rate": a_rate, "b_rate": b_rate, "delta_pp": b_rate - a_rate,
