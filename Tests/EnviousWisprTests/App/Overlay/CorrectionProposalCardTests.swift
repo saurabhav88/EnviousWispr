@@ -194,7 +194,7 @@ struct CorrectionProposalCardReducerTests {
     #expect(expired.effects == [.correctionProposalEnded(id: model.id, presentation: id, reason: .expired)])
   }
 
-  @Test("Accept and Reject are delivered only for the shown proposal in the offer phase; Escape ends the card as dismissed, never as a decision")
+  @Test("Accept and Reject are delivered only for the shown proposal in the offer phase; a result has no buttons")
   func actions() {
     let id = PresentationID()
     var r = OverlayReducer(makeID: { id })
@@ -210,18 +210,8 @@ struct CorrectionProposalCardReducerTests {
 
     _ = r.reduce(.correctionProposalResolved(id: model.id, presentation: id, outcome: .saved))
     #expect(r.reduce(.action(id, .acceptCorrectionProposal(id: model.id))) == .noChange, "no buttons on a result")
-
-    let escape = r.reduce(.action(id, .dismissCorrectionProposal(id: model.id)))
-    #expect(escape.presentation == nil && escape.didChange && escape.expiryCommand == .cancel)
-    #expect(escape.deliverAction == nil, "Escape is not a decision")
-    #expect(escape.effects == [.correctionProposalEnded(id: model.id, presentation: id, reason: .dismissed)])
-    #expect(r.state.current == nil && r.state.pipelineIntent == .hidden)
-
-    var fresh = OverlayReducer(makeID: { id })
-    _ = fresh.reduce(.correctionProposed(model))
-    #expect(fresh.reduce(.action(id, .dismissCorrectionProposal(id: UUID()))) == .noChange, "Escape names the shown proposal")
-    let escapeOffer = fresh.reduce(.action(id, .dismissCorrectionProposal(id: model.id)))
-    #expect(escapeOffer.effects == [.correctionProposalEnded(id: model.id, presentation: id, reason: .dismissed)])
+    #expect(r.reduce(.action(id, .rejectCorrectionProposal(id: model.id))) == .noChange, "no buttons on a result")
+    #expect(r.state.current?.id == id, "a result stays until its own dwell fires; nothing dismisses it")
   }
 
   @Test("hover pauses the offer's dwell and leaving re-arms it from full; expiry ends the card as expired and frees the slot")
@@ -358,21 +348,21 @@ struct CorrectionProposalCardDirectorTests {
     #expect(log.ended.first?.0 == CorrectionPresentationToken(id: receipt.presentationID.rawValue))
   }
 
-  @Test("Escape ends the card as dismissed; a pipeline pill ends it as preempted; each exactly once")
+  @Test("expiry ends the card as expired; a pipeline pill ends it as preempted; each exactly once")
   func endsAreReportedOnce() throws {
     let armed = Armed()
     let log = Log()
     let (d, host) = director(armed, log)
     let model = CorrectionCardFixture.model()
     let first = try #require(d.present(request(model, log)))
-    try host.sendUserActionThroughRoot(.dismissCorrectionProposal(id: model.id), for: first)
+    try #require(armed.work).fire()
     #expect(d.renderModel.state.presentation == nil)
-    #expect(log.ended.map(\.1) == [.dismissed])
-    #expect(log.rejected.isEmpty, "Escape is not Reject")
+    #expect(log.ended.map(\.1) == [.expired])
+    #expect(log.rejected.isEmpty, "expiry is not Reject")
 
     let second = try #require(d.present(request(model, log)))
     d.present(.warning(reason: .polishFailed))
-    #expect(log.ended.map(\.1) == [.dismissed, .preempted])
+    #expect(log.ended.map(\.1) == [.expired, .preempted])
     #expect(log.ended.last?.0 == CorrectionPresentationToken(id: second.presentationID.rawValue))
     #expect(d.isCurrent(second) == false)
     d.dismissCurrent(.silent)
@@ -670,8 +660,8 @@ struct CorrectionProposalOverlayPresenterTests {
     let secondPresentation = try #require(host.admitAs)
     let secondToken = CorrectionPresentationToken(id: secondPresentation.rawValue)
     let secondEnded = try #require(host.endeds.last)
-    secondEnded(secondToken, .dismissed)
-    #expect(telemetry.events.filter { $0 == .cardExpired }.count == 1, "Escape is not expiry")
+    secondEnded(secondToken, .preempted)
+    #expect(telemetry.events.filter { $0 == .cardExpired }.count == 1, "preemption is not expiry")
     #expect(coordinator.proposal(id: second)?.status == .pending)
   }
 

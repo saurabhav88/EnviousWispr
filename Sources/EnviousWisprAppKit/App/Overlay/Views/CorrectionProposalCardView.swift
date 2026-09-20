@@ -94,13 +94,16 @@ private enum CorrectionCardPalette {
 /// Accept over a thin dwell bar; the result draws one sentence behind a mark.
 /// It owns no clock, no hover policy and no lifecycle reason: the director arms
 /// the dwell, `OverlayRootView` forwards hover so the reducer can cancel and
-/// re-arm, and the reducer decides what Escape, expiry and displacement mean.
+/// re-arm, and the reducer decides what expiry and displacement mean.
 /// This view renders, draws the director's dwell, and reports presses.
 ///
-/// Never takes focus to appear. After the user deliberately focuses it, Tab
-/// moves between the two buttons, Return activates the focused one and Escape
-/// dismisses (the proposal stays in Pending; Escape is not Reject). There is
-/// no keyboard shortcut that fires while another app owns the keyboard.
+/// Never takes keyboard focus: the overlay panel is non-activating, so the
+/// card is answered with the mouse (Accept, Reject) or not at all, and an
+/// unanswered card slides into Pending on its dwell. No key reaches it while
+/// the user's app owns the keyboard, and none is meant to: Live UAT
+/// 2026-09-20 proved a click inside the card leaves the document frontmost,
+/// so an Escape path here was dead code. Wispr Flow's learned-word toast has
+/// the same hands-off shape (a clickable Undo, no keyboard dismiss).
 struct CorrectionProposalCardView: View {
   let model: CorrectionProposalCardModel
   /// The director's dwell, matched to this presentation (`PillRenderState.dwell`).
@@ -109,7 +112,6 @@ struct CorrectionProposalCardView: View {
   let dwell: OverlayDwellWindow?
   let onAccept: () -> Void
   let onReject: () -> Void
-  let onDismiss: () -> Void
 
   /// How far the dwell bar has travelled, 0 to 1. A picture of the director's
   /// clock, never a clock of its own.
@@ -124,10 +126,6 @@ struct CorrectionProposalCardView: View {
     }
     .frame(width: 440, alignment: .leading)
     .background(CorrectionCardBackground())
-    // Escape on the focused card. `onExitCommand` fires only while this view's
-    // window is key and the card holds focus, so nothing here acts on a
-    // keystroke meant for the app the user is typing in.
-    .onExitCommand(perform: onDismiss)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(CorrectionProposalCardCopy.announcement(for: model))
   }

@@ -69,12 +69,9 @@ enum PillAction: Equatable, Sendable {
   /// #996: the correction card's Accept. Carries the proposal UUID so a press
   /// for a proposal the card no longer shows resolves nothing.
   case acceptCorrectionProposal(id: UUID)
-  /// #996: the correction card's Reject.
+  /// #996: the correction card's Reject. There is no dismiss action: the card
+  /// never takes keyboard focus, so an unanswered card leaves on its dwell.
   case rejectCorrectionProposal(id: UUID)
-  /// #996: Escape on the correction card. Ends the presentation and leaves the
-  /// proposal pending; it is NOT a Reject, and the reducer ends the card itself
-  /// rather than delivering this to a binding.
-  case dismissCorrectionProposal(id: UUID)
 }
 
 // MARK: - What the director must tell a feature owner
@@ -99,8 +96,8 @@ enum PillEffect: Equatable, Sendable {
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)
   /// #996: an admitted correction card left the screen without a decision, and
-  /// the REDUCER says why: its dwell fired (`expired`), Escape (`dismissed`),
-  /// or something else took the slot (`preempted`). The director routes it to
+  /// the REDUCER says why: its dwell fired (`expired`) or something else took
+  /// the slot (`preempted`). The director routes it to
   /// the card's own binding, which tells the proposal coordinator. Emitted at
   /// most once per presentation identity.
   case correctionProposalEnded(id: UUID, presentation: PresentationID, reason: CorrectionPresentationEnd)

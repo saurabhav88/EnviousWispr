@@ -122,11 +122,12 @@ protocol CorrectionProposalPresenting: AnyObject {
   func showResult(_ model: CorrectionProposalCardModel, presentation: CorrectionPresentationToken)
 }
 
-/// How a presentation left the screen without a decision.
+/// How a presentation left the screen without a decision: its dwell fired, or
+/// the pipeline took the slot. The card has no keyboard dismiss (it never takes
+/// focus), so there is no third reason.
 enum CorrectionPresentationEnd: String, Sendable, Equatable {
   case expired
   case preempted
-  case dismissed
 }
 
 enum CorrectionProposalDecision: Sendable, Equatable {
@@ -395,6 +396,21 @@ final class CorrectionProposalCoordinator {
     original: String, corrected: String, state: CorrectionProposalTargetState, language: String?,
     contextExcerpt: String?, sourceBundleID: String?, advisorySafeAlias: Bool?
   ) -> ProposeOutcome {
+    let outcome = proposeRecording(
+      original: original, corrected: corrected, state: state, language: language,
+      contextExcerpt: contextExcerpt, sourceBundleID: sourceBundleID, advisorySafeAlias: advisorySafeAlias)
+    #if DEBUG
+      // Local debug log only (plan §11 UAT tokens): the pair itself, so a Live
+      // UAT can read the verdict from app.log. Release logs no user text.
+      Self.debugLog("proposed original=\"\(original)\" corrected=\"\(corrected)\" state=\(state) outcome=\(outcome)")
+    #endif
+    return outcome
+  }
+
+  private func proposeRecording(
+    original: String, corrected: String, state: CorrectionProposalTargetState, language: String?,
+    contextExcerpt: String?, sourceBundleID: String?, advisorySafeAlias: Bool?
+  ) -> ProposeOutcome {
     guard ledgerState == .ready else { return .ledgerUnavailable }
     let pairKey = CorrectionPairKey.make(original: original, corrected: corrected)
     if rejectedPairKeys.contains(pairKey) { return .refusedRejectedPair }
@@ -501,6 +517,24 @@ final class CorrectionProposalCoordinator {
   /// current.
   @discardableResult
   func resolve(id: UUID, _ decision: CorrectionProposalDecision, surface: Surface) -> ResolveOutcome
+  {
+    let outcome = resolveRecording(id: id, decision, surface: surface)
+    #if DEBUG
+      let pair = proposal(id: id).map { "\"\($0.original)\" -> \"\($0.corrected)\"" } ?? id.uuidString
+      Self.debugLog("resolved \(pair) decision=\(decision) surface=\(surface) outcome=\(outcome)")
+    #endif
+    return outcome
+  }
+
+  #if DEBUG
+    /// One `[LearnFromEdits]` line in app.log, Debug builds only.
+    static func debugLog(_ line: String) {
+      Task { await AppLogger.shared.log(line, category: "LearnFromEdits") }
+    }
+  #endif
+
+  private func resolveRecording(id: UUID, _ decision: CorrectionProposalDecision, surface: Surface)
+    -> ResolveOutcome
   {
     // A click inside a presenter callback of a commit in flight coalesces; the
     // executing attempt is the one that answers.

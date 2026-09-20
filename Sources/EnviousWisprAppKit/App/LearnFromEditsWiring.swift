@@ -28,6 +28,64 @@ import Foundation
 /// coordinator and watcher talk to the protocol so a spy can stand in.
 extension TelemetryService: LearnFromEditsTelemetrySink {}
 
+#if DEBUG
+  /// Debug builds mirror every learn event into app.log as one
+  /// `[LearnFromEdits]` line (shape only, the same fields the wire row
+  /// carries), so a Live UAT reads its verdict from the log the way every
+  /// other drill does (`code-tooling.md` RULE: uat-verdicts-from-app-log).
+  /// Forwards everything to the real sink; Release has no such type.
+  @MainActor
+  final class LearnFromEditsLoggingSink: LearnFromEditsTelemetrySink {
+    private let inner: any LearnFromEditsTelemetrySink
+    init(_ inner: any LearnFromEditsTelemetrySink) { self.inner = inner }
+
+    private func log(_ line: String) {
+      Task { await AppLogger.shared.log(line, category: "LearnFromEdits") }
+    }
+
+    func learnSkipped(reason: T.SkipReason) {
+      log("learn_skipped reason=\(reason.rawValue)")
+      inner.learnSkipped(reason: reason)
+    }
+    func learnObservationEnded(
+      reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int
+    ) {
+      log("learn_observation_ended reason=\(reason.rawValue) settled_bursts=\(settledBursts) app_class=\(appClass.rawValue) duration_ms=\(durationMs)")
+      inner.learnObservationEnded(reason: reason, settledBursts: settledBursts, appClass: appClass, durationMs: durationMs)
+    }
+    func learnJudged(
+      arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?
+    ) {
+      log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs)")
+      inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs)
+    }
+    func learnProposed(state: T.TargetState) {
+      log("learn_proposed state=\(state.rawValue)")
+      inner.learnProposed(state: state)
+    }
+    func learnCardShown() {
+      log("learn_card_shown")
+      inner.learnCardShown()
+    }
+    func learnCardExpired() {
+      log("learn_card_expired")
+      inner.learnCardExpired()
+    }
+    func learnResolved(decision: T.Decision, surface: T.Surface, state: T.TargetState, outcome: T.ResolutionOutcome) {
+      log("learn_resolved decision=\(decision.rawValue) surface=\(surface.rawValue) state=\(state.rawValue) outcome=\(outcome.rawValue)")
+      inner.learnResolved(decision: decision, surface: surface, state: state, outcome: outcome)
+    }
+    func learnSaveFailed(reason: T.SaveFailure) {
+      log("learn_save_failed reason=\(reason.rawValue)")
+      inner.learnSaveFailed(reason: reason)
+    }
+    func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition) {
+      log("learn_ledger_untrusted kind=\(kind.rawValue) disposition=\(disposition.rawValue)")
+      inner.learnLedgerUntrusted(kind: kind, disposition: disposition)
+    }
+  }
+#endif
+
 @MainActor
 final class LearnFromEditsWiring {
   let store: CorrectionProposalStore

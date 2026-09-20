@@ -158,8 +158,7 @@ struct OverlayRootView: View {
         // The same director dwell the Escape pill draws; see `PillRenderState.dwell`.
         dwell: frame.dwell,
         onAccept: { press(.acceptCorrectionProposal(id: model.id), on: presentation) },
-        onReject: { press(.rejectCorrectionProposal(id: model.id), on: presentation) },
-        onDismiss: { press(.dismissCorrectionProposal(id: model.id), on: presentation) })
+        onReject: { press(.rejectCorrectionProposal(id: model.id), on: presentation) })
 
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(

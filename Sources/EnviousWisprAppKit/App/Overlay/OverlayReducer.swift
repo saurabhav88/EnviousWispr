@@ -183,8 +183,7 @@ struct OverlayState: Equatable {
     guard pipelineIntent == .hidden else { return false }
     switch current?.content {
     // #996: a correction card with buttons on it is not displaced by another
-    // feature either; it leaves on its own dwell, Escape, a decision, or the
-    // pipeline.
+    // feature either; it leaves on its own dwell, a decision, or the pipeline.
     case .bluetoothAwareness, .languageChip, .correctionProposal: return false
     default: return true
     }
@@ -654,7 +653,6 @@ struct OverlayReducer {
   //   this card, result / other  | resolved                      | noChange (stale)
   //   this card, offer           | action accept/reject (id ok)  | delivered to the binding
   //   this card, result          | action accept/reject          | dropped: no buttons any more
-  //   this card, any phase       | action dismiss (Escape)       | slot emptied; ended{dismissed}
   //   this card                  | expiryFired                   | slot emptied; ended{expired}
   //   this card                  | pipeline intent / hidden      | replaced; ended{preempted}
   //   this card                  | import status / Bluetooth     | refused by featureSlotIsAvailable
@@ -823,19 +821,11 @@ struct OverlayReducer {
 
   private mutating func reduceAction(_ id: PresentationID, _ action: PillAction) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // #996: the card's three controls are gated on the proposal it shows and on
-    // its phase, and Escape is answered here rather than delivered: it ends the
-    // presentation and the proposal stays pending (Escape is not Reject).
+    // #996: the card's two controls are gated on the proposal it shows and on
+    // its phase. There is no keyboard dismiss: the card never takes focus, so
+    // an unanswered card leaves on its dwell (`expiryFired`) into Pending.
     if case .correctionProposal(let shown) = current.content {
       switch action {
-      case .dismissCorrectionProposal(let proposalID):
-        guard proposalID == shown.id else { return .noChange }
-        state.set(current: nil, isHovered: false)
-        return OverlayPlan(
-          presentation: nil, didChange: true, expiryCommand: .cancel,
-          effects: [
-            .correctionProposalEnded(id: shown.id, presentation: id, reason: .dismissed)
-          ])
       case .acceptCorrectionProposal(let proposalID), .rejectCorrectionProposal(let proposalID):
         guard proposalID == shown.id, case .offer = shown.phase else { return .noChange }
       default:

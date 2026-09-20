@@ -102,7 +102,6 @@ struct PillCatalogParityTests {
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .acceptCorrectionProposal: return "acceptCorrectionProposal"
     case .rejectCorrectionProposal: return "rejectCorrectionProposal"
-    case .dismissCorrectionProposal: return "dismissCorrectionProposal"
     }
   }
 

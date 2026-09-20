@@ -755,7 +755,7 @@ package final class WisprBootstrapper {
       packs: vocabularyPackManager,
       overlay: recordingOverlay,
       pasteCompletionRegistry: pasteCompletionRegistry,
-      telemetry: TelemetryService.shared)
+      telemetry: WisprBootstrapper.learnFromEditsTelemetrySink())
     self.learnFromEdits = learnFromEdits
 
     // #2376 C7: the Appearance page's window onto the pill. Built HERE because
@@ -1849,6 +1849,16 @@ package final class WisprBootstrapper {
   /// Load the on-device output-safety classifier in the background and publish
   /// it into `holder`. Idempotent (no-op if already loaded) and gated on Apple
   /// Intelligence polish. Every failure fails open (the polish path keeps
+  /// #996: Debug builds mirror the learn events into app.log for Live UAT;
+  /// Release emits to the vendors only.
+  private static func learnFromEditsTelemetrySink() -> any LearnFromEditsTelemetrySink {
+    #if DEBUG
+      return LearnFromEditsLoggingSink(TelemetryService.shared)
+    #else
+      return TelemetryService.shared
+    #endif
+  }
+
   /// working without the extra safety net). Static so the `settings.onChange`
   /// closure can call it without capturing a not-yet-initialized `self`.
   /// #832/#913 PR8.

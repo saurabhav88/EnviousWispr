@@ -1638,9 +1638,9 @@ extension OverlayDirector: OverlayPresenting {
     // #996: the correction card. Admission is the reducer's (idle pipeline, an
     // empty slot or this exact proposal); the binding is scoped to the admitted
     // presentation and reads the CURRENT presentation id for its token, which
-    // `apply` guarantees is the card's own when it delivers. Escape never
-    // reaches `deliver`: the reducer ends the card and reports `.dismissed`
-    // through `onEnded`.
+    // `apply` guarantees is the card's own when it delivers. A card that is
+    // not answered ends in the reducer (dwell or displacement) and reports
+    // `.expired` / `.preempted` through `onEnded`, never through `deliver`.
     case .correctionProposal(let model, let isStillWanted, let onAccept, let onReject, let onEnded):
       // **A same-proposal refresh keeps the ORIGINAL binding.** The reducer
       // keeps the presentation identity and dwell for it; installing the new
@@ -1718,7 +1718,7 @@ extension OverlayDirector: OverlayPresenting {
   }
 
   /// #996: morph the still-current card for `id` into its typed result. Same
-  /// presentation identity, so the card's binding survives for Escape; a stale
+  /// presentation identity, so the card's binding survives the morph; a stale
   /// pair is a no-op in the reducer.
   func resolveCorrectionProposal(
     id: UUID, presentation: PresentationID, outcome: CorrectionCardResult
