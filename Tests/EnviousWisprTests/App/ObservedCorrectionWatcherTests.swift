@@ -194,9 +194,9 @@ struct ObservedCorrectionWatcherTests {
     var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
     var frontmost: FrontmostApplication? = FrontmostApplication(
       pid: 42, bundleID: "com.apple.Notes")
-    /// Production grace: six more capture attempts. The test sleeper is immediate
+    /// Production grace: ten more capture attempts. The test sleeper is immediate
     /// unless a test installs one that moves the world between attempts.
-    var captureRetries = 6
+    var captureRetries = 10
     var sleeper: (Int) async -> Void = { _ in }
   }
   let knobs = Knobs()
@@ -299,11 +299,13 @@ struct ObservedCorrectionWatcherTests {
 
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.Notes")
     // A secure field is final at once; "no focused element" and "text not
-    // found" get the capture grace (one attempt plus six retries) before they
-    // are reported, because a key-event paste lands after the completion event.
+    // found" get the capture grace (one attempt plus `captureRetries` retries)
+    // before they are reported, because a key-event paste lands after the
+    // completion event.
+    let attempts = knobs.captureRetries + 1
     observer.captureOutcomes =
-      [.skipped(.secureField)] + Array(repeating: .skipped(.noFocusedElement), count: 7)
-      + Array(repeating: .ended(.dictatedTextNotFound), count: 7)
+      [.skipped(.secureField)] + Array(repeating: .skipped(.noFocusedElement), count: attempts)
+      + Array(repeating: .ended(.dictatedTextNotFound), count: attempts)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 5))
     #expect(telemetry.events.last == .skipped(.secureField))
@@ -311,11 +313,11 @@ struct ObservedCorrectionWatcherTests {
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 6))
     #expect(telemetry.events.last == .skipped(.noFocusedElement))
-    #expect(observer.captures.count == 8)
+    #expect(observer.captures.count == 1 + attempts)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 7))
     #expect(telemetry.events.last == .observationEnded(.dictatedTextNotFound, 0, .other))
-    #expect(observer.captures.count == 15 && observer.captures.allSatisfy { $0.0 == 42 })
+    #expect(observer.captures.count == 1 + 2 * attempts && observer.captures.allSatisfy { $0.0 == 42 })
     #expect(observer.starts == 0)
   }
 
@@ -345,7 +347,7 @@ struct ObservedCorrectionWatcherTests {
     }
     let watcher = makeWatcher()
     watcherRef = watcher
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: 7)
+    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.skipped(.toggleOff)])
@@ -363,7 +365,7 @@ struct ObservedCorrectionWatcherTests {
     knobs.sleeper = { _ in watcherRef?.recordingStarted() }
     let watcher = makeWatcher()
     watcherRef = watcher
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: 7)
+    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 0, .other)])
@@ -371,20 +373,21 @@ struct ObservedCorrectionWatcherTests {
     #expect(watcher.isWatching == false)
   }
 
-  @Test("capture grace spends the paste's own ceiling budget: the target started after six waits still carries the original paste time")
+  @Test("capture grace spends the paste's own ceiling budget: the target started after every wait still carries the original paste time")
   func captureGraceKeepsThePasteTime() async throws {
     let knobs = knobs
     let clock = clock
     knobs.sleeper = { ms in clock.now += ms }
     let watcher = makeWatcher()
     clock.now = 1_000
+    let retries = knobs.captureRetries
     observer.captureOutcomes =
-      Array(repeating: .ended(.dictatedTextNotFound), count: 6)
+      Array(repeating: .ended(.dictatedTextNotFound), count: retries)
       + [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 1_000))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
-    #expect(observer.captures.count == 7)
-    #expect(clock.now == 1_000 + 6 * 150, "six waits of 150 ms")
+    #expect(observer.captures.count == retries + 1)
+    #expect(clock.now == 1_000 + retries * 150, "\(retries) waits of 150 ms, 1.5 s in production")
     #expect(observer.captures.allSatisfy { $0.2 == 1_000 }, "every retry names the ORIGINAL paste time")
     let started = try #require(observer.startedTargets.first)
     #expect(started.pastedAtMs == 1_000)
@@ -397,7 +400,7 @@ struct ObservedCorrectionWatcherTests {
     // person switches to Mail during the first gap.
     knobs.sleeper = { _ in knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail") }
     let watcher = makeWatcher()
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: 7)
+    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events.last == .skipped(.destinationMismatch))

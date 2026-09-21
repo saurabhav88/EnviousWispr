@@ -287,6 +287,7 @@ struct PastedRegionLocatorTests {
   func timing() {
     #expect(PastedRegionTiming.settleMs == 1500)
     #expect(PastedRegionTiming.pollMs == 750)
+    #expect(PastedRegionTiming.flushMinQuietMs == 500)
     #expect(PastedRegionTiming.ceilingMs == 60_000)
     #expect(PastedRegionTiming.maxValueUTF16 == 20_000)
     #expect(PastedRegionTiming.anchorUTF16 == 64)
@@ -518,7 +519,13 @@ struct PastedRegionObserverWatchTests {
     #expect(events.list.count == 1, "focus still on our element: nothing new")
     ax.focused[pid] = .element(PastedRegionFakeAX.field(99))
     registration.fire(.focusedElementChanged)
+    #expect(events.list.count == 1, "focus on another element of the same app: tolerated for the grace, the element still read")
+    #expect(observer.isObserving)
+    scheduler.jump(ms: PastedRegionTiming.focusGraceMs)
+    registration.fire(.focusedElementChanged)
+    // The pending change is older than `flushMinQuietMs`, so it is flushed first.
     #expect(events.list.last == .ended(.focusChanged))
+    #expect(events.list.contains(.settled(region: "Ask Saira today")))
     #expect(observer.isObserving == false && registration.invalidated == 1)
   }
 
@@ -678,7 +685,7 @@ struct PastedRegionObserverWatchTests {
     #expect(ax.readCount == 0, "another app's turn: nothing is read")
   }
 
-  @Test("a read failure at the settle instant does not settle; a focus loss at the settle instant flushes the pending edit and ends")
+  @Test("a read failure at the settle instant does not settle; a focus loss at the settle instant is tolerated for the focus grace, then ends")
   func settleFailurePaths() throws {
     start()
     ax.reads = [.text("Note: Ask Saira today please")]
@@ -709,13 +716,15 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     ax.focused[pid] = .element(PastedRegionFakeAX.field(77))
     scheduler.advance(ms: 1500)
-    // #996 flush: the focus loss ends the watch, and the edit that had not
-    // yet sat quiet is delivered first rather than lost (`flushesPendingEdit`).
-    #expect(
-      e2.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
-        .ended(.focusChanged),
-      ])
+    // #996: focus on another element of the SAME app is tolerated for
+    // `focusGraceMs` (an autocomplete popup); the element is still read, so the
+    // quiet interval settles normally.
+    #expect(e2.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(o2.isObserving)
+    // Focus that stays away for the whole grace ends the watch.
+    scheduler.advance(ms: 1500)
+    #expect(e2.list.last == .ended(.focusChanged))
+    #expect(o2.isObserving == false)
   }
 
   @Test("a value-changed notification also re-validates the active application")
@@ -887,7 +896,7 @@ struct PastedRegionObserverWatchTests {
     start()
     ax.reads = [.text("Note: Ask Saira today please")]
     scheduler.advance(ms: 750)
-    ax.frontmost = 7
+    ax.frontmost = 7  // another APPLICATION: ends at once, no grace
     scheduler.advance(ms: 750)
     #expect(
       events.list == [
@@ -957,6 +966,89 @@ struct PastedRegionObserverWatchTests {
     run(.text("Note: Ask Saira today please Note: x please"), .anchorAmbiguous, flushes: true)
     // Too long to read is a host that stopped answering usefully: nothing to act on.
     run(.text(String(repeating: "x", count: 20_001)), .captureUnsupported, flushes: false)
+  }
+
+  @Test(
+    "a young edit is flushed by a send-shaped end (the box emptied 100 ms after the poll saw it) but not by an app switch that soon (the poll caught a half-typed word)"
+  )
+  func youngEditFlushDependsOnEndReason() throws {
+    start()
+    let registration = try #require(ax.registrations.first)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    // The age is measured from the READ, and the person typed well before it:
+    // a send 100 ms after the poll still delivers the fix.
+    scheduler.jump(ms: 100)
+    ax.reads = [.text("")]
+    registration.fire(.valueChanged)
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.textboxEmptied),
+      ], "\(events.list)")
+
+    // The measured partial-word path: the poll caught "S" and the app is
+    // switched at once; nothing is flushed.
+    let e2 = Events()
+    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o2.start(target) { e2.list.append($0) }
+    let r2 = try #require(ax.registrations.last)
+    ax.reads = [.text("Note: Ask S today please")]
+    scheduler.advance(ms: 750)
+    #expect(e2.list == [.changed(region: "Ask S today")])
+    scheduler.jump(ms: 100)
+    ax.frontmost = 7
+    r2.fire(.valueChanged)
+    #expect(e2.list == [.changed(region: "Ask S today"), .ended(.focusChanged)], "\(e2.list)")
+
+    // Control: the same app switch 500 ms after the read flushes the finished word.
+    ax.frontmost = pid
+    let e3 = Events()
+    let o3 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o3.start(target) { e3.list.append($0) }
+    let r3 = try #require(ax.registrations.last)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    scheduler.jump(ms: 500)
+    ax.frontmost = 7
+    r3.fire(.valueChanged)
+    #expect(
+      e3.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
+        .ended(.focusChanged),
+      ], "\(e3.list)")
+    #expect(PastedRegionEndReason.focusChanged.minimumPendingEditAgeMs == 500)
+    #expect(PastedRegionEndReason.textboxEmptied.minimumPendingEditAgeMs == 0)
+  }
+
+  @Test(
+    "an autocomplete popup (focus on another element of the same app) does not end the watch: the fix typed through it settles; focus that stays away for the grace ends it"
+  )
+  func popupFocusIsTolerated() {
+    start()
+    // The first letter is typed and the suggest widget takes focus.
+    ax.reads = [.text("Note: Ask S today please")]
+    scheduler.advance(ms: 750)
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(77))
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.changed(region: "Ask S today"), .changed(region: "Ask Saira today")])
+    #expect(observer.isObserving, "focus away for 0 ms: tolerated")
+    // Focus returns on the next keystroke; the text sits quiet; it settles.
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    scheduler.advance(ms: 1500)
+    #expect(events.list.last == .settled(region: "Ask Saira today"))
+    #expect(observer.isObserving)
+    // Now focus leaves for good: one grace interval later the watch ends.
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(77))
+    scheduler.advance(ms: 1499)
+    #expect(observer.isObserving, "1499 ms away is inside the grace")
+    scheduler.advance(ms: 751)
+    #expect(events.list.last == .ended(.focusChanged))
+    #expect(observer.isObserving == false)
+    #expect(PastedRegionTiming.focusGraceMs == 1500)
   }
 
   @Test("the flush set is closed: every end where the last good read still stands flushes; an unreadable field or a lost permission does not")

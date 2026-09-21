@@ -65,6 +65,17 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   ///   permission is gone, and nothing about it should be acted on.
   /// `settled`, `dictatedTextNotFound` and `nextDictationStarted` are not
   /// observer ends (see above).
+  /// A young pending edit is withheld only when FOCUS moved: that is the
+  /// measured partial-word path (a poll catches "S" mid-word and an app
+  /// switch follows at once). The age is measured from the READ that saw the
+  /// change, not from the keystroke, so on a poll-backed host a send 900 ms
+  /// after the fix can look 150 ms old; send-shaped ends (emptied, removed,
+  /// replaced, destroyed, quit, ceiling) therefore flush the last good read
+  /// at any age (Codex round 6).
+  package var minimumPendingEditAgeMs: Int {
+    self == .focusChanged ? PastedRegionTiming.flushMinQuietMs : 0
+  }
+
   package var flushesPendingEdit: Bool {
     switch self {
     case .textboxEmptied, .focusChanged, .elementDestroyed, .appTerminated, .regionRemoved,
@@ -87,6 +98,25 @@ package enum PastedRegionTiming {
   package static let settleMs = 1500
   /// The poll that backs (or replaces) `AXObserver` delivery while identity holds.
   package static let pollMs = 750
+  /// The least a pending edit must have sat, as READ, before a `focusChanged`
+  /// end may flush it (`PastedRegionEndReason.minimumPendingEditAgeMs`). A
+  /// poll that lands MID-WORD followed at once by a focus change (VS Code's
+  /// suggest popup while typing "Saurabh": the flushed region read "S", app
+  /// matrix 2026-09-20; the popup itself is now tolerated by `focusGraceMs`,
+  /// an app switch is not) is younger than this; a person leaving the field
+  /// after finishing a word is not. Send-shaped ends are not gated.
+  package static let flushMinQuietMs = 500
+  /// How long the focused element may differ from the watched one, inside the
+  /// same application, before the watch ends as `focusChanged`. An editor's
+  /// autocomplete popup (VS Code's suggest widget, measured 2026-09-20 while
+  /// "Saurabh" was typed) takes accessibility focus after the first letter and
+  /// gives it back on the next keystroke; ending there loses every fix typed
+  /// in such an editor. The watched element's value stays readable meanwhile,
+  /// so observation continues and only a focus that STAYS away ends the
+  /// watch. One settle interval: a person who left the field for good has
+  /// long stopped editing it by then. A different frontmost application still
+  /// ends at once.
+  package static let focusGraceMs = 1500
   /// Wall-clock ceiling from paste; observation never outlives it.
   package static let ceilingMs = 60_000
   /// Values longer than this are never read into memory as evidence.
@@ -486,6 +516,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
     var ceiling: (any PastedRegionScheduledWork)?
     var lastRegion: String
     var changedSinceSettled = false
+    /// When `lastRegion` was last read as changed, for `flushMinQuietMs`.
+    var lastChangeAtMs = 0
+    /// When the focused element first differed from the watched one within the
+    /// same application; nil while focus is on the element (`focusGraceMs`).
+    var focusAwayAtMs: Int?
     /// Bumped on every reported change; a settle timer settles only the
     /// revision it was armed for.
     var changeRevision: UInt64 = 0
@@ -715,13 +750,17 @@ package final class PastedRegionObserver: PastedRegionObserving {
       }
       switch ax.focusedElement(pid: target.pid) {
       case .element(let focused):
-        guard CFEqual(focused, target.element) else {
+        if CFEqual(focused, target.element) {
+          watch?.focusAwayAtMs = nil
+        } else if focusAwayTooLong(generation: gen) {
           end(.focusChanged)
           return .ended
         }
       case .noFocus:
-        end(.focusChanged)
-        return .ended
+        if focusAwayTooLong(generation: gen) {
+          end(.focusChanged)
+          return .ended
+        }
       case .queryFailed(let error):
         return recordReadFailure(error: error, generation: gen)
       }
@@ -778,6 +817,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         if endIfPastDeadline(generation: gen) { return .ended }
         watch?.lastRegion = region
         watch?.changedSinceSettled = true
+        watch?.lastChangeAtMs = scheduler.nowMs
         watch?.changeRevision &+= 1
         let revision = watch?.changeRevision ?? 0
         w.onEvent(.changed(region: region))
@@ -787,6 +827,17 @@ package final class PastedRegionObserver: PastedRegionObserving {
         return .changed
       }
     }
+  }
+
+  /// Focus is off the watched element inside the same application: the first
+  /// such tick starts the grace clock; later ticks compare against it. The
+  /// element itself is still read (a popup does not change its value), so a
+  /// fix typed through an autocomplete popup is observed normally.
+  private func focusAwayTooLong(generation gen: UInt64) -> Bool {
+    guard let w = watch, w.generation == gen else { return true }
+    let since = w.focusAwayAtMs ?? scheduler.nowMs
+    if w.focusAwayAtMs == nil { watch?.focusAwayAtMs = since }
+    return scheduler.nowMs - since >= PastedRegionTiming.focusGraceMs
   }
 
   /// Transient failures are counted; the policy ends the watch after
@@ -835,15 +886,18 @@ package final class PastedRegionObserver: PastedRegionObserving {
   }
 
   /// A pending edit (changed, not yet settled) is flushed as one `.settled`
-  /// before the `.ended` when the reason `flushesPendingEdit`, so a fix typed
-  /// and sent inside the quiet interval is still judged. The watcher keeps
-  /// answering a burst after `.ended` (it drops answers only for a cancelled
-  /// or superseded watch), which is what makes the flush worth emitting.
+  /// before the `.ended` when the reason `flushesPendingEdit` and the edit is
+  /// at least `reason.minimumPendingEditAgeMs` old, so a fix typed and sent
+  /// inside the quiet interval is still judged while a half-typed word caught
+  /// by a poll right before an app switch is not. The watcher keeps answering a burst after `.ended` (it drops
+  /// answers only for a cancelled or superseded watch), which is what makes
+  /// the flush worth emitting.
   private func end(_ reason: PastedRegionEndReason) {
     guard let w = watch else { return }
     let flush =
       reason.flushesPendingEdit && w.changedSinceSettled && !w.lastRegion.isEmpty
       && w.lastRegion != w.target.pastedText
+      && scheduler.nowMs - w.lastChangeAtMs >= reason.minimumPendingEditAgeMs
     stop()
     if flush { w.onEvent(.settled(region: w.lastRegion)) }
     w.onEvent(.ended(reason))

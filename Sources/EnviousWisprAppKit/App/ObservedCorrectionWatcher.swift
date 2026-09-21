@@ -111,9 +111,12 @@ struct ObservedCorrectionWatcherDependencies {
   /// (Slack and Word: `dictated_text_not_found` 25 ms after the paste, the text
   /// present a second later). The capture is retried this many more times,
   /// `captureRetryDelayMs` apart, before `dictated_text_not_found` or
-  /// `no_focused_element` is final. 6 × 150 ms is under the 1.5 s settle, so
-  /// a person's first edit is still seen as an edit, not as the paste.
-  var captureRetries = 6
+  /// `no_focused_element` is final. 10 × 150 ms = 1.5 s: the Tier 2b MENU
+  /// paste (an AppleScript click on Edit › Paste, Slack when the key event
+  /// is refused) lands later than the key event and missed a 0.9 s grace
+  /// twice on 2026-09-20; 1.5 s is also the settle interval, so a person who
+  /// starts fixing inside it is caught by the first poll after capture.
+  var captureRetries = 10
   var captureRetryDelayMs = 150
   /// The wait between capture attempts; tests inject an immediate one.
   var sleepMs: (Int) async -> Void = { ms in
