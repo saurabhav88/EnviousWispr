@@ -473,7 +473,8 @@ struct KernelPhase2RetryTests {
     deliverVoicedCapture(ctx)
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.engine.retryDecodeCallCount == 1 }, what: "the retry in flight")
     let kernel = ctx.wrapper.testKernel
 
     // Session A's retry is in flight (parked), so A has not concluded yet.
