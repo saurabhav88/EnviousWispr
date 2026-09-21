@@ -88,12 +88,13 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
   ///   fp32 twin), every guardrail met, p50 13.7 ms (26) and 102 ms (15) on
   ///   a virtual M1 CPU.
   ///
-  /// Founder decision 2026-09-21: the Neural Engine path is examined at the
-  /// support floor (macOS 14, bare-metal M1, pending) and at the top (27);
-  /// the majors between are qualified on their own CPU receipts. The
-  /// residual risk is a Neural Engine compiler defect specific to 15 or 26,
-  /// which the judge's failure telemetry would surface. macOS 14 joins only
-  /// with its own receipt.
+  /// Founder decision 2026-09-21: macOS 15 and 26 are qualified on their
+  /// own CPU receipts while the macOS 14 bare-metal Neural Engine exam is
+  /// pending; macOS 27 supplies the top-end Neural Engine receipt. The
+  /// residual risk is a Neural Engine compiler or placement defect specific
+  /// to 15 or 26. Existing telemetry reports load, execution and bypass
+  /// failures, but cannot identify a valid-looking wrong decision as a
+  /// compiler defect. macOS 14 joins only with its own receipt.
   package static let qualified: [CorrectionJudgeQualification] = [
     CorrectionJudgeQualification(
       arm: .classifier, osMajors: [27],

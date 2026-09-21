@@ -41,7 +41,7 @@ The watch ends early if you clear the text box, click into a different text box,
 
 Not every edit is a correction. Rewriting a sentence, changing your mind about a word, or fixing punctuation should not become dictionary entries. A small language model on your Mac, a classifier trained for exactly this question, looks at the dictation and your edit and answers one thing: is the new word the word you actually said, spelled the way you want it? Only then does the card appear.
 
-That model is about 305 MB. EnviousWispr normally starts its download after first-run setup and your speech model finish, including on earlier versions of macOS where it cannot run yet; you can cancel or retry the download from the same row. It runs on your Mac's own chip, on the Neural Engine and CPU, and answers in a few milliseconds. You can see its state in **Settings** \> **Dictionary** \> **Learn from...**: a download line with progress while it fetches, no extra line once it is ready, or a plain reason if it could not download or load, with a button to download, cancel or try again.
+That model is about 305 MB. EnviousWispr normally starts its download after first-run setup and your speech model finish, including on earlier versions of macOS where it cannot run yet; you can cancel or retry the download from the same row. It runs on your Mac's own chip, on the Neural Engine where the Mac offers it and otherwise on the CPU, and answers in a fraction of a second. You can see its state in **Settings** \> **Dictionary** \> **Learn from...**: a download line with progress while it fetches, no extra line once it is ready, or a plain reason if it could not download or load, with a button to download, cancel or try again.
 
 ### What stays on your Mac
 
