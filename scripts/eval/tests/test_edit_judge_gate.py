@@ -278,6 +278,7 @@ def test_attempt_ledger_rows_without_an_os_major_count_as_macos_27(tmp_path):
     assert rec["os_major"] == 14 and rec["key_digest"] != legacy["key_digest"]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="host_identity reads sw_vers and sysctl; on Linux it exits 2 by design")
 def test_host_identity_reads_this_machine():
     host = gate.host_identity()
     assert host["os_major"] == int(host["os_version"].split(".")[0]) >= 14
