@@ -6,8 +6,10 @@ FLOAT32 compute (mlprogram, macOS 14 target, fixed length 128), then checks
 PyTorch/Core ML agreement on NON-frozen pairs under the four compute
 policies: logits drift, argmax flips, non-finite or constant output, and,
 decisively, that the CALIBRATED DECISIONS (the locked safe threshold) are
-identical. Optionally builds an embedding-only 8-bit variant and verifies it
-the same way as a separately identified artifact.
+identical. Optionally builds a FLOAT16 compute-precision variant (the
+precision the Neural Engine actually runs, and the one a shipped package is
+examined in, #996 delivery) and an embedding-only 8-bit variant, each
+verified the same way as a separately identified artifact.
 
 Every variant gets its own execution identity: the run's checkpoint and
 tokenizer digests plus a config digest that now includes the exported
@@ -27,6 +29,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -38,6 +41,78 @@ import train_edit_judge as trainer  # noqa: E402
 
 def package_digest(package: Path) -> str:
     return trainer.tree_digest(package)
+
+
+# The precision variants this converter can bind a package under. The value
+# is the `coremltools.precision` member name for the variants that are a
+# whole-graph compute precision; the 8-bit variant is a weight-only
+# quantisation of the FP32 graph and carries no compute precision.
+VARIANT_PRECISION = {"coreml-fp32": "FLOAT32", "coreml-fp16": "FLOAT16", "coreml-embedding-int8": None}
+
+
+def bind_decision_config(cfg: dict, run_identity: dict, variant: str, digest: str) -> tuple[dict, dict, str]:
+    """The decision configuration and execution identity a package is scored
+    under: the run's config with the variant and package digest written in,
+    the run's checkpoint and tokenizer digests plus that config's digest, and
+    the exact canonical bytes the digest was taken over (so a Swift runner can
+    re-hash them without re-implementing Python's float formatting). An
+    unknown variant is refused so a typo cannot mint an identity nothing else
+    recognises."""
+    if variant not in VARIANT_PRECISION:
+        raise ValueError(f"unknown precision variant {variant!r}; known: {sorted(VARIANT_PRECISION)}")
+    decision_config = dict(cfg, precision_variant=variant, package_sha256=digest)
+    canonical = json.dumps(decision_config, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    config_sha256 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    assert config_sha256 == trainer.config_digest(decision_config)
+    bound_identity = {"checkpoint_sha256": run_identity["checkpoint_sha256"], "tokenizer_sha256": run_identity["tokenizer_sha256"], "config_sha256": config_sha256}
+    return decision_config, bound_identity, canonical
+
+
+# The additive attention-mask value the FLOAT16 graph is traced with. The
+# backbone masks with `torch.finfo(float32).min` (-3.4e38), which a FLOAT16
+# graph carries as -inf; a padded query position whose whole local window is
+# padding then has an all -inf row, its softmax is NaN, and the NaN reaches
+# every position through the next global layer's value matmul. Measured
+# 2026-09-21 on mmbert-v15: 71 of 73 verification rows non-finite on
+# cpuOnly, the two unpadded rows finite (GPU and ANE clamp the constant to
+# -65504 and survive). -1e4 is far below any attention score, exp(-1e4) is 0
+# in every precision, and it stays finite in FLOAT16 whatever score is added.
+# Known class: an fp16 mask that overflows to -inf, e.g.
+# https://github.com/jingyaogong/minimind/pull/863.
+FP16_MASK_FLOOR = -1.0e4
+
+
+def install_fp16_mask_floor(backbone, floor: float = FP16_MASK_FLOOR) -> bool:
+    """Clamp the backbone's additive attention masks at `floor` before the
+    FLOAT16 trace. Returns False when the backbone does not build its masks
+    through `_update_attention_mask` (ModernBERT does): then no FLOAT16
+    package is minted for it, because an unpatched trace is known to produce
+    NaN on the CPU placement."""
+    original = getattr(backbone, "_update_attention_mask", None)
+    if original is None:
+        return False
+
+    def floored(attention_mask, output_attentions):
+        masks = original(attention_mask, output_attentions)
+        return tuple(m.clamp(min=floor) for m in masks)
+
+    backbone._update_attention_mask = floored
+    return True
+
+
+# The key each variant's verification lands under in summary.json.
+SUMMARY_KEY = {"coreml-fp32": "fp32", "coreml-fp16": "fp16", "coreml-embedding-int8": "embedding_int8"}
+
+
+def export_plan(fp16: bool, embedding_8bit: bool) -> list[str]:
+    """Which variants a conversion run builds, in order. FP32 is always first
+    and is the graph every other variant is derived from."""
+    plan = ["coreml-fp32"]
+    if fp16:
+        plan.append("coreml-fp16")
+    if embedding_8bit:
+        plan.append("coreml-embedding-int8")
+    return plan
 
 
 def decisions_equal(ref: list[list[float]], obs: list[list[float]], threshold: float, objective: "trainer.Objective") -> dict:
@@ -54,8 +129,10 @@ def main() -> int:
     p.add_argument("--rows", type=int, default=64, help="non-frozen verification rows (from the run's dev partition)")
     p.add_argument("--dev-dir", type=Path, help="where the run's split directory is on THIS machine when the run was trained elsewhere; its split-manifest digest must equal the run's")
     p.add_argument("--cross-dev", type=Path, help="where the run's cross-author partition is on THIS machine when the run was trained elsewhere; its digest must equal the run's")
+    p.add_argument("--fp16", action="store_true", help="also build and verify the FLOAT16 compute-precision variant (what the Neural Engine runs; the precision a shipped package is examined in)")
     p.add_argument("--embedding-8bit", action="store_true", help="also build and verify the embedding-only 8-bit variant")
     args = p.parse_args()
+    plan = export_plan(args.fp16, args.embedding_8bit)
 
     import numpy as np
     import torch
@@ -183,7 +260,7 @@ def main() -> int:
     source_manifest_sha256 = data.sha256_file(run / "training-manifest.json")
     converter_identity = {**toolchain, "converter": data.sha256_file(Path(__file__))}
 
-    def verify(package: Path, variant: str) -> dict:
+    def verify(package: Path, variant: str, extra: Optional[dict] = None) -> dict:
         units = {"cpuOnly": ct.ComputeUnit.CPU_ONLY, "cpuAndGPU": ct.ComputeUnit.CPU_AND_GPU, "cpuAndNeuralEngine": ct.ComputeUnit.CPU_AND_NE, "all": ct.ComputeUnit.ALL}
         placement = {}
         for label, unit in units.items():
@@ -212,12 +289,7 @@ def main() -> int:
                 placement[label] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}"}
         size = sum(f.stat().st_size for f in package.rglob("*") if f.is_file())
         digest = package_digest(package)
-        decision_config = dict(cfg, precision_variant=variant, package_sha256=digest)
-        bound_identity = {"checkpoint_sha256": identity["checkpoint_sha256"], "tokenizer_sha256": identity["tokenizer_sha256"], "config_sha256": trainer.config_digest(decision_config)}
-        # The exact bytes the config digest was taken over, so a Swift runner
-        # can re-hash them without re-implementing Python's float formatting.
-        canonical = json.dumps(decision_config, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == bound_identity["config_sha256"]
+        decision_config, bound_identity, canonical = bind_decision_config(cfg, identity, variant, digest)
         # The exported manifest is what the Swift runner loads on THIS machine: rebind the
         # tokenizer and checkpoint to the resolved local run paths (a rig-trained run records
         # the rig's paths, and the runner then digests an empty tree and refuses).
@@ -250,6 +322,7 @@ def main() -> int:
             "verification_inputs_sha256": verification_inputs_sha256,
             "converter": converter_identity,
             "manifest_problems": loaded_manifest.problems + data.leakage_problems(loaded_manifest, frozen),
+            **(extra or {}),
         }
         (out_dir / "verification.json").write_text(json.dumps(verification, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return verification
@@ -270,7 +343,42 @@ def main() -> int:
         print(f"  {k}: ok={v.get('ok')} drift={v.get('max_abs_drift')} flips={v.get('argmax_flips')} decision_flips={v.get('decisions', {}).get('decision_flips')} p50={v.get('warm_latency_ms_p50')}ms load={v.get('load_seconds')}s {v.get('error', '')}")
 
     results = {"fp32": fp32}
-    if args.embedding_8bit and fp32["all_placements_ok"]:
+    # A requested variant that cannot be built is recorded in summary.json,
+    # never silently absent: the FP32 baseline it derives from failed.
+    if not fp32["all_placements_ok"]:
+        for variant in plan[1:]:
+            results[SUMMARY_KEY[variant]] = {"variant": variant, "status": "skipped", "all_placements_ok": False, "error": "FP32 verification failed"}
+    if "coreml-fp16" in plan and fp32["all_placements_ok"]:
+        # The same weights re-traced with the FLOAT16-safe mask floor and
+        # converted at FLOAT16 compute: this is what the Neural Engine runs
+        # (an FP32 package is cast at load), so a package meant to ship is
+        # exported AND examined in this precision. Verified against the same
+        # PyTorch reference (taken above, before the floor), same tolerance,
+        # same locked decisions, as its own artifact (#996 delivery).
+        if not install_fp16_mask_floor(backbone):
+            message = f"{experiment['candidate']} builds its attention mask outside _update_attention_mask; no FLOAT16 mask floor, no FLOAT16 package"
+            results["fp16"] = {"variant": "coreml-fp16", "status": "infra-error", "all_placements_ok": False, "error": message}
+            for variant in plan[plan.index("coreml-fp16") + 1:]:
+                results[SUMMARY_KEY[variant]] = {"variant": variant, "status": "skipped", "all_placements_ok": False, "error": "conversion aborted after coreml-fp16 infrastructure error"}
+            (export_root / "summary.json").write_text(json.dumps(results, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(f"INFRA-ERROR: {message}", file=sys.stderr)
+            print(f"exports: {export_root}")
+            return 2
+        fp16_dir = export_root / "fp16"
+        fp16_dir.mkdir(exist_ok=False)
+        fp16_package = fp16_dir / f"{experiment['candidate']}-fp16.mlpackage"
+        t1 = time.time()
+        with torch.no_grad():
+            traced_half = torch.jit.trace(model, example, strict=False)
+        half = ct.convert(traced_half, inputs=inputs, outputs=[ct.TensorType(name="logits")], convert_to="mlprogram", compute_precision=getattr(ct.precision, VARIANT_PRECISION["coreml-fp16"]), minimum_deployment_target=ct.target.macOS14)
+        half.save(str(fp16_package))
+        fp16 = verify(fp16_package, "coreml-fp16", extra={"attention_mask_floor": FP16_MASK_FLOOR})
+        fp16["convert_seconds"] = round(time.time() - t1, 1)
+        results["fp16"] = fp16
+        print(json.dumps({k: fp16[k] for k in ("variant", "size_mb", "all_placements_ok", "verification_rows", "padded_rows", "truncated_rows", "convert_seconds")}, indent=2))
+        for k, v in fp16["placement"].items():
+            print(f"  {k}: ok={v.get('ok')} drift={v.get('max_abs_drift')} flips={v.get('argmax_flips')} decision_flips={v.get('decisions', {}).get('decision_flips')} p50={v.get('warm_latency_ms_p50')}ms load={v.get('load_seconds')}s {v.get('error', '')}")
+    if "coreml-embedding-int8" in plan and fp32["all_placements_ok"]:
         import coremltools.optimize.coreml as cto
 
         q_dir = export_root / "embedding-int8"
