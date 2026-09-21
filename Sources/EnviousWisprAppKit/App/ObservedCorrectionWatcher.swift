@@ -43,7 +43,10 @@ import Foundation
 //   judge answer               | current, not cancelled,        | learn_judged, proposals
 //                              |   revision unchanged           |
 //   judge answer               | otherwise                      | stale_result counted, dropped
-//   recordingStarted           | live                           | cancelled, observer.stop,
+//   recordingStarted           | live, observing                | observer.finish: pending fix
+//                              |                                |   flushed as .settled, then .ended
+//                              |                                |   {next_dictation}; answers stay valid
+//   recordingStarted           | live, not yet observing        | cancelled, observer.stop,
 //                              |                                |   observation_ended{next_dictation}
 //   toggle off (next tick)     | live                           | cancelled, observer.stop,
 //                              |                                |   learn_skipped{toggle_off}; no
@@ -68,9 +71,13 @@ import Foundation
 //                                |   starts a dictation, a setting observer); the rest
 //                                |   of the answer is dropped as one stale result
 //
-// D and T set `cancelled` even after E: the observation row was emitted once
-// and is not repeated, but a pending answer about text that is being replaced
-// (D) or that the user asked us to stop watching (T) is never applied.
+// T sets `cancelled` even after E: the observation row was emitted once and
+// is not repeated, and a pending answer about text the user asked us to stop
+// watching is never applied. D no longer cancels (#996 cursor-aware settling,
+// Codex r30): a settled snapshot is evidence about THAT paste whatever is
+// dictated next, so a live observation finishes through the observer (flushing
+// a pending fix like a send) and pending answers stay valid; a card that
+// cannot show while the pipeline is busy waits in Pending.
 
 /// The runtime arm the watcher may ask. Production selection comes from
 /// `CorrectionJudgeArmSelection.select` with the measured table (empty today,
@@ -193,14 +200,21 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     }
   }
 
-  /// A new dictation started: the pasted text is about to be replaced by the
-  /// next one, so the current watch is cancelled (pending work included).
+  /// A new dictation started. A LIVE observation finishes through the
+  /// observer, which flushes a fix typed before the recording the way a send
+  /// does (Wispr Flow's second stop signal; Codex r30) and delivers
+  /// `.ended(.nextDictationStarted)` through `handle`, so that burst's answer
+  /// stays valid like any other observer end. A watch that never reached
+  /// observation is cancelled outright (no capture, one row below); one that
+  /// already ended keeps its row and its pending answers untouched.
   func recordingStarted() {
     guard let w = watch, !w.cancelled else { return }
-    watch?.cancelled = true
-    // An observation that already ended emitted its row; only its pending
-    // answers are voided (they drop as stale at B4/B5).
     guard !w.ended else { return }
+    if deps.observer.isObserving {
+      deps.observer.finish(.nextDictationStarted)
+      return
+    }
+    watch?.cancelled = true
     deps.observer.stop()
     emitEnded(reason: .nextDictationStarted, generation: w.generation)
   }

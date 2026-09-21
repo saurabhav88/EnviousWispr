@@ -71,8 +71,10 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   ///   read through `end(_:lostBoxFlush:)` when every failure in the run was
   ///   a read of the box itself (not `unstable`, not a failed focus query)
   ///   and the fix is at least `flushMinQuietMs` old, the partial-word guard.
-  /// `settled`, `dictatedTextNotFound` and `nextDictationStarted` are not
-  /// observer ends (see above).
+  /// `nextDictationStarted` is a send-shaped end the WATCHER asks for
+  /// (`finish(_:)`): Wispr Flow's second stop signal after the emptied box;
+  /// a fix typed before the next recording is the same fix (Codex r30).
+  /// `settled` and `dictatedTextNotFound` are not observer ends (see above).
   /// A young pending edit is withheld only when FOCUS moved: that is the
   /// measured partial-word path (a poll catches "S" mid-word and an app
   /// switch follows at once). The age is measured from the READ that saw the
@@ -87,10 +89,9 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   package var flushesPendingEdit: Bool {
     switch self {
     case .textboxEmptied, .focusChanged, .elementDestroyed, .appTerminated, .regionRemoved,
-      .anchorAmbiguous, .editDistanceExceeded, .ceilingElapsed:
+      .anchorAmbiguous, .editDistanceExceeded, .ceilingElapsed, .nextDictationStarted:
       return true
-    case .settled, .dictatedTextNotFound, .nextDictationStarted, .captureUnsupported,
-      .permissionLost:
+    case .settled, .dictatedTextNotFound, .captureUnsupported, .permissionLost:
       return false
     }
   }
@@ -125,6 +126,14 @@ package enum PastedRegionTiming {
   /// long stopped editing it by then. A different frontmost application still
   /// ends at once.
   package static let focusGraceMs = 1500
+  /// Cursor-aware settling (founder UAT 2026-09-21, Codex r30): a quiet
+  /// interval is permission to CHECK whether editing finished, not proof
+  /// that it did. When the settle timer fires with the caret still inside or
+  /// immediately after the changed span, the interval is re-armed; this is
+  /// the absolute bound, measured from the first deferral of a change
+  /// revision, after which the latest good region settles regardless. A new
+  /// revision starts a new bound; the ceiling below still wins.
+  package static let caretCapMs = 10_000
   /// Wall-clock ceiling from paste; observation never outlives it.
   package static let ceilingMs = 60_000
   /// Values longer than this are never read into memory as evidence.
@@ -246,6 +255,10 @@ package protocol PastedRegionObserving: AnyObject {
   func start(
     _ target: PastedRegionTarget, onEvent: @escaping @MainActor (PastedRegionEvent) -> Void)
   func stop()
+  /// End the watch for a reason the WATCHER knows first (a new dictation),
+  /// flushing a pending edit the way the observer's own send-shaped ends do,
+  /// then delivering `.ended(reason)`. No-op when nothing is observed.
+  func finish(_ reason: PastedRegionEndReason)
   var isObserving: Bool { get }
 }
 
@@ -299,6 +312,14 @@ package enum PastedRegionFocus {
   case queryFailed(AXError)
 }
 
+/// One read of the selected text range, UTF-16 units relative to the element.
+package enum PastedRegionSelectedRange: Sendable, Equatable {
+  case range(location: Int, length: Int)
+  /// Unreadable, not an AXValue range, or the host refuses: the caller falls
+  /// back to quiet-only settling.
+  case unavailable
+}
+
 package enum PastedRegionAXNotification: Sendable, Equatable {
   case valueChanged
   case focusedElementChanged
@@ -327,6 +348,11 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// Returns whether the attribute write succeeded.
   func enableManualAccessibility(_ application: AXUIElement) -> Bool
   func readValue(of element: AXUIElement) -> PastedRegionValueRead
+  /// `AXSelectedTextRange` of `element` in UTF-16 units (caret = length 0);
+  /// `.unavailable` when the host does not answer with a range. The live
+  /// conformer reuses `PasteService.selectedRange`, the one type-checked
+  /// reader of that attribute.
+  func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange
   /// `AXNumberOfCharacters`, in UTF-16 units (#3073).
   func characterCount(of element: AXUIElement) -> PastedRegionCountRead
   /// `AXStringForRange` for `length` UTF-16 units from `location` (#3073).
@@ -371,6 +397,19 @@ package enum PastedRegionLocator {
     case unique(start: Int, end: Int)
     case absent
     case ambiguous
+  }
+
+  /// A located region with its absolute UTF-16 offsets in the field, the unit
+  /// the caret is reported in.
+  package struct Located: Equatable {
+    package let text: String
+    package let start: Int
+    package let end: Int
+    package init(text: String, start: Int, end: Int) {
+      self.text = text
+      self.start = start
+      self.end = end
+    }
   }
 
   package enum Region: Equatable {
@@ -509,6 +548,22 @@ package enum PastedRegionLocator {
   /// at an edge). Both empty means the pasted text WAS the whole field, and the
   /// whole field is the region.
   package static func region(in value: String, anchors: PastedRegionAnchors) -> Region {
+    switch locateRegion(in: value, anchors: anchors) {
+    case .located(let l): return .region(l.text)
+    case .lost: return .lost
+    case .ambiguous: return .ambiguous
+    }
+  }
+
+  package enum LocatedRegion: Equatable {
+    case located(Located)
+    case lost
+    case ambiguous
+  }
+
+  /// `region(in:anchors:)` with the offsets retained (Codex r30: the caret
+  /// and the changed span must share one unit, the field's UTF-16 offset).
+  package static func locateRegion(in value: String, anchors: PastedRegionAnchors) -> LocatedRegion {
     let units = Array(value.utf16)
     let before = Array(anchors.before.utf16)
     let after = Array(anchors.after.utf16)
@@ -528,7 +583,24 @@ package enum PastedRegionLocator {
       end = start + hits[0]
     }
     guard start <= end else { return .lost }
-    return .region(String(decoding: units[start..<end], as: UTF16.self))
+    return .located(Located(text: String(decoding: units[start..<end], as: UTF16.self), start: start, end: end))
+  }
+
+  /// The conservative UTF-16 envelope of everything that changed between the
+  /// pasted rendering and the current region, relative to the region: the
+  /// span between the longest common prefix and the longest common suffix.
+  /// Several separate edits become one wider envelope, which can only make
+  /// the watcher wait longer, never settle an actively edited word. An
+  /// unchanged region yields an empty envelope at the end.
+  package static func changedEnvelope(pasted: String, region: String) -> Range<Int> {
+    let a = Array(pasted.utf16), b = Array(region.utf16)
+    var prefix = 0
+    while prefix < a.count, prefix < b.count, a[prefix] == b[prefix] { prefix += 1 }
+    var suffix = 0
+    while suffix < a.count - prefix, suffix < b.count - prefix,
+      a[a.count - 1 - suffix] == b[b.count - 1 - suffix]
+    { suffix += 1 }
+    return prefix..<(b.count - suffix)
   }
 
   package enum EditDistanceVerdict: Equatable {
@@ -628,7 +700,15 @@ package final class PastedRegionObserver: PastedRegionObserving {
     var settle: (any PastedRegionScheduledWork)?
     var ceiling: (any PastedRegionScheduledWork)?
     var lastRegion: String
+    /// Absolute UTF-16 offsets of `lastRegion` in the field, from the read
+    /// that produced it; the caret is compared in the same unit.
+    var lastRegionStart = 0
+    var lastRegionEnd = 0
     var changedSinceSettled = false
+    /// Absolute deadline of the cursor-aware deferral for the current change
+    /// revision (`caretCapMs`); nil until the first deferral, cleared on a
+    /// new revision.
+    var caretDeadlineMs: Int?
     /// When `lastRegion` was last read as changed, for `flushMinQuietMs`.
     var lastChangeAtMs = 0
     /// When the focused element first differed from the watched one within the
@@ -888,8 +968,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if endIfPastDeadline(generation: gen) { return }
     switch notification {
     case .elementDestroyed: end(.elementDestroyed)
-    case .focusedElementChanged: evaluate(generation: gen, checkIdentity: true)
-    case .valueChanged: evaluate(generation: gen, checkIdentity: true)
+    case .focusedElementChanged: evaluate(generation: gen, checkIdentity: true, source: "focus_notification")
+    case .valueChanged: evaluate(generation: gen, checkIdentity: true, source: "value_notification")
     }
   }
 
@@ -932,7 +1012,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// re-validates the destination; value-changed notifications included,
   /// because an inactive application keeps its focused element.
   @discardableResult
-  private func evaluate(generation gen: UInt64, checkIdentity: Bool) -> Observation {
+  /// `source` names what triggered this read, for the `learn_read_changed`
+  /// log line that measures which hosts deliver per-keystroke notifications.
+  private func evaluate(generation gen: UInt64, checkIdentity: Bool, source: String = "poll") -> Observation {
     guard let w = watch, w.generation == gen else { return .ended }
     if endIfPastDeadline(generation: gen) { return .ended }
     let target = w.target
@@ -1000,14 +1082,15 @@ package final class PastedRegionObserver: PastedRegionObserving {
         end(.textboxEmptied)
         return .ended
       }
-      switch PastedRegionLocator.region(in: value, anchors: target.anchors) {
+      switch PastedRegionLocator.locateRegion(in: value, anchors: target.anchors) {
       case .lost:
         end(.regionRemoved)
         return .ended
       case .ambiguous:
         end(.anchorAmbiguous)
         return .ended
-      case .region(let region):
+      case .located(let located):
+        let region = located.text
         if region.isEmpty {
           end(.regionRemoved)
           return .ended
@@ -1034,10 +1117,14 @@ package final class PastedRegionObserver: PastedRegionObserving {
         // checked once more immediately before the state change and emission.
         if endIfPastDeadline(generation: gen) { return .ended }
         watch?.lastRegion = region
+        watch?.lastRegionStart = located.start
+        watch?.lastRegionEnd = located.end
         watch?.changedSinceSettled = true
         watch?.lastChangeAtMs = scheduler.nowMs
         watch?.changeRevision &+= 1
+        watch?.caretDeadlineMs = nil
         let revision = watch?.changeRevision ?? 0
+        log?("learn_read_changed source=\(source)")
         w.onEvent(.changed(region: region))
         // The client may have called `stop()` from inside the callback.
         guard watch?.generation == gen else { return .ended }
@@ -1103,16 +1190,84 @@ package final class PastedRegionObserver: PastedRegionObserving {
       else { return }
       // This timer has fired; a fresh interval must be armed explicitly.
       self.watch?.settle = nil
-      guard self.evaluate(generation: gen, checkIdentity: true) == .unchanged,
+      guard self.evaluate(generation: gen, checkIdentity: true, source: "settle") == .unchanged,
         let fresh = self.watch, fresh.generation == gen, fresh.changeRevision == revision,
         fresh.changedSinceSettled
       else { return }
       if self.endIfPastDeadline(generation: gen) { return }
+      let trigger = self.settleTrigger(generation: gen)
+      guard let trigger else {
+        // Still editing (caret inside or right after the changed span, or a
+        // selection over it): the quiet interval is re-armed, bounded by
+        // `caretCapMs` from the first deferral of this revision.
+        self.armSettle(generation: gen, revision: revision)
+        return
+      }
       self.watch?.changedSinceSettled = false
+      self.watch?.caretDeadlineMs = nil
       self.watch?.settle?.cancel()
       self.watch?.settle = nil
+      self.log?("learn_settle trigger=\(trigger.rawValue)")
       fresh.onEvent(.settled(region: fresh.lastRegion))
     }
+  }
+
+  /// Why a quiet interval was allowed to settle; nil means "still editing,
+  /// wait". Internal, for tests and the log line; no telemetry (Codex r30).
+  package enum SettleTrigger: String, Sendable, Equatable {
+    /// The caret (or selection) is outside the changed span.
+    case caretLeft
+    /// `caretCapMs` elapsed since the first deferral of this revision.
+    case cap
+    /// The caret could not be read (unavailable, malformed, out of bounds,
+    /// focus not on the element): today's quiet-only rule.
+    case fallbackQuiet
+  }
+
+  /// The decision table (Codex r30 §D), evaluated when the quiet interval has
+  /// elapsed and the value read unchanged. The focused element is resolved
+  /// AGAIN and the range read from that fresh handle: a stored handle can
+  /// report a stale zero (accessibility-macos.md). Focus temporarily on
+  /// another element of the same app (an autocomplete popup) waits; the
+  /// existing focus grace ends the watch if it stays away.
+  private func settleTrigger(generation gen: UInt64) -> SettleTrigger? {
+    guard let w = watch, w.generation == gen else { return nil }
+    let now = scheduler.nowMs
+    if let deadline = w.caretDeadlineMs, now >= deadline { return .cap }
+    let stillEditing: Bool
+    switch ax.focusedElement(pid: w.target.pid) {
+    case .element(let focused) where CFEqual(focused, w.target.element):
+      switch ax.selectedRange(of: focused) {
+      case .unavailable:
+        return .fallbackQuiet
+      case .range(let location, let length):
+        guard location >= 0, length >= 0 else { return .fallbackQuiet }
+        let envelope = PastedRegionLocator.changedEnvelope(pasted: w.target.renderedText, region: w.lastRegion)
+        let spanStart = w.lastRegionStart + envelope.lowerBound
+        let spanEnd = w.lastRegionStart + envelope.upperBound
+        if length == 0 {
+          // A caret inside the span, or immediately after it (typing appends there).
+          stillEditing = location >= spanStart && location <= spanEnd
+        } else {
+          // A selection that overlaps the span.
+          stillEditing = location < spanEnd && location + length > spanStart
+        }
+      }
+    case .element, .noFocus:
+      // Focus is elsewhere in the same app for now (a popup): wait; the poll's
+      // focus grace decides whether it stays away.
+      stillEditing = true
+    case .queryFailed:
+      return .fallbackQuiet
+    }
+    guard stillEditing else { return .caretLeft }
+    if w.caretDeadlineMs == nil { watch?.caretDeadlineMs = now + PastedRegionTiming.caretCapMs }
+    return nil
+  }
+
+  package func finish(_ reason: PastedRegionEndReason) {
+    guard watch != nil else { return }
+    end(reason)
   }
 
   /// A pending edit (changed, not yet settled) is flushed as one `.settled`
@@ -1235,6 +1390,11 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
   package func enableManualAccessibility(_ application: AXUIElement) -> Bool {
     AXUIElementSetAttributeValue(
       application, Self.manualAccessibilityAttribute, kCFBooleanTrue) == .success
+  }
+
+  package func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange {
+    guard let range = PasteService.selectedRange(of: element) else { return .unavailable }
+    return .range(location: range.location, length: range.length)
   }
 
   package func readValue(of element: AXUIElement) -> PastedRegionValueRead {

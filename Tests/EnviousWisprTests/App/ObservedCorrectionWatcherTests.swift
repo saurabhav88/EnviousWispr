@@ -48,6 +48,16 @@ final class ObserverFake: PastedRegionObserving {
     stops += 1
     onEvent = nil
   }
+  /// What the fake flushes on `finish`: nil ends without a burst.
+  var pendingRegionOnFinish: String?
+  private(set) var finishes: [PastedRegionEndReason] = []
+  func finish(_ reason: PastedRegionEndReason) {
+    guard let onEvent else { return }
+    finishes.append(reason)
+    if let region = pendingRegionOnFinish { onEvent(.settled(region: region)) }
+    onEvent(.ended(reason))
+    self.onEvent = nil
+  }
   func fire(_ event: PastedRegionEvent) { onEvent?(event) }
 }
 
@@ -71,6 +81,7 @@ private final class CaptureAX: PastedRegionAXOperations {
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome { .subrole(nil) }
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool { manual }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool { true }
+  func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange { .unavailable }
   func readValue(of element: AXUIElement) -> PastedRegionValueRead { .text(value) }
   // An `AXValue` host: the range reader is never consulted here.
   func characterCount(of element: AXUIElement) -> PastedRegionCountRead { .absent }
@@ -522,10 +533,12 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
     #expect(await waitUntil { judge.requests.count == 1 })
-    // A new dictation and a new paste supersede the watch while the judge holds.
+    // A new dictation finishes the observation through the observer (the
+    // held answer stays valid, #996 cursor-aware settling); the NEW PASTE is
+    // what supersedes it.
     watcher.recordingStarted()
     #expect(telemetry.events.last == .observationEnded(.nextDictationStarted, 1, .native))
-    #expect(observer.stops == 1)
+    #expect(observer.finishes == [.nextDictationStarted] && observer.stops == 0)
     watcher.pasteCompleted(paste())
     judge.release()
     #expect(await waitForEvents(telemetry, count: 2))
@@ -567,7 +580,7 @@ struct ObservedCorrectionWatcherTests {
   }
 
   @Test(
-    "a dictation after the observer ended on its own voids the held answer without a second observation row"
+    "a dictation after the observer ended on its own keeps the held answer and adds no second observation row"
   )
   func dictationAfterNaturalEnd() async {
     let watcher = makeWatcher()
@@ -579,14 +592,15 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { judge.requests.count == 1 })
     observer.fire(.ended(.focusChanged))
     #expect(telemetry.events == [.observationEnded(.focusChanged, 1, .native)])
-    // The user dictates again while the judge still holds: the answer is about
-    // text being replaced, so it is voided; the ended observation is not re-reported.
+    // The user dictates again while the judge still holds: the snapshot is
+    // evidence about the paste it came from, so the answer stays valid
+    // (#996 cursor-aware settling); the ended observation is not re-reported.
     watcher.recordingStarted()
-    #expect(observer.stops == 0 && telemetry.events.count == 1)
+    #expect(observer.stops == 0 && observer.finishes.isEmpty && telemetry.events.count == 1)
     judge.release()
-    #expect(await waitUntil { watcher.staleResults == 1 })
-    #expect(presenter.offers.isEmpty && coordinator.openProposalsNewestFirst.isEmpty)
-    #expect(telemetry.events.count == 1, "no judged row for a voided answer")
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(watcher.staleResults == 0)
+    #expect(telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
   }
 
   @Test(
@@ -641,23 +655,48 @@ struct ObservedCorrectionWatcherTests {
     #expect(observer.captures.count == 2 && watcher3.isWatching == false, "no AX work after the toggle")
   }
 
-  @Test("a dictation before the queued judge task runs means the judge is never asked")
-  func cancelBeforeJudgeTaskStarts() async {
+  @Test(
+    "a dictation right after a settled burst does not void it: the observation ends as next_dictation and the burst is still judged and proposed"
+  )
+  func dictationAfterSettledBurstStillProposes() async {
     let watcher = makeWatcher()
     observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
-    // Same turn, before the judge task gets the main actor.
+    // Same turn, before the judge task gets the main actor. The snapshot is
+    // evidence about THIS paste; the next dictation does not change that
+    // (Wispr Flow's second stop signal, Codex r30).
     watcher.recordingStarted()
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 1, .native)])
-    #expect(await waitUntil { watcher.staleResults == 1 })
-    #expect(judge.requests.isEmpty, "a reserved call for a cancelled watch is not made")
-    #expect(presenter.offers.isEmpty && telemetry.events.count == 1)
+    #expect(observer.finishes == [.nextDictationStarted])
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.corrected == "Saira")
+    #expect(watcher.staleResults == 0)
   }
 
-  @Test("a presenter that starts a dictation inside the first offer stops the rest of the answer")
-  func reentrantCancelDuringOffer() async {
+  @Test("a dictation while a fix is pending (seen, not yet settled) flushes it through the observer and proposes it")
+  func dictationFlushesPendingFix() async {
+    let watcher = makeWatcher()
+    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.changed(region: "Ask Saira today"))
+    observer.pendingRegionOnFinish = "Ask Saira today"
+    watcher.recordingStarted()
+    #expect(observer.finishes == [.nextDictationStarted])
+    #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 1, .native)])
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(presenter.offers.first?.corrected == "Saira")
+    // A second recordingStarted after the end is a no-op: one row, no cancel.
+    watcher.recordingStarted()
+    #expect(telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
+  }
+
+  @Test(
+    "a presenter that starts a dictation inside the first offer ends the observation as next_dictation; the rest of the answer still proposes"
+  )
+  func reentrantDictationDuringOffer() async {
     let watcher = makeWatcher()
     observer.captureOutcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah about the invoice", pastedAtMs: 0))
@@ -667,12 +706,13 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { observer.starts == 1 })
     // Two pairs in one burst, both judged as corrections.
     observer.fire(.settled(region: "Ask Saira about the invoyce"))
-    #expect(await waitUntil { presenter.offers.count == 1 })
-    #expect(await waitUntil { watcher.staleResults == 1 })
+    #expect(await waitUntil { presenter.offers.count == 2 })
     #expect(judge.requests.first?.candidates.count == 2)
-    #expect(presenter.offers.count == 1 && coordinator.openProposalsNewestFirst.count == 1)
+    #expect(coordinator.openProposalsNewestFirst.count == 2)
+    #expect(watcher.staleResults == 0)
+    #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events.contains(.observationEnded(.nextDictationStarted, 1, .native)))
-    #expect(telemetry.events.filter { $0 == .proposed(.existingWord) || $0 == .proposed(.newWord) }.count == 1)
+    #expect(telemetry.events.filter { $0 == .proposed(.existingWord) || $0 == .proposed(.newWord) }.count == 2)
   }
 
   @Test("a bypass is reported as its own outcome, never as 'all false', and proposes nothing")
