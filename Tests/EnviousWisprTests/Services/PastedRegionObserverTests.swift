@@ -67,6 +67,22 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     guard !reads.isEmpty else { return .absent }
     return reads.count > 1 ? reads.removeFirst() : reads[0]
   }
+  /// Range reader (#3073): counts and range answers are consumed in order like
+  /// `reads`; the last one repeats. Empty means the host has no such attribute.
+  var counts: [PastedRegionCountRead] = []
+  var countCalls = 0
+  var rangeReads: [PastedRegionValueRead] = []
+  var rangeCalls: [(location: Int, length: Int)] = []
+  func characterCount(of element: AXUIElement) -> PastedRegionCountRead {
+    countCalls += 1
+    guard !counts.isEmpty else { return .absent }
+    return counts.count > 1 ? counts.removeFirst() : counts[0]
+  }
+  func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead {
+    rangeCalls.append((location, length))
+    guard !rangeReads.isEmpty else { return .absent }
+    return rangeReads.count > 1 ? rangeReads.removeFirst() : rangeReads[0]
+  }
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
@@ -1115,5 +1131,301 @@ struct PastedRegionObserverWatchTests {
         .ended(.ceilingElapsed),
       ])
     #expect(observer.isObserving == false)
+  }
+}
+
+// MARK: - Range reader (#3073)
+
+/// Editors that expose text only through `AXStringForRange` (Excel in edit
+/// mode is the measured candidate) are read through the parameterized
+/// attribute when `AXValue` is absent; `AXValue` hosts are untouched.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct PastedRegionRangeReaderCaptureTests {
+  let ax = PastedRegionFakeAX()
+  let scheduler = PastedRegionFakeScheduler()
+  var observer: PastedRegionObserver { PastedRegionObserver(ax: ax, scheduler: scheduler) }
+  let pid: pid_t = 42
+  let host = "Ask Sarah today"
+
+  init() {
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+  }
+
+  @Test("an AXValue host is captured through the value reader and the range reader is never consulted")
+  func valueFirst() {
+    ax.reads = [.text(host)]
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host)]
+    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("expected captured")
+      return
+    }
+    #expect(target.reader == .value)
+    #expect(ax.countCalls == 0 && ax.rangeCalls.isEmpty)
+  }
+
+  @Test("no AXValue, a count and a range string of exactly that length: captured through the range reader with the unchanged anchors")
+  func rangeFallback() {
+    ax.reads = [.absent]
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host)]
+    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("expected captured")
+      return
+    }
+    #expect(target.reader == .range)
+    #expect(target.anchors == PastedRegionAnchors(before: "Ask ", after: " today"))
+    #expect(target.renderedText == "Sarah")
+    #expect(ax.readCount == 1, "the value reader was asked once, first")
+    #expect(ax.rangeCalls.map { [$0.location, $0.length] } == [[0, host.utf16.count]])
+  }
+
+  @Test("a non-string AXValue also falls through to the range reader")
+  func notTextFallsThrough() {
+    ax.reads = [.notText]
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host)]
+    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("expected captured")
+      return
+    }
+    #expect(target.reader == .range)
+  }
+
+  @Test("a failed AXValue read is the host not answering: no fallback, the failure's own end reason")
+  func failedValueIsNotRetried() {
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host)]
+    ax.reads = [.failed(.cannotComplete)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    ax.reads = [.failed(.apiDisabled)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    #expect(ax.countCalls == 0 && ax.rangeCalls.isEmpty)
+  }
+
+  @Test("a count above the ceiling refuses BEFORE any text is read; the ceiling itself is still readable")
+  func ceilingBeforeTheRead() {
+    ax.reads = [.absent]
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
+    ax.rangeReads = [.text(host)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(ax.rangeCalls.isEmpty, "nothing above the ceiling is read into memory")
+    let atCeiling = String(repeating: "x", count: PastedRegionTiming.maxValueUTF16 - host.utf16.count) + host
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16)]
+    ax.rangeReads = [.text(atCeiling)]
+    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) else {
+      Issue.record("expected captured at exactly the ceiling")
+      return
+    }
+    #expect(target.reader == .range)
+  }
+
+  @Test("fail closed: a range string of any other length than the count, a non-number count, a non-string range answer, a negative count")
+  func mismatchesAreAbsent() {
+    ax.reads = [.absent]
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host + "!")]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported), "one unit too long")
+    ax.rangeReads = [.text(String(host.dropLast()))]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported), "one unit too short")
+    ax.rangeReads = [.notText]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    ax.counts = [.absent]
+    ax.rangeReads = [.text(host)]
+    let before = ax.rangeCalls.count
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(ax.rangeCalls.count == before, "no count, no range read")
+    ax.counts = [.count(-1)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(ax.rangeCalls.count == before)
+  }
+
+  @Test("a failed count or range call ends with the failure's own reason")
+  func rangeFailures() {
+    ax.reads = [.absent]
+    ax.counts = [.failed(.cannotComplete)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    ax.counts = [.failed(.apiDisabled)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.failed(.notImplemented)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.permissionLost))
+  }
+
+  @Test("a count of zero is the empty text, not a refusal: the pasted text is simply not there yet")
+  func zeroCount() {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    #expect(ax.rangeCalls.isEmpty, "an empty field is not read")
+  }
+
+  @Test("a count that changes across the range read fails closed: the text is a prefix of a field that grew")
+  func countChangesAcrossRead() {
+    ax.reads = [.absent]
+    let n = host.utf16.count
+    ax.counts = [.count(n), .count(n + 1)]
+    ax.rangeReads = [.text(host)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(ax.countCalls == 2)
+  }
+
+  @Test("readText is the one owner of the ceiling for both readers")
+  func readTextCeiling() {
+    let field = PastedRegionFakeAX.field(pid)
+    ax.reads = [.text(String(repeating: "x", count: PastedRegionTiming.maxValueUTF16 + 1))]
+    #expect(observer.readText(of: field, using: .value) == .tooLong)
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
+    #expect(observer.readText(of: field, using: .range) == .tooLong)
+    #expect(ax.rangeCalls.isEmpty)
+    // A field that grows past the ceiling between the two counts is oversize, not merely mismatched.
+    ax.counts = [.count(host.utf16.count), .count(PastedRegionTiming.maxValueUTF16 + 1)]
+    ax.rangeReads = [.text(host)]
+    #expect(observer.readText(of: field, using: .range) == .tooLong)
+  }
+}
+
+/// A watch captured through the range reader keeps reading through it.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct PastedRegionRangeReaderWatchTests {
+  let ax = PastedRegionFakeAX()
+  let scheduler = PastedRegionFakeScheduler()
+  let observer: PastedRegionObserver
+  let pid: pid_t = 42
+  let target: PastedRegionTarget
+  final class Events {
+    var list: [PastedRegionEvent] = []
+  }
+  let events = Events()
+  static let host = "Note: Ask Sarah today please"
+
+  init() throws {
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    ax.reads = [.absent]
+    ax.counts = [.count(Self.host.utf16.count)]
+    ax.rangeReads = [.text(Self.host)]
+    observer = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    guard case .captured(let t) = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0) else {
+      throw SetupError.capture
+    }
+    target = t
+    ax.readCount = 0
+    ax.countCalls = 0
+    ax.rangeCalls = []
+  }
+
+  enum SetupError: Error { case capture }
+
+  func start() {
+    let events = events
+    observer.start(target) { events.list.append($0) }
+  }
+
+  /// The fake answers the host's text through the range reader only.
+  func host(_ text: String) {
+    ax.counts = [.count(text.utf16.count)]
+    ax.rangeReads = [.text(text)]
+  }
+
+  @Test("the poll reads through the range reader, never the value reader, and reports an edit then settles")
+  func pollsThroughTheRangeReader() {
+    #expect(target.reader == .range)
+    start()
+    scheduler.advance(ms: 750)
+    #expect(ax.readCount == 0 && ax.countCalls == 2 && ax.rangeCalls.count == 1, "count, text, count again")
+    #expect(events.list.isEmpty)
+    host("Note: Ask Saira today please")
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.changed(region: "Ask Saira today")])
+    scheduler.advance(ms: 1500)
+    #expect(events.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
+    #expect(ax.readCount == 0, "the value reader was never consulted during the watch")
+  }
+
+  @Test("an emptied editor reads as textbox_emptied through the range reader (count zero, nothing read)")
+  func emptiedThroughRange() {
+    start()
+    ax.counts = [.count(0)]
+    ax.rangeReads = [.text("unreachable")]
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.textboxEmptied)])
+    #expect(ax.rangeCalls.isEmpty)
+  }
+
+  @Test("a range answer of the wrong length during the watch is a read failure, three in a row end the watch; growth past the ceiling ends it at once")
+  func watchFailClosed() {
+    start()
+    ax.rangeReads = [.text(Self.host + "x")]
+    scheduler.advance(ms: 750)
+    scheduler.advance(ms: 750)
+    #expect(events.list.isEmpty && observer.isObserving)
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.captureUnsupported)], "three consecutive read failures")
+  }
+
+  @Test("a count past the ceiling during the watch ends it without reading")
+  func watchCeiling() {
+    start()
+    let before = ax.rangeCalls.count
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.captureUnsupported)])
+    #expect(ax.rangeCalls.count == before)
+  }
+
+  @Test("the remaining range-watch failure rows follow the existing read-failure policy: absent count and a non-string range answer count three times, a failed count ends by its own code")
+  func remainingFailureRows() {
+    func run(_ counts: [PastedRegionCountRead], _ ranges: [PastedRegionValueRead], ticks: Int)
+      -> [PastedRegionEvent]
+    {
+      let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+      let e = Events()
+      ax.counts = counts
+      ax.rangeReads = ranges
+      o.start(target) { e.list.append($0) }
+      scheduler.advance(ms: 750 * ticks)
+      o.stop()
+      return e.list
+    }
+    #expect(run([.absent], [.text(Self.host)], ticks: 3) == [.ended(.captureUnsupported)])
+    #expect(run([.failed(.cannotComplete)], [], ticks: 3) == [.ended(.captureUnsupported)])
+    #expect(run([.failed(.apiDisabled)], [], ticks: 1) == [.ended(.permissionLost)])
+    #expect(run([.count(Self.host.utf16.count)], [.notText], ticks: 3) == [.ended(.captureUnsupported)])
+  }
+}
+
+@MainActor
+@Suite(.tags(.productOutcome))
+struct PastedRegionRangeReaderDeadlineTests {
+  @Test("a deadline that passes during the read beats an emptied box: ceiling_elapsed, not textbox_emptied")
+  func deadlineBeatsEmptiedDuringTheRead() throws {
+    let ax = PastedRegionFakeAX()
+    let scheduler = PastedRegionFakeScheduler()
+    let pid: pid_t = 42
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    ax.reads = [.absent]
+    let host = "Note: Ask Sarah today please"
+    ax.counts = [.count(host.utf16.count)]
+    ax.rangeReads = [.text(host)]
+    let observer = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    guard case .captured(let target) = observer.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: 0) else {
+      Issue.record("expected captured")
+      return
+    }
+    final class Events { var list: [PastedRegionEvent] = [] }
+    let events = Events()
+    observer.start(target) { events.list.append($0) }
+    let registration = try #require(ax.registrations.first)
+    // The editor is emptied, and the clock crosses the deadline while the
+    // notification is being handled (one tick per clock read: entry, evaluate
+    // entry, post-read).
+    ax.counts = [.count(0)]
+    scheduler.jump(ms: 60_000 - 2)
+    scheduler.tickPerNowRead = 1
+    registration.fire(.valueChanged)
+    scheduler.tickPerNowRead = 0
+    #expect(events.list == [.ended(.ceilingElapsed)], "\(events.list)")
   }
 }
