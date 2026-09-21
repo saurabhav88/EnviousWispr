@@ -395,35 +395,46 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       }
     }
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
-    let prepared = CorrectionCandidateFilter.prepare(filtered)
-    guard !prepared.candidates.isEmpty else { return }
-    // The judge was trained and examined on the PASTED sentence (`Sentence:`
-    // is the dictation, `Edit:` the pair; `train_edit_judge.py`, the exam,
-    // `CoreMLCorrectionJudge`), so its context is the immutable pasted text,
-    // centred on the candidate it will actually see (the first PREPARED one)
-    // through that run's ORIGINAL-side token range, never on an earlier run
-    // the filter dropped. The proposal excerpts stored below stay on the
-    // edited region: that is what the card and the Pending row show.
-    let context = Self.contextExcerpt(
-      target.pastedText,
-      focusTokens: prepared.candidates.first.flatMap { prepared.byID[$0.id]?.run.originalRange })
-    let request: CorrectionJudgeRequest
-    do {
-      request = try CorrectionJudgeRequest(
-        candidates: prepared.candidates, context: context, language: language)
-    } catch {
-      return
+    let eligible = filtered.filter {
+      if case .candidate = $0.disposition { return true }
+      return false
     }
-    // Reservation, atomically with the checks above (no suspension so far).
-    watch?.judgeCalls += 1
-    for key in prepared.byID.values.map(\.pairKey) { watch?.sentPairKeys.insert(key) }
+    guard !eligible.isEmpty else { return }
+    // One request per judge WINDOW of the pasted sentence: the judge was
+    // trained and examined on the PASTED sentence (`Sentence:` is the
+    // dictation, `Edit:` the pair; `train_edit_judge.py`, the exam,
+    // `CoreMLCorrectionJudge`), so each request's context is the immutable
+    // pasted text centred on that group's first candidate through the run's
+    // ORIGINAL-side token range, and every candidate in the request lies
+    // inside that window (cloud review of PR #3054, rounds 5 and 6). Groups
+    // beyond the per-paste call budget are left unreserved. The proposal
+    // excerpts stored below stay on the edited region: that is what the card
+    // and the Pending row show.
     let arm = selected.arm
     let judge = selected.judge
     let bundleID = w.event.destinationBundleID
-    Task { @MainActor [weak self] in
-      await self?.ask(
-        judge, arm: arm, request: request, prepared: prepared, language: language,
-        context: context, region: region, bundleID: bundleID, generation: gen, revision: revision)
+    for group in Self.windowGroups(eligible, in: target.pastedText) {
+      guard let live = watch, live.generation == gen, live.isLive,
+        live.judgeCalls < Self.maxJudgeCallsPerPaste
+      else { return }
+      let prepared = CorrectionCandidateFilter.prepare(group)
+      guard let first = prepared.candidates.first, let anchor = prepared.byID[first.id] else { continue }
+      let context = Self.contextExcerpt(target.pastedText, focusTokens: anchor.run.originalRange)
+      let request: CorrectionJudgeRequest
+      do {
+        request = try CorrectionJudgeRequest(
+          candidates: prepared.candidates, context: context, language: language)
+      } catch {
+        continue
+      }
+      // Reservation, atomically with the checks above (no suspension so far).
+      watch?.judgeCalls += 1
+      for key in prepared.byID.values.map(\.pairKey) { watch?.sentPairKeys.insert(key) }
+      Task { @MainActor [weak self] in
+        await self?.ask(
+          judge, arm: arm, request: request, prepared: prepared, language: language,
+          context: context, region: region, bundleID: bundleID, generation: gen, revision: revision)
+      }
     }
   }
 
@@ -513,8 +524,19 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     _ text: String, focusTokens: Range<Int>? = nil,
     limit: Int = CorrectionJudgeRequest.maxContextUTF16
   ) -> String {
+    String(text[excerptWindow(text, focusTokens: focusTokens, limit: limit)])
+  }
+
+  /// The window `contextExcerpt` cuts, as a range of `text`, so a caller can
+  /// also ask which OTHER candidates fall inside it (cloud review of PR #3054,
+  /// round 6: two eligible edits more than a window apart were sent in one
+  /// request and the second was judged without its sentence).
+  static func excerptWindow(
+    _ text: String, focusTokens: Range<Int>? = nil,
+    limit: Int = CorrectionJudgeRequest.maxContextUTF16
+  ) -> Range<String.Index> {
     let total = text.utf16.count
-    guard total > limit else { return text }
+    guard total > limit else { return text.startIndex..<text.endIndex }
     var start = text.startIndex
     if let focusTokens, !focusTokens.isEmpty, let hit = Self.tokenSpan(focusTokens, in: text) {
       let hitStart = text.utf16.distance(from: text.startIndex, to: hit.lowerBound)
@@ -538,15 +560,58 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
         start = text.index(after: start)
       }
     }
-    var out = ""
-    var index = start
-    while index < text.endIndex {
-      let unit = String(text[index]).utf16.count
-      if out.utf16.count + unit > limit { break }
-      out.append(text[index])
-      index = text.index(after: index)
+    var used = 0
+    var end = start
+    while end < text.endIndex {
+      let unit = String(text[end]).utf16.count
+      if used + unit > limit { break }
+      used += unit
+      end = text.index(after: end)
     }
-    return out
+    return start..<end
+  }
+
+  /// Split eligible runs into groups that each fit ONE judge window of the
+  /// pasted text. The anchor of a group is the run `prepare` would put FIRST
+  /// (capitalised replacements first, then source order), so the window the
+  /// group is admitted to is the window the request is centred on; every run
+  /// whose original tokens lie inside it joins, the rest anchor the next
+  /// group. A pair key occurs once (a second edit of the same pair is the same
+  /// proposal), and a run whose original tokens cannot be found in the pasted
+  /// text is left out rather than judged under an unrelated window (Codex
+  /// round 8).
+  static func windowGroups(
+    _ runs: [CorrectionCandidateFilter.Filtered], in text: String,
+    limit: Int = CorrectionJudgeRequest.maxContextUTF16
+  ) -> [[CorrectionCandidateFilter.Filtered]] {
+    var seenPairKeys = Set<String>()
+    var remaining = runs.filter { run in
+      guard tokenSpan(run.run.originalRange, in: text) != nil else { return false }
+      return seenPairKeys.insert(run.pairKey).inserted
+    }
+    var groups: [[CorrectionCandidateFilter.Filtered]] = []
+    while !remaining.isEmpty {
+      let ordered = CorrectionCandidateFilter.prepare(remaining)
+      guard let first = ordered.candidates.first, let anchor = ordered.byID[first.id] else { break }
+      let window = excerptWindow(text, focusTokens: anchor.run.originalRange, limit: limit)
+      var inside: [CorrectionCandidateFilter.Filtered] = []
+      var outside: [CorrectionCandidateFilter.Filtered] = []
+      for run in remaining {
+        if run.pairKey == anchor.pairKey {
+          inside.append(run)
+          continue
+        }
+        guard let span = tokenSpan(run.run.originalRange, in: text) else { continue }
+        if span.lowerBound >= window.lowerBound, span.upperBound <= window.upperBound {
+          inside.append(run)
+        } else {
+          outside.append(run)
+        }
+      }
+      groups.append(inside)
+      remaining = outside
+    }
+    return groups
   }
 
   /// The character span of whitespace-separated tokens `range` in `text`, the

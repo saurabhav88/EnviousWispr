@@ -748,6 +748,87 @@ struct ObservedCorrectionWatcherTests {
     #expect(ObservedCorrectionWatcher.tokenSpan(4..<5, in: spaced) == nil)
   }
 
+  @Test(
+    "two eligible edits more than a judge window apart are judged in TWO requests, each with its own sentence; two inside one window share a request"
+  )
+  func distantCandidatesGetTheirOwnWindow() async throws {
+    let watcher = makeWatcher()
+    let filler = String(repeating: "word ", count: 300)  // 1,500 units, over two windows
+    let pasted = "ask sara today " + filler + "call sarah tonight"
+    let edited = "ask Saira today " + filler + "call Saira tonight"
+    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.changed(region: edited))
+    observer.fire(.settled(region: edited))
+    #expect(await waitUntil { judge.requests.count == 2 })
+    let first = try #require(judge.requests.first)
+    let second = try #require(judge.requests.last)
+    #expect(first.candidates.map(\.original) == ["sara"] && first.context.contains("ask sara today"))
+    #expect(second.candidates.map(\.original) == ["sarah"] && second.context.contains("call sarah tonight"))
+    #expect(!first.context.contains("sarah") && !second.context.contains("sara today"))
+    #expect(await waitUntil { coordinator.openProposalsNewestFirst.count == 2 })
+
+    // Control: two edits inside one window share one request.
+    let watcher2 = makeWatcher()
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "ask jon today and call tomm tonight", pastedAtMs: 0))
+    ]
+    watcher2.pasteCompleted(paste("ask jon today and call tomm tonight"))
+    #expect(await waitUntil { observer.starts == 2 })
+    observer.fire(.settled(region: "ask John today and call Tom tonight"))
+    #expect(await waitUntil { judge.requests.count == 3 })
+    #expect(judge.requests.last?.candidates.map(\.original) == ["jon", "tomm"])
+  }
+
+  @Test("windowGroups: the anchor always owns its window; runs inside join it; the rest anchor the next")
+  func windowGroupsPartition() {
+    let filler = String(repeating: "word ", count: 300)
+    let pasted = "ask sara today " + filler + "call sarah tonight"
+    let edited = "ask Saira today " + filler + "call Saira tonight"
+    let runs = EditAlignment.align(pasted: pasted, edited: edited).runs
+    let inputs = CorrectionCandidateFilter.Inputs(
+      userWords: [], packTerms: [], openProposals: [:], rejectedPairKeys: [],
+      dictationLanguage: "en", supportedLanguages: ["en"])
+    let filtered = CorrectionCandidateFilter.filter(runs: runs, inputs: inputs)
+    let groups = ObservedCorrectionWatcher.windowGroups(filtered, in: pasted)
+    #expect(groups.map { $0.map(\.run.coreOriginal) } == [["sara"], ["sarah"]])
+    let near = CorrectionCandidateFilter.filter(
+      runs: EditAlignment.align(pasted: "ask sara and call sarah", edited: "ask Saira and call Saira").runs,
+      inputs: inputs)
+    #expect(ObservedCorrectionWatcher.windowGroups(near, in: "ask sara and call sarah").count == 1)
+
+    // The anchor is the run `prepare` puts first (a capitalised replacement
+    // outranks a lowercase one in source order), so the group's window is the
+    // request's window: "sarah -> Saira" far away anchors group 1 and "jon ->
+    // john" (lowercase) anchors group 2, and every request's candidates sit
+    // inside its own context.
+    let mixed = "ask jon today " + filler + "call sarah tonight"
+    let mixedRuns = CorrectionCandidateFilter.filter(
+      runs: EditAlignment.align(pasted: mixed, edited: "ask john today " + filler + "call Saira tonight").runs,
+      inputs: inputs)
+    let mixedGroups = ObservedCorrectionWatcher.windowGroups(mixedRuns, in: mixed)
+    #expect(mixedGroups.map { $0.map(\.run.coreOriginal) } == [["sarah"], ["jon"]])
+    for group in mixedGroups {
+      let prepared = CorrectionCandidateFilter.prepare(group)
+      let anchor = prepared.byID[prepared.candidates[0].id]!
+      let window = ObservedCorrectionWatcher.excerptWindow(mixed, focusTokens: anchor.run.originalRange)
+      for f in group {
+        let span = ObservedCorrectionWatcher.tokenSpan(f.run.originalRange, in: mixed)!
+        #expect(span.lowerBound >= window.lowerBound && span.upperBound <= window.upperBound)
+      }
+    }
+
+    // The same pair twice, far apart, is one candidate in one group.
+    let twice = "ask sarah today " + filler + "call sarah tonight"
+    let twiceRuns = CorrectionCandidateFilter.filter(
+      runs: EditAlignment.align(pasted: twice, edited: "ask Saira today " + filler + "call Saira tonight").runs,
+      inputs: inputs)
+    #expect(twiceRuns.count == 2)
+    let twiceGroups = ObservedCorrectionWatcher.windowGroups(twiceRuns, in: twice)
+    #expect(twiceGroups.map { $0.map(\.run.coreOriginal) } == [["sarah"]])
+  }
+
   @Test("a long region's judge context is centred on a PREPARED candidate, not on an earlier run the filter dropped")
   func contextCentredOnAPreparedCandidate() async throws {
     let watcher = makeWatcher()
