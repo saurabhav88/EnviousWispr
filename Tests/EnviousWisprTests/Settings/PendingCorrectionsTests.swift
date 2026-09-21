@@ -341,7 +341,7 @@ struct CorrectionProposalCoordinatorObservationTests {
 
 // MARK: - Learning row
 
-@Suite("Learn from my edits row (#996 §3.9)", .tags(.productOutcome))
+@Suite("Self-Learning Dictionary row (#996 §3.9)", .tags(.productOutcome))
 struct LearnFromEditsRowTests {
 
   @Test("an arm enables the row with no reason line; each unavailable reason disables it with its own line")
