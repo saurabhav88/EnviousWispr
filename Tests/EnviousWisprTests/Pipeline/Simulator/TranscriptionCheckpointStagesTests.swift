@@ -147,7 +147,10 @@ struct TranscriptionCheckpointStagesTests {
     await wrapper.drainReadyWork()
     context.capture.deliverBuffer(frameCount: 16_000, amplitude: 0.5)
     await wrapper.apply(.stop)
-    await wrapper.drainReadyWork()
+    // The retry is parked on the fake clock, so there is no terminal to wait
+    // on; wait on the retry's own call (#3081), not the quiescence heuristic.
+    await wrapper.drainUntil(
+      { context.engine.retryDecodeCallCount == 1 }, what: "the retry in flight")
 
     try #require(context.engine.retryDecodeCallCount == 1, "the retry must be in flight")
     try #require(wrapper.testKernel.recordingOutcome == nil)

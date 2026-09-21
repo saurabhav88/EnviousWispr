@@ -581,6 +581,31 @@ final class KernelRecordingSession: RecordingSessionDriving {
     await drainReadyWork()
   }
 
+  /// Wait for a MID-FLIGHT signal the scenario itself names, then apply the
+  /// ready-work heuristic (#3081). `drainUntilConcluded` covers assertions that
+  /// read a terminal; a test that asserts something is IN FLIGHT (the parked
+  /// Phase-2 retry has been called, a phase has landed) has no terminal to wait
+  /// on, and `drainReadyWork` alone can return before the continuation that
+  /// starts it is ever scheduled — the `0594abdb` post-merge Release failure
+  /// read `retryDecodeCallCount == 0` after the heuristic drain. The wait ends
+  /// on the first yield where `signal` holds; exhausting the cap records the
+  /// same give-up report so a wrong conversion fails loudly and names `what`.
+  /// Everything here is `@MainActor`, so probing is not the cross-actor
+  /// yield-poll hazard in `test-timing.md`.
+  func drainUntil(_ signal: @MainActor () -> Bool, what: String) async {
+    var iterations = 0
+    while !signal(), iterations < Self.livelockYieldCap {
+      await Task.yield()
+      iterations += 1
+    }
+    guard signal() else {
+      Issue.record(
+        Self.giveUpMessage(kernel: kernel, what: "drainUntil(\(what))", reached: what))
+      return
+    }
+    await drainReadyWork()
+  }
+
   /// Safety net against a kernel livelock, not a deadline — see `drainReadyWork`.
   private static let livelockYieldCap = 20000
 

@@ -108,7 +108,8 @@ struct EscapeRecoveryAbandonmentDecodeReturnTests {
       // Primary decode fails while the session is ORDINARY — the primary net
       // sees nothing, and the helper death routes into the one Phase-2 retry.
       ctx.engine.resolveHeldFinalizeAsHelperDeath()
-      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.drainUntil(
+        { ctx.engine.retryDecodeCallCount == 1 }, what: "the retry in flight")
       #expect(ctx.engine.retryDecodeCallCount == 1, "the retry must be in flight to abandon it")
       #expect(kernel.recordingOutcome == nil)
 
