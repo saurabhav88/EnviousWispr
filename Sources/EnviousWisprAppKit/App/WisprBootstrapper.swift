@@ -1251,7 +1251,8 @@ package final class WisprBootstrapper {
             return proc_pidpath(pid, base, UInt32(bytes.count))
           }
           guard written > 0, Int(written) <= buffer.count else { return false }
-          let path = String(decoding: buffer[..<Int(written)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
+          let path = String(
+            decoding: buffer[..<Int(written)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
           return path.hasSuffix("/EnviousWispr")
         }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
@@ -1542,6 +1543,22 @@ package final class WisprBootstrapper {
       emitTurnsDisplayedTelemetry: {
         TelemetryService.shared.trackFileImportTurnsDisplayed(screen: .wizard)
       },
+      // #3069: which engine, whether it and the configured polisher succeeded.
+      emitRunTelemetry: {
+        outcome, backend, durationSeconds, asrOutcome, polishOutcome, provider, model in
+        TelemetryService.shared.trackFileImportCompleted(
+          outcome: outcome, asrBackend: backend, durationSeconds: durationSeconds,
+          asrOutcome: asrOutcome, polishOutcome: polishOutcome, polishProvider: provider,
+          polishModel: model)
+      },
+      // #3069: same `.asrFailed` category and fingerprint dictation's own ASR failures use
+      // (one engine defect, one Sentry issue), tagged `stage: "file_import"` so it is
+      // filterable separately in the Sentry UI.
+      captureASRFailure: { error, backend in
+        SentryBreadcrumb.captureError(
+          SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
+          category: .asrFailed, stage: "file_import", extra: ["backend": backend.rawValue])
+      },
       // The third workload, claiming the same one-slot engine as a dictation and
       // a crash replay.
       engineAdmission: .live(lease: engineLease, as: .fileImport),
@@ -1730,7 +1747,8 @@ package final class WisprBootstrapper {
         coordinator: fileImportCoordinator,
         // The screen's gate, composed from the same coordinators the screen reads; the
         // door has no editor and so no unsaved-key draft.
-        polishReadiness: { [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
+        polishReadiness: {
+          [settings, keychainManager, llmDiscovery, localPolishRuntimes, aiAvailability, setup] in
           let provider = settings.effectiveFileImportLLMProvider
           // The probes the screen runs on every appearance, through the same owner.
           await FileImportPolishGate.armImport(

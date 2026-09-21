@@ -211,6 +211,10 @@ final class FileImportCoordinator {
     /// drives the credit on the header. A document with no parts has neither, and the credit
     /// must not name an engine for work that never happened.
     var wasPolished: Bool = false
+    /// Whether the polisher was actually asked for this part (#3069), as opposed to a
+    /// deliberate bypass (no provider chosen, input too short, a silent skip). `wasPolished
+    /// == false` alone cannot tell a failed attempt from a bypass nobody asked for; this can.
+    var polishWasAttempted: Bool = true
     /// The speaker turn this piece belongs to (#2851 follow-up), nil on a document with no
     /// turns. Several pieces share one id when a long turn was split.
     var turnID: String? = nil
@@ -420,6 +424,19 @@ final class FileImportCoordinator {
   private let emitSpeakerRetryTelemetry:
     @MainActor (TelemetryService.FileImportSpeakerRetryOutcome) -> Void
   private let emitTurnsDisplayedTelemetry: @MainActor () -> Void
+  /// Shape-only per-run telemetry (#3069): which engine, whether it and the configured
+  /// polisher succeeded. No-op default, same as every other telemetry-shaped closure here.
+  private let emitRunTelemetry:
+    @MainActor (
+      TelemetryService.FileImportRunOutcome, ASRBackendType, TimeInterval,
+      TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
+      LLMProvider?, String?
+    ) -> Void
+  /// Reports an ASR engine failure to Sentry (#3069), tagged `stage: "file_import"` so it is
+  /// filterable separately from dictation's own ASR failures while sharing the SAME
+  /// `.asrFailed` category and fingerprint — one engine defect, one Sentry issue, whichever
+  /// caller hit it. No-op default, same as every other telemetry-shaped closure here.
+  private let captureASRFailure: @MainActor (any Error, ASRBackendType) -> Void
   /// Documents this wizard has already reported as displayed, so a Done step that re-appears
   /// (view mode flip, window re-open) reports each document once per launch, never per draw.
   private var displayedTurnHistoryIDs: Set<UUID> = []
@@ -701,6 +718,12 @@ final class FileImportCoordinator {
       TelemetryService.FileImportSpeakerRetryOutcome
     ) -> Void = { _ in },
     emitTurnsDisplayedTelemetry: @escaping @MainActor () -> Void = {},
+    emitRunTelemetry: @escaping @MainActor (
+      TelemetryService.FileImportRunOutcome, ASRBackendType, TimeInterval,
+      TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
+      LLMProvider?, String?
+    ) -> Void = { _, _, _, _, _, _, _ in },
+    captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
     refreshOllamaFacts: @escaping @MainActor () async -> Void = {},
@@ -746,6 +769,8 @@ final class FileImportCoordinator {
     self.emitRenameTelemetry = emitRenameTelemetry
     self.emitSpeakerRetryTelemetry = emitSpeakerRetryTelemetry
     self.emitTurnsDisplayedTelemetry = emitTurnsDisplayedTelemetry
+    self.emitRunTelemetry = emitRunTelemetry
+    self.captureASRFailure = captureASRFailure
     self.engineAdmission = engineAdmission
     self.beginRun = beginRun
     self.prepareLocalPolish = prepareLocalPolish
@@ -989,7 +1014,8 @@ final class FileImportCoordinator {
   /// during a body evaluation, and it is the mutation that replaces the placeholder with the
   /// result. Ignoring it left the view on "Comparing words" until an unrelated redraw. Codex,
   /// round 2.
-  private var markedUpCache: (input: MarkedUpInput, result: WordDiff.Result, passages: [WordDiff.Result])?
+  private var markedUpCache:
+    (input: MarkedUpInput, result: WordDiff.Result, passages: [WordDiff.Result])?
   var markedUp: WordDiff.Result? {
     guard let cached = markedUpCache, cached.input == markedUpInput else { return nil }
     return cached.result
@@ -1328,7 +1354,8 @@ final class FileImportCoordinator {
     // turns raw and disclosed (second-pass review: a partial write would disagree with the
     // document's own saved status, and could truncate a long turn split into pieces).
     let completed = cleanupOutcome == .stored
-    let final = FileImportDocumentMath.finalTurns(turns, parts: completed ? parts : [], cleanupCompleted: completed)
+    let final = FileImportDocumentMath.finalTurns(
+      turns, parts: completed ? parts : [], cleanupCompleted: completed)
     let disclosed = final.filter { !$0.wasPolished }.count
     await mergeAndReport(
       historyID: historyID, analysis: result.analysis, turns: final, outcome: cleanupOutcome,
@@ -1337,7 +1364,6 @@ final class FileImportCoordinator {
     // test-row read): before this write the row has no analysis and the audio would be kept.
     releaseRetryInputsIfNoLongerRetryable()
   }
-
 
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
   /// correction): a genuinely NEW retention this phase adds, since `releaseDecodedAudio()`
@@ -1779,13 +1805,47 @@ final class FileImportCoordinator {
       // #2851 follow-up: the SAME sections as the first cleanup, from the turns this
       // document has (the awaited speaker result, or the stored row after a retry); no
       // second speaker pass.
-      let turns = pendingSpeakerResult?.turns
+      let turns =
+        pendingSpeakerResult?.turns
         ?? historyID.flatMap { currentHistoryRow($0)?.turns }
       let cut = FileImportDocumentMath.cleanupPieces(
-        turns: turns, rawText: rawTranscript, maximumWords: FileImportDocumentMath.partCeiling(configuration))
+        turns: turns, rawText: rawTranscript,
+        maximumWords: FileImportDocumentMath.partCeiling(configuration))
+      // `asrOutcome: nil` — this is "Clean it again," which never re-runs ASR, so the
+      // terminal event this produces must not claim an ASR success it did not measure.
       await polishAll(
-        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
+        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart,
+        asrOutcome: nil)
     }
+  }
+
+  // MARK: - Run telemetry (#3069)
+
+  /// One place `run()`/`polishAll()`/`finishRun()` report a terminal outcome from. Reads
+  /// `runConfiguration`/`file` at the call site's own moment (never re-derives them), so a
+  /// superseded run's stale values can't leak into a NEWER run's event — callers already gate
+  /// on `generationAtStart == generation` before reaching any of these call sites.
+  private func reportRunTelemetry(
+    outcome: TelemetryService.FileImportRunOutcome,
+    asrOutcome: TelemetryService.FileImportASROutcome?,
+    polishOutcome: TelemetryService.FileImportPolishOutcome? = nil
+  ) {
+    guard let file, let configuration = runConfiguration else { return }
+    let provider: LLMProvider? =
+      configuration.polishProvider == .none ? nil : configuration.polishProvider
+    emitRunTelemetry(
+      outcome, configuration.backendType, file.seconds, asrOutcome, polishOutcome, provider,
+      provider == nil ? nil : configuration.polishModel)
+  }
+
+  /// `.skipped` when nothing was ever asked (no provider, or every part was a deliberate
+  /// bypass); `.failed` when the polisher was asked and produced nothing; `.partial`/`.success`
+  /// otherwise. Never conflates a bypass with a failure — see `Part.polishWasAttempted`.
+  private func summarizedPolishOutcome() -> TelemetryService.FileImportPolishOutcome {
+    let attempted = parts.filter(\.polishWasAttempted).count
+    let polished = parts.filter { $0.polishWasAttempted && $0.wasPolished }.count
+    return TelemetryService.fileImportPolishOutcome(
+      attemptedParts: attempted, polishedParts: polished)
   }
 
   // MARK: - The run
@@ -1817,6 +1877,7 @@ final class FileImportCoordinator {
       engineReportedLanguage = result.language
       releaseDecodedAudio()
       guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        reportRunTelemetry(outcome: .noSpeech, asrOutcome: .noSpeech)
         showRejection(.noSpeechFound)
         return
       }
@@ -1825,7 +1886,7 @@ final class FileImportCoordinator {
       // already durable. `polishAll`'s own gate at its entry stays — it also protects the
       // re-polish path, which never reaches here.
       guard rawIsSavedToHistory || saveRawToHistory() else {
-        await finishRun(savingDocument: false)
+        await finishRun(savingDocument: false, asrOutcome: .success)
         return
       }
       // Launched, never awaited here: the speaker step must not add its own deadline
@@ -1872,7 +1933,8 @@ final class FileImportCoordinator {
         turns: pendingSpeakerResult?.turns, rawText: result.text,
         maximumWords: FileImportDocumentMath.partCeiling(runConfiguration))
       await polishAll(
-        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart)
+        cut.pieces, turnIDs: cut.turnIDs, gaps: cut.gaps, generationAtStart: generationAtStart,
+        asrOutcome: .success)
     } catch is CancellationError {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
@@ -1880,6 +1942,10 @@ final class FileImportCoordinator {
     } catch {
       guard generationAtStart == generation else { return }
       releaseDecodedAudio()
+      if let configuration = runConfiguration {
+        captureASRFailure(error, configuration.backendType)
+      }
+      reportRunTelemetry(outcome: .asrFailed, asrOutcome: .failed)
       showRejection(FileImportDocumentMath.rejection(for: error))
     }
   }
@@ -2345,7 +2411,8 @@ final class FileImportCoordinator {
   /// inference slot, so parts in parallel would queue inside it and the progress
   /// the user sees would stop meaning anything.
   private func polishAll(
-    _ pieces: [String], turnIDs: [String?] = [], gaps: [String] = [], generationAtStart: Int
+    _ pieces: [String], turnIDs: [String?] = [], gaps: [String] = [], generationAtStart: Int,
+    asrOutcome: TelemetryService.FileImportASROutcome?
   ) async {
     // The pieces `placedPassages()` locates for the Marked up view, set at the one place the
     // split exists so the placement and the cleanup work on the same cut.
@@ -2359,16 +2426,17 @@ final class FileImportCoordinator {
     // asking for the work on this document; the rule protects a deletion made while work was
     // already running, where the user is not looking at the page and gets no say.
     guard rawIsSavedToHistory || saveRawToHistory() else {
-      await finishRun(savingDocument: false)
+      await finishRun(savingDocument: false, asrOutcome: asrOutcome)
       return
     }
     guard !pieces.isEmpty else {
-      await finishRun(savingDocument: true)
+      await finishRun(savingDocument: true, asrOutcome: asrOutcome)
       return
     }
     // AFTER the durability gate: the words are transcribed and in History before the
     // cleanup is refused, so the refusal costs the cleanup and nothing else.
     guard localPolisherIsReady else {
+      reportRunTelemetry(outcome: .success, asrOutcome: asrOutcome, polishOutcome: .notReady)
       showRejection(.polisherNotReady)
       // The turns' terminal outcome for a labeled import whose cleanup never starts (cloud
       // review of PR #2871, round 2): written now, raw, with the refusal as the outcome.
@@ -2389,6 +2457,7 @@ final class FileImportCoordinator {
           Part(
             id: index, text: outcome.displayText, isUnpolished: outcome.isUnpolished,
             wasPolished: outcome.polishedText != nil,
+            polishWasAttempted: outcome.wasPolishAttempted,
             turnID: index < turnIDs.count ? turnIDs[index] : nil,
             trailingGap: index < gaps.count ? gaps[index] : ""))
       } catch is CancellationError {
@@ -2396,10 +2465,12 @@ final class FileImportCoordinator {
       } catch {
         guard generationAtStart == generation else { return }
         // A part that could not run at all still appears, carrying its raw
-        // words. A gap in the document would be the silent failure.
+        // words. A gap in the document would be the silent failure. This part WAS an
+        // attempt (the call threw rather than declining), so it counts toward `.failed`,
+        // never `.skipped`.
         parts.append(
           Part(
-            id: index, text: piece, isUnpolished: true,
+            id: index, text: piece, isUnpolished: true, polishWasAttempted: true,
             turnID: index < turnIDs.count ? turnIDs[index] : nil,
             trailingGap: index < gaps.count ? gaps[index] : ""))
       }
@@ -2407,7 +2478,7 @@ final class FileImportCoordinator {
       state = .polishing(done: index + 1, total: pieces.count)
     }
     guard generationAtStart == generation else { return }
-    await finishRun(savingDocument: true)
+    await finishRun(savingDocument: true, asrOutcome: asrOutcome)
   }
 
   /// **The ONE place a run ends.** Three paths reached the terminal before #2772 — an empty
@@ -2421,7 +2492,9 @@ final class FileImportCoordinator {
   /// This REDUCES the direct writers to `step` from eight to seven, so
   /// `FileImportCoordinatorTests.navigationHasOneWriter` is re-frozen deliberately rather
   /// than bumped, per the plan's requirement that the freeze change only on purpose.
-  private func finishRun(savingDocument: Bool) async {
+  private func finishRun(
+    savingDocument: Bool, asrOutcome: TelemetryService.FileImportASROutcome?
+  ) async {
     let generationAtFinish = generation
     if savingDocument {
       // #2851 follow-up: the turns are written ONCE, here, carrying their cleaned words;
@@ -2430,6 +2503,12 @@ final class FileImportCoordinator {
       guard generationAtFinish == generation else { return }
       savePolishedToHistory()
     }
+    // #3069: `polish_outcome` only means something once the document is durable; a refused
+    // raw save has no parts to summarize and reports history_save_failed with no polish claim.
+    reportRunTelemetry(
+      outcome: savingDocument ? .success : .historySaveFailed,
+      asrOutcome: asrOutcome,
+      polishOutcome: savingDocument ? summarizedPolishOutcome() : nil)
     phase = ""
     state = .finished
     step = .done

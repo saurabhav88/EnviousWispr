@@ -3345,6 +3345,87 @@ public final class TelemetryService {
     }
   }
 
+  // MARK: - File import run outcome (#3069)
+
+  /// Terminal outcome for one Transcribe a File run: which engine, whether it succeeded, and
+  /// (on success) whether the polisher it was configured with succeeded. Shape only, matching
+  /// every other `file_import_*` event's privacy floor: never a file name, never a word of the
+  /// transcript, never a raw error string.
+  public enum FileImportRunOutcome: String, Sendable, Equatable {
+    case success
+    case asrFailed = "asr_failed"
+    case noSpeech = "no_speech"
+    case historySaveFailed = "history_save_failed"
+  }
+
+  /// Whether THIS invocation attempted ASR. `nil` on a re-polish ("Clean it again"), which
+  /// reaches the same terminal (`finishRun`) without running the engine again.
+  public enum FileImportASROutcome: String, Sendable, Equatable {
+    case success
+    case failed
+    case noSpeech = "no_speech"
+  }
+
+  /// `failed` means the polisher was asked and produced nothing for every part — distinct
+  /// from `skipped`, which means no part ever asked (no provider chosen, or every part was a
+  /// deliberate bypass such as too-short input). Conflating the two would count "the user
+  /// picked no polisher" as an engine failure.
+  public enum FileImportPolishOutcome: String, Sendable, Equatable {
+    case success
+    case partial
+    case failed
+    case skipped
+    case notReady = "not_ready"
+  }
+
+  public func trackFileImportCompleted(
+    outcome: FileImportRunOutcome,
+    asrBackend: ASRBackendType,
+    durationSeconds: TimeInterval,
+    asrOutcome: FileImportASROutcome? = nil,
+    polishOutcome: FileImportPolishOutcome? = nil,
+    polishProvider: LLMProvider? = nil,
+    polishModel: String? = nil
+  ) {
+    var props: [String: Any] = [
+      "outcome": outcome.rawValue,
+      "asr_backend": asrBackend.rawValue,
+      "duration_bucket": Self.fileImportDurationBucket(durationSeconds),
+    ]
+    if let asrOutcome {
+      props["asr_outcome"] = asrOutcome.rawValue
+    }
+    if let polishOutcome {
+      props["polish_outcome"] = polishOutcome.rawValue
+    }
+    if let polishProvider, polishProvider != .none {
+      props["polish_provider"] = polishProvider.rawValue
+      if let polishModel, !polishModel.isEmpty {
+        props["polish_model"] = polishModel
+      }
+    }
+
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "file_import_completed",
+          stringProps: props.compactMapValues { $0 as? String }))
+    #endif
+
+    PostHogSDK.shared.capture("file_import_completed", properties: props)
+  }
+
+  /// `attemptedParts` excludes deliberate bypasses (no provider, too-short input); an import
+  /// with zero attempted parts was never asking the polisher to do anything, which is
+  /// `.skipped`, not `.failed`.
+  public static func fileImportPolishOutcome(
+    attemptedParts: Int, polishedParts: Int
+  ) -> FileImportPolishOutcome {
+    guard attemptedParts > 0 else { return .skipped }
+    guard polishedParts > 0 else { return .failed }
+    return polishedParts >= attemptedParts ? .success : .partial
+  }
+
   // MARK: - File import speaker step (#2809)
 
   /// Shape-only telemetry for the dormant, phase-2 speaker step: never text, never a file
