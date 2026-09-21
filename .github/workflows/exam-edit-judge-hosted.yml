@@ -49,7 +49,7 @@ jobs:
           otool -l scripts/eval/alias_runner/.build/release/AliasRunner | grep -A3 LC_BUILD_VERSION | grep minos
 
       - name: Upload the exam tool
-        uses: actions/upload-artifact@bde8d1a5e63c6e4d1a1e6b9d4b3f0e3d59a2a48b # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: alias-runner
           path: scripts/eval/alias_runner/.build/release/AliasRunner
@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload the receipt
         if: always()
-        uses: actions/upload-artifact@bde8d1a5e63c6e4d1a1e6b9d4b3f0e3d59a2a48b # v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: exam-receipt-${{ matrix.runner }}
           path: |
