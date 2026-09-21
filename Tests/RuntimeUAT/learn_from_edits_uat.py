@@ -489,13 +489,74 @@ def card_button(kind, correct):
     if pid is None:
         return None
     app = get_ax_app(pid)
-    label = f"Accept: learn {correct}" if kind == "accept" else f"Reject: don't learn {correct}"
-    for window in (get_attr(app, "AXWindows") or []):
+    prefix = "Accept: learn " if kind == "accept" else "Reject: don't learn "
+    label = prefix + correct
+    windows = get_attr(app, "AXWindows") or []
+    for window in windows:
         b = find_element(window, role="AXButton", description=label, max_depth=12)
         if b is None:
             b = find_element(window, role="AXButton", title=label, max_depth=12)
         if b is not None:
             return b
+    # The card names the RUN the aligner found, which for a two-word fix where
+    # one word was already right is the one changed word ("Clock Code" →
+    # "Claude Code" proposes "Clock → Claude"); when no button carries the
+    # whole expected word, take the one card button of this kind.
+    for window in windows:
+        b = find_button_by_prefix(window, prefix)
+        if b is not None:
+            return b
+    return None
+
+
+def parse_judged(line):
+    """The `learn_judged` wire row as a dict, or None. `accepted=0` alone is not
+    a refusal: `outcome` names a bypass (`deadline`, `malformed`, ...) when the
+    judge never answered (Codex drill review, 2026-09-20)."""
+    match = re.search(r"learn_judged arm=(\w+) outcome=(\w+) candidates=(\d+) accepted=(\d+)", line or "")
+    if match is None:
+        return None
+    return {"arm": match.group(1), "outcome": match.group(2),
+            "candidates": int(match.group(3)), "accepted": int(match.group(4))}
+
+
+def finish_restore(snaps, initially_running, app_stopped, audio_restored):
+    """The one restore receipt both drills print: files, defaults, launchctl,
+    audio route, and the app's initial running state (relaunched AND seen
+    running, never an unchecked `open`). Returns (restored, receipt)."""
+    launchctl_set(snaps["launchctl"])
+    if app_stopped:
+        file_restore(WORDS, snaps["words"])
+        file_restore(LEDGER, snaps["ledger"])
+        defaults_restore(snaps["defaults"])
+        ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
+        ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
+    else:
+        ok_w, why_w = False, "not restored: the app did not stop"
+        ok_l, why_l = False, "not restored: the app did not stop"
+    ok_d = defaults_snapshot() == snaps["defaults"]
+    ok_e = launchctl_get() == snaps["launchctl"]
+    running_restored = not initially_running
+    if initially_running and app_stopped and ok_w and ok_l:
+        launched = subprocess.run(["open", "-n", APP], capture_output=True, text=True).returncode == 0
+        running_restored = launched and bool(wait_for("the initially running app to return", lambda: app_pid() is not None, deadline=20.0))
+    restored = audio_restored and app_stopped and ok_w and ok_l and ok_d and ok_e and running_restored
+    receipt = (f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; ledger={why_l}; "
+               f"defaults={ok_d}; launchctl={ok_e}; running_state={running_restored}")
+    return restored, receipt
+
+
+def find_button_by_prefix(element, prefix, depth=0, max_depth=12):
+    if depth > max_depth or element is None:
+        return None
+    if get_attr(element, "AXRole") == "AXButton":
+        for attr in ("AXDescription", "AXTitle"):
+            if str(get_attr(element, attr) or "").startswith(prefix):
+                return element
+    for child in (get_attr(element, "AXChildren") or []):
+        hit = find_button_by_prefix(child, prefix, depth + 1, max_depth)
+        if hit is not None:
+            return hit
     return None
 
 
