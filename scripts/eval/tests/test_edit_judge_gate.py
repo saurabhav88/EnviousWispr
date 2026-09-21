@@ -244,8 +244,13 @@ def test_exam_registry_keeps_legacy_paths_unchanged():
 def test_attempt_ledger_reserves_once_per_exam_and_candidate(tmp_path):
     ledger = tmp_path / "attempts.jsonl"
     ident = {"checkpoint_sha256": "a" * 64, "tokenizer_sha256": "b" * 64, "config_sha256": "c" * 64, "path": "shape+judge"}
-    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
-    assert rec["status"] == "started" and len(rec["key_digest"]) == 64 and rec["os_major"] == 27
+    host = {"os_version": "27.0", "os_major": 27, "chip": "Apple M4 Pro", "virtual": False}
+    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, host=host)
+    assert rec["status"] == "started" and len(rec["key_digest"]) == 64 and rec["os_major"] == 27 and rec["host"] == host
+    # A host that disagrees with an explicit major is refused (exit 2).
+    with pytest.raises(SystemExit) as exc:
+        gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=15, host=host)
+    assert exc.value.code == 2
     # A second reservation for the same exam + identity + macOS major is refused (exit 2).
     with pytest.raises(SystemExit) as exc:
         gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)

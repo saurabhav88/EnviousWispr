@@ -447,15 +447,21 @@ def host_identity() -> dict:
     return {"os_version": version, "os_major": int(major), "chip": chip, "virtual": "(Virtual)" in chip}
 
 
-def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: dict, command: list[str], attempts_log: Path = ATTEMPTS_LOG, os_major: Optional[int] = None) -> dict:
+def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: dict, command: list[str], attempts_log: Path = ATTEMPTS_LOG, os_major: Optional[int] = None, host: Optional[dict] = None) -> dict:
     """Append-only attempt ledger keyed by exam identity plus complete
     candidate identity plus the macOS major, written BEFORE the runner
     launches. A second inference attempt for the same key is refused: one
     run per locked candidate per exam version per macOS major is enforced
-    here, not by counting scorecards. `os_major` defaults to this machine's.
+    here, not by counting scorecards. The full `host` (from
+    `host_identity()`) rides on the row for the reader; only its major is
+    part of the key. Both default to this machine's.
     Returns the reservation record (status `started`)."""
+    if host is None and os_major is None:
+        host = host_identity()
     if os_major is None:
-        os_major = host_identity()["os_major"]
+        os_major = host["os_major"]
+    if host is not None and host.get("os_major") != os_major:
+        infra_error(f"host identity (macOS {host.get('os_major')}) and attempt macOS major ({os_major}) disagree")
     key = {"exam": exam, "exam_manifest_sha256": exam_sha, "judge": judge, "execution_identity": identity, "os_major": os_major}
     key_digest = hashlib.sha256(json.dumps(key, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
     prior = []
@@ -472,7 +478,7 @@ def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: di
                 prior.append(rec)
     if prior:
         infra_error(f"an inference attempt for this exam, candidate identity and macOS {os_major} already exists ({prior[0].get('started_at')}, status {prior[0].get('status')}); one run per locked candidate per exam version per macOS major")
-    rec = {"key_digest": key_digest, **key, "status": "started", "started_at": now_iso(), "command": command}
+    rec = {"key_digest": key_digest, **key, "host": host, "status": "started", "started_at": now_iso(), "command": command}
     attempts_log.parent.mkdir(parents=True, exist_ok=True)
     with attempts_log.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -1048,8 +1054,11 @@ def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_p
     exposure = frozen_exposure(judge, exam=exam)
     ident = exam_identity(exam)
     host = host_identity()
-    reservation = reserve_attempt(exam, ident["manifest_sha256"], judge, training.get("execution_identity") or {}, sys.argv, os_major=host["os_major"])
-    run_dir = new_run_dir(stamp, judge, "frozen-report" if exam == "legacy" else f"exam-{exam}")
+    reservation = reserve_attempt(exam, ident["manifest_sha256"], judge, training.get("execution_identity") or {}, sys.argv, host=host)
+    # The receipt name carries the major so two receipts for one candidate
+    # on different Macs are told apart by name, not only by content.
+    receipt_kind = "frozen-report" if exam == "legacy" else f"exam-{exam}"
+    run_dir = new_run_dir(stamp, judge, f"{receipt_kind}-macos{host['os_major']}")
     per_partition: dict[str, dict] = {}
     all_rows: list[dict] = []
     all_records: list[dict] = []
