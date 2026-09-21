@@ -250,6 +250,10 @@ final class LearnFromEditsWiring {
     self.watcher = watcher
     box.wiring = self
 
+    // Set BEFORE the door loads: its synchronous rejection (a relative path)
+    // clears the flag through `onFailure`, and wiring below must see that
+    // (cloud review P3), so the flag is never re-derived from the path later.
+    self.debugDoorPresent = debugExportPath != nil
     #if DEBUG
       if let debugExportPath {
         let door = DebugJudgeDoor(exportPath: debugExportPath)
@@ -276,19 +280,23 @@ final class LearnFromEditsWiring {
       }
     #endif
 
-    wireDelivery(debugDoorPresent: debugExportPath != nil)
+    wireDelivery()
   }
 
   // MARK: - Phase D: the delivered judge's lifecycle
 
   private var debugDoorPresent = false
+  /// Every AUTOMATIC trigger waits for the launch probe (first-run baseline,
+  /// adopt-only admission); a Parakeet admission replayed before the probe
+  /// finishes must not start a fetch first (cloud review P2). User presses
+  /// are not gated: the probe is a launch matter, not a permission.
+  private var launchProbeFinished = false
 
   /// Bind the delivery home's judge registration: state observation → load on
   /// admission; the row's actions; the removal drain; the automatic fetch once
   /// the launch probe has finished, on onboarding completion and on Parakeet
   /// admission.
-  private func wireDelivery(debugDoorPresent: Bool) {
-    self.debugDoorPresent = debugDoorPresent
+  private func wireDelivery() {
     guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
     availability.download = { [weak self] in self?.startFetch(trigger: "settings", userInitiated: true) }
     availability.cancel = { [weak home] in home?.cancelEditJudgeDownload() }
@@ -306,7 +314,10 @@ final class LearnFromEditsWiring {
     handle.observeState { [weak self] state in self?.deliveryStateChanged(state) }
     // Automatic fetch only AFTER the probe has recorded the first-run baseline
     // and adopted an existing copy; the hook replays if the probe already ran.
-    home.onEditJudgeLaunchProbeFinished = { [weak self] in self?.startFetch(trigger: "launch") }
+    home.onEditJudgeLaunchProbeFinished = { [weak self] in
+      self?.launchProbeFinished = true
+      self?.startFetch(trigger: "launch")
+    }
   }
 
   /// The bootstrapper's onboarding fan-out (beside EG-1's).
@@ -316,6 +327,14 @@ final class LearnFromEditsWiring {
 
   private func startFetch(trigger: String, userInitiated: Bool = false) {
     guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
+    guard userInitiated || launchProbeFinished else {
+      Task {
+        await AppLogger.shared.log(
+          "learn-from-edits judge fetch \(trigger): held, launch probe not finished",
+          category: "LearnFromEdits")
+      }
+      return
+    }
     let inputs = EditJudgeFetchPolicy.Inputs(
       classifierQualifiedSomewhere: CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(
         digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest),
