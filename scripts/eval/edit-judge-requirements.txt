@@ -3,7 +3,7 @@
 #           uv pip install --python <venv>/bin/python -r scripts/eval/edit-judge-requirements.txt
 # The probe and converter refuse any other transformers/coremltools version
 # (probe_edit_judge_compatibility.EXPECTED_TOOLCHAIN).
-torch==2.12.1
+torch==2.13.0
 transformers==4.50.0
 coremltools==9.0
 # NumPy is pinned BELOW 2.4: coremltools 9.0's torch frontend casts a
