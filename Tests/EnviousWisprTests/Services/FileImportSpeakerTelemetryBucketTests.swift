@@ -76,4 +76,79 @@ struct FileImportSpeakerTelemetryBucketTests {
     #expect(TelemetryService.fileImportSpeakerOutcome(.failed(.cancelled)) == "failed")
     #expect(TelemetryService.fileImportSpeakerOutcome(.timedOut(afterMs: 100)) == "timed_out")
   }
+
+  // MARK: - file_import_completed (#3069)
+
+  @Test("polish outcome distinguishes skipped (never asked) from failed (asked, got nothing)")
+  func polishOutcomeSkippedVersusFailed() {
+    #expect(
+      TelemetryService.fileImportPolishOutcome(attemptedParts: 0, polishedParts: 0) == .skipped)
+    #expect(
+      TelemetryService.fileImportPolishOutcome(attemptedParts: 3, polishedParts: 0) == .failed)
+    #expect(
+      TelemetryService.fileImportPolishOutcome(attemptedParts: 3, polishedParts: 3) == .success)
+    #expect(
+      TelemetryService.fileImportPolishOutcome(attemptedParts: 3, polishedParts: 1) == .partial)
+  }
+
+  // `testEventHook`/`CapturedTelemetryEvent` are DEBUG-only (CI also compiles tests in
+  // Release); wrap every test that reads them, matching `OllamaReadinessGateTests`.
+  #if DEBUG
+    /// A synchronous, same-actor recorder for a single hook firing — the call under test never
+    /// crosses a suspension point, so unlike `TelemetryEventWaiter` (used where the emission
+    /// happens on a detached task) this only needs `MainActor.assumeIsolated` to satisfy Swift 6
+    /// strict concurrency on the `@Sendable` closure type, never an async wait.
+    @MainActor
+    private final class SyncEventRecorder {
+      var event: CapturedTelemetryEvent?
+    }
+
+    @Test("trackFileImportCompleted emits outcome, backend and duration bucket every time")
+    func trackFileImportCompletedAlwaysEmitsCoreFields() {
+      let recorder = SyncEventRecorder()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { recorder.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.trackFileImportCompleted(
+        outcome: .asrFailed, asrBackend: .parakeet, durationSeconds: 120)
+      #expect(recorder.event?.name == "file_import_completed")
+      #expect(recorder.event?.stringProps["outcome"] == "asr_failed")
+      #expect(recorder.event?.stringProps["asr_backend"] == "parakeet")
+      #expect(recorder.event?.stringProps["duration_bucket"] == "1-5min")
+      #expect(recorder.event?.stringProps["polish_outcome"] == nil)
+      #expect(recorder.event?.stringProps["polish_provider"] == nil)
+    }
+
+    @Test("trackFileImportCompleted omits polish fields when no provider was configured")
+    func trackFileImportCompletedOmitsPolishFieldsForNoneProvider() {
+      let recorder = SyncEventRecorder()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { recorder.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.trackFileImportCompleted(
+        outcome: .success, asrBackend: .whisperKit, durationSeconds: 30,
+        asrOutcome: .success, polishOutcome: .skipped, polishProvider: .none,
+        polishModel: "should-not-appear")
+      #expect(recorder.event?.stringProps["polish_outcome"] == "skipped")
+      #expect(recorder.event?.stringProps["polish_provider"] == nil)
+      #expect(recorder.event?.stringProps["polish_model"] == nil)
+    }
+
+    @Test("trackFileImportCompleted includes provider and model when a real polisher ran")
+    func trackFileImportCompletedIncludesProviderAndModel() {
+      let recorder = SyncEventRecorder()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { recorder.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.trackFileImportCompleted(
+        outcome: .success, asrBackend: .parakeet, durationSeconds: 30,
+        asrOutcome: .success, polishOutcome: .success, polishProvider: .ollama,
+        polishModel: "llama3.1")
+      #expect(recorder.event?.stringProps["polish_provider"] == "ollama")
+      #expect(recorder.event?.stringProps["polish_model"] == "llama3.1")
+    }
+  #endif
 }

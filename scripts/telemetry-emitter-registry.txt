@@ -68,6 +68,7 @@ escape_recovery.expired	ungraded	ungraded	-	pre-#2987
 escape_recovery.kept	ungraded	ungraded	-	pre-#2987
 escape_recovery.restored	ungraded	ungraded	-	pre-#2987
 escape_recovery.started	ungraded	ungraded	-	pre-#2987
+file_import_completed	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (ASR and polish outcome by backend, provider and model, #3069)	#3069
 file_import_speakers	ungraded	ungraded	-	pre-#2987
 file_import_turns	ungraded	ungraded	-	pre-#2987
 file_import_turns_displayed	ungraded	ungraded	-	pre-#2987

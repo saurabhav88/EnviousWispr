@@ -141,4 +141,18 @@ struct ASRClusterSentryIdentityTests {
         == ["handled_error", "asr_failed", "EnviousWispr#-3", Self.env])
   }
 
+  @MainActor
+  @Test("#3069: file import's ASR failures share dictation's fingerprint, tag alone differs")
+  func fileImportStageDoesNotFragmentASRGrouping() {
+    let error = ASRError.transcriptionFailed("x")
+    let dictation = SentryBreadcrumb.makeHandledErrorEvent(
+      error, category: .asrFailed, stage: "transcription", environment: Self.env)
+    let fileImport = SentryBreadcrumb.makeHandledErrorEvent(
+      error, category: .asrFailed, stage: "file_import", environment: Self.env)
+
+    #expect(dictation.fingerprint == fileImport.fingerprint)
+    #expect(dictation.tags?["pipeline.stage"] == "transcription")
+    #expect(fileImport.tags?["pipeline.stage"] == "file_import")
+  }
+
 }
