@@ -73,7 +73,7 @@ Dictation is only useful if you can trust it mid-sentence, every time. EnviousWi
 | **Onboarding that won't leave you half-set-up** | Setup won't let you start until Accessibility is granted, and it re-checks if you later revoke permission. |
 | **Clear answers when AI polish has a problem** | If a cloud or local model fails (OpenAI, Gemini, Ollama), you get a specific, plain-language message, and your raw text still arrives. |
 | **Deterministic cleanup before AI** | For English, numbers, dates, and money are formatted by a fixed, predictable step, even when AI polish is off or unavailable. |
-| **Fast recovery after idle** | After the app sits idle, it re-wakes in a fraction of a second so your next press, and its first word, are not lost. |
+| **No silent freeze after idle** | The speech engine runs inside EnviousWispr itself, not in a separate helper macOS could shut down behind its back. A press after a long idle no longer stalls for a few seconds with nothing on screen; if the model was unloaded by your idle setting, the pill says it is getting dictation ready. |
 | **Privacy-safe diagnostics** | Crash reports carry counts and context, never your dictations, transcripts or audio, and are redacted before they are sent. |
 | **Hardened releases** | Every build is signed, notarized, and Gatekeeper-checked before it ships. |
 
@@ -110,6 +110,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
 - 🔒 **Polish that can stay private**: run it fully on-device with EG-1 (our own custom model), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI, Google Gemini, or Claude with your own API key
 - ✂️ **Snippets**: say a keyword and a short phrase, and the text you saved is pasted word for word, with any requested date, time or clipboard fill-ins filled in, never polished. An email address, a sign-off, a link you send every week
+- 📁 **Transcribe a File**: turn one audio or video file you already have (m4a, mp3, wav, aiff, caf, mp4, mov or flac) into clean text. When a recording has more than one voice and the app can separate the voices and match the words to them, the transcript comes back as speaker turns. The audio and the speaker detection stay on your Mac; cleanup follows the polisher you pick
 - 🌍 **Multilingual with automatic language detection**: speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
 - 😀 **Speak an emoji**: say the emoji's name followed by "emoji" (like "thumbs up emoji") and the glyph drops right in
 - ✋ **Voice Activity Detection** via Silero VAD that stops recording automatically when you stop talking
@@ -118,7 +119,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Appearance settings, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
-- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts
+- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts, with an All / Dictations / Transcripts filter above the list
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
 
@@ -126,6 +127,15 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Introducing Transcribe a File.** Drop in a voice memo, lecture, meeting or video you already have and get back clean text, with speaker turns when the app can tell the voices apart, and, with a polisher selected, spoken lists laid out as real lists and the words the polisher removed, replaced or added marked up so you can see them. It takes one file at a time, transcribes it on your Mac, and the recording never leaves it; polish follows the polisher you pick, on-device by default. (v2.5.0)
+- **Apple Intelligence polish improved on macOS 27.** On macOS 27, Apple Intelligence now removes the opening ums, lays out spoken lists and resolves more of your self-corrections, and long dictations that fit its larger model are no longer skipped. The Apple Intelligence card in Settings shows which model is running and its capacity on both versions. On macOS 26 the polishing itself is unchanged. (v2.5.0)
+- **Improved capitalization when dictating into an existing sentence.** When you dictate after words you already typed, EnviousWispr matches your capitalization. If the app was busy, that matching could switch itself off until you relaunched; it now stays on in far more cases. (v2.5.0)
+- **Dictated measurements keep their unit.** Say "the gap is 5 mm" or "120 mm Hg" and the unit comes through with the number. (v2.5.0)
+- **No more freeze after sitting idle.** The speech engine now runs directly inside EnviousWispr instead of a separate helper that macOS could shut down behind its back, so the silent few-second freeze on the first press after idling is gone. (v2.5.0)
+- **Spoken email addresses convert in more languages' own words.** While dictating in English, an address spoken with another language's words for at and dot, such as "marco arroba esempio punto com", comes back as marco@esempio.com, and addresses ending in a country domain such as .de, .nl or .fr convert too. (v2.5.0)
+- **The recording pill honours Reduce Motion.** With Reduce Motion on in macOS, the pill no longer breathes, flashes or pulses; the colours stay so a warning still reads as a warning. (v2.5.0)
+- **History tells a dictation from a transcript.** Each row says which kind it is, and All, Dictations and Transcripts buttons above the list show one kind or both. (v2.5.0)
+- **Eight small fixes** across dictation, paste and History, including a cancel that stops waiting on a stalled transcription and keeps your audio for recovery on the next launch, digit-by-digit decimals that format as one number, and a paste that no longer waits on an unresponsive target app. (v2.5.0)
 - **A second on-device polish model, S1-mini by Superwhisper.** A small open model for cleaning up dictation, now an option beside EG-1 in AI Polish settings. A 484 MB download, runs on your Mac, and free. Three writing style settings, Tone, Structure and Context, let you choose how it writes. Happiest in English. EG-1 stays the recommended choice. (v2.4.7)
 - **Snippets.** Say a keyword, then a short phrase, and the text you saved is pasted word for word. A fresh install starts with six working examples to try. (v2.4.7)
 - **More of EnviousWispr is switched on from the start.** Escape Recovery, Live Preview and the recording sounds are now on by default, and each is a switch you can turn off. Quick Add has moved to Control Shift W so it no longer shares a key with recording. (v2.4.7)
