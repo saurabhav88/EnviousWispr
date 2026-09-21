@@ -47,7 +47,7 @@ That model is about 305 MB and downloads once on every Mac, after first-run setu
 
 Everything in this feature runs on your Mac. The text EnviousWispr watches and the word you fixed never leave it, and Envious Labs receives neither. What is reported back is metadata only: that a card was shown, expired or was answered, and how; why a watch ended or was skipped (a reason such as "password field"); the kind of app it happened in (native, web-based or browser); how many edits the judge was asked about, how many it counted as corrections and how long it took; whether the word was new or already in your list; and whether a save or the waiting list's file failed. No words, text or app names are attached.
 
-One thing to know: a learned word is a custom word, and custom words are part of what EnviousWispr sends to your polish provider along with your text. If you polish on your Mac (Apple Intelligence, EG-1, or a downloaded Ollama model) that never leaves it. If you chose cloud polish under your own key, learned words travel with your text to that provider, the same as any custom word you typed in yourself.
+One thing to know: a learned word is a custom word, and custom words are part of what EnviousWispr sends to your polish provider along with your text. If you polish on your Mac (Apple Intelligence, EG-1, or a downloaded Ollama model) that never leaves it. If you chose cloud polish, whether under your own OpenAI, Gemini or Claude key or through one of Ollama's hosted models under your Ollama sign-in, learned words travel with your text to that provider, the same as any custom word you typed in yourself.
 
 ### Requirements and turning it off
 
