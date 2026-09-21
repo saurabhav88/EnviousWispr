@@ -105,6 +105,19 @@ def test_placement_verdict_flags_nonfinite_constant_flips_and_drift():
     assert probe.placement_verdict(ref, [[0.1, 0.5, 0.2 + 5e-4]] + ref[1:])["ok"] is True
 
 
+def test_placement_verdict_without_a_tolerance_reports_drift_and_still_refuses_flips_nonfinite_and_constant():
+    # The half-precision bar (#996, 2026-09-21): drift is reported, never
+    # gated; every other refusal is unchanged. Same drifted output, two bars.
+    ref = [[0.1, 0.5, 0.2], [0.9, 0.0, 0.1], [0.2, 0.2, 0.7]]
+    drifted = [[0.1, 0.5, 0.2 + 0.24]] + ref[1:]
+    assert probe.placement_verdict(ref, drifted, tolerance=1e-2)["ok"] is False
+    reported = probe.placement_verdict(ref, drifted, tolerance=None)
+    assert reported["ok"] is True and abs(reported["max_abs_drift"] - 0.24) < 1e-9 and reported["tolerance"] is None
+    assert probe.placement_verdict(ref, [[0.6, 0.5, 0.2]] + ref[1:], tolerance=None)["ok"] is False
+    assert probe.placement_verdict(ref, [[float("nan"), 0.5, 0.2]] + ref[1:], tolerance=None)["ok"] is False
+    assert probe.placement_verdict(ref, [[0.3, 0.3, 0.3]] * 3, tolerance=None)["ok"] is False
+
+
 def test_fixtures_cover_four_languages_with_non_latin_and_are_disjoint_from_the_frozen_set():
     langs = {l for l, _ in probe.TEXT_FIXTURES}
     assert len(langs) >= 4

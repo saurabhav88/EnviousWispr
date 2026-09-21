@@ -5,10 +5,11 @@ import Testing
 
 @testable import EnviousWisprLLM
 
-/// The Debug-only Core ML judge behind the UAT door (#996 chunk 5h). The
-/// pure pieces run everywhere; the artifact-backed tests run only where
-/// `EW_LEARN_FROM_EDITS_JUDGE_EXPORT` names the v9 export (this Mac), and
-/// skip on CI, where no model exists.
+/// The shipped Core ML correction judge and its Debug UAT door (#996). The
+/// pure contract tests run everywhere; the artifact-backed tests run only
+/// where `EW_LEARN_FROM_EDITS_JUDGE_EXPORT` (an export) or
+/// `EW_LEARN_FROM_EDITS_DELIVERY_STAGE` (a staged delivery folder) names
+/// local model bytes (this Mac), and skip on CI, where no model exists.
 @Suite("Core ML correction judge (#996 chunk 5h)", .tags(.productOutcome))
 struct CoreMLCorrectionJudgeTests {
 

@@ -416,24 +416,26 @@ enum ManifestFixture {
 /// #996 phase D: the correction judge's delivery manifest. The golden digest
 /// and every byte-level constant were measured from the STAGED folder
 /// (`scripts/build-edit-judge-delivery-manifest.py`, export
-/// `20260921T061839Z-4962ff76` of run `20260920T170356Z-3b376fbc`, fp16), the
+/// `20260921T132135Z-ec68ad6e` of run `20260920T170356Z-3b376fbc`, fp16), the
 /// same bytes the mirror receives. The package's own tree digest (what
 /// `CoreMLCorrectionJudge` binds at load) is asserted through the weights
 /// file's SHA-256, which is the one file whose bytes decide the model.
 ///
-/// STAGED, NOT QUALIFIED (2026-09-21): this revision has no exam v2 receipt
-/// yet because its fp16 conversion misses the converter's 1e-2 logit bar (the
-/// founder decides the half-precision bar). `CorrectionJudgeArmSelection
-/// .qualified` carries no classifier entry until it does, and the fetch policy
-/// starts no download without one; a manifest shipping ahead of its
-/// qualification therefore costs a user nothing.
+/// QUALIFIED (2026-09-21): exam v2 receipt
+/// `2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2` on macOS 27 (PASS,
+/// 1012/1064 recall, 18/2498 false proposals) under the half-precision
+/// decision-parity bar; `CorrectionJudgeArmSelection.qualified` names this
+/// manifest's `runtimeIdentityDigest`, which is what turns the download on.
+/// A re-export mints a new package digest even over identical weights (the
+/// package carries a fresh model id), so the identity, the revision and the
+/// golden digest move together and the weights digest need not.
 @Suite(.tags(.driftGuard)) struct EditJudgeManifestTests {
   static var manifestURL: URL {
     ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
       "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")
   }
 
-  static let goldenDigest = "2f92444bec132c70cfbf949e9bdbe49b898222656e1b37ea36964445fd9699b1"
+  static let goldenDigest = "7eea3796526f5f0e3a5009fa1c13398a855822a1b08378faae98f3b9ba3872c1"
   static let weightsSHA256 = "d2e8504dbeff5fc1a295faa06986a2c92ef4f9e661a15d9da1729634dccdf156"
 
   @Test func editJudgeManifestLoadsAndMatchesGoldenDigest() throws {
@@ -444,11 +446,11 @@ enum ManifestFixture {
 
     #expect(manifest.identity.family == .editJudge)
     #expect(manifest.identity.name == "xenc-mmbert-small")
-    #expect(manifest.identity.revision == "3b376fbc-4962ff76")
+    #expect(manifest.identity.revision == "3b376fbc-ec68ad6e")
     #expect(manifest.identity.variant == "fp16")
     #expect(manifest.identity.runtimeABI == "coreml-edit-judge-v1")
     #expect(manifest.files.count == 9)
-    #expect(manifest.totalBytes == 319_285_040)
+    #expect(manifest.totalBytes == 319_284_836)
     #expect(manifest.optionalFiles.isEmpty)
     // The runtime identity the fetch policy checks a qualification against
     // BEFORE downloading: the loader's composite digest, computed from the
@@ -456,13 +458,18 @@ enum ManifestFixture {
     #expect(
       manifest.runtimeIdentityDigest
         == CoreMLCorrectionJudge.classifierIdentityDigest(
-          packageSHA256: "c4d059c0f20b80cffbbfa3b496caaf43a2420d58226b219e7a38a0b472fb1f35",
+          packageSHA256: "c730e378c4283522075bc559800eefd555f24a08546bdb94f1f8212ab2d023da",
           tokenizerSHA256: "a068687ff92c2c7d59523d2582f39ded9d12c02a0c0e6d34be29eef9ca93dfdd",
-          configSHA256: "4617232bd64338f03baed1aa358b1a5198a5098fc8d395e6a7f675d71bd721e6"))
-    #expect(manifest.runtimeIdentityDigest == "0467d221211b9202af2b0c219349ccf090bc93027be7300cfd9c34ff59544bd4")
-    // Staged, not qualified (2026-09-21): the shipped table names no digest, so
-    // the fetch policy holds and no user downloads this revision yet.
-    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == false)
+          configSHA256: "b1824a981ecf4106f38a1d08a70cc8b7ec1c1587127ec7aeac66b73d40805b7b"))
+    #expect(manifest.runtimeIdentityDigest == "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d")
+    // Qualified (2026-09-21): the shipped table names exactly this digest, so
+    // the fetch policy may start the download; the bundled manifest and the
+    // qualification row cannot drift apart without this line going red.
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == true)
+    #expect(
+      CorrectionJudgeArmSelection.qualified.contains {
+        $0.arm == .classifier && $0.configDigest == manifest.runtimeIdentityDigest && $0.osMajors == [27]
+      })
 
     let byPath = Dictionary(uniqueKeysWithValues: manifest.files.map { ($0.path, $0) })
     // Everything `CoreMLCorrectionJudge.load` reads from a delivered folder.
@@ -497,7 +504,7 @@ enum ManifestFixture {
     #expect(manifest.sources.first?.id == "our_copy")
     #expect(
       manifest.sources.first?.baseURL.absoluteString
-        == "https://models.enviouslabs.co/edit-judge/3b376fbc-4962ff76/")
+        == "https://models.enviouslabs.co/edit-judge/3b376fbc-ec68ad6e/")
   }
 
   @Test func editJudgeManifestIsDeclaredAsAppResource() throws {

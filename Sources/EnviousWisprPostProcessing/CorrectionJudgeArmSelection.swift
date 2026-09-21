@@ -65,16 +65,25 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
   /// FoundationModels' platform floor. Below it AFM is never considered.
   package static let afmFloorMajor = 26
 
-  /// The measured table. EMPTY until a frozen report qualifies an arm; an
-  /// empty table selects nothing anywhere, which is the honest state of a
-  /// build that has not been measured. Phase D (2026-09-21): the bundled
-  /// delivery manifest names the fp16 package `3b376fbc-4962ff76`, which is
-  /// STAGED, NOT QUALIFIED: its conversion misses the converter's 1e-2 logit
-  /// bar and the exam gate refuses to examine it until the founder sets the
-  /// half-precision bar. No classifier entry, therefore no automatic download
-  /// (`EditJudgeFetchPolicy` requires one) and no judge; the entry is added
-  /// with the exam receipt id and the loader's composite identity digest.
-  package static let qualified: [CorrectionJudgeQualification] = []
+  /// The measured table. An empty table selects nothing anywhere, which is
+  /// the honest state of a build that has not been measured. Phase D
+  /// (2026-09-21): the bundled delivery manifest names the fp16 package
+  /// `3b376fbc-ec68ad6e` (mmbert-v15 exported under the half-precision
+  /// decision-parity bar: zero decision flips on every compute unit, logit
+  /// drift reported, `convert_edit_judge.VARIANT_LOGIT_TOLERANCE`). Exam v2
+  /// receipt `2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2` on macOS 27:
+  /// PASS, correction recall 1012/1064 = 0.951, false-proposal rate
+  /// 18/2498 = 0.0072, every per-kind guardrail met, latency p50 3.1 ms. The
+  /// digest is the loader's composite classifier identity, equal to the
+  /// manifest's `runtimeIdentityDigest` (`EditJudgeManifestTests` pins the
+  /// equality), so the row names the exact examined bytes. Another macOS
+  /// major joins the set only with its own exam run on such a machine.
+  package static let qualified: [CorrectionJudgeQualification] = [
+    CorrectionJudgeQualification(
+      arm: .classifier, osMajors: [27],
+      configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
+      receipt: "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2")
+  ]
 
   /// Whether this build qualifies THE classifier the bundled manifest names
   /// (its `runtimeIdentityDigest`) for ANY macOS: the fetch policy's first

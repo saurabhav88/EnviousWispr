@@ -33,6 +33,13 @@ def test_export_plan_always_starts_with_fp32_and_adds_variants_in_order():
     assert set(converter.export_plan(True, True)) == set(converter.VARIANT_PRECISION) == set(converter.SUMMARY_KEY)
 
 
+def test_every_variant_has_a_logit_drift_bar_and_only_fp16_reports_instead_of_gating():
+    assert set(converter.VARIANT_LOGIT_TOLERANCE) == set(converter.VARIANT_PRECISION)
+    assert converter.VARIANT_LOGIT_TOLERANCE["coreml-fp32"] == 1e-2
+    assert converter.VARIANT_LOGIT_TOLERANCE["coreml-embedding-int8"] == 1e-2
+    assert converter.VARIANT_LOGIT_TOLERANCE["coreml-fp16"] is None
+
+
 def test_fp16_and_fp32_packages_get_distinct_identities_even_over_the_same_digest():
     digest = "d" * 64
     cfg32, id32, canon32 = converter.bind_decision_config(CFG, RUN_IDENTITY, "coreml-fp32", digest)
