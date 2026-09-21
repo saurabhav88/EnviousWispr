@@ -367,8 +367,10 @@ def main() -> int:
         # converted at FLOAT16 compute: this is what the Neural Engine runs
         # (an FP32 package is cast at load), so a package meant to ship is
         # exported AND examined in this precision. Verified against the same
-        # PyTorch reference (taken above, before the floor), same tolerance,
-        # same locked decisions, as its own artifact (#996 delivery).
+        # PyTorch reference (taken above, before the floor) under this
+        # variant's own bar (`VARIANT_LOGIT_TOLERANCE`: decision parity with
+        # the drift reported, never a numeric ceiling); the locked decisions
+        # stay mandatory, as its own artifact (#996 delivery).
         if not install_fp16_mask_floor(backbone):
             message = f"{experiment['candidate']} builds its attention mask outside _update_attention_mask; no FLOAT16 mask floor, no FLOAT16 package"
             results["fp16"] = {"variant": "coreml-fp16", "status": "infra-error", "all_placements_ok": False, "error": message}

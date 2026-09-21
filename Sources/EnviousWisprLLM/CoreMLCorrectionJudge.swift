@@ -374,7 +374,7 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     guard try treeDigest(of: mlpackage) == config.packageSHA256 else { throw LoadFailure.identityMismatch("package_sha256") }
   }
 
-  // MARK: Test seams (Debug-only type; nothing production calls these)
+  // MARK: Test seams (production type; these helpers are test-only)
 
   /// The tensors one candidate produces, for parity against the Python path.
   package func encoded(original: String, replacement: String, context: String) -> EncodedClassifierInput {
