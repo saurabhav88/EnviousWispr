@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -16,13 +17,18 @@ import Foundation
 // subscribers WEAKLY, likewise), the one arm-selection value the watcher and
 // the Settings row both read, and the source-app name lookup the Pending tab
 // uses. `WisprBootstrapper` constructs it and injects `coordinator`,
-// `settingsPresentation` and `sourceAppName` into the Settings environment.
+// `availability` and `sourceAppName` into the Settings environment.
 //
-// Production selects NOTHING: `CorrectionJudgeArmSelection.qualified` is
-// empty, so `select` answers `.unavailable(.noQualifiedArm)` everywhere, the
-// watcher's `selectJudge` returns nil (`model_unavailable`) and the Settings
-// row is disabled with its reason. The Debug UAT door below is the only way a
-// judge serves before a candidate qualifies.
+// Production's judge (#996 phase D): the DELIVERED classifier. `ModelDeliveryHome`
+// registers the `edit_judge` family; this type asks `EditJudgeFetchPolicy`
+// when a download may start, loads `CoreMLCorrectionJudge` from the admitted
+// folder when the delivery state says `.admitted`, and publishes it ONLY when
+// `CorrectionJudgeArmSelection.select` answers `.arm(.classifier)` for the
+// loaded identity digest. Until `qualified` carries a classifier entry (the
+// fp16 exam receipt), `select` answers `.unavailable(.noQualifiedArm)`
+// everywhere, the fetch policy holds, the watcher's `selectJudge` returns nil
+// (`model_unavailable`) and the Settings row is disabled with its reason. The
+// Debug UAT door below stays the way an unshipped candidate serves.
 
 /// `TelemetryService` already carries the nine `learn*` emitters (5c); the
 /// coordinator and watcher talk to the protocol so a spy can stand in.
@@ -93,12 +99,39 @@ final class LearnFromEditsWiring {
   let presenter: CorrectionProposalOverlayPresenter
   let observer: any PastedRegionObserving
   let watcher: ObservedCorrectionWatcher
-  /// The step 7 selection, read ONCE at composition and shared by the watcher
-  /// and the Settings row so the two cannot disagree.
-  let selection: CorrectionJudgeArmSelection
-  let settingsPresentation: LearnFromEditsSettingsPresentation
+  /// The step 7 selection: the rules/AFM rungs read ONCE at composition, then
+  /// re-selected with the classifier's identity each time the delivered judge
+  /// loads or is released. The watcher and the Settings row share it through
+  /// `selectJudge()` and `availability`, so the two cannot disagree.
+  private(set) var selection: CorrectionJudgeArmSelection
+  /// The Settings row's live picture (phase D); injected by type.
+  let availability: LearnFromEditsAvailability
   /// The retained judge instances the selection maps onto; nil when unavailable.
-  private let productionJudge: SelectedCorrectionJudge?
+  private var productionJudge: SelectedCorrectionJudge?
+  /// The two fallback rungs, retained so re-selection after the delivered
+  /// judge loads or leaves can put a qualified rules or AFM judge back
+  /// (round 16 finding 3).
+  private let rulesJudge: RulesCorrectionJudge
+  private let afmJudge: WordSuggestionService
+  /// The delivered judge, once loaded and qualified. Released on removal.
+  private var deliveredJudge: CoreMLCorrectionJudge?
+  /// Phase D collaborators, nil in a build whose manifest did not load (tests
+  /// construct without them and behave as before).
+  private let deliveryHome: ModelDeliveryHome?
+  private let isOnboardingComplete: @MainActor () -> Bool
+  private let osMajor: Int
+  private let afmAvailable: @MainActor () -> Bool
+  private let afmDigest: String?
+  private let rulesDigest: String
+  private let compiledCacheDirectory: URL
+  /// One counter for every load: a load that finishes after a removal or a
+  /// newer admission compares its generation and publishes nothing.
+  private var loadGeneration: UInt64 = 0
+  private var loadTask: Task<Void, Never>?
+  /// The delivery-side phase the row shows while no classifier serves.
+  private var judgePhase: LearnFromEditsSettingsPresentation.JudgePhase = .none
+  private var lastDeliveryState: DeliveryState = .notReady
+  package private(set) var fetchDecisionsForTests: [EditJudgeFetchPolicy.Decision] = []
   #if DEBUG
     /// The UAT door's judge, once loaded. Until then (and in every launch
     /// without the door) `selectJudge` falls through to production.
@@ -123,7 +156,10 @@ final class LearnFromEditsWiring {
     scheduler: (any PastedRegionScheduling)? = nil,
     frontmost: (@MainActor () -> FrontmostApplication?)? = nil,
     selectJudgeForTests: (@MainActor () -> SelectedCorrectionJudge?)? = nil,
-    debugExportPath: String? = LearnFromEditsWiring.debugExportPathFromEnvironment()
+    debugExportPath: String? = LearnFromEditsWiring.debugExportPathFromEnvironment(),
+    deliveryHome: ModelDeliveryHome? = nil,
+    isOnboardingComplete: @escaping @MainActor () -> Bool = { true },
+    compiledCacheDirectory: URL = CoreMLCorrectionJudge.defaultCompiledCacheDirectory()
   ) {
     let store = CorrectionProposalStore(directory: storeDirectory)
     let suggestionService = customWords.suggestionService
@@ -145,24 +181,44 @@ final class LearnFromEditsWiring {
     let presenter = CorrectionProposalOverlayPresenter(host: overlay, coordinator: coordinator)
     coordinator.attach(presenter: presenter)
 
-    // Step 7, once: platform, measured qualification and availability.
+    // Step 7 at composition: platform, measured qualification and
+    // availability for the rules and AFM rungs. The classifier rung joins when
+    // the delivered judge loads (`reselect`).
+    let rulesDigest = RulesCorrectionJudge.configDigest(policy: .v2)
+    let afmDigest = WordSuggestionService.correctionJudgeConfigDigest
     let selection = CorrectionJudgeArmSelection.select(
       osMajor: osMajor,
       afmAvailable: suggestionService.isAvailable,
-      rulesDigest: RulesCorrectionJudge.configDigest(policy: .v2),
-      afmDigest: WordSuggestionService.correctionJudgeConfigDigest)
+      rulesDigest: rulesDigest,
+      afmDigest: afmDigest)
+    let rulesJudge = RulesCorrectionJudge(policy: .v2)
     let productionJudge: SelectedCorrectionJudge?
     switch selection {
     case .arm(.rules):
-      productionJudge = SelectedCorrectionJudge(arm: .rules, judge: RulesCorrectionJudge(policy: .v2))
+      productionJudge = SelectedCorrectionJudge(arm: .rules, judge: rulesJudge)
     case .arm(.afm):
       productionJudge = SelectedCorrectionJudge(arm: .afm, judge: suggestionService)
-    case .unavailable:
+    case .arm(.classifier), .unavailable:
+      // `.classifier` cannot be selected here: no identity has loaded yet.
       productionJudge = nil
     }
     self.productionJudge = productionJudge
+    self.rulesJudge = rulesJudge
+    self.afmJudge = suggestionService
     self.selection = selection
-    self.settingsPresentation = LearnFromEditsSettingsPresentation(selection: selection)
+    self.rulesDigest = rulesDigest
+    self.afmDigest = afmDigest
+    self.osMajor = osMajor
+    self.afmAvailable = { [weak suggestionService] in suggestionService?.isAvailable ?? false }
+    self.deliveryHome = deliveryHome
+    self.isOnboardingComplete = isOnboardingComplete
+    self.compiledCacheDirectory = compiledCacheDirectory
+    // `.none` until the launch probe's policy result says otherwise: a
+    // not-yet-decided row must never offer a Download the policy will refuse.
+    let judgePhase: LearnFromEditsSettingsPresentation.JudgePhase = .none
+    self.judgePhase = judgePhase
+    self.availability = LearnFromEditsAvailability(
+      presentation: LearnFromEditsSettingsPresentation(selection: selection, judge: judgePhase))
 
     // One scheduler for the observer and the watcher's paste clock, so the
     // deadline and the observation share a time base.
@@ -198,9 +254,262 @@ final class LearnFromEditsWiring {
       if let debugExportPath {
         let door = DebugJudgeDoor(exportPath: debugExportPath)
         self.debugDoor = door
-        door.load { [weak self] judge in self?.debugOverride = judge }
+        publishPhase(.debugLoading)
+        door.load(
+          { [weak self] judge in
+            guard let self else { return }
+            self.debugOverride = judge
+            // The row follows `selectJudge()`'s precedence: the door serves.
+            self.availability.publish(
+              LearnFromEditsSettingsPresentation(selection: .arm(.classifier), judge: .ready))
+          },
+          onFailure: { [weak self] in
+            // The door failed: fall back to production consistently (the
+            // historical behaviour), and let the delivery path proceed.
+            guard let self else { return }
+            self.publishPhase(.debugFailed)
+            self.debugDoorPresent = false
+            self.reselect()
+            self.deliveryStateChanged(self.lastDeliveryState)
+            self.startFetch(trigger: "debug_door_failed")
+          })
       }
     #endif
+
+    wireDelivery(debugDoorPresent: debugExportPath != nil)
+  }
+
+  // MARK: - Phase D: the delivered judge's lifecycle
+
+  private var debugDoorPresent = false
+
+  /// Bind the delivery home's judge registration: state observation → load on
+  /// admission; the row's actions; the removal drain; the automatic fetch once
+  /// the launch probe has finished, on onboarding completion and on Parakeet
+  /// admission.
+  private func wireDelivery(debugDoorPresent: Bool) {
+    self.debugDoorPresent = debugDoorPresent
+    guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
+    availability.download = { [weak self] in self?.startFetch(trigger: "settings", userInitiated: true) }
+    availability.cancel = { [weak home] in home?.cancelEditJudgeDownload() }
+    availability.retryLoad = { [weak self] in self?.loadDeliveredJudge(reason: "retry") }
+    availability.removeAndDownload = { [weak self] in
+      Task { @MainActor [weak self] in await self?.removeAndDownload() }
+    }
+    home.drainEditJudgeHoldersBeforeRemoval = { [weak self] in
+      await self?.releaseDeliveredJudge() ?? true
+    }
+    home.onParakeetAdmitted = { [weak self] in self?.startFetch(trigger: "parakeet_admitted") }
+    // The controller replays each identity's current state to a late observer,
+    // so an `.admitted` published by the launch probe before this line is still
+    // delivered (`ModelDeliveryController.addStateObserver`).
+    handle.observeState { [weak self] state in self?.deliveryStateChanged(state) }
+    // Automatic fetch only AFTER the probe has recorded the first-run baseline
+    // and adopted an existing copy; the hook replays if the probe already ran.
+    home.onEditJudgeLaunchProbeFinished = { [weak self] in self?.startFetch(trigger: "launch") }
+  }
+
+  /// The bootstrapper's onboarding fan-out (beside EG-1's).
+  func onboardingDidComplete() {
+    startFetch(trigger: "onboarding_completed")
+  }
+
+  private func startFetch(trigger: String, userInitiated: Bool = false) {
+    guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
+    let inputs = EditJudgeFetchPolicy.Inputs(
+      classifierQualifiedSomewhere: CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(
+        digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest),
+      onboardingComplete: isOnboardingComplete(),
+      parakeetAdmitted: {
+        if case .admitted = home.parakeetState { return true }
+        return false
+      }(),
+      debugDoorPresent: debugDoorPresent,
+      killSwitchOn: handle.isEnabled(),
+      judgeState: lastDeliveryState,
+      userInitiated: userInitiated)
+    let decision = EditJudgeFetchPolicy.decide(inputs)
+    fetchDecisionsForTests.append(decision)
+    Task {
+      await AppLogger.shared.log(
+        "learn-from-edits judge fetch \(trigger): \(decision)", category: "LearnFromEdits")
+    }
+    // The row tells the truth about a hold (round 16 finding 5).
+    switch decision {
+    case .start:
+      home.startEditJudgeDownload()
+    case .hold(.notQualified):
+      publishPhase(.none)
+    case .hold(.onboardingIncomplete):
+      publishPhase(.waitingForOnboarding)
+    case .hold(.parakeetNotAdmitted):
+      publishPhase(.waitingForSpeechModel)
+    case .hold(.debugDoorPresent):
+      break  // the door's own load publishes `.debugLoading` / `.ready` / `.debugFailed`
+    case .hold(.killSwitchOff):
+      publishPhase(.pausedByKillSwitch)
+    case .hold(.alreadyAdmitted), .hold(.inFlight), .hold(.cancelledByUser):
+      break
+    }
+  }
+
+  /// Remove and download again: outcome-based, no optimistic flag. A refused
+  /// removal (kill switch) leaves the loaded judge in place and says why.
+  private func removeAndDownload() async {
+    guard let home = deliveryHome else { return }
+    guard await home.removeEditJudge() else {
+      // Refused (kill switch) or partly failed; the drain published
+      // `.removalFailed` if it was the cache, else the switch is the reason.
+      if judgePhase != .removalFailed { publishPhase(.pausedByKillSwitch) }
+      return
+    }
+    lastDeliveryState = .notReady
+    publishPhase(.notInstalled)
+    startFetch(trigger: "removal_finished", userInitiated: true)
+  }
+
+  private func deliveryStateChanged(_ state: DeliveryState) {
+    lastDeliveryState = state
+    // The Debug door owns this launch's row and judge; delivery states are
+    // recorded (for the policy) and not shown.
+    if debugDoorPresent { return }
+    switch state {
+    case .notReady:
+      // Derived from the policy, never a bare "not installed": a late replay
+      // must not overwrite a truthful hold (`.none`, waiting for setup, …).
+      startFetch(trigger: "delivery_not_ready")
+    case .preparing:
+      publishPhase(.verifying)
+    case .downloading(let fraction, let written, let total):
+      publishPhase(.downloading(fractionCompleted: fraction, bytesWritten: written, totalBytes: total))
+    case .verifying:
+      publishPhase(.verifying)
+    case .admitted:
+      loadDeliveredJudge(reason: "admitted")
+    case .cancelled:
+      publishPhase(.cancelled)
+    case .failed:
+      publishPhase(.deliveryFailed)
+    }
+  }
+
+  /// Load the admitted folder in its own generation and publish through the
+  /// selection authority. A load that ends after a newer generation began
+  /// (removal, re-admission, retry) discards itself.
+  private func loadDeliveredJudge(reason: String) {
+    // Single-flight: a duplicate `.admitted` never starts a second compile
+    // whose handle nobody retains (round 17).
+    guard loadTask == nil else { return }
+    guard let home = deliveryHome, let registration = home.editJudgeRegistration,
+      let handle = home.editJudgeHandle
+    else { return }
+    guard handle.isEnabled() else {
+      publishPhase(.pausedByKillSwitch)
+      return
+    }
+    loadGeneration &+= 1
+    let generation = loadGeneration
+    publishPhase(.loading)
+    let folder = registration.installDirectory
+    let cache = compiledCacheDirectory
+    loadTask = Task { [weak self] in
+      let loaded: Result<CoreMLCorrectionJudge, Error>
+      do {
+        loaded = .success(try await CoreMLCorrectionJudge.load(exportDirectory: folder, compiledCacheDirectory: cache))
+      } catch {
+        loaded = .failure(error)
+      }
+      guard let self, self.loadGeneration == generation, !Task.isCancelled else { return }
+      self.loadTask = nil
+      switch loaded {
+      case .failure(let error):
+        await AppLogger.shared.log(
+          "learn-from-edits judge load (\(reason)) failed: \(error)", category: "LearnFromEdits")
+        self.publishPhase(.loadFailed)
+      case .success(let judge):
+        self.deliveredJudge = judge
+        self.reselect()
+      }
+    }
+  }
+
+  /// Re-run step 7 with the loaded classifier's identity and publish through
+  /// the authority: a qualified classifier serves; otherwise a qualified rules
+  /// or AFM judge is put (back) in place, never cleared by the classifier's
+  /// arrival or departure (round 16 finding 3).
+  private func reselect() {
+    let digest = deliveredJudge?.classifierIdentityDigest
+    let selection = CorrectionJudgeArmSelection.select(
+      osMajor: osMajor, afmAvailable: afmAvailable(), rulesDigest: rulesDigest,
+      afmDigest: afmDigest, classifierDigest: digest)
+    self.selection = selection
+    switch selection {
+    case .arm(.classifier):
+      guard let judge = deliveredJudge else {
+        productionJudge = nil
+        publishPhase(.loadFailed)
+        return
+      }
+      productionJudge = SelectedCorrectionJudge(arm: .classifier, judge: judge)
+      publishPhase(.ready)
+    case .arm(.rules):
+      productionJudge = SelectedCorrectionJudge(arm: .rules, judge: rulesJudge)
+      publishPhase(deliveredJudge == nil ? judgePhase : .ready)
+    case .arm(.afm):
+      productionJudge = SelectedCorrectionJudge(arm: .afm, judge: afmJudge)
+      publishPhase(deliveredJudge == nil ? judgePhase : .ready)
+    case .unavailable:
+      productionJudge = nil
+      guard deliveredJudge != nil else {
+        publishPhase(judgePhase)
+        return
+      }
+      // Loaded, but not selected: qualified for another macOS (`.ready` under
+      // `.unavailable` renders "not on this macOS") or a package no receipt
+      // names anywhere (substituted bytes).
+      let qualifiedAnywhere = CorrectionJudgeArmSelection.qualified.contains {
+        $0.arm == .classifier && $0.configDigest == digest
+      }
+      Task {
+        await AppLogger.shared.log(
+          "learn-from-edits judge loaded but not selected: digest=\(digest ?? "nil") "
+            + "qualifiedAnywhere=\(qualifiedAnywhere)", category: "LearnFromEdits")
+      }
+      publishPhase(qualifiedAnywhere ? .ready : .identityMismatch)
+    }
+  }
+
+  private func publishPhase(_ phase: LearnFromEditsSettingsPresentation.JudgePhase) {
+    judgePhase = phase
+    availability.publish(LearnFromEditsSettingsPresentation(selection: selection, judge: phase))
+  }
+
+  /// Awaited by the delivery home before it deletes the folder: stop selecting
+  /// the classifier, cut a live watch, wait out an in-flight load and any
+  /// in-flight judgement, drop the model, delete the compiled cache. Order is
+  /// the contract (round 16 finding 2): nothing may still map the model when
+  /// the bytes go, and no late load may re-create the compiled cache.
+  private func releaseDeliveredJudge() async -> Bool {
+    loadGeneration &+= 1
+    let loading = loadTask
+    loadTask = nil
+    loading?.cancel()
+    watcher.modelBecameUnavailable()
+    let judge = deliveredJudge
+    deliveredJudge = nil
+    reselect()
+    await loading?.value
+    await judge?.drain()
+    do {
+      try CoreMLCorrectionJudge.removeCompiledModels(cacheDirectory: compiledCacheDirectory)
+    } catch {
+      await AppLogger.shared.log(
+        "learn-from-edits compiled cache could not be deleted: \(error)", category: "LearnFromEdits")
+      publishPhase(.removalFailed)
+      return false
+    }
+    publishPhase(.notInstalled)
+    return true
   }
 
   /// The env var is read here and nowhere else, and only in Debug: Release
@@ -281,10 +590,14 @@ final class LearnFromEditsWiring {
       self.exportPath = exportPath
     }
 
-    func load(_ publish: @escaping @MainActor (SelectedCorrectionJudge) -> Void) {
+    func load(
+      _ publish: @escaping @MainActor (SelectedCorrectionJudge) -> Void,
+      onFailure: @escaping @MainActor () -> Void = {}
+    ) {
       guard exportPath.hasPrefix("/") else {
         state = .rejected("not an absolute path")
         Self.log("learn-from-edits UAT door REJECTED: \(exportPath) is not an absolute path")
+        onFailure()
         return
       }
       let url = URL(fileURLWithPath: exportPath, isDirectory: true)
@@ -302,6 +615,7 @@ final class LearnFromEditsWiring {
         } catch {
           self?.state = .failed("\(error)")
           Self.log("learn-from-edits UAT door FAILED to load \(url.path): \(error)")
+          onFailure()
         }
       }
     }

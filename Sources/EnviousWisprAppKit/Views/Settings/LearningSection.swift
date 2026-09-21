@@ -20,9 +20,11 @@ import SwiftUI
 struct LearningSection: View {
   @Environment(ContactsImportCoordinator.self) private var contactsImport
   @Environment(SettingsManager.self) private var settings
-  /// #996 §3.9: the row's enabled state and its reason line come from the
-  /// step 7 arm selection, injected once; this view never reads availability.
-  @Environment(\.learnFromEditsPresentation) private var learnFromEdits
+  /// #996 §3.9 / phase D: the row's enabled state, its reason line and its one
+  /// action come from `LearnFromEditsAvailability`, the composition root's live
+  /// picture; this view never reads the selection, the OS or the delivery
+  /// layer itself.
+  @Environment(LearnFromEditsAvailability.self) private var availability
 
   var body: some View {
     @Bindable var settings = settings
@@ -55,7 +57,8 @@ struct LearningSection: View {
   /// showing the stored value rather than snapping it off: the choice
   /// survives an OS without a qualified judge and applies again on one with.
   private func editsCard(settings: Bindable<SettingsManager>) -> some View {
-    learnCard {
+    let learnFromEdits = availability.presentation
+    return learnCard {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .center, spacing: 8) {
           Text("Learn from my edits")
@@ -76,12 +79,30 @@ struct LearningSection: View {
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
         if let reason = learnFromEdits.secondaryLine {
-          Text(reason)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+          HStack(alignment: .center, spacing: 8) {
+            Text(reason)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+            if let action = learnFromEdits.action {
+              Spacer(minLength: 8)
+              SettingsActionButton(title: Self.actionTitle(action), isEnabled: true) {
+                availability.perform(action)
+              }
+            }
+          }
         }
       }
+    }
+  }
+
+  /// The row's one verb per state (phase D); copy lives with the state table.
+  static func actionTitle(_ action: LearnFromEditsSettingsPresentation.Action) -> String {
+    switch action {
+    case .download: return "Download"
+    case .cancel: return "Cancel"
+    case .retryLoad: return "Try again"
+    case .removeAndDownload: return "Remove and download again"
     }
   }
 

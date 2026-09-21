@@ -96,8 +96,8 @@ struct LearnFromEditsCompositionTests {
       let f = fixture(osMajor: major)
       #expect(f.wiring.selection == .unavailable(.noQualifiedArm), "macOS \(major)")
       #expect(f.wiring.selectJudge() == nil, "macOS \(major): model_unavailable")
-      #expect(f.wiring.settingsPresentation == .unwired, "macOS \(major)")
-      #expect(f.wiring.settingsPresentation.secondaryLine == "Not available on this version of macOS yet")
+      #expect(f.wiring.availability.presentation == .unwired, "macOS \(major)")
+      #expect(f.wiring.availability.presentation.secondaryLine == "Not available on this version of macOS yet")
       #if DEBUG
         #expect(f.wiring.debugDoor == nil && f.wiring.debugOverride == nil, "no env var, no door")
       #endif
@@ -165,11 +165,11 @@ struct LearnFromEditsCompositionTests {
     // The same three values the bootstrapper injects; read back through a view.
     struct Probe: View {
       @Environment(CorrectionProposalCoordinator.self) var coordinator: CorrectionProposalCoordinator?
-      @Environment(\.learnFromEditsPresentation) var presentation
+      @Environment(LearnFromEditsAvailability.self) var availability: LearnFromEditsAvailability?
       @Environment(\.pendingSourceAppName) var name
-      let report: @MainActor (CorrectionProposalCoordinator?, LearnFromEditsSettingsPresentation, String?) -> Void
+      let report: @MainActor (CorrectionProposalCoordinator?, LearnFromEditsSettingsPresentation?, String?) -> Void
       var body: some View {
-        Color.clear.onAppear { report(coordinator, presentation, name("com.apple.finder")) }
+        Color.clear.onAppear { report(coordinator, availability?.presentation, name("com.apple.finder")) }
       }
     }
     final class Seen {
@@ -184,13 +184,13 @@ struct LearnFromEditsCompositionTests {
       seen.finder = n
     }
     .environment(f.wiring.coordinator)
-    .environment(\.learnFromEditsPresentation, f.wiring.settingsPresentation)
+    .environment(f.wiring.availability)
     .environment(\.pendingSourceAppName, f.wiring.sourceAppName)
     let host = NSHostingView(rootView: AnyView(root.frame(width: 10, height: 10)))
     host.layoutSubtreeIfNeeded()
     _ = host.fittingSize
     #expect(seen.coordinator === f.wiring.coordinator)
-    #expect(seen.presentation == f.wiring.settingsPresentation)
+    #expect(seen.presentation == f.wiring.availability.presentation)
     #expect(seen.finder == "Finder")
     #expect(LearnFromEditsWiring.sourceAppName(bundleID: "com.apple.finder") == "Finder")
     #expect(LearnFromEditsWiring.sourceAppName(bundleID: "com.example.no-such-app.\(UUID().uuidString)") == nil)

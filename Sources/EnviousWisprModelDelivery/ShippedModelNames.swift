@@ -27,6 +27,7 @@ enum ShippedModelNames {
   /// Currently shipped. Must stay in step with the bundled manifests; a test
   /// asserts every bundled identity appears here.
   static let current: [ModelFamily: Set<String>] = [
+    .editJudge: ["xenc-mmbert-small"],
     .egOne: ["eg-1"],
     .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
     .s1Mini: ["s1-mini"],
@@ -62,6 +63,7 @@ enum ShippedModelNames {
   /// Frozen for the same reason as the names: make the collision impossible to
   /// author rather than detectable after the deletion.
   static let variants: [String: Set<String>] = [
+    "edit_judge|xenc-mmbert-small": ["fp16"],
     "eg_one|eg-1": ["q5km"],
     "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
     "s1_mini|s1-mini": ["q4km"],

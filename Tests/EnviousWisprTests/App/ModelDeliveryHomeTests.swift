@@ -616,7 +616,7 @@ struct ModelDeliveryHomeTests {
   /// rest of the launch.
   ///
   /// `remove()` returns `false` without touching the controller when the family
-  /// kill switch is off (`WhisperKitModelDelivery.swift:124`) — deliberate, and
+  /// kill switch is off (`DeliveredModelHandle.swift (remove)`) — deliberate, and
   /// owned there: the flag stands down the whole delivery layer, deletions
   /// included. So the model legitimately stays on disk. What is NOT legitimate
   /// is what that does to the finish callback.

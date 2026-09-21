@@ -60,8 +60,8 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
 
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
-      "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "edit-judge-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -81,6 +81,7 @@ import Testing
   /// historical case the registry exists to close.
   @Test func theHistoricalMinimumIsNeverReduced() {
     let minimum: [ModelFamily: Set<String>] = [
+      .editJudge: ["xenc-mmbert-small"],
       .egOne: ["eg-1"],
       .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
       .s1Mini: ["s1-mini"],
@@ -143,8 +144,8 @@ import Testing
 
     var keys: [String] = []
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
-      "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "edit-judge-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -154,7 +155,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 5, "expected five bundled registrations, got \(keys.count)")
+    #expect(keys.count == 6, "expected six bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -238,8 +239,8 @@ import Testing
       .deletingLastPathComponent()
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
-      "eg1-delivery-manifest", "parakeet-delivery-manifest", "s1-delivery-manifest",
-      "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
+      "edit-judge-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "s1-delivery-manifest", "whisperkit-delivery-manifest", "whisperkit-preview-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

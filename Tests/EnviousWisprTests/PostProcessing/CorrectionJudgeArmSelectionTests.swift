@@ -22,12 +22,42 @@ struct CorrectionJudgeArmSelectionTests {
       arm: .afm, osMajors: majors, configDigest: digest ?? afmDigest, receipt: "a")
   }
 
+  private let classifierDigest = "classifier-identity-digest"
+
+  private func classifier(_ majors: Set<Int>, digest: String? = nil) -> CorrectionJudgeQualification {
+    CorrectionJudgeQualification(
+      arm: .classifier, osMajors: majors, configDigest: digest ?? classifierDigest, receipt: "c")
+  }
+
   private func select(
-    _ major: Int, afmAvailable: Bool = true, _ table: [CorrectionJudgeQualification]
+    _ major: Int, afmAvailable: Bool = true, loadedClassifier: String? = nil,
+    _ table: [CorrectionJudgeQualification]
   ) -> CorrectionJudgeArmSelection {
     CorrectionJudgeArmSelection.select(
       osMajor: major, afmAvailable: afmAvailable, rulesDigest: rulesDigest, afmDigest: afmDigest,
-      qualified: table)
+      classifierDigest: loadedClassifier, qualified: table)
+  }
+
+  @Test("#996 phase D: a loaded, qualified classifier serves first on any macOS it was examined on")
+  func classifierServesFirst() {
+    #expect(select(27, loadedClassifier: classifierDigest, [classifier([27]), afm([27]), rules([27])]) == .arm(.classifier))
+    #expect(select(14, loadedClassifier: classifierDigest, [classifier([14, 27])]) == .arm(.classifier))
+  }
+
+  @Test("#996 phase D: an unloaded, mismatched or OS-unqualified classifier never serves")
+  func classifierNeverServesSilently() {
+    // Not loaded yet (admitted, downloading, failed, kill switch off): nil digest.
+    #expect(select(27, loadedClassifier: nil, [classifier([27])]) == .unavailable(.noQualifiedArm))
+    // Loaded, but not the examined identity (other package, tokenizer or threshold).
+    #expect(select(27, loadedClassifier: "another-package", [classifier([27])]) == .unavailable(.noQualifiedArm))
+    // Loaded and examined, but on a macOS the receipt does not cover.
+    #expect(select(26, loadedClassifier: classifierDigest, [classifier([27])]) == .unavailable(.noQualifiedArm))
+    // Falls through to the older rungs when those are qualified.
+    #expect(select(27, loadedClassifier: nil, [classifier([27]), afm([27])]) == .arm(.afm))
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [afm([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: "other", qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: nil, qualified: [classifier([27])]) == false)
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: classifierDigest, qualified: [classifier([27])]) == true)
   }
 
   @Test("below the AFM floor, qualified rules serve")
@@ -87,6 +117,11 @@ struct CorrectionJudgeArmSelectionTests {
       switch entry.arm {
       case .rules: #expect(entry.configDigest == liveRules, "\(entry.receipt)")
       case .afm: #expect(entry.configDigest == liveAFM, "\(entry.receipt)")
+      case .classifier:
+        // The classifier's live digest exists only once the delivered model
+        // has loaded; the table binds it to the exam receipt, and
+        // `LearnFromEditsWiring` compares the two at publish time.
+        #expect(entry.configDigest.count == 64, "\(entry.receipt)")
       }
       #expect(entry.osMajors.isEmpty == false)
       #expect(entry.receipt.isEmpty == false)

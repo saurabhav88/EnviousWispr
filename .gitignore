@@ -227,6 +227,9 @@ scripts/lib/*
 # A gitignored copy would exist on one machine only, which is how the check gets
 # skipped by whoever does the next pin bump.
 !scripts/regen-delivery-manifest-digest.py
+# #996 phase D: stages the correction judge's self-contained delivery folder and
+# writes its bundled manifest; imports the digest rule above so there is one.
+!scripts/build-edit-judge-delivery-manifest.py
 # Output-safety classifier: conversion recipe + its numerical gates (#1226).
 # Tracked because these settings ship to users inside the model bytes.
 !scripts/convert-output-classifier.py

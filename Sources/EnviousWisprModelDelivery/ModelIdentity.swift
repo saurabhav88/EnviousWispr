@@ -13,6 +13,13 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   /// behind our first-party name in the delivery manifest, the admission
   /// marker and telemetry.
   case s1Mini = "s1_mini"
+  /// #996 phase D: the learn-from-edits correction judge, a Core ML
+  /// cross-encoder we trained (`xenc-mmbert-small`). Its own family because
+  /// it is our own weights with our own examined revision, delivered as a
+  /// self-contained folder (package, tokenizer, contract) that
+  /// `CoreMLCorrectionJudge` loads; nothing about it is an ASR or polish
+  /// engine, so it shares no other family's marker, folder or kill switch.
+  case editJudge = "edit_judge"
 }
 
 /// Canonical identity of one deliverable model (contract §3, D2 §1).

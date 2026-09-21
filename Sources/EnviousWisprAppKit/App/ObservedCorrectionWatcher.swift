@@ -212,6 +212,19 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     cancelForToggleOff(generation: w.generation)
   }
 
+  /// #996 phase D: the delivered judge is being removed. A live watch is cut
+  /// and its capture stopped, with NO telemetry: the observation vocabulary has
+  /// no reason for it and `toggle_off` / `next_dictation_started` would be
+  /// lies. A judgement already in flight finishes against the actor, which the
+  /// wiring drains before the bytes go; its answer is dropped as stale by the
+  /// cancelled watch. Idempotent.
+  func modelBecameUnavailable() {
+    guard let w = watch, !w.cancelled else { return }
+    watch?.cancelled = true
+    guard !w.ended else { return }
+    deps.observer.stop()
+  }
+
   /// One accounting for the toggle going off wherever it is noticed (B3, B4,
   /// B5 or the setting observer): a LIVE watch is cut, capture stops and the
   /// paste is counted as learn_skipped{toggle_off} (the observation vocabulary

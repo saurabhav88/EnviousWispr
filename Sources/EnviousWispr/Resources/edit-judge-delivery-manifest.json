@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "edit_judge",
+    "name": "xenc-mmbert-small",
+    "revision": "3b376fbc-4962ff76",
+    "variant": "fp16",
+    "runtimeABI": "coreml-edit-judge-v1"
+  },
+  "runtimeCompatibility": {
+    "minAppVersion": "2.5.1"
+  },
+  "runtimeIdentityDigest": "0467d221211b9202af2b0c219349ccf090bc93027be7300cfd9c34ff59544bd4",
+  "files": [
+    {
+      "path": "tokenizer/special_tokens_map.json",
+      "installPath": "tokenizer/special_tokens_map.json",
+      "sizeBytes": 1051,
+      "sha256": "6e3204c5a4004719c185007a745d1940471a6fb02521cfa0a00306dbb6bc5903",
+      "component": "tokenizer"
+    },
+    {
+      "path": "tokenizer/tokenizer.json",
+      "installPath": "tokenizer/tokenizer.json",
+      "sizeBytes": 34363188,
+      "sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f",
+      "component": "tokenizer"
+    },
+    {
+      "path": "tokenizer/tokenizer_config.json",
+      "installPath": "tokenizer/tokenizer_config.json",
+      "sizeBytes": 46465,
+      "sha256": "266196057792851c6759f2009e7a4bfbd311922baa87b0d68993dc9ceb58f5dd",
+      "component": "tokenizer"
+    },
+    {
+      "path": "tokenizer-contract.json",
+      "installPath": "tokenizer-contract.json",
+      "sizeBytes": 876,
+      "sha256": "8b4a1c374f2d4f540bf8521ed54f60e7619d821cb2d6d51153e4089a5865fa7c",
+      "component": "tokenizer-contract.json"
+    },
+    {
+      "path": "training-manifest-shaped.json",
+      "installPath": "training-manifest-shaped.json",
+      "sizeBytes": 3526754,
+      "sha256": "1fab9aadf8d3f33e82663b532730e89ddb5fc172c88871b8797b0c60225043dd",
+      "component": "training-manifest-shaped.json"
+    },
+    {
+      "path": "verification.json",
+      "installPath": "verification.json",
+      "sizeBytes": 3236,
+      "sha256": "770ecba14e36edf76895af66a69daa336d6a3726d922e961b605563266d4b903",
+      "component": "verification.json"
+    },
+    {
+      "path": "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+      "installPath": "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+      "sizeBytes": 304453,
+      "sha256": "d1b4cd8283d02f76a52e5de18087492b15e0aeb8d570c53305da21260b859f75",
+      "component": "xenc-mmbert-small-fp16.mlpackage"
+    },
+    {
+      "path": "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+      "installPath": "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+      "sizeBytes": 281038400,
+      "sha256": "d2e8504dbeff5fc1a295faa06986a2c92ef4f9e661a15d9da1729634dccdf156",
+      "component": "xenc-mmbert-small-fp16.mlpackage"
+    },
+    {
+      "path": "xenc-mmbert-small-fp16.mlpackage/Manifest.json",
+      "installPath": "xenc-mmbert-small-fp16.mlpackage/Manifest.json",
+      "sizeBytes": 617,
+      "sha256": "b7f76c6f0759d3ce5d9359ed5c10cf4d680d9ef2db0270ee2e9561c7810e9c5e",
+      "component": "xenc-mmbert-small-fp16.mlpackage"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 319285040,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouslabs.co/edit-judge/3b376fbc-4962ff76/"
+    }
+  ],
+  "license": {
+    "name": "Envious Labs weights; base model mmBERT-small (Apache-2.0)",
+    "url": "https://huggingface.co/jhu-clsp/mmBERT-small"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "editJudgeCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "training-manifest-shaped.json"
+  },
+  "manifestDigest": "2f92444bec132c70cfbf949e9bdbe49b898222656e1b37ea36964445fd9699b1"
+}
