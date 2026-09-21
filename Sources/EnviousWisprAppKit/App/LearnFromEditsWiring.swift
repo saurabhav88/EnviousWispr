@@ -296,7 +296,7 @@ final class LearnFromEditsWiring {
           let id = judge.identity
           Self.log(
             "learn-from-edits UAT door ACTIVE: export=\(id.exportDirectory.path) "
-              + "threshold=\(id.threshold) languages=\(id.supportedLanguages.sorted().joined(separator: ",")) "
+              + "threshold=\(id.threshold) languages=all "
               + "package_sha256=\(id.executionIdentity["package_sha256"] ?? "?") arm=classifier")
           publish(SelectedCorrectionJudge(arm: .classifier, judge: judge))
         } catch {

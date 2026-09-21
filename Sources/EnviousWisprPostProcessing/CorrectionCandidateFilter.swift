@@ -14,8 +14,6 @@ package enum CorrectionCandidateFilter {
 
   /// Why a run is not sent to the judge. Each is a counted skip token.
   package enum IneligibleReason: String, Sendable, Equatable, CaseIterable {
-    /// Dictation language unknown, or outside the selected arm's set.
-    case languageUnsupported
     /// Every edited token is a stopword (`WordCorrector.stopwords`).
     case stopwordPhrase
     /// The corrected run ends in a contraction suffix ("it's", "don't").
@@ -26,8 +24,7 @@ package enum CorrectionCandidateFilter {
   }
 
   /// Plan §3.1 step 6 dispositions. Precedence when several apply (highest
-  /// first): `rejected`, `ineligible(.languageUnsupported)`,
-  /// `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
+  /// first): `rejected`, `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
   /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `refreshOpen`,
   /// `candidate`. A rejection therefore never becomes a fresh candidate or a
   /// refresh, and a covered pair is never re-proposed even if an open record
@@ -54,21 +51,15 @@ package enum CorrectionCandidateFilter {
     /// Open (`pending`/`accepting`) proposals by pair key.
     package let openProposals: [String: UUID]
     package let rejectedPairKeys: Set<String>
-    package let dictationLanguage: String?
-    /// The selected arm's supported base languages; `nil` when the arm has
-    /// no evidence for any language, which grants nothing.
-    package let supportedLanguages: Set<String>?
 
     package init(
       userWords: [CustomWord], packTerms: [CustomWord], openProposals: [String: UUID],
-      rejectedPairKeys: Set<String>, dictationLanguage: String?, supportedLanguages: Set<String>?
+      rejectedPairKeys: Set<String>
     ) {
       self.userWords = userWords
       self.packTerms = packTerms
       self.openProposals = openProposals
       self.rejectedPairKeys = rejectedPairKeys
-      self.dictationLanguage = dictationLanguage
-      self.supportedLanguages = supportedLanguages
     }
   }
 
@@ -122,9 +113,6 @@ package enum CorrectionCandidateFilter {
     run: EditAlignment.Run, pairKey: String, inputs: Inputs, index: WordCorrector.ExactTriggerIndex
   ) -> Disposition {
     if inputs.rejectedPairKeys.contains(pairKey) { return .rejected }
-    guard let language = inputs.dictationLanguage, let supported = inputs.supportedLanguages,
-      supported.contains(language)
-    else { return .ineligible(.languageUnsupported) }
     let editedTokens = InverseTextNormalizer.splitWords(run.coreReplacement).map(normalisedToken)
     if !editedTokens.isEmpty, editedTokens.allSatisfy({ WordCorrector.stopwords.contains($0) }) {
       return .ineligible(.stopwordPhrase)

@@ -136,7 +136,6 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     let event: PasteCompletionEvent
     let pastedAtMs: Int
     var selected: SelectedCorrectionJudge?
-    var supportedLanguages: Set<String>?
     var target: PastedRegionTarget?
     var appClass: TelemetryService.LearnFromEditsTelemetry.AppClass = .other
     var revision: UInt64 = 0
@@ -249,19 +248,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       skip(.toggleOff, generation: gen)
       return
     }
-    guard let language = w.event.language, let supported = capabilities.supportedLanguages,
-      supported.contains(language)
-    else {
-      skip(.languageUnsupported, generation: gen)
-      return
-    }
     guard let frontmost = deps.frontmost(), frontmost.bundleID == w.event.destinationBundleID
     else {
       skip(.destinationMismatch, generation: gen)
       return
     }
     w.selected = selected
-    w.supportedLanguages = capabilities.supportedLanguages
     var outcome = deps.observer.capture(
       pid: frontmost.pid, pastedText: w.event.pastedText, pastedAtMs: w.pastedAtMs)
     var retries = deps.captureRetries
@@ -380,9 +372,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     let inputs = CorrectionCandidateFilter.Inputs(
       userWords: deps.userWords(), packTerms: deps.packTerms(),
       openProposals: deps.coordinator.openProposalsByPairKey,
-      rejectedPairKeys: deps.coordinator.rejectedPairKeys,
-      dictationLanguage: language,
-      supportedLanguages: w.supportedLanguages)
+      rejectedPairKeys: deps.coordinator.rejectedPairKeys)
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
     for f in filtered {
       if case .refreshOpen(let id) = f.disposition {

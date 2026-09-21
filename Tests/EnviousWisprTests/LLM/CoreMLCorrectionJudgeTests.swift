@@ -213,7 +213,7 @@
         #expect(identity.executionIdentity[key] == value, "\(key)")
       }
       let capabilities = await judge.capabilities
-      #expect(capabilities.canRunOnThisMac && capabilities.supportedLanguages == ["en"])
+      #expect(capabilities.canRunOnThisMac)
       #expect(capabilities.executionIdentity["arm"] == "classifier")
 
       // Tensor-level parity, not just the final booleans: ids and masks exact,

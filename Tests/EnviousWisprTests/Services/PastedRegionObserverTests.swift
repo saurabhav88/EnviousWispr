@@ -1,4 +1,5 @@
 import ApplicationServices
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -184,6 +185,42 @@ struct PastedRegionLocatorTests {
     // Only when the exact text is absent does the trimmed text count, once.
     #expect(L.locate(pasted: "Sora. ", in: "Sora.") == .unique(start: 0, end: 5))
     #expect(L.locate(pasted: "Sora. ", in: "Sora.,Sora.") == .ambiguous)
+  }
+
+  @Test(
+    "#996 Ghostty follow-up: a terminal wraps a long paste into rows with a gutter; a pasted space matches the whitespace run, a wrap inside a word does not"
+  )
+  func locateAcrossTerminalWrap() {
+    // Ghostty AXTextArea, measured 2026-09-21: one row per line, the Claude Code
+    // input continues on the next row after a two-cell gutter.
+    let screen = "❯\u{00A0}Quick update before I log off. I asked Kishtik to pull the\n  full report so we can review it.\n───"
+    let pasted = "Quick update before I log off. I asked Kishtik to pull the full report so we can review it."
+    let located = L.locate(pasted: pasted, in: screen)
+    guard case .unique(let start, let end) = located else {
+      Issue.record("expected a unique hit across the wrap, got \(located)")
+      return
+    }
+    let units = Array(screen.utf16)
+    let rendered = String(decoding: units[start..<end], as: UTF16.self)
+    #expect(rendered.hasPrefix("Quick update") && rendered.hasSuffix("review it."))
+    #expect(rendered.contains("the\n  full"), "the slice carries the host's own rendering")
+    // The rendering and the paste tokenize alike, so a wrap is never an edit.
+    #expect(EditAlignment.align(pasted: pasted, edited: rendered).runs.isEmpty)
+    // A break inside a word is not the paste: the pasted text has no space there.
+    #expect(L.locate(pasted: "pull the report", in: "pull the re\n  port") == .absent)
+    // Any whitespace run stands in for one pasted space, including a tab and a bare newline.
+    #expect(L.locate(pasted: "a b", in: "x a\tb y") == .unique(start: 2, end: 5))
+    #expect(L.locate(pasted: "a b", in: "a\n\n b") == .unique(start: 0, end: 5))
+    // Two wrapped occurrences are still ambiguous; a lone one-liner still exact.
+    #expect(L.locate(pasted: "a b", in: "a\n b and a b") == .ambiguous)
+    #expect(L.locate(pasted: "a b", in: "a b") == .unique(start: 0, end: 3))
+    // Run against run: k pasted spaces need a run of at least k, and a leading
+    // pasted space anchors once per host run, not once per unit of it.
+    #expect(L.locate(pasted: " a", in: "  a") == .unique(start: 0, end: 3))
+    #expect(L.locate(pasted: "a  b", in: "a  b") == .unique(start: 0, end: 4))
+    #expect(L.locate(pasted: "a  b", in: "a\n  b") == .unique(start: 0, end: 5))
+    #expect(L.locate(pasted: "a  b", in: "a b") == .absent)
+    #expect(L.locate(pasted: "a ", in: "a  ") == .unique(start: 0, end: 3))
   }
 
   @Test(

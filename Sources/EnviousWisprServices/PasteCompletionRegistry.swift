@@ -24,8 +24,9 @@ public struct PasteCompletionEvent: Sendable {
   /// lock, a detecting engine's answer, or the dictation text's top hypothesis
   /// when the non-English veto permits it. Separate from the confidence-gated
   /// cleanup language. Nil when the take never reached resolution or the veto
-  /// refused it; nil is `language_unsupported`, and consumers never re-derive
-  /// or guess it.
+  /// refused it. Evidence for the judge request and the eval record, never a
+  /// gate (every language is eligible, founder decision 2026-09-21); consumers
+  /// never re-derive or guess it.
   public let language: String?
 
   public init(

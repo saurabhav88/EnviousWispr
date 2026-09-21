@@ -120,11 +120,15 @@ struct CorrectionJudgingContractTests {
       ])
   }
 
-  @Test("capabilities carry an execution identity and a nil language set grants nothing")
+  @Test("capabilities carry the platform floor and an execution identity, and no language set")
   func capabilities() {
     let caps = CorrectionJudgeCapabilities(
-      canRunOnThisMac: true, supportedLanguages: nil, executionIdentity: ["config_sha256": "abc"])
-    #expect(caps.supportedLanguages == nil)
+      canRunOnThisMac: true, executionIdentity: ["config_sha256": "abc"])
+    #expect(caps.canRunOnThisMac)
     #expect(caps.executionIdentity["config_sha256"] == "abc")
+    // Every language is eligible (founder 2026-09-21): the contract has no
+    // field that could refuse one, so a judge cannot reintroduce a gate here.
+    let mirror = Mirror(reflecting: caps)
+    #expect(mirror.children.map(\.label) == ["canRunOnThisMac", "executionIdentity"])
   }
 }
