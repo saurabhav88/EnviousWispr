@@ -707,6 +707,24 @@ struct CorrectionProposalCardViewTests {
     #expect(result.height > 0 && result.height < offer.height, "the buttons, state line and dwell bar are gone")
   }
 
+  @Test(
+    "a long single word stays on one line: the card is no taller than with short words"
+  )
+  func longWordDoesNotWrap() {
+    // Founder UAT 2026-09-21 in WhatsApp: "EnviousStaging" broke as
+    // "EnviousStagin / g" at 26 pt on the right column. This size relation
+    // binds the no-wrap geometry. RenderedPillHarness cannot distinguish
+    // scaled glyphs from truncation; visible full-word rendering is owned by
+    // Live UAT.
+    let short = RenderedPillHarness.rootSize(for: .correctionProposal(CorrectionCardFixture.model()))
+    let long = RenderedPillHarness.rootSize(
+      for: .correctionProposal(
+        CorrectionCardFixture.model(original: "Envious Da Ring", corrected: "EnviousStagingCompany")))
+    #expect(long.width == 440)
+    #expect(long.height == short.height, "long word wrapped: \(long.height) vs \(short.height)")
+    #expect(CorrectionProposalCardCopy.wordMinimumScale == 0.5)
+  }
+
   @Test("the dwell bar draws nothing without a dwell, the remainder of a running one, and full for an exhausted one")
   func dwellBarFollowsTheDirectorsWindow() {
     let now = Date()
