@@ -262,13 +262,15 @@ def mirror_pair_encoding(contract: dict, encode, input_text: str, output_text: s
     return {"input_ids": ids, "attention_mask": mask, "token_type_ids": segments}
 
 
-def placement_verdict(reference: list[list[float]], observed: list[list[float]], tolerance: float = 1e-3, classes: int = 3) -> dict:
+def placement_verdict(reference: list[list[float]], observed: list[list[float]], tolerance: Optional[float] = 1e-3, classes: int = 3) -> dict:
     """Compare one compute unit's logits against PyTorch: non-finite,
     constant (every row identical), argmax flips and max abs drift. The
     batches must be complete (same row count, `classes` logits per row: three
     for the alias objective, two for detection; at least two rows) and the
     reference itself finite and discriminating, otherwise the verdict is a
-    refusal, never `ok`."""
+    refusal, never `ok`. `tolerance=None` reports the drift without gating on
+    it (the half-precision bar in `convert_edit_judge.VARIANT_LOGIT_TOLERANCE`:
+    the converter gates decisions at the locked threshold instead)."""
     import math
 
     shape_ok = (
@@ -293,7 +295,7 @@ def placement_verdict(reference: list[list[float]], observed: list[list[float]],
         if r.index(max(r)) != o.index(max(o)):
             flips += 1
         drift = max(drift, max(abs(a - b) for a, b in zip(r, o)))
-    ok = nonfinite == 0 and not constant and flips == 0 and drift <= tolerance
+    ok = nonfinite == 0 and not constant and flips == 0 and (tolerance is None or drift <= tolerance)
     return {"ok": ok, "nonfinite": nonfinite, "constant_output": constant, "argmax_flips": flips, "max_abs_drift": drift, "tolerance": tolerance}
 
 

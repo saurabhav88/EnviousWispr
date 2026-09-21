@@ -49,6 +49,19 @@ def package_digest(package: Path) -> str:
 # quantisation of the FP32 graph and carries no compute precision.
 VARIANT_PRECISION = {"coreml-fp32": "FLOAT32", "coreml-fp16": "FLOAT16", "coreml-embedding-int8": None}
 
+# The logit-drift bar each variant is verified under, against the PyTorch
+# reference on the same rows. FP32 and the weight-only 8-bit variant must
+# reproduce the reference to 1e-2. FP16 cannot: half-precision matmul
+# accumulation across the 22 ModernBERT layers drifts 0.05 to 0.24 logits on
+# every compute unit (measured 2026-09-21 on mmbert-v15, #996 comment
+# 5756369021; a mixed-precision export has no third option), so its bar is
+# DECISION PARITY: finite, non-constant, zero argmax flips and zero decision
+# flips at the locked threshold, with the drift reported in the receipt and
+# the exam v2 run on the package itself as the real evidence. Founder
+# decision 2026-09-21 (option 2: set the half-size bar and exam the fp16
+# package) rather than shipping the 562 MB fp32 package.
+VARIANT_LOGIT_TOLERANCE: dict[str, float | None] = {"coreml-fp32": 1e-2, "coreml-fp16": None, "coreml-embedding-int8": 1e-2}
+
 
 def bind_decision_config(cfg: dict, run_identity: dict, variant: str, digest: str) -> tuple[dict, dict, str]:
     """The decision configuration and execution identity a package is scored
@@ -279,7 +292,7 @@ def main() -> int:
                     pred = loaded.predict(feed)
                     latencies.append((time.time() - t1) * 1000)
                     observed.append([float(x) for x in np.asarray(pred["logits"]).reshape(-1)])
-                verdict = probe.placement_verdict(reference, observed, tolerance=1e-2, classes=len(objective.class_order))
+                verdict = probe.placement_verdict(reference, observed, tolerance=VARIANT_LOGIT_TOLERANCE[variant], classes=len(objective.class_order))
                 obs_probs = torch.softmax(torch.tensor(observed), dim=-1).tolist()
                 verdict["decisions"] = decisions_equal(ref_probs, obs_probs, locked, objective)
                 verdict["ok"] = bool(verdict.get("ok")) and verdict["decisions"]["ok"]
@@ -316,6 +329,7 @@ def main() -> int:
             "objective": objective.name,
             "placement": placement,
             "all_placements_ok": all(v.get("ok") for v in placement.values()),
+            "logit_drift_bar": "decision-parity, drift reported" if VARIANT_LOGIT_TOLERANCE[variant] is None else f"max abs drift <= {VARIANT_LOGIT_TOLERANCE[variant]}",
             "execution_identity": bound_identity,
             "identity_differs_from_pytorch_run": bound_identity["config_sha256"] != identity["config_sha256"],
             "source_training_manifest_sha256": source_manifest_sha256,

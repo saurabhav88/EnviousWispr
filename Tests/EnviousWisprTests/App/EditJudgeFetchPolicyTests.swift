@@ -68,17 +68,22 @@ struct EditJudgeFetchPolicyTests {
         == .hold(.notQualified))
   }
 
-  @Test("the shipped table today qualifies no classifier for the bundled package, so the policy holds everywhere")
-  func shippedTableHolds() throws {
-    // The bundled manifest names a STAGED, NOT QUALIFIED package (fp16 bar
-    // pending); this is the line that keeps every user's download at zero.
+  @Test("the shipped table qualifies the bundled package, so the policy starts once the other gates open")
+  func shippedTableStarts() throws {
+    // The bundled manifest names the QUALIFIED package (exam v2 receipt
+    // 2026-09-21T13-22-50Z, macOS 27); this is the line that turns every
+    // user's download on, and the one that goes red if a re-export ships a
+    // manifest the table does not name.
     let manifest = try DeliveryManifest.load(
       from: try Data(
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")))
     let digest = try #require(manifest.runtimeIdentityDigest)
     let qualified = CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: digest)
-    #expect(qualified == false)
-    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified)) == .hold(.notQualified))
+    #expect(qualified == true)
+    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified)) == .start)
+    // The other gates still hold a qualified package.
+    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified, onboarding: false)) == .hold(.onboardingIncomplete))
+    #expect(EditJudgeFetchPolicy.decide(inputs(qualified: qualified, parakeet: false)) == .hold(.parakeetNotAdmitted))
   }
 }
