@@ -534,16 +534,19 @@ public final class ModelDeliveryHome {
     let task = Task<EditJudgeRemovalOutcome, Never> { [weak self] in
       let runtimeRemoved = await self?.drainEditJudgeHoldersBeforeRemoval?() ?? true
       self?.editJudgeRemovalStepsForTests.append(runtimeRemoved ? "drain" : "drain_failed")
-      let deliveredRemoved: Bool
+      var deliveredOutcome: EditJudgeRemovalOutcome? = nil
       if let substitute = self?.deleteEditJudgeOverrideForTests {
-        deliveredRemoved = await substitute()
+        deliveredOutcome = await substitute() ? nil : .deliveryRemovalFailed
       } else {
-        // The kill switch was checked above, so a false here is a failed delete.
-        deliveredRemoved = await handle.remove()
+        // The flag is read fresh per attempt by `remove()`, so a false after
+        // the drain is EITHER a failed delete OR the switch flipping off during
+        // the drain (round 19); re-read it to say which.
+        let removed = await handle.remove()
+        deliveredOutcome = removed ? nil : (handle.isEnabled() ? .deliveryRemovalFailed : .killSwitchOff)
       }
-      self?.editJudgeRemovalStepsForTests.append(deliveredRemoved ? "delete" : "delete_failed")
+      self?.editJudgeRemovalStepsForTests.append(deliveredOutcome == nil ? "delete" : "delete_failed")
       if !runtimeRemoved { return .runtimeCleanupFailed }
-      return deliveredRemoved ? .removed : .deliveryRemovalFailed
+      return deliveredOutcome ?? .removed
     }
     editJudgeRemovalTask = task
     let outcome = await task.value
