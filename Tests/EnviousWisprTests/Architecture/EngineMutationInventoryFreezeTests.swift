@@ -734,10 +734,18 @@ import Testing
     // completed. Matched only by method-name coincidence, the same shape as
     // the VAD, Live Preview and OverlayDirector entries above; classified
     // rather than renamed for the reason recorded at LivePreviewCoordinator.
+    // Two sites since PR #3054 round 6: `windowGroups` orders the remaining
+    // runs to find each window's anchor, and `judgeBurst` prepares each group
+    // for its request. Both are the same candidate ordering, neither an engine.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/ObservedCorrectionWatcher.swift",
       matcher: "prepare",
-      text: "let prepared = CorrectionCandidateFilter.prepare(filtered)",
+      text: "let ordered = CorrectionCandidateFilter.prepare(remaining)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ObservedCorrectionWatcher.swift",
+      matcher: "prepare",
+      text: "let prepared = CorrectionCandidateFilter.prepare(group)",
       classification: .unrelatedDomain),
 
     // MARK: KernelDictationDriver
