@@ -219,6 +219,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// wiring drains before the bytes go; its answer is dropped as stale by the
   /// cancelled watch. Idempotent.
   func modelBecameUnavailable() {
+    // The watch's `selected` is a strong reference to the judge (cloud review
+    // P2): an ended watch would keep the model mapped until the next paste, and
+    // removal would report success without reclaiming the disk. Dropped here;
+    // an in-flight judgement holds its own copy and the wiring drains the
+    // actor before the bytes go.
+    watch?.selected = nil
     guard let w = watch, !w.cancelled else { return }
     watch?.cancelled = true
     guard !w.ended else { return }
