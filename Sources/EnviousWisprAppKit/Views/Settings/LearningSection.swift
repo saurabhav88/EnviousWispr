@@ -51,7 +51,8 @@ struct LearningSection: View {
     }
   }
 
-  /// Learn from my edits (#996 §3.9). The toggle is the stored choice; the
+  /// Self-Learning Dictionary (#996 §3.9; "Learn from my edits" until
+  /// 2026-09-21). The toggle is the stored choice; the
   /// injected presentation says whether this Mac can act on it and, when it
   /// cannot, why, on one line under the paragraph. A disabled row keeps
   /// showing the stored value rather than snapping it off: the choice
@@ -61,7 +62,7 @@ struct LearningSection: View {
     return learnCard {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .center, spacing: 8) {
-          Text("Learn from my edits")
+          Text(LearnFromEditsSettingsPresentation.rowTitle)
             .settingsRowLabel()
           Spacer(minLength: 8)
           Toggle("", isOn: settings.learnFromEdits)
@@ -73,11 +74,22 @@ struct LearningSection: View {
             // Spacer claims the whole remaining row, which would make the empty
             // middle of this card toggle the switch. `fixedSize` collapses it.
             .fixedSize()
-            .accessibilityLabel("Learn from my edits")
+            .accessibilityLabel(LearnFromEditsSettingsPresentation.rowTitle)
         }
         Text(LearnFromEditsSettingsPresentation.rowCopy)
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
+        // Which apps it works in, how the on-device judge runs and what a
+        // remembered word reaches are the article's job, not the card's
+        // (same shape as the Live Preview engines link).
+        Link(destination: URL(string: LearnFromEditsSettingsPresentation.learnMoreURL)!) {
+          HStack(spacing: 4) {
+            Text(LearnFromEditsSettingsPresentation.learnMoreLabel)
+            Image(systemName: "arrow.up.right")
+          }
+          .font(.stHelper)
+        }
+        .foregroundStyle(.stAccent)
         if let reason = learnFromEdits.secondaryLine {
           HStack(alignment: .center, spacing: 8) {
             Text(reason)

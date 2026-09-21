@@ -4,9 +4,9 @@ import EnviousWisprServices
 import EnviousWisprStorage
 import SwiftUI
 
-// MARK: - Learn from my edits: the Settings row's presentation (#996 §3.9, phase D)
+// MARK: - Self-Learning Dictionary: the Settings row's presentation (#996 §3.9, phase D)
 
-/// What the "Learn from my edits" row shows. Derived from the step 7 arm
+/// What the "Self-Learning Dictionary" row shows. Derived from the step 7 arm
 /// selection AND, since phase D, from the delivered judge's lifecycle
 /// (download, load, kill switch), by `LearnFromEditsAvailability` in the
 /// composition root. The row never reads Apple Intelligence availability, the
@@ -58,14 +58,17 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   let secondaryLine: String?
   let action: Action?
 
-  /// §3.9, verbatim. Replaces "Edits stay on this Mac", which stopped being
-  /// true the moment a remembered word could reach the user's cloud polish
-  /// provider through `CustomVocabularyFormatter`.
+  /// Founder copy 2026-09-21, verbatim. The row says what the feature does
+  /// and where unanswered suggestions wait; where it works, how the judge
+  /// runs and what reaches a cloud polish provider live in the help article
+  /// behind `learnMoreURL`, so the row never has to carry a privacy claim
+  /// that a settings change elsewhere could make untrue.
+  static let rowTitle = "Self-Learning Dictionary"
   static let rowCopy =
-    "When you fix a word in text EnviousWispr just pasted, it asks whether to remember the correction. "
-    + "Suggestions you don't answer wait in Dictionary → Pending. "
-    + "Remembered words work like your other custom words, including in cloud polish if you use it. "
-    + "Nothing is sent to Envious Labs."
+    "Automatically detects when you correct a dictation and suggests the corrected word for your dictionary. "
+    + "Review suggestions anytime in Dictionary → Pending."
+  static let learnMoreLabel = "Learn more"
+  static let learnMoreURL = "https://enviouswispr.com/help/self-learning-dictionary/"
 
   init(selection: CorrectionJudgeArmSelection, judge: JudgePhase = .none) {
     switch (selection, judge) {
