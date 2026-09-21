@@ -2509,3 +2509,16 @@ licensed under the Apache License, Version 2.0.
    capitalization, regardless of any other name under which the model or
    a product incorporating it is marketed or distributed.
 
+
+--------------------------------------------------------------------------------
+mmBERT-small by JHU CLSP (base of the correction judge, downloaded at runtime from Envious Labs)
+  License: Apache-2.0
+  Source:  https://huggingface.co/jhu-clsp/mmBERT-small
+--------------------------------------------------------------------------------
+
+EnviousWispr downloads its correction judge after the speech model. The
+judge is a small classifier Envious Labs trained on top of mmBERT-small;
+the file is served from models.enviouslabs.co and is not distributed
+inside this disk image. mmBERT-small is Copyright the Johns Hopkins
+Center for Language and Speech Processing, licensed under the Apache
+License, Version 2.0, reproduced in full in the S1-mini section above.

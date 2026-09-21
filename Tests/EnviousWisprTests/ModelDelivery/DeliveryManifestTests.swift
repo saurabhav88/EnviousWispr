@@ -1,4 +1,5 @@
 import CryptoKit
+import EnviousWisprPostProcessing
 import Foundation
 import Testing
 
@@ -122,6 +123,30 @@ enum ManifestFixture {
       object["totalBytes"] = 999
     }
     #expect(throws: (any Error).self) { try DeliveryManifest.load(from: badTotal) }
+
+    // v1.4 `runtimeIdentityDigest` (#996 phase D): optional, but when present it
+    // is 64 LOWERCASE ASCII hex characters. Full-width digits are hex to
+    // `Character.isHexDigit` and are refused here (round 17 control).
+    let asciiDigest = String(repeating: "0a", count: 32)
+    let good = try ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles) { object in
+      object["runtimeIdentityDigest"] = asciiDigest
+    }
+    #expect(try DeliveryManifest.load(from: good).runtimeIdentityDigest == asciiDigest)
+    let fullWidth = String(repeating: "\u{FF10}", count: 64)
+    let badWidth = try ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles) { object in
+      object["runtimeIdentityDigest"] = fullWidth
+    }
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: badWidth) }
+    let upper = try ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles) { object in
+      object["runtimeIdentityDigest"] = asciiDigest.uppercased()
+    }
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: upper) }
+    let short = try ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles) { object in
+      object["runtimeIdentityDigest"] = "abc"
+    }
+    #expect(throws: (any Error).self) { try DeliveryManifest.load(from: short) }
+    // Absent stays fine (every pre-v1.4 manifest).
+    #expect(try DeliveryManifest.load(from: ManifestFixture.manifestJSON(files: ManifestFixture.smallFiles)).runtimeIdentityDigest == nil)
   }
 
   @Test func whisperKitCarveOutForNonOurCopyPrimarySource() throws {
@@ -388,6 +413,103 @@ enum ManifestFixture {
   }
 }
 
+/// #996 phase D: the correction judge's delivery manifest. The golden digest
+/// and every byte-level constant were measured from the STAGED folder
+/// (`scripts/build-edit-judge-delivery-manifest.py`, export
+/// `20260921T061839Z-4962ff76` of run `20260920T170356Z-3b376fbc`, fp16), the
+/// same bytes the mirror receives. The package's own tree digest (what
+/// `CoreMLCorrectionJudge` binds at load) is asserted through the weights
+/// file's SHA-256, which is the one file whose bytes decide the model.
+///
+/// STAGED, NOT QUALIFIED (2026-09-21): this revision has no exam v2 receipt
+/// yet because its fp16 conversion misses the converter's 1e-2 logit bar (the
+/// founder decides the half-precision bar). `CorrectionJudgeArmSelection
+/// .qualified` carries no classifier entry until it does, and the fetch policy
+/// starts no download without one; a manifest shipping ahead of its
+/// qualification therefore costs a user nothing.
+@Suite(.tags(.driftGuard)) struct EditJudgeManifestTests {
+  static var manifestURL: URL {
+    ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json")
+  }
+
+  static let goldenDigest = "2f92444bec132c70cfbf949e9bdbe49b898222656e1b37ea36964445fd9699b1"
+  static let weightsSHA256 = "d2e8504dbeff5fc1a295faa06986a2c92ef4f9e661a15d9da1729634dccdf156"
+
+  @Test func editJudgeManifestLoadsAndMatchesGoldenDigest() throws {
+    let data = try Data(contentsOf: Self.manifestURL)
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(manifest.manifestDigest == Self.goldenDigest)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
+
+    #expect(manifest.identity.family == .editJudge)
+    #expect(manifest.identity.name == "xenc-mmbert-small")
+    #expect(manifest.identity.revision == "3b376fbc-4962ff76")
+    #expect(manifest.identity.variant == "fp16")
+    #expect(manifest.identity.runtimeABI == "coreml-edit-judge-v1")
+    #expect(manifest.files.count == 9)
+    #expect(manifest.totalBytes == 319_285_040)
+    #expect(manifest.optionalFiles.isEmpty)
+    // The runtime identity the fetch policy checks a qualification against
+    // BEFORE downloading: the loader's composite digest, computed from the
+    // staged runtime manifest's own package, tokenizer and config SHA-256s.
+    #expect(
+      manifest.runtimeIdentityDigest
+        == CoreMLCorrectionJudge.classifierIdentityDigest(
+          packageSHA256: "c4d059c0f20b80cffbbfa3b496caaf43a2420d58226b219e7a38a0b472fb1f35",
+          tokenizerSHA256: "a068687ff92c2c7d59523d2582f39ded9d12c02a0c0e6d34be29eef9ca93dfdd",
+          configSHA256: "4617232bd64338f03baed1aa358b1a5198a5098fc8d395e6a7f675d71bd721e6"))
+    #expect(manifest.runtimeIdentityDigest == "0467d221211b9202af2b0c219349ccf090bc93027be7300cfd9c34ff59544bd4")
+    // Staged, not qualified (2026-09-21): the shipped table names no digest, so
+    // the fetch policy holds and no user downloads this revision yet.
+    #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == false)
+
+    let byPath = Dictionary(uniqueKeysWithValues: manifest.files.map { ($0.path, $0) })
+    // Everything `CoreMLCorrectionJudge.load` reads from a delivered folder.
+    // Only what the loader reads: the export's `training-manifest.json` is not staged.
+    #expect(byPath["training-manifest.json"] == nil)
+    for required in [
+      "training-manifest-shaped.json", "verification.json", "tokenizer-contract.json",
+      "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json", "tokenizer/special_tokens_map.json",
+      "xenc-mmbert-small-fp16.mlpackage/Manifest.json",
+      "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+      "xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+    ] {
+      #expect(byPath[required] != nil, "missing file \(required)")
+    }
+    #expect(byPath["xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/weights/weight.bin"]?.sha256 == Self.weightsSHA256)
+    #expect(byPath["xenc-mmbert-small-fp16.mlpackage/Data/com.apple.CoreML/weights/weight.bin"]?.sizeBytes == 281_038_400)
+    // Fetch path and install path coincide: the staged folder IS the install layout,
+    // and every file's component is its top path segment (contract §4c).
+    for file in manifest.files {
+      #expect(file.resolvedInstallPath == file.path)
+      #expect(file.component == String(file.path.split(separator: "/")[0]), Comment(rawValue: file.path))
+    }
+    #expect(manifest.admission.entrypointFile == "training-manifest-shaped.json")
+    #expect(manifest.admission.evictPreviousRevisions == true)
+  }
+
+  /// Our own weights, so our mirror is the ONLY source: there is no upstream to
+  /// fall back to and no licence question about re-hosting.
+  @Test func editJudgeSourceIsOurMirrorOnly() throws {
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.manifestURL))
+    #expect(manifest.sources.count == 1)
+    #expect(manifest.sources.first?.id == "our_copy")
+    #expect(
+      manifest.sources.first?.baseURL.absoluteString
+        == "https://models.enviouslabs.co/edit-judge/3b376fbc-4962ff76/")
+  }
+
+  @Test func editJudgeManifestIsDeclaredAsAppResource() throws {
+    let project = try String(
+      contentsOf: ParakeetShippedManifestTests.repoRoot.appendingPathComponent("Project.swift"),
+      encoding: .utf8)
+    #expect(
+      project.contains("Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json"),
+      "edit-judge-delivery-manifest.json must be listed in the app target's resources")
+  }
+}
+
 @Suite struct ParakeetShippedManifestTests {
   /// Repo-relative path via #filePath — the ceilings-test house pattern for
   /// reading source-tree files from unit tests.
@@ -558,6 +680,7 @@ enum ManifestFixture {
         manifest.sources[1],
       ],
       admission: manifest.admission,
+      runtimeIdentityDigest: manifest.runtimeIdentityDigest,
       manifestDigest: manifest.manifestDigest)
     let d = defaults()
     d.set("our_copy,backup", forKey: "modelDelivery.parakeet.sourceOrder")

@@ -357,6 +357,52 @@ struct LearnFromEditsRowTests {
       !off.isEnabled
         && off.secondaryLine == "Turn on Apple Intelligence in System Settings to get suggestions")
     #expect(LearnFromEditsSettingsPresentation.unwired == none, "before wiring the row is disabled")
+    let classifier = LearnFromEditsSettingsPresentation(selection: .arm(.classifier), judge: .ready)
+    #expect(classifier.isEnabled && classifier.secondaryLine == nil && classifier.action == nil)
+  }
+
+  @Test("#996 phase D: every delivered-judge phase disables the row with its own line and its one action, and a ready judge on an unqualified macOS still says so")
+  @MainActor func deliveryPhases() {
+    typealias P = LearnFromEditsSettingsPresentation
+    let none: CorrectionJudgeArmSelection = .unavailable(.noQualifiedArm)
+    let table: [(P.JudgePhase, String, P.Action?)] = [
+      (.notInstalled, "The correction model is not downloaded yet", .download),
+      (.downloading(fractionCompleted: 0.5, bytesWritten: 161_405_824, totalBytes: 322_811_647),
+       "Downloading the correction model (154 of 308 MB)", .cancel),
+      (.verifying, "Checking the correction model", nil),
+      (.loading, "Loading the correction model", nil),
+      (.cancelled, "The download was cancelled", .download),
+      (.deliveryFailed, "The correction model could not be downloaded", .download),
+      (.loadFailed, "The correction model could not be loaded", .retryLoad),
+      (.identityMismatch, "The downloaded correction model is not the one this version was tested with", .removeAndDownload),
+      (.pausedByKillSwitch, "Model downloads are paused by Envious Labs", nil),
+      (.waitingForOnboarding, "The correction model downloads after setup finishes", nil),
+      (.waitingForSpeechModel, "The correction model downloads after the speech model", nil),
+      (.debugLoading, "Loading the test judge from the UAT door", nil),
+      (.debugFailed, "The test judge from the UAT door failed to load", nil),
+      (.removalFailed, "The correction model could not be fully removed", .removeAndDownload),
+      (.ready, "Not available on this version of macOS yet", nil),
+      (.none, "Not available on this version of macOS yet", nil),
+    ]
+    for (phase, line, action) in table {
+      let p = P(selection: none, judge: phase)
+      #expect(!p.isEnabled, "\(phase)")
+      #expect(p.secondaryLine == line, "\(phase)")
+      #expect(p.action == action, "\(phase)")
+    }
+    // A total of zero bytes (size unknown yet) drops the count.
+    #expect(P.downloadingLine(fraction: 0, written: 0, total: 0) == "Downloading the correction model")
+    // The availability object routes each action to its bound closure.
+    let availability = LearnFromEditsAvailability(presentation: P(selection: none, judge: .notInstalled))
+    var fired: [String] = []
+    availability.download = { fired.append("download") }
+    availability.cancel = { fired.append("cancel") }
+    availability.retryLoad = { fired.append("retry") }
+    availability.removeAndDownload = { fired.append("remove") }
+    for action in [P.Action.download, .cancel, .retryLoad, .removeAndDownload] { availability.perform(action) }
+    #expect(fired == ["download", "cancel", "retry", "remove"])
+    availability.publish(P(selection: .arm(.classifier), judge: .ready))
+    #expect(availability.presentation.isEnabled)
   }
 
   @Test("the row copy is §3.9's, word for word, and no longer claims edits stay on this Mac")
@@ -413,10 +459,10 @@ struct PendingCorrectionsRenderTests {
         fileURL: dir.appendingPathComponent("imported-contacts-state.json")))
     let enabled = host(
       LearningSection().environment(f.settings).environment(contacts)
-        .environment(\.learnFromEditsPresentation, LearnFromEditsSettingsPresentation(selection: .arm(.rules))))
+        .environment(LearnFromEditsAvailability(presentation: LearnFromEditsSettingsPresentation(selection: .arm(.rules)))))
     let disabled = host(
       LearningSection().environment(f.settings).environment(contacts)
-        .environment(\.learnFromEditsPresentation, .unwired))
+        .environment(LearnFromEditsAvailability(presentation: .unwired)))
     #expect(enabled.fittingSize.height > 0)
     #expect(disabled.fittingSize.height > enabled.fittingSize.height, "the reason line adds a line")
   }

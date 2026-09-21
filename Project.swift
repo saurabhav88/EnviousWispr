@@ -550,6 +550,11 @@ let project = Project(
         // name wherever it appears, and a link is not a copy.
         "Sources/EnviousWispr/Resources/s1-manifest.json",
         "Sources/EnviousWispr/Resources/s1-delivery-manifest.json",
+        // #996 phase D: the correction judge's DELIVERY root (bytes, hashes,
+        // our mirror). The RUNTIME root travels inside the delivered folder
+        // (`training-manifest-shaped.json`, bound to the package by digest),
+        // so there is no second bundled file. Same Bundle.main route.
+        "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt",
         "Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt",
         "Sources/EnviousWispr/Resources/llama-server",

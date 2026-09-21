@@ -167,7 +167,9 @@ if [[ "$MODE" == "check" ]]; then
   # nicety: the model must be identified as "S1-mini" by "Superwhisper" with
   # that exact capitalisation wherever it appears. Checked here so regenerating
   # without it fails the release gate rather than shipping quietly.
-  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"'; do
+  # #996 phase D: mmBERT-small's attribution is appended after the S1 section
+  # (same reason), so the gate names it too.
+  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP'; do
     if ! grep -qF "$needle" "$NOTICES"; then
       echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
       stale=1
@@ -277,3 +279,22 @@ cat "$S1_NOTICE"
 printf '\n'
 cat "$S1_LICENSE"
 printf '\n'
+
+# #996 phase D: the correction judge's weights are ours (trained by Envious
+# Labs), but its base model is mmBERT-small by JHU CLSP under Apache-2.0, and we
+# SERVE the derived weights from models.enviouslabs.co, so the attribution
+# travels with the notices exactly as S1-mini's does. The Apache-2.0 text is
+# already reproduced above (S1-MINI-LICENSE.txt is the unmodified licence plus
+# the publisher's naming term); it is not repeated.
+printf '\n'
+printf -- '--------------------------------------------------------------------------------\n'
+printf 'mmBERT-small by JHU CLSP (base of the correction judge, downloaded at runtime from Envious Labs)\n'
+printf '  License: Apache-2.0\n'
+printf '  Source:  https://huggingface.co/jhu-clsp/mmBERT-small\n'
+printf -- '--------------------------------------------------------------------------------\n\n'
+printf 'EnviousWispr downloads its correction judge after the speech model. The\n'
+printf 'judge is a small classifier Envious Labs trained on top of mmBERT-small;\n'
+printf 'the file is served from models.enviouslabs.co and is not distributed\n'
+printf 'inside this disk image. mmBERT-small is Copyright the Johns Hopkins\n'
+printf 'Center for Language and Speech Processing, licensed under the Apache\n'
+printf 'License, Version 2.0, reproduced in full in the S1-mini section above.\n'

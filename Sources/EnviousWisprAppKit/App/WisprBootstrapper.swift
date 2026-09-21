@@ -751,15 +751,17 @@ package final class WisprBootstrapper {
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
-    // paste registry) and `settings.onChange` below needs it. Production
-    // selects no judge (`CorrectionJudgeArmSelection.qualified` is empty).
+    // paste registry, the delivery home) and `settings.onChange` below needs
+    // it. Phase D: the delivered judge's fetch, load and selection live inside.
     let learnFromEdits = LearnFromEditsWiring(
       settings: settings,
       customWords: customWordsCoordinator,
       packs: vocabularyPackManager,
       overlay: recordingOverlay,
       pasteCompletionRegistry: pasteCompletionRegistry,
-      telemetry: WisprBootstrapper.learnFromEditsTelemetrySink())
+      telemetry: WisprBootstrapper.learnFromEditsTelemetrySink(),
+      deliveryHome: modelDelivery,
+      isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
     self.learnFromEdits = learnFromEdits
 
     // #2376 C7: the Appearance page's window onto the pill. Built HERE because
@@ -928,6 +930,8 @@ package final class WisprBootstrapper {
           guard await egOneCoordinator?.onboardingDidComplete() == true else { return }
           egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
         }
+        // #996 phase D: the judge downloads after first-run setup, never during it.
+        learnFromEdits?.onboardingDidComplete()
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first
@@ -2083,7 +2087,7 @@ private struct MainWindowRoot: View {
       // #996 chunk 5h: the Pending tab's inbox, the Learning row's enabled
       // state and the tab's app-name lookup.
       .environment(b.learnFromEdits.coordinator)
-      .environment(\.learnFromEditsPresentation, b.learnFromEdits.settingsPresentation)
+      .environment(b.learnFromEdits.availability)
       .environment(\.pendingSourceAppName, b.learnFromEdits.sourceAppName)
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)

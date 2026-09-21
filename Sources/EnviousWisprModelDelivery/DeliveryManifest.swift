@@ -68,6 +68,14 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
   public let totalBytes: Int64
   public let sources: [Source]
   public let admission: Admission
+  /// Schema v1.4 (#996 phase D), optional and additive: the RUNTIME identity
+  /// the delivered bytes will present once loaded (for the correction judge,
+  /// `CoreMLCorrectionJudge.classifierIdentityDigest` over its package,
+  /// tokenizer and decision-config digests), so a qualification can be
+  /// checked against the exact bytes BEFORE they are fetched. Inside the
+  /// signed manifest digest like every other field. Absent for families whose
+  /// runtime binds no such identity (Parakeet, WhisperKit, EG-1, S1).
+  public let runtimeIdentityDigest: String?
   public let manifestDigest: String
 
   /// The only supported schema version. A manifest with any other version is
@@ -112,6 +120,14 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
 
   private func validateStructure() throws {
     guard !files.isEmpty else { throw ManifestError.structurallyInvalid("files[] empty") }
+    if let runtimeIdentityDigest {
+      // ASCII only: `Character.isHexDigit` also accepts full-width digits, a
+      // documented failure class in this repository (round 17).
+      let lowercaseHex = Set("0123456789abcdef")
+      guard runtimeIdentityDigest.count == 64, runtimeIdentityDigest.allSatisfy(lowercaseHex.contains) else {
+        throw ManifestError.structurallyInvalid("runtimeIdentityDigest is not 64 lowercase ASCII hex characters")
+      }
+    }
     guard totalBytes == files.reduce(0, { $0 + $1.sizeBytes }) else {
       throw ManifestError.structurallyInvalid("totalBytes != sum(files)")
     }

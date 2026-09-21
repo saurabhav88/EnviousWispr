@@ -27,20 +27,24 @@ extension WhisperKitDeliveryError: StableSentryErrorIdentity {
   public var sentrySemanticID: String { "whisper_kit.delivery_failed" }
 }
 
-/// Pipeline-side handle for the multilingual (WhisperKit) delivery stage
-/// (#1386 PR-2): the ONE object the retirement coordinator + setup wiring talk
-/// to. A THIN facade over the shared `ModelDeliveryController` — it owns the
-/// D5 kill-switch read and forwards the controller calls; it holds NO durable
-/// retirement state (that is the coordinator's; contract §5b).
-/// Built once by `WisprBootstrapper` beside the shared controller.
+/// Pipeline-side handle for one delivery-managed model whose transfer does
+/// not use Parakeet's `ProgressFile` bridge: the multilingual WhisperKit engine
+/// (#1386 PR-2), the Live Preview model (#2108) and the correction judge (#996
+/// phase D) all hold one. The ONE object their wiring talks to. A THIN facade over the shared
+/// `ModelDeliveryController` — it owns the D5 kill-switch read for the
+/// registration's family and forwards the controller calls; it holds NO
+/// durable state. Built once by `ModelDeliveryHome` beside the shared
+/// controller, one per registration.
 ///
 /// Unlike `ParakeetDeliveryHandle` this handle does NOT bridge to the shared
-/// `ProgressFile`: multilingual is the BACKUP engine and its download progress
-/// surfaces in the AI/Speech settings row via the injected delivery-state
-/// projection (§3d), not the cold-press wedge-guard channel that watches the
-/// SELECTED engine's warm-up.
+/// `ProgressFile`: each model's download progress surfaces in its own settings
+/// row via the injected delivery-state projection (§3d), not the cold-press
+/// wedge-guard channel that watches the SELECTED engine's warm-up.
+///
+/// Was `WhisperKitDeliveryHandle` until #996 phase D; the only WhisperKit-shaped
+/// line was the kill-switch family, which now comes from the registration.
 @MainActor
-public final class WhisperKitDeliveryHandle {
+public final class DeliveredModelHandle {
   private let controller: ModelDeliveryController
   private let registration: DeliveryRegistration
   private let defaults: UserDefaults
@@ -79,9 +83,12 @@ public final class WhisperKitDeliveryHandle {
     }
   }
 
-  /// The D5 kill-switch, read fresh per attempt (relaunch-free legacy fallback).
+  /// The D5 kill-switch for THIS registration's family, read fresh per
+  /// attempt (relaunch-free legacy fallback). Two registrations in one family
+  /// (the WhisperKit pair) share one flag on purpose.
   public func isEnabled() -> Bool {
-    defaults.object(forKey: DeliveryFlags.key("enabled", family: .whisperKit)) as? Bool ?? true
+    let family = registration.manifest.identity.family
+    return defaults.object(forKey: DeliveryFlags.key("enabled", family: family)) as? Bool ?? true
   }
 
   /// Whether the owned cache is currently admitted (marker fast path, no fetch).

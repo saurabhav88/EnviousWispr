@@ -27,7 +27,7 @@ public final class ModelDeliveryHome {
   /// `WhisperKit.download()`), so a nil handle means the multilingual engine
   /// honestly reports "not installed" rather than fetching by an unverified
   /// route. Unit-tested against the bundled resource.
-  public private(set) var whisperKitHandle: WhisperKitDeliveryHandle?
+  public private(set) var whisperKitHandle: DeliveredModelHandle?
   public private(set) var whisperKitRegistration: DeliveryRegistration?
 
   /// #2108 (epic #2077 chunk 4). The SECOND artifact in the `whisperKit` family:
@@ -44,11 +44,46 @@ public final class ModelDeliveryHome {
   /// from a limb. The manifest's token is documentary (`DeliveryManifest`
   /// decodes it as a free `String` and never resolves it to a path); this line
   /// is the authority.
-  public private(set) var whisperPreviewHandle: WhisperKitDeliveryHandle?
+  public private(set) var whisperPreviewHandle: DeliveredModelHandle?
   public private(set) var whisperPreviewRegistration: DeliveryRegistration?
+
+  /// #996 phase D: the correction judge (`edit_judge` family). Its install
+  /// directory is its own sibling under `Models/`, for the same reason the
+  /// preview model's is: admission is exhaustive per directory. Nil when the
+  /// bundled manifest failed to load; the learner then reports
+  /// `model_unavailable` and the Settings row says the model is unavailable in
+  /// this build. No mutation claim, no `ProgressFile` bridge: a limb.
+  public private(set) var editJudgeHandle: DeliveredModelHandle?
+  public private(set) var editJudgeRegistration: DeliveryRegistration?
 
   /// Observable mirror of the Parakeet delivery state for SwiftUI renderers.
   public private(set) var parakeetState: DeliveryState = .notReady
+
+  /// #996 phase D: fired on every Parakeet `.admitted` (including the launch
+  /// replay of an already-admitted copy), so the judge's fetch policy can run
+  /// "after Parakeet" without polling the mirror. Set by `LearnFromEditsWiring`.
+  public var onParakeetAdmitted: (@MainActor () -> Void)?
+
+  /// #996 phase D: whether Parakeet is admitted NOW, from the persisted marker,
+  /// not the in-process mirror. A returning user's Parakeet was admitted in a
+  /// previous process, and `parakeetState` stays `.notReady` until the first
+  /// dictation calls `ensureAvailable()` (cloud review P2); the judge's "after
+  /// Parakeet" gate must not wait for that.
+  public func isParakeetAdmitted() async -> Bool {
+    if case .admitted = parakeetState { return true }
+    guard let registration = parakeetRegistration else { return false }
+    return await controller.isAdmitted(registration)
+  }
+
+  /// #996 phase D: fired once the judge's launch probe (baseline + adopt-only
+  /// admission) has finished, so the automatic fetch never races the
+  /// first-run baseline (round 16 finding 1). Replays if set after the fact.
+  /// No state mirror lives here: `LearnFromEditsWiring` observes the handle
+  /// directly and owns the Settings picture.
+  public var onEditJudgeLaunchProbeFinished: (@MainActor () -> Void)? {
+    didSet { if editJudgeLaunchProbeDidFinishForTests { onEditJudgeLaunchProbeFinished?() } }
+  }
+  package private(set) var editJudgeLaunchProbeDidFinishForTests = false
 
   /// Observable mirror of the PREVIEW model's delivery state (#2123).
   ///
@@ -313,7 +348,7 @@ public final class ModelDeliveryHome {
           "EnviousWispr/ModelDelivery", isDirectory: true))
       whisperKitRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
-      whisperKitHandle = WhisperKitDeliveryHandle(
+      whisperKitHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let home = self
       Task { await home.recordFirstRunBaseline(for: registration) }
@@ -361,7 +396,7 @@ public final class ModelDeliveryHome {
           "EnviousWispr/ModelDelivery", isDirectory: true))
       whisperPreviewRegistration = registration
       Task { await controller.sweepSupersededStaging(registration) }
-      whisperPreviewHandle = WhisperKitDeliveryHandle(
+      whisperPreviewHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let previewHome = self
       let previewIdentity = manifest.identity
@@ -401,6 +436,133 @@ public final class ModelDeliveryHome {
           level: .info, category: "Delivery")
       }
     }
+
+    // #996 phase D: the correction judge, registered beside its siblings for
+    // the reason the preview model is (one owner of "which models exist and
+    // where they install"). Same launch sequence: observer, first-run
+    // baseline, then the adopt-only probe that can never start a download.
+    // Whether a download STARTS is `EditJudgeFetchPolicy`'s decision, made in
+    // `LearnFromEditsWiring` from qualification, onboarding, Parakeet admission
+    // and the kill switch; this block only makes the registration exist.
+    do {
+      let manifest = try DeliveryManifest.loadBundled(
+        resource: "edit-judge-delivery-manifest", bundle: manifestBundle)
+      let appSupport = appSupportRoot
+      let registration = DeliveryRegistration(
+        manifest: manifest,
+        installDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/Models/edit-judge", isDirectory: true),
+        metadataDirectory: appSupport.appendingPathComponent(
+          "EnviousWispr/ModelDelivery", isDirectory: true))
+      editJudgeRegistration = registration
+      Task { await controller.sweepSupersededStaging(registration) }
+      editJudgeHandle = DeliveredModelHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      let judgeHome = self
+      Task {
+        await judgeHome.recordFirstRunBaseline(for: registration)
+        _ = await judgeHome.controller.admitIfComplete(registration)
+        judgeHome.editJudgeLaunchProbeDidFinishForTests = true
+        judgeHome.onEditJudgeLaunchProbeFinished?()
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Correction judge delivery manifest unavailable — learn-from-edits will report "
+            + "model_unavailable and no download can supply what this build never shipped: "
+            + "\(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+  }
+
+  // MARK: - #996 phase D: the correction judge's own controls
+
+  /// Start, resume or retry the judge download. Kill-switch guarded like the
+  /// preview's door (`ensureAvailable` does not enforce the flag itself).
+  /// Callers: `EditJudgeFetchPolicy` (automatic) and the Settings row (manual).
+  public func startEditJudgeDownload() {
+    guard let handle = editJudgeHandle else { return }
+    guard handle.isEnabled() else {
+      Task {
+        await AppLogger.shared.log(
+          "Correction judge download refused: the edit_judge delivery kill switch is off "
+            + "(modelDelivery.edit_judge.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
+    Task { _ = await handle.ensureAvailable() }
+  }
+
+  public func cancelEditJudgeDownload() {
+    guard let handle = editJudgeHandle else { return }
+    Task { await handle.cancelActiveFetch() }
+  }
+
+  /// Awaited BEFORE the judge's files are deleted: the loaded Core ML model must
+  /// be released first, for the reason `drainPreviewHoldersBeforeRemoval`
+  /// records (unlinking an open mapping reclaims nothing). Set by
+  /// `LearnFromEditsWiring`.
+  /// Returns whether the runtime side (loaded judge, compiled cache) was fully
+  /// released; a false makes the whole removal report failure even when the
+  /// delivered bytes went (round 17).
+  public var drainEditJudgeHoldersBeforeRemoval: (() async -> Bool)?
+  package private(set) var editJudgeRemovalStepsForTests: [String] = []
+  private var editJudgeRemovalTask: Task<EditJudgeRemovalOutcome, Never>?
+  package var deleteEditJudgeOverrideForTests: (() async -> Bool)?
+
+  /// Why a removal did not fully remove (round 18): each outcome renders as
+  /// its own truthful row, never as "paused by Envious Labs" for a failed delete.
+  public enum EditJudgeRemovalOutcome: Equatable, Sendable {
+    case removed
+    case killSwitchOff
+    /// The loaded judge or its compiled cache could not be released/deleted.
+    case runtimeCleanupFailed
+    /// The delivery layer could not delete the delivered bytes.
+    case deliveryRemovalFailed
+    case notRegistered
+  }
+
+  /// Delete the judge's delivered bytes. Refused BEFORE the drain when the
+  /// family kill switch is off, so a stood-down delivery layer never releases
+  /// a loaded judge for nothing (round 16 finding 4). Single-flight: a second
+  /// call joins the first.
+  public func removeEditJudge() async -> EditJudgeRemovalOutcome {
+    guard let handle = editJudgeHandle else { return .notRegistered }
+    guard handle.isEnabled() else {
+      editJudgeRemovalStepsForTests.append("refused")
+      Task {
+        await AppLogger.shared.log(
+          "Correction judge removal refused: the edit_judge delivery kill switch "
+            + "is off (modelDelivery.edit_judge.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      return .killSwitchOff
+    }
+    if let task = editJudgeRemovalTask { return await task.value }
+    editJudgeRemovalStepsForTests = []
+    let task = Task<EditJudgeRemovalOutcome, Never> { [weak self] in
+      let runtimeRemoved = await self?.drainEditJudgeHoldersBeforeRemoval?() ?? true
+      self?.editJudgeRemovalStepsForTests.append(runtimeRemoved ? "drain" : "drain_failed")
+      var deliveredOutcome: EditJudgeRemovalOutcome? = nil
+      if let substitute = self?.deleteEditJudgeOverrideForTests {
+        deliveredOutcome = await substitute() ? nil : .deliveryRemovalFailed
+      } else {
+        // The flag is read fresh per attempt by `remove()`, so a false after
+        // the drain is EITHER a failed delete OR the switch flipping off during
+        // the drain (round 19); re-read it to say which.
+        let removed = await handle.remove()
+        deliveredOutcome = removed ? nil : (handle.isEnabled() ? .deliveryRemovalFailed : .killSwitchOff)
+      }
+      self?.editJudgeRemovalStepsForTests.append(deliveredOutcome == nil ? "delete" : "delete_failed")
+      if !runtimeRemoved { return .runtimeCleanupFailed }
+      return deliveredOutcome ?? .removed
+    }
+    editJudgeRemovalTask = task
+    let outcome = await task.value
+    editJudgeRemovalTask = nil
+    return outcome
   }
 
   /// Mirror the PREVIEW model's delivery state (#2123).
@@ -453,7 +615,10 @@ public final class ModelDeliveryHome {
           home.lastAppliedStateSeq = seq
           home.parakeetState = state
           home.parakeetStateUpdatesForTests += 1
-          if case .admitted = state { home.firstRunByIdentity[observedIdentity] = false }
+          if case .admitted = state {
+            home.firstRunByIdentity[observedIdentity] = false
+            home.onParakeetAdmitted?()
+          }
         }
       }
       // First-run flip for EVERY identity (grounded r1 P3): the observer above
@@ -527,12 +692,12 @@ public final class ModelDeliveryHome {
   /// Adds a guard only to THIS door, because the other two doors already carry
   /// the family's answer and they do not agree with each other:
   ///
-  /// - `cancelActiveFetch()` is NOT gated (`WhisperKitModelDelivery.swift:111`),
+  /// - `cancelActiveFetch()` is NOT gated (`DeliveredModelHandle.swift (cancelActiveFetch)`),
   ///   so Cancel stays reachable with the flag off. That is the right shape — a
   ///   kill switch on delivery must not strand a user mid-download with no way
   ///   to stop it, and cancelling starts no network work.
   /// - `remove()` IS gated and returns `false` without touching the controller
-  ///   (`WhisperKitModelDelivery.swift:124`). That is deliberate and owned
+  ///   (`DeliveredModelHandle.swift (remove)`). That is deliberate and owned
   ///   there: the flag stands down the WHOLE delivery layer, deletions included
   ///   (EG-1 §16.6 precedent). So with the flag off the user genuinely CANNOT
   ///   remove the model, and the model staying on disk is the intended
@@ -645,7 +810,7 @@ public final class ModelDeliveryHome {
         await substitute()
       } else if await handle.remove() == false {
         // `remove()` refuses when the family kill switch is off and deletes
-        // nothing (`WhisperKitModelDelivery.swift:124`, deliberate). Logged for
+        // nothing (`DeliveredModelHandle.swift (remove)`, deliberate). Logged for
         // the same reason the download refusal is: the flag is set remotely, so
         // whoever reads the "Remove does nothing" report cannot otherwise tell a
         // stood-down delivery layer from a broken button.
@@ -731,8 +896,8 @@ public final class ModelDeliveryHome {
   /// `cancelParakeetDownload` is deliberately NOT gated, and must stay that way: a
   /// delivery kill switch must never strand someone mid-download with no way to
   /// stop it, and cancelling starts no network work. Same shape as
-  /// `WhisperKitDeliveryHandle.cancelActiveFetch()`
-  /// (`WhisperKitModelDelivery.swift:111`), which is ungated for that stated reason.
+  /// `DeliveredModelHandle.cancelActiveFetch()`
+  /// (`DeliveredModelHandle.swift (cancelActiveFetch)`), which is ungated for that stated reason.
   public func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
     guard handle.isEnabled() else {
