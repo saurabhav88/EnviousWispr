@@ -1,0 +1,54 @@
+---
+# Probe (#996): can hosted GitHub macOS runners run the delivered correction
+# judge, and which compute devices do their VMs expose? Branch-only; never
+# merged. Reads `scripts/ci/probe-judge-runner.swift`.
+name: Probe judge on hosted macOS runners
+
+on:
+  push:
+    branches:
+      - probe/ci-mac-runner-judge
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Report the runner
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.memsize
+          xcodebuild -version
+
+      - name: Download the delivered fp16 package from the mirror
+        env:
+          BASE: https://models.enviouslabs.co/edit-judge/3b376fbc-ec68ad6e
+          PKG: xenc-mmbert-small-fp16.mlpackage
+        run: |
+          set -euo pipefail
+          mkdir -p "$PKG/Data/com.apple.CoreML/weights"
+          curl -fsSL --retry 3 -o "$PKG/Manifest.json" "$BASE/$PKG/Manifest.json"
+          curl -fsSL --retry 3 -o "$PKG/Data/com.apple.CoreML/model.mlmodel" "$BASE/$PKG/Data/com.apple.CoreML/model.mlmodel"
+          curl -fsSL --retry 3 -o "$PKG/Data/com.apple.CoreML/weights/weight.bin" "$BASE/$PKG/Data/com.apple.CoreML/weights/weight.bin"
+          shasum -a 256 "$PKG/Data/com.apple.CoreML/weights/weight.bin"
+          du -sh "$PKG"
+
+      - name: Build the probe
+        run: swiftc -O -target arm64-apple-macos14.0 scripts/ci/probe-judge-runner.swift -o probe
+
+      - name: Run the probe
+        run: ./probe xenc-mmbert-small-fp16.mlpackage
