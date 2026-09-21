@@ -35,9 +35,15 @@ for pkg in scripts/eval/apple_runner scripts/eval/alias_runner scripts/eval/prom
   # would resolve the whole graph fresh, floating ahead of what the app ships
   # (measured 2026-07-29: PostHog 3.68.4 / Sentry 9.24.0 / swift-argument-parser
   # 1.8.2 against the app's then-pinned 3.62.4 / 9.19.0 / 1.7.1). Root
-  # Package.resolved is the one source of pin truth; SwiftPM prunes the entries
-  # this graph does not need and holds every shared one.
-  cp Package.resolved "$pkg/Package.resolved"
+  # Package.resolved is the one source of pin truth for shared dependencies:
+  # each runner receives the complete root pin set, so every shared dependency
+  # is held to the app's version (the generated lockfiles keep the unused root
+  # pins too; they are gitignored). A dependency the app
+  # does NOT have (#996 chunk 2b-ii: alias_runner's swift-transformers) is
+  # pinned in the package's tracked Package.runner-only-pins.json and merged
+  # in after the root pins; an identity present in both is refused
+  # (scripts/ci/seed-eval-package-pins.py).
+  python3 scripts/ci/seed-eval-package-pins.py Package.resolved "$pkg"
   # --only-use-versions-from-resolved-file makes the seeding a GUARANTEE: an
   # out-of-date lockfile FAILS the step instead of being silently re-resolved.
   # Verified both directions locally.

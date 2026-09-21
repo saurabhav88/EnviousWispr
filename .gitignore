@@ -366,6 +366,9 @@ scripts/eval/prompt_render/Package.resolved
 !scripts/eval/alias_runner/**
 scripts/eval/alias_runner/.build/
 scripts/eval/alias_runner/Package.resolved
+# Its runner-only dependency (#996 chunk 2b-ii, swift-transformers) is pinned in
+# the TRACKED Package.runner-only-pins.json; compile-eval-packages.sh merges it
+# after the app's pins (scripts/ci/seed-eval-package-pins.py).
 !scripts/eval/alias_suggestion_gate.py
 !scripts/eval/golden_alias_scores.json
 # #996 edit-judge eval (learn custom words from edits): the gate and the labelled

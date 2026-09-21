@@ -15,7 +15,9 @@ let package = Package(
     // #996 chunk 2b-ii (founder decision 2026-09-18, option 1): the upstream
     // Hugging Face tokenizer, RUNNER ONLY, to measure parity for the
     // cross-encoder candidates. The app keeps its Argmax dependency until
-    // this proves exact multilingual parity. Pinned to an exact tag.
+    // this proves exact multilingual parity. Pinned to an exact tag; CI pins
+    // it and its transitive graph through Package.runner-only-pins.json
+    // (scripts/ci/compile-eval-packages.sh), since the app's pins lack it.
     .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.3.4"),
   ],
   targets: [
