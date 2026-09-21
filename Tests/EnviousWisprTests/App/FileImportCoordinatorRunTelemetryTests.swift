@@ -86,7 +86,8 @@ struct FileImportCoordinatorRunTelemetryTests {
       TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
       LLMProvider?, String?
     ) -> Void = { _, _, _, _, _, _, _ in },
-    captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in }
+    captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
+    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded(seconds: 1.0) },
@@ -104,7 +105,7 @@ struct FileImportCoordinatorRunTelemetryTests {
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       saveToHistory: { _ in },
-      updateHistoryRow: { _ in true },
+      updateHistoryRow: updateHistoryRow,
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { _ in true },
       processPart: { part, _ in try await processPart(part) })
@@ -228,5 +229,31 @@ struct FileImportCoordinatorRunTelemetryTests {
       telemetry.calls.last?.outcome == .success,
       "the document still saves; only the polish limb failed")
     #expect(telemetry.calls.last?.polishOutcome == .failed)
+  }
+
+  @Test(
+    "a failed FINAL write reports history_save_failed, never a false success (#3069 cloud review)")
+  func polishedSaveFailureReportsHistorySaveFailed() async {
+    let telemetry = RunTelemetryRecorder()
+    struct WriteError: Error {}
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      emitRunTelemetry: { outcome, _, _, asrOutcome, polishOutcome, _, _ in
+        telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
+      },
+      updateHistoryRow: { _ in throw WriteError() })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    #expect(
+      telemetry.calls.last?.outcome == .historySaveFailed,
+      "the RAW words saved fine, but the cleaned document's own write failed — that must not read as success"
+    )
+    #expect(telemetry.calls.last?.polishOutcome == nil)
   }
 }

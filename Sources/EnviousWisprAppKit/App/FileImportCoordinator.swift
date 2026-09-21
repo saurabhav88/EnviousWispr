@@ -2496,19 +2496,27 @@ final class FileImportCoordinator {
     savingDocument: Bool, asrOutcome: TelemetryService.FileImportASROutcome?
   ) async {
     let generationAtFinish = generation
+    var polishedSaveFailed = false
     if savingDocument {
       // #2851 follow-up: the turns are written ONCE, here, carrying their cleaned words;
       // `savePolishedToHistory` then re-reads the live row and carries them forward.
       await writeSpeakerFields(cleanupOutcome: .stored)
       guard generationAtFinish == generation else { return }
       savePolishedToHistory()
+      // #3069 (cloud review): `savePolishedToHistory` is best-effort and does not throw — it
+      // records the failure in `historySaveFailure` and lets the raw transcript stand, which
+      // is correct for the USER (nothing was lost). But that means `savingDocument == true`
+      // alone cannot tell "the cleaned document saved" from "only the raw one did," and
+      // reporting `.success` either way would hide a real write failure from us. Read the
+      // property it just set, not the parameter, to know which one actually happened.
+      polishedSaveFailed = historySaveFailure != nil
     }
     // #3069: `polish_outcome` only means something once the document is durable; a refused
     // raw save has no parts to summarize and reports history_save_failed with no polish claim.
     reportRunTelemetry(
-      outcome: savingDocument ? .success : .historySaveFailed,
+      outcome: savingDocument && !polishedSaveFailed ? .success : .historySaveFailed,
       asrOutcome: asrOutcome,
-      polishOutcome: savingDocument ? summarizedPolishOutcome() : nil)
+      polishOutcome: savingDocument && !polishedSaveFailed ? summarizedPolishOutcome() : nil)
     phase = ""
     state = .finished
     step = .done
