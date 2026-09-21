@@ -762,10 +762,12 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.changed(region: edited))
     observer.fire(.settled(region: edited))
     #expect(await waitUntil { judge.requests.count == 2 })
-    let first = try #require(judge.requests.first)
-    let second = try #require(judge.requests.last)
-    #expect(first.candidates.map(\.original) == ["sara"] && first.context.contains("ask sara today"))
-    #expect(second.candidates.map(\.original) == ["sarah"] && second.context.contains("call sarah tonight"))
+    // The two requests are asked from two tasks; the judge records them in
+    // completion order, so find each by its candidate rather than by position.
+    let first = try #require(judge.requests.first { $0.candidates.map(\.original) == ["sara"] })
+    let second = try #require(judge.requests.first { $0.candidates.map(\.original) == ["sarah"] })
+    #expect(first.context.contains("ask sara today"))
+    #expect(second.context.contains("call sarah tonight"))
     #expect(!first.context.contains("sarah") && !second.context.contains("sara today"))
     #expect(await waitUntil { coordinator.openProposalsNewestFirst.count == 2 })
 
