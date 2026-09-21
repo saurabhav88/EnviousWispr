@@ -1118,20 +1118,23 @@ struct PastedRegionObserverWatchTests {
       ])
   }
 
-  @Test("finish(nextDictationStarted) flushes a pending fix and ends; with nothing pending it only ends; when not observing it is a no-op")
+  @Test("finish(nextDictationStarted) reads the box once more, flushes the pending fix as it is NOW and ends; with nothing pending it only ends; when not observing it is a no-op")
   func finishFlushesPendingFix() {
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e = Events()
     startWithFix(o, e)
+    // Typed since the last poll (a poll-only host): the flush must carry the
+    // finished word, not the half the last poll saw (cloud review of #3090).
+    ax.reads = [.text("Note: Ask Sairah today please")]
     o.finish(.nextDictationStarted)
     #expect(
       e.list == [
-        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"),
-        .ended(.nextDictationStarted),
+        .changed(region: "Ask Saira today"), .changed(region: "Ask Sairah today"),
+        .settled(region: "Ask Sairah today"), .ended(.nextDictationStarted),
       ])
     #expect(o.isObserving == false)
     o.finish(.nextDictationStarted)
-    #expect(e.list.count == 3, "no-op after the end")
+    #expect(e.list.count == 4, "no-op after the end")
 
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e2 = Events()
@@ -1140,6 +1143,19 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)
     o2.finish(.nextDictationStarted)
     #expect(e2.list == [.ended(.nextDictationStarted)])
+
+    // The fresh read can end the watch itself (the box was sent meanwhile):
+    // that end stands and carries the flush; finish adds nothing.
+    let o3 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e3 = Events()
+    startWithFix(o3, e3)
+    ax.reads = [.text("")]
+    o3.finish(.nextDictationStarted)
+    #expect(
+      e3.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.textboxEmptied),
+      ])
+    #expect(o3.isObserving == false)
   }
 
   @Test("a value-changed notification also re-validates the active application")

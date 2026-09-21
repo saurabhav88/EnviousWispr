@@ -1298,6 +1298,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
   }
 
   package func finish(_ reason: PastedRegionEndReason) {
+    guard let w = watch else { return }
+    // One fresh read before the flush: on a poll-only host the cached region
+    // can be half a word typed since the last poll (cloud review of #3090).
+    // The read may itself end the watch (the box emptied, the region gone);
+    // then that end, already delivered, stands and there is nothing to do.
+    _ = evaluate(generation: w.generation, checkIdentity: true, source: "finish")
     guard watch != nil else { return }
     end(reason)
   }
