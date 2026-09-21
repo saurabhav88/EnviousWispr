@@ -498,15 +498,27 @@ public final class ModelDeliveryHome {
   /// delivered bytes went (round 17).
   public var drainEditJudgeHoldersBeforeRemoval: (() async -> Bool)?
   package private(set) var editJudgeRemovalStepsForTests: [String] = []
-  private var editJudgeRemovalTask: Task<Bool, Never>?
+  private var editJudgeRemovalTask: Task<EditJudgeRemovalOutcome, Never>?
   package var deleteEditJudgeOverrideForTests: (() async -> Bool)?
 
-  /// Delete the judge's delivered bytes. Returns whether anything was
-  /// deleted: refused BEFORE the drain when the family kill switch is off, so
-  /// a stood-down delivery layer never releases a loaded judge for nothing
-  /// (round 16 finding 4). Single-flight: a second call joins the first.
-  public func removeEditJudge() async -> Bool {
-    guard let handle = editJudgeHandle else { return false }
+  /// Why a removal did not fully remove (round 18): each outcome renders as
+  /// its own truthful row, never as "paused by Envious Labs" for a failed delete.
+  public enum EditJudgeRemovalOutcome: Equatable, Sendable {
+    case removed
+    case killSwitchOff
+    /// The loaded judge or its compiled cache could not be released/deleted.
+    case runtimeCleanupFailed
+    /// The delivery layer could not delete the delivered bytes.
+    case deliveryRemovalFailed
+    case notRegistered
+  }
+
+  /// Delete the judge's delivered bytes. Refused BEFORE the drain when the
+  /// family kill switch is off, so a stood-down delivery layer never releases
+  /// a loaded judge for nothing (round 16 finding 4). Single-flight: a second
+  /// call joins the first.
+  public func removeEditJudge() async -> EditJudgeRemovalOutcome {
+    guard let handle = editJudgeHandle else { return .notRegistered }
     guard handle.isEnabled() else {
       editJudgeRemovalStepsForTests.append("refused")
       Task {
@@ -515,26 +527,28 @@ public final class ModelDeliveryHome {
             + "is off (modelDelivery.edit_judge.enabled = false)",
           level: .info, category: "Delivery")
       }
-      return false
+      return .killSwitchOff
     }
     if let task = editJudgeRemovalTask { return await task.value }
     editJudgeRemovalStepsForTests = []
-    let task = Task<Bool, Never> { [weak self] in
+    let task = Task<EditJudgeRemovalOutcome, Never> { [weak self] in
       let runtimeRemoved = await self?.drainEditJudgeHoldersBeforeRemoval?() ?? true
       self?.editJudgeRemovalStepsForTests.append(runtimeRemoved ? "drain" : "drain_failed")
       let deliveredRemoved: Bool
       if let substitute = self?.deleteEditJudgeOverrideForTests {
         deliveredRemoved = await substitute()
       } else {
+        // The kill switch was checked above, so a false here is a failed delete.
         deliveredRemoved = await handle.remove()
       }
       self?.editJudgeRemovalStepsForTests.append(deliveredRemoved ? "delete" : "delete_failed")
-      return runtimeRemoved && deliveredRemoved
+      if !runtimeRemoved { return .runtimeCleanupFailed }
+      return deliveredRemoved ? .removed : .deliveryRemovalFailed
     }
     editJudgeRemovalTask = task
-    let removed = await task.value
+    let outcome = await task.value
     editJudgeRemovalTask = nil
-    return removed
+    return outcome
   }
 
   /// Mirror the PREVIEW model's delivery state (#2123).

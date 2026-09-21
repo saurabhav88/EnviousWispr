@@ -357,15 +357,18 @@ final class LearnFromEditsWiring {
   /// removal (kill switch) leaves the loaded judge in place and says why.
   private func removeAndDownload() async {
     guard let home = deliveryHome else { return }
-    guard await home.removeEditJudge() else {
-      // Refused (kill switch) or partly failed; the drain published
-      // `.removalFailed` if it was the cache, else the switch is the reason.
-      if judgePhase != .removalFailed { publishPhase(.pausedByKillSwitch) }
-      return
+    switch await home.removeEditJudge() {
+    case .removed:
+      lastDeliveryState = .notReady
+      publishPhase(.notInstalled)
+      startFetch(trigger: "removal_finished", userInitiated: true)
+    case .killSwitchOff:
+      publishPhase(.pausedByKillSwitch)
+    case .runtimeCleanupFailed, .deliveryRemovalFailed:
+      publishPhase(.removalFailed)
+    case .notRegistered:
+      publishPhase(.none)
     }
-    lastDeliveryState = .notReady
-    publishPhase(.notInstalled)
-    startFetch(trigger: "removal_finished", userInitiated: true)
   }
 
   private func deliveryStateChanged(_ state: DeliveryState) {
