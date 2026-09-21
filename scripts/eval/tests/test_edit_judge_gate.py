@@ -244,18 +244,41 @@ def test_exam_registry_keeps_legacy_paths_unchanged():
 def test_attempt_ledger_reserves_once_per_exam_and_candidate(tmp_path):
     ledger = tmp_path / "attempts.jsonl"
     ident = {"checkpoint_sha256": "a" * 64, "tokenizer_sha256": "b" * 64, "config_sha256": "c" * 64, "path": "shape+judge"}
-    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
-    assert rec["status"] == "started" and len(rec["key_digest"]) == 64
-    # A second reservation for the same exam + identity is refused (exit 2).
+    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
+    assert rec["status"] == "started" and len(rec["key_digest"]) == 64 and rec["os_major"] == 27
+    # A second reservation for the same exam + identity + macOS major is refused (exit 2).
     with pytest.raises(SystemExit) as exc:
-        gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+        gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
     assert exc.value.code == 2
-    # A different identity, a different exam digest or a different exam are new keys.
-    gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", dict(ident, config_sha256="e" * 64), ["cmd"], attempts_log=ledger)
-    gate.reserve_attempt("v2", "f" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
-    gate.reserve_attempt("legacy", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger)
+    # A different identity, a different exam digest, a different exam or a
+    # different macOS major are new keys: a PASS on 27 says nothing about 15.
+    gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", dict(ident, config_sha256="e" * 64), ["cmd"], attempts_log=ledger, os_major=27)
+    gate.reserve_attempt("v2", "f" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
+    gate.reserve_attempt("legacy", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
+    gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=15)
     gate.complete_attempt(rec, "completed", tmp_path / "run", attempts_log=ledger)
     lines = [json.loads(l) for l in ledger.read_text().splitlines()]
-    assert [l["status"] for l in lines] == ["started", "started", "started", "started", "completed"]
+    assert [l["status"] for l in lines] == ["started", "started", "started", "started", "started", "completed"]
     # The ledger is append-only: the completed line repeats the key, never rewrites the started one.
     assert lines[-1]["key_digest"] == rec["key_digest"] and lines[0]["status"] == "started"
+
+
+def test_attempt_ledger_rows_without_an_os_major_count_as_macos_27(tmp_path):
+    """Every row written before `os_major` existed ran on macOS 27, so such a
+    row still blocks a rerun on 27 and leaves every other major open."""
+    ledger = tmp_path / "attempts.jsonl"
+    ident = {"checkpoint_sha256": "a" * 64, "tokenizer_sha256": "b" * 64, "config_sha256": "c" * 64, "path": "shape+judge"}
+    legacy = {"key_digest": "0" * 64, "exam": "v2", "exam_manifest_sha256": "d" * 64, "judge": "xenc-mmbert-small", "execution_identity": ident, "status": "completed", "started_at": "2026-09-21T13-22-50Z"}
+    ledger.write_text(json.dumps(legacy) + "\n")
+    assert gate.LEGACY_LEDGER_OS_MAJOR == 27
+    with pytest.raises(SystemExit) as exc:
+        gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=27)
+    assert exc.value.code == 2
+    rec = gate.reserve_attempt("v2", "d" * 64, "xenc-mmbert-small", ident, ["cmd"], attempts_log=ledger, os_major=14)
+    assert rec["os_major"] == 14 and rec["key_digest"] != legacy["key_digest"]
+
+
+def test_host_identity_reads_this_machine():
+    host = gate.host_identity()
+    assert host["os_major"] == int(host["os_version"].split(".")[0]) >= 14
+    assert host["chip"] and isinstance(host["virtual"], bool)

@@ -418,13 +418,45 @@ def new_run_dir(stamp: str, judge: str, partition: str, runs_dir: Path = RUNS_DI
 ATTEMPTS_LOG = RUNS_DIR / "attempts.jsonl"
 
 
-def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: dict, command: list[str], attempts_log: Path = ATTEMPTS_LOG) -> dict:
+# The Mac an exam ran on is part of the result, not a footnote: Core ML
+# compiles the same package differently on each macOS major and on each
+# compute device, so a PASS on one is evidence for that major only
+# (`CorrectionJudgeArmSelection.qualified` lists majors per receipt). The
+# receipt records it and the attempt ledger keys on it: one attempt per
+# locked candidate per exam version PER macOS MAJOR. Ledger rows written
+# before this field existed all ran on the founder's Mac on macOS 27, the
+# only machine any exam had run on (2026-09-21), so a row without the field
+# counts as that major.
+LEGACY_LEDGER_OS_MAJOR = 27
+
+
+def host_identity() -> dict:
+    """The macOS version and chip of THIS machine, read from the OS, never
+    guessed. A hosted CI runner reports its chip as `Apple M1 (Virtual)`
+    and exposes no Neural Engine, which `virtual` makes visible in the
+    receipt. Missing `sw_vers` is an infra error: a receipt without a host
+    is not a receipt."""
+    try:
+        version = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True, check=True).stdout.strip()
+        chip = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        infra_error(f"cannot read the host identity (sw_vers / sysctl): {exc}")
+    major = version.split(".")[0]
+    if not major.isdigit() or not chip:
+        infra_error(f"unparseable host identity: version {version!r}, chip {chip!r}")
+    return {"os_version": version, "os_major": int(major), "chip": chip, "virtual": "(Virtual)" in chip}
+
+
+def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: dict, command: list[str], attempts_log: Path = ATTEMPTS_LOG, os_major: Optional[int] = None) -> dict:
     """Append-only attempt ledger keyed by exam identity plus complete
-    candidate identity, written BEFORE the runner launches. A second
-    inference attempt for the same key is refused: one run per locked
-    candidate per exam version is enforced here, not by counting scorecards.
+    candidate identity plus the macOS major, written BEFORE the runner
+    launches. A second inference attempt for the same key is refused: one
+    run per locked candidate per exam version per macOS major is enforced
+    here, not by counting scorecards. `os_major` defaults to this machine's.
     Returns the reservation record (status `started`)."""
-    key = {"exam": exam, "exam_manifest_sha256": exam_sha, "judge": judge, "execution_identity": identity}
+    if os_major is None:
+        os_major = host_identity()["os_major"]
+    key = {"exam": exam, "exam_manifest_sha256": exam_sha, "judge": judge, "execution_identity": identity, "os_major": os_major}
     key_digest = hashlib.sha256(json.dumps(key, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
     prior = []
     if attempts_log.exists():
@@ -433,10 +465,13 @@ def reserve_attempt(exam: str, exam_sha: Optional[str], judge: str, identity: di
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 infra_error(f"{attempts_log}: unreadable line; the attempt ledger must be repaired by hand, never rewritten")
-            if rec.get("key_digest") == key_digest and rec.get("status") in ("started", "completed"):
+            # Field comparison, not digest comparison, so rows written before
+            # `os_major` existed still block a rerun on the major they ran on.
+            same = all(rec.get(k) == key[k] for k in ("exam", "exam_manifest_sha256", "judge", "execution_identity"))
+            if same and rec.get("os_major", LEGACY_LEDGER_OS_MAJOR) == os_major and rec.get("status") in ("started", "completed"):
                 prior.append(rec)
     if prior:
-        infra_error(f"an inference attempt for this exam and candidate identity already exists ({prior[0].get('started_at')}, status {prior[0].get('status')}); one run per locked candidate per exam version")
+        infra_error(f"an inference attempt for this exam, candidate identity and macOS {os_major} already exists ({prior[0].get('started_at')}, status {prior[0].get('status')}); one run per locked candidate per exam version per macOS major")
     rec = {"key_digest": key_digest, **key, "status": "started", "started_at": now_iso(), "command": command}
     attempts_log.parent.mkdir(parents=True, exist_ok=True)
     with attempts_log.open("a", encoding="utf-8") as fh:
@@ -1012,7 +1047,8 @@ def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_p
     training = _training_for(judge, training_path, frozen)
     exposure = frozen_exposure(judge, exam=exam)
     ident = exam_identity(exam)
-    reservation = reserve_attempt(exam, ident["manifest_sha256"], judge, training.get("execution_identity") or {}, sys.argv)
+    host = host_identity()
+    reservation = reserve_attempt(exam, ident["manifest_sha256"], judge, training.get("execution_identity") or {}, sys.argv, os_major=host["os_major"])
     run_dir = new_run_dir(stamp, judge, "frozen-report" if exam == "legacy" else f"exam-{exam}")
     per_partition: dict[str, dict] = {}
     all_rows: list[dict] = []
@@ -1045,6 +1081,7 @@ def mode_run(judge: str, partition: str, corpus_path: Optional[Path], training_p
     }
     summary["frozen_exposure_before_this_run"] = exposure
     summary["attempt"] = {"key_digest": reservation["key_digest"], "ledger": str(ATTEMPTS_LOG)}
+    summary["host"] = host
     (run_dir / "scorecard.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"receipt: {run_dir}", file=sys.stderr)
