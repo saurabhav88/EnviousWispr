@@ -68,8 +68,9 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   ///   arrived as three failed reads (WhatsApp 2026-09-21: fix typed, Return
   ///   pressed, the old composer element answered nothing three times; the
   ///   fix was seen and then dropped). The observer flushes that last good
-  ///   read through `end(_:lostBoxFlush:)` unless any failed read in the run
-  ///   was `unstable` (mid-keystroke), which keeps the partial-word guard.
+  ///   read through `end(_:lostBoxFlush:)` when every failure in the run was
+  ///   a read of the box itself (not `unstable`, not a failed focus query)
+  ///   and the fix is at least `flushMinQuietMs` old, the partial-word guard.
   /// `settled`, `dictatedTextNotFound` and `nextDictationStarted` are not
   /// observer ends (see above).
   /// A young pending edit is withheld only when FOCUS moved: that is the
@@ -637,9 +638,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
     /// revision it was armed for.
     var changeRevision: UInt64 = 0
     var consecutiveReadFailures = 0
-    /// The kinds of the current failure run, for the log line and for the
-    /// lost-box flush (an `unstable` read in the run withholds it).
+    /// The kinds of the current failure run, for the log line.
     var readFailureKinds: [String] = []
+    /// True only while every failure in the current run came from reading
+    /// the watched box itself and was stable enough to support a lost-box
+    /// flush (`recordReadFailure` owns the classification).
+    var failureRunPermitsLostBoxFlush = true
   }
 
   private var watch: Watch?
@@ -959,7 +963,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
           return .ended
         }
       case .queryFailed(let error):
-        return recordReadFailure(error: error, kind: "focusQueryFailed(\(error.rawValue))", generation: gen)
+        // Discovering the focused element failed; the watched box itself was
+        // never read, so this says nothing about it (cloud review of #3087).
+        return recordReadFailure(
+          error: error, kind: "focusQueryFailed(\(error.rawValue))", permitsLostBoxFlush: false,
+          generation: gen)
       }
     }
     let read = readText(of: target.element, using: target.reader)
@@ -971,21 +979,23 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if endIfPastDeadline(generation: gen) { return .ended }
     switch read {
     case .failed(let error):
-      return recordReadFailure(error: error, kind: "failed(\(error.rawValue))", generation: gen)
+      return recordReadFailure(
+        error: error, kind: "failed(\(error.rawValue))", permitsLostBoxFlush: true, generation: gen)
     case .absent:
-      return recordReadFailure(error: nil, kind: "absent", generation: gen)
+      return recordReadFailure(error: nil, kind: "absent", permitsLostBoxFlush: true, generation: gen)
     case .notText:
-      return recordReadFailure(error: nil, kind: "notText", generation: gen)
+      return recordReadFailure(error: nil, kind: "notText", permitsLostBoxFlush: true, generation: gen)
     case .unstable:
       // A person mid-keystroke; the next poll reads a settled field. Three in
-      // a row are still a host that cannot be read.
-      return recordReadFailure(error: nil, kind: "unstable", generation: gen)
+      // a row are still a host that cannot be read, and never a lost box.
+      return recordReadFailure(error: nil, kind: "unstable", permitsLostBoxFlush: false, generation: gen)
     case .tooLong:
       end(.captureUnsupported)
       return .ended
     case .text(let value):
       watch?.consecutiveReadFailures = 0
       watch?.readFailureKinds = []
+      watch?.failureRunPermitsLostBoxFlush = true
       if value.isEmpty {
         end(.textboxEmptied)
         return .ended
@@ -1052,7 +1062,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// `maxConsecutiveReadFailures`. A permission code ends it at once. A failed
   /// read is never "unchanged": it cancels the pending quiet interval, which a
   /// later good read restarts.
-  private func recordReadFailure(error: AXError?, kind: String, generation gen: UInt64) -> Observation {
+  /// `permitsLostBoxFlush` is the closed classification of failure sources: a
+  /// failed, absent or non-text read OF THE WATCHED BOX is evidence the box
+  /// went away; an `unstable` read (a person still typing) and a failed focus
+  /// query (the box was never read) are not.
+  private func recordReadFailure(
+    error: AXError?, kind: String, permitsLostBoxFlush: Bool, generation gen: UInt64
+  ) -> Observation {
     guard watch?.generation == gen else { return .ended }
     if let error, Self.endReason(forQueryFailure: error) == .permissionLost {
       end(.permissionLost)
@@ -1062,14 +1078,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
     watch?.settle = nil
     watch?.consecutiveReadFailures += 1
     watch?.readFailureKinds.append(kind)
+    if !permitsLostBoxFlush { watch?.failureRunPermitsLostBoxFlush = false }
     let failures = watch?.consecutiveReadFailures ?? 0
     log?("learn_read_failed n=\(failures)/\(PastedRegionTiming.maxConsecutiveReadFailures) kind=\(kind) pending_fix=\(watch?.changedSinceSettled ?? false)")
     if failures >= PastedRegionTiming.maxConsecutiveReadFailures {
       // A box that stopped answering right after a good read saw the fix is
-      // a send in another shape (see `flushesPendingEdit`); an `unstable`
-      // read in the run means a person was still typing, so no flush.
-      let lostBox = !(watch?.readFailureKinds.contains("unstable") ?? true)
-      end(.captureUnsupported, lostBoxFlush: lostBox)
+      // a send in another shape (see `flushesPendingEdit`).
+      end(.captureUnsupported, lostBoxFlush: watch?.failureRunPermitsLostBoxFlush ?? false)
       return .ended
     }
     return .failed
@@ -1108,14 +1123,20 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// answers only for a cancelled or superseded watch), which is what makes
   /// the flush worth emitting.
   /// `lostBoxFlush` is the observer's own send-shaped verdict for
-  /// `captureUnsupported` (three failed reads after a good read saw the fix);
-  /// every other reason decides by `flushesPendingEdit` alone.
+  /// `captureUnsupported` (three failed reads of the box after a good read
+  /// saw the fix); every other reason decides by `flushesPendingEdit` alone.
+  /// A lost box is weaker evidence than an emptied one (three failures can
+  /// also be a wedged host under a person still typing), so it carries the
+  /// same `flushMinQuietMs` floor as a focus change; poll-driven failures
+  /// take about 2.25 s, well past it (Codex r28).
   private func end(_ reason: PastedRegionEndReason, lostBoxFlush: Bool = false) {
     guard let w = watch else { return }
+    let minimumAgeMs =
+      lostBoxFlush ? PastedRegionTiming.flushMinQuietMs : reason.minimumPendingEditAgeMs
     let flush =
       (reason.flushesPendingEdit || lostBoxFlush) && w.changedSinceSettled && !w.lastRegion.isEmpty
       && w.lastRegion != w.target.renderedText
-      && scheduler.nowMs - w.lastChangeAtMs >= reason.minimumPendingEditAgeMs
+      && scheduler.nowMs - w.lastChangeAtMs >= minimumAgeMs
     stop()
     if lostBoxFlush {
       log?("learn_lost_box reason=\(reason.rawValue) flushed=\(flush) reads=\(w.readFailureKinds.joined(separator: ","))")

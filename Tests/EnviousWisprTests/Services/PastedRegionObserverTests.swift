@@ -669,8 +669,10 @@ struct PastedRegionObserverWatchTests {
     #expect(e.list == [.ended(.captureUnsupported)])
   }
 
-  @Test("an unstable read in the failure run means a person was still typing: the lost box does not flush")
-  func lostBoxWithUnstableReadDoesNotFlush() {
+  @Test(
+    "an unstable read (a person still typing) or a failed focus query (the element was never read) in the failure run withholds the lost-box flush"
+  )
+  func lostBoxWithUnstableOrFocusFailureDoesNotFlush() {
     let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
     let e = Events()
     ax.reads = [.text("Note: Ask Sarah today please")]
@@ -680,6 +682,18 @@ struct PastedRegionObserverWatchTests {
     ax.reads = [.absent, .unstable, .absent]
     scheduler.advance(ms: 750 * 3)
     #expect(e.list == [.changed(region: "Ask Saira today"), .ended(.captureUnsupported)])
+
+    // Three failed focus queries: the box may be fine; nothing was read.
+    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e2 = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o2.start(target) { e2.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.focused[pid] = .queryFailed(.cannotComplete)
+    scheduler.advance(ms: 750 * 3)
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    #expect(e2.list == [.changed(region: "Ask Saira today"), .ended(.captureUnsupported)])
   }
 
   @Test("the diagnostic log names each failed read's kind and the lost-box verdict, never the text")
@@ -699,6 +713,42 @@ struct PastedRegionObserverWatchTests {
     #expect(lines.lines[2] == "learn_read_failed n=3/3 kind=notText pending_fix=true")
     #expect(lines.lines[3] == "learn_lost_box reason=capture_unsupported flushed=true reads=failed(\(AXError.cannotComplete.rawValue)),absent,notText")
     #expect(lines.lines.allSatisfy { !$0.contains("Saira") && !$0.contains("Sarah") })
+  }
+
+  @Test("lost-box recovery requires 500 ms of quiet and never derives from a focus-query failure")
+  func lostBoxRequiresQuietReadableEvidence() throws {
+    // Three notification-driven failures 0 ms after the poll saw the fix:
+    // younger than `flushMinQuietMs`, so no flush.
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o.start(target) { e.list.append($0) }
+    let registration = try #require(ax.registrations.last)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    registration.fire(.valueChanged)
+    ax.reads = [.failed(.cannotComplete), .failed(.cannotComplete), .failed(.cannotComplete)]
+    registration.fire(.valueChanged)
+    registration.fire(.valueChanged)
+    registration.fire(.valueChanged)
+    #expect(e.list == [.changed(region: "Ask Saira today"), .ended(.captureUnsupported)])
+
+    // The same three failures 500 ms after the fix was seen: flushed.
+    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e2 = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o2.start(target) { e2.list.append($0) }
+    let registration2 = try #require(ax.registrations.last)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    registration2.fire(.valueChanged)
+    scheduler.jump(ms: PastedRegionTiming.flushMinQuietMs)
+    ax.reads = [.failed(.cannotComplete), .failed(.cannotComplete), .failed(.cannotComplete)]
+    registration2.fire(.valueChanged)
+    registration2.fire(.valueChanged)
+    registration2.fire(.valueChanged)
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.captureUnsupported),
+      ])
   }
 
   @Test(
