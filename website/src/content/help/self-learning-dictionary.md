@@ -51,6 +51,6 @@ One thing to know: a learned word is a custom word, and custom words are part of
 
 ### Requirements and turning it off
 
-The judge model has been tested on macOS 27 today, so that is where the Self-Learning Dictionary runs. On earlier versions of macOS the switch is still there but the row says **Not available on this version of macOS yet**; your choice is kept and applies as soon as your Mac qualifies.
+The judge model has passed its exam on macOS 15, macOS 26 and macOS 27, so that is where the Self-Learning Dictionary runs today. On macOS 14 the switch is still there but the row says **Not available on this version of macOS yet**; your choice is kept and applies as soon as your Mac qualifies.
 
 To stop it, open **Settings**, go to **Dictionary** \> **Learn from...**, and switch off **Self-Learning Dictionary**. Words you already accepted stay in Your Words until you remove them.

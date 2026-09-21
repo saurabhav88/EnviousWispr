@@ -466,10 +466,17 @@ enum ManifestFixture {
     // the fetch policy may start the download; the bundled manifest and the
     // qualification row cannot drift apart without this line going red.
     #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == true)
-    #expect(
-      CorrectionJudgeArmSelection.qualified.contains {
-        $0.arm == .classifier && $0.configDigest == manifest.runtimeIdentityDigest && $0.osMajors == [27]
-      })
+    // One row per examined major, every row naming the delivered bytes and
+    // its own receipt (2026-09-21: 27 on the Neural Engine, 26 and 15 on
+    // hosted CPU runners; 14 joins with its bare-metal receipt).
+    let classifierRows = CorrectionJudgeArmSelection.qualified.filter {
+      $0.arm == .classifier && $0.configDigest == manifest.runtimeIdentityDigest
+    }
+    #expect(Set(classifierRows.flatMap(\.osMajors)) == [15, 26, 27])
+    #expect(Set(classifierRows.map(\.receipt)).count == classifierRows.count, "each major cites its own receipt")
+    #expect(classifierRows.first { $0.osMajors == [27] }?.receipt == "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2")
+    #expect(classifierRows.first { $0.osMajors == [26] }?.receipt.hasSuffix("-macos26") == true)
+    #expect(classifierRows.first { $0.osMajors == [15] }?.receipt.hasSuffix("-macos15") == true)
 
     let byPath = Dictionary(uniqueKeysWithValues: manifest.files.map { ($0.path, $0) })
     // Everything `CoreMLCorrectionJudge.load` reads from a delivered folder.
