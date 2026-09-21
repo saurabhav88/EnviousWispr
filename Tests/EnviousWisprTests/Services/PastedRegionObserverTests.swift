@@ -1261,14 +1261,31 @@ struct PastedRegionRangeReaderCaptureTests {
     #expect(ax.rangeCalls.isEmpty, "an empty field is not read")
   }
 
-  @Test("a count that changes across the range read fails closed: the text is a prefix of a field that grew")
+  @Test("a count that changes across the range read is an unstable snapshot: retryable as dictated_text_not_found, never accepted as a prefix")
   func countChangesAcrossRead() {
     ax.reads = [.absent]
     let n = host.utf16.count
     ax.counts = [.count(n), .count(n + 1)]
     ax.rangeReads = [.text(host)]
-    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
     #expect(ax.countCalls == 2)
+    // The same drift seen through a wrong-length string, or a range read that
+    // failed because the range no longer existed: the differing second count
+    // is what names the class.
+    ax.counts = [.count(n), .count(n - 1)]
+    ax.rangeReads = [.text(String(host.dropLast()))]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    ax.counts = [.count(n), .count(n - 1)]
+    ax.rangeReads = [.failed(.cannotComplete)]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+    // Under a STABLE count a wrong length is the host disagreeing with itself:
+    // absent, final (mismatchesAreAbsent binds the rest of that row).
+    ax.counts = [.count(n)]
+    ax.rangeReads = [.text(String(host.dropLast()))]
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.captureUnsupported))
+    ax.counts = [.count(n), .count(n + 5)]
+    ax.rangeReads = [.text(host)]
+    #expect(observer.readText(of: PastedRegionFakeAX.field(pid), using: .range) == .unstable)
   }
 
   @Test("readText is the one owner of the ceiling for both readers")
@@ -1373,6 +1390,18 @@ struct PastedRegionRangeReaderWatchTests {
     scheduler.advance(ms: 750)
     #expect(events.list == [.ended(.captureUnsupported)])
     #expect(ax.rangeCalls.count == before)
+  }
+
+  @Test("three unstable watch snapshots follow the read-failure policy: a person mid-keystroke is not a lost field until it stays unreadable")
+  func unstableDuringWatch() {
+    start()
+    let n = Self.host.utf16.count
+    ax.counts = [.count(n), .count(n + 1), .count(n), .count(n + 1), .count(n), .count(n + 1)]
+    ax.rangeReads = [.text(Self.host)]
+    scheduler.advance(ms: 1500)
+    #expect(events.list.isEmpty && observer.isObserving)
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.captureUnsupported)])
   }
 
   @Test("the remaining range-watch failure rows follow the existing read-failure policy: absent count and a non-string range answer count three times, a failed count ends by its own code")

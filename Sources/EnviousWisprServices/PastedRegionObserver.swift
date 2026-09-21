@@ -256,6 +256,11 @@ package enum PastedRegionValueRead: Sendable, Equatable {
   /// `PastedRegionObserver.readText` only, never by a primitive read: the
   /// range reader refuses before reading, the value reader after.
   case tooLong
+  /// The field changed between the calls composing one range snapshot (the
+  /// count read after the text differs from the count read before it): a
+  /// paste landing late on a slow host, or a keystroke. Retryable; no
+  /// partial text is ever accepted (cloud review of PR #3077).
+  case unstable
 }
 
 /// One read of `AXNumberOfCharacters` (#3073), typed like the value read.
@@ -703,6 +708,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
       }
     case .absent, .notText, .tooLong:
       return .ended(.captureUnsupported)
+    case .unstable:
+      // The text is not STABLY there yet: the one capture outcome the watcher
+      // retries through its capture grace (`deservesCaptureGrace`).
+      return .ended(.dictatedTextNotFound)
     case .failed(let error):
       return .ended(Self.endReason(forQueryFailure: error))
     }
@@ -718,9 +727,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// (`AXStringForRange(0, n)` is not guaranteed to return n units, and a
   /// truncated snapshot would mis-anchor the region; accessibility-macos.md
   /// FACT: reading-caret-context-from-another-app), and the count is read
-  /// again after the text so a field that grew between the two calls is not
-  /// accepted as an exact-length prefix. A count of zero is the empty text,
-  /// so `textboxEmptied` survives the range path.
+  /// again after the text so a field that changed between the calls is
+  /// `unstable` (retryable) instead of an exact-length prefix. A count of
+  /// zero is the empty text, so `textboxEmptied` survives the range path.
   package func readText(of element: AXUIElement, using reader: PastedRegionTextReader)
     -> PastedRegionValueRead
   {
@@ -740,17 +749,27 @@ package final class PastedRegionObserver: PastedRegionObserving {
         guard count <= PastedRegionTiming.maxValueUTF16 else { return .tooLong }
         guard count > 0 else { return .text("") }
         let read = ax.string(of: element, location: 0, length: count)
-        guard case .text(let value) = read else { return read }
-        guard value.utf16.count == count else { return .absent }
-        // The host can grow between the two calls, and a range read of the OLD
-        // count then returns an exact-length PREFIX of the new text (Codex
-        // grounded review r1). The count is read again after the text and
-        // must still agree; otherwise this snapshot is not the whole field.
+        if read == .notText { return read }
+        // The host can change between the calls: a range read of the OLD
+        // count then returns an exact-length PREFIX of the new text, a
+        // different length, or fails because the range no longer exists
+        // (Codex grounded review r1, cloud review of PR #3077). The count is
+        // read again after the text; a different count is one class,
+        // `unstable`, and never a verdict on the host. A length mismatch under
+        // a STABLE count is the host's own answer disagreeing with its count
+        // (measured on other hosts, accessibility-macos.md) and stays `absent`.
         switch ax.characterCount(of: element) {
-        case .count(let current) where current == count: return .text(value)
-        case .count(let current) where current > PastedRegionTiming.maxValueUTF16: return .tooLong
-        case .count, .absent: return .absent
-        case .failed(let error): return .failed(error)
+        case .count(let current) where current > PastedRegionTiming.maxValueUTF16:
+          return .tooLong
+        case .count(let current) where current != count:
+          return .unstable
+        case .count:
+          if case .text(let value) = read, value.utf16.count != count { return .absent }
+          return read
+        case .absent:
+          return .absent
+        case .failed(let error):
+          return .failed(error)
         }
       }
     }
@@ -935,6 +954,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
     case .failed(let error):
       return recordReadFailure(error: error, generation: gen)
     case .absent, .notText:
+      return recordReadFailure(error: nil, generation: gen)
+    case .unstable:
+      // A person mid-keystroke; the next poll reads a settled field. Three in
+      // a row are still a host that cannot be read.
       return recordReadFailure(error: nil, generation: gen)
     case .tooLong:
       end(.captureUnsupported)
