@@ -16,7 +16,7 @@
     "test:functions": "node --test functions/*.test.mjs"
   },
   "overrides": {
-    "devalue": ">=5.8.1",
+    "devalue": ">=5.9.2",
     "undici": ">=7.24.0",
     "esbuild": ">=0.28.1",
     "sharp": ">=0.35.0",
