@@ -72,6 +72,11 @@ private final class CaptureAX: PastedRegionAXOperations {
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool { manual }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool { true }
   func readValue(of element: AXUIElement) -> PastedRegionValueRead { .text(value) }
+  // An `AXValue` host: the range reader is never consulted here.
+  func characterCount(of element: AXUIElement) -> PastedRegionCountRead { .absent }
+  func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead {
+    .absent
+  }
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
@@ -326,6 +331,9 @@ struct ObservedCorrectionWatcherTests {
     "capture grace: a host whose paste lands late (no focus, then the old text, then the new text) is captured on the third read, with nothing reported for the misses"
   )
   func captureGraceLandsLate() async {
+    // The observer's unstable range snapshot (#3073) reports as this outcome
+    // precisely because it is the one the grace retries.
+    #expect(ObservedCorrectionWatcher.deservesCaptureGrace(.ended(.dictatedTextNotFound)))
     let watcher = makeWatcher()
     observer.captureOutcomes = [
       .skipped(.noFocusedElement), .ended(.dictatedTextNotFound),

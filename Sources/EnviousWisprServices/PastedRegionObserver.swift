@@ -216,13 +216,16 @@ package struct PastedRegionTarget: Equatable {
   /// When the paste landed, in the scheduler's clock; the 60 s ceiling is
   /// measured from here.
   package let pastedAtMs: Int
+  /// The reader that produced the captured value; every read of the watch
+  /// uses the same one (#3073).
+  package let reader: PastedRegionTextReader
 
   package static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.pid == rhs.pid && CFEqual(lhs.application, rhs.application)
       && CFEqual(lhs.element, rhs.element) && lhs.pastedText == rhs.pastedText
       && lhs.renderedText == rhs.renderedText && lhs.anchors == rhs.anchors
       && lhs.isManualAccessibilityHost == rhs.isManualAccessibilityHost
-      && lhs.pastedAtMs == rhs.pastedAtMs
+      && lhs.pastedAtMs == rhs.pastedAtMs && lhs.reader == rhs.reader
   }
 }
 
@@ -249,6 +252,35 @@ package enum PastedRegionValueRead: Sendable, Equatable {
   /// The attribute answered with something that is not a string.
   case notText
   case failed(AXError)
+  /// The text is longer than `PastedRegionTiming.maxValueUTF16`. Produced by
+  /// `PastedRegionObserver.readText` only, never by a primitive read: the
+  /// range reader refuses before reading, the value reader after.
+  case tooLong
+  /// The field changed between the calls composing one range snapshot (the
+  /// count read after the text differs from the count read before it): a
+  /// paste landing late on a slow host, or a keystroke. Retryable; no
+  /// partial text is ever accepted (cloud review of PR #3077).
+  case unstable
+}
+
+/// One read of `AXNumberOfCharacters` (#3073), typed like the value read.
+package enum PastedRegionCountRead: Sendable, Equatable {
+  case count(Int)
+  /// `.noValue` / `.attributeUnsupported`, or an answer that is not a number.
+  case absent
+  case failed(AXError)
+}
+
+/// How an element's text is read (#3073). Chosen once at capture and kept
+/// for every read of that watch: a host answering both attributes could
+/// render the same text two ways, and a switch mid-watch would read as an
+/// edit.
+package enum PastedRegionTextReader: String, Sendable, Equatable {
+  /// The whole `AXValue`, the first choice.
+  case value
+  /// `AXStringForRange(0, AXNumberOfCharacters)`, for editors that expose
+  /// text only through the parameterized attribute.
+  case range
 }
 
 /// The focused element of a process. `noFocus` is a distinct case name on
@@ -287,6 +319,12 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// Returns whether the attribute write succeeded.
   func enableManualAccessibility(_ application: AXUIElement) -> Bool
   func readValue(of element: AXUIElement) -> PastedRegionValueRead
+  /// `AXNumberOfCharacters`, in UTF-16 units (#3073).
+  func characterCount(of element: AXUIElement) -> PastedRegionCountRead
+  /// `AXStringForRange` for `length` UTF-16 units from `location` (#3073).
+  /// A range past the field's length fails outright rather than clamping
+  /// (accessibility-macos.md FACT: reading-caret-context-from-another-app).
+  func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead
   /// Registers value-changed and destroyed on `element`, focused-element-changed
   /// on `application`, with the observer's run-loop source on the MAIN run loop.
   /// Returns nil when the observer could not be created or no notification
@@ -642,11 +680,19 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // Secure fields are never observed. `unreadable` is secure (fail closed).
     if SelectionReader.isSecureField(ax.subrole(of: element)) { return .skipped(.secureField) }
 
-    switch ax.readValue(of: element) {
+    // `AXValue` first. An editor that has none, or answers with something
+    // that is not a string, may still expose its text through the
+    // parameterized range attribute (#3073; Excel in edit mode is the
+    // measured candidate). A FAILED value read is the host not answering,
+    // not "no value", and is not retried through the other reader.
+    var reader = PastedRegionTextReader.value
+    var read = readText(of: element, using: reader)
+    if read == .absent || read == .notText {
+      reader = .range
+      read = readText(of: element, using: reader)
+    }
+    switch read {
     case .text(let value):
-      guard value.utf16.count <= PastedRegionTiming.maxValueUTF16 else {
-        return .ended(.captureUnsupported)
-      }
       switch PastedRegionLocator.locate(pasted: pastedText, in: value) {
       case .absent: return .ended(.dictatedTextNotFound)
       case .ambiguous: return .ended(.anchorAmbiguous)
@@ -658,12 +704,74 @@ package final class PastedRegionObserver: PastedRegionObserving {
           PastedRegionTarget(
             pid: pid, application: application, element: element, pastedText: pastedText,
             renderedText: rendered, anchors: anchors, isManualAccessibilityHost: isManualHost,
-            pastedAtMs: pastedAtMs))
+            pastedAtMs: pastedAtMs, reader: reader))
       }
-    case .absent, .notText:
+    case .absent, .notText, .tooLong:
       return .ended(.captureUnsupported)
+    case .unstable:
+      // The text is not STABLY there yet: the one capture outcome the watcher
+      // retries through its capture grace (`deservesCaptureGrace`).
+      return .ended(.dictatedTextNotFound)
     case .failed(let error):
       return .ended(Self.endReason(forQueryFailure: error))
+    }
+  }
+
+  /// The element's complete text through one reader (#3073). The ceiling
+  /// `PastedRegionTiming.maxValueUTF16` is applied here for BOTH readers,
+  /// the only place it is: the range reader refuses before anything is read
+  /// into memory, the value reader can only measure what it was handed.
+  ///
+  /// Range path, fail closed: a count that is not a number is `absent`; a
+  /// string of any other UTF-16 length than the count is `absent` too
+  /// (`AXStringForRange(0, n)` is not guaranteed to return n units, and a
+  /// truncated snapshot would mis-anchor the region; accessibility-macos.md
+  /// FACT: reading-caret-context-from-another-app), and the count is read
+  /// again after the text so a field that changed between the calls is
+  /// `unstable` (retryable) instead of an exact-length prefix. A count of
+  /// zero is the empty text, so `textboxEmptied` survives the range path.
+  package func readText(of element: AXUIElement, using reader: PastedRegionTextReader)
+    -> PastedRegionValueRead
+  {
+    switch reader {
+    case .value:
+      let read = ax.readValue(of: element)
+      if case .text(let value) = read, value.utf16.count > PastedRegionTiming.maxValueUTF16 {
+        return .tooLong
+      }
+      return read
+    case .range:
+      switch ax.characterCount(of: element) {
+      case .failed(let error): return .failed(error)
+      case .absent: return .absent
+      case .count(let count):
+        guard count >= 0 else { return .absent }
+        guard count <= PastedRegionTiming.maxValueUTF16 else { return .tooLong }
+        guard count > 0 else { return .text("") }
+        let read = ax.string(of: element, location: 0, length: count)
+        if read == .notText { return read }
+        // The host can change between the calls: a range read of the OLD
+        // count then returns an exact-length PREFIX of the new text, a
+        // different length, or fails because the range no longer exists
+        // (Codex grounded review r1, cloud review of PR #3077). The count is
+        // read again after the text; a different count is one class,
+        // `unstable`, and never a verdict on the host. A length mismatch under
+        // a STABLE count is the host's own answer disagreeing with its count
+        // (measured on other hosts, accessibility-macos.md) and stays `absent`.
+        switch ax.characterCount(of: element) {
+        case .count(let current) where current > PastedRegionTiming.maxValueUTF16:
+          return .tooLong
+        case .count(let current) where current != count:
+          return .unstable
+        case .count:
+          if case .text(let value) = read, value.utf16.count != count { return .absent }
+          return read
+        case .absent:
+          return .absent
+        case .failed(let error):
+          return .failed(error)
+        }
+      }
     }
   }
 
@@ -835,17 +943,27 @@ package final class PastedRegionObserver: PastedRegionObserving {
         return recordReadFailure(error: error, generation: gen)
       }
     }
-    switch ax.readValue(of: target.element) {
+    let read = readText(of: target.element, using: target.reader)
+    // The read took time (up to three bounded AX calls on the range path); a
+    // deadline that passed meanwhile beats every reason the read could name,
+    // including an emptied box or a failed read (second-pass review of
+    // #3073; this check used to sit after the region was located, where it
+    // could not reach those ends).
+    if endIfPastDeadline(generation: gen) { return .ended }
+    switch read {
     case .failed(let error):
       return recordReadFailure(error: error, generation: gen)
     case .absent, .notText:
       return recordReadFailure(error: nil, generation: gen)
+    case .unstable:
+      // A person mid-keystroke; the next poll reads a settled field. Three in
+      // a row are still a host that cannot be read.
+      return recordReadFailure(error: nil, generation: gen)
+    case .tooLong:
+      end(.captureUnsupported)
+      return .ended
     case .text(let value):
       watch?.consecutiveReadFailures = 0
-      guard value.utf16.count <= PastedRegionTiming.maxValueUTF16 else {
-        end(.captureUnsupported)
-        return .ended
-      }
       if value.isEmpty {
         end(.textboxEmptied)
         return .ended
@@ -862,8 +980,6 @@ package final class PastedRegionObserver: PastedRegionObserving {
           end(.regionRemoved)
           return .ended
         }
-        // The AX read took time; the deadline may have passed meanwhile.
-        if endIfPastDeadline(generation: gen) { return .ended }
         guard region != w.lastRegion else {
           // A GOOD unchanged read after a cancelled settle restarts the quiet
           // interval, so an edit is never stranded until the ceiling.
@@ -1076,6 +1192,51 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       }
       return .text(text)
     case .noValue, .attributeUnsupported:
+      return .absent
+    default:
+      return .failed(error)
+    }
+  }
+
+  package func characterCount(of element: AXUIElement) -> PastedRegionCountRead {
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyAttributeValue(
+      element, kAXNumberOfCharactersAttribute as CFString, &ref)
+    switch error {
+    case .success:
+      // A foreign implementation may answer with anything; only a number counts.
+      guard let value = ref, CFGetTypeID(value) == CFNumberGetTypeID(),
+        let count = value as? Int
+      else { return .absent }
+      return .count(count)
+    case .noValue, .attributeUnsupported, .notImplemented:
+      // `.notImplemented` here is the host not implementing THIS attribute:
+      // a process without Accessibility never reaches a range read, because
+      // the focus query before it would have failed (second-pass review of
+      // #3073). The value read keeps its older mapping.
+      return .absent
+    default:
+      return .failed(error)
+    }
+  }
+
+  package func string(of element: AXUIElement, location: Int, length: Int)
+    -> PastedRegionValueRead
+  {
+    guard location >= 0, length >= 0 else { return .absent }
+    var range = CFRange(location: location, length: length)
+    guard let rangeValue = AXValueCreate(.cfRange, &range) else { return .absent }
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyParameterizedAttributeValue(
+      element, kAXStringForRangeParameterizedAttribute as CFString, rangeValue, &ref)
+    switch error {
+    case .success:
+      guard let value = ref else { return .absent }
+      guard CFGetTypeID(value) == CFStringGetTypeID(), let text = value as? String else {
+        return .notText
+      }
+      return .text(text)
+    case .noValue, .attributeUnsupported, .parameterizedAttributeUnsupported, .notImplemented:
       return .absent
     default:
       return .failed(error)
