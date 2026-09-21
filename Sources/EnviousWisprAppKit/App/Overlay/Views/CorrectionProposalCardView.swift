@@ -12,6 +12,10 @@ import SwiftUI
 /// earlier plan text on 20 Sep: the state line has a plain lead and an
 /// emphasised outcome, and the result is one sentence behind a mark.
 enum CorrectionProposalCardCopy {
+  /// The two words shrink down to this fraction of 26 pt (about 13 pt, the
+  /// state line's size) before SwiftUI would truncate; a 440-wide card fits
+  /// roughly 45 characters per side at the floor.
+  static let wordMinimumScale = 0.5
   static let misheardLabel = "MISHEARING"
   static let correctLabel = "CORRECT WORD"
   static let reject = "Reject"
@@ -140,13 +144,17 @@ struct CorrectionProposalCardView: View {
       }
       // `lastTextBaseline`: the arrow sits between the two WORDS, on their
       // baseline, with the heard form on the left and the correct word on the
-      // right exactly as the labels above them.
+      // right exactly as the labels above them. Each word stays on ONE line
+      // and shrinks to fit rather than wrapping: a wrapped term broke inside
+      // the word ("EnviousStagin / g", founder UAT 2026-09-21), which reads as
+      // two different words on a card whose whole point is one word.
       HStack(alignment: .lastTextBaseline, spacing: 12) {
         Text(model.original)
           .font(.system(size: 26, weight: .regular))
           .tracking(-0.5)
           .foregroundStyle(CorrectionCardPalette.dim)
-          .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(1)
+          .minimumScaleFactor(CorrectionProposalCardCopy.wordMinimumScale)
           .frame(maxWidth: .infinity, alignment: .leading)
         Text("\u{2192}")
           .font(.system(size: 22))
@@ -156,7 +164,8 @@ struct CorrectionProposalCardView: View {
           .font(.system(size: 26, weight: .semibold))
           .tracking(-0.5)
           .foregroundStyle(CorrectionCardPalette.ink)
-          .fixedSize(horizontal: false, vertical: true)
+          .lineLimit(1)
+          .minimumScaleFactor(CorrectionProposalCardCopy.wordMinimumScale)
           .frame(maxWidth: .infinity, alignment: .trailing)
       }
       stateLine
