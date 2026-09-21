@@ -69,6 +69,8 @@ public final class SettingsManager {
     case playRecordingSounds
     case recordingSoundPairing
     case otherAudioWhileDictating
+    /// #996: ask before remembering a word the user fixed in pasted text.
+    case learnFromEdits
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -113,7 +115,7 @@ public final class SettingsManager {
     "overlayPillPosition",
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
-    "otherAudioWhileDictating",
+    "otherAudioWhileDictating", "learnFromEdits",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
   ]
@@ -695,6 +697,18 @@ public final class SettingsManager {
     }
   }
 
+  /// #996 learn from edits (plan §3.9). Default ON: nothing is saved without a
+  /// click, so the persona harm that argued for OFF is gone. Read live by the
+  /// App watcher at each paste; a change applies to the next paste. The key is
+  /// written at first launch ONLY when absent, so an explicit earlier choice
+  /// survives upgrades and a default flip in a later build.
+  public var learnFromEdits: Bool {
+    didSet {
+      defaults.set(learnFromEdits, forKey: "learnFromEdits")
+      onChange?(.learnFromEdits)
+    }
+  }
+
   public var useStreamingASR: Bool {
     didSet {
       defaults.set(useStreamingASR, forKey: "useStreamingASR")
@@ -1149,6 +1163,14 @@ public final class SettingsManager {
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled
+    // #996: `object(forKey:)` tells an absent key from an explicit false; only
+    // the absent case is written, so an upgrade never overwrites a choice.
+    if let stored = defaults.object(forKey: "learnFromEdits") as? Bool {
+      learnFromEdits = stored
+    } else {
+      learnFromEdits = SettingsDefaultValues.learnFromEdits
+      defaults.set(SettingsDefaultValues.learnFromEdits, forKey: "learnFromEdits")
+    }
     isDebugModeEnabled =
       defaults.object(forKey: "isDebugModeEnabled") as? Bool
       ?? SettingsDefaultValues.isDebugModeEnabled

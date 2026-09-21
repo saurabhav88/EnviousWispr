@@ -35,7 +35,9 @@ public enum TelemetryVolumePolicy {
   /// 2: #2958 phase 2, `asr.completed` and `paste.completed` folded onto
   ///    `dictation.completed`; a reader tells a folded row from an old-build
   ///    row by this stamp (`workers/daily-report/src/version-scorecard.js`).
-  public static let policyVersion = 2
+  /// 3: #996, `custom_words.learn_skipped` sampled at the common rate; the
+  ///    learn-from-edits rows are the first added under the registry.
+  public static let policyVersion = 3
   public static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of
@@ -57,6 +59,11 @@ public enum TelemetryVolumePolicy {
   static let knownNonFiredProactiveReasons: Set<String> = [
     "cooldown", "auto_checks_off", "no_updater", "session_in_progress",
   ]
+
+  /// The closed set of `custom_words.learn_skipped.reason` values
+  /// (`TelemetryService.LearnFromEditsTelemetry.SkipReason`); a reason outside it is kept whole.
+  static let knownLearnSkipReasons: Set<String> = Set(
+    TelemetryService.LearnFromEditsTelemetry.SkipReason.allCases.map(\.rawValue))
 
   /// The common `hotkey.pressed` actions: `start` for push-to-talk and `toggle`, which
   /// covers BOTH edges of a toggle, so these presses are not one-to-one with accepted
@@ -138,6 +145,13 @@ public enum TelemetryVolumePolicy {
       // measurement. Every measured or refused status stays whole.
       guard let status = properties["status"] as? String else { return nil }
       isHappyPath = status == "no_before_image"
+    case "custom_words.learn_skipped":
+      // #996. Up to one row per paste on every Mac (the toggle off, or no qualified
+      // judge, is itself a counted reason), so the distribution of gate reasons is
+      // read at 10% with the weight stamped; an unknown reason (a vocabulary the
+      // reader does not know) stays whole, like the proactive-check rule below.
+      guard let reason = properties["reason"] as? String else { return nil }
+      isHappyPath = knownLearnSkipReasons.contains(reason)
     case "update.proactive_check_triggered":
       // "SAMPLE and record the rate, never suppress" (analytics-operations.md). Fired
       // checks stay at 100%; the non-fired reasons are sampled with the rate stamped.

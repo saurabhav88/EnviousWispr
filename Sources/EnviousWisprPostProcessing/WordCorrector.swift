@@ -54,16 +54,27 @@ public struct WordCorrector: Sendable {
   /// Static mirror of the instance-private `stripPunctuation` used inside the
   /// reserved-word check. Stays minimal: strips leading/trailing punctuation
   /// runs only (matches the instance method's contract for our purpose).
-  private static func stripPunctuationStatic(_ token: String) -> String {
+  /// `package` since #996 chunk 5b: `CorrectionCandidateFilter` uses the same
+  /// boundary convention to separate sentence decoration from an edited run.
+  /// The delimiter classes are enumerated ONCE here (`edgePunctuation`):
+  /// sentence punctuation, dashes, brackets, and both straight and
+  /// typographic quotation marks, because macOS smart quotes wrap a dictated
+  /// name in “ ” or ‘ ’ and some keyboards in « ». Internal characters are
+  /// never touched, so O’Reilly, co-operation and it’s keep their marks.
+  package static func stripPunctuationStatic(_ token: String) -> String {
     guard !token.isEmpty else { return token }
-    let punct: Set<Character> = [
-      ".", ",", "!", "?", ";", ":", "—", "–", "-", "\"", "'", "(", ")", "[", "]", "{", "}",
-    ]
     var s = token
-    while let first = s.first, punct.contains(first) { s.removeFirst() }
-    while let last = s.last, punct.contains(last) { s.removeLast() }
+    while let first = s.first, edgePunctuation.contains(first) { s.removeFirst() }
+    while let last = s.last, edgePunctuation.contains(last) { s.removeLast() }
     return s
   }
+
+  /// Sentence decoration a token may carry at its edges.
+  package static let edgePunctuation: Set<Character> = [
+    ".", ",", "!", "?", ";", ":", "…", "—", "–", "-", "(", ")", "[", "]", "{", "}",
+    "\"", "'", "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{201A}", "\u{201E}",
+    "\u{00AB}", "\u{00BB}", "\u{2039}", "\u{203A}",
+  ]
 
   private static let levenshteinWeight = 0.40
   private static let bigramWeight = 0.40
@@ -309,8 +320,10 @@ public struct WordCorrector: Sendable {
     /// commit path, a not-yet-saved `CustomWordsImportCandidate.id` for the
     /// preview path. Both are `UUID`; the exclusion semantics are identical
     /// either way ("this owner's own claim cannot block its own alias").
+    /// `nil` excludes nobody (#996 chunk 5b: a proposal for a word that does
+    /// not exist yet has no id, and every holder is another word).
     package func resolveAliasOwnership(
-      for alias: String, excludingOwnerID: UUID
+      for alias: String, excludingOwnerID: UUID?
     ) -> ExactAliasOwnershipResolution {
       let claims = WordCorrector.exactClaims(forAlias: alias)
       guard !claims.isEmpty else { return .noClaims }

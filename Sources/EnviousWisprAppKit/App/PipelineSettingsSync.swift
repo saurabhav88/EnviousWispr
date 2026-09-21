@@ -332,6 +332,8 @@ final class PipelineSettingsSync {
       break
     case .crashRecoveryEnabled:
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
+    case .learnFromEdits:
+      break  // #996: read live by the edit watcher at each paste; nothing in the pipeline reads it.
     case .s1MiniStyling, .s1MiniStructure, .s1MiniContext:
       // #2649: frozen into `DictationSessionConfig` at recording start, like
       // provider and model, so a pick applies to the NEXT recording. Recovery

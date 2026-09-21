@@ -1826,7 +1826,11 @@ import os
     // without meaning to now fails here instead of silently damaging the machine.
     copyToClipboard: @escaping @MainActor (String) -> Void = { text in
       Issue.record("unexpected clipboard copy: \(text)")
-    }
+    },
+    // #996: a runner whose executor runs BETWEEN the wiring's entry and its
+    // language stamp, so a test can observe `processText`'s mid-chain state.
+    // Defaults to the deterministic runner every other case uses.
+    textProcessingRunner: TextProcessingRunner? = nil
   ) -> KernelFinalizationWiring {
     KernelFinalizationWiring(
       outcome: outcome,
@@ -1840,8 +1844,9 @@ import os
       // deadline, silently discarding its output and flaking the chain-order
       // test. Timeout behavior itself is covered by TextProcessingRunnerTests
       // and HeartPathIntegrationTests with the same fake.
-      textProcessingRunner: TextProcessingRunner(
-        timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
+      textProcessingRunner: textProcessingRunner
+        ?? TextProcessingRunner(
+          timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0).run),
       save: save,
       deliverPaste: deliverPaste,
       readCaretContext: readCaretContext,
@@ -1967,7 +1972,7 @@ import os
 
   /// A resolution to hand the gate, distinct enough that its survival is visible.
   static let gateResolution = DictationLanguageResolver.Resolution(
-    language: "en", source: .dictation, confidenceBucket: .ge90)
+    language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
 
   @Test("#1921 The deadline gate's four phases, including the completed distinction")
   func deadlineGateFourPhaseMatrix() {
@@ -2107,7 +2112,7 @@ import os
       readCaretContext: { _, _, _ in Self.midSentenceCaret },
       resolveLanguage: { _, _, _, _, _ in
         DictationLanguageResolver.Resolution(
-          language: "de", source: .document, confidenceBucket: .f70to90)
+          language: "de", learnLanguage: nil, source: .document, confidenceBucket: .f70to90)
       })
 
     let processed = try await wiring.processText("Review this before the meeting") {}
@@ -2169,7 +2174,7 @@ import os
           releaseOutcome.withLock { $0 = waited }
           exited.signal()
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
       let delivery = Task { await wiring.deliver("Warmer and summer starts.", .ordinary) }
@@ -2251,7 +2256,7 @@ import os
         seamCasingOracle: { _ in blockingOracle },
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         })
 
       let delivery = Task { await wiring.deliver("Review this before the meeting", .ordinary) }
@@ -2377,7 +2382,7 @@ import os
           let occupied = mainOccupied.wait(timeout: .now() + 5)
           occupiedMain.withLock { $0 = occupied }
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2528,7 +2533,7 @@ import os
           let occupied = mainOccupied.wait(timeout: .now() + 5)
           occupiedMain.withLock { $0 = occupied }
           return DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2681,7 +2686,7 @@ import os
         // The release is the subject; injecting either would test the fixture.
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -2833,7 +2838,7 @@ import os
         },
         resolveLanguage: { _, _, _, _, _ in
           DictationLanguageResolver.Resolution(
-            language: "en", source: .dictation, confidenceBucket: .ge90)
+            language: "en", learnLanguage: "en", source: .dictation, confidenceBucket: .ge90)
         },
         pasteCompletionRegistry: nil,
         copyToClipboard: { text in
@@ -3154,5 +3159,70 @@ extension KernelFinalizationWiringTests {
     #expect(outcome.cleanupLanguageSource == "engine")
     let metrics = try #require(outcome.transcript?.metrics)
     #expect(metrics.cleanupLanguageSource == "engine")
+  }
+}
+
+// MARK: - #996 the paste-completion event carries THIS take's language
+
+@MainActor
+extension KernelFinalizationWiringTests {
+
+  @Test("#996 a delivered paste carries the take's resolved language; a clipboard-only take emits nothing")
+  func completionEventCarriesLanguage() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(outcome: outcome, context: context, registry: registry)
+
+    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück."
+    let text = try await wiring.processText(german) {}
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
+
+    #expect(outcome.cleanupLanguage == "de")
+    #expect(observer.events.count == 1)
+    #expect(observer.events.first?.language == "de")
+    // The delivered payload carries the paste-time trailing space, as
+    // `completionEventOnDelivered` already pins.
+    #expect(observer.events.first?.pastedText == text + " ")
+
+    // Default `language` stays nil for callers that never learned the field.
+    let legacy = PasteCompletionEvent(pastedText: "x", destinationBundleID: nil)
+    #expect(legacy.language == nil)
+  }
+
+  @Test("#996 the previous take's language is cleared at processText entry, before any limb runs")
+  func cleanupLanguageClearedAtEntry() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    // Observed from the executor seam: it runs once per limb, so the first call
+    // is strictly after the entry clear and strictly before the stamp.
+    @MainActor final class Probe {
+      var seen: [String?] = []
+    }
+    let probe = Probe()
+    let runner = TextProcessingRunner(timeoutExecutor: { _, op in
+      probe.seen.append(outcome.cleanupLanguage)
+      return try await op()
+    })
+    let wiring = makeWiring(outcome: outcome, context: context, textProcessingRunner: runner)
+
+    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück."
+    _ = try await wiring.processText(german) {}
+    #expect(outcome.cleanupLanguage == "de")
+    #expect(outcome.cleanupLanguageSource != nil && outcome.cleanupLanguageBucket != nil)
+    probe.seen.removeAll()
+
+    // Take two on the SAME outcome: every limb of the second take sees nil,
+    // never the first take's "de".
+    let english = "please send the invoice to the client before the meeting tomorrow"
+    _ = try await wiring.processText(english) {}
+    #expect(probe.seen.isEmpty == false, "the executor ran at least one limb")
+    #expect(probe.seen.allSatisfy { $0 == nil }, "\(probe.seen)")
+    #expect(outcome.cleanupLanguage == "en")
   }
 }

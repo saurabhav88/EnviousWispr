@@ -152,6 +152,14 @@ struct OverlayRootView: View {
         onClose: { press(.closeBluetoothAwareness, on: presentation) },
         onAdjustSettings: { press(.openBluetoothSettings, on: presentation) })
 
+    case .correctionProposal(let model):
+      CorrectionProposalCardView(
+        model: model,
+        // The same director dwell the Escape pill draws; see `PillRenderState.dwell`.
+        dwell: frame.dwell,
+        onAccept: { press(.acceptCorrectionProposal(id: model.id), on: presentation) },
+        onReject: { press(.rejectCorrectionProposal(id: model.id), on: presentation) })
+
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },

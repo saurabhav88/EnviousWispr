@@ -58,6 +58,12 @@ import Testing
 /// snippets coordinator, and the bootstrapper, which holds both, builds the emitter
 /// once and injects it. One narrow dependency traded for one narrower one; allowlist
 /// count unchanged at 24; non-private method count unchanged.
+/// Bible §30 entry (#996 chunk 5h, 2026-09-20): 24 → 25, `onRecordingStarted`, one
+/// injected `@MainActor () -> Void` the pipeline-state closure calls on every real
+/// transition into `.recording`, so the learn-from-edits watcher cancels a live edit
+/// watch without a second pipeline observer. Stored, not captured, because that
+/// closure is installed in `applicationDidFinishLaunching`, after `init` returns;
+/// non-private method count unchanged.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -91,6 +97,11 @@ import Testing
     "batchDecodeFaultController",
     "transcriptionCheckpointStore",  // #2787
     "accessibilityWarmupObserver",
+    // #996 chunk 5h (2026-09-20): the learn-from-edits recording-start callback.
+    // One closure, `() -> Void`, no new module or coordinator reached: the
+    // pipeline-state closure this type already owns calls it on `.recording`,
+    // so the watcher learns of a new dictation without a second observer.
+    "onRecordingStarted",
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -103,7 +114,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      24-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      25-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.

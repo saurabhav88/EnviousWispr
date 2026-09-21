@@ -165,4 +165,24 @@ import Testing
     let adapter = PairEncodingAdapter(contract: try decodeContract(json), encode: wordIndexEncoder)
     #expect(throws: OutputClassifierError.self) { try adapter.validate() }
   }
+
+  /// The eval door `CorrectionJudgeBenchmark.encodePairs` (#996 chunk 4a-ii)
+  /// must assemble exactly what the adapter assembles for the same encode
+  /// function: the alias runner uses it with its own tokenizer so the SHIPPED
+  /// assembly is what the classifier exam exercises, never a copy of it.
+  @Test("the eval door assembles pairs through the shipped adapter, byte for byte")
+  func evalDoorMatchesAdapter() throws {
+    let adapter = try bertAdapter()
+    let pairs = [("a b", "x y z"), ("", ""), ((1...100).map { "w\($0)" }.joined(separator: " "), "o")]
+    let viaDoor = try CorrectionJudgeBenchmark.encodePairs(
+      contractJSON: try Data(contentsOf: OutputClassifierTestPaths.contract), pairs: pairs.map { (input: $0.0, output: $0.1) },
+      encode: wordIndexEncoder)
+    #expect(viaDoor.count == 3)
+    for (pair, encoded) in zip(pairs, viaDoor) {
+      #expect(encoded == adapter.encodePair(input: pair.0, output: pair.1))
+    }
+    #expect(throws: (any Error).self) {
+      try CorrectionJudgeBenchmark.encodePairs(contractJSON: Data("{}".utf8), pairs: [(input: "a", output: "b")], encode: wordIndexEncoder)
+    }
+  }
 }

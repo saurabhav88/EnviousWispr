@@ -112,6 +112,10 @@ enum SettingsDefaultValues {
   // persist audio (the privacy-strict choice).
   static let crashRecoveryEnabled = true
 
+  // #996: learn from edits. ON by default (founder 2026-09-18): the card only
+  // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
+  static let learnFromEdits = true
+
   static let isDebugModeEnabled = false
   // #1247: off by default, matching the privacy-strict rationale above — local
   // mic-audio retention is opt-in only, never silently on.

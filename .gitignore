@@ -257,6 +257,7 @@ scripts/ci/**/*.pyc
 !scripts/eval/
 scripts/eval/*
 !scripts/eval/acceptance_gate.py
+!scripts/eval/edit_judge_authoring.py
 !scripts/eval/chunk_size_benchmark.py
 !scripts/eval/language_gate_corpus.py
 !scripts/eval/overpolish-eval.py
@@ -266,6 +267,10 @@ scripts/eval/*
 !scripts/eval/corpus/
 scripts/eval/corpus/*
 !scripts/eval/corpus/ci_corpus.jsonl
+# #996 exam v2: Luna-authored rows (no founder words), manifest and taxonomy are
+# tracked like the legacy edit-judge corpus so CI and reviewers can validate them
+# (Codex 4a-ii round 2). Raw provider responses stay local under artifacts/.
+!scripts/eval/corpus/edit-judge-exam-v2*.json*
 # #2795: SHA-256 of every sealed_v1 INPUT (lowercased, trimmed), so a tracked test can prove no
 # shipped prompt example is an exam case without the exam itself leaving this machine.
 !scripts/eval/corpus/sealed_v1_input_hashes.txt
@@ -361,8 +366,28 @@ scripts/eval/prompt_render/Package.resolved
 !scripts/eval/alias_runner/**
 scripts/eval/alias_runner/.build/
 scripts/eval/alias_runner/Package.resolved
+# Its runner-only dependency (#996 chunk 2b-ii, swift-transformers) is pinned in
+# the TRACKED Package.runner-only-pins.json; compile-eval-packages.sh merges it
+# after the app's pins (scripts/ci/seed-eval-package-pins.py).
 !scripts/eval/alias_suggestion_gate.py
 !scripts/eval/golden_alias_scores.json
+# #996 edit-judge eval (learn custom words from edits): the gate and the labelled
+# corpus are tracked for the same reason the alias files are, so the judge
+# scores cited in the plan can be re-run from a fresh clone.
+!scripts/eval/edit_judge_gate.py
+!scripts/eval/edit_judge_data.py
+!scripts/eval/build_edit_judge_corpus.py
+!scripts/eval/probe_edit_judge_compatibility.py
+!scripts/eval/train_edit_judge.py
+!scripts/eval/convert_edit_judge.py
+!scripts/eval/calibrate_edit_judge.py
+!scripts/eval/edit_judge_veto.py
+!scripts/eval/build_edit_judge_veto_resource.py
+!scripts/eval/edit-judge-requirements.txt
+!scripts/eval/corpus/edit-judge-dev-templates.json
+!scripts/eval/corpus/edit-corpus-a.jsonl
+!scripts/eval/corpus/edit-corpus-a-holdout.jsonl
+!scripts/eval/corpus/edit-judge-frozen-manifest.json
 !scripts/eval/corpus/alias-corpus-a.jsonl
 !scripts/eval/corpus/alias-corpus-b.jsonl
 !scripts/eval/corpus/alias-corpus-c.jsonl

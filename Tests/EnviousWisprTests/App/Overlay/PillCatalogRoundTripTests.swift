@@ -71,6 +71,9 @@ struct PillCatalogRoundTripTests {
   @Test("import status is the only request with no matching intent")
   func onlyImportStatusHasNoIntent() {
     #expect(PillCatalogRequest.importStatus(message: "x").matchingIntent == nil)
+    #expect(
+      PillCatalogRequest.correctionProposal(CorrectionCardFixture.model()).matchingIntent == nil,
+      "#996: the card is a feature route with no pipeline intent")
     for intent in Self.intents where !Self.isRecording(intent) {
       let request = PillCatalogRequest(nonRecording: intent)
       #expect(request?.matchingIntent != nil, "a pipeline-derived request lost its intent")
@@ -134,11 +137,15 @@ struct PillCatalogRoundTripTests {
   /// are two routes to one value, and C0 froze both and found them identical. A
   /// seventeenth non-recording case could only be a second Bluetooth arm, which
   /// is the duplicate this chunk deletes.
-  @Test("the staged catalog covers sixteen non-recording requests")
+  @Test("the staged catalog covers seventeen non-recording requests")
   func stagedCaseCount() {
+    // #996 adds the correction card, the second feature route with no matching
+    // intent (import status is the first): sixteen became seventeen.
     let requests: [PillCatalogRequest] =
-      Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [.importStatus(message: "x")]
-    #expect(requests.count == 16)
+      Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [
+        .importStatus(message: "x"), .correctionProposal(CorrectionCardFixture.model()),
+      ]
+    #expect(requests.count == 17)
 
     // Every one of them resolves, and only `.hidden` empties the slot.
     let withoutDefinition = requests.filter {
@@ -185,6 +192,8 @@ struct PillCatalogRoundTripTests {
       "error", "advisory", "interruption", "passiveChip", "cachingModel",
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness", "escapeRecovery", "importStatus",
+      // #996 chunk 5f: the correction card, unfrozen deliberately.
+      "correctionProposal",
     ]
     #expect(Set(names) == expected, "the catalog case set changed")
     #expect(names.count == expected.count, "a catalog case is duplicated")

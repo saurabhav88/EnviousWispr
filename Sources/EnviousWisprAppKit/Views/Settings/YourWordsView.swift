@@ -41,6 +41,9 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   // #2497: the fourth catalog entry the Phase 1 plan called for — no second
   // tab mechanism, no change to `DictionaryTabRail`/`DictionaryTabRow`.
   case quickAdd
+  // #996: the fifth, for spelling fixes the overlay card offered and nobody
+  // answered. The one row that carries a count badge.
+  case pending
 
   var id: Self { self }
 
@@ -50,6 +53,7 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .vocabularyPacks: return "Vocabulary Packs"
     case .learnFrom: return "Learn from..."
     case .quickAdd: return "Quick Add"
+    case .pending: return "Pending"
     }
   }
 
@@ -59,6 +63,7 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .vocabularyPacks: return "shippingbox"
     case .learnFrom: return "sparkle.magnifyingglass"
     case .quickAdd: return "bolt"
+    case .pending: return "pencil.and.list.clipboard"
     }
   }
 
@@ -81,6 +86,7 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .vocabularyPacks: return "Ready-made lists"
     case .learnFrom: return "Learn as you go"
     case .quickAdd: return "Add from any app"
+    case .pending: return "Fixes to review"
     }
   }
 }
@@ -100,6 +106,10 @@ struct YourWordsView: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  // #996: optional until 5h composes it. Absent means "not wired in this
+  // build path", which draws no badge and no rows, never a trusted empty list.
+  @Environment(CorrectionProposalCoordinator.self) private var proposalCoordinator:
+    CorrectionProposalCoordinator?
   @State private var selectedTab: DictionaryTab = .yourWords
   @State private var sheetRoute: YourWordsSheetRoute?
   // Outcome-to-message mapping is shared with `BulkDeleteConfirmSheet` so both
@@ -113,7 +123,7 @@ struct YourWordsView: View {
       dictionaryBanner(settings: $settings)
 
       HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
-        DictionaryTabRail(selection: $selectedTab)
+        DictionaryTabRail(selection: $selectedTab, pendingBadge: pendingBadgeCount)
           // `PolishRailMetrics.railWidth`, the SAME 216pt the AI Polish rail
           // uses, because these rows now carry the same content it does — a
           // 32pt tile, a name, and a tagline. The previous 168pt was chosen
@@ -312,7 +322,15 @@ struct YourWordsView: View {
       LearningSection()
     case .quickAdd:
       QuickAddTeachingSection()
+    case .pending:
+      PendingCorrectionsView()
     }
+  }
+
+  /// The Pending rail badge: open proposals on a trusted ledger, hidden only
+  /// at zero, shown even while the toggle hides the rows (§3.1 step 11).
+  private var pendingBadgeCount: Int {
+    PendingCorrectionsView.badge(coordinator: proposalCoordinator)
   }
 
   /// The Your Words tab's three page-level actions, factored out so
@@ -408,6 +426,8 @@ struct YourWordsView: View {
 /// vocabulary, not the data model.
 private struct DictionaryTabRail: View {
   @Binding var selection: DictionaryTab
+  /// #996: open proposals; zero draws nothing. Only the Pending row shows it.
+  let pendingBadge: Int
   /// One highlight that GLIDES between rows rather than four that blink,
   /// matching `ProviderRail`'s `selectionNS`.
   @Namespace private var selectionNS
@@ -416,7 +436,10 @@ private struct DictionaryTabRail: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       ForEach(DictionaryTab.allCases) { tab in
-        DictionaryTabRow(tab: tab, isSelected: selection == tab, namespace: selectionNS) {
+        DictionaryTabRow(
+          tab: tab, isSelected: selection == tab, namespace: selectionNS,
+          badge: tab == .pending && pendingBadge > 0 ? pendingBadge : nil
+        ) {
           withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82)) {
             selection = tab
           }
@@ -446,6 +469,9 @@ private struct DictionaryTabRow: View {
   let tab: DictionaryTab
   let isSelected: Bool
   let namespace: Namespace.ID
+  /// #996: an optional count at the trailing edge (the mock's `.badge`);
+  /// nil draws nothing, so every other row is unchanged.
+  var badge: Int? = nil
   let onSelect: () -> Void
 
   var body: some View {
@@ -481,6 +507,15 @@ private struct DictionaryTabRow: View {
             .minimumScaleFactor(0.85)
         }
         Spacer(minLength: 0)
+        if let badge {
+          Text("\(badge)")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 7)
+            .frame(minWidth: 22, minHeight: 22)
+            .background(Capsule().fill(Color.stAccentSolid))
+            .accessibilityHidden(true)
+        }
       }
       .padding(.horizontal, 10)
       .padding(.vertical, 9)
@@ -504,7 +539,7 @@ private struct DictionaryTabRow: View {
     }
     .buttonStyle(.plain)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(tab.label)
+    .accessibilityLabel(badge.map { "\(tab.label), \($0) waiting" } ?? tab.label)
     .accessibilityValue(isSelected ? "Selected" : "Not selected")
     .accessibilityHint("Shows the \(tab.label) Dictionary tab")
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])

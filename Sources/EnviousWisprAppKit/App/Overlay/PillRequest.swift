@@ -66,6 +66,12 @@ enum PillAction: Equatable, Sendable {
   case closeBluetoothAwareness
   /// bluetoothAwarenessAdjustSettingsHandler.
   case openBluetoothSettings
+  /// #996: the correction card's Accept. Carries the proposal UUID so a press
+  /// for a proposal the card no longer shows resolves nothing.
+  case acceptCorrectionProposal(id: UUID)
+  /// #996: the correction card's Reject. There is no dismiss action: the card
+  /// never takes keyboard focus, so an unanswered card leaves on its dwell.
+  case rejectCorrectionProposal(id: UUID)
 }
 
 // MARK: - What the director must tell a feature owner
@@ -89,6 +95,12 @@ enum PillEffect: Equatable, Sendable {
   /// setRecordingIntentObserver. Fires when the recording pill
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)
+  /// #996: an admitted correction card left the screen without a decision, and
+  /// the REDUCER says why: its dwell fired (`expired`) or something else took
+  /// the slot (`preempted`). The director routes it to
+  /// the card's own binding, which tells the proposal coordinator. Emitted at
+  /// most once per presentation identity.
+  case correctionProposalEnded(id: UUID, presentation: PresentationID, reason: CorrectionPresentationEnd)
 }
 
 // MARK: - The typed request
@@ -170,6 +182,21 @@ enum PillRequest {
   case escapeRecovery(
     payload: CancelUndoPayload,
     onPaste: (CancelUndoPayload) -> Void
+  )
+  /// #996: the correction card. The token handed to every callback is the
+  /// admitted presentation's identity (`PresentationID.rawValue`), so the
+  /// coordinator's stale-click check and the reducer's stale-event check agree
+  /// on one UUID. `onEnded` fires once when the admitted card leaves without a
+  /// decision, with the reducer's reason. `isStillWanted` is read immediately
+  /// before the card is committed to the screen (a deferred first render can
+  /// land after a Pending click resolved the proposal): false means the offer
+  /// is rolled back unrendered, unannounced and reported `.notPresented`.
+  case correctionProposal(
+    model: CorrectionProposalCardModel,
+    isStillWanted: () -> Bool,
+    onAccept: (CorrectionPresentationToken) -> Void,
+    onReject: (CorrectionPresentationToken) -> Void,
+    onEnded: (CorrectionPresentationToken, CorrectionPresentationEnd) -> Void
   )
 }
 

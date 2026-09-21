@@ -75,6 +75,10 @@ final class KernelFinalizationOutcome {
   var cleanupLanguage: String?
   var cleanupLanguageSource: String?
   var cleanupLanguageBucket: String?
+  /// #996: the resolver-owned language for the learn-from-edits gate
+  /// (`TextProcessingContext.learnLanguage`). Separate from `cleanupLanguage`,
+  /// which stays confidence-gated because it rewrites text.
+  var learnLanguage: String?
   /// #761: deterministic emoji-restore facts, threaded onto `dictation.completed`.
   /// Counts only (`telemetry-privacy-boundary`). Populated on a RESTORING run — AFM, plus
   /// local Ollama on the fixed L3 prompt since #1948; the optionals stay nil for cloud,
@@ -379,6 +383,17 @@ struct KernelFinalizationWiring {
       // is a misheard form we correct FROM, never a spelling to protect.
       context.protectedSpellings = Set(
         steps.wordCorrection.correctorVocabulary.terms.map(\.canonical))
+      // #996: this take's languages start unknown. The four fields are
+      // stamped only when the chain reaches resolution below; a take that stops
+      // earlier (empty output, a thrown limb) must not carry the PREVIOUS take's
+      // language into its paste-completion event, where nil means
+      // `language_unsupported` and a stale code would judge edits under the
+      // wrong arm. Same shape as the `languageResolutionSource` clear in
+      // `deliver`; cleared to nil, never to a placeholder.
+      outcome.cleanupLanguage = nil
+      outcome.cleanupLanguageSource = nil
+      outcome.cleanupLanguageBucket = nil
+      outcome.learnLanguage = nil
       steps.llmPolish.onWillProcess = { onPolishStarted() }
       // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
       // Parakeet (no LID) returns nil through the cast; polish-step stays nil
@@ -420,6 +435,7 @@ struct KernelFinalizationWiring {
       outcome.cleanupLanguage = ctx.language
       outcome.cleanupLanguageSource = ctx.languageSource?.rawValue
       outcome.cleanupLanguageBucket = ctx.languageConfidenceBucket?.rawValue
+      outcome.learnLanguage = ctx.learnLanguage
       // #628. Mandatory, non-throwing, and it MUST be here: every read below — the outcome
       // field copy, the empty-output floor, storage, History, the paste cascade — happens
       // after this line, and any of them seeing a raw sentinel is the failure this whole
@@ -1105,7 +1121,11 @@ struct KernelFinalizationWiring {
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
               pastedText: deliveredText,
-              destinationBundleID: context.targetApp?.bundleIdentifier))
+              destinationBundleID: context.targetApp?.bundleIdentifier,
+              // #996: THIS take's learn language (the resolver's permissive
+              // answer, not the confidence-gated cleanup one), cleared at
+              // `processText` entry so it can never be the previous take's.
+              language: outcome.learnLanguage))
           deliveryOutcome = .pasted
         } else {
           deliveryOutcome = .clipboardOnly

@@ -31,7 +31,13 @@ struct PairEncodingAdapter: Sendable {
     self.encode = encode
   }
 
-  static let supportedFamilies: Set<String> = ["bert_wordpiece", "roberta_bpe"]
+  // #996: the edit-judge candidates add a SentencePiece-Unigram family
+  // (XLM-R, mDeBERTa) and a Gemma-style BPE family (mmBERT). `family` is an
+  // allowlisted label only; the pair shape is carried by `pairTemplate` and
+  // `tokenTypePolicy`, which stay the same two kinds.
+  static let supportedFamilies: Set<String> = [
+    "bert_wordpiece", "roberta_bpe", "sentencepiece_unigram", "gemma_bpe",
+  ]
   static let supportedTemplateKinds: Set<String> = ["bert_pair", "roberta_pair"]
   static let supportedTokenTypeKinds: Set<String> = ["bert_segments", "none"]
   static let supportedTruncationKinds: Set<String> = ["tail", "head_tail"]

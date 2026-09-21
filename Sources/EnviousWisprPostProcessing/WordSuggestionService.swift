@@ -232,10 +232,17 @@ public final class WordSuggestionService: Sendable {
   /// abandoned operation; the abandoned physical task may keep running in
   /// the background while a later logical request starts — an accepted
   /// tradeoff over permanently blocking every suggestion request.
+  ///
+  /// `deadlineFrom` (#996): when given, `deadlineSeconds` counts from that
+  /// instant, so the time spent QUEUED behind other model work is part of
+  /// the budget and a permit granted after the deadline is released without
+  /// invoking `operation`. `nil` keeps the original after-grant semantics
+  /// for `suggest`/`suggestAliases` (zero behavior change on those paths).
   func withPermit<T: Sendable>(
     priority: AliasSuggestionPriority,
     whenNotGranted: T,
     deadlineSeconds: Double,
+    deadlineFrom: ContinuousClock.Instant? = nil,
     afterGrantForTesting: (@Sendable () async -> Void)? = nil,
     operation: @escaping @Sendable () async -> T
   ) async -> T {
@@ -247,7 +254,17 @@ public final class WordSuggestionService: Sendable {
       await permitQueue.release()
       return whenNotGranted
     }
-    let result = await withDeadline(seconds: deadlineSeconds) {
+    var budget = deadlineSeconds
+    if let deadlineFrom {
+      let elapsed = deadlineFrom.duration(to: ContinuousClock.now)
+      budget = deadlineSeconds - Double(elapsed.components.seconds)
+        - Double(elapsed.components.attoseconds) / 1e18
+      if budget <= 0 {
+        await permitQueue.release()
+        return whenNotGranted
+      }
+    }
+    let result = await withDeadline(seconds: budget) {
       PermitOperationResult(value: await operation())
     }
     await permitQueue.release()
@@ -731,7 +748,9 @@ public final class WordSuggestionService: Sendable {
   /// domains with digits/dots/symbols (S3, OAuth2, github.com, K8s,
   /// C++, C#, F#, R&D) and lowercase-start-with-uppercase patterns
   /// (gRPC, iOS).
-  static func classifyByHeuristic(_ word: String) -> WordCategory? {
+  /// `package` since #996 chunk 5e: the proposal coordinator classifies a
+  /// created word with the same heuristic the manual add path uses.
+  package static func classifyByHeuristic(_ word: String) -> WordCategory? {
     let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
 

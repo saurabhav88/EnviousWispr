@@ -209,6 +209,7 @@ internal final class TextProcessingRunner {
     context.languageSource = resolution.source
     context.languageConfidenceBucket = resolution.confidenceBucket
     context.englishRulesVetoed = resolution.englishVeto
+    context.learnLanguage = resolution.learnLanguage
     context.targetAppName = targetAppName
     context.takeID = takeID
     var polishError: String?

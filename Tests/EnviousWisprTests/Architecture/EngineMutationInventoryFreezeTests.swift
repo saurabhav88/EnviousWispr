@@ -726,6 +726,28 @@ import Testing
       text: "let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in",
       classification: .unrelatedDomain),
 
+    // MARK: ObservedCorrectionWatcher (#996 chunk 5e) — learn-from-edits
+    // CANDIDATE ORDERING, not the ASR engine. `CorrectionCandidateFilter.prepare`
+    // is a pure static function over already-filtered edit runs: it orders them
+    // (capitalised-first), caps at four and assigns judge request ids. It holds
+    // no engine, no adapter and no audio, and runs after the paste has
+    // completed. Matched only by method-name coincidence, the same shape as
+    // the VAD, Live Preview and OverlayDirector entries above; classified
+    // rather than renamed for the reason recorded at LivePreviewCoordinator.
+    // Two sites since PR #3054 round 6: `windowGroups` orders the remaining
+    // runs to find each window's anchor, and `judgeBurst` prepares each group
+    // for its request. Both are the same candidate ordering, neither an engine.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ObservedCorrectionWatcher.swift",
+      matcher: "prepare",
+      text: "let ordered = CorrectionCandidateFilter.prepare(remaining)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/ObservedCorrectionWatcher.swift",
+      matcher: "prepare",
+      text: "let prepared = CorrectionCandidateFilter.prepare(group)",
+      classification: .unrelatedDomain),
+
     // MARK: KernelDictationDriver
     // The SESSIONLESS load-wedge guard's fire path. `SessionlessLoadWedgeGuard`
     // is armed immediately before, and disarmed immediately after,

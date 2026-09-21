@@ -30,6 +30,11 @@ public struct TextProcessingContext: Sendable {
   /// `DictationLanguageResolver.Resolution.englishVeto`. Read by the ITN gate
   /// and the filler protection set; nothing else.
   public var englishRulesVetoed: Bool = false
+  /// #996: `DictationLanguageResolver.Resolution.learnLanguage`, the language
+  /// the learn-from-edits gate may use for this take. Forwarded, never
+  /// re-derived from `language` or `englishRulesVetoed`: the resolver owns
+  /// that ladder. Nil when never resolved, and nil under the non-English veto.
+  package var learnLanguage: String?
   /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
   /// at the start of the chain. Observation-only: never persisted, never `Codable`,
   /// and it never influences a processing decision.

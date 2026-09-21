@@ -660,6 +660,10 @@ jobs:
           # Same runner shape and exact-count assertion; imports nothing outside the
           # stdlib and reads no key.
           python3 scripts/eval/tests/test_section_envelope.py
+          # #996: the eval-package pin seeding (compile-eval-packages.sh) merges
+          # a runner's tracked runner-only pins into the app's pins and refuses
+          # a pin that would shadow an app pin. Stdlib only; same count rule.
+          python3 scripts/eval/tests/test_seed_eval_package_pins.py
           # #2789: the one key-free check the retired cloud polish workflow carried.
           # Compares the canonical cloud prompt file, its Python mirror and the Swift
           # builder's text after stripping outer whitespace; exit 2 on drift. Imports

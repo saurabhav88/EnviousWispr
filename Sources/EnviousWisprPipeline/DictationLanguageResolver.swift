@@ -133,9 +133,26 @@ package enum DictationLanguageResolver {
     /// a veto, never an authorisation. Nothing below the floor resolves a
     /// language; this only says "do not apply English-only rules to it".
     let englishVeto: Bool
+    /// #996: the base language the learn-from-edits gate may use. The locked
+    /// language or a detecting engine's answer when there is one; otherwise
+    /// the dictation text's TOP hypothesis at any confidence, unless
+    /// `englishVeto` refuses it. Separate from `language` on purpose: cleanup
+    /// rewrites text and stays confidence-gated at `minConfidence`, while
+    /// learning only raises a card the user must click, so a 0.73 English
+    /// read is enough evidence to ask. Measured on the 2026-09-20 baseline:
+    /// one misheard name ("Sorat") took a plain English sentence from 0.98 to
+    /// 0.73 and the gate refused exactly the takes that had something to
+    /// learn. The document rung leaves this nil: it says the DOCUMENT is not
+    /// English, nothing about the insertion. Wispr Flow takes this language
+    /// from the user's setting and its ASR, never from a confidence read.
+    let learnLanguage: String?
 
-    init(language: String?, source: Source, confidenceBucket: Bucket, englishVeto: Bool = false) {
+    init(
+      language: String?, learnLanguage: String?, source: Source, confidenceBucket: Bucket,
+      englishVeto: Bool = false
+    ) {
       self.language = language
+      self.learnLanguage = learnLanguage
       self.source = source
       self.confidenceBucket = confidenceBucket
       self.englishVeto = englishVeto
@@ -187,10 +204,14 @@ package enum DictationLanguageResolver {
     identify: (String) -> (language: String, confidence: Double)? = Self.identify
   ) -> Resolution {
     if let lockedLanguage, !lockedLanguage.isEmpty {
-      return Resolution(language: lockedLanguage, source: .locked, confidenceBucket: .none)
+      return Resolution(
+        language: lockedLanguage, learnLanguage: lockedLanguage, source: .locked,
+        confidenceBucket: .none)
     }
     if engineDetectsLanguage, let engineReportedLanguage, !engineReportedLanguage.isEmpty {
-      return Resolution(language: engineReportedLanguage, source: .engine, confidenceBucket: .none)
+      return Resolution(
+        language: engineReportedLanguage, learnLanguage: engineReportedLanguage, source: .engine,
+        confidenceBucket: .none)
     }
 
     // `isFinite` at every acceptance gate, not only in the bucket. Infinity
@@ -202,7 +223,8 @@ package enum DictationLanguageResolver {
     let dictationBucket = fromDictation.map { Resolution.Bucket($0.confidence) } ?? .none
     if let fromDictation, fromDictation.confidence >= minConfidence {
       return Resolution(
-        language: fromDictation.language, source: .dictation, confidenceBucket: dictationBucket)
+        language: fromDictation.language, learnLanguage: fromDictation.language, source: .dictation,
+        confidenceBucket: dictationBucket)
     }
 
     // The surrounding document may VETO, never authorise.
@@ -235,10 +257,12 @@ package enum DictationLanguageResolver {
       let englishVeto =
         fromDictation.map { $0.language != "en" && dictationBucket.permitsEnglishVeto } ?? false
       return Resolution(
-        language: nil, source: .none, confidenceBucket: dictationBucket, englishVeto: englishVeto)
+        language: nil, learnLanguage: englishVeto ? nil : fromDictation?.language, source: .none,
+        confidenceBucket: dictationBucket, englishVeto: englishVeto)
     }
     return Resolution(
       language: fromDocument.language,
+      learnLanguage: nil,
       source: .document,
       confidenceBucket: Resolution.Bucket(fromDocument.confidence))
   }

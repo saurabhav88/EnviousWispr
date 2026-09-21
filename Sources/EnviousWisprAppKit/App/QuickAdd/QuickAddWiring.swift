@@ -86,7 +86,7 @@ final class QuickAddWiring {
         userWords: { customWords.customWords },
         packTerms: { packManager.enabledPackTerms() },
         saveWord: { word, spelling in
-          Self.saveAndConfirm(word, carrying: spelling, through: customWords)
+          CustomWordSaveHelper.saveAndConfirm(word, carrying: spelling, through: customWords)
         },
         beginNewWord: {},
         emit: QuickAddTelemetryBridge.handler))
@@ -555,7 +555,7 @@ final class QuickAddWiring {
   /// The desired end state was nonetheless already true, which is why the answer is not `false`
   /// either — refusing would hand the user a message telling them to go and add a spelling the word
   /// already has. Three states, and the third is the one a Bool cannot hold: this is the same
-  /// three-valued shape as `QuickAddCoordinator.mergeTarget`, which is what `validation-discipline`
+  /// three-valued shape as `CustomWordSaveHelper.quickAddTarget`, which is what `validation-discipline`
   /// means by an unhandled input still landing somewhere, usually in the permissive branch.
   package enum NewWordOutcome: Equatable {
     /// The write produced the word the user asked for.
@@ -599,35 +599,6 @@ final class QuickAddWiring {
     return keptSpellings.isEmpty ? .alreadyPresent : .alreadyComplete
   }
 
-  /// Write a word and PROVE the spelling is on it afterwards.
-  ///
-  /// **A nil return from the words coordinator is not evidence the write happened**, and this is the
-  /// third distinct way that has been true in this feature. `add` returns silently for a duplicate
-  /// canonical and for a deleted-built-in restore; `update` opens
-  /// `guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }`, so a word
-  /// another instance removed while this panel was open is written NOWHERE and reported as saved.
-  /// The panel then closes on a spelling that was never stored.
-  ///
-  /// Every one of those is invisible to the caller and all of them have one observable: is the
-  /// spelling on the word now. So that is what this asks, instead of asking three questions about
-  /// how the write was routed.
-  ///
-  /// `add` when the word is new to the user library, `update` when it is already there. A converted
-  /// pack term is NEW here even though its id is the pack's, which is why the decision is by
-  /// membership rather than by `source`.
-  private static func saveAndConfirm(
-    _ word: CustomWord, carrying spelling: String, through customWords: CustomWordsCoordinator
-  ) -> String? {
-    let existing = customWords.customWords.contains { $0.id == word.id }
-    if let message = existing ? customWords.update(word) : customWords.add(word) { return message }
-
-    let wanted = spelling.trimmingCharacters(in: .whitespacesAndNewlines)
-    let landed = customWords.customWords.contains { stored in
-      stored.canonical.caseInsensitiveCompare(word.canonical) == .orderedSame
-        && stored.aliases.contains { $0.caseInsensitiveCompare(wanted) == .orderedSame }
-    }
-    return landed ? nil : QuickAddPanelCopy.newWordNotSaved
-  }
 
   private func dismiss() {
     activeModel = nil

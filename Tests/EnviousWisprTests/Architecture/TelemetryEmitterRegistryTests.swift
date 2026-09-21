@@ -58,8 +58,10 @@ struct TelemetryEmitterRegistryTests {
   /// new site, no new event, same per-take cadence; two properties on the existing row (checklist
   /// items 4-8: existing row, shape not content, Int on the wire, `take_id` unchanged, registry
   /// row unchanged).
+  /// #996: nine `custom_words.learn_*` sites (one emitter each in `TelemetryService`, all through
+  /// `emitLearnEvent`); the value below is the live scan after rebasing #996 over #3038.
   static let sitesFingerprint =
-    "4731f6500283e80e3ee869dba129b21bd7b7f48287b99a4191261465d9190b26"
+    "f24a63285602967fd3cc9fc41fc3b4be3cc9eaf6637d294c96d07750b8645b63"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

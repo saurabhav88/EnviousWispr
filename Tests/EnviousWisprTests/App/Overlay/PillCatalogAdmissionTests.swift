@@ -80,6 +80,7 @@ struct PillCatalogAdmissionTests {
     ("escapeRecovery", .pipeline(.escapeRecovery(transcriptID: UUID()))),
     ("bluetoothAwareness.featureRoute", .bluetoothAwareness),
     ("importStatus.featureRoute", .importStatus(message: "Imported 12 words")),
+    ("correctionProposal.featureRoute", .correctionProposed(CorrectionCardFixture.model())),
   ]
 
   // MARK: - The sweep
@@ -168,12 +169,12 @@ struct PillCatalogAdmissionTests {
     // conditional, so a mis-specified axis — one state, one event, a predicate
     // that never fires — leaves this test green while asserting nothing. The
     // three counts are arithmetic over the axes.
-    // 17 requests x 3 states = 51 cells: the 2 feature routes refused in the 2
-    // non-empty states (4), `.hidden` emptying in all 3, and the remaining 44
+    // 18 requests x 3 states = 54 cells: the 3 feature routes refused in the 2
+    // non-empty states (6), `.hidden` emptying in all 3, and the remaining 45
     // admitted.
-    #expect(refused == 4, "the refusal half of this sweep is not being exercised")
+    #expect(refused == 6, "the refusal half of this sweep is not being exercised")
     #expect(emptied == 3, "the emptying half of this sweep is not being exercised")
-    #expect(admitted == 44, "the admission half of this sweep is not being exercised")
+    #expect(admitted == 45, "the admission half of this sweep is not being exercised")
     #expect(refused + emptied + admitted == StartingState.allCases.count * Self.events.count)
   }
 
@@ -241,12 +242,13 @@ struct PillCatalogAdmissionTests {
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness.pipelineRoute", "escapeRecovery",
       "bluetoothAwareness.featureRoute", "importStatus.featureRoute",
+      "correctionProposal.featureRoute",
     ]
     #expect(Set(labels) == expected, "a request is missing from the sweep's axis")
     #expect(labels.count == expected.count, "the sweep's axis contains a duplicate")
     #expect(
-      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 2,
-      "both feature routes must be on the axis — they are where a refusal is observable")
+      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 3,
+      "all three feature routes must be on the axis — they are where a refusal is observable")
 
     // **A LABEL IS NOT AN EVENT, and the set check above only proves the labels.**
     // A row labelled "warning" carrying `.error` satisfies every assertion in this
@@ -271,7 +273,8 @@ struct PillCatalogAdmissionTests {
         ("bluetoothAwareness.pipelineRoute", .pipeline(.bluetoothAwareness)),
         ("escapeRecovery", .pipeline(.escapeRecovery(transcriptID: _))),
         ("bluetoothAwareness.featureRoute", .bluetoothAwareness),
-        ("importStatus.featureRoute", .importStatus(message: _)):
+        ("importStatus.featureRoute", .importStatus(message: _)),
+        ("correctionProposal.featureRoute", .correctionProposed(_)):
         break
       default:
         Issue.record("\(label) is paired with the wrong request")
@@ -281,7 +284,7 @@ struct PillCatalogAdmissionTests {
 
   private static func isFeatureRoute(_ event: OverlayEvent) -> Bool {
     switch event {
-    case .importStatus, .bluetoothAwareness: return true
+    case .importStatus, .bluetoothAwareness, .correctionProposed: return true
     default: return false
     }
   }

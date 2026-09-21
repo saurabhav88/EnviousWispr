@@ -124,6 +124,14 @@ package final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let recordingOverlay: OverlayDirector
 
+  /// #996 chunk 5h: learn from edits, as ONE slot (the Quick Add shape). The
+  /// ledger, the proposal coordinator, the overlay presenter, the paste
+  /// observer, the watcher and the arm selection live inside it; the
+  /// coordinator and the paste registry hold their collaborators weakly, so
+  /// this property is what keeps the feature alive for the app's lifetime.
+  /// Ceiling 44 -> 45, Bible entry in EnviousWisprAppCeilingsTests.
+  let learnFromEdits: LearnFromEditsWiring
+
   /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
   ///   one shared `HotkeyService` will use.
   ///
@@ -737,6 +745,19 @@ package final class WisprBootstrapper {
     // scope, and the local shadows the property for the rest of `init`.
     self.recordingOverlay = recordingOverlay
 
+    // #996 chunk 5h: composed here because every collaborator it needs already
+    // exists (settings, the word list, the packs, the overlay director, the
+    // paste registry) and `settings.onChange` below needs it. Production
+    // selects no judge (`CorrectionJudgeArmSelection.qualified` is empty).
+    let learnFromEdits = LearnFromEditsWiring(
+      settings: settings,
+      customWords: customWordsCoordinator,
+      packs: vocabularyPackManager,
+      overlay: recordingOverlay,
+      pasteCompletionRegistry: pasteCompletionRegistry,
+      telemetry: WisprBootstrapper.learnFromEditsTelemetrySink())
+    self.learnFromEdits = learnFromEdits
+
     // #2376 C7: the Appearance page's window onto the pill. Built HERE because
     // this is where the live-preview bridge already is, so the picker reads the
     // same capability the director does rather than re-deriving one.
@@ -871,7 +892,8 @@ package final class WisprBootstrapper {
     settings.onChange = {
       [
         weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
-        bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator
+        bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
+        weak learnFromEdits
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -879,6 +901,9 @@ package final class WisprBootstrapper {
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
+      // #996: the learn-from-edits toggle reaches the watcher (cancels a live
+      // watch on off; re-read at every boundary otherwise).
+      learnFromEdits?.settingChanged(key, settings: settings)
       // #1047: appearance is a view-shell concern (no pipeline sync) — apply it
       // to NSApp here so both the menu and the Settings picker take effect live.
       if key == .appearance {
@@ -1413,7 +1438,9 @@ package final class WisprBootstrapper {
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
       onboardingProgress: onboardingProgress,
       transcriptionCheckpointStore: transcriptionCheckpointStore,
-      batchDecodeFaultController: batchDecodeFaultController
+      batchDecodeFaultController: batchDecodeFaultController,
+      // #996: each real transition into `.recording` cancels a live edit watch.
+      onRecordingStarted: { [weak learnFromEdits] in learnFromEdits?.recordingStarted() }
     )
 
     self.navigationCoordinator = navigationCoordinator
@@ -1822,6 +1849,16 @@ package final class WisprBootstrapper {
   /// Load the on-device output-safety classifier in the background and publish
   /// it into `holder`. Idempotent (no-op if already loaded) and gated on Apple
   /// Intelligence polish. Every failure fails open (the polish path keeps
+  /// #996: Debug builds mirror the learn events into app.log for Live UAT;
+  /// Release emits to the vendors only.
+  private static func learnFromEditsTelemetrySink() -> any LearnFromEditsTelemetrySink {
+    #if DEBUG
+      return LearnFromEditsLoggingSink(TelemetryService.shared)
+    #else
+      return TelemetryService.shared
+    #endif
+  }
+
   /// working without the extra safety net). Static so the `settings.onChange`
   /// closure can call it without capturing a not-yet-initialized `self`.
   /// #832/#913 PR8.
@@ -2020,6 +2057,11 @@ private struct MainWindowRoot: View {
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)
+      // #996 chunk 5h: the Pending tab's inbox, the Learning row's enabled
+      // state and the tab's app-name lookup.
+      .environment(b.learnFromEdits.coordinator)
+      .environment(\.learnFromEditsPresentation, b.learnFromEdits.settingsPresentation)
+      .environment(\.pendingSourceAppName, b.learnFromEdits.sourceAppName)
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)
       .environment(\.keychainManager, b.keychainManager)
