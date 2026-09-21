@@ -64,6 +64,17 @@ public final class ModelDeliveryHome {
   /// "after Parakeet" without polling the mirror. Set by `LearnFromEditsWiring`.
   public var onParakeetAdmitted: (@MainActor () -> Void)?
 
+  /// #996 phase D: whether Parakeet is admitted NOW, from the persisted marker,
+  /// not the in-process mirror. A returning user's Parakeet was admitted in a
+  /// previous process, and `parakeetState` stays `.notReady` until the first
+  /// dictation calls `ensureAvailable()` (cloud review P2); the judge's "after
+  /// Parakeet" gate must not wait for that.
+  public func isParakeetAdmitted() async -> Bool {
+    if case .admitted = parakeetState { return true }
+    guard let registration = parakeetRegistration else { return false }
+    return await controller.isAdmitted(registration)
+  }
+
   /// #996 phase D: fired once the judge's launch probe (baseline + adopt-only
   /// admission) has finished, so the automatic fetch never races the
   /// first-run baseline (round 16 finding 1). Replays if set after the fact.

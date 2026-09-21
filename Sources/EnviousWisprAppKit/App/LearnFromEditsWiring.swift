@@ -326,7 +326,7 @@ final class LearnFromEditsWiring {
   }
 
   private func startFetch(trigger: String, userInitiated: Bool = false) {
-    guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
+    guard deliveryHome?.editJudgeHandle != nil else { return }
     guard userInitiated || launchProbeFinished else {
       Task {
         await AppLogger.shared.log(
@@ -335,14 +335,23 @@ final class LearnFromEditsWiring {
       }
       return
     }
+    // Parakeet's admission is read from its persisted marker (a returning
+    // user's mirror stays `.notReady` until the first dictation), so the
+    // decision is made after one async read; the policy itself stays pure.
+    Task { [weak self] in
+      guard let self, let home = self.deliveryHome else { return }
+      let parakeetAdmitted = await home.isParakeetAdmitted()
+      self.decideFetch(trigger: trigger, userInitiated: userInitiated, parakeetAdmitted: parakeetAdmitted)
+    }
+  }
+
+  private func decideFetch(trigger: String, userInitiated: Bool, parakeetAdmitted: Bool) {
+    guard let home = deliveryHome, let handle = home.editJudgeHandle else { return }
     let inputs = EditJudgeFetchPolicy.Inputs(
       classifierQualifiedSomewhere: CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(
         digest: home.editJudgeRegistration?.manifest.runtimeIdentityDigest),
       onboardingComplete: isOnboardingComplete(),
-      parakeetAdmitted: {
-        if case .admitted = home.parakeetState { return true }
-        return false
-      }(),
+      parakeetAdmitted: parakeetAdmitted,
       debugDoorPresent: debugDoorPresent,
       killSwitchOn: handle.isEnabled(),
       judgeState: lastDeliveryState,

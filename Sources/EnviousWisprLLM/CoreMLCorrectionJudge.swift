@@ -270,7 +270,10 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
     let fm = FileManager.default
     let cached = cacheDirectory.appendingPathComponent("\(packageSHA256).mlmodelc", isDirectory: true)
     if fm.fileExists(atPath: cached.path) {
-      if let model = try? MLModel(contentsOf: cached, configuration: configuration) { return model }
+      if let model = try? MLModel(contentsOf: cached, configuration: configuration) {
+        pruneSupersededCompiledModels(in: cacheDirectory, keeping: cached)
+        return model
+      }
       try? fm.removeItem(at: cached)
     }
     do {
@@ -286,11 +289,26 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
         try? fm.removeItem(at: staging)
         guard fm.fileExists(atPath: cached.path) else { throw error }
       }
-      return try MLModel(contentsOf: cached, configuration: configuration)
+      let model = try MLModel(contentsOf: cached, configuration: configuration)
+      pruneSupersededCompiledModels(in: cacheDirectory, keeping: cached)
+      return model
     } catch is CancellationError {
       throw CancellationError()
     } catch {
       throw LoadFailure.modelLoadFailed
+    }
+  }
+
+  /// A new revision compiles beside the previous one; delivery's eviction
+  /// cannot reach this cache (it lives outside the install directory), so the
+  /// superseded siblings are pruned once the new compile has LOADED (cloud
+  /// review P2). A prune failure is logged by absence only: the next load
+  /// tries again, and removal deletes the whole directory.
+  private static func pruneSupersededCompiledModels(in cacheDirectory: URL, keeping current: URL) {
+    let fm = FileManager.default
+    guard let entries = try? fm.contentsOfDirectory(atPath: cacheDirectory.path) else { return }
+    for name in entries where name.hasSuffix(".mlmodelc") && name != current.lastPathComponent {
+      try? fm.removeItem(at: cacheDirectory.appendingPathComponent(name, isDirectory: true))
     }
   }
 
