@@ -40,6 +40,8 @@ package final class LiveApplication {
       makeHotkeyEffects: { LiveDesktopHotkeyEffects() },
       presentationEffects: DesktopPresentationEffects(
         application: presentation, panels: presentation),
+      // #3062: the one place the real scroll-wheel monitor is chosen.
+      scrollWheelMonitor: LiveScrollWheelMonitor(),
       relocationRelauncher: LiveRelocationRelauncher(),
       // #2455 C4: the pill. `makePanel` is a factory rather than an instance
       // because the host builds its panel lazily, on first presentation.
