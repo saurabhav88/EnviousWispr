@@ -132,7 +132,7 @@ struct LearnFromEditsCompositionTests {
     #expect(await waitUntil { f.telemetry.events.contains(.skipped(.modelUnavailable)) }, "the paste reached the watcher and found no judge: \(f.telemetry.events)")
   }
 
-  @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start cancels the next as next_dictation_started")
+  @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start finishes the next as next_dictation_started")
   func toggleAndRecordingReachTheWatcher() async {
     let f = fixture(judgeServes: true)
     f.observer.captureOutcomes = [
@@ -155,7 +155,9 @@ struct LearnFromEditsCompositionTests {
     f.registry.emit(paste())
     #expect(await waitUntil { f.observer.starts == 2 })
     f.wiring.recordingStarted()
-    #expect(f.observer.stops == 2)
+    // A live watch is finished, not cancelled: the observer reads the box once
+    // more and flushes a pending fix before ending (#3090).
+    #expect(f.observer.stops == 1 && f.observer.finishes == [.nextDictationStarted])
     #expect(f.telemetry.events.last == .observationEnded(.nextDictationStarted, 0, .native))
   }
 

@@ -16,11 +16,13 @@ import Foundation
 //
 // Three guards, kept separate on purpose:
 //   generation  the paste. A new paste supersedes everything before it.
-//   cancelled   the watch was cut short by something other than the observer
-//               (a new dictation, the toggle going off). Every pending
-//               suspension re-checks it before any side effect; an observer
-//               ending (`.ended`) does NOT set it, because a settled snapshot
-//               already sent to the judge is still evidence about that paste.
+//   cancelled   the toggle went off, the model disappeared, or capture never
+//               began. A new dictation finishes a live observation but does
+//               not cancel evidence already read from the previous paste.
+//               Every pending suspension re-checks it before any side effect;
+//               an observer ending (`.ended`) does NOT set it, because a
+//               settled snapshot already sent to the judge is still evidence
+//               about that paste.
 //   revision    the edit. Bumped on every reported text change; a judge answer
 //               about an older revision is `stale_result`.
 //
@@ -43,7 +45,10 @@ import Foundation
 //   judge answer               | current, not cancelled,        | learn_judged, proposals
 //                              |   revision unchanged           |
 //   judge answer               | otherwise                      | stale_result counted, dropped
-//   recordingStarted           | live                           | cancelled, observer.stop,
+//   recordingStarted           | live, observing                | observer.finish: pending fix
+//                              |                                |   flushed as .settled, then .ended
+//                              |                                |   {next_dictation}; answers stay valid
+//   recordingStarted           | live, not yet observing        | cancelled, observer.stop,
 //                              |                                |   observation_ended{next_dictation}
 //   toggle off (next tick)     | live                           | cancelled, observer.stop,
 //                              |                                |   learn_skipped{toggle_off}; no
@@ -61,21 +66,26 @@ import Foundation
 //   B1 begin entry (queued task) | drop    | drop     | skipped{toggle_off}  | n/a    | n/a
 //   B2 after `await capabilities`| drop    | drop     | skipped{toggle_off}  | n/a    | n/a
 //   B3 observer event entry      | drop    | drop     | cancel: stop, count  | n/a    | n/a
-//   B4 judge task start          | stale   | stale    | cancel + stale       | ask    | stale
-//   B5 after `await judge`       | stale   | stale    | cancel + stale       | apply  | stale
+//   B4 judge task start          | stale   | ask      | cancel + stale       | ask    | stale
+//   B5 after `await judge`       | stale   | apply    | cancel + stale       | apply  | stale
 //   B6 propose loop              | re-checked before EACH proposal: the sink and every
-//                                |   `propose` can re-enter synchronously (an offer that
-//                                |   starts a dictation, a setting observer); the rest
-//                                |   of the answer is dropped as one stale result
+//                                |   `propose` can re-enter synchronously (a setting
+//                                |   observer); only a newer paste, toggle-off, model
+//                                |   removal or revision change drops the rest of the
+//                                |   answer as one stale result. An offer that starts a
+//                                |   dictation continues.
 //
-// D and T set `cancelled` even after E: the observation row was emitted once
-// and is not repeated, but a pending answer about text that is being replaced
-// (D) or that the user asked us to stop watching (T) is never applied.
+// T sets `cancelled` even after E: the observation row was emitted once and
+// is not repeated, and a pending answer about text the user asked us to stop
+// watching is never applied. D no longer cancels (#996 cursor-aware settling,
+// Codex r30): a settled snapshot is evidence about THAT paste whatever is
+// dictated next, so a live observation finishes through the observer (flushing
+// a pending fix like a send) and pending answers stay valid; a card that
+// cannot show while the pipeline is busy waits in Pending.
 
 /// The runtime arm the watcher may ask. Production selection comes from
-/// `CorrectionJudgeArmSelection.select` with the measured table (empty today,
-/// so production yields `.unavailable` and nothing is watched); tests inject
-/// an arm directly.
+/// `CorrectionJudgeArmSelection.select` and its measured qualification table;
+/// tests inject an arm directly.
 struct SelectedCorrectionJudge {
   let arm: TelemetryService.LearnFromEditsTelemetry.Arm
   let judge: any CorrectionJudging
@@ -147,7 +157,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     var sentPairKeys: Set<String> = []
     /// The observer finished (naturally). Judge answers may still arrive.
     var ended = false
-    /// Cut short by a new dictation or the toggle: no pending work may act.
+    /// Cut short before or during observation by toggle-off, model removal, or
+    /// a watch that never reached capture. A new dictation is not cancellation.
     var cancelled = false
     var isLive: Bool { !ended && !cancelled }
   }
@@ -155,8 +166,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private let deps: ObservedCorrectionWatcherDependencies
   private var watch: Watch?
   private var generation: UInt64 = 0
-  /// Diagnostics: reserved judge calls not asked, or answers dropped, because a
-  /// newer paste, a dictation, the toggle or an edit superseded them.
+  /// Diagnostics: reserved judge calls not asked, or answers dropped, because
+  /// a newer paste, toggle-off, model removal, or edit superseded them.
   private(set) var staleResults = 0
   /// Diagnostics: watches cut short because the toggle went off mid-watch.
   private(set) var toggledOffMidWatch = 0
@@ -193,14 +204,21 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     }
   }
 
-  /// A new dictation started: the pasted text is about to be replaced by the
-  /// next one, so the current watch is cancelled (pending work included).
+  /// A new dictation started. A LIVE observation finishes through the
+  /// observer, which flushes a fix typed before the recording the way a send
+  /// does (Wispr Flow's second stop signal; Codex r30) and delivers
+  /// `.ended(.nextDictationStarted)` through `handle`, so that burst's answer
+  /// stays valid like any other observer end. A watch that never reached
+  /// observation is cancelled outright (no capture, one row below); one that
+  /// already ended keeps its row and its pending answers untouched.
   func recordingStarted() {
     guard let w = watch, !w.cancelled else { return }
-    watch?.cancelled = true
-    // An observation that already ended emitted its row; only its pending
-    // answers are voided (they drop as stale at B4/B5).
     guard !w.ended else { return }
+    if deps.observer.isObserving {
+      deps.observer.finish(.nextDictationStarted)
+      return
+    }
+    watch?.cancelled = true
     deps.observer.stop()
     emitEnded(reason: .nextDictationStarted, generation: w.generation)
   }

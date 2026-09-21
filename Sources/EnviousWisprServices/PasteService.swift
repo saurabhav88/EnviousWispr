@@ -1739,7 +1739,9 @@ public enum PasteService {
   }
 
   /// Read `AXSelectedTextRange` as a UTF-16 range. Nil when unreadable.
-  private static func selectedRange(of element: AXUIElement) -> CFRange? {
+  /// Shared with `LivePastedRegionAXOperations` (#996 cursor-aware settling);
+  /// the type checks below are the whole reason there is one reader.
+  internal static func selectedRange(of element: AXUIElement) -> CFRange? {
     var rangeRef: CFTypeRef?
     let err = AXUIElementCopyAttributeValue(
       element,
