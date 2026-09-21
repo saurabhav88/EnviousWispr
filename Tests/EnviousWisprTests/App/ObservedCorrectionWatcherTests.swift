@@ -52,11 +52,12 @@ final class ObserverFake: PastedRegionObserving {
   var pendingRegionOnFinish: String?
   private(set) var finishes: [PastedRegionEndReason] = []
   func finish(_ reason: PastedRegionEndReason) {
-    guard let onEvent else { return }
+    // Production stops BEFORE delivering the events.
+    guard let handler = onEvent else { return }
+    onEvent = nil
     finishes.append(reason)
-    if let region = pendingRegionOnFinish { onEvent(.settled(region: region)) }
-    onEvent(.ended(reason))
-    self.onEvent = nil
+    if let region = pendingRegionOnFinish { handler(.settled(region: region)) }
+    handler(.ended(reason))
   }
   func fire(_ event: PastedRegionEvent) { onEvent?(event) }
 }

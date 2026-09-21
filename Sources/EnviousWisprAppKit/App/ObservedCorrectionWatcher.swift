@@ -16,11 +16,13 @@ import Foundation
 //
 // Three guards, kept separate on purpose:
 //   generation  the paste. A new paste supersedes everything before it.
-//   cancelled   the watch was cut short by something other than the observer
-//               (a new dictation, the toggle going off). Every pending
-//               suspension re-checks it before any side effect; an observer
-//               ending (`.ended`) does NOT set it, because a settled snapshot
-//               already sent to the judge is still evidence about that paste.
+//   cancelled   the toggle went off, the model disappeared, or capture never
+//               began. A new dictation finishes a live observation but does
+//               not cancel evidence already read from the previous paste.
+//               Every pending suspension re-checks it before any side effect;
+//               an observer ending (`.ended`) does NOT set it, because a
+//               settled snapshot already sent to the judge is still evidence
+//               about that paste.
 //   revision    the edit. Bumped on every reported text change; a judge answer
 //               about an older revision is `stale_result`.
 //
@@ -64,12 +66,14 @@ import Foundation
 //   B1 begin entry (queued task) | drop    | drop     | skipped{toggle_off}  | n/a    | n/a
 //   B2 after `await capabilities`| drop    | drop     | skipped{toggle_off}  | n/a    | n/a
 //   B3 observer event entry      | drop    | drop     | cancel: stop, count  | n/a    | n/a
-//   B4 judge task start          | stale   | stale    | cancel + stale       | ask    | stale
-//   B5 after `await judge`       | stale   | stale    | cancel + stale       | apply  | stale
+//   B4 judge task start          | stale   | ask      | cancel + stale       | ask    | stale
+//   B5 after `await judge`       | stale   | apply    | cancel + stale       | apply  | stale
 //   B6 propose loop              | re-checked before EACH proposal: the sink and every
-//                                |   `propose` can re-enter synchronously (an offer that
-//                                |   starts a dictation, a setting observer); the rest
-//                                |   of the answer is dropped as one stale result
+//                                |   `propose` can re-enter synchronously (a setting
+//                                |   observer); only a newer paste, toggle-off, model
+//                                |   removal or revision change drops the rest of the
+//                                |   answer as one stale result. An offer that starts a
+//                                |   dictation continues.
 //
 // T sets `cancelled` even after E: the observation row was emitted once and
 // is not repeated, and a pending answer about text the user asked us to stop
@@ -80,9 +84,8 @@ import Foundation
 // cannot show while the pipeline is busy waits in Pending.
 
 /// The runtime arm the watcher may ask. Production selection comes from
-/// `CorrectionJudgeArmSelection.select` with the measured table (empty today,
-/// so production yields `.unavailable` and nothing is watched); tests inject
-/// an arm directly.
+/// `CorrectionJudgeArmSelection.select` and its measured qualification table;
+/// tests inject an arm directly.
 struct SelectedCorrectionJudge {
   let arm: TelemetryService.LearnFromEditsTelemetry.Arm
   let judge: any CorrectionJudging
@@ -154,7 +157,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     var sentPairKeys: Set<String> = []
     /// The observer finished (naturally). Judge answers may still arrive.
     var ended = false
-    /// Cut short by a new dictation or the toggle: no pending work may act.
+    /// Cut short before or during observation by toggle-off, model removal, or
+    /// a watch that never reached capture. A new dictation is not cancellation.
     var cancelled = false
     var isLive: Bool { !ended && !cancelled }
   }
@@ -162,8 +166,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private let deps: ObservedCorrectionWatcherDependencies
   private var watch: Watch?
   private var generation: UInt64 = 0
-  /// Diagnostics: reserved judge calls not asked, or answers dropped, because a
-  /// newer paste, a dictation, the toggle or an edit superseded them.
+  /// Diagnostics: reserved judge calls not asked, or answers dropped, because
+  /// a newer paste, toggle-off, model removal, or edit superseded them.
   private(set) var staleResults = 0
   /// Diagnostics: watches cut short because the toggle went off mid-watch.
   private(set) var toggledOffMidWatch = 0

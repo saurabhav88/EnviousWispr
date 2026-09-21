@@ -600,7 +600,13 @@ package enum PastedRegionLocator {
     while suffix < a.count - prefix, suffix < b.count - prefix,
       a[a.count - 1 - suffix] == b[b.count - 1 - suffix]
     { suffix += 1 }
-    return prefix..<(b.count - suffix)
+    // Never start or end inside a surrogate pair: a replacement between two
+    // emoji sharing a lead unit would otherwise begin between lead and trail.
+    var lower = prefix
+    var upper = b.count - suffix
+    if lower > 0, lower < b.count, UTF16.isTrailSurrogate(b[lower]) { lower -= 1 }
+    if upper > 0, upper < b.count, UTF16.isTrailSurrogate(b[upper]) { upper += 1 }
+    return lower..<upper
   }
 
   package enum EditDistanceVerdict: Equatable {
@@ -704,6 +710,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
     /// that produced it; the caret is compared in the same unit.
     var lastRegionStart = 0
     var lastRegionEnd = 0
+    /// UTF-16 length of the complete field value from the same good read that
+    /// produced `lastRegionStart` and `lastRegion`; a foreign range past it is
+    /// malformed.
+    var lastValueUTF16Count = 0
     var changedSinceSettled = false
     /// Absolute deadline of the cursor-aware deferral for the current change
     /// revision (`caretCapMs`); nil until the first deferral, cleared on a
@@ -1096,6 +1106,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
           return .ended
         }
         guard region != w.lastRegion else {
+          // The same text can sit at a new offset (text inserted before the
+          // anchor): the coordinates the caret is compared with follow every
+          // good read, changed or not (Codex r32).
+          watch?.lastRegionStart = located.start
+          watch?.lastRegionEnd = located.end
+          watch?.lastValueUTF16Count = value.utf16.count
           // A GOOD unchanged read after a cancelled settle restarts the quiet
           // interval, so an edit is never stranded until the ceiling.
           if w.changedSinceSettled, watch?.settle == nil {
@@ -1119,6 +1135,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         watch?.lastRegion = region
         watch?.lastRegionStart = located.start
         watch?.lastRegionEnd = located.end
+        watch?.lastValueUTF16Count = value.utf16.count
         watch?.changedSinceSettled = true
         watch?.lastChangeAtMs = scheduler.nowMs
         watch?.changeRevision &+= 1
@@ -1196,6 +1213,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
       else { return }
       if self.endIfPastDeadline(generation: gen) { return }
       let trigger = self.settleTrigger(generation: gen)
+      // The caret read is another pair of AX calls: the ceiling may have
+      // passed meanwhile (Codex r32).
+      if self.endIfPastDeadline(generation: gen) { return }
       guard let trigger else {
         // Still editing (caret inside or right after the changed span, or a
         // selection over it): the quiet interval is re-armed, bounded by
@@ -1219,8 +1239,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     case caretLeft
     /// `caretCapMs` elapsed since the first deferral of this revision.
     case cap
-    /// The caret could not be read (unavailable, malformed, out of bounds,
-    /// focus not on the element): today's quiet-only rule.
+    /// The selected range could not be used: unavailable, negative,
+    /// overflowing or past the field's last good length. Today's quiet-only
+    /// rule. (Focus elsewhere or a failed focus query WAIT instead.)
     case fallbackQuiet
   }
 
@@ -1228,8 +1249,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// elapsed and the value read unchanged. The focused element is resolved
   /// AGAIN and the range read from that fresh handle: a stored handle can
   /// report a stale zero (accessibility-macos.md). Focus temporarily on
-  /// another element of the same app (an autocomplete popup) waits; the
-  /// existing focus grace ends the watch if it stays away.
+  /// another element of the same app (an autocomplete popup), no focus, or a
+  /// failed second focus query all wait; the existing focus grace ends the
+  /// watch if focus stays away, and `caretCapMs` bounds every wait.
   private func settleTrigger(generation gen: UInt64) -> SettleTrigger? {
     guard let w = watch, w.generation == gen else { return nil }
     let now = scheduler.nowMs
@@ -1241,7 +1263,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
       case .unavailable:
         return .fallbackQuiet
       case .range(let location, let length):
+        // A foreign implementation's range: negative, overflowing or past the
+        // field's last good length is malformed, never "outside".
         guard location >= 0, length >= 0 else { return .fallbackQuiet }
+        let (selectionEnd, overflow) = location.addingReportingOverflow(length)
+        guard !overflow, selectionEnd <= w.lastValueUTF16Count else { return .fallbackQuiet }
         let envelope = PastedRegionLocator.changedEnvelope(pasted: w.target.renderedText, region: w.lastRegion)
         let spanStart = w.lastRegionStart + envelope.lowerBound
         let spanEnd = w.lastRegionStart + envelope.upperBound
@@ -1250,7 +1276,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
           stillEditing = location >= spanStart && location <= spanEnd
         } else {
           // A selection that overlaps the span.
-          stillEditing = location < spanEnd && location + length > spanStart
+          stillEditing = location < spanEnd && selectionEnd > spanStart
         }
       }
     case .element, .noFocus:
@@ -1258,10 +1284,16 @@ package final class PastedRegionObserver: PastedRegionObserving {
       // focus grace decides whether it stays away.
       stillEditing = true
     case .queryFailed:
-      return .fallbackQuiet
+      // The identity check moments ago succeeded; a failure now is a
+      // transient second-sample disagreement, not proof the host lacks a
+      // caret. Wait under the same bounded cap (Codex r32).
+      stillEditing = true
     }
     guard stillEditing else { return .caretLeft }
-    if w.caretDeadlineMs == nil { watch?.caretDeadlineMs = now + PastedRegionTiming.caretCapMs }
+    // The AX calls above took time: re-sample before deciding the cap.
+    let afterCaretRead = scheduler.nowMs
+    if let deadline = w.caretDeadlineMs, afterCaretRead >= deadline { return .cap }
+    if w.caretDeadlineMs == nil { watch?.caretDeadlineMs = afterCaretRead + PastedRegionTiming.caretCapMs }
     return nil
   }
 

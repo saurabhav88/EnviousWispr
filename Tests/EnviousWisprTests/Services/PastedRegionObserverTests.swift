@@ -66,8 +66,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   /// written before cursor-aware settling keeps the quiet-only rule.
   var selectedRange: PastedRegionSelectedRange = .unavailable
   private(set) var selectedRangeReads = 0
+  /// Runs on every caret read: tests use it to move the logical clock while
+  /// the observer is "inside" the AX call.
+  var onSelectedRangeRead: (() -> Void)?
   func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange {
     selectedRangeReads += 1
+    onSelectedRangeRead?()
     return selectedRange
   }
 
@@ -940,6 +944,67 @@ struct PastedRegionObserverWatchTests {
     #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah", region: "Ask Sarahs") == 9..<10)
     // Deleted text: an empty envelope at the cut.
     #expect(PastedRegionLocator.changedEnvelope(pasted: "Ask Sarah today", region: "Ask today") == 4..<4)
+    // Never inside a surrogate pair: two emoji sharing a lead unit.
+    #expect(
+      PastedRegionLocator.changedEnvelope(pasted: "X😀Y", region: "X😁Y") == 1..<3,
+      "the envelope includes the complete changed scalar")
+  }
+
+  @Test("the same changed region at a new absolute offset (text inserted before the anchor) keeps deferring at the new span end")
+  func movedRegionKeepsDeferring() {
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e = Events()
+    startWithFix(o, e)
+    ax.selectedRange = .range(location: 15, length: 0)
+    scheduler.advance(ms: 1500)
+    #expect(e.list.count == 1)
+    // "PS " typed before the note: the unchanged region moves right by 3.
+    ax.reads = [.text("PS Note: Ask Saira today please")]
+    ax.selectedRange = .range(location: 18, length: 0)  // still right after "Saira"
+    scheduler.advance(ms: 1500)
+    #expect(e.list.count == 1, "stale coordinates would read 18 as outside 12...15 and settle")
+    ax.selectedRange = .range(location: 8, length: 0)  // in "PS Note:", outside the moved span 15...18
+    scheduler.advance(ms: 1500)
+    #expect(e.list.last == .settled(region: "Ask Saira today"))
+  }
+
+  @Test("the cap or the ceiling crossed inside the caret read is honoured before any settle or re-arm")
+  func deadlineCrossedInsideCaretRead() {
+    // Cap: the clock jumps past the cap deadline during the caret read.
+    let lines = Events()
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
+    let e = Events()
+    startWithFix(o, e)
+    ax.selectedRange = .range(location: 15, length: 0)
+    scheduler.advance(ms: 1500)  // first deferral: deadline now + 10 s
+    ax.onSelectedRangeRead = { [scheduler] in scheduler.jump(ms: PastedRegionTiming.caretCapMs) }
+    scheduler.advance(ms: 1500)
+    #expect(e.list.last == .settled(region: "Ask Saira today"))
+    #expect(lines.lines.contains("learn_settle trigger=cap"))
+    ax.onSelectedRangeRead = nil
+    o.stop()
+
+    // Ceiling: the clock crosses the 60 s ceiling during the caret read.
+    let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e2 = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    // A target captured NOW, so the 60 s ceiling is measured from here.
+    guard case .captured(let fresh) = o2.capture(pid: pid, pastedText: "Ask Sarah today", pastedAtMs: scheduler.nowMs)
+    else {
+      Issue.record("fixture capture failed")
+      return
+    }
+    o2.start(fresh) { e2.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.onSelectedRangeRead = { [scheduler] in scheduler.jump(ms: PastedRegionTiming.ceilingMs) }
+    scheduler.advance(ms: 1500)
+    ax.onSelectedRangeRead = nil
+    #expect(
+      e2.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.ceilingElapsed),
+      ], "the ceiling flushes the pending fix and ends; no re-arm")
+    #expect(o2.isObserving == false)
   }
 
   @Test("the locator retains the region's absolute UTF-16 offsets")
@@ -986,7 +1051,10 @@ struct PastedRegionObserverWatchTests {
 
   @Test("an unavailable, malformed or unreadable caret falls back to today's quiet-only settling")
   func caretFallbacks() {
-    for answer in [PastedRegionSelectedRange.unavailable, .range(location: -1, length: 0), .range(location: 3, length: -2)] {
+    for answer in [
+      PastedRegionSelectedRange.unavailable, .range(location: -1, length: 0), .range(location: 3, length: -2),
+      .range(location: 10_000, length: 0), .range(location: Int.max, length: 1),
+    ] {
       let lines = Events()
       let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
       let e = Events()
@@ -1013,6 +1081,7 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 750)  // 12750: the check at 12750 sees the deadline passed
     #expect(e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today")])
     #expect(lines.lines.contains("learn_settle trigger=cap"))
+    o.stop()
 
     // A new revision after a long deferral resets the cap.
     let o2 = PastedRegionObserver(ax: ax, scheduler: scheduler)
