@@ -61,25 +61,12 @@ struct WordSuggestionServiceCorrectionJudgeTests {
     #expect(
       caps.executionIdentity["environment"] == WordSuggestionService.correctionJudgeEnvironment)
     #expect(caps.executionIdentity.count == 2)
-    if !caps.canRunOnThisMac {
-      #expect(caps.supportedLanguages == nil)
-    }
   }
 
-  @Test("a supported Mac with the model turned off is above the floor with no validated languages")
+  @Test("the platform floor is the framework and OS, never model availability")
   func platformFloorIsNotModelAvailability() {
-    let off = WordSuggestionService.capabilities(
-      platformSupported: true, modelAvailable: false, modelLanguages: ["en"])
-    #expect(off.canRunOnThisMac == true)
-    #expect(off.supportedLanguages == nil)
-    let on = WordSuggestionService.capabilities(
-      platformSupported: true, modelAvailable: true, modelLanguages: ["en", "de"])
-    #expect(on.canRunOnThisMac == true)
-    #expect(on.supportedLanguages == ["en", "de"])
-    let below = WordSuggestionService.capabilities(
-      platformSupported: false, modelAvailable: true, modelLanguages: ["en"])
-    #expect(below.canRunOnThisMac == false)
-    #expect(below.supportedLanguages == nil)
+    #expect(WordSuggestionService.capabilities(platformSupported: true).canRunOnThisMac == true)
+    #expect(WordSuggestionService.capabilities(platformSupported: false).canRunOnThisMac == false)
   }
 
   @Test("a missing result is named by progress and cancellation")
@@ -324,7 +311,6 @@ struct WordSuggestionServiceCorrectionJudgeTests {
     #expect(verdicts >= 1, "the model answered none of the three smoke classes")
     let caps = await service.capabilities
     #expect(caps.canRunOnThisMac == true)
-    #expect(caps.supportedLanguages?.isEmpty == false)
   }
 }
 

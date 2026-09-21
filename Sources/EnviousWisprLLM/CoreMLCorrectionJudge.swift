@@ -61,16 +61,12 @@
       package let contract: URL
       package let threshold: Double
       package let executionIdentity: [String: String]
-      /// The training manifest names no language coverage; this door grants
-      /// English only rather than inventing multilingual eligibility.
-      package let supportedLanguages: Set<String>
     }
 
     package static let expectedObjective = "detection"
     package static let expectedClassOrder = ["notCorrection", "correction"]
     package static let expectedDecisionRule =
       "vocabulary_correction := p[1] >= detection_threshold; safe_alias := false"
-    package static let debugSupportedLanguages: Set<String> = ["en"]
     package static let manifestFileName = "training-manifest-shaped.json"
     package static let verificationFileName = "verification.json"
     package static let contractFileName = "tokenizer-contract.json"
@@ -201,8 +197,7 @@
         contract: contractURL, threshold: config.detectionThreshold,
         executionIdentity: executionIdentity.merging(
           ["arm": "classifier", "package_sha256": config.packageSHA256, "debug_door": "EW_LEARN_FROM_EDITS_JUDGE_EXPORT"]
-        ) { a, _ in a },
-        supportedLanguages: debugSupportedLanguages)
+        ) { a, _ in a })
       return CoreMLCorrectionJudge(identity: identity, model: model, adapter: adapter)
     }
 
@@ -291,8 +286,7 @@
 
     package var capabilities: CorrectionJudgeCapabilities {
       CorrectionJudgeCapabilities(
-        canRunOnThisMac: true, supportedLanguages: identity.supportedLanguages,
-        executionIdentity: identity.executionIdentity)
+        canRunOnThisMac: true, executionIdentity: identity.executionIdentity)
     }
 
     /// One prediction per candidate, in id order; the first failure of any kind

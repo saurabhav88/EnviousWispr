@@ -200,6 +200,14 @@ package struct PastedRegionTarget: Equatable {
   package let application: AXUIElement
   package let element: AXUIElement
   package let pastedText: String
+  /// The value's own units for the located paste, `[start, end)` as read: the
+  /// same text as `pastedText` except where the host renders it differently
+  /// (a terminal wraps a long line into rows with a newline and a gutter,
+  /// #996 Ghostty follow-up; a contenteditable stores a no-break space). The
+  /// observer compares later reads against THIS, so a host's rendering never
+  /// counts as an edit; the watcher aligns edits against `pastedText`, whose
+  /// whitespace tokenizer sees the two alike.
+  package let renderedText: String
   package let anchors: PastedRegionAnchors
   /// Whether the application advertised `AXManualAccessibility` (an
   /// Electron/Chromium host). Telemetry `app_class` evidence for the watcher;
@@ -212,7 +220,7 @@ package struct PastedRegionTarget: Equatable {
   package static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.pid == rhs.pid && CFEqual(lhs.application, rhs.application)
       && CFEqual(lhs.element, rhs.element) && lhs.pastedText == rhs.pastedText
-      && lhs.anchors == rhs.anchors
+      && lhs.renderedText == rhs.renderedText && lhs.anchors == rhs.anchors
       && lhs.isManualAccessibilityHost == rhs.isManualAccessibilityHost
       && lhs.pastedAtMs == rhs.pastedAtMs
   }
@@ -331,31 +339,90 @@ package enum PastedRegionLocator {
   /// Where `pasted` occurs in `value`, as UTF-16 offsets. Empty pasted text is
   /// `absent`: nothing to observe.
   ///
-  /// Two host habits are folded away before matching, both measured on the
-  /// 2026-09-20 app matrix (#996): a contenteditable (Gmail in Chrome, Slack)
-  /// stores a pasted trailing space as NO-BREAK SPACE, and some composers drop
-  /// the trailing space altogether. Fixed-width space variants are folded to
-  /// U+0020 on both sides (a 1:1 fold, so the offsets stay the value's own),
-  /// and when the exact text is absent the needle is retried without its
-  /// trailing whitespace. Offsets always describe `value` as read.
+  /// Three host habits are folded away before matching. Two were measured on
+  /// the 2026-09-20 app matrix (#996): a contenteditable (Gmail in Chrome,
+  /// Slack) stores a pasted trailing space as NO-BREAK SPACE, and some
+  /// composers drop the trailing space altogether. Fixed-width space variants
+  /// are folded to U+0020 on both sides (a 1:1 fold, so the offsets stay the
+  /// value's own), and when the text is absent the needle is retried without
+  /// its trailing whitespace. The third is the terminal (Ghostty, measured
+  /// 2026-09-21): its `AXTextArea` value is the screen, one row per line, so a
+  /// paste longer than the window wraps into `word\n  word` with a gutter,
+  /// and the one-line "Saoirse" sentence located while the four-sentence
+  /// paragraph read `dictated_text_not_found`. A space in the pasted text
+  /// therefore matches ANY run of whitespace in the value (spaces, tabs, line
+  /// breaks, folded no-break spaces). A wrap that falls inside a word still
+  /// does not match: the pasted text is known exactly, so a break where it
+  /// has no space is not the paste. Offsets always describe `value` as read;
+  /// `end` is past the last matched unit, so the located slice carries the
+  /// host's own rendering.
   package static func locate(pasted: String, in value: String) -> Location {
     guard !pasted.isEmpty else { return .absent }
     let haystack = value.utf16.map(foldSpace)
     let full = pasted.utf16.map(foldSpace)
-    var hits = occurrences(of: full, in: haystack, limit: 2)
-    var needle = full
+    var hits = wrapTolerantOccurrences(of: full, in: haystack, limit: 2)
     if hits.isEmpty {
       let trimmed = Array(full.reversed().drop(while: isSpaceUnit).reversed())
       if !trimmed.isEmpty, trimmed.count < full.count {
-        needle = trimmed
-        hits = occurrences(of: trimmed, in: haystack, limit: 2)
+        hits = wrapTolerantOccurrences(of: trimmed, in: haystack, limit: 2)
       }
     }
     switch hits.count {
     case 0: return .absent
-    case 1: return .unique(start: hits[0], end: hits[0] + needle.count)
+    case 1: return .unique(start: hits[0].start, end: hits[0].end)
     default: return .ambiguous
     }
+  }
+
+  /// `occurrences(of:in:limit:)` where a run of U+0020 in `needle` matches a
+  /// run of whitespace units in `haystack` at least as long. Every other unit
+  /// must match exactly. Returns `[start, end)` per hit, `end` depending on
+  /// the run lengths. A needle that starts with a space is anchored once per
+  /// haystack run, at the run's first unit, so one wrapped occurrence is one
+  /// hit and not one per unit of the run.
+  static func wrapTolerantOccurrences(
+    of needle: [UInt16], in haystack: [UInt16], limit: Int
+  ) -> [(start: Int, end: Int)] {
+    guard !needle.isEmpty, needle.count <= haystack.count else { return [] }
+    var hits: [(start: Int, end: Int)] = []
+    var i = 0
+    while i < haystack.count, hits.count < limit {
+      if needle[0] == 0x0020, i > 0, isSpaceUnit(haystack[i - 1]) {
+        i += 1
+        continue
+      }
+      if let end = matchWrapTolerant(needle, in: haystack, at: i) {
+        hits.append((start: i, end: end))
+      }
+      i += 1
+    }
+    return hits
+  }
+
+  /// The end offset of a match of `needle` starting at `haystack[start]`, or
+  /// nil. A needle space run of length k must meet a haystack whitespace run
+  /// of length >= k and then takes the whole run; a needle non-space must
+  /// equal the unit.
+  private static func matchWrapTolerant(_ needle: [UInt16], in haystack: [UInt16], at start: Int)
+    -> Int?
+  {
+    var n = 0
+    var h = start
+    while n < needle.count {
+      if needle[n] == 0x0020 {
+        let needleRunStart = n
+        while n < needle.count, needle[n] == 0x0020 { n += 1 }
+        guard h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
+        let haystackRunStart = h
+        while h < haystack.count, isSpaceUnit(haystack[h]) { h += 1 }
+        guard h - haystackRunStart >= n - needleRunStart else { return nil }
+      } else {
+        guard h < haystack.count, haystack[h] == needle[n] else { return nil }
+        n += 1
+        h += 1
+      }
+    }
+    return h
   }
 
   /// NO-BREAK SPACE, NARROW NO-BREAK SPACE and FIGURE SPACE read as U+0020.
@@ -585,10 +652,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
       case .ambiguous: return .ended(.anchorAmbiguous)
       case .unique(let start, let end):
         let anchors = PastedRegionLocator.anchors(around: start, end: end, in: value)
+        let units = Array(value.utf16)
+        let rendered = String(decoding: units[start..<end], as: UTF16.self)
         return .captured(
           PastedRegionTarget(
             pid: pid, application: application, element: element, pastedText: pastedText,
-            anchors: anchors, isManualAccessibilityHost: isManualHost, pastedAtMs: pastedAtMs))
+            renderedText: rendered, anchors: anchors, isManualAccessibilityHost: isManualHost,
+            pastedAtMs: pastedAtMs))
       }
     case .absent, .notText:
       return .ended(.captureUnsupported)
@@ -616,7 +686,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     generation &+= 1
     let gen = generation
     var w = Watch(
-      target: target, generation: gen, onEvent: onEvent, lastRegion: target.pastedText)
+      target: target, generation: gen, onEvent: onEvent, lastRegion: target.renderedText)
     // The ceiling is measured from the PASTE. Capture and start may run later;
     // that time is not added, and an already-expired deadline ends at once,
     // before anything is registered.
@@ -802,7 +872,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
           }
           return .unchanged
         }
-        switch PastedRegionLocator.editDistance(pasted: target.pastedText, region: region) {
+        switch PastedRegionLocator.editDistance(pasted: target.renderedText, region: region) {
         case .exceeded:
           end(.editDistanceExceeded)
           return .ended
@@ -896,7 +966,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     guard let w = watch else { return }
     let flush =
       reason.flushesPendingEdit && w.changedSinceSettled && !w.lastRegion.isEmpty
-      && w.lastRegion != w.target.pastedText
+      && w.lastRegion != w.target.renderedText
       && scheduler.nowMs - w.lastChangeAtMs >= reason.minimumPendingEditAgeMs
     stop()
     if flush { w.onEvent(.settled(region: w.lastRegion)) }

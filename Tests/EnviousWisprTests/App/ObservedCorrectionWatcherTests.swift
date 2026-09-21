@@ -99,7 +99,6 @@ final class JudgeFake: CorrectionJudging, @unchecked Sendable {
   /// Verdict for every candidate id: true = correction.
   var answer: (Int) -> Bool = { _ in true }
   var bypass: CorrectionJudgeBypass?
-  var languages: Set<String>? = ["en", "de"]
   private var gate: CheckedContinuation<Void, Never>?
   var holdAnswers = false
   /// Hold the capabilities read too, to stage an interruption at that boundary.
@@ -115,8 +114,7 @@ final class JudgeFake: CorrectionJudging, @unchecked Sendable {
           lock.withLock { gate = c }
         }
       }
-      return CorrectionJudgeCapabilities(
-        canRunOnThisMac: true, supportedLanguages: languages, executionIdentity: ["arm": "fake"])
+      return CorrectionJudgeCapabilities(canRunOnThisMac: true, executionIdentity: ["arm": "fake"])
     }
   }
 
@@ -267,7 +265,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(observer.captures.count == 1)
   }
 
-  @Test("gate order in the deferred task: model, language, destination, then the observer's own skips")
+  @Test("gate order in the deferred task: model, destination, then the observer's own skips; no language gate")
   func gateOrder() async {
     let watcher = makeWatcher()
     knobs.judgeAvailable = false
@@ -282,16 +280,19 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.count == 1, "model_unavailable is reported once per launch")
 
     knobs.judgeAvailable = true
-    watcher.pasteCompleted(paste(language: "xx"))
+    // No language gate (founder 2026-09-21, every language): an unknown or
+    // undetermined dictation language reaches the destination gate like any
+    // other, and is reported by THAT gate's reason, never as a language skip.
+    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
+    watcher.pasteCompleted(paste(bundle: "com.apple.Notes", language: "xx"))
     #expect(await waitForEvents(telemetry, count: 2))
-    #expect(telemetry.events.last == .skipped(.languageUnsupported))
-    watcher.pasteCompleted(paste(language: nil))
+    #expect(telemetry.events.last == .skipped(.destinationMismatch))
+    watcher.pasteCompleted(paste(bundle: "com.apple.Notes", language: nil))
     #expect(await waitForEvents(telemetry, count: 3))
-    #expect(telemetry.events.last == .skipped(.languageUnsupported))
+    #expect(telemetry.events.last == .skipped(.destinationMismatch))
 
     // No app blocklist (founder 2026-09-19): a terminal is watched like any
     // app; only the destination identity gate applies.
-    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
     watcher.pasteCompleted(paste(bundle: "com.apple.Terminal"))
     #expect(await waitForEvents(telemetry, count: 4))
     #expect(telemetry.events.last == .skipped(.destinationMismatch), "mismatch, not a blocklist")
@@ -790,8 +791,7 @@ struct ObservedCorrectionWatcherTests {
     let edited = "ask Saira today " + filler + "call Saira tonight"
     let runs = EditAlignment.align(pasted: pasted, edited: edited).runs
     let inputs = CorrectionCandidateFilter.Inputs(
-      userWords: [], packTerms: [], openProposals: [:], rejectedPairKeys: [],
-      dictationLanguage: "en", supportedLanguages: ["en"])
+      userWords: [], packTerms: [], openProposals: [:], rejectedPairKeys: [])
     let filtered = CorrectionCandidateFilter.filter(runs: runs, inputs: inputs)
     let groups = ObservedCorrectionWatcher.windowGroups(filtered, in: pasted)
     #expect(groups.map { $0.map(\.run.coreOriginal) } == [["sara"], ["sarah"]])

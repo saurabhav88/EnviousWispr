@@ -4177,7 +4177,6 @@ public final class TelemetryService {
       case toggleOff = "toggle_off"
       case watchActive = "watch_active"
       case modelUnavailable = "model_unavailable"
-      case languageUnsupported = "language_unsupported"
       case destinationMismatch = "destination_mismatch"
       case secureField = "secure_field"
       case noFocusedElement = "no_focused_element"

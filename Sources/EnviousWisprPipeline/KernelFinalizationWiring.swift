@@ -386,10 +386,10 @@ struct KernelFinalizationWiring {
       // #996: this take's languages start unknown. The four fields are
       // stamped only when the chain reaches resolution below; a take that stops
       // earlier (empty output, a thrown limb) must not carry the PREVIOUS take's
-      // language into its paste-completion event, where nil means
-      // `language_unsupported` and a stale code would judge edits under the
-      // wrong arm. Same shape as the `languageResolutionSource` clear in
-      // `deliver`; cleared to nil, never to a placeholder.
+      // language into its paste-completion event, where a stale code would be
+      // recorded as this take's evidence. Same shape as the
+      // `languageResolutionSource` clear in `deliver`; cleared to nil, never to
+      // a placeholder.
       outcome.cleanupLanguage = nil
       outcome.cleanupLanguageSource = nil
       outcome.cleanupLanguageBucket = nil

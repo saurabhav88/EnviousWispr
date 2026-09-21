@@ -21,12 +21,10 @@ import Testing
 
   private func inputs(
     userWords: [CustomWord] = [], packTerms: [CustomWord] = [], open: [String: UUID] = [:],
-    rejected: Set<String> = [], language: String? = "en",
-    supported: Set<String>? = ["en", "de", "es"]
+    rejected: Set<String> = []
   ) -> F.Inputs {
     F.Inputs(
-      userWords: userWords, packTerms: packTerms, openProposals: open, rejectedPairKeys: rejected,
-      dictationLanguage: language, supportedLanguages: supported)
+      userWords: userWords, packTerms: packTerms, openProposals: open, rejectedPairKeys: rejected)
   }
 
   private func disposition(_ r: EditAlignment.Run, _ inputs: F.Inputs) -> F.Disposition {
@@ -60,15 +58,15 @@ import Testing
     #expect(disposition(run("x", "'s"), inputs()) == .candidate(.newWord))
   }
 
-  @Test(
-    "no dictation language, an unsupported one, or an arm with no language evidence grants nothing")
-  func languageGate() {
-    let r = run("Sarah", "Saira")
-    #expect(disposition(r, inputs(language: nil)) == .ineligible(.languageUnsupported))
-    #expect(disposition(r, inputs(language: "ja")) == .ineligible(.languageUnsupported))
+  @Test("no language gate: the ineligibility vocabulary has no language member (founder 2026-09-21)")
+  func noLanguageGate() {
     #expect(
-      disposition(r, inputs(language: "en", supported: nil)) == .ineligible(.languageUnsupported))
-    #expect(disposition(r, inputs(language: "de")) == .candidate(.newWord))
+      F.IneligibleReason.allCases.map(\.rawValue) == [
+        "stopwordPhrase", "contractionEnding", "aliasOwnedElsewhere",
+      ])
+    // A run in any script is judged on its own merits.
+    #expect(disposition(run("さら", "サラ"), inputs()) == .candidate(.newWord))
+    #expect(disposition(run("Sarah", "Saira"), inputs()) == .candidate(.newWord))
   }
 
   // MARK: - Target resolution and ownership
@@ -145,14 +143,13 @@ import Testing
     #expect(disposition(r, inputs(rejected: [k])) == .rejected)
     // Casing of the pair does not evade the tombstone.
     #expect(disposition(run("sarah", "SAIRA"), inputs(rejected: [k])) == .rejected)
-    // Rejection outranks an open proposal, a covered target and the language gate.
+    // Rejection outranks an open proposal and a covered target.
     let open = UUID()
     #expect(disposition(r, inputs(open: [k: open], rejected: [k])) == .rejected)
     #expect(
       disposition(
         r, inputs(userWords: [CustomWord(canonical: "Saira", aliases: ["Sarah"])], rejected: [k]))
         == .rejected)
-    #expect(disposition(r, inputs(rejected: [k], language: nil)) == .rejected)
     // The reversed pair is a different key.
     #expect(disposition(run("Saira", "Sarah"), inputs(rejected: [k])) == .candidate(.newWord))
   }
@@ -173,8 +170,6 @@ import Testing
     #expect(
       disposition(r, inputs(userWords: [conflict], open: [k: open]))
         == .ineligible(.aliasOwnedElsewhere))
-    #expect(
-      disposition(r, inputs(open: [k: open], language: nil)) == .ineligible(.languageUnsupported))
   }
 
   // MARK: - Evidence

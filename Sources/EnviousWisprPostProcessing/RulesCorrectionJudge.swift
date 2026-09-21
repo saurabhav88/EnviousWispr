@@ -48,15 +48,6 @@ import Foundation
 // judgement and `CorrectionJudgeArmSelection` never consults it.
 package struct RulesCorrectionJudge: CorrectionJudging {
 
-  /// Languages whose script the similarity instrument was built for. The
-  /// non-English rows of the frozen report set are all in this set; a
-  /// language outside it is `language_unsupported` at the gate (§3.2),
-  /// never judged by rules it was not measured under.
-  package static let supportedLanguages: Set<String> = [
-    "en", "de", "es", "fr", "it", "pt", "nl", "sv", "da", "nb", "no", "fi", "pl", "cs", "ro",
-    "hu", "tr", "id", "ms",
-  ]
-
   /// Decision constants. Every value below is part of the execution
   /// identity: change one and the digest changes, so a frozen report scored
   /// under the old policy can never be read as evidence for the new one.
@@ -396,7 +387,6 @@ package struct RulesCorrectionJudge: CorrectionJudging {
       }),
       "families=" + v2DigestFields(families),
       "morphTails=" + v2DigestFields(tails),
-      "languages=" + v2DigestFields(supportedLanguages.sorted()),
     ].joined(separator: "\n")
 
     return SHA256.hash(data: Data(material.utf8))
@@ -407,7 +397,6 @@ package struct RulesCorrectionJudge: CorrectionJudging {
     let v = ProcessInfo.processInfo.operatingSystemVersion
     return CorrectionJudgeCapabilities(
       canRunOnThisMac: true,
-      supportedLanguages: supportedLanguages,
       executionIdentity: [
         "arm": "rules",
         "config_sha256": configDigest(policy: policy),

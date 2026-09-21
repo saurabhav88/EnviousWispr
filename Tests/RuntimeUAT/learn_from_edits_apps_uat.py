@@ -43,11 +43,10 @@ import wispr_eyes as w  # noqa: E402
 from ui_helpers import activate_app, element_frame, find_app_pid, find_element, get_attr, get_ax_app, perform_action, set_attr  # noqa: E402
 from learn_from_edits_uat import find_button_by_prefix  # noqa: E402
 
-# The carrier must still read as English to `DictationLanguageResolver` WITH the
-# mishearing in it (NLLanguageRecognizer: this sentence en=0.960; the shorter
-# "The invoices go to sorab." scores en=0.826, under the 0.90 floor, and the
-# watcher then skips the paste as `language_unsupported`; baseline finding
-# 2026-09-20). The short-sentence gap itself is a separate row of the plan.
+# The carrier is a plain English sentence with the mishearing in it. Its
+# language read no longer gates anything (every language is eligible, founder
+# 2026-09-21; the `language_unsupported` skip of the 2026-09-20 baseline is
+# gone), so the sentence is kept for continuity with the baseline scorecard.
 SENTENCE = "Please send the invoices for this month to sorab"
 # --paragraph: the same mishearing in the MIDDLE of a three-sentence paragraph
 # (founder, 2026-09-20: "let's try longer sentences, like full paragraphs").

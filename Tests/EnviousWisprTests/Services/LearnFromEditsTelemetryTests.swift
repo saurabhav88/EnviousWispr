@@ -154,7 +154,7 @@ struct LearnFromEditsTelemetryVocabularyTests {
   func vocabularies() {
     #expect(
       T.SkipReason.allCases.map(\.rawValue) == [
-        "toggle_off", "watch_active", "model_unavailable", "language_unsupported",
+        "toggle_off", "watch_active", "model_unavailable",
         "destination_mismatch", "secure_field", "no_focused_element",
       ])
     #expect(

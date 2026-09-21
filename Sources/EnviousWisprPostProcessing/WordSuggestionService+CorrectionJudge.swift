@@ -93,17 +93,15 @@ extension WordSuggestionService: CorrectionJudging {
     return "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion) \(availability)"
   }
 
-  /// Pure mapping from what the platform and the model report to the
-  /// capabilities contract: `canRunOnThisMac` is the PLATFORM floor only
-  /// (framework compiled and macOS 26+); a model that is present but turned
-  /// off in System Settings is runtime unavailability (`model_unavailable`
-  /// in plan §3.2), never "below the floor".
-  package static func capabilities(
-    platformSupported: Bool, modelAvailable: Bool, modelLanguages: Set<String>?
-  ) -> CorrectionJudgeCapabilities {
+  /// Pure mapping from what the platform reports to the capabilities
+  /// contract: `canRunOnThisMac` is the PLATFORM floor only (framework
+  /// compiled and macOS 26+); a model that is present but turned off in
+  /// System Settings is runtime unavailability, visible in the
+  /// `environment` identity (`afm-unavailable`) and in the judge's own
+  /// bypass, never "below the floor".
+  package static func capabilities(platformSupported: Bool) -> CorrectionJudgeCapabilities {
     CorrectionJudgeCapabilities(
       canRunOnThisMac: platformSupported,
-      supportedLanguages: platformSupported && modelAvailable ? modelLanguages : nil,
       executionIdentity: [
         "config_sha256": correctionJudgeConfigDigest,
         "environment": correctionJudgeEnvironment,
@@ -113,22 +111,10 @@ extension WordSuggestionService: CorrectionJudging {
   package var capabilities: CorrectionJudgeCapabilities {
     get async {
       var platform = false
-      var available = false
-      var languages: Set<String>? = nil
       #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
-          platform = true
-          available = SystemLanguageModel.default.availability == .available
-          if available {
-            languages = Set(
-              SystemLanguageModel.default.supportedLanguages.compactMap {
-                $0.languageCode?.identifier.lowercased()
-              })
-          }
-        }
+        if #available(macOS 26, *) { platform = true }
       #endif
-      return Self.capabilities(
-        platformSupported: platform, modelAvailable: available, modelLanguages: languages)
+      return Self.capabilities(platformSupported: platform)
     }
   }
 

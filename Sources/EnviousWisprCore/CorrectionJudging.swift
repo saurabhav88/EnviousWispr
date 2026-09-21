@@ -161,21 +161,20 @@ package struct CorrectionJudgeRequest: Sendable, Equatable {
 /// on availability transitions (plan §3.2).
 package struct CorrectionJudgeCapabilities: Sendable, Equatable {
   /// False when the judge can never run here (framework or OS floor).
+  ///
+  /// No language set: every dictation language is eligible (founder decision
+  /// 2026-09-21, "roll this out for every language, no restrictions"; the
+  /// toggle is the safety). The dictation language still travels in the
+  /// request and the eval record as evidence, never as a gate.
   package let canRunOnThisMac: Bool
-  /// Validated base language codes, or `nil` when the judge has no
-  /// validated set yet; a `nil` set never grants eligibility.
-  package let supportedLanguages: Set<String>?
   /// What actually runs: immutable digests (checkpoint, tokenizer, decision
   /// configuration) or, for an AFM arm, the OS/model environment and the
   /// prompt digest. Carried into every eval record so a result can never be
   /// scored under another build's training declaration.
   package let executionIdentity: [String: String]
 
-  package init(
-    canRunOnThisMac: Bool, supportedLanguages: Set<String>?, executionIdentity: [String: String]
-  ) {
+  package init(canRunOnThisMac: Bool, executionIdentity: [String: String]) {
     self.canRunOnThisMac = canRunOnThisMac
-    self.supportedLanguages = supportedLanguages
     self.executionIdentity = executionIdentity
   }
 }

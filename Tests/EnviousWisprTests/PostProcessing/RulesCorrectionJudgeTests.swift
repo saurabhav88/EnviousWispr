@@ -148,14 +148,6 @@ struct RulesCorrectionJudgeTests {
     #expect(caps.executionIdentity["environment"]?.hasPrefix("macOS ") == true)
   }
 
-  @Test("the supported languages are the Latin-script set the instrument was built for")
-  func languages() {
-    let set = RulesCorrectionJudge.supportedLanguages
-    #expect(set.isSuperset(of: ["en", "de", "es", "fr", "it", "pt"]))
-    #expect(set.isDisjoint(with: ["ja", "zh", "ko", "hi", "ar", "ru"]))
-    #expect(set == RulesCorrectionJudge.capabilities(policy: .v2).supportedLanguages)
-  }
-
   @Test("a run longer than the policy allows on either side is a rewording")
   func longRuns() {
     #expect(judge.classify(original: "a b c d e", replacement: "AWS") == false)
