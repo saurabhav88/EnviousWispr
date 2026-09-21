@@ -485,6 +485,7 @@ struct PastedRegionObserverWatchTests {
   let target: PastedRegionTarget
   final class Events {
     var list: [PastedRegionEvent] = []
+    var lines: [String] = []
   }
   let events = Events()
 
@@ -630,6 +631,74 @@ struct PastedRegionObserverWatchTests {
     #expect(observer.isObserving)
     scheduler.advance(ms: 750)
     #expect(events.list == [.ended(.captureUnsupported)])
+  }
+
+  @Test(
+    "a box that stops answering right after a good read saw the fix flushes that fix (a send in another shape); the same three failures with no fix seen flush nothing"
+  )
+  func lostBoxAfterSeenFixFlushes() {
+    // WhatsApp 2026-09-21: fix typed, Return pressed inside the settle window,
+    // the old composer element answered nothing three times. Every failure
+    // kind the poll can record is a lost box, except `unstable` (next test).
+    let runs: [[PastedRegionValueRead]] = [
+      [.failed(.cannotComplete), .failed(.cannotComplete), .failed(.cannotComplete)],
+      [.failed(.invalidUIElement), .absent, .notText],
+      [.absent, .absent, .absent],
+    ]
+    for run in runs {
+      let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+      let e = Events()
+      ax.reads = [.text("Note: Ask Sarah today please")]
+      o.start(target) { e.list.append($0) }
+      ax.reads = [.text("Note: Ask Saira today please")]
+      scheduler.advance(ms: 750)
+      ax.reads = run
+      scheduler.advance(ms: 750 * 3)
+      #expect(
+        e.list == [.changed(region: "Ask Saira today"), .settled(region: "Ask Saira today"), .ended(.captureUnsupported)],
+        "\(run)")
+    }
+    // No fix seen before the box went away: nothing to act on.
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o.start(target) { e.list.append($0) }
+    scheduler.advance(ms: 750)
+    ax.reads = [.absent, .absent, .absent]
+    scheduler.advance(ms: 750 * 3)
+    #expect(e.list == [.ended(.captureUnsupported)])
+  }
+
+  @Test("an unstable read in the failure run means a person was still typing: the lost box does not flush")
+  func lostBoxWithUnstableReadDoesNotFlush() {
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler)
+    let e = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o.start(target) { e.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.reads = [.absent, .unstable, .absent]
+    scheduler.advance(ms: 750 * 3)
+    #expect(e.list == [.changed(region: "Ask Saira today"), .ended(.captureUnsupported)])
+  }
+
+  @Test("the diagnostic log names each failed read's kind and the lost-box verdict, never the text")
+  func lostBoxLogLines() {
+    let lines = Events()
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
+    let e = Events()
+    ax.reads = [.text("Note: Ask Sarah today please")]
+    o.start(target) { e.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    ax.reads = [.failed(.cannotComplete), .absent, .notText]
+    scheduler.advance(ms: 750 * 3)
+    #expect(lines.lines.count == 4)
+    #expect(lines.lines[0] == "learn_read_failed n=1/3 kind=failed(\(AXError.cannotComplete.rawValue)) pending_fix=true")
+    #expect(lines.lines[1] == "learn_read_failed n=2/3 kind=absent pending_fix=true")
+    #expect(lines.lines[2] == "learn_read_failed n=3/3 kind=notText pending_fix=true")
+    #expect(lines.lines[3] == "learn_lost_box reason=capture_unsupported flushed=true reads=failed(\(AXError.cannotComplete.rawValue)),absent,notText")
+    #expect(lines.lines.allSatisfy { !$0.contains("Saira") && !$0.contains("Sarah") })
   }
 
   @Test(

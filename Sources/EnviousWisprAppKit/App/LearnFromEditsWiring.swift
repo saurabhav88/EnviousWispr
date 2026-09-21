@@ -223,7 +223,11 @@ final class LearnFromEditsWiring {
     // One scheduler for the observer and the watcher's paste clock, so the
     // deadline and the observation share a time base.
     let scheduler = scheduler ?? TaskPastedRegionScheduler()
-    let observer = observer ?? PastedRegionObserver(ax: LivePastedRegionAXOperations(), scheduler: scheduler)
+    let observer =
+      observer
+      ?? PastedRegionObserver(
+        ax: LivePastedRegionAXOperations(), scheduler: scheduler,
+        log: { line in Task { await AppLogger.shared.log(line, category: "LearnFromEdits") } })
     // `self` is not available to the closures yet; a box hands the watcher a
     // stable reference the moment `self` exists.
     let box = SelectionBox()
