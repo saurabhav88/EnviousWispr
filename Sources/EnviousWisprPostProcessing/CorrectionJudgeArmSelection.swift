@@ -70,19 +70,44 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
   /// (2026-09-21): the bundled delivery manifest names the fp16 package
   /// `3b376fbc-ec68ad6e` (mmbert-v15 exported under the half-precision
   /// decision-parity bar: zero decision flips on every compute unit, logit
-  /// drift reported, `convert_edit_judge.VARIANT_LOGIT_TOLERANCE`). Exam v2
-  /// receipt `2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2` on macOS 27:
-  /// PASS, correction recall 1012/1064 = 0.951, false-proposal rate
-  /// 18/2498 = 0.0072, every per-kind guardrail met, latency p50 3.1 ms. The
+  /// drift reported, `convert_edit_judge.VARIANT_LOGIT_TOLERANCE`). The
   /// digest is the loader's composite classifier identity, equal to the
   /// manifest's `runtimeIdentityDigest` (`EditJudgeManifestTests` pins the
-  /// equality), so the row names the exact examined bytes. Another macOS
-  /// major joins the set only with its own exam run on such a machine.
+  /// equality), so every row names the exact examined bytes. One row per
+  /// macOS major, each with its own exam v2 receipt (frozen under
+  /// `artifacts/issue-996-edit-judge/frozen/`, host recorded in
+  /// `scorecard.json["host"]`):
+  ///
+  /// - macOS 27, the founder's M4 Pro, Neural Engine: PASS, correction
+  ///   recall 1012/1064 = 0.951, false-proposal rate 18/2498 = 0.0072, every
+  ///   per-kind guardrail met, latency p50 3.1 ms.
+  /// - macOS 26 and macOS 15, hosted GitHub runners (`Apple M1 (Virtual)`,
+  ///   `virtual: true`, CPU path; virtual Macs expose no Neural Engine):
+  ///   PASS, identical decisions on both, recall 1012/1064, false 19/2498 =
+  ///   0.0076 (one more than the Neural Engine run, the same count as the
+  ///   fp32 twin), every guardrail met, p50 13.7 ms (26) and 102 ms (15) on
+  ///   a virtual M1 CPU.
+  ///
+  /// Founder decision 2026-09-21: macOS 15 and 26 are qualified on their
+  /// own CPU receipts while the macOS 14 bare-metal Neural Engine exam is
+  /// pending; macOS 27 supplies the top-end Neural Engine receipt. The
+  /// residual risk is a Neural Engine compiler or placement defect specific
+  /// to 15 or 26. Existing telemetry reports load, execution and bypass
+  /// failures, but cannot identify a valid-looking wrong decision as a
+  /// compiler defect. macOS 14 joins only with its own receipt.
   package static let qualified: [CorrectionJudgeQualification] = [
     CorrectionJudgeQualification(
       arm: .classifier, osMajors: [27],
       configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
-      receipt: "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2")
+      receipt: "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2"),
+    CorrectionJudgeQualification(
+      arm: .classifier, osMajors: [26],
+      configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
+      receipt: "2026-09-21T18-34-51Z-xenc-mmbert-small-exam-v2-macos26"),
+    CorrectionJudgeQualification(
+      arm: .classifier, osMajors: [15],
+      configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
+      receipt: "2026-09-21T18-34-55Z-xenc-mmbert-small-exam-v2-macos15"),
   ]
 
   /// Whether this build qualifies THE classifier the bundled manifest names

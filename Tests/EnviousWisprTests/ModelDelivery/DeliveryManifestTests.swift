@@ -421,11 +421,12 @@ enum ManifestFixture {
 /// `CoreMLCorrectionJudge` binds at load) is asserted through the weights
 /// file's SHA-256, which is the one file whose bytes decide the model.
 ///
-/// QUALIFIED (2026-09-21): exam v2 receipt
-/// `2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2` on macOS 27 (PASS,
-/// 1012/1064 recall, 18/2498 false proposals) under the half-precision
-/// decision-parity bar; `CorrectionJudgeArmSelection.qualified` names this
-/// manifest's `runtimeIdentityDigest`, which is what turns the download on.
+/// QUALIFIED (2026-09-21): exam v2 receipts on macOS 15, 26 and 27 (PASS
+/// on each, 1012/1064 recall; 18/2498 false proposals on the macOS 27
+/// Neural Engine run, 19/2498 on the hosted CPU runs), all under the
+/// half-precision decision-parity bar. `CorrectionJudgeArmSelection.qualified`
+/// binds every receipt to this manifest's `runtimeIdentityDigest`, which is
+/// what turns the download on.
 /// A re-export mints a new package digest even over identical weights (the
 /// package carries a fresh model id), so the identity, the revision and the
 /// golden digest move together and the weights digest need not.
@@ -466,10 +467,22 @@ enum ManifestFixture {
     // the fetch policy may start the download; the bundled manifest and the
     // qualification row cannot drift apart without this line going red.
     #expect(CorrectionJudgeArmSelection.classifierIsQualifiedSomewhere(digest: manifest.runtimeIdentityDigest) == true)
+    // One row per examined major, every row naming the delivered bytes and
+    // its own receipt (2026-09-21: 27 on the Neural Engine, 26 and 15 on
+    // hosted CPU runners; 14 joins with its bare-metal receipt).
+    // Every classifier row is validated BEFORE any filtering, so a stray row
+    // with a wrong digest or a second major cannot hide behind the good ones.
+    let classifierRows = CorrectionJudgeArmSelection.qualified.filter { $0.arm == .classifier }
+    #expect(classifierRows.count == 3)
     #expect(
-      CorrectionJudgeArmSelection.qualified.contains {
-        $0.arm == .classifier && $0.configDigest == manifest.runtimeIdentityDigest && $0.osMajors == [27]
+      classifierRows.allSatisfy {
+        $0.configDigest == manifest.runtimeIdentityDigest && $0.osMajors.count == 1
       })
+    #expect(Set(classifierRows.compactMap { $0.osMajors.first }) == [15, 26, 27])
+    #expect(Set(classifierRows.map(\.receipt)).count == classifierRows.count, "each major cites its own receipt")
+    #expect(classifierRows.first { $0.osMajors == [27] }?.receipt == "2026-09-21T13-22-50Z-xenc-mmbert-small-exam-v2")
+    #expect(classifierRows.first { $0.osMajors == [26] }?.receipt == "2026-09-21T18-34-51Z-xenc-mmbert-small-exam-v2-macos26")
+    #expect(classifierRows.first { $0.osMajors == [15] }?.receipt == "2026-09-21T18-34-55Z-xenc-mmbert-small-exam-v2-macos15")
 
     let byPath = Dictionary(uniqueKeysWithValues: manifest.files.map { ($0.path, $0) })
     // Everything `CoreMLCorrectionJudge.load` reads from a delivered folder.
