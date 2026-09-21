@@ -34,6 +34,10 @@ final class AppLifecycleCoordinator {
   private var audioSystemEventReporter: AudioSystemEventReporter?
   // periphery:ignore - retain anchor: owns app-activation observer lifetime
   private var accessibilityWarmupObserver: AccessibilityWarmupObserver?
+  // #3062: one local scroll-wheel monitor for the whole process, built by the
+  // bootstrapper with the live desktop seam; started here, stopped in
+  // `runWillTerminate`. Every wheel decision lives on the smoother.
+  private let wheelScrollSmoother: WheelScrollSmoother
 
   #if DEBUG
     /// V2 fault-injection control surface (issue #291). Started only when
@@ -98,6 +102,7 @@ final class AppLifecycleCoordinator {
 
   init(
     application: any ApplicationActivating,
+    wheelScrollSmoother: WheelScrollSmoother,
     settings: SettingsManager,
     permissions: PermissionsService,
     keychainManager: KeychainManager,
@@ -128,6 +133,7 @@ final class AppLifecycleCoordinator {
   ) {
     self.application = application
     self.onRecordingStarted = onRecordingStarted
+    self.wheelScrollSmoother = wheelScrollSmoother
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
@@ -384,6 +390,11 @@ final class AppLifecycleCoordinator {
     let warmupObserver = AccessibilityWarmupObserver()
     warmupObserver.start()
     accessibilityWarmupObserver = warmupObserver
+
+    // #3062: a clicking mouse wheel moved the page 7 points per notch in one
+    // frame (reporter's video, discussion #3059); Chrome moves about 100 with a
+    // glide. The smoother rewrites only non-precise wheel events.
+    wheelScrollSmoother.start()
   }
 
   func runDidBecomeActive() {
@@ -439,5 +450,7 @@ final class AppLifecycleCoordinator {
 
     accessibilityWarmupObserver?.stop()
     accessibilityWarmupObserver = nil
+
+    wheelScrollSmoother.stop()
   }
 }

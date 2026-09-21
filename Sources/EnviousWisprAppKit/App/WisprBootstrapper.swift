@@ -166,6 +166,10 @@ package final class WisprBootstrapper {
   package init(
     makeHotkeyEffects: () -> any DesktopHotkeyEffects,
     presentationEffects: DesktopPresentationEffects,
+    // #3062: the live scroll-wheel monitor seam. Required and non-defaulted for
+    // the same reason `makeHotkeyEffects` is: a default would let this
+    // test-linked module install a monitor on the developer's desktop.
+    scrollWheelMonitor: any ScrollWheelMonitoring,
     relocationRelauncher: any RelocationRelaunching,
     overlayEffects: DesktopOverlayEffects,
     // #1413: the output-volume and media-player seams. Required and non-defaulted
@@ -1417,6 +1421,7 @@ package final class WisprBootstrapper {
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
       application: presentationEffects.application,
+      wheelScrollSmoother: WheelScrollSmoother(monitor: scrollWheelMonitor),
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,

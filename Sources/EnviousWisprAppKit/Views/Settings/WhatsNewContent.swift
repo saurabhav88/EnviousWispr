@@ -57,6 +57,17 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.5.1
 
+    // #3062: a clicking mouse wheel moved the page a few points per click in one frame
+    // (reporter's video, discussion #3059). Same unshipped 2.5.1 group.
+    Entry(
+      id: "mouse-wheel-scrolling-glides",
+      icon: "computermouse",
+      title: "Mouse wheel scrolling glides",
+      description:
+        "Mouse wheel scrolling now moves farther per notch with a short smooth glide, while trackpad scrolling stays unchanged.",
+      version: "2.5.1"
+    ),
+
     // #2997 PR-A, merged onto main after v2.5.0 shipped (tag v2.5.0 exists), so this entry
     // opens a new group per whats-new-protocol.md FACT: whats-new-grouping.
     // currentContentVersion bumped to match.

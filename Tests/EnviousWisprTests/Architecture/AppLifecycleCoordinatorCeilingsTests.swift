@@ -64,6 +64,11 @@ import Testing
 /// watch without a second pipeline observer. Stored, not captured, because that
 /// closure is installed in `applicationDidFinishLaunching`, after `init` returns;
 /// non-private method count unchanged.
+/// Bible §30 entry (#3062, 2026-09-21): `wheelScrollSmoother` added as one
+/// injected `let` (the bootstrapper builds it with the live desktop monitor
+/// seam): the coordinator only starts it at launch and stops it at quit; every
+/// scroll-wheel decision lives on `WheelScrollSmoother`. Allowlist +1; the
+/// literal below now lists 28 names; non-private method count and imports unchanged.
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
@@ -102,6 +107,7 @@ import Testing
     // pipeline-state closure this type already owns calls it on `.recording`,
     // so the watcher learns of a new dictation without a second observer.
     "onRecordingStarted",
+    "wheelScrollSmoother",  // #3062
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -114,7 +120,7 @@ import Testing
       extras.isEmpty && missing.isEmpty,
       """
       AppLifecycleCoordinator stored-property set drifted from the \
-      25-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      28-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.
