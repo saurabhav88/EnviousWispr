@@ -341,7 +341,7 @@ struct CorrectionProposalCoordinatorObservationTests {
 
 // MARK: - Learning row
 
-@Suite("Learn from my edits row (#996 §3.9)", .tags(.productOutcome))
+@Suite("Self-Learning Dictionary row (#996 §3.9)", .tags(.productOutcome))
 struct LearnFromEditsRowTests {
 
   @Test("an arm enables the row with no reason line; each unavailable reason disables it with its own line")
@@ -405,13 +405,20 @@ struct LearnFromEditsRowTests {
     #expect(availability.presentation.isEnabled)
   }
 
-  @Test("the row copy is §3.9's, word for word, and no longer claims edits stay on this Mac")
+  @Test("the row is the founder's 2026-09-21 copy, word for word, with the help article behind Learn more")
   func rowCopy() {
+    #expect(LearnFromEditsSettingsPresentation.rowTitle == "Self-Learning Dictionary")
     let copy = LearnFromEditsSettingsPresentation.rowCopy
     #expect(
       copy
-        == "When you fix a word in text EnviousWispr just pasted, it asks whether to remember the correction. Suggestions you don't answer wait in Dictionary → Pending. Remembered words work like your other custom words, including in cloud polish if you use it. Nothing is sent to Envious Labs.")
-    #expect(!copy.contains("stay on this Mac"))
+        == "Automatically detects when you correct a dictation and suggests the corrected word for your dictionary. Review suggestions anytime in Dictionary → Pending.")
+    #expect(copy.contains("stay on this Mac") == false)
+    // The privacy sentences moved to the article; the row must not half-carry them.
+    #expect(copy.contains("Envious Labs") == false)
+    #expect(LearnFromEditsSettingsPresentation.learnMoreLabel == "Learn more")
+    let url = URL(string: LearnFromEditsSettingsPresentation.learnMoreURL)
+    #expect(url?.host() == "enviouswispr.com")
+    #expect(url?.path() == "/help/self-learning-dictionary/")
   }
 }
 
