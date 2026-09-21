@@ -708,13 +708,14 @@ struct CorrectionProposalCardViewTests {
   }
 
   @Test(
-    "a long single word shrinks onto one line instead of breaking inside the word: the card is no taller than with short words"
+    "a long single word stays on one line: the card is no taller than with short words"
   )
-  func longWordShrinksInsteadOfWrapping() {
+  func longWordDoesNotWrap() {
     // Founder UAT 2026-09-21 in WhatsApp: "EnviousStaging" broke as
-    // "EnviousStagin / g" at 26 pt on the right column. With one line per
-    // word and a minimum scale, both columns keep the card's short-word
-    // height; before the change the right column grew by a full line.
+    // "EnviousStagin / g" at 26 pt on the right column. This size relation
+    // binds the no-wrap geometry. RenderedPillHarness cannot distinguish
+    // scaled glyphs from truncation; visible full-word rendering is owned by
+    // Live UAT.
     let short = RenderedPillHarness.rootSize(for: .correctionProposal(CorrectionCardFixture.model()))
     let long = RenderedPillHarness.rootSize(
       for: .correctionProposal(

@@ -12,9 +12,8 @@ import SwiftUI
 /// earlier plan text on 20 Sep: the state line has a plain lead and an
 /// emphasised outcome, and the result is one sentence behind a mark.
 enum CorrectionProposalCardCopy {
-  /// The two words shrink down to this fraction of 26 pt (about 13 pt, the
-  /// state line's size) before SwiftUI would truncate; a 440-wide card fits
-  /// roughly 45 characters per side at the floor.
+  /// The two words shrink down to this fraction of 26 pt, about 13 pt and
+  /// close to the state line's size, before SwiftUI truncates an even longer term.
   static let wordMinimumScale = 0.5
   static let misheardLabel = "MISHEARING"
   static let correctLabel = "CORRECT WORD"
