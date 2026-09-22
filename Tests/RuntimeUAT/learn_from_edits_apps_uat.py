@@ -699,7 +699,7 @@ def main():
             rows.append(row)
             print(f"  {row.get('outcome')}  heard={row.get('heard')!r} tier={row.get('paste_tier')}", flush=True)
             d.save("rows.json", rows)
-            time.sleep(2.5)  # settle: the 2 s Undo pill leaves on its own before the cleanup keys; nothing may press it
+            time.sleep(3.5)  # settle: the 3 s Undo pill leaves on its own before the cleanup keys; nothing may press it
             if pid is not None:
                 try:
                     cleanup(app, pid, doc)

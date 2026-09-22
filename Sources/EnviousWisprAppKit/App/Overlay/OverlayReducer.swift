@@ -672,11 +672,11 @@ struct OverlayReducer {
   //   slot holds                 | event                              | result
   //   ---------------------------|------------------------------------|------------------------------------------
   //   pipeline busy              | learned                            | refused (noChange): the word is saved, no Undo
-  //   empty, idle                | learned (.learned phase)           | admitted: 2 s dwell, hover does not pause
+  //   empty, idle                | learned (.learned phase)           | admitted: 3 s dwell, hover does not pause
   //   empty, idle                | learned (result phase)             | refused: a result cannot create a pill
   //   another feature/notice     | learned                            | refused: never displace anything else
   //   this pill, .learned        | learned, same model                | noChange: identity, binding and dwell kept
-  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 2 s, one end effect for the outgoing .learned
+  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 3 s, one end effect for the outgoing .learned
   //   this pill, .learned        | result(pillID, presentation)       | morph: button gone, fresh 1.5 s (undone) or 3 s (undoError)
   //   this pill, result          | result / learned                   | noChange: a result never goes back
   //   this pill, any phase       | close(pillID)                      | slot emptied, expiry cancelled, no end effect

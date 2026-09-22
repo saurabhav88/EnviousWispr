@@ -7,7 +7,7 @@ founder's pre-PR gate, end to end.
 Run with the screen UNLOCKED and hands off the Mac. It dictates a sentence
 through the speaker into a real TextEdit document, makes a scripted fix through
 accessibility, waits for the word to be SAVED (`learn_added`) and for the
-2-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
+3-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
 lets another pill expire under the pointer, reads Your Words for the sparkle
 and the Auto-learned filter, and reads every verdict from `app.log` and from
 `custom-words.json`. Every step waits on a SIGNAL the app produces, with a
@@ -19,7 +19,7 @@ inside a wall-clock bound, plus the word still being in the file.
 Codified AFTER a hand-driven round 1 (founder 2026-09-20: the first UAT round
 is driven by hand, the script comes after) and rewritten for the 2026-09-21
 pivot (no question to answer, no waiting list: the word is added at once and a pill
-offers Undo for 2 seconds; hover does not pause it). What round 1 taught this
+offers Undo for 3 seconds; hover does not pause it). What round 1 taught this
 file still holds: the heard form is whatever the recogniser DELIVERED between
 two anchor words, never a fixed regex; the target must be a word the
 recogniser does not already know; `custom-words.json` is a dictionary, so
@@ -513,7 +513,7 @@ def clear_field(path):
 
 def undo_button():
     """The Undo pill's one button, by its accessibility label. The pill shows
-    for 2 seconds after admission, so callers wait on `learn_undo_shown` first
+    for 3 seconds after admission, so callers wait on `learn_undo_shown` first
     and look with a short deadline."""
     pid = app_pid()
     if pid is None:
@@ -679,7 +679,7 @@ def alias_landed(pair, heard_text):
 
 
 def press_undo(label):
-    """Find and press the pill's Undo button. The window is 2 seconds from
+    """Find and press the pill's Undo button. The window is 3 seconds from
     admission, so the search deadline is short and a miss is the rig's
     timing (INSTRUMENT), not the product."""
     button = wait_for("the pill's Undo button", undo_button, deadline=1.5)
@@ -753,7 +753,7 @@ def park_pointer():
 
 
 def hover_pill():
-    """Put the pointer ON the pill. The 2-second window must not pause or
+    """Put the pointer ON the pill. The 3-second window must not pause or
     extend (founder: "hovering over pill does not stop the timer")."""
     frame = pill_frame()
     if frame is None:
@@ -763,9 +763,9 @@ def hover_pill():
 
 
 def case_expiry_under_hover(path):
-    """No Undo pressed: the pill leaves by itself at 2 seconds with the pointer
+    """No Undo pressed: the pill leaves by itself at 3 seconds with the pointer
     over it, and the word stays. The app logs no "pill ended" token; the
-    verdict is the Undo button's absence inside a wall-clock bound (2 s plus
+    verdict is the Undo button's absence inside a wall-clock bound (3 s plus
     0.5 s of accessibility slack) with no `learn_undone`, plus the word in
     the file afterwards. The pointer must have reached the pill."""
     pair = PAIRS["expiry-under-hover"]
@@ -781,14 +781,14 @@ def case_expiry_under_hover(path):
     hovered = hover_pill()
     if not screenshot("expiry-under-hover-pill.png"):
         raise Aborted("expiry-under-hover: the pill screenshot is missing or empty (visual proof required)")
-    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=3.5)
+    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=4.5)
     left_after = time.monotonic() - shown_at
     park_pointer()
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
     undone = has(mark, "learn_undone")
     # `hovered` is REQUIRED: a run that never reached the pill would prove
     # only that pills expire, not that hover leaves the window alone.
-    ok = hovered and bool(gone) and left_after <= 2.5 and not undone and bool(persisted)
+    ok = hovered and bool(gone) and left_after <= 3.5 and not undone and bool(persisted)
     return check("expiry-under-hover", ok,
                  f"heard={heard!r} hovered={hovered} pill_gone={bool(gone)} left_after_s={left_after:.2f} undone={undone} persisted={bool(persisted)}")
 

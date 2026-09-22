@@ -18,7 +18,7 @@ When EnviousWispr pastes a dictation and you then fix one word in it by hand, th
 
 **Read the pill.** A pill appears where the EnviousWispr pill lives (the top of your screen unless you moved it). For a name EnviousWispr did not know it says **Added “Saoirse” to Dictionary**. If Saoirse was already in Your Words, or came from one of your vocabulary packs, it says **“Saoirse” updated**, because the mishearing was attached to the word you already had. Either way the word is saved before the pill appears.
 
-**Undo it if you want.** The pill carries one **Undo** button and stays for 2 seconds. Moving your pointer over it does not pause or extend that window. Click Undo and the pill says **Undone** for 1.5 seconds: a new word is removed, and an updated word goes back exactly to what it was before. Leave the pill alone and the word stays; there is nothing else to answer, now or later.
+**Undo it if you want.** The pill carries one **Undo** button and stays for 3 seconds. Moving your pointer over it does not pause or extend that window. Click Undo and the pill says **Undone** for 1.5 seconds: a new word is removed, and an updated word goes back exactly to what it was before. Leave the pill alone and the word stays; there is nothing else to answer, now or later.
 
 **Change your mind later.** Open **Settings** \> **Dictionary** \> **Your Words**. Words the Self-Learning Dictionary added carry a small sparkle, and so does each sound-alike it attached to a word you added yourself. Choose the **Auto-learned** filter to see only those. Edit or delete them the way you would any other word.
 
