@@ -198,6 +198,14 @@ test_targets_and_permitted() {
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
     EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
+    # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
+    # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);
+    # nothing compiles them in. The empty list is the contract: a fixture may
+    # import Apple frameworks only, never an app module, so a fixture that
+    # imports one is reported instead of silently passing. Unlisted, the
+    # directory tripped the unknown-target check below and turned the script
+    # red on main for two weeks with no caller in CI to notice (#3095).
+    Fixtures) echo "" ;;
     *) return 1 ;;
   esac
 }

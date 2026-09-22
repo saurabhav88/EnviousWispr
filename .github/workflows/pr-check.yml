@@ -544,6 +544,21 @@ jobs:
           # this ubuntu aggregator can hold it.
           scripts/ci/configure-compilation-cache.sh --self-test
 
+      - name: Dependency direction (#3095)
+        run: |
+          set -euo pipefail
+          # The module graph does not enforce itself under Xcode (measured
+          # 2026-08-26, recorded in the script): this grep IS the wall between
+          # modules and between the unit suite and the desktop. PR #508 moved it
+          # out of CI into the local push hook so the catch happens before the
+          # push, with CI as the backstop; the backstop never landed. Measured
+          # cost of that: the script was red on main from #2707 (2026-09-08)
+          # until #3095, unnoticed: the hook only sees pushes made from one
+          # tool on one machine, and its audit log holds none of the four
+          # source PRs that landed last. Runs here, in the required aggregator,
+          # because it needs only bash and grep and finishes in under a second.
+          bash scripts/check-dependency-direction.sh
+
       - name: Lane verdict self-test (#2401)
         run: |
           set -euo pipefail
