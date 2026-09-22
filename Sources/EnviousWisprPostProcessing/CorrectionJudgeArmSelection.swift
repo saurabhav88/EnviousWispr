@@ -87,14 +87,18 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
   ///   0.0076 (one more than the Neural Engine run, the same count as the
   ///   fp32 twin), every guardrail met, p50 13.7 ms (26) and 102 ms (15) on
   ///   a virtual M1 CPU.
+  /// - macOS 14 (14.8.9), an AWS EC2 mac2.metal dedicated host: bare-metal
+  ///   Apple M1 Mac mini, `virtual: false`, Neural Engine present (probe:
+  ///   839 ops placed on the Neural Engine, parity with the CPU path): PASS,
+  ///   recall 1012/1064 = 0.951, false 18/2498 = 0.0072 (the macOS 27
+  ///   count), every guardrail met, p50 4.96 ms.
   ///
   /// Founder decision 2026-09-21: macOS 15 and 26 are qualified on their
-  /// own CPU receipts while the macOS 14 bare-metal Neural Engine exam is
-  /// pending; macOS 27 supplies the top-end Neural Engine receipt. The
-  /// residual risk is a Neural Engine compiler or placement defect specific
-  /// to 15 or 26. Existing telemetry reports load, execution and bypass
-  /// failures, but cannot identify a valid-looking wrong decision as a
-  /// compiler defect. macOS 14 joins only with its own receipt.
+  /// own CPU receipts; the floor (14) and the top (27) supply the two
+  /// Neural Engine receipts on real hardware. The residual risk is a Neural
+  /// Engine compiler or placement defect specific to 15 or 26. Existing
+  /// telemetry reports load, execution and bypass failures, but cannot
+  /// identify a valid-looking wrong decision as a compiler defect.
   package static let qualified: [CorrectionJudgeQualification] = [
     CorrectionJudgeQualification(
       arm: .classifier, osMajors: [27],
@@ -108,6 +112,10 @@ package enum CorrectionJudgeArmSelection: Sendable, Equatable {
       arm: .classifier, osMajors: [15],
       configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
       receipt: "2026-09-21T18-34-55Z-xenc-mmbert-small-exam-v2-macos15"),
+    CorrectionJudgeQualification(
+      arm: .classifier, osMajors: [14],
+      configDigest: "eb570c8044d8a769e4719a429560430cd96be204759fe3c783fde80b5468038d",
+      receipt: "2026-09-22T02-18-33Z-xenc-mmbert-small-exam-v2-macos14"),
   ]
 
   /// Whether this build qualifies THE classifier the bundled manifest names
