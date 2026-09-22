@@ -1,7 +1,9 @@
+import AppKit
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -138,6 +140,22 @@ struct LearnedCorrectionPillCopyTests {
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
     #expect(CorrectionLearnedPillCopy.errorDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.minimumScale == 0.5)
+  }
+
+  @Test("a very long word cannot push the Undo button off the screen: the pill's fitting width is capped")
+  @MainActor func longWordStaysOnScreen() {
+    let long = String(repeating: "Supercalifragilistic", count: 25)  // 500 scalars, the stored limit's neighbourhood
+    let model = LearnedPillFixture.model(canonical: long, kind: .added)
+    let host = NSHostingView(rootView: CorrectionLearnedPillView(model: model, onUndo: {}))
+    host.layoutSubtreeIfNeeded()
+    let width = host.fittingSize.width
+    // The sentence is capped, and the button plus paddings ride beside it.
+    #expect(width <= CorrectionLearnedPillCopy.maximumSentenceWidth + 140, "fitting width \(width)")
+    // Control: a short word is narrower than the cap.
+    let short = NSHostingView(
+      rootView: CorrectionLearnedPillView(model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}))
+    short.layoutSubtreeIfNeeded()
+    #expect(short.fittingSize.width < CorrectionLearnedPillCopy.maximumSentenceWidth)
   }
 
   @Test(

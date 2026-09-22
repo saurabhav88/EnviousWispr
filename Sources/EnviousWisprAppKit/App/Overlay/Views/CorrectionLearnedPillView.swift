@@ -15,8 +15,13 @@ enum CorrectionLearnedPillCopy {
   /// `Couldn’t undo` and `Couldn’t save “…”` show for this long.
   static let errorDwellSeconds = 3.0
   /// The sentence shrinks to half its size before SwiftUI truncates a very
-  /// long word (the #3089 long-word rule).
+  /// long word (the #3089 long-word rule). The cap gives the measured pill a
+  /// finite width to shrink INTO: without one the host measures the ideal
+  /// width, the scale never engages, and a 512-scalar word would push the
+  /// Undo button off the screen (final review 2026-09-22). 400 is the old
+  /// card's Live Preview width.
   static let minimumScale = 0.5
+  static let maximumSentenceWidth: CGFloat = 400
 
   static let undo = "Undo"
   static let undone = "Undone"
@@ -70,6 +75,7 @@ struct CorrectionLearnedPillView: View {
         .foregroundStyle(line.isError ? Color.red.opacity(0.9) : .white)
         .lineLimit(1)
         .minimumScaleFactor(CorrectionLearnedPillCopy.minimumScale)
+        .frame(maxWidth: CorrectionLearnedPillCopy.maximumSentenceWidth)
         .accessibilityLabel(CorrectionLearnedPillCopy.announcement(for: model))
       if line.showsUndo {
         Button(action: onUndo) {
@@ -101,6 +107,7 @@ struct CorrectionLearnedSaveErrorView: View {
       .foregroundStyle(Color.red.opacity(0.9))
       .lineLimit(1)
       .minimumScaleFactor(CorrectionLearnedPillCopy.minimumScale)
+      .frame(maxWidth: CorrectionLearnedPillCopy.maximumSentenceWidth)
       .padding(.horizontal, 14)
       .padding(.vertical, 10)
       .background(OverlayCapsuleBackground())

@@ -384,6 +384,12 @@ final class LearnedCorrectionCoordinator {
       return .stale
     }
     undoRecord = nil
+    // Known limit (final review 2026-09-22): this reads the live list THIS
+    // process holds. A second instance of the app writing the same word to
+    // the shared file inside the two-second window is not seen here; the
+    // manager's own reload-before-write applies the inverse by id. Two
+    // instances never run together outside a dev-and-release UAT, and a
+    // locked compare-and-write transaction would be a new manager contract.
     let live = vocabulary.userWords().first { $0.id == record.wordID }
     guard live == record.postSave else {
       telemetry.learnUndone(kind: record.kind, outcome: .alreadyChanged)
