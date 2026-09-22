@@ -343,8 +343,10 @@ enum PillCatalog {
         requestedWidth: .fixed(320))
 
     case .correctionLearned(let model):
-      // 2026-09-21 plan §3.1 step 9: two seconds, and hover does NOT pause it
-      // (founder: "hovering over pill does not stop the timer"). Measured
+      // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
+      // (founder, live UAT: "the pill wasn't there long enough"). Hover still
+      // does NOT pause it (founder: "hovering over pill does not stop the
+      // timer"). Measured
       // width: the view pins none, and the sentence shrinks to fit one line.
       // The `Undone` / `Couldn’t undo` results re-arm their own dwell in the
       // reducer.

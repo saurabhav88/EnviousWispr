@@ -59,7 +59,8 @@ enum WhatsNewContent {
 
     // #996: the Self-Learning Dictionary (PRs #3054, #3072, #3079, #3083, #3090, #3094 and
     // the auto-learn Undo PR). Founder copy 2026-09-21: the word is saved at once and a
-    // 2-second pill offers Undo; every language; the on-device judge is qualified on every
+    // 3-second pill offers Undo (widened from 2 on 2026-09-22); every language; the
+    // on-device judge is qualified on every
     // supported macOS. The help article is named in prose: `Entry` has no link field.
     Entry(
       id: "self-learning-dictionary",

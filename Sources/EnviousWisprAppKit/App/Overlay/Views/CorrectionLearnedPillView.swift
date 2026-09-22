@@ -9,7 +9,7 @@ import SwiftUI
 /// names the correct word only, never the mishearing.
 enum CorrectionLearnedPillCopy {
   /// Plan §3.1 step 9: the Undo window. Hover does not pause it.
-  static let learnedDwellSeconds = 2.0
+  static let learnedDwellSeconds = 3.0
   /// `Undone` shows for this long, without a button.
   static let undoneDwellSeconds = 1.5
   /// `Couldn’t undo` and `Couldn’t save “…”` show for this long.
@@ -60,7 +60,7 @@ enum CorrectionLearnedPillCopy {
   }
 }
 
-/// The two-second pill: one sentence and a bordered Undo button, drawn in the
+/// The three-second pill: one sentence and a bordered Undo button, drawn in the
 /// overlay's capsule. No timer, no hover logic, no focus: the director owns
 /// expiry, the reducer owns the phase, and the panel never activates.
 struct CorrectionLearnedPillView: View {

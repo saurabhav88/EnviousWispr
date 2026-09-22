@@ -1,6 +1,6 @@
 ---
 title: "Self-Learning Dictionary"
-description: "When you fix a misheard word in text EnviousWispr pasted a moment ago, the right spelling joins your dictionary on its own, with two seconds to undo. Which apps it works in, how the on-device judge decides, and what stays on your Mac."
+description: "When you fix a misheard word in text EnviousWispr pasted a moment ago, the right spelling joins your dictionary on its own, with three seconds to undo. Which apps it works in, how the on-device judge decides, and what stays on your Mac."
 category: "custom-words"
 section: "Dictionary"
 order: 5
@@ -8,7 +8,7 @@ keywords: ["self-learning dictionary", "learn from my edits", "learn from edits"
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-22
 ---
-When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you two seconds to undo. The next time EnviousWispr hears the same thing it writes the word you meant. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
+When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. The next time EnviousWispr hears the same thing it writes the word you meant. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
 
 ### What you see
 

@@ -711,7 +711,7 @@ struct OverlayReducer {
   }
 
   /// A different learned pill takes the slot with its own identity and a fresh
-  /// two-second dwell; the outgoing `.learned` offer is reported ended.
+  /// learned dwell; the outgoing `.learned` offer is reported ended.
   private mutating func replaceLearnedPill(
     with model: LearnedCorrectionPillModel, outgoing: PillDefinition, effects: [PillEffect]
   ) -> OverlayPlan {
