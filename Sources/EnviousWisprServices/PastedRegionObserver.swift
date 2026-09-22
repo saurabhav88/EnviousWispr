@@ -530,7 +530,11 @@ package enum PastedRegionLocator {
         finalRunBreak = nil
       }
     }
-    return (end: h, reported: finalRunBreak ?? h)
+    // A needle that is ONLY whitespace can meet a run that begins with the
+    // break, which would clamp the region to nothing. The consumed end is
+    // right for that one shape, and polish never emits whitespace alone.
+    let reported = finalRunBreak ?? h
+    return (end: h, reported: reported == start ? h : reported)
   }
 
   static func isLineBreakUnit(_ unit: UInt16) -> Bool {
@@ -1019,8 +1023,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
       switch PastedRegionLocator.locate(pasted: pastedText, in: value) {
       case .absent: return .ended(.dictatedTextNotFound)
       case .ambiguous:
-        Self.logAmbiguity(
-          path: "capture", PastedRegionLocator.ambiguityReport(pasted: pastedText, in: value))
+        #if DEBUG
+          Self.logAmbiguity(
+            path: "capture", PastedRegionLocator.ambiguityReport(pasted: pastedText, in: value))
+        #endif
         return .ended(.anchorAmbiguous)
       case .unique(let start, let end):
         let anchors = PastedRegionLocator.anchors(around: start, end: end, in: value)
@@ -1307,24 +1313,30 @@ package final class PastedRegionObserver: PastedRegionObserving {
       }
       switch PastedRegionLocator.locateRegion(in: value, anchors: target.anchors) {
       case .lost:
-        Self.logRegionRemoved(
-          path: "poll", kind: "anchor_lost", pastedText: target.pastedText,
-          report: PastedRegionLocator.missingAnchorReport(in: value, anchors: target.anchors),
-          valueUTF16: value.utf16.count)
+        #if DEBUG
+          Self.logRegionRemoved(
+            path: "poll", kind: "anchor_lost", pastedText: target.pastedText,
+            report: PastedRegionLocator.missingAnchorReport(in: value, anchors: target.anchors),
+            valueUTF16: value.utf16.count)
+        #endif
         end(.regionRemoved)
         return .ended
       case .ambiguous:
-        Self.logAmbiguity(
-          path: "poll",
-          PastedRegionLocator.ambiguityReport(in: value, anchors: target.anchors))
+        #if DEBUG
+          Self.logAmbiguity(
+            path: "poll",
+            PastedRegionLocator.ambiguityReport(in: value, anchors: target.anchors))
+        #endif
         end(.anchorAmbiguous)
         return .ended
       case .located(let located):
         let region = located.text
         if region.isEmpty {
-          Self.logRegionRemoved(
-            path: "poll", kind: "empty_region", pastedText: target.pastedText,
-            start: located.start, end: located.end, valueUTF16: value.utf16.count)
+          #if DEBUG
+            Self.logRegionRemoved(
+              path: "poll", kind: "empty_region", pastedText: target.pastedText,
+              start: located.start, end: located.end, valueUTF16: value.utf16.count)
+          #endif
           end(.regionRemoved)
           return .ended
         }

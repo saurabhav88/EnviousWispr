@@ -781,7 +781,7 @@ def case_expiry_under_hover(path):
     hovered = hover_pill()
     if not screenshot("expiry-under-hover-pill.png"):
         raise Aborted("expiry-under-hover: the pill screenshot is missing or empty (visual proof required)")
-    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=4.5)
+    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=3.5)
     left_after = time.monotonic() - shown_at
     park_pointer()
     persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)

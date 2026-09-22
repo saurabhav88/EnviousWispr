@@ -244,6 +244,13 @@ struct PastedRegionLocatorTests {
     #expect(L.locate(pasted: "a ", in: "a   \nb") == .unique(start: 0, end: 4))
     // An inner space still crosses a wrap, which is what locates a wrapped paste.
     #expect(L.locate(pasted: "a b", in: "a\n  b") == .unique(start: 0, end: 5))
+    // A whitespace-only paste meeting a run that BEGINS with the break keeps the
+    // consumed end: clamping there would report a region of nothing.
+    #expect(L.locate(pasted: "  ", in: "\r\n  x") == .unique(start: 0, end: 4))
+    // The whole trailing run must still be CONSUMED before the end is reported
+    // at the break. An implementation that stopped consuming at the break would
+    // fall through to the trimmed retry and find the lone "a" twice.
+    #expect(L.locate(pasted: "a  ", in: "a\n a and a") == .unique(start: 0, end: 1))
   }
 
   @Test(
