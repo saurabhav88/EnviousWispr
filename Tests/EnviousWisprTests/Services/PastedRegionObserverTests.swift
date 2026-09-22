@@ -195,6 +195,73 @@ struct PastedRegionLocatorTests {
     #expect(L.locate(pasted: "hi", in: "😀 hi") == .unique(start: 3, end: 5))
   }
 
+  /// The terminal screen the founder dictates into: an agent CLI input box
+  /// drawn between two rules of one repeated glyph. Rows carry no trailing
+  /// padding, which is what Ghostty's `AXTextArea` value reports.
+  static func terminalScreen(input: String) -> String {
+    let rule = String(repeating: "\u{2500}", count: 68)
+    return "\u{23FA} An earlier answer from the agent.\n\n"
+      + rule + "\n"
+      + "\u{276F}\u{00A0}" + input + "\n"
+      + rule + "\n"
+      + "  auto mode on"
+  }
+
+  @Test(
+    "#3100 Ghostty: a dictation's trailing space must not carry the region past the row's line break and onto the drawn rule under the CLI input box"
+  )
+  func terminalTrailingSpaceStopsAtTheEndOfTheWords() {
+    // The dictation carries a trailing space; the terminal row does not.
+    let pasted = "I just got access to Quen on my laptop. "
+    let words = "I just got access to Quen on my laptop."
+    let screen = Self.terminalScreen(input: words)
+    guard case .unique(let start, let end) = L.locate(pasted: pasted, in: screen) else {
+      Issue.record("the pasted text must locate once in the screen")
+      return
+    }
+    let units = Array(screen.utf16)
+    // The region stops at the last word, so the line break is still ahead of it.
+    #expect(String(decoding: units[start..<end], as: UTF16.self) == words)
+    #expect(units[end] == 0x000A)
+    let anchors = L.anchors(around: start, end: end, in: screen)
+    // The landmark below the region now starts with the row break, so it is not
+    // a slice of the rule and it occurs exactly once. (On the founder's screen
+    // the probe counted four hits of the old rule-only landmark, so the run it
+    // sliced was 67 effective units, not the 68 drawn here.)
+    #expect(anchors.after.hasPrefix("\n"))
+    #expect(Set(anchors.after.unicodeScalars.map(\.value)).count > 1)
+    #expect(L.locateRegion(in: screen, anchors: anchors) == .located(.init(text: words, start: start, end: end)))
+    #expect(L.ambiguityReport(in: screen, anchors: anchors) == nil)
+  }
+
+  @Test(
+    "#3100 only the line break stops the region: a trailing space still takes a host's whole run of ordinary spaces"
+  )
+  func trailingSpaceStopsOnlyAtALineBreak() {
+    // Padding inside the same row stays in the region.
+    #expect(L.locate(pasted: "a ", in: "a   ") == .unique(start: 0, end: 4))
+    // A row that IS padded before it breaks stops at the break, not after it.
+    #expect(L.locate(pasted: "a ", in: "a   \nb") == .unique(start: 0, end: 4))
+    // An inner space still crosses a wrap, which is what locates a wrapped paste.
+    #expect(L.locate(pasted: "a b", in: "a\n  b") == .unique(start: 0, end: 5))
+  }
+
+  @Test(
+    "#3100 a landmark that vanished is reported by side and shape, with no text in the report"
+  )
+  func missingAnchorIsReportedBySideAndShape() throws {
+    let after = String(repeating: "\u{2500}", count: 64)
+    let value = "prefix words\n" + String(repeating: "\u{2500}", count: 63)
+    let report = try #require(
+      L.missingAnchorReport(
+        in: value, anchors: PastedRegionAnchors(before: "prefix ", after: after)))
+    #expect(report.side == "after")
+    #expect(report.hits == 0)
+    #expect(report.needleUTF16 == 64)
+    #expect(report.distinctUnits == 1)
+    #expect(report.longestRun == 64)
+  }
+
   @Test(
     "#996 app matrix: a contenteditable stores the pasted trailing space as NO-BREAK SPACE, and a composer may drop it; both still locate, with offsets into the value as read"
   )
@@ -551,6 +618,37 @@ struct PastedRegionObserverWatchTests {
     scheduler.advance(ms: 3000)
     #expect(events.list.count == 2, "no second settle without a new change")
     #expect(observer.isObserving)
+  }
+
+  @Test(
+    "#3100 a terminal-shaped capture survives its first poll: a word fixed inside an agent CLI input box is reported and settles"
+  )
+  func terminalCorrectionSurvivesTheRuleBelowTheInput() throws {
+    let terminalAX = PastedRegionFakeAX()
+    let terminalScheduler = PastedRegionFakeScheduler()
+    let original = "I just got access to Quen on my laptop."
+    let corrected = "I just got access to Qwen on my laptop."
+    terminalAX.focused[pid] = .element(PastedRegionFakeAX.field(pid))
+    terminalAX.reads = [.text(PastedRegionLocatorTests.terminalScreen(input: original))]
+    let terminalObserver = PastedRegionObserver(ax: terminalAX, scheduler: terminalScheduler)
+    // The dictation carries the trailing space the terminal never renders.
+    guard
+      case .captured(let terminalTarget) = terminalObserver.capture(
+        pid: pid, pastedText: original + " ", pastedAtMs: 0)
+    else {
+      throw TestSetupError.capture
+    }
+    #expect(terminalTarget.renderedText == original)
+    #expect(terminalTarget.anchors.after.hasPrefix("\n"))
+
+    let seen = Events()
+    terminalObserver.start(terminalTarget) { seen.list.append($0) }
+    terminalAX.reads = [.text(PastedRegionLocatorTests.terminalScreen(input: corrected))]
+    terminalScheduler.advance(ms: 750)
+    #expect(seen.list == [.changed(region: corrected)])
+    terminalScheduler.advance(ms: 750)
+    terminalScheduler.advance(ms: 750)
+    #expect(seen.list == [.changed(region: corrected), .settled(region: corrected)])
   }
 
   @Test("a change inside the settle window re-arms it; settle fires once, for the latest text")
