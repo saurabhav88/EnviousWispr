@@ -817,4 +817,31 @@ struct CustomWordsImportCompareEngineTests {
     #expect(matched.aliases == ["git hub", "get hub", "gh"])
   }
 
+
+  // MARK: - Learned provenance coalescing (#996)
+
+  @Test("duplicate rows union their learned aliases in plan order (first spelling wins) and keep the first supplied learnedAt; all-unspecified stays unspecified")
+  func coalescedDuplicatesMergeLearnedProvenance() async throws {
+    let early = Date(timeIntervalSince1970: 1_800_000_000)
+    let late = Date(timeIntervalSince1970: 1_900_000_000)
+    let first = CustomWordsImportCandidate(
+      canonical: "Kubernetes", aliases: .supplied(["k8s"]),
+      learnedAliases: .unspecified, learnedAt: .unspecified)
+    let second = CustomWordsImportCandidate(
+      canonical: "kubernetes", aliases: .supplied(["kube"]),
+      learnedAliases: .supplied(["k8s"]), learnedAt: .supplied(early))
+    let third = CustomWordsImportCandidate(
+      canonical: "KUBERNETES", aliases: .supplied(["K8S", "cube"]),
+      learnedAliases: .supplied(["K8S", "cube"]), learnedAt: .supplied(late))
+    let results = try await compare([first, second, third], against: [])
+    #expect(results.count == 1)
+    #expect(results[0].candidate.learnedAliases == .supplied(["k8s", "cube"]))
+    #expect(results[0].candidate.learnedAt == .supplied(early))
+
+    let plainA = candidate("Qualtrics")
+    let plainB = candidate("qualtrics", aliases: .supplied(["qualtrix"]))
+    let plain = try await compare([plainA, plainB], against: [])
+    #expect(plain[0].candidate.learnedAliases == .unspecified)
+    #expect(plain[0].candidate.learnedAt == .unspecified)
+  }
 }

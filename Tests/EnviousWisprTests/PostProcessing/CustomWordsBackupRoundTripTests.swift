@@ -157,4 +157,34 @@ struct CustomWordsBackupRoundTripTests {
     #expect(!json.contains("deletedBuiltinIds"))
     #expect(!json.contains("Claude"))
   }
+
+  @Test("learned marks survive export, decode, compare, commit and reload onto a fresh library (#996)")
+  func exportThenRestoreKeepsLearnedMarks() async throws {
+    let (source, _) = makeManager()
+    var live = source.load() ?? []
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    try source.add(
+      word: CustomWord(
+        canonical: "Tuist", aliases: ["twist", "to-ist"], learnedAliases: ["twist"], learnedAt: learnedAt),
+      to: &live)
+    try source.add(word: CustomWord(canonical: "Plain", aliases: ["plane"]), to: &live)
+    let backup = try CustomWordsTransferDocument(
+      data: CustomWordsTransferDocument(words: live.filter { $0.source == .user }).encoded())
+
+    let (destination, _) = makeManager()
+    var fresh = try #require(destination.load())
+    let comparisons = try await CustomWordsImportCompareEngine().compare(
+      candidates: try backup.candidatesForImport(), against: fresh, fuzzyPolicy: .disabled)
+    _ = try destination.commitImport(
+      CustomWordsImportCommitPlan(
+        baseline: CustomWordsImportLibrarySnapshot(words: fresh),
+        additions: comparisons.map(\.candidate), replacements: []),
+      to: &fresh)
+    let reloaded = try #require(destination.load())
+    let tuist = try #require(reloaded.first { $0.canonical == "Tuist" })
+    #expect(tuist.aliases == ["twist", "to-ist"])
+    #expect(tuist.learnedAliases == ["twist"] && tuist.learnedAt == learnedAt)
+    let plain = try #require(reloaded.first { $0.canonical == "Plain" })
+    #expect(plain.learnedAliases.isEmpty && plain.learnedAt == nil)
+  }
 }

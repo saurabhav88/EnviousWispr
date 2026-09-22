@@ -49,6 +49,10 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
   /// The lock file itself could not be opened, or `flock` failed for a
   /// reason other than contention (#1690), e.g. permissions or disk full.
   case coordinationUnavailable
+  /// `restoreBuiltinAndLearn` found no tombstoned built-in for that canonical
+  /// on fresh disk state, or a user word already claims it (#996). Nothing
+  /// was written; the learn path reports it as "target gone".
+  case noRestorableBuiltin
 
   package var errorDescription: String? {
     switch self {
@@ -66,8 +70,28 @@ package enum CustomWordsPersistenceError: LocalizedError, Sendable, Equatable {
     case .coordinationUnavailable:
       return
         "Your saved words could not be updated safely. Nothing was changed. Try again."
+    case .noRestorableBuiltin:
+      return "That word is no longer where it was. Nothing was changed."
     }
   }
+}
+
+/// What a learned word replaced, so Undo can put it back exactly (#996).
+/// Today's only case: the word's canonical was a built-in the user had
+/// deleted; the learn path restored it as a user-owned override. Undo
+/// re-deletes the built-in (`redeleteRestoredBuiltin`) rather than "updating"
+/// a word that did not exist before.
+package enum LearnedWordPreState: Sendable, Equatable {
+  case deletedBuiltin(id: UUID)
+}
+
+/// The receipt of `restoreBuiltinAndLearn`: the typed pre-state, the word
+/// exactly as it was persisted (the coordinator's post-save snapshot), and
+/// the merged library after the write.
+package struct RestoredBuiltinLearnOutcome: Sendable {
+  package let preState: LearnedWordPreState
+  package let word: CustomWord
+  package let words: [CustomWord]
 }
 
 /// Why the launch-time `load()` came back nil (#1646), exposed so the
@@ -643,11 +667,12 @@ public final class CustomWordsManager {
         // Best-effort writer (#1646, extended #1690): requeue instead of
         // dropping so the increments survive to the next flush attempt.
         requeuePendingIncrementSnapshot(snapshot)
-      case .unusableValue:
+      case .unusableValue, .noRestorableBuiltin:
         // Never actually thrown on this path today — this method never calls
-        // the isStorable-gated authoring doors `add`/`update` use — but this
-        // case keeps it from silently falling into the requeue policy meant
-        // for lock/read failures if that ever changed.
+        // the isStorable-gated authoring doors `add`/`update` use, nor the
+        // learn path's `restoreBuiltinAndLearn` — but these cases keep it
+        // from silently falling into the requeue policy meant for lock/read
+        // failures if that ever changed.
         Task {
           await AppLogger.shared.log(
             "CustomWordsManager: recordReplacements flush failed: \(persistenceError.localizedDescription)",
@@ -741,9 +766,8 @@ public final class CustomWordsManager {
         return (mergedWords(file: file), false)
       }
 
-      var sanitized = word
+      var sanitized = Self.sanitizeForPersistence(word)
       sanitized.canonical = trimmed
-      sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
       file.words.append(sanitized)
       return (mergedWords(file: file), true)
     }
@@ -791,9 +815,8 @@ public final class CustomWordsManager {
           continue
         }
 
-        var sanitized = word
+        var sanitized = Self.sanitizeForPersistence(word)
         sanitized.canonical = trimmed
-        sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
         file.words.append(sanitized)
         createdIDs.append(sanitized.id)
         seen.insert(key)
@@ -852,6 +875,79 @@ public final class CustomWordsManager {
       return (mergedWords(file: file), true)
     }
     words = merged
+  }
+
+  // MARK: - Learned words over a deleted built-in (#996)
+
+  /// The learn path's answer to a corrected word that is a built-in the user
+  /// deleted: ordinary `add` would only clear the tombstone and DISCARD the
+  /// sound-alike (its restore branch above), and a revealed built-in is
+  /// immutable, so there is nowhere to put the alias. This does the whole
+  /// thing in ONE locked transaction from fresh disk state: clear the
+  /// tombstone and persist a user-owned override with the built-in's UUID,
+  /// its aliases plus `alias`, and `alias` marked as learned. `learnedAt`
+  /// stays nil: the user did not create this word, they brought it back.
+  ///
+  /// Refuses (nothing written) when no tombstoned built-in matches on disk,
+  /// or a user word already claims that canonical: both mean the world moved
+  /// between judge and save, and the caller reports "target gone". An
+  /// unstorable alias refuses like every other authoring door.
+  package func restoreBuiltinAndLearn(canonical: String, alias: String) throws
+    -> RestoredBuiltinLearnOutcome
+  {
+    let trimmedCanonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedAlias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard Self.isStorable(trimmedAlias) else { throw CustomWordsPersistenceError.unusableValue }
+    return try performLockedTransaction {
+      file -> (value: RestoredBuiltinLearnOutcome, shouldSave: Bool) in
+      guard
+        let builtin = Self.builtinDefaults.first(where: {
+          $0.word.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
+        }), file.deletedBuiltinIds.contains(builtin.id),
+        !file.words.contains(where: {
+          $0.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
+        })
+      else { throw CustomWordsPersistenceError.noRestorableBuiltin }
+      var override = builtin.word.ownedByUser()
+      let aliasKey = Self.importPersistenceKey(trimmedAlias)
+      if !override.aliases.contains(where: { Self.importPersistenceKey($0) == aliasKey }) {
+        override.aliases.append(trimmedAlias)
+      }
+      override.learnedAliases.append(trimmedAlias)
+      let persisted = Self.sanitizeForPersistence(override)
+      file.deletedBuiltinIds.removeAll { $0 == builtin.id }
+      file.words.append(persisted)
+      return (
+        RestoredBuiltinLearnOutcome(
+          preState: .deletedBuiltin(id: builtin.word.id), word: persisted,
+          words: mergedWords(file: file)),
+        true
+      )
+    }
+  }
+
+  /// Undo for `restoreBuiltinAndLearn`: remove the override with that UUID and
+  /// put the built-in's tombstone back, in ONE locked transaction, returning
+  /// the merged library. Idempotent: an override already gone and a tombstone
+  /// already present are left as they are, and nothing is written when both
+  /// hold. Unrelated words and tombstones written meanwhile survive, because
+  /// the transaction starts from fresh disk state.
+  package func redeleteRestoredBuiltin(id: UUID) throws -> [CustomWord] {
+    try performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
+      guard let builtin = Self.builtinDefaults.first(where: { $0.word.id == id }) else {
+        return (mergedWords(file: file), false)
+      }
+      var changed = false
+      if file.words.contains(where: { $0.id == id }) {
+        file.words.removeAll { $0.id == id }
+        changed = true
+      }
+      if !file.deletedBuiltinIds.contains(builtin.id) {
+        file.deletedBuiltinIds.append(builtin.id)
+        changed = true
+      }
+      return (mergedWords(file: file), changed)
+    }
   }
 
   // MARK: - Import commit (#1665, epic #1619 PR-F2b)
@@ -1010,6 +1106,9 @@ public final class CustomWordsManager {
         for word in filtered where touchedIDs.contains(word.id) {
           if let index = file.words.firstIndex(where: { $0.id == word.id }) {
             file.words[index].aliases = word.aliases
+            // A collision drop takes the alias's learned mark with it (#996):
+            // the one provenance rule, re-applied after the last alias edit.
+            file.words[index] = Self.sanitizeForPersistence(file.words[index])
           }
         }
 
@@ -1038,11 +1137,11 @@ public final class CustomWordsManager {
         // unreadable," and the coordinator's honest retry message for these
         // cases is the correct one to show (#1690).
         throw persistenceError
-      case .unusableValue:
+      case .unusableValue, .noRestorableBuiltin:
         // Never actually thrown on this path — commitImport never calls the
-        // isStorable-gated authoring doors `add`/`update` use — but this case
-        // keeps it from silently collapsing into .unreadableLibrary if that
-        // ever changed.
+        // isStorable-gated authoring doors `add`/`update` use, nor the learn
+        // path's `restoreBuiltinAndLearn` — but these cases keep it from
+        // silently collapsing into .unreadableLibrary if that ever changed.
         throw persistenceError
       }
     }
@@ -1223,20 +1322,27 @@ public final class CustomWordsManager {
       return fallback
     }
     let aliases = supplied(candidate.aliases, else: existing.aliases)
-    return CustomWord(
-      id: existing.id,
-      canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
-      aliases: Self.sanitizeAliases(aliases),
-      category: supplied(candidate.category, else: existing.category),
-      priority: supplied(candidate.priority, else: existing.priority),
-      forceReplace: supplied(candidate.forceReplace, else: existing.forceReplace),
-      caseSensitive: supplied(candidate.caseSensitive, else: existing.caseSensitive),
-      source: .user,
-      frequencyUsed: existing.frequencyUsed,
-      lastUsed: existing.lastUsed,
-      minSimilarityOverride: supplied(
-        candidate.minSimilarityOverride, else: existing.minSimilarityOverride)
-    )
+    // Learned provenance (#996) follows the same authority rule: a backup
+    // supplies it (an empty list and a nil date are authoritative clears),
+    // every other source has no opinion and the live marks stay. The helper
+    // then prunes any supplied mark whose alias is not among the stored ones.
+    return Self.sanitizeForPersistence(
+      CustomWord(
+        id: existing.id,
+        canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
+        aliases: aliases,
+        category: supplied(candidate.category, else: existing.category),
+        priority: supplied(candidate.priority, else: existing.priority),
+        forceReplace: supplied(candidate.forceReplace, else: existing.forceReplace),
+        caseSensitive: supplied(candidate.caseSensitive, else: existing.caseSensitive),
+        source: .user,
+        frequencyUsed: existing.frequencyUsed,
+        lastUsed: existing.lastUsed,
+        minSimilarityOverride: supplied(
+          candidate.minSimilarityOverride, else: existing.minSimilarityOverride),
+        learnedAliases: supplied(candidate.learnedAliases, else: existing.learnedAliases),
+        learnedAt: supplied(candidate.learnedAt, else: existing.learnedAt)
+      ))
   }
 
   /// A new word from a candidate. Unspecified fields fall back to the type's
@@ -1254,16 +1360,43 @@ public final class CustomWordsManager {
     where seen.insert(importPersistenceKey(suggestion)).inserted {
       union.append(suggestion)
     }
-    return CustomWord(
-      canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
-      aliases: union,
-      category: supplied(candidate.category, else: .general),
-      priority: supplied(candidate.priority, else: 0),
-      forceReplace: supplied(candidate.forceReplace, else: false),
-      caseSensitive: supplied(candidate.caseSensitive, else: false),
-      source: .user,
-      minSimilarityOverride: supplied(candidate.minSimilarityOverride, else: nil)
-    )
+    return sanitizeForPersistence(
+      CustomWord(
+        canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
+        aliases: union,
+        category: supplied(candidate.category, else: .general),
+        priority: supplied(candidate.priority, else: 0),
+        forceReplace: supplied(candidate.forceReplace, else: false),
+        caseSensitive: supplied(candidate.caseSensitive, else: false),
+        source: .user,
+        minSimilarityOverride: supplied(candidate.minSimilarityOverride, else: nil),
+        learnedAliases: supplied(candidate.learnedAliases, else: []),
+        learnedAt: supplied(candidate.learnedAt, else: nil)
+      ))
+  }
+
+  /// The ONE rule for valid persisted learned provenance (#996 §3c): aliases
+  /// are sanitized first (trimmed, unstorable dropped), then `learnedAliases`
+  /// is reduced to the stored aliases it names, in alias order, with no
+  /// duplicates. A learned mark written as `" alias "` keeps its mark once the
+  /// alias is stored as `"alias"`, and an alias the user removed by hand takes
+  /// its mark with it. Marks match aliases by the manager's own persistence
+  /// key (trimmed, lowercased), the same rule that decides which spellings
+  /// are one alias, so `"Twist"` keeps a mark written as `"twist"` and the
+  /// stored spelling is the one that wins. Every whole-word persistence site
+  /// calls this; nothing else validates provenance, so a caller cannot store
+  /// a mark for a sound-alike the word does not have. Every other field
+  /// passes through.
+  static func sanitizeForPersistence(_ word: CustomWord) -> CustomWord {
+    var out = word
+    out.aliases = sanitizeAliases(word.aliases)
+    let learnedKeys = Set(sanitizeAliases(word.learnedAliases).map(Self.importPersistenceKey))
+    var seen = Set<String>()
+    out.learnedAliases = out.aliases.filter {
+      let key = Self.importPersistenceKey($0)
+      return learnedKeys.contains(key) && seen.insert(key).inserted
+    }
+    return out
   }
 
   /// Whether a value may enter the library AT ALL, from any authoring path.
@@ -1438,9 +1571,8 @@ public final class CustomWordsManager {
     guard Self.everyAliasIsStorable(word.aliases) else {
       throw CustomWordsPersistenceError.unusableValue
     }
-    var edited = word
+    var edited = Self.sanitizeForPersistence(word)
     edited.canonical = trimmed
-    edited.aliases = Self.sanitizeAliases(edited.aliases)
 
     // An edit makes the word the user's, whatever it started as (#1680).
     // Editing a built-in produces a user override, but the value still carries
@@ -1526,9 +1658,8 @@ public final class CustomWordsManager {
         let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
         guard Self.isStorable(trimmed) else { continue }
         guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
-        var sanitized = word
+        var sanitized = Self.sanitizeForPersistence(word)
         sanitized.canonical = trimmed
-        sanitized.aliases = Self.sanitizeAliases(sanitized.aliases)
         file.words[idx] = sanitized
         changed = true
       }

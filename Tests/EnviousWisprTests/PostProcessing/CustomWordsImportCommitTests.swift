@@ -933,4 +933,87 @@ struct CustomWordsImportCommitTests {
     #expect(backed.contains { $0.canonical == "Kubernetes" } == false)
     #expect(backed.contains { $0.canonical == "Qualtrics" })
   }
+
+  // MARK: - Learned provenance authority on commit (#996)
+
+  @Test("Replace with no opinion about learned marks keeps the live ones; a backup's empty list and nil date clear them; a supplied mark outside the final aliases is pruned")
+  func replaceHonorsLearnedAuthority() throws {
+    let (manager, _) = makeManager()
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    var live = try seed(manager, [
+      CustomWord(canonical: "Tuist", aliases: ["twist", "to-ist"], learnedAliases: ["twist"], learnedAt: learnedAt)
+    ])
+    let tuist = try #require(live.first { $0.canonical == "Tuist" })
+
+    // CSV-style replace: aliases supplied, marks unspecified → marks stay.
+    _ = try manager.commitImport(
+      plan(baseline: live, replacements: [
+        CustomWordsImportReplacement(
+          existingID: tuist.id, candidate: candidate("Tuist", aliases: .supplied(["twist", "tuist!"])))
+      ]), to: &live)
+    var after = try #require(live.first { $0.id == tuist.id })
+    #expect(after.aliases == ["twist", "tuist!"])
+    #expect(after.learnedAliases == ["twist"] && after.learnedAt == learnedAt)
+
+    // Replace whose aliases drop the marked one: the mark goes with it.
+    _ = try manager.commitImport(
+      plan(baseline: live, replacements: [
+        CustomWordsImportReplacement(
+          existingID: tuist.id, candidate: candidate("Tuist", aliases: .supplied(["to-ist"])))
+      ]), to: &live)
+    after = try #require(live.first { $0.id == tuist.id })
+    #expect(after.aliases == ["to-ist"] && after.learnedAliases.isEmpty && after.learnedAt == learnedAt)
+
+    // Backup replace with authoritative clears.
+    var clearing = candidate("Tuist", aliases: .supplied(["to-ist"]))
+    clearing.learnedAliases = .supplied([])
+    clearing.learnedAt = .supplied(nil)
+    _ = try manager.commitImport(
+      plan(baseline: live, replacements: [
+        CustomWordsImportReplacement(existingID: tuist.id, candidate: clearing)
+      ]), to: &live)
+    after = try #require(live.first { $0.id == tuist.id })
+    #expect(after.learnedAliases.isEmpty && after.learnedAt == nil)
+
+    // Backup replace supplying a mark for an alias that is not stored: pruned.
+    var stray = candidate("Tuist", aliases: .supplied(["to-ist"]))
+    stray.learnedAliases = .supplied(["ghost", "to-ist"])
+    stray.learnedAt = .supplied(learnedAt)
+    _ = try manager.commitImport(
+      plan(baseline: live, replacements: [
+        CustomWordsImportReplacement(existingID: tuist.id, candidate: stray)
+      ]), to: &live)
+    after = try #require(live.first { $0.id == tuist.id })
+    #expect(after.learnedAliases == ["to-ist"] && after.learnedAt == learnedAt)
+    #expect(try #require(manager.load()).first { $0.id == tuist.id } == after, "disk agrees")
+  }
+
+  @Test("Add applies a backup's learned marks and defaults every other source's to none")
+  func additionAppliesOrDefaultsLearnedProvenance() throws {
+    let (manager, _) = makeManager()
+    var live = manager.load() ?? []
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    var backup = candidate("Tuist", aliases: .supplied([" twist "]))
+    backup.learnedAliases = .supplied([" twist ", "ghost"])
+    backup.learnedAt = .supplied(learnedAt)
+    let csv = candidate("Saira", aliases: .supplied(["sarah"]))
+    _ = try manager.commitImport(plan(baseline: live, additions: [backup, csv]), to: &live)
+    let tuist = try #require(live.first { $0.canonical == "Tuist" })
+    #expect(tuist.aliases == ["twist"] && tuist.learnedAliases == ["twist"] && tuist.learnedAt == learnedAt)
+    let saira = try #require(live.first { $0.canonical == "Saira" })
+    #expect(saira.learnedAliases.isEmpty && saira.learnedAt == nil)
+  }
+
+  @Test("an alias dropped by the collision rule at commit takes its learned mark with it")
+  func collisionDropRemovesTheMark() throws {
+    let (manager, _) = makeManager()
+    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
+    // A new word claims "annie" as a learned alias; the untouched incumbent wins.
+    var incoming = candidate("Zed", aliases: .supplied(["annie", "zedd"]))
+    incoming.learnedAliases = .supplied(["annie", "zedd"])
+    let receipt = try manager.commitImport(plan(baseline: live, additions: [incoming]), to: &live)
+    #expect(receipt.droppedAliasCollisions.map(\.alias) == ["annie"])
+    let zed = try #require(live.first { $0.canonical == "Zed" })
+    #expect(zed.aliases == ["zedd"] && zed.learnedAliases == ["zedd"])
+  }
 }
