@@ -57,16 +57,16 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.5.1
 
-    // #996: the Self-Learning Dictionary (PRs #3054, #3072, #3079, #3083). Founder copy
-    // 2026-09-21. The card asks first; every language; the on-device judge downloads after
-    // the speech model on macOS 27. The help article is named in prose: `Entry` has no
-    // link field.
+    // #996: the Self-Learning Dictionary (PRs #3054, #3072, #3079, #3083, #3090, #3094 and
+    // the auto-learn Undo PR). Founder copy 2026-09-21: the word is saved at once and a
+    // 2-second pill offers Undo; every language; the on-device judge is qualified on every
+    // supported macOS. The help article is named in prose: `Entry` has no link field.
     Entry(
       id: "self-learning-dictionary",
       icon: "text.badge.checkmark",
       title: "Self-Learning Dictionary",
       description:
-        "Automatically detects when you correct a dictation and suggests the corrected word for your dictionary. Review suggestions anytime in Dictionary → Pending. The Self-Learning Dictionary help article covers which apps it works in and how the judge runs on your Mac.",
+        "Automatically detects when you correct a dictation, adds the corrected word to your dictionary, and shows Undo. The Self-Learning Dictionary help article covers which apps it works in and how the judge runs on your Mac.",
       version: "2.5.1"
     ),
 
