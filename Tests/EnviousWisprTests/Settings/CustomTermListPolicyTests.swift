@@ -242,4 +242,92 @@ struct CustomTermListPolicyTests {
     #expect(MatchStrictness.from(0.80) == .loose)  // <= 0.80 is loose
     #expect(MatchStrictness.from(0.88) == .strict)  // >= 0.88 is strict
   }
+
+  // MARK: - Auto-learned filter and copy (#996)
+
+  private static func learned(
+    _ canonical: String, aliases: [String] = [], learnedAliases: [String] = [],
+    learnedAt: Date? = nil, category: WordCategory = .general
+  ) -> CustomWord {
+    CustomWord(
+      canonical: canonical, aliases: aliases, category: category,
+      learnedAliases: learnedAliases, learnedAt: learnedAt)
+  }
+
+  @Test("the default (filter off) returns exactly what it did before, in the same order")
+  func autoLearnedOffIsTheOldBehavior() {
+    let words = [
+      Self.learned("zulu", aliases: ["zoo loo"], learnedAliases: ["zoo loo"]),
+      Self.make("Alpha", category: .person),
+      Self.learned("MIKE", learnedAt: Date()),
+      Self.make("bravo", aliases: ["brah vo"]),
+    ]
+    let explicit = CustomTermListPolicy.filtered(words, query: "", autoLearnedOnly: false)
+    let implicit = CustomTermListPolicy.filtered(words, query: "")
+    #expect(explicit == implicit)
+    #expect(implicit.map(\.canonical) == ["Alpha", "bravo", "MIKE", "zulu"])
+    let person = CustomTermListPolicy.filtered(words, query: "", category: .person)
+    #expect(person.map(\.canonical) == ["Alpha"])
+  }
+
+  @Test("Auto-learned keeps a word learned by date, a word with a learned sound-alike, and a word with both (once); plain words and plain aliases drop")
+  func autoLearnedPredicate() {
+    let words = [
+      Self.learned("Date Only", learnedAt: Date()),
+      Self.learned("Alias Only", aliases: ["ay lee us"], learnedAliases: ["ay lee us"]),
+      Self.learned("Both", aliases: ["bo th"], learnedAliases: ["bo th"], learnedAt: Date()),
+      Self.make("Plain Alias", aliases: ["plane"]),
+      Self.make("Plain"),
+    ]
+    let result = CustomTermListPolicy.filtered(words, query: "", autoLearnedOnly: true)
+    #expect(result.map(\.canonical) == ["Alias Only", "Both", "Date Only"], "sorted, each once")
+    #expect(result.allSatisfy { $0.isAutoLearned })
+  }
+
+  @Test("Auto-learned combines with the category pill and the search box by AND")
+  func autoLearnedCombines() {
+    let words = [
+      Self.learned("Saira", aliases: ["sarah"], learnedAliases: ["sarah"], category: .person),
+      Self.learned("Tuist", aliases: ["twist"], learnedAliases: ["twist"], category: .brand),
+      Self.make("Sara", aliases: ["sarah h"], category: .person),
+      Self.make("Termly", category: .brand),
+    ]
+    let personLearned = CustomTermListPolicy.filtered(
+      words, query: "", category: .person, autoLearnedOnly: true)
+    #expect(personLearned.map(\.canonical) == ["Saira"])
+    let queryLearned = CustomTermListPolicy.filtered(words, query: "sar", autoLearnedOnly: true)
+    #expect(queryLearned.map(\.canonical) == ["Saira"])
+    let all3 = CustomTermListPolicy.filtered(
+      words, query: "t", category: .brand, autoLearnedOnly: true)
+    #expect(all3.map(\.canonical) == ["Tuist"])
+    let none = CustomTermListPolicy.filtered(
+      words, query: "sar", category: .brand, autoLearnedOnly: true)
+    #expect(none.isEmpty)
+  }
+
+  @Test("the copy table is exactly what Your Words says")
+  func provenanceCopyTable() {
+    #expect(CustomTermProvenanceCopy.filterPill == "Auto-learned")
+    #expect(CustomTermProvenanceCopy.noAutoLearnedWordsYet == "No auto-learned words yet.")
+    #expect(CustomTermProvenanceCopy.learnedFromYourEdits == "learned from your edits")
+    #expect(
+      CustomTermProvenanceCopy.learnedAliasesHelper
+        == "Sparkled sound-alikes were learned from your edits.")
+  }
+
+  @Test("empty-state precedence: a search that matched nothing, then the Auto-learned pill, then the category pill, then the bare library")
+  func emptyStatePrecedence() {
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "zz", autoLearnedOnly: true, category: .person)
+        == "No matches for \"zz\".")
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: true, category: .person)
+        == "No auto-learned words yet.")
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: false, category: .person)
+        == "No words in this category.")
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: false, category: nil)
+        == "No words yet. Add one with the button above.")
+  }
 }
