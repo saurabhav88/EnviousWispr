@@ -11,9 +11,13 @@ import Testing
 
 /// Records every learn-from-edits emission the coordinator and watcher make.
 @MainActor
-final class LearnTelemetrySpy: LearnFromEditsTelemetrySink {
+final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
   enum Event: Equatable {
     case skipped(T.SkipReason)
+    // Auto-learn (2026-09-21 plan): the learned coordinator's three rows.
+    case added(T.AddedState)
+    case undoShown
+    case undone(T.UndoKind, T.UndoOutcome)
     case observationEnded(PastedRegionEndReason, Int, T.AppClass)
     case judged(T.Arm, T.JudgeOutcome, Int, Int)
     case proposed(T.TargetState)
@@ -48,6 +52,11 @@ final class LearnTelemetrySpy: LearnFromEditsTelemetrySink {
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
   func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition) {
     events.append(.ledgerUntrusted(kind, disposition))
+  }
+  func learnAdded(state: T.AddedState) { events.append(.added(state)) }
+  func learnUndoShown() { events.append(.undoShown) }
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
+    events.append(.undone(kind, outcome))
   }
 }
 

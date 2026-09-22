@@ -288,6 +288,62 @@ final class CustomWordsCoordinator {
     }
   }
 
+  // MARK: - Auto-learn (#996, 2026-09-21 plan): the learn path's writes
+
+  /// What `restoreBuiltinAndLearn` answered, for the learn coordinator's seam.
+  enum BuiltinRestoreOutcome {
+    case restored(RestoredBuiltinLearnOutcome)
+    /// No tombstoned built-in carries that canonical.
+    case notFound
+    case failed
+  }
+
+  /// Bring a deleted built-in back as a user override carrying `alias` as a
+  /// learned sound-alike, in one manager transaction; publishes the merged
+  /// list like every other write here.
+  func restoreBuiltinAndLearn(canonical: String, alias: String) -> BuiltinRestoreOutcome {
+    do {
+      let outcome = try manager.restoreBuiltinAndLearn(canonical: canonical, alias: alias)
+      customWords = outcome.words
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return .restored(outcome)
+    } catch CustomWordsPersistenceError.noRestorableBuiltin {
+      return .notFound
+    } catch {
+      _ = note(error)
+      return .failed
+    }
+  }
+
+  /// Exact undo of `restoreBuiltinAndLearn`: the override goes, the tombstone
+  /// comes back.
+  @discardableResult
+  func redeleteRestoredBuiltin(id: UUID) -> String? {
+    do {
+      customWords = try manager.redeleteRestoredBuiltin(id: id)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return nil
+    } catch {
+      return note(error)
+    }
+  }
+
+  /// Remove a user override of a built-in WITHOUT tombstoning the built-in
+  /// (the learn path's Undo of a live built-in that gained a sound-alike).
+  @discardableResult
+  func removeUserOverride(id: UUID) -> String? {
+    do {
+      customWords = try manager.removeUserOverride(id: id)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return nil
+    } catch {
+      return note(error)
+    }
+  }
+
   /// Bulk-remove by ID (contacts-import pill, #636).
   @discardableResult
   func removeBatch(ids: [UUID]) -> String? {

@@ -932,6 +932,27 @@ public final class CustomWordsManager {
     }
   }
 
+  /// Remove a user OVERRIDE of a built-in without tombstoning the built-in,
+  /// so the shipped built-in shows again exactly as it did before the
+  /// override existed (#996 auto-learn Undo of a live built-in that gained a
+  /// sound-alike). `remove(id:)` cannot do this: it tombstones any built-in
+  /// the removed word's canonical matches. One locked transaction from fresh
+  /// disk state; idempotent (an absent override writes nothing); unrelated
+  /// words and tombstones survive. Returns the merged library.
+  package func removeUserOverride(id: UUID) throws -> [CustomWord] {
+    try performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
+      // Only an override of a SHIPPED built-in (same UUID): an ordinary user
+      // word is not this method's to remove, whatever the caller believed.
+      guard Self.builtinDefaults.contains(where: { $0.word.id == id }),
+        file.words.contains(where: { $0.id == id })
+      else {
+        return (mergedWords(file: file), false)
+      }
+      file.words.removeAll { $0.id == id }
+      return (mergedWords(file: file), true)
+    }
+  }
+
   /// Undo for `restoreBuiltinAndLearn`: remove the override with that UUID and
   /// put the built-in's tombstone back, in ONE locked transaction, returning
   /// the merged library. Idempotent: an override already gone and a tombstone

@@ -124,9 +124,9 @@ package final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let recordingOverlay: OverlayDirector
 
-  /// #996 chunk 5h: learn from edits, as ONE slot (the Quick Add shape). The
-  /// ledger, the proposal coordinator, the overlay presenter, the paste
-  /// observer, the watcher and the arm selection live inside it; the
+  /// #996: Self-Learning Dictionary as ONE app-lifetime slot (the Quick Add
+  /// shape). The learned correction coordinator, the Undo-pill presenter, the
+  /// paste observer, the watcher and the arm selection live inside it; the
   /// coordinator and the paste registry hold their collaborators weakly, so
   /// this property is what keeps the feature alive for the app's lifetime.
   /// Ceiling 44 -> 45, Bible entry in EnviousWisprAppCeilingsTests.
@@ -1878,7 +1878,7 @@ package final class WisprBootstrapper {
   /// Intelligence polish. Every failure fails open (the polish path keeps
   /// #996: Debug builds mirror the learn events into app.log for Live UAT;
   /// Release emits to the vendors only.
-  private static func learnFromEditsTelemetrySink() -> any LearnFromEditsTelemetrySink {
+  private static func learnFromEditsTelemetrySink() -> any LearnFromEditsRuntimeTelemetrySink {
     #if DEBUG
       return LearnFromEditsLoggingSink(TelemetryService.shared)
     #else
@@ -2084,11 +2084,10 @@ private struct MainWindowRoot: View {
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)
-      // #996 chunk 5h: the Pending tab's inbox, the Learning row's enabled
-      // state and the tab's app-name lookup.
-      .environment(b.learnFromEdits.coordinator)
+      // #996: the Learning row's enabled state. The ask-first Pending tab's
+      // inbox and app-name lookup are no longer composed (auto-learn,
+      // 2026-09-21 plan); the tab reads its defaults until chunk 5a deletes it.
       .environment(b.learnFromEdits.availability)
-      .environment(\.pendingSourceAppName, b.learnFromEdits.sourceAppName)
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)
       .environment(\.keychainManager, b.keychainManager)

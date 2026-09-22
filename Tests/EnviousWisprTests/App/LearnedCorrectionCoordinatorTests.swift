@@ -35,7 +35,18 @@ final class LearnedPresenterSpy: LearnedCorrectionPresenting {
     case close(UUID)
   }
   private(set) var calls: [Call] = []
-  func show(pill: LearnedCorrectionPillModel) { calls.append(.show(pill)) }
+  /// Every pill shown, in order (the watcher tests read this).
+  var offers: [LearnedCorrectionPillModel] {
+    calls.compactMap {
+      if case .show(let pill) = $0 { return pill }
+      return nil
+    }
+  }
+  var onOffer: ((LearnedCorrectionPillModel) -> Void)?
+  func show(pill: LearnedCorrectionPillModel) {
+    calls.append(.show(pill))
+    onOffer?(pill)
+  }
   func showUndone(pillID: UUID) { calls.append(.undone(pillID)) }
   func showError(_ error: LearnedCorrectionSaveError) { calls.append(.error(error)) }
   func showUndoError(_ error: LearnedCorrectionUndoError) { calls.append(.undoError(error.pillID)) }

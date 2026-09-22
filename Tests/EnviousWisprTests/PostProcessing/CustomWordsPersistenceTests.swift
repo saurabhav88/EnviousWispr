@@ -565,6 +565,49 @@ struct CustomWordsManagerPersistenceTests {
     #expect(!after.contains { $0.canonical == "ChatGPT" } && !after.contains { $0.canonical == "GitHub" })
   }
 
+  @Test("removeUserOverride removes only the override of a live built-in, never tombstones it, leaves unrelated words and tombstones from fresh disk, and is a byte-identical no-op when absent; ordinary remove still tombstones")
+  func removeUserOverrideRevealsTheBuiltin() throws {
+    let (mgr, url, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    var edited = github
+    edited.aliases = ["git hub", "get hub", "git-hub"]
+    edited.learnedAliases = ["git-hub"]
+    try mgr.update(word: edited, in: &words)
+    #expect(try #require(words.first { $0.id == github.id }).source == .user, "an override exists")
+    // A sibling writes an unrelated word and deletes another built-in meanwhile.
+    let sibling = CustomWordsManager(fileURL: url)
+    var siblingWords = try #require(sibling.load())
+    try sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
+    let chatgpt = try #require(siblingWords.first { $0.canonical == "ChatGPT" })
+    try sibling.remove(id: chatgpt.id, from: &siblingWords)
+
+    let after = try mgr.removeUserOverride(id: github.id)
+    let revealed = try #require(after.first { $0.id == github.id })
+    #expect(revealed == github, "the shipped built-in shows again, exactly")
+    #expect(after.contains { $0.canonical == "FromSibling" })
+    #expect(!after.contains { $0.canonical == "ChatGPT" }, "the sibling's tombstone survives")
+    let reloaded = try #require(mgr.load())
+    #expect(reloaded.first { $0.id == github.id } == github, "no tombstone was written")
+    let bytes = try Data(contentsOf: url)
+    #expect(try mgr.removeUserOverride(id: github.id) == after, "absent override: same list")
+    #expect(try Data(contentsOf: url) == bytes, "and nothing written")
+
+    // Control: ordinary remove of the same word tombstones the built-in.
+    var live = reloaded
+    try mgr.remove(id: github.id, from: &live)
+    #expect(!live.contains { $0.canonical == "GitHub" })
+
+    // Control: an ordinary user word is not this method's to remove.
+    let tuist = CustomWord(canonical: "Tuist")
+    try mgr.add(word: tuist, to: &live)
+    let before = try Data(contentsOf: url)
+    let untouched = try mgr.removeUserOverride(id: tuist.id)
+    #expect(untouched.contains { $0.id == tuist.id })
+    #expect(try Data(contentsOf: url) == before, "byte-identical")
+  }
+
   @Test("ordinary add still only restores a deleted built-in and discards the supplied aliases (unchanged behavior the learn path must avoid)")
   func ordinaryAddRestoreOnlyIsUnchanged() throws {
     let (mgr, _, dir, _) = try Self.seededManager()

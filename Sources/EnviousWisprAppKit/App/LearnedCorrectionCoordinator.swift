@@ -407,6 +407,13 @@ final class LearnedCorrectionCoordinator {
 
   // MARK: - Helpers
 
+  #if DEBUG
+    /// Local debug log only (plan §11 UAT tokens). Release logs no user text.
+    static func debugLog(_ line: String) {
+      Task { await AppLogger.shared.log(line, category: "LearnFromEdits") }
+    }
+  #endif
+
   /// The target already carries the original as its canonical or a sound-alike.
   static func covers(_ word: CustomWord, original: String) -> Bool {
     let key = CorrectionPairKey.normalise(original)
