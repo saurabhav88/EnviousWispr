@@ -19,13 +19,16 @@ struct CustomWordsTransferDocumentTests {
     source: WordSource = .user,
     frequencyUsed: Int = 0,
     lastUsed: Date? = nil,
-    minSimilarityOverride: Double? = nil
+    minSimilarityOverride: Double? = nil,
+    learnedAliases: [String] = [],
+    learnedAt: Date? = nil
   ) -> CustomWord {
     CustomWord(
       canonical: canonical, aliases: aliases, category: category, priority: priority,
       forceReplace: forceReplace, caseSensitive: caseSensitive, source: source,
       frequencyUsed: frequencyUsed, lastUsed: lastUsed,
-      minSimilarityOverride: minSimilarityOverride)
+      minSimilarityOverride: minSimilarityOverride,
+      learnedAliases: learnedAliases, learnedAt: learnedAt)
   }
 
   // MARK: - Round trip
@@ -47,6 +50,69 @@ struct CustomWordsTransferDocumentTests {
     #expect(restored.caseSensitive == true)
     #expect(restored.minSimilarityOverride == 0.8)
     #expect(restored.id == original.id)
+  }
+
+  // MARK: - Learned provenance (#996)
+
+  @Test("learned marks survive an export and re-decode, and a plain word exports empty marks")
+  func exportRoundTripKeepsLearnedMarks() throws {
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let learned = word(
+      "Tuist", aliases: ["twist", "to-ist"], learnedAliases: ["twist"], learnedAt: learnedAt)
+    let plain = word("Plain", aliases: ["plane"])
+    let data = try CustomWordsTransferDocument(words: [learned, plain]).encoded()
+    let decoded = try CustomWordsTransferDocument(data: data)
+
+    let restored = try #require(decoded.words.first)
+    #expect(restored.learnedAliases == ["twist"])
+    #expect(restored.learnedAt == learnedAt)
+    let restoredPlain = try #require(decoded.words.last)
+    #expect(restoredPlain.learnedAliases == [] && restoredPlain.learnedAt == nil)
+    #expect(decoded.version == CustomWordsTransferDocument.currentVersion, "still version 1")
+  }
+
+  @Test("a version-1 backup written before #996 (no learned keys) decodes as plain words and imports as an authoritative clear")
+  func pre996BackupDecodesPlain() throws {
+    let json = """
+      {"format": "com.enviouswispr.custom-words", "version": 1, "words": [
+        {"id": "550E8400-E29B-41D4-A716-446655440000", "canonical": "Kubernetes", "aliases": ["k8s"],
+         "category": "domain", "priority": 0, "forceReplace": false, "caseSensitive": false}
+      ]}
+      """
+    let decoded = try CustomWordsTransferDocument(data: Data(json.utf8))
+    let restored = try #require(decoded.words.first)
+    #expect(restored.learnedAliases == nil && restored.learnedAt == nil)
+    // The word was plain when it was exported, so restoring it clears any
+    // marks the live copy may carry: a backup is a full round-trip, not an
+    // absence of opinion.
+    let candidate = try #require(try decoded.candidatesForImport().first)
+    #expect(candidate.learnedAliases == .supplied([]))
+    #expect(candidate.learnedAt == .supplied(nil))
+  }
+
+  @Test("candidates carry the learned marks as supplied authority, and the learned aliases are stored values that get trimmed")
+  func candidatesForImportSupplyLearnedProvenance() throws {
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let learned = word(
+      "Tuist", aliases: [" twist "], learnedAliases: [" twist "], learnedAt: learnedAt)
+    let candidate = try #require(
+      try CustomWordsTransferDocument(words: [learned]).candidatesForImport().first)
+    #expect(candidate.learnedAliases == .supplied([" twist "]))
+    #expect(candidate.learnedAt == .supplied(learnedAt))
+    // `storedValues` is what validation walks; a learned alias is one of them.
+    #expect(candidate.storedValues.filter { $0 == " twist " }.count == 2, "alias and learned alias")
+    let trimmed = candidate.trimmed()
+    #expect(trimmed.aliases == .supplied(["twist"]))
+    #expect(trimmed.learnedAliases == .supplied(["twist"]))
+  }
+
+  @Test("a candidate from any source but a backup has no opinion about learned marks")
+  func nonBackupCandidatesLeaveLearnedMarksUnspecified() {
+    let candidate = CustomWordsImportCandidate(canonical: "Tuist", aliases: .supplied(["twist"]))
+    #expect(candidate.learnedAliases == .unspecified)
+    #expect(candidate.learnedAt == .unspecified)
+    #expect(candidate.storedValues == ["Tuist", "twist"], "unspecified marks add no stored value")
+    #expect(candidate.trimmed().learnedAliases == .unspecified)
   }
 
   @Test("usage history never leaves this Mac")
@@ -141,8 +207,8 @@ struct CustomWordsTransferDocumentTests {
 
   // MARK: - Import handoff
 
-  @Test("candidates supply all six authority fields, including both clears")
-  func candidatesForImportSupplyAllSixAuthorityFieldsIncludingClears() throws {
+  @Test("candidates supply all eight authority fields, including every clear")
+  func candidatesForImportSupplyAllEightAuthorityFieldsIncludingClears() throws {
     // A word with no aliases and no per-term strictness. Backup is the only
     // source that can say "genuinely none" rather than "no opinion", and on a
     // Replace that difference decides whether hand-tuned values are cleared.
@@ -156,6 +222,8 @@ struct CustomWordsTransferDocumentTests {
     #expect(candidate.priority == .supplied(0))
     #expect(candidate.forceReplace == .supplied(false))
     #expect(candidate.caseSensitive == .supplied(false))
+    #expect(candidate.learnedAliases == .supplied([]))
+    #expect(candidate.learnedAt == .supplied(nil))
   }
 
   @Test("candidates carry no usage history and no AI suggestions")
@@ -208,7 +276,8 @@ struct CustomWordsTransferDocumentTests {
       "GitHub", aliases: ["git hub"], category: .brand, priority: 2,
       forceReplace: true, caseSensitive: true, source: .builtin,
       frequencyUsed: 7, lastUsed: Date(timeIntervalSince1970: 5),
-      minSimilarityOverride: 0.9)
+      minSimilarityOverride: 0.9,
+      learnedAliases: ["git hub"], learnedAt: Date(timeIntervalSince1970: 9))
     // #1701 Chunk 2: a field added to `CustomWord` after this reconstruction
     // method existed must be threaded through it explicitly, or a built-in
     // override edited mid-enrichment would silently lose its pending flag.
@@ -227,6 +296,7 @@ struct CustomWordsTransferDocumentTests {
     #expect(owned.lastUsed == builtin.lastUsed)
     #expect(owned.minSimilarityOverride == builtin.minSimilarityOverride)
     #expect(owned.enrichmentPending == true)
+    #expect(owned.learnedAliases == ["git hub"] && owned.learnedAt == builtin.learnedAt)
   }
 
   @Test("re-tagging an already-user word returns it unchanged")

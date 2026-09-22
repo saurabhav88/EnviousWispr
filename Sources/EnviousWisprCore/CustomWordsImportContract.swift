@@ -34,7 +34,7 @@ package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case unavailable(reason: AIFailureReason, message: String)
 }
 
-/// Authority carrier for the six conditional fields on an import candidate.
+/// Authority carrier for the eight conditional fields on an import candidate.
 ///
 /// `.unspecified` means the source has NO OPINION — on Replace, the existing
 /// word's hand-tuned value is preserved untouched. `.supplied` means the
@@ -82,6 +82,14 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   /// `.supplied(nil)` = authoritative "no per-term override" (backup
   /// round-trip); `.unspecified` = the source knows nothing about strictness.
   package var minSimilarityOverride: CustomWordsImportField<Double?>
+  /// Learned provenance (#996). Only the EnviousWispr backup supplies these,
+  /// including the authoritative clears `.supplied([])` and `.supplied(nil)`;
+  /// CSV, paste and Smart Import leave them `.unspecified`, so a Replace from
+  /// those sources keeps the marks the library already has and an Add starts
+  /// plain. A learned alias is a stored value like any other alias: it is
+  /// validated and trimmed with them.
+  package var learnedAliases: CustomWordsImportField<[String]>
+  package var learnedAt: CustomWordsImportField<Date?>
 
   /// Every string this candidate could put into the library.
   ///
@@ -94,6 +102,7 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
     var values = [canonical]
     if case .supplied(let aliases) = aliases { values.append(contentsOf: aliases) }
     values.append(contentsOf: suggestedAliases)
+    if case .supplied(let learned) = learnedAliases { values.append(contentsOf: learned) }
     return values
   }
 
@@ -112,6 +121,10 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
     copy.suggestedAliases = suggestedAliases.map {
       $0.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    if case .supplied(let learned) = learnedAliases {
+      copy.learnedAliases = .supplied(
+        learned.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+    }
     return copy
   }
 
@@ -124,7 +137,9 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
     priority: CustomWordsImportField<Int> = .unspecified,
     forceReplace: CustomWordsImportField<Bool> = .unspecified,
     caseSensitive: CustomWordsImportField<Bool> = .unspecified,
-    minSimilarityOverride: CustomWordsImportField<Double?> = .unspecified
+    minSimilarityOverride: CustomWordsImportField<Double?> = .unspecified,
+    learnedAliases: CustomWordsImportField<[String]> = .unspecified,
+    learnedAt: CustomWordsImportField<Date?> = .unspecified
   ) {
     self.id = id
     self.canonical = canonical
@@ -135,6 +150,8 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
     self.forceReplace = forceReplace
     self.caseSensitive = caseSensitive
     self.minSimilarityOverride = minSimilarityOverride
+    self.learnedAliases = learnedAliases
+    self.learnedAt = learnedAt
   }
 }
 

@@ -33,6 +33,12 @@ package struct PortableCustomWord: Codable, Sendable, Equatable {
   package let forceReplace: Bool
   package let caseSensitive: Bool
   package let minSimilarityOverride: Double?
+  /// Learned provenance (#996): optional so a version-1 backup written before
+  /// #996 decodes as plain words and an older app ignores the keys. These values
+  /// reach the authoritative import candidate here; import commit applies them
+  /// in Chunk 1b.
+  package let learnedAliases: [String]?
+  package let learnedAt: Date?
 
   package init(_ word: CustomWord) {
     self.id = word.id
@@ -43,6 +49,8 @@ package struct PortableCustomWord: Codable, Sendable, Equatable {
     self.forceReplace = word.forceReplace
     self.caseSensitive = word.caseSensitive
     self.minSimilarityOverride = word.minSimilarityOverride
+    self.learnedAliases = word.learnedAliases
+    self.learnedAt = word.learnedAt
   }
 }
 
@@ -175,7 +183,11 @@ package struct CustomWordsTransferDocument: Codable, Sendable, Equatable {
         priority: .supplied(word.priority),
         forceReplace: .supplied(word.forceReplace),
         caseSensitive: .supplied(word.caseSensitive),
-        minSimilarityOverride: .supplied(word.minSimilarityOverride)
+        minSimilarityOverride: .supplied(word.minSimilarityOverride),
+        // A pre-#996 backup has no learned keys: it restores plain words, and
+        // that is authoritative too (the word was plain when it was exported).
+        learnedAliases: .supplied(word.learnedAliases ?? []),
+        learnedAt: .supplied(word.learnedAt)
       )
     }
   }
