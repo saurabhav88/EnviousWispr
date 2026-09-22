@@ -56,6 +56,8 @@ struct PillCatalogParityTests {
     case .bluetoothAwareness: return "bluetoothAwareness"
     case .escapeRecovery: return "escapeRecovery"
     case .correctionProposal: return "correctionProposal"
+    case .correctionLearned: return "correctionLearned"
+    case .correctionLearnedSaveError: return "correctionLearnedSaveError"
     }
   }
 
@@ -102,6 +104,7 @@ struct PillCatalogParityTests {
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .acceptCorrectionProposal: return "acceptCorrectionProposal"
     case .rejectCorrectionProposal: return "rejectCorrectionProposal"
+    case .undoLearnedCorrection: return "undoLearnedCorrection"
     }
   }
 

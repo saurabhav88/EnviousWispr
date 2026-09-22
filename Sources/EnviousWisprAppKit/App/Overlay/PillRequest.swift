@@ -72,6 +72,9 @@ enum PillAction: Equatable, Sendable {
   /// #996: the correction card's Reject. There is no dismiss action: the card
   /// never takes keyboard focus, so an unanswered card leaves on its dwell.
   case rejectCorrectionProposal(id: UUID)
+  /// #996 auto-learn: the Undo pill's one button. Carries the pill's own UUID
+  /// so a press on a pill the slot no longer shows undoes nothing.
+  case undoLearnedCorrection(pillID: UUID)
 }
 
 // MARK: - What the director must tell a feature owner
@@ -101,6 +104,11 @@ enum PillEffect: Equatable, Sendable {
   /// the card's own binding, which tells the proposal coordinator. Emitted at
   /// most once per presentation identity.
   case correctionProposalEnded(id: UUID, presentation: PresentationID, reason: CorrectionPresentationEnd)
+  /// #996 auto-learn: an admitted Undo pill left the screen in its `.learned`
+  /// phase without Undo being pressed (dwell fired, replaced by another
+  /// learned pill, or displaced). The coordinator drops its Undo record. A
+  /// result phase leaving is not reported: there was no Undo left to offer.
+  case correctionLearnedEnded(pillID: UUID, presentation: PresentationID)
 }
 
 // MARK: - The typed request
@@ -198,6 +206,19 @@ enum PillRequest {
     onReject: (CorrectionPresentationToken) -> Void,
     onEnded: (CorrectionPresentationToken, CorrectionPresentationEnd) -> Void
   )
+  /// #996 auto-learn: the two-second Undo pill for a word just saved.
+  /// `isStillWanted` is read immediately before a deferred first render
+  /// commits (the coordinator may have replaced its Undo record meanwhile);
+  /// `onUndo` fires at most once, for the pill's own id; `onEnded` fires once
+  /// when the `.learned` phase leaves the screen without Undo.
+  case correctionLearned(
+    model: LearnedCorrectionPillModel,
+    isStillWanted: () -> Bool,
+    onUndo: () -> Void,
+    onEnded: () -> Void
+  )
+  /// #996 auto-learn: `Couldn’t save “<canonical>”`, three seconds, no button.
+  case correctionLearnedSaveError(LearnedCorrectionSaveError)
 }
 
 // MARK: - What a caller gets back, and what it may change afterwards

@@ -132,28 +132,31 @@ struct PillCatalogRoundTripTests {
   /// The catalog's own case count, asserted through a value each case produces
   /// rather than through a comment claiming a number.
   ///
-  /// **Sixteen non-recording cases, not seventeen.** `bluetoothAwareness` is a
+  /// **Nineteen non-recording requests: fifteen intent-derived plus four
+  /// feature-only cases (import status, the correction card, the Undo pill and
+  /// its save error).** `bluetoothAwareness` is a
   /// pipeline intent AND was minted a second time by the feature reducer; those
-  /// are two routes to one value, and C0 froze both and found them identical. A
-  /// seventeenth non-recording case could only be a second Bluetooth arm, which
-  /// is the duplicate this chunk deletes.
-  @Test("the staged catalog covers seventeen non-recording requests")
+  /// are two routes to one value, and C0 froze both and found them identical, so
+  /// it counts once. A second Bluetooth arm would be the duplicate C0 deleted.
+  @Test("the staged catalog covers nineteen non-recording requests")
   func stagedCaseCount() {
-    // #996 adds the correction card, the second feature route with no matching
-    // intent (import status is the first): sixteen became seventeen.
     let requests: [PillCatalogRequest] =
       Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [
-        .importStatus(message: "x"), .correctionProposal(CorrectionCardFixture.model()),
+        .importStatus(message: "x"),
+        .correctionProposal(CorrectionCardFixture.model()),
+        .correctionLearned(LearnedPillFixture.model()),
+        .correctionLearnedSaveError(
+          LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)),
       ]
-    #expect(requests.count == 17)
+    #expect(requests.count == 19)
 
-    // Every one of them resolves, and only `.hidden` empties the slot.
     let withoutDefinition = requests.filter {
       PillCatalog.entry(for: $0, id: PresentationID()).definition == nil
     }
-    #expect(withoutDefinition.count == 1, "only hidden may resolve to no definition")
+    #expect(withoutDefinition.count == 1)
     #expect(withoutDefinition.first == .hidden)
   }
+
 
   /// What `stagedCaseCount` cannot see (review r1 finding 3).
   ///
@@ -194,6 +197,9 @@ struct PillCatalogRoundTripTests {
       "bluetoothAwareness", "escapeRecovery", "importStatus",
       // #996 chunk 5f: the correction card, unfrozen deliberately.
       "correctionProposal",
+      // #996 auto-learn (2026-09-21 plan, chunk 3b): the Undo pill and its
+      // save-error notice, unfrozen deliberately.
+      "correctionLearned", "correctionLearnedSaveError",
     ]
     #expect(Set(names) == expected, "the catalog case set changed")
     #expect(names.count == expected.count, "a catalog case is duplicated")

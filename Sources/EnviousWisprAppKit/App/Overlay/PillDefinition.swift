@@ -454,16 +454,22 @@ enum OverlayContent: Equatable, Sendable {
   /// its phase (offer with two buttons, or a typed result line); the reducer
   /// owns the `PresentationID` separately.
   case correctionProposal(CorrectionProposalCardModel)
+  /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
+  /// phase (learned with the Undo button, or a typed result line); the reducer
+  /// owns the `PresentationID` separately.
+  case correctionLearned(LearnedCorrectionPillModel)
+  /// #996 auto-learn: `Couldn’t save “<canonical>”`, a notice with no button.
+  case correctionLearnedSaveError(LearnedCorrectionSaveError)
 
   /// Whether the director must ask the owner `isStillWanted` immediately before
   /// this content reaches the screen (#996 chunk 5f, review round 2). Only the
-  /// card's OFFER: it asks a question, and a Pending click can answer it while
-  /// a deferred first render is in flight. The card's RESULT is the outcome of
-  /// a decision already made; it follows the reducer's same-id morph contract
-  /// and must render whether or not the proposal is still pending, which it
-  /// never is by then.
+  /// card's OFFER and the Undo pill's `.learned` phase: each asks a question,
+  /// and the owner can withdraw it while a deferred first render is in flight.
+  /// A RESULT is the outcome of a decision already made; it follows the
+  /// reducer's same-id morph contract and must render regardless.
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionProposal(let model) = self, case .offer = model.phase { return true }
+    if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     return false
   }
 }

@@ -90,11 +90,29 @@ struct LearnedCorrectionPillModel: Sendable, Equatable {
     /// `“<canonical>” updated`: a sound-alike joined a word that existed.
     case updated
   }
+  /// What the pill is showing. Only `.learned` draws the Undo button; the
+  /// two results are same-identity morphs the reducer applies (chunk 3b).
+  enum Phase: Sendable, Equatable {
+    case learned
+    /// `Undone`, 1.5 s, no button.
+    case undone
+    /// `Couldn’t undo`, 3 s, error tone, no button.
+    case undoError
+  }
   /// The pill's own identity; every presenter callback names it.
   let id: UUID
   let wordID: UUID
   let canonical: String
   let kind: Kind
+  let phase: Phase
+
+  init(id: UUID, wordID: UUID, canonical: String, kind: Kind, phase: Phase = .learned) {
+    self.id = id
+    self.wordID = wordID
+    self.canonical = canonical
+    self.kind = kind
+    self.phase = phase
+  }
 }
 
 /// A refused save, shown as `Couldn’t save “<canonical>”` for three seconds.

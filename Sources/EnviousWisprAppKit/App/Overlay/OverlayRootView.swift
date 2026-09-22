@@ -160,6 +160,20 @@ struct OverlayRootView: View {
         onAccept: { press(.acceptCorrectionProposal(id: model.id), on: presentation) },
         onReject: { press(.rejectCorrectionProposal(id: model.id), on: presentation) })
 
+    case .correctionLearned(let model):
+      // #996 auto-learn: Undo is dispatched with the model's own pill id, and
+      // only from the `.learned` phase (a result draws no button).
+      CorrectionLearnedPillView(
+        model: model,
+        onUndo: {
+          if case .learned = model.phase {
+            press(.undoLearnedCorrection(pillID: model.id), on: presentation)
+          }
+        })
+
+    case .correctionLearnedSaveError(let error):
+      CorrectionLearnedSaveErrorView(error: error)
+
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },

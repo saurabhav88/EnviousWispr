@@ -71,7 +71,10 @@ final class OverlayDirector {
       onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)?,
       /// #996: read immediately before this presentation is committed to the
       /// screen; false rolls it back unrendered. nil for every other pill.
-      isStillWanted: (() -> Bool)?
+      isStillWanted: (() -> Bool)?,
+      /// #996 auto-learn: the Undo pill's owner hears once that its `.learned`
+      /// phase left the screen unanswered. nil for every other pill.
+      onLearnedEnded: (() -> Void)?
     )?
 
   /// Custody of the cancelled-transcript payload.
@@ -140,6 +143,16 @@ final class OverlayDirector {
         return
       }
       onEnded(presentation, reason)
+
+    case .correctionLearnedEnded(_, let presentation):
+      // #996 auto-learn: same scope rule as the card.
+      guard let binding = activeBinding, binding.id == presentation,
+        let onEnded = binding.onLearnedEnded
+      else {
+        assertionFailure("correctionLearnedEnded reached a presentation with no typed owner")
+        return
+      }
+      onEnded()
     }
   }
 
@@ -445,7 +458,8 @@ final class OverlayDirector {
     case install(
       deliver: (PillAction) -> Void, onExpire: (() -> Void)?,
       onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)? = nil,
-      isStillWanted: (() -> Bool)? = nil)
+      isStillWanted: (() -> Bool)? = nil,
+      onLearnedEnded: (() -> Void)? = nil)
   }
 
   private func handle(
@@ -888,10 +902,12 @@ final class OverlayDirector {
       // morph of that presentation; replacement or dismissal ends its binding.
       if let presentation = plan.presentation {
         switch binding {
-        case .install(let deliver, let onExpire, let onProposalEnded, let isStillWanted):
+        case .install(
+          let deliver, let onExpire, let onProposalEnded, let isStillWanted, let onLearnedEnded):
           activeBinding = (
             id: presentation.id, deliver: deliver, onExpire: onExpire,
-            onProposalEnded: onProposalEnded, isStillWanted: isStillWanted)
+            onProposalEnded: onProposalEnded, isStillWanted: isStillWanted,
+            onLearnedEnded: onLearnedEnded)
         case .none:
           if activeBinding?.id != presentation.id { activeBinding = nil }
         }
@@ -1673,6 +1689,33 @@ extension OverlayDirector: OverlayPresenting {
           },
           isStillWanted: isStillWanted)
       handle(.correctionProposed(model), binding: binding, relay: relay)
+
+    case .correctionLearned(let model, let isStillWanted, let onUndo, let onEnded):
+      // #996 auto-learn. A same-pill repeat keeps the ORIGINAL binding (the
+      // reducer keeps identity and dwell for it); a different learned pill
+      // installs its own, and the reducer reports the outgoing one ended.
+      let isRepeat: Bool = {
+        if case .correctionLearned(let shown)? = reducer.state.current?.content,
+          shown.id == model.id
+        {
+          return true
+        }
+        return false
+      }()
+      let binding: BindingInput =
+        isRepeat
+        ? .none
+        : .install(
+          deliver: { action in
+            if case .undoLearnedCorrection(let id) = action, id == model.id { onUndo() }
+          },
+          onExpire: nil,
+          isStillWanted: isStillWanted,
+          onLearnedEnded: onEnded)
+      handle(.correctionLearned(model), binding: binding, relay: relay)
+
+    case .correctionLearnedSaveError(let error):
+      handle(.correctionLearnedSaveError(error), binding: .none, relay: relay)
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot
@@ -1726,6 +1769,23 @@ extension OverlayDirector: OverlayPresenting {
     handle(
       .correctionProposalResolved(id: id, presentation: presentation, outcome: outcome),
       binding: .none)
+  }
+
+  /// #996 auto-learn: morph the still-current Undo pill for `pillID` into
+  /// `Undone` or `Couldn’t undo`. Same identity, so the binding survives (for
+  /// the end report that no longer fires); a stale pair is a no-op.
+  func resolveLearnedCorrection(
+    pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase
+  ) {
+    handle(
+      .correctionLearnedResult(pillID: pillID, presentation: presentation, phase: phase),
+      binding: .none)
+  }
+
+  /// #996 auto-learn: close the still-current Undo pill for `pillID` without a
+  /// result line. A stale id is a no-op.
+  func closeLearnedCorrection(pillID: UUID) {
+    handle(.correctionLearnedClose(pillID: pillID), binding: .none)
   }
 
   func dismissCurrent(_ mode: PillDismissal) {
