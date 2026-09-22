@@ -254,11 +254,12 @@ package actor CustomWordsImportCompareEngine {
   /// collide at persistence time. Keyed on `persistenceKey`, NOT the
   /// stronger matching key: two candidates the manager would happily store
   /// as separate words must stay separate review rows, or a backup holding
-  /// both could never restore the second one. Per field (all six authority carriers),
+  /// both could never restore the second one. Per field (all eight authority carriers),
   /// the first `.supplied` value in plan order wins, evaluated
-  /// independently; `aliases` unions every `.supplied` list in plan order
-  /// (deduplicated via the normalization key, first spelling wins) and stays
-  /// `.unspecified` only when every duplicate row was `.unspecified`.
+  /// independently; `aliases` and `learnedAliases` (#996) each union every
+  /// `.supplied` list in plan order (deduplicated via the normalization key,
+  /// first spelling wins) and stay `.unspecified` only when every duplicate
+  /// row was `.unspecified`.
   static func coalesceDuplicates(
     _ candidates: [CustomWordsImportCandidate]
   ) throws -> [CustomWordsImportCandidate] {
@@ -292,6 +293,14 @@ package actor CustomWordsImportCompareEngine {
       if case .unspecified = merged.minSimilarityOverride {
         merged.minSimilarityOverride = candidate.minSimilarityOverride
       }
+      if case .unspecified = merged.learnedAliases {
+        merged.learnedAliases = candidate.learnedAliases
+      } else if case .supplied(let existing) = merged.learnedAliases,
+        case .supplied(let incoming) = candidate.learnedAliases
+      {
+        merged.learnedAliases = .supplied(unionByNormalizationKey(existing, incoming))
+      }
+      if case .unspecified = merged.learnedAt { merged.learnedAt = candidate.learnedAt }
       byKey[key] = merged
     }
     return order.compactMap { byKey[$0] }

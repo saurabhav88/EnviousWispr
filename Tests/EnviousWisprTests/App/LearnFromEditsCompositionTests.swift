@@ -75,7 +75,7 @@ struct LearnFromEditsCompositionTests {
     let wiring = LearnFromEditsWiring(
       settings: settings, customWords: customWords, packs: packs, overlay: overlay,
       pasteCompletionRegistry: registry, telemetry: telemetry,
-      storeDirectory: dir, osMajor: osMajor,
+      legacyLedgerDirectory: dir, osMajor: osMajor,
       observer: observer, scheduler: clock,
       frontmost: frontmost,
       selectJudgeForTests: selectJudgeForTests,
@@ -104,32 +104,33 @@ struct LearnFromEditsCompositionTests {
     }
   }
 
-  @Test("the graph is retained and wired: the ledger is ready in the app-support directory, the presenter reaches the overlay, and a paste with no judge is counted as model_unavailable")
-  func graphIsWired() async {
-    let f = fixture()
-    #expect(f.wiring.coordinator.ledgerState == .ready)
-    #expect(FileManager.default.fileExists(atPath: f.dir.path))
-    // The presenter is the coordinator's: a minted proposal reaches the overlay.
-    guard
-      case .minted(let id) = f.wiring.coordinator.propose(
-        original: "sarah", corrected: "Saira",
-        state: .existingWord(f.customWords.customWords.first { $0.canonical == "Saira" }!.id),
-        language: "en", contextExcerpt: nil, sourceBundleID: "com.apple.Notes", advisorySafeAlias: nil)
-    else {
-      Issue.record("expected minted")
-      return
-    }
-    guard case .correctionProposal(let model)? = f.overlay.renderModel.state.presentation?.content else {
-      Issue.record("the card did not reach the overlay through the attached presenter")
-      return
-    }
-    #expect(model.id == id && f.telemetry.events.contains(.cardShown))
-    f.overlay.dismissCurrent(.silent)
-
+  @Test("the graph is retained and wired: a paste with no judge is counted as model_unavailable, and a judged fix is saved at once and offered with Undo")
+  func graphIsWired() async throws {
+    let f = fixture(judgeServes: true)
+    #expect(f.wiring.coordinator.undoRecord == nil)
     // The registry holds the watcher weakly; the wiring is what keeps it alive.
     #expect(f.settings.learnFromEdits, "on by default")
+    f.observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
     f.registry.emit(paste())
-    #expect(await waitUntil { f.telemetry.events.contains(.skipped(.modelUnavailable)) }, "the paste reached the watcher and found no judge: \(f.telemetry.events)")
+    #expect(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
+    f.observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { f.telemetry.events.contains(.undoShown) }, "\(f.telemetry.events)")
+    guard case .correctionLearned(let pill)? = f.overlay.renderModel.state.presentation?.content else {
+      Issue.record("the Undo pill did not reach the overlay through the attached presenter")
+      return
+    }
+    #expect(pill.canonical == "Saira" && pill.kind == .updated && pill.phase == .learned)
+    let saira = try #require(f.customWords.customWords.first { $0.canonical == "Saira" })
+    #expect(saira.aliases == ["sarah"] && saira.learnedAliases == ["sarah"], "durably saved and marked")
+    #expect(f.telemetry.events.contains(.added(.existingWord)))
+    #expect(f.wiring.coordinator.undoRecord?.pillID == pill.id)
+    f.overlay.dismissCurrent(.silent)
+
+    let g = fixture()
+    g.registry.emit(paste())
+    #expect(await waitUntil { g.telemetry.events.contains(.skipped(.modelUnavailable)) }, "the paste reached the watcher and found no judge: \(g.telemetry.events)")
   }
 
   @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start finishes the next as next_dictation_started")
@@ -161,41 +162,27 @@ struct LearnFromEditsCompositionTests {
     #expect(f.telemetry.events.last == .observationEnded(.nextDictationStarted, 0, .native))
   }
 
-  @Test("the Settings environment carries the coordinator, the selection's presentation and the app-name lookup, and the lookup never returns a raw bundle id")
+  @Test("the Settings environment carries the selection's presentation")
   func settingsEnvironment() {
     let f = fixture()
-    // The same three values the bootstrapper injects; read back through a view.
     struct Probe: View {
-      @Environment(CorrectionProposalCoordinator.self) var coordinator: CorrectionProposalCoordinator?
       @Environment(LearnFromEditsAvailability.self) var availability: LearnFromEditsAvailability?
-      @Environment(\.pendingSourceAppName) var name
-      let report: @MainActor (CorrectionProposalCoordinator?, LearnFromEditsSettingsPresentation?, String?) -> Void
+      let report: @MainActor (LearnFromEditsSettingsPresentation?) -> Void
       var body: some View {
-        Color.clear.onAppear { report(coordinator, availability?.presentation, name("com.apple.finder")) }
+        Color.clear.onAppear { report(availability?.presentation) }
       }
     }
     final class Seen {
-      var coordinator: CorrectionProposalCoordinator?
       var presentation: LearnFromEditsSettingsPresentation?
-      var finder: String??
     }
     let seen = Seen()
-    let root = Probe { c, p, n in
-      seen.coordinator = c
-      seen.presentation = p
-      seen.finder = n
-    }
-    .environment(f.wiring.coordinator)
-    .environment(f.wiring.availability)
-    .environment(\.pendingSourceAppName, f.wiring.sourceAppName)
+    let root = Probe { p in seen.presentation = p }
+      // Only what the bootstrapper injects now.
+      .environment(f.wiring.availability)
     let host = NSHostingView(rootView: AnyView(root.frame(width: 10, height: 10)))
     host.layoutSubtreeIfNeeded()
     _ = host.fittingSize
-    #expect(seen.coordinator === f.wiring.coordinator)
     #expect(seen.presentation == f.wiring.availability.presentation)
-    #expect(seen.finder == "Finder")
-    #expect(LearnFromEditsWiring.sourceAppName(bundleID: "com.apple.finder") == "Finder")
-    #expect(LearnFromEditsWiring.sourceAppName(bundleID: "com.example.no-such-app.\(UUID().uuidString)") == nil)
   }
 
   #if DEBUG

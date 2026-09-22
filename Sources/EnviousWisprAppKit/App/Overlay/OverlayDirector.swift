@@ -68,10 +68,12 @@ final class OverlayDirector {
   private var activeBinding:
     (
       id: PresentationID, deliver: (PillAction) -> Void, onExpire: (() -> Void)?,
-      onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)?,
       /// #996: read immediately before this presentation is committed to the
       /// screen; false rolls it back unrendered. nil for every other pill.
-      isStillWanted: (() -> Bool)?
+      isStillWanted: (() -> Bool)?,
+      /// #996 auto-learn: the Undo pill's owner hears once that its `.learned`
+      /// phase left the screen unanswered. nil for every other pill.
+      onLearnedEnded: (() -> Void)?
     )?
 
   /// Custody of the cancelled-transcript payload.
@@ -127,19 +129,18 @@ final class OverlayDirector {
       }
       onExpire()
 
-    case .correctionProposalEnded(_, let presentation, let reason):
-      // #996: same scope rule as the chip. Effects route BEFORE `apply` replaces
-      // the binding, so the binding here is the card's own; a mismatch means the
-      // reducer named a presentation this director never bound, which is a
-      // wiring defect and not a case to route elsewhere.
+    case .correctionLearnedEnded(_, let presentation):
+      // #996 auto-learn: same scope rule as the chip. Effects route BEFORE
+      // `apply` replaces the binding, so the binding here is the pill's own; a
+      // mismatch means the reducer named a presentation this director never
+      // bound, which is a wiring defect and not a case to route elsewhere.
       guard let binding = activeBinding, binding.id == presentation,
-        let onEnded = binding.onProposalEnded
+        let onEnded = binding.onLearnedEnded
       else {
-        assertionFailure(
-          "correctionProposalEnded reached a presentation with no typed owner")
+        assertionFailure("correctionLearnedEnded reached a presentation with no typed owner")
         return
       }
-      onEnded(presentation, reason)
+      onEnded()
     }
   }
 
@@ -444,8 +445,8 @@ final class OverlayDirector {
     case none
     case install(
       deliver: (PillAction) -> Void, onExpire: (() -> Void)?,
-      onProposalEnded: ((PresentationID, CorrectionPresentationEnd) -> Void)? = nil,
-      isStillWanted: (() -> Bool)? = nil)
+      isStillWanted: (() -> Bool)? = nil,
+      onLearnedEnded: (() -> Void)? = nil)
   }
 
   private func handle(
@@ -596,9 +597,9 @@ final class OverlayDirector {
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
       // The recording effects went out at RESOLVE. COMMIT's plan carries only
-      // what is new at commit time: a correction card the recording displaced
-      // (#996). Routed here, before `apply` replaces the card's binding, and
-      // the card's owner may re-enter: if the slot moved while it ran, the
+      // what is new at commit time: a learned pill the recording displaced
+      // (#996). Routed here, before `apply` replaces the pill's binding, and
+      // the pill's owner may re-enter: if the slot moved while it ran, the
       // committed recording has already been superseded and this plan is
       // stale (same rule as `apply`'s own guard).
       let revisionAfterCommit = reducer.state.slotRevision
@@ -806,7 +807,7 @@ final class OverlayDirector {
     // runs at the END, once the window has accepted the presentation — see the
     // note at that call for why mirroring the shipped order was wrong.
     // **Effects run caller code, and caller code may re-enter.** The chip's
-    // `onExpire` and the card's `onEnded` (#996) both hand control to a feature
+    // `onExpire` and the learned pill's `onEnded` (#996) both hand control to a feature
     // owner, who may present a newer pill or start a recording before this
     // returns. The reducer has already applied THIS plan, so a re-entrant event
     // reduces on top of it and its own `apply` installs the newer binding,
@@ -888,10 +889,10 @@ final class OverlayDirector {
       // morph of that presentation; replacement or dismissal ends its binding.
       if let presentation = plan.presentation {
         switch binding {
-        case .install(let deliver, let onExpire, let onProposalEnded, let isStillWanted):
+        case .install(let deliver, let onExpire, let isStillWanted, let onLearnedEnded):
           activeBinding = (
             id: presentation.id, deliver: deliver, onExpire: onExpire,
-            onProposalEnded: onProposalEnded, isStillWanted: isStillWanted)
+            isStillWanted: isStillWanted, onLearnedEnded: onLearnedEnded)
         case .none:
           if activeBinding?.id != presentation.id { activeBinding = nil }
         }
@@ -1218,16 +1219,17 @@ final class OverlayDirector {
     expiryStart: (() -> Void)?, announcement: OverlayAnnouncement?
   ) -> RenderSubmission {
     // #996: a presentation may carry a precondition its owner re-checks at the
-    // last moment. A deferred first render lands a run loop later, and a
-    // Pending click can resolve the proposal in between; a card offering a
-    // decision already made must never reach the screen, be spoken, or count
-    // as shown. Same rollback as a host refusal, so "nothing is on screen" keeps
-    // its one definition, and the relays hear `false`.
+    // last moment. A deferred first render lands a run loop later, and the
+    // learned coordinator can replace its Undo record in between; a pill
+    // offering an Undo that is no longer on record must never reach the
+    // screen, be spoken, or count as shown. Same rollback as a host refusal, so
+    // "nothing is on screen" keeps its one definition, and the relays hear
+    // `false`.
     //
-    // Only content that asks for it (`reChecksOwnerBeforeRender`): the card's
-    // offer. Its result morph keeps the binding for lifecycle callbacks but is
-    // the outcome of a decision already made, and the owner's predicate would
-    // refuse it every time.
+    // Only content that asks for it (`reChecksOwnerBeforeRender`): the learned
+    // pill's `.learned` phase. Its result morph keeps the binding for lifecycle
+    // callbacks but is the outcome of a decision already made, and the owner's
+    // predicate would refuse it every time.
     //
     // The predicate runs OWNER code, which may present something newer or move
     // the slot (the same reentrancy `apply` guards around effect routing). The
@@ -1635,19 +1637,12 @@ extension OverlayDirector: OverlayPresenting {
           },
           onExpire: nil),
         relay: relay)
-    // #996: the correction card. Admission is the reducer's (idle pipeline, an
-    // empty slot or this exact proposal); the binding is scoped to the admitted
-    // presentation and reads the CURRENT presentation id for its token, which
-    // `apply` guarantees is the card's own when it delivers. A card that is
-    // not answered ends in the reducer (dwell or displacement) and reports
-    // `.expired` / `.preempted` through `onEnded`, never through `deliver`.
-    case .correctionProposal(let model, let isStillWanted, let onAccept, let onReject, let onEnded):
-      // **A same-proposal refresh keeps the ORIGINAL binding.** The reducer
-      // keeps the presentation identity and dwell for it; installing the new
-      // request's closures would silently re-own the buttons and the end
-      // report. `.none` on a same-id plan leaves the existing binding in place.
-      let isRefresh: Bool = {
-        if case .correctionProposal(let shown)? = reducer.state.current?.content,
+    case .correctionLearned(let model, let isStillWanted, let onUndo, let onEnded):
+      // #996 auto-learn. A same-pill repeat keeps the ORIGINAL binding (the
+      // reducer keeps identity and dwell for it); a different learned pill
+      // installs its own, and the reducer reports the outgoing one ended.
+      let isRepeat: Bool = {
+        if case .correctionLearned(let shown)? = reducer.state.current?.content,
           shown.id == model.id
         {
           return true
@@ -1655,24 +1650,19 @@ extension OverlayDirector: OverlayPresenting {
         return false
       }()
       let binding: BindingInput =
-        isRefresh
+        isRepeat
         ? .none
         : .install(
-          deliver: { [weak self] action in
-            guard let self, let current = self.reducer.state.current?.id else { return }
-            let token = CorrectionPresentationToken(id: current.rawValue)
-            switch action {
-            case .acceptCorrectionProposal(let id) where id == model.id: onAccept(token)
-            case .rejectCorrectionProposal(let id) where id == model.id: onReject(token)
-            default: break
-            }
+          deliver: { action in
+            if case .undoLearnedCorrection(let id) = action, id == model.id { onUndo() }
           },
           onExpire: nil,
-          onProposalEnded: { presentation, reason in
-            onEnded(CorrectionPresentationToken(id: presentation.rawValue), reason)
-          },
-          isStillWanted: isStillWanted)
-      handle(.correctionProposed(model), binding: binding, relay: relay)
+          isStillWanted: isStillWanted,
+          onLearnedEnded: onEnded)
+      handle(.correctionLearned(model), binding: binding, relay: relay)
+
+    case .correctionLearnedSaveError(let error):
+      handle(.correctionLearnedSaveError(error), binding: .none, relay: relay)
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot
@@ -1717,15 +1707,21 @@ extension OverlayDirector: OverlayPresenting {
     }
   }
 
-  /// #996: morph the still-current card for `id` into its typed result. Same
-  /// presentation identity, so the card's binding survives the morph; a stale
-  /// pair is a no-op in the reducer.
-  func resolveCorrectionProposal(
-    id: UUID, presentation: PresentationID, outcome: CorrectionCardResult
+  /// #996 auto-learn: morph the still-current Undo pill for `pillID` into
+  /// `Undone` or `Couldn’t undo`. Same identity, so the binding survives (for
+  /// the end report that no longer fires); a stale pair is a no-op.
+  func resolveLearnedCorrection(
+    pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase
   ) {
     handle(
-      .correctionProposalResolved(id: id, presentation: presentation, outcome: outcome),
+      .correctionLearnedResult(pillID: pillID, presentation: presentation, phase: phase),
       binding: .none)
+  }
+
+  /// #996 auto-learn: close the still-current Undo pill for `pillID` without a
+  /// result line. A stale id is a no-op.
+  func closeLearnedCorrection(pillID: UUID) {
+    handle(.correctionLearnedClose(pillID: pillID), binding: .none)
   }
 
   func dismissCurrent(_ mode: PillDismissal) {

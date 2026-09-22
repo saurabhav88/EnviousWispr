@@ -387,6 +387,239 @@ struct CustomWordsManagerPersistenceTests {
     let corrupted = CustomWordsPersistenceError.corruptedExistingFile as Error
     #expect(corrupted.localizedDescription.contains("moved aside for recovery"))
   }
+
+  // MARK: - Learned provenance is valid at every write (#996)
+
+  @Test("add and update keep only the learned marks that name a stored alias, in alias order, once")
+  func addAndUpdatePruneMarksOutsideAliases() throws {
+    let (mgr, _, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let word = CustomWord(
+      canonical: "Tuist", aliases: ["twist", "to-ist"], category: .brand, priority: 3,
+      learnedAliases: ["to-ist", "ghost", "twist", "twist"], learnedAt: learnedAt)
+    try mgr.add(word: word, to: &words)
+    let added = try #require(words.first { $0.id == word.id })
+    #expect(added.learnedAliases == ["twist", "to-ist"], "alias order, no ghost, no duplicate")
+    #expect(added.learnedAt == learnedAt && added.category == .brand && added.priority == 3)
+    // The user removes a chip in the edit sheet: the mark goes with it.
+    var edited = added
+    edited.aliases = ["to-ist"]
+    try mgr.update(word: edited, in: &words)
+    let updated = try #require(words.first { $0.id == word.id })
+    #expect(updated.aliases == ["to-ist"] && updated.learnedAliases == ["to-ist"])
+    #expect(updated.learnedAt == learnedAt, "learnedAt survives an edit")
+    // What is on disk is what the live list says.
+    let reloaded = try #require(mgr.load()?.first { $0.id == word.id })
+    #expect(reloaded.learnedAliases == ["to-ist"] && reloaded.learnedAt == learnedAt)
+  }
+
+  @Test("a learned mark written as ' alias ' keeps its mark once the alias is stored as 'alias'")
+  func trimmedAliasKeepsItsMark() throws {
+    let (mgr, _, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let word = CustomWord(canonical: "Tuist", aliases: [" twist "], learnedAliases: [" twist "])
+    try mgr.add(word: word, to: &words)
+    let added = try #require(words.first { $0.id == word.id })
+    #expect(added.aliases == ["twist"] && added.learnedAliases == ["twist"])
+    // Case differs between the mark and the stored alias: the stored spelling
+    // keeps the mark, once, and no case-only duplicate alias appears.
+    let cased = CustomWord(canonical: "Saira", aliases: ["Sarah"], learnedAliases: [" sarah ", "SARAH"])
+    try mgr.add(word: cased, to: &words)
+    let addedCased = try #require(words.first { $0.id == cased.id })
+    #expect(addedCased.aliases == ["Sarah"] && addedCased.learnedAliases == ["Sarah"])
+  }
+
+  @Test("sanitizeForPersistence is the one rule: it changes aliases and learned marks and nothing else")
+  func sanitizeForPersistencePreservesEveryOtherField() {
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    var word = CustomWord(
+      canonical: "Tuist", aliases: [" twist ", "", "to-ist"], category: .brand, priority: 7,
+      forceReplace: true, caseSensitive: true, source: .pack, frequencyUsed: 4,
+      lastUsed: Date(timeIntervalSince1970: 5), minSimilarityOverride: 0.6,
+      enrichmentPending: true, learnedAliases: ["twist", "nope"], learnedAt: learnedAt)
+    word.enrichmentPending = true
+    let out = CustomWordsManager.sanitizeForPersistence(word)
+    #expect(out.aliases == ["twist", "to-ist"] && out.learnedAliases == ["twist"])
+    #expect(out.id == word.id && out.canonical == "Tuist" && out.category == .brand)
+    #expect(out.priority == 7 && out.forceReplace && out.caseSensitive && out.source == .pack)
+    #expect(out.frequencyUsed == 4 && out.lastUsed == word.lastUsed)
+    #expect(out.minSimilarityOverride == 0.6 && out.enrichmentPending && out.learnedAt == learnedAt)
+  }
+
+  // MARK: - A learned word over a deleted built-in (#996)
+
+  @Test("restore-and-learn brings a deleted built-in back as ONE user word with the built-in's UUID, the sound-alike marked; re-delete puts the tombstone back")
+  func restoreBuiltinAndLearnThenRedelete() throws {
+    let (mgr, _, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    #expect(github.source == .builtin)
+    try mgr.remove(id: github.id, from: &words)
+    #expect(!words.contains { $0.canonical == "GitHub" }, "deleted built-in is hidden")
+
+    let outcome = try mgr.restoreBuiltinAndLearn(canonical: "github", alias: " git-hub ")
+    #expect(outcome.preState == .deletedBuiltin(id: github.id))
+    #expect(outcome.word.id == github.id && outcome.word.source == .user)
+    #expect(outcome.word.aliases == ["git hub", "get hub", "git-hub"])
+    #expect(outcome.word.learnedAliases == ["git-hub"] && outcome.word.learnedAt == nil)
+    let visible = outcome.words.filter { $0.canonical.caseInsensitiveCompare("GitHub") == .orderedSame }
+    #expect(visible.count == 1 && visible.first == outcome.word, "one row, the override, never both")
+    // The receipt's word is the persisted value: a fresh load agrees.
+    #expect(try #require(mgr.load()).first { $0.id == github.id } == outcome.word)
+
+    let after = try mgr.redeleteRestoredBuiltin(id: github.id)
+    #expect(!after.contains { $0.canonical == "GitHub" })
+    #expect(try #require(mgr.load()).contains { $0.canonical == "GitHub" } == false, "tombstone is back on disk")
+    // Idempotent: a second re-delete changes nothing and throws nothing.
+    let again = try mgr.redeleteRestoredBuiltin(id: github.id)
+    #expect(again == after)
+  }
+
+  @Test("restore-and-learn refuses, writing nothing, when the built-in is not deleted, a user word claims the canonical, the canonical is not a built-in, or the alias is unstorable")
+  func restoreBuiltinAndLearnRefusals() throws {
+    let (mgr, url, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let before = try Data(contentsOf: url)
+    // Not deleted.
+    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    }
+    // Not a built-in at all.
+    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try mgr.restoreBuiltinAndLearn(canonical: "Tuist", alias: "twist")
+    }
+    #expect(try Data(contentsOf: url) == before, "nothing written")
+    // A user override claims the canonical (an edited built-in): not a
+    // deleted built-in, so nothing to restore.
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    var edited = github
+    edited.aliases = ["gh"]
+    try mgr.update(word: edited, in: &words)
+    #expect(try #require(words.first { $0.id == github.id }).source == .user)
+    let claimed = try Data(contentsOf: url)
+    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    }
+    #expect(try Data(contentsOf: url) == claimed)
+    // A tombstone AND an override for the same canonical on disk (a state
+    // the manager's own doors never produce, so it is injected into the
+    // JSON fixture): the override's claim wins and nothing is written.
+    let sibling = CustomWordsManager(fileURL: url)
+    var siblingWords = try #require(sibling.load())
+    try sibling.remove(id: github.id, from: &siblingWords)  // tombstone, override gone
+    let tombstoned = try Data(contentsOf: url)
+    var document = try #require(JSONSerialization.jsonObject(with: tombstoned) as? [String: Any])
+    var storedWords = try #require(document["words"] as? [[String: Any]])
+    let encodedOverride = try #require(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(edited)) as? [String: Any])
+    storedWords.append(encodedOverride)
+    document["words"] = storedWords
+    try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
+      .write(to: url, options: .atomic)
+    let conflicted = try Data(contentsOf: url)
+    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    }
+    #expect(try Data(contentsOf: url) == conflicted)
+    // Back to the plain tombstone: restore succeeds once, then a second call
+    // refuses because the override now claims the canonical.
+    try tombstoned.write(to: url, options: .atomic)
+    _ = try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    #expect(try Data(contentsOf: url) != tombstoned)
+    let restoredBytes = try Data(contentsOf: url)
+    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    }
+    #expect(try Data(contentsOf: url) == restoredBytes)
+    // Unstorable alias refuses before any lock, like every authoring door.
+    #expect(throws: CustomWordsPersistenceError.unusableValue) {
+      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "   ")
+    }
+    #expect(try Data(contentsOf: url) == restoredBytes)
+  }
+
+  @Test("an unrelated word and tombstone written by another process between the two atomic operations survive both")
+  func atomicOperationsStartFromFreshDiskState() throws {
+    let (mgr, url, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    try mgr.remove(id: github.id, from: &words)
+    // A sibling process adds a word and deletes another built-in behind our back.
+    let sibling = CustomWordsManager(fileURL: url)
+    var siblingWords = try #require(sibling.load())
+    try sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
+    let chatgpt = try #require(siblingWords.first { $0.canonical == "ChatGPT" })
+    try sibling.remove(id: chatgpt.id, from: &siblingWords)
+
+    let outcome = try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    #expect(outcome.words.contains { $0.canonical == "FromSibling" })
+    #expect(!outcome.words.contains { $0.canonical == "ChatGPT" })
+    let after = try mgr.redeleteRestoredBuiltin(id: github.id)
+    #expect(after.contains { $0.canonical == "FromSibling" })
+    #expect(!after.contains { $0.canonical == "ChatGPT" } && !after.contains { $0.canonical == "GitHub" })
+  }
+
+  @Test("removeUserOverride removes only the override of a live built-in, never tombstones it, leaves unrelated words and tombstones from fresh disk, and is a byte-identical no-op when absent; ordinary remove still tombstones")
+  func removeUserOverrideRevealsTheBuiltin() throws {
+    let (mgr, url, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    var edited = github
+    edited.aliases = ["git hub", "get hub", "git-hub"]
+    edited.learnedAliases = ["git-hub"]
+    try mgr.update(word: edited, in: &words)
+    #expect(try #require(words.first { $0.id == github.id }).source == .user, "an override exists")
+    // A sibling writes an unrelated word and deletes another built-in meanwhile.
+    let sibling = CustomWordsManager(fileURL: url)
+    var siblingWords = try #require(sibling.load())
+    try sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
+    let chatgpt = try #require(siblingWords.first { $0.canonical == "ChatGPT" })
+    try sibling.remove(id: chatgpt.id, from: &siblingWords)
+
+    let after = try mgr.removeUserOverride(id: github.id)
+    let revealed = try #require(after.first { $0.id == github.id })
+    #expect(revealed == github, "the shipped built-in shows again, exactly")
+    #expect(after.contains { $0.canonical == "FromSibling" })
+    #expect(!after.contains { $0.canonical == "ChatGPT" }, "the sibling's tombstone survives")
+    let reloaded = try #require(mgr.load())
+    #expect(reloaded.first { $0.id == github.id } == github, "no tombstone was written")
+    let bytes = try Data(contentsOf: url)
+    #expect(try mgr.removeUserOverride(id: github.id) == after, "absent override: same list")
+    #expect(try Data(contentsOf: url) == bytes, "and nothing written")
+
+    // Control: ordinary remove of the same word tombstones the built-in.
+    var live = reloaded
+    try mgr.remove(id: github.id, from: &live)
+    #expect(!live.contains { $0.canonical == "GitHub" })
+
+    // Control: an ordinary user word is not this method's to remove.
+    let tuist = CustomWord(canonical: "Tuist")
+    try mgr.add(word: tuist, to: &live)
+    let before = try Data(contentsOf: url)
+    let untouched = try mgr.removeUserOverride(id: tuist.id)
+    #expect(untouched.contains { $0.id == tuist.id })
+    #expect(try Data(contentsOf: url) == before, "byte-identical")
+  }
+
+  @Test("ordinary add still only restores a deleted built-in and discards the supplied aliases (unchanged behavior the learn path must avoid)")
+  func ordinaryAddRestoreOnlyIsUnchanged() throws {
+    let (mgr, _, dir, _) = try Self.seededManager()
+    defer { Self.cleanup(dir) }
+    var words = mgr.load() ?? []
+    let github = try #require(words.first { $0.canonical == "GitHub" })
+    try mgr.remove(id: github.id, from: &words)
+    try mgr.add(word: CustomWord(canonical: "GitHub", aliases: ["git-hub"], learnedAliases: ["git-hub"]), to: &words)
+    let restored = try #require(words.first { $0.canonical == "GitHub" })
+    #expect(restored.source == .builtin && restored.aliases == ["git hub", "get hub"])
+    #expect(restored.learnedAliases.isEmpty)
+  }
 }
 
 /// #1646 (PR-P0) — coordinator surfaces the launch-time load failure honestly.

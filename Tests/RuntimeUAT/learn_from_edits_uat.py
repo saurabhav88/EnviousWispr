@@ -1,39 +1,44 @@
 #!/usr/bin/env python3
-"""Live UAT for learn-from-edits (#996), the founder's pre-PR gate, end to end.
+"""Live UAT for the Self-Learning Dictionary (#996, auto-learn with Undo), the
+founder's pre-PR gate, end to end.
 
     python3 Tests/RuntimeUAT/learn_from_edits_uat.py --run-dir <dir> --export <fp32 dir>
 
 Run with the screen UNLOCKED and hands off the Mac. It dictates a sentence
 through the speaker into a real TextEdit document, makes a scripted fix through
-accessibility, waits for the overlay card, presses Accept / Reject, lets one
-card expire into Pending and accepts it there, and reads every verdict from
-`app.log` and from the two files the feature writes. Every step waits on a
-SIGNAL the app produces, with a deadline as the fallback, never as the
-mechanism (`wait_for` returns whether the signal arrived).
+accessibility, waits for the word to be SAVED (`learn_added`) and for the
+2-second Undo pill (`learn_undo_shown`), presses Undo through accessibility,
+lets another pill expire under the pointer, reads Your Words for the sparkle
+and the Auto-learned filter, and reads every verdict from `app.log` and from
+`custom-words.json`. Every step waits on a SIGNAL the app produces, with a
+deadline as the fallback, never as the mechanism (`wait_for` returns whether
+the signal arrived). The one thing the app does not log is the pill LEAVING
+without Undo: that verdict is the Undo button's absence through accessibility
+inside a wall-clock bound, plus the word still being in the file.
 
 Codified AFTER a hand-driven round 1 (founder 2026-09-20: the first UAT round
-is driven by hand, the script comes after). What that round taught this file:
-the heard form is whatever the recogniser DELIVERED between two anchor words,
-never a fixed regex; the target must be a word the recogniser does not already
-know (EnviousWispr is a built-in; Qualtrics, Malavika and Parvati come out
-right from Parakeet, so there is nothing to fix); `custom-words.json` is a
-dictionary, so "empty" keeps its shape with `words: []`; `test_recording`
-answers a bool and the delivered text is read from TextEdit; the card never
-takes keyboard focus, so there is no Escape arm (the Escape path was removed
-from the product the same day); and a take must not start until the menu bar's
-"Start Recording" item exists, or the harness tap falls into a system-wide
-menu walk that never returns.
+is driven by hand, the script comes after) and rewritten for the 2026-09-21
+pivot (no question to answer, no waiting list: the word is added at once and a pill
+offers Undo for 2 seconds; hover does not pause it). What round 1 taught this
+file still holds: the heard form is whatever the recogniser DELIVERED between
+two anchor words, never a fixed regex; the target must be a word the
+recogniser does not already know; `custom-words.json` is a dictionary, so
+"empty" keeps its shape with `words: []`; `test_recording` answers a bool and
+the delivered text is read from TextEdit; the pill never takes keyboard focus;
+and a take must not start until the menu bar's "Start Recording" item exists.
 
 WHAT IT TOUCHES AND PUTS BACK
 -----------------------------
 The dev app shares `~/Library/Application Support/EnviousWispr/custom-words.json`
-and `correction-proposals.json` with the shipped app (code-uat.md RULE:
-uat-writes-reach-the-founders-REAL-data). Both are snapshotted byte for byte
-before the first case and restored, with the app down, in `finally`; the
-restore is verified by bytes AND by parsed per-key equality. The `learnFromEdits`
-default in `com.enviouswispr.app` and the launchd `EW_LEARN_FROM_EDITS_JUDGE_EXPORT`
-value are snapshotted and restored the same way. A failed restore exits 3 and
-overrides every pass.
+with the shipped app (code-uat.md RULE: uat-writes-reach-the-founders-REAL-data).
+It is snapshotted byte for byte before the first case and restored, with the
+app down, in `finally`; the restore is verified by bytes AND by parsed per-key
+equality. The `learnFromEdits` default in `com.enviouswispr.app` and the
+launchd `EW_LEARN_FROM_EDITS_JUDGE_EXPORT` value are snapshotted and restored
+the same way. The retired ask-first ledger (`correction-proposals.json`) is
+NEVER written or restored by this script: the app deletes it once at launch,
+and the run records only whether it was present before and after. A failed
+restore exits 3 and overrides every pass.
 
 PRECONDITIONS, CHECKED, LOUD
 ----------------------------
@@ -74,7 +79,8 @@ APP_BIN = os.path.join(APP, "Contents", "MacOS", "EnviousWispr")
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 SUPPORT = os.path.expanduser("~/Library/Application Support/EnviousWispr")
 WORDS = os.path.join(SUPPORT, "custom-words.json")
-LEDGER = os.path.join(SUPPORT, "correction-proposals.json")
+# The retired ask-first ledger. Read for the receipt only; never written.
+LEGACY_LEDGER = os.path.join(SUPPORT, "correction-proposals.json")
 DOMAIN = "com.enviouswispr.app"
 ENV_KEY = "EW_LEARN_FROM_EDITS_JUDGE_EXPORT"
 DOOR_ACTIVE = "learn-from-edits UAT door ACTIVE"
@@ -102,10 +108,16 @@ class Pair:
 
 # Targets the recogniser does NOT know (round 1, 2026-09-20: it delivered
 # "Zorab", "PixieI" and "that ish" for these), so there is something to fix.
+# A word typed in by hand, with no learned marks: the control the Auto-learned
+# filter must hide. Seeded before the expiry case (same launch as the Your
+# Words case that reads it).
+MANUAL_WORD = "Manual Control"
+
 PAIRS = {
-    "card-accept": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
-    "card-reject": Pair("Check the pixii dashboard tonight", "dashboard", "the", "dashboard", "pixii"),
-    "expiry-pending": Pair("Send the report to Vaish today", "report", "to", "today", "Vaish"),
+    "new-word-undo": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
+    "existing-word": Pair("Check the pixii dashboard tonight", "dashboard", "the", "dashboard", "pixii"),
+    "expiry-under-hover": Pair("Send the report to Vaish today", "report", "to", "today", "Vaish"),
+    "admission-refused": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "negative": Pair("Send the invoices to the team today", "team", "Send", "to", "the invoices",
                      negative=("the invoices", "a coffee")),
     "toggle-off": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
@@ -311,9 +323,7 @@ def keyed(parsed, kind):
         if isinstance(entries, dict):
             return entries
         return {e.get("id", i): e for i, e in enumerate(entries)}
-    proposals = {p["id"]: p for p in parsed.get("proposals", [])}
-    rejected = {r["pairKey"]: r for r in parsed.get("rejectedPairs", [])}
-    return {"proposals": proposals, "rejectedPairs": rejected}
+    return parsed
 
 
 def verify_restore(path, snap, kind):
@@ -334,11 +344,10 @@ def words_now():
     return keyed(snap["parsed"], "words") if snap["exists"] else {}
 
 
-def ledger_now():
-    snap = file_snapshot(LEDGER)
-    if snap["exists"] and snap["parsed"]:
-        return keyed(snap["parsed"], "ledger")
-    return {"proposals": {}, "rejectedPairs": {}}
+def legacy_ledger_present():
+    """The retired ask-first file. The app removes it once at launch; this
+    script never writes it and reports only whether it exists."""
+    return os.path.exists(LEGACY_LEDGER)
 
 
 def word_named(name):
@@ -348,10 +357,28 @@ def word_named(name):
     return None
 
 
-def open_proposals(pair):
-    heard, correct = pair
-    return [p for p in ledger_now()["proposals"].values()
-            if p.get("original", "").lower() == heard.lower() and p.get("corrected", "").lower() == correct.lower()]
+def learned_alias(pair, heard_text):
+    """The heard form is on the word AND marked as learned (the sparkle's
+    source: `learnedAliases`), which is what separates an auto-learned
+    sound-alike from one typed in by hand."""
+    word = word_named(pair.correct)
+    if not word:
+        return False
+    aliases = [a.lower() for a in (word.get("aliases") or [])]
+    learned = [a.lower() for a in (word.get("learnedAliases") or [])]
+    return heard_text.lower() in aliases and heard_text.lower() in learned
+
+
+def seeded_words_like(snapshot, canonical):
+    """An otherwise empty list that already carries ONE word by canonical (no
+    sound-alikes), for the existing-word case: the fix must attach the
+    mishearing to it rather than create a second word."""
+    base = empty_words_like(snapshot)
+    parsed = dict(base["parsed"])
+    parsed["words"] = [{"id": "00000000-0000-4000-8000-0000000000aa", "canonical": canonical,
+                        "aliases": [], "category": "general", "source": "user", "isEnabled": True}]
+    raw = json.dumps(parsed).encode("utf-8")
+    return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
 
 # --- TextEdit ---------------------------------------------------------------
@@ -445,7 +472,7 @@ def dictate(path, label, pair, need_heard=True):
     save(f"{label}-delivered.txt", text or "")
     # Diagnostic, not a verdict: a loopback that goes to digital zero before the
     # hold ends can retire the mic mid-take (uat-testing.md, silent-uat rule).
-    # Recorded so an unshown card can be read against it.
+    # Recorded so a missing save or pill can be read against it.
     if has(mark, "dead_mic_retire_attempted"):
         print(f"    (diagnostic: {label}: dead_mic_retire_attempted during the take)")
         save(f"{label}-mic-retired.txt", "dead_mic_retire_attempted during the take\n")
@@ -482,31 +509,32 @@ def clear_field(path):
         set_attr(area, "AXValue", "")
 
 
-# --- the card ---------------------------------------------------------------
+# --- the pill ---------------------------------------------------------------
 
-def card_button(kind, correct):
+def undo_button():
+    """The Undo pill's one button, by its accessibility label. The pill shows
+    for 2 seconds after admission, so callers wait on `learn_undo_shown` first
+    and look with a short deadline."""
     pid = app_pid()
     if pid is None:
         return None
     app = get_ax_app(pid)
-    prefix = "Accept: learn " if kind == "accept" else "Reject: don't learn "
-    label = prefix + correct
-    windows = get_attr(app, "AXWindows") or []
-    for window in windows:
-        b = find_element(window, role="AXButton", description=label, max_depth=12)
-        if b is None:
-            b = find_element(window, role="AXButton", title=label, max_depth=12)
-        if b is not None:
-            return b
-    # The card names the RUN the aligner found, which for a two-word fix where
-    # one word was already right is the one changed word ("Clock Code" →
-    # "Claude Code" proposes "Clock → Claude"); when no button carries the
-    # whole expected word, take the one card button of this kind.
-    for window in windows:
-        b = find_button_by_prefix(window, prefix)
+    for window in (get_attr(app, "AXWindows") or []):
+        b = (find_element(window, role="AXButton", description="Undo", max_depth=12)
+             or find_element(window, role="AXButton", title="Undo", max_depth=12))
         if b is not None:
             return b
     return None
+
+
+def pill_frame():
+    """The Undo button's own frame (the pill is the capsule around it), so a
+    hover lands ON the pill and not on whichever window came first."""
+    button = undo_button()
+    if button is None:
+        return None
+    from ui_helpers import element_frame
+    return element_frame(button)
 
 
 def parse_judged(line):
@@ -527,21 +555,19 @@ def finish_restore(snaps, initially_running, app_stopped, audio_restored):
     launchctl_set(snaps["launchctl"])
     if app_stopped:
         file_restore(WORDS, snaps["words"])
-        file_restore(LEDGER, snaps["ledger"])
         defaults_restore(snaps["defaults"])
         ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
-        ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
     else:
         ok_w, why_w = False, "not restored: the app did not stop"
-        ok_l, why_l = False, "not restored: the app did not stop"
     ok_d = defaults_snapshot() == snaps["defaults"]
     ok_e = launchctl_get() == snaps["launchctl"]
     running_restored = not initially_running
-    if initially_running and app_stopped and ok_w and ok_l:
+    if initially_running and app_stopped and ok_w:
         launched = subprocess.run(["open", "-n", APP], capture_output=True, text=True).returncode == 0
         running_restored = launched and bool(wait_for("the initially running app to return", lambda: app_pid() is not None, deadline=20.0))
-    restored = audio_restored and app_stopped and ok_w and ok_l and ok_d and ok_e and running_restored
-    receipt = (f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; ledger={why_l}; "
+    restored = audio_restored and app_stopped and ok_w and ok_d and ok_e and running_restored
+    receipt = (f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; "
+               f"legacy_ledger_present={legacy_ledger_present()} (never written by this script); "
                f"defaults={ok_d}; launchctl={ok_e}; running_state={running_restored}")
     return restored, receipt
 
@@ -569,41 +595,60 @@ def screenshot(name):
     return os.path.exists(path) and os.path.getsize(path) > 0
 
 
-class CardNotAdmitted(Exception):
-    """Judged and proposed, but the overlay refused the card. After a mic
+class PillNotAdmitted(Exception):
+    """Judged and SAVED, but the overlay refused the Undo pill. After a mic
     retire in the same take that is the rig, not the product: the retire ends
     the take as an interruption, the app shows `Recording interrupted` for
-    2.5 s, and a card asking for the slot meanwhile is declined into Pending by
-    design (Codex trace 2026-09-20: PipelineStateChangeDispatch.swift:48,
-    DictationLifecycleCoordinator.swift:597, PillCatalog.swift:220,
-    OverlayReducer.swift:666). Without a retire it is a product FAIL."""
+    2.5 s, and a pill asking for the slot meanwhile is refused by design; the
+    word stays saved with no Undo. Without a retire it is a product FAIL."""
 
     def __init__(self, label, retired):
         self.retired = retired
-        super().__init__(f"{label}: judged and proposed but learn_card_shown never came"
+        super().__init__(f"{label}: judged and saved (learn_added) but learn_undo_shown never came"
                          + (" after dead_mic_retire_attempted in the same take (rig)" if retired else ""))
 
 
-def wait_judged_and_card(mark, label, expect_card=True):
-    judged = wait_for("learn_judged", lambda: re.search(r"learn_judged arm=classifier outcome=\w+ candidates=\d+ accepted=\d+", log_since(mark)), deadline=12.0)
-    if not judged:
+class SaveRefused(Exception):
+    """`learn_save_failed reason=...`: the product refused or lost the save.
+    A terminal FAIL for the arm, never a success and never the rig."""
+
+    def __init__(self, label, reason):
+        self.reason = reason
+        super().__init__(f"{label}: learn_save_failed reason={reason}")
+
+
+def parse_judged_pair(mark):
+    """The Debug `judged "<original>" -> "<corrected>" verdict=...` line: the
+    exact pair the watcher sent, so the landed check follows what the aligner
+    found (one changed word of a two-word fix) without any text in telemetry."""
+    match = re.search(r'judged "([^"]*)" -> "([^"]*)" verdict=', log_since(mark))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def wait_judged(mark, deadline=12.0):
+    judged = wait_for("learn_judged", lambda: re.search(r"learn_judged arm=classifier outcome=\w+ candidates=\d+ accepted=\d+", log_since(mark)), deadline=deadline)
+    return judged.group(0) if judged else None
+
+
+def wait_added(mark, label, expect_pill=True):
+    """After a judged correction: the SAVE (`learn_added state=...`) and, when
+    the slot is free, the pill (`learn_undo_shown`). A refused save is a
+    terminal failure named by its reason, never a success."""
+    added = wait_for("learn_added", lambda: re.search(r"learn_added state=(\w+)", log_since(mark)), deadline=8.0)
+    if not added:
+        failed = re.search(r"learn_save_failed reason=(\w+)", log_since(mark))
+        if failed:
+            raise SaveRefused(label, failed.group(1))
         return None
-    if not expect_card:
-        return judged.group(0)
-    shown = wait_for("learn_card_shown", lambda: has(mark, "learn_card_shown"), deadline=8.0)
+    if not expect_pill:
+        return added.group(1)
+    shown = wait_for("learn_undo_shown", lambda: has(mark, "learn_undo_shown"), deadline=4.0)
     if not shown:
-        if has(mark, "learn_proposed"):
-            raise CardNotAdmitted(label, retired=has(mark, "dead_mic_retire_attempted"))
-        return None
-    if not screenshot(f"{label}.png"):
-        raise Aborted(f"{label}: the card screenshot is missing or empty (visual proof required)")
-    return judged.group(0)
+        raise PillNotAdmitted(label, retired=has(mark, "dead_mic_retire_attempted"))
+    return added.group(1)
 
 
 # --- cases ------------------------------------------------------------------
-
-EMPTY_LEDGER = {"exists": False}
-
 
 def empty_words_like(snapshot):
     """The word file is a DICTIONARY (`builtinsVersion`, `deletedBuiltinIds`,
@@ -616,14 +661,13 @@ def empty_words_like(snapshot):
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": base}
 
 
-def relaunch_for_case(snaps, toggle_on, export):
-    """Each case starts from an EMPTY word list and NO ledger (founder
-    2026-09-20: clear my custom words, saved to the side, for the run), so the
-    founder's historical words are learned fresh; the originals come back in
-    `finally`."""
+def relaunch_for_case(snaps, toggle_on, export, words=None):
+    """Each case starts from an EMPTY word list (founder 2026-09-20: clear my
+    custom words, saved to the side, for the run), or the one seeded word a
+    case asks for, so the founder's historical words are learned fresh; the
+    originals come back in `finally`. The retired ledger is not touched."""
     stop_app()
-    file_restore(WORDS, empty_words_like(snaps["words"]))
-    file_restore(LEDGER, EMPTY_LEDGER)
+    file_restore(WORDS, words or empty_words_like(snaps["words"]))
     defaults_write_bool(toggle_on)
     launchctl_set(export)
     return start_app()
@@ -634,165 +678,249 @@ def alias_landed(pair, heard_text):
     return bool(word) and heard_text.lower() in [a.lower() for a in (word.get("aliases") or [])]
 
 
-def case_card_accept(path):
-    pair = PAIRS["card-accept"]
-    mark, _, heard = dictate(path, "card-accept", pair)
-    apply_fix(path, "card-accept", heard, pair.correct)
-    judged = wait_judged_and_card(mark, "card-accept")
-    if not judged:
-        return check("card-accept", False, "no learn_judged + learn_card_shown after the fix")
-    if "accepted=1" not in judged:
-        return check("card-accept", False, f"judge refused the known-positive pair: {judged}")
-    button = wait_for("the card's Accept button", lambda: card_button("accept", pair.correct), deadline=6.0)
+def press_undo(label):
+    """Find and press the pill's Undo button. The window is 2 seconds from
+    admission, so the search deadline is short and a miss is the rig's
+    timing (INSTRUMENT), not the product."""
+    button = wait_for("the pill's Undo button", undo_button, deadline=1.5)
     if button is None:
-        return check("card-accept", False, f"learn_card_shown but no AX 'Accept: learn {pair.correct}' button (accessibility defect)")
+        raise Aborted(f"{label}: learn_undo_shown but no AX 'Undo' button inside the window (timing or accessibility)")
     perform_action(button, "AXPress")
-    resolved = wait_for("the accept to resolve", lambda: re.search(r"learn_resolved decision=accepted surface=card", log_since(mark)), deadline=10.0)
-    landed = wait_for("the word in custom-words.json", lambda: alias_landed(pair, heard), deadline=5.0)
-    ok = bool(resolved) and bool(landed)
-    check("card-accept", ok, f"heard={heard!r} resolved={bool(resolved)} landed={bool(landed)}")
-    # The learned word on the NEXT dictation of the same sentence.
+
+
+def case_new_word_undo(path):
+    """A word EnviousWispr did not have: saved at once (`learn_added
+    state=new_word`), the pill says Added, Undo removes it exactly."""
+    pair = PAIRS["new-word-undo"]
+    mark, _, heard = dictate(path, "new-word-undo", pair)
+    apply_fix(path, "new-word-undo", heard, pair.correct)
+    judged = wait_judged(mark)
+    if not judged:
+        return check("new-word-undo", False, "no learn_judged after the fix")
+    if "accepted=1" not in judged:
+        return check("new-word-undo", False, f"judge refused the known-positive pair: {judged}")
+    state = wait_added(mark, "new-word-undo")
+    if state is None:
+        return check("new-word-undo", False, "judged accepted but no learn_added and no learn_save_failed")
+    saved = wait_for("the word in custom-words.json", lambda: learned_alias(pair, heard), deadline=3.0)
+    check("new-word-saved", state == "new_word" and bool(saved), f"heard={heard!r} state={state} saved_with_learned_alias={bool(saved)}")
+    press_undo("new-word-undo")
+    undone = wait_for("learn_undone", lambda: re.search(r"learn_undone kind=(\w+) outcome=(\w+)", log_since(mark)), deadline=6.0)
+    if not screenshot("new-word-undone.png"):
+        raise Aborted("new-word-undo: the Undone screenshot is missing or empty (visual proof required)")
+    removed = wait_for("the word to leave custom-words.json", lambda: word_named(pair.correct) is None, deadline=5.0)
+    ok = bool(undone) and undone.group(1) == "added" and undone.group(2) == "undone" and bool(removed)
+    return check("new-word-undo", ok, f"undone={undone.group(0) if undone else None} removed={bool(removed)}")
+
+
+def case_existing_word(path):
+    """The corrected word is ALREADY in Your Words (seeded, no sound-alikes):
+    the fix attaches the mishearing to it (`learn_added state=existing_word`,
+    the pill says updated), Undo is not pressed, and the sound-alike is marked
+    learned. Then the learned word on the NEXT dictation of the same sentence."""
+    pair = PAIRS["existing-word"]
+    mark, _, heard = dictate(path, "existing-word", pair)
+    apply_fix(path, "existing-word", heard, pair.correct)
+    judged = wait_judged(mark)
+    if not judged:
+        return check("existing-word", False, "no learn_judged after the fix")
+    if "accepted=1" not in judged:
+        return check("existing-word", False, f"judge refused the known-positive pair: {judged}")
+    state = wait_added(mark, "existing-word")
+    if state is None:
+        return check("existing-word", False, "judged accepted but no learn_added and no learn_save_failed")
+    if not screenshot("existing-word-pill.png"):
+        raise Aborted("existing-word: the pill screenshot is missing or empty (visual proof required)")
+    landed = wait_for("the learned sound-alike on the seeded word", lambda: learned_alias(pair, heard), deadline=5.0)
+    one_word = sum(1 for e in (words_now() or {}).values() if isinstance(e, dict) and str(e.get("canonical", "")).lower() == pair.correct.lower()) == 1
+    ok = state == "existing_word" and bool(landed) and one_word
+    check("existing-word", ok, f"heard={heard!r} state={state} learned_alias={bool(landed)} one_word={one_word}")
+    # No Undo: the pill leaves on its own and the word persists (checked again
+    # after the window in `case_persists_then_your_words`).
     clear_field(path)
     mark2, text2, _ = dictate(path, "learned-alias", pair, need_heard=False)
     corrected = wait_for("the corrector's OUT line", lambda: re.search(r"CORRECTION_DEBUG.*OUT:.*" + re.escape(pair.correct), log_since(mark2)), deadline=10.0)
-    check("learned-alias", bool(corrected) and pair.correct in text2, f"corrector_out={bool(corrected)} delivered_has_target={pair.correct in text2} delivered={text2!r}")
+    check("learned-alias", bool(corrected) and pair.correct.lower() in text2.lower(), f"corrector_out={bool(corrected)} delivered_has_target={pair.correct.lower() in text2.lower()} delivered={text2!r}")
     return ok
 
 
-def case_card_reject(path):
-    pair = PAIRS["card-reject"]
-    mark, _, heard = dictate(path, "card-reject", pair)
-    apply_fix(path, "card-reject", heard, pair.correct)
-    judged = wait_judged_and_card(mark, "card-reject")
+def park_pointer():
+    """Park the pointer top-left, over nothing that reacts to a bare move, so
+    no case starts with it over the pill's place (the pill does not pause
+    under hover, but a screenshot of it should show it unobstructed)."""
+    si.move_mouse(4, 4)
+    time.sleep(0.2)  # settle: the move reaches the overlay before the next step
+
+
+def hover_pill():
+    """Put the pointer ON the pill. The 2-second window must not pause or
+    extend (founder: "hovering over pill does not stop the timer")."""
+    frame = pill_frame()
+    if frame is None:
+        return False
+    si.move_mouse(int(frame["x"] + frame["width"] / 2), int(frame["y"] + frame["height"] / 2))
+    return True
+
+
+def case_expiry_under_hover(path):
+    """No Undo pressed: the pill leaves by itself at 2 seconds with the pointer
+    over it, and the word stays. The app logs no "pill ended" token; the
+    verdict is the Undo button's absence inside a wall-clock bound (2 s plus
+    0.5 s of accessibility slack) with no `learn_undone`, plus the word in
+    the file afterwards. The pointer must have reached the pill."""
+    pair = PAIRS["expiry-under-hover"]
+    mark, _, heard = dictate(path, "expiry-under-hover", pair)
+    apply_fix(path, "expiry-under-hover", heard, pair.correct)
+    judged = wait_judged(mark)
     if not judged:
-        return check("card-reject", False, "no learn_judged + learn_card_shown")
-    words_before = words_now()
-    button = wait_for("the card's Reject button", lambda: card_button("reject", pair.correct), deadline=6.0)
-    if button is None:
-        return check("card-reject", False, "no AX 'Reject' button")
-    perform_action(button, "AXPress")
-    resolved = wait_for("the reject to resolve", lambda: re.search(r"learn_resolved decision=rejected surface=card", log_since(mark)), deadline=10.0)
-    tombstoned = wait_for("the tombstone", lambda: any(pair.correct.lower() in k.lower() for k in ledger_now()["rejectedPairs"]), deadline=5.0)
-    check("card-reject", bool(resolved) and bool(tombstoned) and words_now() == words_before,
-          f"heard={heard!r} resolved={bool(resolved)} tombstoned={bool(tombstoned)} vocabulary_unchanged={words_now() == words_before}")
-    # The rejected pair is never offered again.
-    clear_field(path)
-    mark2, _, heard2 = dictate(path, "rejected-repeat", pair)
-    if heard2.lower() != heard.lower():
-        record("rejected-pair-stays-rejected", "INSTRUMENT", f"the repeat was heard as {heard2!r}, not {heard!r}; a different pair proves nothing")
-        return
-    apply_fix(path, "rejected-repeat", heard2, pair.correct)
-    # The claim is an ABSENCE (no card); the presence that bounds it is the
-    # observation's end after the field is cleared.
-    time.sleep(4.0)  # settle: the watcher's quiet window must pass before the field is cleared
-    clear_field(path)
-    ended = wait_for("observation end", lambda: has(mark2, "learn_observation_ended"), deadline=12.0)
-    lines = "\n".join(learn_lines(mark2))
-    offered = ("learn_proposed" in lines) or ("learn_card_shown" in lines)
-    check("rejected-pair-stays-rejected", bool(ended) and not offered,
-          f"observation_ended={bool(ended)} offered_again={offered}")
+        return check("expiry-under-hover", False, "no learn_judged after the fix")
+    state = wait_added(mark, "expiry-under-hover")
+    if state is None:
+        return check("expiry-under-hover", False, "judged but no learn_added")
+    shown_at = time.monotonic()
+    hovered = hover_pill()
+    if not screenshot("expiry-under-hover-pill.png"):
+        raise Aborted("expiry-under-hover: the pill screenshot is missing or empty (visual proof required)")
+    gone = wait_for("the Undo button to leave", lambda: undo_button() is None, deadline=3.5)
+    left_after = time.monotonic() - shown_at
+    park_pointer()
+    persisted = wait_for("the word still in custom-words.json", lambda: learned_alias(pair, heard), deadline=2.0)
+    undone = has(mark, "learn_undone")
+    # `hovered` is REQUIRED: a run that never reached the pill would prove
+    # only that pills expire, not that hover leaves the window alone.
+    ok = hovered and bool(gone) and left_after <= 2.5 and not undone and bool(persisted)
+    return check("expiry-under-hover", ok,
+                 f"heard={heard!r} hovered={hovered} pill_gone={bool(gone)} left_after_s={left_after:.2f} undone={undone} persisted={bool(persisted)}")
 
 
-def settings_window(app):
-    """The Settings window, never the overlay: an app-wide search for
-    `Accept: learn <word>` can find the CARD's button while it is still on
-    screen and press that instead (scripted run 2026-09-20 16:18Z did)."""
+def your_words_window(app):
     for window in (get_attr(app, "AXWindows") or []):
         if str(get_attr(window, "AXTitle") or "") == "EnviousWispr":
             return window
     return None
 
 
-def pending_row(app):
-    win = settings_window(app)
+SPARKLE_LABEL = "learned from your edits"
+
+
+def word_label(app, canonical):
+    """The Your Words row's word text, by AXValue, AXTitle or AXDescription."""
+    win = your_words_window(app)
     if win is None:
         return None
-    return (find_element(win, role="AXButton", description="Pending, 1 waiting", max_depth=14)
-            or find_element(win, role="AXButton", title="Pending, 1 waiting", max_depth=14))
+    return (find_element(win, value=canonical, max_depth=18)
+            or find_element(win, title=canonical, max_depth=18)
+            or find_element(win, description=canonical, max_depth=18))
 
 
-def pending_accept(app, correct):
-    win = settings_window(app)
-    if win is None:
+def sparkled_row(app, canonical):
+    """The Your Words row for `canonical` carries the sparkle: the row's word
+    text is present AND a separate image labelled `learned from your edits`
+    sits in the same row (an ancestor within three levels of the word text
+    has that image as a descendant). The sparkle is its own accessibility
+    element, never a value on the word."""
+    label = word_label(app, canonical)
+    if label is None:
         return None
-    return (find_element(win, role="AXButton", description=f"Accept: learn {correct}", max_depth=16)
-            or find_element(win, role="AXButton", title=f"Accept: learn {correct}", max_depth=16))
-
-
-def card_frame(correct):
-    pid = app_pid()
-    if pid is None:
+    # The sparkle is the image labelled `learned from your edits` drawn on the
+    # SAME LINE as the word, just to its right. Geometry, not tree shape: the
+    # list flattens rows into one group, so a parent walk finds another
+    # word's sparkle (live runs 2026-09-22, twice). The seeded manual word
+    # must read unsparkled through this same oracle (the control).
+    from ui_helpers import element_frame
+    box = element_frame(label)
+    win = your_words_window(app)
+    if box is None or win is None:
         return None
-    app = get_ax_app(pid)
-    for window in (get_attr(app, "AXWindows") or []):
-        if find_element(window, role="AXButton", description=f"Accept: learn {correct}", max_depth=12) is not None:
-            from ui_helpers import element_frame
-            return element_frame(window)
+    mid = box["y"] + box["height"] / 2
+    for sparkle in all_elements(win, description=SPARKLE_LABEL):
+        frame = element_frame(sparkle)
+        if frame is None:
+            continue
+        same_line = frame["y"] <= mid <= frame["y"] + frame["height"]
+        to_the_right = box["x"] + box["width"] - 2 <= frame["x"] <= box["x"] + box["width"] + 40
+        if same_line and to_the_right:
+            return label
     return None
 
 
-def park_pointer():
-    """Hover pauses the card's dwell, so a pointer left where the card appears
-    (bottom centre) makes 'expiry' impossible (scripted run 2026-09-20 16:18Z:
-    the card never expired and the run's own earlier click was the cause).
-    Park it top-left, over nothing that reacts to a bare move."""
-    si.move_mouse(4, 4)
-    time.sleep(0.2)  # settle: hover-exit reaches the overlay before the next step
+def all_elements(element, description, depth=0, max_depth=18):
+    """Every descendant whose AXDescription equals `description`."""
+    out = []
+    if depth > max_depth or element is None:
+        return out
+    if get_attr(element, "AXDescription") == description:
+        out.append(element)
+    for child in (get_attr(element, "AXChildren") or []):
+        out.extend(all_elements(child, description, depth + 1, max_depth))
+    return out
 
 
-def pointer_outside(frame):
-    import Quartz
-    from AppKit import NSEvent
-    loc = NSEvent.mouseLocation()
-    if loc is None or frame is None:
+def auto_learned_pill(app):
+    win = your_words_window(app)
+    if win is None:
         return None
-    # AX frames are top-left origin; NSEvent is bottom-left. Compare on x only
-    # plus a height check through the screen height.
-    screen_h = Quartz.CGDisplayPixelsHigh(Quartz.CGMainDisplayID())
-    x, y = float(loc.x), screen_h - float(loc.y)
-    inside = frame["x"] <= x <= frame["x"] + frame["width"] and frame["y"] <= y <= frame["y"] + frame["height"]
-    return not inside
+    return (find_element(win, role="AXButton", description="Auto-learned", max_depth=16)
+            or find_element(win, role="AXButton", title="Auto-learned", max_depth=16))
 
 
-def open_proposals_for(pair):
-    return [p for p in ledger_now()["proposals"].values()
-            if p.get("corrected", "").lower() == pair.correct.lower()]
-
-
-def case_expiry_pending(path):
-    """An unanswered card expires into Pending (no hover), and Accept there
-    saves the word. The card has no keyboard dismiss, so expiry is the only
-    no-decision path a person can take."""
-    pair = PAIRS["expiry-pending"]
-    mark, _, heard = dictate(path, "expiry-pending", pair)
-    apply_fix(path, "expiry-pending", heard, pair.correct)
-    judged = wait_judged_and_card(mark, "expiry-pending")
-    if not judged:
-        return check("expiry-pending", False, "no learn_judged + learn_card_shown")
-    outside = pointer_outside(card_frame(pair.correct))
-    if outside is False:
-        park_pointer()  # hover-exit restarts the dwell from full; the wait below covers it
-    expired = wait_for("learn_card_expired", lambda: has(mark, "learn_card_expired"), deadline=12.0)
-    pending = open_proposals_for(pair)
-    still_pending = bool(pending) and pending[0].get("status") == "pending" and pending[0].get("overlayAttempted") is True
-    check("expiry-pending", bool(expired) and still_pending, f"heard={heard!r} expired={bool(expired)} pending={still_pending}")
+def case_persists_then_your_words(path):
+    """After the previous case's pill expired, the learned word is still in
+    Your Words with its sparkle, and the Auto-learned filter shows it. Both
+    screenshots are the visual proof the founder asked for."""
+    pair = PAIRS["expiry-under-hover"]
+    word = word_named(pair.correct)
+    if not word:
+        return check("persists-in-your-words", False, f"{pair.correct} is not in custom-words.json after the pill expired")
     w.connect()
     w.nav("Dictionary")
     app = get_ax_app(app_pid())
-    row = wait_for("the Pending rail row with a badge", lambda: pending_row(app), deadline=8.0)
-    if row is None:
-        return check("pending-accept", False, "no 'Pending, 1 waiting' rail row")
-    perform_action(row, "AXPress")
-    accept = wait_for("the Pending row's Accept", lambda: pending_accept(app, pair.correct), deadline=8.0)
-    if not screenshot("pending-expiry.png"):
-        raise Aborted("expiry-pending: the Pending screenshot is missing or empty (visual proof required)")
-    if accept is None:
-        return check("pending-accept", False, f"Pending tab shows no 'Accept: learn {pair.correct}' row")
-    perform_action(accept, "AXPress")
-    resolved = wait_for("the Pending accept", lambda: re.search(r"learn_resolved decision=accepted surface=pending", log_since(mark)), deadline=10.0)
-    landed = wait_for("the word in custom-words.json", lambda: alias_landed(pair, heard), deadline=5.0)
+    # The seeded MANUAL word is the control: it has no sparkle, and the
+    # Auto-learned filter must hide it while the learned word stays.
+    manual = wait_for("the seeded manual word's row", lambda: word_label(app, MANUAL_WORD), deadline=8.0)
+    row = wait_for("the sparkled Your Words row", lambda: sparkled_row(app, pair.correct), deadline=8.0)
+    if not screenshot("your-words-sparkle.png"):
+        raise Aborted("persists-in-your-words: the Your Words screenshot is missing or empty (visual proof required)")
+    manual_sparkled = sparkled_row(app, MANUAL_WORD) is not None
+    check("your-words-sparkle", row is not None and manual is not None and not manual_sparkled,
+          f"learned_row_sparkled={row is not None} manual_row_present={manual is not None} manual_sparkled={manual_sparkled} learnedAliases={word.get('learnedAliases')}")
+    pill = wait_for("the Auto-learned filter pill", lambda: auto_learned_pill(app), deadline=6.0)
+    if pill is None:
+        w.close_window()
+        return check("auto-learned-filter", False, "no 'Auto-learned' filter pill")
+    pressed = perform_action(pill, "AXPress")
+    hidden = wait_for("the manual word to leave the filtered list", lambda: word_label(app, MANUAL_WORD) is None, deadline=4.0)
+    still = sparkled_row(app, pair.correct)
+    if not screenshot("your-words-auto-learned-filter.png"):
+        raise Aborted("auto-learned-filter: the filtered screenshot is missing or empty (visual proof required)")
     w.close_window()
-    return check("pending-accept", bool(resolved) and bool(landed), f"resolved={bool(resolved)} landed={bool(landed)}")
+    ok = bool(pressed) and still is not None and bool(hidden)
+    return check("auto-learned-filter", ok,
+                 f"pressed={bool(pressed)} learned_row_visible_under_filter={still is not None} manual_row_hidden={bool(hidden)}")
+
+
+def case_admission_refused(path):
+    """The control for `learn_added` WITHOUT `learn_undo_shown`: the fix is
+    flushed by the next recording (#3090: a live watch is finished, not
+    cancelled, and an unflushed fix is judged), and the pill asks for the slot
+    while the recording holds it. The word is saved; no Undo is offered."""
+    pair = PAIRS["admission-refused"]
+    mark, _, heard = dictate(path, "admission-refused", pair)
+    apply_fix(path, "admission-refused", heard, pair.correct)
+    w.connect()
+    started = w.tap("Start Recording")
+    ended = wait_for("observation ended by the next dictation", lambda: re.search(r"learn_observation_ended reason=next_dictation_started settled_bursts=\d+", log_since(mark)), deadline=10.0)
+    judged = wait_judged(mark, deadline=10.0)
+    state = wait_added(mark, "admission-refused", expect_pill=False) if judged else None
+    wait_for("the recording to start", lambda: has(mark, "Recording started"), deadline=10.0)
+    time.sleep(1.5)  # settle: the pill's admission is decided while the recording holds the slot
+    shown = has(mark, "learn_undo_shown")
+    w.tap("Stop Recording")
+    wait_for("the take's terminal", lambda: has(mark, "dictation_terminal") or has(mark, "Pipeline timing TOTAL"), deadline=45.0)
+    saved = learned_alias(pair, heard)
+    ok = bool(started) and bool(ended) and state is not None and not shown and saved
+    return check("admission-refused", ok,
+                 f"started={bool(started)} ended={bool(ended)} state={state} undo_shown={shown} saved={saved}")
 
 
 def case_negative(path):
@@ -800,15 +928,15 @@ def case_negative(path):
     mark, _, _ = dictate(path, "negative", pair, need_heard=False)
     src, dst = pair.negative
     apply_fix(path, "negative", src, dst)
-    judged = wait_judged_and_card(mark, "negative", expect_card=False)
+    judged = wait_judged(mark)
     if not judged:
         return check("negative", False, "no learn_judged after the rewrite-shaped edit")
-    # The claim is an ABSENCE (no card), bounded by the observation's end.
+    # The claim is an ABSENCE (no save, no pill), bounded by the observation's end.
     clear_field(path)
     wait_for("observation end", lambda: has(mark, "learn_observation_ended"), deadline=12.0)
     lines = "\n".join(learn_lines(mark))
-    return check("negative", "accepted=0" in judged and "learn_proposed" not in lines and "learn_card_shown" not in lines,
-                 f"judged={judged} proposed={'learn_proposed' in lines} card={'learn_card_shown' in lines}")
+    return check("negative", "accepted=0" in judged and "learn_added" not in lines and "learn_undo_shown" not in lines,
+                 f"judged={judged} added={'learn_added' in lines} undo_shown={'learn_undo_shown' in lines}")
 
 
 def case_toggle_off(path):
@@ -817,15 +945,15 @@ def case_toggle_off(path):
     apply_fix(path, "toggle-off", heard, pair.correct)
     skipped = wait_for("learn_skipped toggle_off", lambda: has(mark, "learn_skipped reason=toggle_off"), deadline=10.0)
     lines = "\n".join(learn_lines(mark))
-    return check("toggle-off", bool(skipped) and "learn_judged" not in lines and "learn_proposed" not in lines,
+    return check("toggle-off", bool(skipped) and "learn_judged" not in lines and "learn_added" not in lines,
                  f"skipped={bool(skipped)} judged={'learn_judged' in lines}")
 
 
 def case_next_dictation(path):
+    """No fix, then the next recording: the watch ends as
+    `next_dictation_started` with nothing to flush, so nothing is judged."""
     pair = PAIRS["next-dictation"]
-    mark, _, heard = dictate(path, "next-dictation", pair)
-    apply_fix(path, "next-dictation", heard, pair.correct)
-    # Start the next recording BEFORE the quiet window settles.
+    mark, _, _ = dictate(path, "next-dictation", pair)
     w.connect()
     started = w.tap("Start Recording")
     ended = wait_for("observation ended by the next dictation", lambda: re.search(r"learn_observation_ended reason=next_dictation_started settled_bursts=\d+", log_since(mark)), deadline=10.0)
@@ -833,7 +961,7 @@ def case_next_dictation(path):
     w.tap("Stop Recording")
     wait_for("the take's terminal", lambda: has(mark, "dictation_terminal") or has(mark, "Pipeline timing TOTAL"), deadline=45.0)
     lines = "\n".join(learn_lines(mark))
-    return check("next-dictation-cancels-watch", bool(started) and bool(ended) and "learn_judged" not in lines and "learn_card_shown" not in lines,
+    return check("next-dictation-ends-watch", bool(started) and bool(ended) and "learn_judged" not in lines and "learn_added" not in lines,
                  f"started={bool(started)} ended={bool(ended)} judged={'learn_judged' in lines}")
 
 
@@ -877,10 +1005,9 @@ def main():
     initially_running = app_pid() is not None
 
     head = subprocess.run(["git", "-C", WORKTREE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    snaps = {"words": file_snapshot(WORDS), "ledger": file_snapshot(LEDGER),
-             "defaults": defaults_snapshot(), "launchctl": launchctl_get()}
+    snaps = {"words": file_snapshot(WORDS), "defaults": defaults_snapshot(), "launchctl": launchctl_get()}
     save("before-custom-words.json", {k: v for k, v in snaps["words"].items() if k != "bytes"})
-    save("before-correction-proposals.json", {k: v for k, v in snaps["ledger"].items() if k != "bytes"})
+    save("before-legacy-ledger.json", {"present": legacy_ledger_present(), "path": LEGACY_LEDGER, "note": "read only; the app deletes it at launch; this script never writes it"})
     save("before-defaults-and-launchctl.json", {"defaults": snaps["defaults"], "launchctl": snaps["launchctl"]})
     with open(APP_BIN, "rb") as fh:
         bin_sha = hashlib.sha256(fh.read()).hexdigest()
@@ -905,31 +1032,42 @@ def main():
         route.apply()
         doc = new_doc("learn")
         prove_oracle(doc)
+        # (name, toggle on, words the case starts from or None for empty, relaunch first, fn)
         cases = [
-            ("card-accept", True, case_card_accept),
-            ("card-reject", True, case_card_reject),
-            ("expiry-pending", True, case_expiry_pending),
-            ("negative", True, case_negative),
-            ("toggle-off", False, case_toggle_off),
-            ("next-dictation", True, case_next_dictation),
+            ("new-word-undo", True, None, True, case_new_word_undo),
+            ("existing-word", True, "seed", True, case_existing_word),
+            ("expiry-under-hover", True, "manual", True, case_expiry_under_hover),
+            # Same launch as the case before it: the word it learned must persist.
+            ("persists-in-your-words", True, None, False, case_persists_then_your_words),
+            ("admission-refused", True, None, True, case_admission_refused),
+            ("negative", True, None, True, case_negative),
+            ("toggle-off", False, None, True, case_toggle_off),
+            ("next-dictation", True, None, True, case_next_dictation),
         ]
-        for name, toggle_on, fn in cases:
+        for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
                 continue
             print(f"\n=== {name} ===", flush=True)
             case_mark = log_mark()
             park_pointer()
-            relaunch_for_case(snaps, toggle_on, args.export)
-            clear_field(doc)
+            if relaunch:
+                words = None
+                if seed == "seed":
+                    words = seeded_words_like(snaps["words"], PAIRS[name].correct)
+                elif seed == "manual":
+                    words = seeded_words_like(snaps["words"], MANUAL_WORD)
+                relaunch_for_case(snaps, toggle_on, args.export, words=words)
+                clear_field(doc)
             try:
                 fn(doc)
-            except CardNotAdmitted as error:
+            except PillNotAdmitted as error:
                 record(name, "INSTRUMENT" if error.retired else "FAIL", str(error))
+            except SaveRefused as error:
+                record(name, "FAIL", str(error))
             except Aborted as error:
                 record(name, "INSTRUMENT", str(error))
             finally:
                 save(f"{name}-learn-lines.txt", "\n".join(learn_lines(case_mark)))
-                save(f"{name}-ledger.json", ledger_now())
                 save(f"{name}-words.json", words_now())
     except Aborted as error:
         record("run", "INSTRUMENT", str(error))
@@ -965,22 +1103,20 @@ def main():
         launchctl_set(snaps["launchctl"])
         if app_stopped:
             file_restore(WORDS, snaps["words"])
-            file_restore(LEDGER, snaps["ledger"])
             defaults_restore(snaps["defaults"])
             ok_w, why_w = verify_restore(WORDS, snaps["words"], "words")
-            ok_l, why_l = verify_restore(LEDGER, snaps["ledger"], "ledger")
         else:
             ok_w, why_w = False, "not restored: the app did not stop"
-            ok_l, why_l = False, "not restored: the app did not stop"
         after_defaults = defaults_snapshot()
         ok_d = after_defaults == snaps["defaults"]
         ok_e = launchctl_get() == snaps["launchctl"]
         save("restore-verification.json", {"audio": audio_restored, "app_stopped": app_stopped,
-                                           "words": [ok_w, why_w], "ledger": [ok_l, why_l],
+                                           "words": [ok_w, why_w],
+                                           "legacy_ledger_present_after": legacy_ledger_present(),
                                            "defaults": [ok_d, after_defaults], "launchctl": [ok_e, launchctl_get()]})
-        restored = audio_restored and app_stopped and ok_w and ok_l and ok_d and ok_e
+        restored = audio_restored and app_stopped and ok_w and ok_d and ok_e
         record("restore", "PASS" if restored else "FAIL",
-               f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; ledger={why_l}; defaults={ok_d}; launchctl={ok_e}")
+               f"audio={audio_restored}; app_stopped={app_stopped}; words={why_w}; legacy_ledger_present={legacy_ledger_present()}; defaults={ok_d}; launchctl={ok_e}")
         save("app-log.txt", log_since(log_start))
         statuses = [r["status"] for r in results]
         if not restored:

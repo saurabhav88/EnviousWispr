@@ -52,26 +52,29 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// The one request with no matching `OverlayIntent`. It is minted by a feature
   /// path rather than by the pipeline, which is why it announces nothing.
   case importStatus(message: String)
-  /// #996: the correction card, a feature route with no matching pipeline
-  /// intent. Unlike import status it IS announced: the catalog supplies the
-  /// sentence directly (plan §3.1 step 9).
-  case correctionProposal(CorrectionProposalCardModel)
+  /// #996 auto-learn: the Undo pill (`.learned` phase only; results are
+  /// reducer morphs) and its standalone save-error notice. Feature routes with
+  /// no matching pipeline intent; unlike import status they ARE announced: the
+  /// catalog supplies the sentence directly (2026-09-21 plan §3.1 step 9).
+  case correctionLearned(LearnedCorrectionPillModel)
+  case correctionLearnedSaveError(LearnedCorrectionSaveError)
 
-  // **SEVENTEEN cases: `.recording` plus sixteen non-recording.** C2 staged
+  // **NINETEEN cases: `.recording`, the sixteen non-recording the migration
+  // froze, and the two #996 auto-learn feature routes above.** C2 staged
   // `.recording` out because the catalog's recording arm needs a RESOLVED design
   // and no production caller could supply one before the recording transaction
   // existed. C3a builds that transaction, so the arm and its first caller land
   // together — no chunk ever contained an unimplemented case or a placeholder
   // design.
   //
-  // **The non-recording count is sixteen, not seventeen, and the difference is
-  // G2 itself.**
+  // **The migration's frozen non-recording set has sixteen cases.** The two
+  // auto-learn feature routes above extend that set to eighteen; Bluetooth still
+  // has two routes to one value and must not gain a duplicate request case.
   // `bluetoothAwareness` is a pipeline intent AND is minted a second time by
   // `reduceBluetoothAwareness`; those are two ROUTES to one VALUE, not two
   // requests. C0 froze both routes as separate rows and they are identical field
-  // for field, which is the measurement that settles it. A seventeenth
-  // non-recording case here could only be a second Bluetooth arm — G2's
-  // duplicate, reappearing inside the type built to remove it.
+  // for field, which is the measurement that settles it. A second Bluetooth arm
+  // would be G2's duplicate, reappearing inside the type built to remove it.
 }
 
 /// What one request resolves to.
@@ -140,11 +143,16 @@ enum PillCatalog {
     if case .advisory(let reason, let hint?) = request {
       return .high(DictationNarrator.announcement(for: .advisory(reason: reason), hint: hint))
     }
-    // #996: a direct sentence for the one feature route that must be audible
-    // although no pipeline intent matches it. Medium, like the Bluetooth card:
-    // nothing went wrong, and the offer waits in Pending if it is missed.
-    if case .correctionProposal(let model) = request {
-      return .medium(CorrectionProposalCardCopy.announcement(for: model))
+    // #996 auto-learn: direct sentences for the two feature routes that must be
+    // audible although no pipeline intent matches them. Medium, like the
+    // Bluetooth card: the pill reads its sentence plus "Undo available" (the
+    // word is saved either way), and the save error reads its own line
+    // (nothing needs the high channel; the word simply was not saved).
+    if case .correctionLearned(let model) = request {
+      return .medium(CorrectionLearnedPillCopy.announcement(for: model))
+    }
+    if case .correctionLearnedSaveError(let error) = request {
+      return .medium(CorrectionLearnedPillCopy.saveError(error))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -334,13 +342,22 @@ enum PillCatalog {
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
         requestedWidth: .fixed(320))
 
-    case .correctionProposal(let model):
-      // Plan §3.1 step 9: the language chip's hover-pause form, a fixed 400
-      // (the Live Preview width), content-driven height. The result phase
-      // re-arms its own 3-second dwell in the reducer.
+    case .correctionLearned(let model):
+      // 2026-09-21 plan §3.1 step 9: two seconds, and hover does NOT pause it
+      // (founder: "hovering over pill does not stop the timer"). Measured
+      // width: the view pins none, and the sentence shrinks to fit one line.
+      // The `Undone` / `Couldn’t undo` results re-arm their own dwell in the
+      // reducer.
       return PillDefinition(
-        id: id, content: .correctionProposal(model),
-        expiry: .after(seconds: 8, pausesOnHover: true), requestedWidth: .fixed(440))
+        id: id, content: .correctionLearned(model),
+        expiry: .after(seconds: CorrectionLearnedPillCopy.learnedDwellSeconds, pausesOnHover: false),
+        requestedWidth: .measured)
+
+    case .correctionLearnedSaveError(let error):
+      return PillDefinition(
+        id: id, content: .correctionLearnedSaveError(error),
+        expiry: .after(seconds: CorrectionLearnedPillCopy.errorDwellSeconds, pausesOnHover: false),
+        requestedWidth: .measured)
 
     case .escapeRecovery(let transcriptID):
       return PillDefinition(
@@ -456,7 +473,8 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus, .correctionProposal: return nil
+    case .importStatus, .correctionLearned, .correctionLearnedSaveError:
+      return nil
     }
   }
 

@@ -4237,15 +4237,17 @@ public final class TelemetryService {
     )
   }
 
-  // MARK: - Learn from edits (#996 §4, nine events)
+  // MARK: - Learn from edits (#996 §4; seven emitters: the watcher's three
+  // (skipped, observation_ended, judged) and the auto-learn coordinator's four
+  // (added, undo_shown, undone, save_failed), per the 2026-09-21 plan §3.1.)
   //
   // Counts, durations and closed enums only. No pasted text, no edited text, no
   // word, no bundle id, no exception text: the boundary is the network
   // (`sentry-operations.md` RULE: telemetry-privacy-boundary). Every enum below
   // is `CaseIterable` so the payload test can enumerate the vocabulary, and
   // every emitter has a registry row (`scripts/telemetry-emitter-registry.txt`).
-  // Not emitted by anything yet: the App watcher and coordinator (chunks 5e/5g)
-  // are the producers. Every plan §3.2 skip reason is COUNTED and emitted; the
+  // The producers are `ObservedCorrectionWatcher` and
+  // `LearnedCorrectionCoordinator`. Every plan §3.2 skip reason is COUNTED and emitted; the
   // volume question is answered once, by `TelemetryVolumePolicy`, which samples
   // `learn_skipped` and stamps the weight. Emission never runs inside the
   // synchronous paste callback; the watcher emits from its deferred task.
@@ -4306,60 +4308,39 @@ public final class TelemetryService {
       }
     }
 
-    /// `state`: `CorrectionProposalTargetState` as a closed vocabulary.
-    package enum TargetState: String, Sendable, CaseIterable {
-      case existingWord = "existing_word"
-      case newWord = "new_word"
-    }
-
-    package enum Decision: String, Sendable, CaseIterable {
-      case accepted
-      case rejected
-    }
-
-    package enum Surface: String, Sendable, CaseIterable {
-      case card
-      case pending
-    }
-
-    /// `learn_resolved.outcome`: what the resolution did to the vocabulary.
-    package enum ResolutionOutcome: String, Sendable, CaseIterable {
-      /// A new word was added.
-      case added
-      /// The sound-alike was added to an existing word.
-      case aliasAdded = "alias_added"
-      /// A pack term became a user-owned override.
-      case packOverride = "pack_override"
-      /// Nothing to write: the target already carried it (reconciled).
-      case alreadyLanded = "already_landed"
-      /// A rejection tombstone was written.
-      case tombstoned
-    }
-
     /// `learn_save_failed.reason`: fixed tokens, never the human message
-    /// (the Quick Add rule).
+    /// (the Quick Add rule). What the auto-learn save can refuse or fail
+    /// (2026-09-21 plan §3.1 failure table): an alias owned by another word,
+    /// an existing target that vanished before the write landed, or a write
+    /// that did not land.
     package enum SaveFailure: String, Sendable, CaseIterable {
       case aliasOwnedElsewhere = "alias_owned_elsewhere"
       case targetGone = "target_gone"
       case vocabularyWriteFailed = "vocabulary_write_failed"
-      case ledgerWriteFailed = "ledger_write_failed"
-      case ledgerUntrusted = "ledger_untrusted"
     }
 
-    /// `learn_ledger_untrusted.disposition`: what the load did about it.
-    package enum LedgerDisposition: String, Sendable, CaseIterable {
-      case recovered
-      case blocked
+    /// `learn_added.state` (auto-learn, 2026-09-21 plan §3.1 step 11): what
+    /// the immediate save did to the vocabulary. A restored built-in counts
+    /// as an existing word.
+    package enum AddedState: String, Sendable, CaseIterable {
+      case existingWord = "existing_word"
+      case newWord = "new_word"
+      case packOverride = "pack_override"
     }
 
-    /// `learn_ledger_untrusted.kind`: `CorrectionProposalStore.UntrustedKind`
-    /// raw values, restated as a closed wire vocabulary.
-    package enum LedgerUntrustedKind: String, Sendable, CaseIterable {
-      case unreadable
-      case corrupt
-      case unsupportedVersion = "unsupported_version"
-      case unknownStatus = "unknown_status"
-      case durabilityUnconfirmed = "durability_unconfirmed"
+    /// `learn_undone.kind`: what the pill had offered to undo.
+    package enum UndoKind: String, Sendable, CaseIterable {
+      case added
+      case updated
+    }
+
+    /// `learn_undone.outcome`: `undone` restored the exact pre-save state;
+    /// `already_changed` found the live word edited meanwhile and wrote
+    /// nothing; `failed` is a refused or silent non-write.
+    package enum UndoOutcome: String, Sendable, CaseIterable {
+      case undone
+      case alreadyChanged = "already_changed"
+      case failed
     }
   }
 
@@ -4412,51 +4393,31 @@ public final class TelemetryService {
     emitLearnEvent("custom_words.learn_judged", props)
   }
 
-  /// A durable NEW proposal (a refresh of an open one does not count).
-  package func learnProposed(state: LearnFromEditsTelemetry.TargetState) {
-    emitLearnEvent("custom_words.learn_proposed", ["state": state.rawValue])
-  }
-
-  /// The card was admitted to the overlay.
-  package func learnCardShown() {
-    emitLearnEvent("custom_words.learn_card_shown", [:])
-  }
-
-  /// The card left the overlay unanswered; the proposal moved to Pending.
-  package func learnCardExpired() {
-    emitLearnEvent("custom_words.learn_card_expired", [:])
-  }
-
-  /// A successful accepted/rejected transition from either surface. Expiry is
-  /// not resolution; a failed attempt is `learnSaveFailed`.
-  package func learnResolved(
-    decision: LearnFromEditsTelemetry.Decision, surface: LearnFromEditsTelemetry.Surface,
-    state: LearnFromEditsTelemetry.TargetState, outcome: LearnFromEditsTelemetry.ResolutionOutcome
-  ) {
-    emitLearnEvent(
-      "custom_words.learn_resolved",
-      [
-        "decision": decision.rawValue, "surface": surface.rawValue, "state": state.rawValue,
-        "outcome": outcome.rawValue,
-      ])
-  }
-
-  /// An Accept or Reject that could not complete.
+  /// An auto-learn save that could not complete: refused before writing, or a
+  /// write the post-write reread did not find.
   package func learnSaveFailed(reason: LearnFromEditsTelemetry.SaveFailure) {
     emitLearnEvent("custom_words.learn_save_failed", ["reason": reason.rawValue])
   }
 
-  /// The proposal ledger loaded untrusted (once per launch at most).
-  /// `disposition` says what happened next: `recovered` (a damaged file was
-  /// moved aside and the ledger started fresh; founder 2026-09-20) or
-  /// `blocked` (nothing moved, the path is disabled until a trusted load).
-  package func learnLedgerUntrusted(
-    kind: LearnFromEditsTelemetry.LedgerUntrustedKind,
-    disposition: LearnFromEditsTelemetry.LedgerDisposition
+  /// A judged correction was saved and proven on disk (auto-learn). Emitted
+  /// only after the post-write reread finds the word; a refused or silent
+  /// non-write is `learnSaveFailed` instead.
+  package func learnAdded(state: LearnFromEditsTelemetry.AddedState) {
+    emitLearnEvent("custom_words.learn_added", ["state": state.rawValue])
+  }
+
+  /// The Undo pill was admitted to the overlay: the only measure that a saved
+  /// word actually offered Undo (a refused admission saves without one).
+  package func learnUndoShown() {
+    emitLearnEvent("custom_words.learn_undo_shown", [:])
+  }
+
+  /// Undo was pressed. `outcome` says whether the exact pre-save state landed.
+  package func learnUndone(
+    kind: LearnFromEditsTelemetry.UndoKind, outcome: LearnFromEditsTelemetry.UndoOutcome
   ) {
     emitLearnEvent(
-      "custom_words.learn_ledger_untrusted",
-      ["kind": kind.rawValue, "disposition": disposition.rawValue])
+      "custom_words.learn_undone", ["kind": kind.rawValue, "outcome": outcome.rawValue])
   }
 
   // MARK: - Other audio while dictating (#1413, folded onto the terminal row)

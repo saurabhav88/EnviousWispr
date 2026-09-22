@@ -111,7 +111,6 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
         switch term.source {
         case .user: hadUser = true
         case .builtin: hadBuiltin = true
-        case .observedAX: hadUser = true  // observedAX -> persists as user
         case .pack: hadPack = true  // #633 Phase 9 installed vocabulary pack
         }
       }

@@ -537,4 +537,37 @@ struct CustomWordsBulkEnrichmentTests {
     let snapshot = try manager.cancelEnrichment()
     #expect(snapshot.pendingEnrichmentBatchTotal == nil)
   }
+
+  // MARK: - Learned provenance survives enrichment (#996)
+
+  @Test("enrichment apply adds only generated aliases and keeps the learned marks byte for byte; cancel clears only the pending flag")
+  func enrichmentPreservesLearnedProvenance() throws {
+    let (manager, _) = makeManager()
+    var live = manager.load() ?? []
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let backup = CustomWordsImportCandidate(
+      canonical: "Tuist", aliases: .supplied(["twist"]),
+      learnedAliases: .supplied(["twist"]), learnedAt: .supplied(learnedAt))
+    _ = try manager.commitImport(plan(baseline: live, additions: [backup]), to: &live)
+    let pending = try #require(live.first { $0.canonical == "Tuist" })
+    #expect(pending.enrichmentPending && pending.learnedAliases == ["twist"] && pending.learnedAt == learnedAt)
+
+    let applied = try manager.applyEnrichmentResults([
+      CustomWordEnrichmentResult(id: pending.id, generatedAliases: ["to-ist", "twist"])
+    ])
+    let enriched = try #require(applied.snapshot.words.first { $0.id == pending.id })
+    #expect(!enriched.enrichmentPending)
+    #expect(enriched.aliases == ["twist", "to-ist"], "generated alias appended, existing kept")
+    #expect(enriched.learnedAliases == ["twist"] && enriched.learnedAt == learnedAt, "marks untouched")
+
+    // Cancel on a second pending word: only the flag changes.
+    var again = live
+    let more = CustomWordsImportCandidate(
+      canonical: "Saira", aliases: .supplied(["sarah"]),
+      learnedAliases: .supplied(["sarah"]), learnedAt: .supplied(nil))
+    _ = try manager.commitImport(plan(baseline: applied.snapshot.words, additions: [more]), to: &again)
+    let cancelled = try manager.cancelEnrichment()
+    let saira = try #require(cancelled.words.first { $0.canonical == "Saira" })
+    #expect(!saira.enrichmentPending && saira.learnedAliases == ["sarah"] && saira.learnedAt == nil)
+  }
 }

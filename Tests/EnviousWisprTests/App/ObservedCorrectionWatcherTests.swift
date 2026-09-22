@@ -195,10 +195,10 @@ struct ObservedCorrectionWatcherTests {
   let observer = ObserverFake()
   let clock = ObserverClock()
   let judge = JudgeFake()
-  let library = WordLibraryFake()
-  let presenter = PresenterSpy()
+  let library = LearnedLibraryFake()
+  let presenter = LearnedPresenterSpy()
   let telemetry = LearnTelemetrySpy()
-  let coordinator: CorrectionProposalCoordinator
+  let coordinator: LearnedCorrectionCoordinator
   let saira = CustomWord(canonical: "Saira")
 
   final class Knobs {
@@ -217,12 +217,13 @@ struct ObservedCorrectionWatcherTests {
   let knobs = Knobs()
 
   init() {
-    let (store, _, _) = makeFaultableStore()
     library.userWords = [saira]
-    coordinator = CorrectionProposalCoordinator(
-      store: store, vocabulary: library.access, presenter: presenter, telemetry: telemetry)
-    coordinator.initialize()
+    coordinator = LearnedCorrectionCoordinator(vocabulary: library.access, telemetry: telemetry)
+    coordinator.attach(presenter: presenter)
   }
+
+  /// The live "Saira" word after a learn: the sound-alike landed and is marked.
+  func learnedSaira() -> CustomWord? { library.userWords.first { $0.id == saira.id } }
 
   func makeWatcher() -> ObservedCorrectionWatcher {
     let judge = judge
@@ -430,9 +431,9 @@ struct ObservedCorrectionWatcherTests {
   }
 
   @Test(
-    "a settled edit is aligned, filtered, judged once and proposed; the same snapshot settles nothing new"
+    "a settled edit is aligned, filtered, judged once and saved at once with an Undo pill; the same snapshot settles nothing new"
   )
-  func settledBurstProposes() async throws {
+  func settledBurstSaves() async throws {
     let watcher = makeWatcher()
     clock.now = 500
     observer.captureOutcomes = [
@@ -457,14 +458,12 @@ struct ObservedCorrectionWatcherTests {
       request.context == "Ask sarah today" && request.language == "en",
       "the judge's `Sentence:` is the PASTED text; the edit reaches it only as the pair")
     #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 1)))
-    #expect(telemetry.events.contains(.proposed(.existingWord)))
-    #expect(presenter.offers.count == 1 && presenter.offers.first?.corrected == "Saira")
-    let stored = try #require(coordinator.openProposalsNewestFirst.first)
-    #expect(
-      stored.original == "sarah" && stored.state == .existingWord(saira.id)
-        && stored.advisorySafeAlias == true)
-    #expect(
-      stored.sourceBundleID == "com.apple.Notes" && stored.contextExcerpt == "Ask Saira today")
+    #expect(telemetry.events.contains(.added(.existingWord)))
+    #expect(presenter.offers.count == 1 && presenter.offers.first?.canonical == "Saira")
+    #expect(presenter.offers.first?.kind == .updated && presenter.offers.first?.wordID == saira.id)
+    let live = try #require(learnedSaira())
+    #expect(live.aliases == ["sarah"] && live.learnedAliases == ["sarah"], "saved and marked")
+    #expect(coordinator.undoRecord?.pillID == presenter.offers.first?.id)
 
     // The identical snapshot settling again is not a new burst.
     observer.fire(.settled(region: "Ask Saira today"))
@@ -516,7 +515,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(judge.requests.count == 1, "the judge was asked once")
     #expect(telemetry.events.last == .judged(.rules, .deadline, 1, 0))
-    #expect(presenter.offers.isEmpty && coordinator.openProposalsNewestFirst.isEmpty)
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
     judge.release()  // the abandoned call finishes in the background; its answer is discarded
     await Task.yield()
     #expect(telemetry.events.filter { if case .judged = $0 { true } else { false } }.count == 1)
@@ -544,7 +543,7 @@ struct ObservedCorrectionWatcherTests {
     judge.release()
     #expect(await waitForEvents(telemetry, count: 2))
     #expect(await waitUntil { watcher.staleResults == 1 })
-    #expect(presenter.offers.isEmpty && coordinator.openProposalsNewestFirst.isEmpty)
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
     #expect(
       telemetry.events.filter { if case .judged = $0 { return true } else { return false } }.isEmpty
     )
@@ -672,7 +671,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 1, .native)])
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(await waitUntil { presenter.offers.count == 1 })
-    #expect(presenter.offers.first?.corrected == "Saira")
+    #expect(presenter.offers.first?.canonical == "Saira")
     #expect(watcher.staleResults == 0)
   }
 
@@ -688,14 +687,14 @@ struct ObservedCorrectionWatcherTests {
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 1, .native)])
     #expect(await waitUntil { presenter.offers.count == 1 })
-    #expect(presenter.offers.first?.corrected == "Saira")
+    #expect(presenter.offers.first?.canonical == "Saira")
     // A second recordingStarted after the end is a no-op: one row, no cancel.
     watcher.recordingStarted()
     #expect(telemetry.events.filter { if case .observationEnded = $0 { true } else { false } }.count == 1)
   }
 
   @Test(
-    "a presenter that starts a dictation inside the first offer ends the observation as next_dictation; the rest of the answer still proposes"
+    "a presenter that starts a dictation inside the first pill ends the observation as next_dictation; the rest of the answer is still saved"
   )
   func reentrantDictationDuringOffer() async {
     let watcher = makeWatcher()
@@ -709,14 +708,14 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "Ask Saira about the invoyce"))
     #expect(await waitUntil { presenter.offers.count == 2 })
     #expect(judge.requests.first?.candidates.count == 2)
-    #expect(coordinator.openProposalsNewestFirst.count == 2)
+    #expect(library.saves.count == 2 && library.userWords.count == 2, "both pairs landed")
     #expect(watcher.staleResults == 0)
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events.contains(.observationEnded(.nextDictationStarted, 1, .native)))
-    #expect(telemetry.events.filter { $0 == .proposed(.existingWord) || $0 == .proposed(.newWord) }.count == 2)
+    #expect(telemetry.events.filter { $0 == .added(.existingWord) || $0 == .added(.newWord) }.count == 2)
   }
 
-  @Test("a bypass is reported as its own outcome, never as 'all false', and proposes nothing")
+  @Test("a bypass is reported as its own outcome, never as 'all false', and saves nothing")
   func bypass() async {
     let watcher = makeWatcher()
     judge.bypass = .deadline
@@ -732,18 +731,10 @@ struct ObservedCorrectionWatcherTests {
   }
 
   @Test(
-    "an open proposal for the pair is refreshed, not re-judged; a rejected pair is filtered before the judge"
+    "a pair the word already covers is filtered before the judge; a pair the user undid may be learned again (no rejection memory)"
   )
-  func refreshAndRejected() async throws {
-    // Existing open proposal for sarah → Saira.
-    guard
-      case .minted(let open) = coordinator.propose(
-        original: "sarah", corrected: "Saira", state: .existingWord(saira.id), language: "en",
-        contextExcerpt: "old", sourceBundleID: "com.apple.Mail", advisorySafeAlias: nil)
-    else {
-      Issue.record("expected minted")
-      return
-    }
+  func coveredAndUndone() async throws {
+    library.userWords = [CustomWord(canonical: "Saira", aliases: ["sarah"])]
     let watcher = makeWatcher()
     observer.captureOutcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
@@ -751,10 +742,36 @@ struct ObservedCorrectionWatcherTests {
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
-    #expect(await waitUntil { coordinator.proposal(id: open)?.contextExcerpt == "Ask Saira today" })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !watcher.isWatching })
     #expect(judge.requests.isEmpty, "nothing eligible remained after the filter")
-    #expect(coordinator.proposal(id: open)?.sourceBundleID == "com.apple.Notes")
-    #expect(presenter.offers.count == 1, "no second offer for the refreshed proposal")
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
+
+    // Learn, undo, fix again: the pair is offered again.
+    library.userWords = [saira]
+    let watcher2 = makeWatcher()
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
+    watcher2.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 2 })
+    observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    let pill = try #require(presenter.offers.first)
+    #expect(coordinator.undo(pillID: pill.id) == .undone)
+    #expect(learnedSaira()?.aliases.isEmpty == true)
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !watcher2.isWatching })
+
+    let watcher3 = makeWatcher()
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
+    watcher3.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 3 })
+    observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { presenter.offers.count == 2 }, "learned again after Undo")
+    #expect(learnedSaira()?.learnedAliases == ["sarah"])
   }
 
   @Test(
@@ -819,7 +836,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(first.context.contains("ask sara today"))
     #expect(second.context.contains("call sarah tonight"))
     #expect(!first.context.contains("sarah") && !second.context.contains("sara today"))
-    #expect(await waitUntil { coordinator.openProposalsNewestFirst.count == 2 })
+    #expect(await waitUntil { learnedSaira()?.learnedAliases.count == 2 }, "both sound-alikes landed on Saira")
 
     // Control: two edits inside one window share one request.
     let watcher2 = makeWatcher()
@@ -840,7 +857,7 @@ struct ObservedCorrectionWatcherTests {
     let edited = "ask Saira today " + filler + "call Saira tonight"
     let runs = EditAlignment.align(pasted: pasted, edited: edited).runs
     let inputs = CorrectionCandidateFilter.Inputs(
-      userWords: [], packTerms: [], openProposals: [:], rejectedPairKeys: [])
+      userWords: [], packTerms: [])
     let filtered = CorrectionCandidateFilter.filter(runs: runs, inputs: inputs)
     let groups = ObservedCorrectionWatcher.windowGroups(filtered, in: pasted)
     #expect(groups.map { $0.map(\.run.coreOriginal) } == [["sara"], ["sarah"]])
@@ -882,18 +899,10 @@ struct ObservedCorrectionWatcherTests {
 
   @Test("a long region's judge context is centred on a PREPARED candidate, not on an earlier run the filter dropped")
   func contextCentredOnAPreparedCandidate() async throws {
+    // The first edit is a pair the word already covers (the filter drops it
+    // before the judge); the second, 1,500 units later, is the candidate.
+    library.userWords = [CustomWord(id: saira.id, canonical: "Saira", aliases: ["sara"])]
     let watcher = makeWatcher()
-    // The first edit is a pair the person already rejected (the filter drops
-    // it before the judge); the second, 1,500 units later, is the candidate.
-    guard
-      case .minted(let rejected) = coordinator.propose(
-        original: "sara", corrected: "Saira", state: .existingWord(saira.id), language: "en",
-        contextExcerpt: nil, sourceBundleID: nil, advisorySafeAlias: nil)
-    else {
-      Issue.record("expected minted")
-      return
-    }
-    #expect(coordinator.resolve(id: rejected, .reject, surface: .pending) == .rejected)
     let filler = String(repeating: "word ", count: 300)
     let pasted = "ask sara today " + filler + "call sarah tonight"
     let edited = "ask Saira today " + filler + "call Saira tonight"
@@ -912,19 +921,15 @@ struct ObservedCorrectionWatcherTests {
       !request.context.contains("Saira"),
       "the edited spelling reaches the judge only inside the `Edit:` pair, never in the sentence")
     #expect(request.context.utf16.count <= CorrectionJudgeRequest.maxContextUTF16)
-    // The minted proposal keeps ITS OWN 120-unit excerpt around the edit, not the
-    // judge's window around the first candidate.
-    #expect(await waitUntil { !coordinator.openProposalsNewestFirst.isEmpty })
-    let stored = try #require(coordinator.openProposalsNewestFirst.first)
-    #expect(stored.original == "sarah")
-    #expect(stored.contextExcerpt?.contains("call Saira tonight") == true, "\(stored.contextExcerpt ?? "nil")")
-    #expect((stored.contextExcerpt?.utf16.count ?? 0) <= CorrectionProposal.contextExcerptLimit)
+    // The candidate pair is the one saved.
+    #expect(await waitUntil { learnedSaira()?.learnedAliases == ["sarah"] })
+    #expect(learnedSaira()?.aliases == ["sara", "sarah"])
   }
 
   @Test(
-    "a burst the observer flushes right before textbox_emptied (a fix typed and SENT) is still judged and proposed: an ENDED watch answers, only a cancelled or superseded one drops"
+    "a burst the observer flushes right before textbox_emptied (a fix typed and SENT) is still judged and saved: an ENDED watch answers, only a cancelled or superseded one drops"
   )
-  func flushedBurstBeforeEndStillProposes() async throws {
+  func flushedBurstBeforeEndStillSaves() async throws {
     let watcher = makeWatcher()
     observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
@@ -934,9 +939,8 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "Ask Saira today"))
     observer.fire(.ended(.textboxEmptied))
     #expect(watcher.isWatching == false)
-    #expect(await waitUntil { !coordinator.openProposalsNewestFirst.isEmpty })
-    let stored = try #require(coordinator.openProposalsNewestFirst.first)
-    #expect(stored.original == "sarah" && stored.corrected == "Saira")
+    #expect(await waitUntil { learnedSaira()?.learnedAliases == ["sarah"] })
+    #expect(presenter.offers.first?.canonical == "Saira")
     #expect(telemetry.events.contains(.observationEnded(.textboxEmptied, 1, .native)))
   }
 

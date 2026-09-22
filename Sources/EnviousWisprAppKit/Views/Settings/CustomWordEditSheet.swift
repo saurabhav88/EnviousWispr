@@ -279,6 +279,7 @@ struct CustomWordEditSheet: View {
       }
 
       aliasList
+      learnedAliasesHelper
     }
   }
 
@@ -311,12 +312,24 @@ struct CustomWordEditSheet: View {
     } else {
       WrappingHStack(spacing: 6) {
         ForEach(word.aliases, id: \.self) { alias in
+          // #996: a sound-alike the app learned from the user's edits wears
+          // a sparkle and a deeper tint, so the person can tell what they
+          // typed from what the app added. The mark matches the stored
+          // spelling exactly (the manager keeps it that way).
+          let learned = word.learnedAliases.contains(alias)
           HStack(spacing: 4) {
+            if learned {
+              Image(systemName: "sparkles")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.stAccent)
+                .accessibilityHidden(true)
+            }
             Text(alias)
               .font(.stHelper)
               .fixedSize(horizontal: false, vertical: true)
+              .accessibilityValue(learned ? CustomTermProvenanceCopy.learnedFromYourEdits : "")
             Button {
-              word.aliases.removeAll { $0 == alias }
+              CustomWordSuggestionFlow.removeAlias(alias, from: &word)
             } label: {
               // An 8pt glyph inside a chip: the smallest target in the
               // whole window, and the one that deletes an alias.
@@ -330,10 +343,25 @@ struct CustomWordEditSheet: View {
           }
           .padding(.horizontal, 9)
           .padding(.vertical, 4)
-          .background(Color.stAccentLight, in: Capsule())
+          .background(
+            learned ? Color.stAccent.opacity(0.18) : Color.stAccentLight, in: Capsule())
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  /// #996: shown under the list only while a displayed sound-alike is
+  /// learned; a sibling of `aliasList`, never inside it (`ViewThatFits`
+  /// would read a second child as a second candidate layout).
+  @ViewBuilder
+  private var learnedAliasesHelper: some View {
+    if word.aliases.contains(where: { word.learnedAliases.contains($0) }) {
+      Text(CustomTermProvenanceCopy.learnedAliasesHelper)
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
@@ -436,6 +464,15 @@ enum CustomWordSuggestionFlow {
   /// is called, never a value captured before `fetch`'s await — a manual
   /// edit made while the suggestion request was in flight must never be
   /// silently overwritten by a stale pre-await snapshot.
+  /// Remove one sound-alike chip. The learned mark leaves with it (#996
+  /// second-pass review 2026-09-22): a sound-alike the person types back in
+  /// before saving is their own, not the app's, and must not come back
+  /// sparkled from a stale `learnedAliases` entry.
+  static func removeAlias(_ alias: String, from word: inout CustomWord) {
+    word.aliases.removeAll { $0 == alias }
+    word.learnedAliases.removeAll { $0 == alias }
+  }
+
   static func apply(
     suggestions: WordSuggestions?,
     currentAliases: [String],

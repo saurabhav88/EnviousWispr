@@ -14,7 +14,9 @@ public enum WordCategory: String, Codable, CaseIterable, Sendable {
 public enum WordSource: String, Sendable, CaseIterable {
   case builtin  // ships in app bundle (CustomWordsManager.builtinDefaults)
   case user  // user-typed via Custom Terms UI; default for any decoded CustomWord
-  case observedAX  // auto-learned via AX observation (Phase 7, #629)
+  // A learned word is `.user` too: what the app learned from an edit is
+  // recorded on the word itself (`learnedAliases` / `learnedAt`, #996), never
+  // as a runtime source tag, so the mark survives a relaunch.
   case pack  // installed vocabulary pack (ASR-mined alias dataset, #633 Phase 9).
   // Length-gated fuzzy in WordCorrector: pack terms match only after every
   // non-pack pass misses, so user/builtin words always win (#992). Corrector
@@ -53,6 +55,20 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   /// `CustomWordsManager.applyEnrichmentResults` or its Cancel sweep.
   /// Pre-#1701 entries decode as `false` (`decodeIfPresent(...) ?? false`).
   public var enrichmentPending: Bool
+  /// The sound-alikes the app learned from the user's own edits (#996): the
+  /// subset of `aliases` that Your Words marks with a sparkle. The manager's
+  /// write-boundary normalization lands in Chunk 1b; no production path authors
+  /// nonempty learned provenance before then. Persisted; pre-#996 entries decode
+  /// as `[]`.
+  public var learnedAliases: [String]
+  /// When the app created this word from an edit (#996), nil for a word the
+  /// user typed, imported or restored. Persisted; pre-#996 entries decode as nil.
+  public var learnedAt: Date?
+
+  /// The one predicate behind the sparkle on a word row and the
+  /// "Auto-learned" filter (#996): the word itself was learned, or at least
+  /// one of its sound-alikes was.
+  public var isAutoLearned: Bool { learnedAt != nil || !learnedAliases.isEmpty }
 
   public init(
     id: UUID = UUID(),
@@ -66,7 +82,9 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     frequencyUsed: Int = 0,
     lastUsed: Date? = nil,
     minSimilarityOverride: Double? = nil,
-    enrichmentPending: Bool = false
+    enrichmentPending: Bool = false,
+    learnedAliases: [String] = [],
+    learnedAt: Date? = nil
   ) {
     self.id = id
     self.canonical = canonical
@@ -80,6 +98,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.lastUsed = lastUsed
     self.minSimilarityOverride = minSimilarityOverride
     self.enrichmentPending = enrichmentPending
+    self.learnedAliases = learnedAliases
+    self.learnedAt = learnedAt
   }
 
   /// The same word, re-tagged as user-authored (#1680).
@@ -104,7 +124,9 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
       frequencyUsed: frequencyUsed,
       lastUsed: lastUsed,
       minSimilarityOverride: minSimilarityOverride,
-      enrichmentPending: enrichmentPending
+      enrichmentPending: enrichmentPending,
+      learnedAliases: learnedAliases,
+      learnedAt: learnedAt
     )
   }
 
@@ -115,9 +137,13 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   // pre-Phase-3a JSON files decode the new fields via `decodeIfPresent`.
   // `minSimilarityOverride` is persisted (Phase 2, bible §8.2 item 4). Same
   // additive forward/backward-compat semantics.
+  // `learnedAliases` + `learnedAt` are persisted (#996). Same additive
+  // semantics for READS; a pre-#996 build that WRITES the shared file drops
+  // both keys for every word (the plan's stated downgrade limit).
   private enum CodingKeys: String, CodingKey {
     case id, canonical, aliases, category, priority, forceReplace, caseSensitive
     case frequencyUsed, lastUsed, minSimilarityOverride, enrichmentPending
+    case learnedAliases, learnedAt
   }
 
   public init(from decoder: Decoder) throws {
@@ -133,6 +159,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.lastUsed = try c.decodeIfPresent(Date.self, forKey: .lastUsed)
     self.minSimilarityOverride = try c.decodeIfPresent(Double.self, forKey: .minSimilarityOverride)
     self.enrichmentPending = try c.decodeIfPresent(Bool.self, forKey: .enrichmentPending) ?? false
+    self.learnedAliases = try c.decodeIfPresent([String].self, forKey: .learnedAliases) ?? []
+    self.learnedAt = try c.decodeIfPresent(Date.self, forKey: .learnedAt)
     self.source = .user
   }
 
@@ -149,6 +177,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     try c.encodeIfPresent(lastUsed, forKey: .lastUsed)
     try c.encodeIfPresent(minSimilarityOverride, forKey: .minSimilarityOverride)
     try c.encode(enrichmentPending, forKey: .enrichmentPending)
+    try c.encode(learnedAliases, forKey: .learnedAliases)
+    try c.encodeIfPresent(learnedAt, forKey: .learnedAt)
     // source intentionally NOT encoded.
   }
 }

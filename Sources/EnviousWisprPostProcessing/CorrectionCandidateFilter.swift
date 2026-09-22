@@ -3,12 +3,22 @@ import Foundation
 
 // MARK: - Candidate filter and state assignment (#996 §3.1 step 6)
 //
-// Pure: takes the live word list, the enabled pack terms, the open and
-// rejected pair keys and the arm's language set AS VALUES and returns one
-// disposition per aligned run. It never reads a store, never mutates a
-// proposal or a word, and never decides whether an edit IS a correction:
-// that is the judge's question (step 7). The App coordinator executes the
-// dispositions (step 8).
+// Pure: takes the live word list and the enabled pack terms AS VALUES and
+// returns one disposition per aligned run. It never reads a store, never
+// mutates a word, and never decides whether an edit IS a correction: that is
+// the judge's question (step 7). The App coordinator saves the accepted
+// candidates at once (2026-09-21 plan §3.1 step 8). There is no rejection
+// memory: a pair the user undid may be learned again (founder 2026-09-21,
+// Wispr Flow's shape).
+
+/// What the corrected spelling resolves to among the live words: the
+/// candidate's payload, so the coordinator and telemetry name the same
+/// state the filter saw.
+package enum LearnTargetState: Sendable, Equatable {
+  /// A user word or enabled pack term carries the corrected canonical.
+  case existingWord(UUID)
+  case newWord
+}
 
 package enum CorrectionCandidateFilter {
 
@@ -24,42 +34,27 @@ package enum CorrectionCandidateFilter {
   }
 
   /// Plan §3.1 step 6 dispositions. Precedence when several apply (highest
-  /// first): `rejected`, `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
-  /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `refreshOpen`,
-  /// `candidate`. A rejection therefore never becomes a fresh candidate or a
-  /// refresh, and a covered pair is never re-proposed even if an open record
-  /// still exists.
+  /// first): `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
+  /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `candidate`. A
+  /// covered pair is never sent to the judge.
   package enum Disposition: Sendable, Equatable {
     case ineligible(IneligibleReason)
-    /// The ordered pair carries a rejection tombstone.
-    case rejected
     /// The intended live target already carries the original as its
     /// canonical or as a sound-alike; dropped before judging.
     case alreadyCovered
-    /// An open proposal for the same pair exists; the coordinator refreshes
-    /// its metadata without re-judging it.
-    case refreshOpen(proposalID: UUID)
-    /// Send to the judge; if it says correction, propose with this state.
-    case candidate(CorrectionProposalTargetState)
+    /// Send to the judge; if it says correction, save with this state.
+    case candidate(LearnTargetState)
   }
 
-  /// Everything step 6 reads, as values.
+  /// Everything step 6 reads, as values: the live words and nothing else.
   package struct Inputs: Sendable {
     package let userWords: [CustomWord]
     /// Terms of the ENABLED packs only (`source == .pack`).
     package let packTerms: [CustomWord]
-    /// Open (`pending`/`accepting`) proposals by pair key.
-    package let openProposals: [String: UUID]
-    package let rejectedPairKeys: Set<String>
 
-    package init(
-      userWords: [CustomWord], packTerms: [CustomWord], openProposals: [String: UUID],
-      rejectedPairKeys: Set<String>
-    ) {
+    package init(userWords: [CustomWord], packTerms: [CustomWord]) {
       self.userWords = userWords
       self.packTerms = packTerms
-      self.openProposals = openProposals
-      self.rejectedPairKeys = rejectedPairKeys
     }
   }
 
@@ -100,9 +95,9 @@ package enum CorrectionCandidateFilter {
     let index = WordCorrector.buildExactTriggerIndex(words: inputs.userWords + inputs.packTerms)
     return runs.map { run in
       let key = CorrectionPairKey.make(original: run.coreOriginal, corrected: run.coreReplacement)
-      let disposition = dispose(run: run, pairKey: key, inputs: inputs, index: index)
-      // Evidence is computed only where it can be used: a rejected or
-      // ineligible run never pays for a character-level comparison.
+      let disposition = dispose(run: run, inputs: inputs, index: index)
+      // Evidence is computed only where it can be used: an ineligible run
+      // never pays for a character-level comparison.
       var evidence: Double? = nil
       if case .candidate = disposition { evidence = similarity(run) }
       return Filtered(run: run, pairKey: key, disposition: disposition, similarity: evidence)
@@ -110,9 +105,8 @@ package enum CorrectionCandidateFilter {
   }
 
   private static func dispose(
-    run: EditAlignment.Run, pairKey: String, inputs: Inputs, index: WordCorrector.ExactTriggerIndex
+    run: EditAlignment.Run, inputs: Inputs, index: WordCorrector.ExactTriggerIndex
   ) -> Disposition {
-    if inputs.rejectedPairKeys.contains(pairKey) { return .rejected }
     let editedTokens = InverseTextNormalizer.splitWords(run.coreReplacement).map(normalisedToken)
     if !editedTokens.isEmpty, editedTokens.allSatisfy({ WordCorrector.stopwords.contains($0) }) {
       return .ineligible(.stopwordPhrase)
@@ -124,7 +118,6 @@ package enum CorrectionCandidateFilter {
     if ownedElsewhere(run: run, target: target, index: index) {
       return .ineligible(.aliasOwnedElsewhere)
     }
-    if let open = inputs.openProposals[pairKey] { return .refreshOpen(proposalID: open) }
     if let target { return .candidate(.existingWord(target.id)) }
     return .candidate(.newWord)
   }

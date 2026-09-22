@@ -80,7 +80,12 @@ struct PillCatalogAdmissionTests {
     ("escapeRecovery", .pipeline(.escapeRecovery(transcriptID: UUID()))),
     ("bluetoothAwareness.featureRoute", .bluetoothAwareness),
     ("importStatus.featureRoute", .importStatus(message: "Imported 12 words")),
-    ("correctionProposal.featureRoute", .correctionProposed(CorrectionCardFixture.model())),
+    ("correctionLearned.featureRoute", .correctionLearned(LearnedPillFixture.model())),
+    (
+      "correctionLearnedSaveError.featureRoute",
+      .correctionLearnedSaveError(
+        LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
+    ),
   ]
 
   // MARK: - The sweep
@@ -169,12 +174,12 @@ struct PillCatalogAdmissionTests {
     // conditional, so a mis-specified axis — one state, one event, a predicate
     // that never fires — leaves this test green while asserting nothing. The
     // three counts are arithmetic over the axes.
-    // 18 requests x 3 states = 54 cells: the 3 feature routes refused in the 2
-    // non-empty states (6), `.hidden` emptying in all 3, and the remaining 45
+    // 19 requests x 3 states = 57 cells: the 4 feature routes refused in the 2
+    // non-empty states (8), `.hidden` emptying in all 3, and the remaining 46
     // admitted.
-    #expect(refused == 6, "the refusal half of this sweep is not being exercised")
+    #expect(refused == 8, "the refusal half of this sweep is not being exercised")
     #expect(emptied == 3, "the emptying half of this sweep is not being exercised")
-    #expect(admitted == 45, "the admission half of this sweep is not being exercised")
+    #expect(admitted == 46, "the admission half of this sweep is not being exercised")
     #expect(refused + emptied + admitted == StartingState.allCases.count * Self.events.count)
   }
 
@@ -230,10 +235,10 @@ struct PillCatalogAdmissionTests {
   }
 
   /// The same class one suite over: the sweep's axes are hand-written lists, and
-  /// the coverage floor above counts CELLS. Fifty-four cells is equally true of
-  /// eighteen distinct requests and of seventeen with one duplicated, so the
+  /// the coverage floor above counts CELLS. Fifty-seven cells is equally true
+  /// of nineteen distinct requests and of eighteen with one duplicated, so the
   /// floor cannot tell a complete axis from a short one. Name the axis.
-  @Test("the request axis is the whole set, not merely eighteen entries")
+  @Test("the request axis is the whole set, not merely nineteen entries")
   func requestAxisIsComplete() {
     let labels = Self.events.map(\.label)
     let expected: Set<String> = [
@@ -242,13 +247,13 @@ struct PillCatalogAdmissionTests {
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness.pipelineRoute", "escapeRecovery",
       "bluetoothAwareness.featureRoute", "importStatus.featureRoute",
-      "correctionProposal.featureRoute",
+      "correctionLearned.featureRoute", "correctionLearnedSaveError.featureRoute",
     ]
     #expect(Set(labels) == expected, "a request is missing from the sweep's axis")
     #expect(labels.count == expected.count, "the sweep's axis contains a duplicate")
     #expect(
-      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 3,
-      "all three feature routes must be on the axis — they are where a refusal is observable")
+      Self.events.filter { Self.isFeatureRoute($0.event) }.count == 4,
+      "all four feature routes must be on the axis — they are where a refusal is observable")
 
     // **A LABEL IS NOT AN EVENT, and the set check above only proves the labels.**
     // A row labelled "warning" carrying `.error` satisfies every assertion in this
@@ -274,7 +279,8 @@ struct PillCatalogAdmissionTests {
         ("escapeRecovery", .pipeline(.escapeRecovery(transcriptID: _))),
         ("bluetoothAwareness.featureRoute", .bluetoothAwareness),
         ("importStatus.featureRoute", .importStatus(message: _)),
-        ("correctionProposal.featureRoute", .correctionProposed(_)):
+        ("correctionLearned.featureRoute", .correctionLearned(_)),
+        ("correctionLearnedSaveError.featureRoute", .correctionLearnedSaveError(_)):
         break
       default:
         Issue.record("\(label) is paired with the wrong request")
@@ -284,7 +290,8 @@ struct PillCatalogAdmissionTests {
 
   private static func isFeatureRoute(_ event: OverlayEvent) -> Bool {
     switch event {
-    case .importStatus, .bluetoothAwareness, .correctionProposed: return true
+    case .importStatus, .bluetoothAwareness, .correctionLearned, .correctionLearnedSaveError:
+      return true
     default: return false
     }
   }

@@ -9,14 +9,20 @@ enum CustomTermListPolicy {
 
   /// Filter `all` against `query` (case + diacritic insensitive substring
   /// across canonical, aliases, category) and, independently, against
-  /// `category` (#2494) — a word must satisfy BOTH when both are given.
-  /// `category: nil` means "all categories," matching the filter pill row's
-  /// default. Empty query + nil category returns the full list. Sort is
-  /// alphabetical by canonical, localized + case-insensitive.
+  /// `category` (#2494) and `autoLearnedOnly` (#996) — a word must satisfy
+  /// ALL that are given. `category: nil` means "all categories," matching the
+  /// filter pill row's default; `autoLearnedOnly: false` is the Auto-learned
+  /// pill off. The auto-learned test is `CustomWord.isAutoLearned`, the one
+  /// predicate the row sparkle reads too. Empty query + nil category + filter
+  /// off returns the full list. Sort is alphabetical by canonical, localized
+  /// + case-insensitive.
   static func filtered(
-    _ all: [CustomWord], query: String, category: WordCategory? = nil
+    _ all: [CustomWord], query: String, category: WordCategory? = nil,
+    autoLearnedOnly: Bool = false
   ) -> [CustomWord] {
-    let byCategory = category.map { cat in all.filter { $0.category == cat } } ?? all
+    let byProvenance = autoLearnedOnly ? all.filter(\.isAutoLearned) : all
+    let byCategory =
+      category.map { cat in byProvenance.filter { $0.category == cat } } ?? byProvenance
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       return byCategory.sorted {
@@ -41,6 +47,25 @@ enum CustomTermListPolicy {
     }.sorted {
       $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending
     }
+  }
+
+  /// The empty-list message, by precedence (#2494 review, #996): a search
+  /// that matched nothing beats every filter; the Auto-learned pill beats
+  /// the category pill; the bare library last. One owner so the view and
+  /// the tests read the same table.
+  static func emptyStateMessage(
+    query: String, autoLearnedOnly: Bool, category: WordCategory?
+  ) -> String {
+    // The same trim `filtered` applies: a whitespace-only query is no search.
+    let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !query.isEmpty { return "No matches for \"\(query)\"." }
+    if autoLearnedOnly {
+      return category == nil
+        ? CustomTermProvenanceCopy.noAutoLearnedWordsYet
+        : CustomTermProvenanceCopy.noAutoLearnedWordsInCategory
+    }
+    if category != nil { return "No words in this category." }
+    return "No words yet. Add one with the button above."
   }
 
   /// Number of pages required to display `count` items.
@@ -100,4 +125,17 @@ enum MatchStrictness: String, CaseIterable {
     if v >= 0.88 { return .strict }
     return .standard
   }
+}
+
+/// Every string Your Words says about learned provenance (#996): the filter
+/// pill, its empty state, the VoiceOver label/value on the sparkle and the
+/// learned chips, and the helper line under the alias list. The views and
+/// the tests read this table; nothing restates it.
+enum CustomTermProvenanceCopy {
+  static let filterPill = "Auto-learned"
+  static let noAutoLearnedWordsYet = "No auto-learned words yet."
+  /// The Auto-learned pill AND a category pill, with nothing in both.
+  static let noAutoLearnedWordsInCategory = "No auto-learned words in this category."
+  static let learnedFromYourEdits = "learned from your edits"
+  static let learnedAliasesHelper = "Sparkled sound-alikes were learned from your edits."
 }

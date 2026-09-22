@@ -44,13 +44,21 @@ enum OverlayEvent: Equatable {
   case expiryFired(PresentationID)
   /// The IN-PANEL NOTICE's dwell armed for this id fired. The pill stays.
   case inPanelNoticeExpiryFired(PresentationID)
-  /// #996: the proposal coordinator's ONE offer for a proposal. A feature, so it
-  /// takes the slot only while the pipeline is idle and the slot is empty or
-  /// already holds this exact proposal; it never displaces anything.
-  case correctionProposed(CorrectionProposalCardModel)
-  /// #996: the coordinator resolved the proposal the card names. Morphs only the
-  /// still-current matching card into its typed result; a stale one is a no-op.
-  case correctionProposalResolved(id: UUID, presentation: PresentationID, outcome: CorrectionCardResult)
+  /// #996 auto-learn: the coordinator saved a word and offers Undo. A feature:
+  /// idle pipeline, and the slot empty or holding ANOTHER learned pill (which
+  /// it replaces); never displaces anything else. A result-phase model is
+  /// refused: results are morphs of the pill on screen.
+  case correctionLearned(LearnedCorrectionPillModel)
+  /// #996 auto-learn: morph the still-current learned pill for `pillID` into a
+  /// result phase (`.undone` 1.5 s, `.undoError` 3 s), same identity, button
+  /// gone; a stale pair is a no-op.
+  case correctionLearnedResult(pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase)
+  /// #996 auto-learn: close the still-current learned pill for `pillID`
+  /// without a result line; a stale id is a no-op.
+  case correctionLearnedClose(pillID: UUID)
+  /// #996 auto-learn: `Couldn’t save “<word>”`, a three-second notice with no
+  /// button; a feature route, admitted like the pill.
+  case correctionLearnedSaveError(LearnedCorrectionSaveError)
 }
 
 /// What the director should do to the single armed expiry.
@@ -182,9 +190,11 @@ struct OverlayState: Equatable {
   var featureSlotIsAvailable: Bool {
     guard pipelineIntent == .hidden else { return false }
     switch current?.content {
-    // #996: a correction card with buttons on it is not displaced by another
-    // feature either; it leaves on its own dwell, a decision, or the pipeline.
-    case .bluetoothAwareness, .languageChip, .correctionProposal: return false
+    case .bluetoothAwareness, .languageChip: return false
+    // #996 auto-learn: the Undo pill's own route may replace it (another
+    // learned pill or the save-error notice); no other feature may. It leaves
+    // on its own dwell, an Undo, or the pipeline.
+    case .correctionLearned: return false
     default: return true
     }
   }
@@ -255,10 +265,14 @@ struct OverlayReducer {
       return reduceExpiry(id)
     case .inPanelNoticeExpiryFired(let id):
       return reduceInPanelNoticeExpiry(id)
-    case .correctionProposed(let model):
-      return reduceCorrectionProposed(model)
-    case .correctionProposalResolved(let id, let presentation, let outcome):
-      return reduceCorrectionProposalResolved(id: id, presentation: presentation, outcome: outcome)
+    case .correctionLearned(let model):
+      return reduceCorrectionLearned(model)
+    case .correctionLearnedResult(let pillID, let presentation, let phase):
+      return reduceCorrectionLearnedResult(pillID: pillID, presentation: presentation, phase: phase)
+    case .correctionLearnedClose(let pillID):
+      return reduceCorrectionLearnedClose(pillID: pillID)
+    case .correctionLearnedSaveError(let error):
+      return reduceCorrectionLearnedSaveError(error)
     }
   }
 
@@ -371,10 +385,10 @@ struct OverlayReducer {
         reservesFixedHeight: definition.reservesFixedHeight)
     }
 
-    // #996: a correction card the recording replaces ends here, at COMMIT, not
+    // #996: a learned pill the recording replaces ends here, at COMMIT, not
     // at PREPARE (which may never commit). The recording effect itself went out
     // at RESOLVE and is not repeated.
-    let preempted = Self.correctionCardPreempted(by: committed, replacing: state.current)
+    let preempted = Self.learnedPillPreempted(by: committed, replacing: state.current)
     state.set(
       current: committed, pipelineIntent: .recording(audioLevel: token.audioLevel),
       isHovered: false)
@@ -487,7 +501,7 @@ struct OverlayReducer {
       // is a genuine no-op and must not make the host re-apply nothing.
       let wasOccupied = state.current != nil
       let wasRecording = Self.isRecording(state.current)
-      let preempted = Self.correctionCardPreempted(by: nil, replacing: state.current)
+      let preempted = Self.learnedPillPreempted(by: nil, replacing: state.current)
       state.set(current: nil, pipelineIntent: intent, isHovered: false)
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
@@ -508,7 +522,7 @@ struct OverlayReducer {
     }
     let wasRecording = Self.isRecording(state.current)
     let isRecording = Self.isRecording(presentation)
-    let preempted = Self.correctionCardPreempted(by: presentation, replacing: state.current)
+    let preempted = Self.learnedPillPreempted(by: presentation, replacing: state.current)
     state.set(current: presentation, pipelineIntent: intent, isHovered: false)
     return OverlayPlan(
       presentation: presentation, didChange: true,
@@ -637,88 +651,137 @@ struct OverlayReducer {
       announcement: announcement)
   }
 
-  // MARK: - Correction proposal (#996 §3.1 step 9)
-  //
-  //   slot holds                 | event                         | result
-  //   ---------------------------|-------------------------------|------------------------------
-  //   pipeline busy              | proposed                      | refused (noChange)
-  //   empty, idle                | proposed (offer)              | admitted: 8 s hover-pausable dwell
-  //   empty, idle                | proposed (result phase)       | refused: a result cannot create a card
-  //   another feature/notice     | proposed                      | refused: never displace anything
-  //   this proposal, offer       | proposed, same model          | noChange: identity and dwell kept
-  //   this proposal, offer       | proposed, changed state line  | same id, same dwell, content only
-  //   this proposal, result      | proposed                      | noChange: a result never goes back
-  //   another proposal           | proposed                      | refused: it waits in Pending
-  //   this card, offer           | resolved(id, presentation)    | morph: buttons gone, fresh 3 s dwell
-  //   this card, result / other  | resolved                      | noChange (stale)
-  //   this card, offer           | action accept/reject (id ok)  | delivered to the binding
-  //   this card, result          | action accept/reject          | dropped: no buttons any more
-  //   this card                  | expiryFired                   | slot emptied; ended{expired}
-  //   this card                  | pipeline intent / hidden      | replaced; ended{preempted}
-  //   this card                  | import status / Bluetooth     | refused by featureSlotIsAvailable
-
-  /// Admit the coordinator's single offer, or refresh the card it already shows.
-  ///
-  /// **Self-only, like `reduceImportStatus`, and the general guard alone is not
-  /// enough**: `featureSlotIsAvailable` refuses when a card is current, so a
-  /// same-proposal refresh has to be recognised BEFORE it, and a different
-  /// proposal or any other occupant refused explicitly after it.
-  private mutating func reduceCorrectionProposed(_ model: CorrectionProposalCardModel) -> OverlayPlan {
-    guard state.pipelineIntent == .hidden else { return .noChange }
-    if let current = state.current {
-      guard case .correctionProposal(let shown) = current.content, shown.id == model.id else {
-        return .noChange
-      }
-      // A refresh of the card on screen keeps its identity, its binding and
-      // its elapsed dwell; only an OFFER may be refreshed, and a result is never
-      // turned back into one.
-      guard case .offer = shown.phase, case .offer = model.phase else { return .noChange }
-      guard shown != model else { return OverlayPlan(presentation: current, didChange: false) }
-      let refreshed = PillDefinition(
-        id: current.id, content: .correctionProposal(model), expiry: current.expiry,
-        requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
-      state.set(current: refreshed)
-      return OverlayPlan(presentation: refreshed, didChange: true)
+  /// The effect a learned pill owes when something else takes its slot. Only
+  /// a DIFFERENT presentation identity ends it; a same-id morph does not.
+  private static func learnedPillPreempted(
+    by incoming: PillDefinition?, replacing outgoing: PillDefinition?
+  ) -> [PillEffect] {
+    guard let outgoing, incoming?.id != outgoing.id else { return [] }
+    switch outgoing.content {
+    case .correctionLearned(let shown) where shown.phase == .learned:
+      // #996 auto-learn: only an unanswered offer owes an end report; a
+      // result phase had nothing left to offer.
+      return [.correctionLearnedEnded(pillID: shown.id, presentation: outgoing.id)]
+    default:
+      return []
     }
-    guard state.featureSlotIsAvailable, case .offer = model.phase else { return .noChange }
-    return admitEntry(PillCatalog.entry(for: .correctionProposal(model), id: makeID()))
   }
 
-  /// Morph the still-current matching offer into its typed result: same
-  /// identity, buttons gone, the previous dwell replaced by a fresh 3-second one.
-  private mutating func reduceCorrectionProposalResolved(
-    id: UUID, presentation: PresentationID, outcome: CorrectionCardResult
+  // MARK: - Auto-learn Undo pill (#996, 2026-09-21 plan §3.1 step 9)
+  //
+  //   slot holds                 | event                              | result
+  //   ---------------------------|------------------------------------|------------------------------------------
+  //   pipeline busy              | learned                            | refused (noChange): the word is saved, no Undo
+  //   empty, idle                | learned (.learned phase)           | admitted: 2 s dwell, hover does not pause
+  //   empty, idle                | learned (result phase)             | refused: a result cannot create a pill
+  //   another feature/notice     | learned                            | refused: never displace anything else
+  //   this pill, .learned        | learned, same model                | noChange: identity, binding and dwell kept
+  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 2 s, one end effect for the outgoing .learned
+  //   this pill, .learned        | result(pillID, presentation)       | morph: button gone, fresh 1.5 s (undone) or 3 s (undoError)
+  //   this pill, result          | result / learned                   | noChange: a result never goes back
+  //   this pill, any phase       | close(pillID)                      | slot emptied, expiry cancelled, no end effect
+  //   anything else              | close(pillID)                      | noChange
+  //   this pill, .learned        | expiry                             | slot emptied, one end effect
+  //   this pill, result          | expiry                             | slot emptied, no end effect
+  //   this pill                  | hover                              | noChange: the dwell is not pausable
+  //   this pill, .learned        | undo(pillID) action                | delivered once to the binding; other ids dropped
+  //   this pill, result          | undo action                        | dropped
+  //   empty or a learned pill    | saveError                          | admitted / replaces the learned pill: 3 s notice, no button
+
+  /// Admit the Undo pill, or replace the learned pill already showing.
+  private mutating func reduceCorrectionLearned(_ model: LearnedCorrectionPillModel) -> OverlayPlan {
+    guard state.pipelineIntent == .hidden, case .learned = model.phase else { return .noChange }
+    if let current = state.current {
+      guard case .correctionLearned(let shown) = current.content else { return .noChange }
+      if shown.id == model.id {
+        // The same offer again: identity, binding and elapsed dwell are kept.
+        return OverlayPlan(presentation: current, didChange: false)
+      }
+      guard case .learned = shown.phase else {
+        // A result still on screen gives way: a fresh learn is newer news than
+        // an old result, and a result owes no end report.
+        return replaceLearnedPill(with: model, outgoing: current, effects: [])
+      }
+      return replaceLearnedPill(
+        with: model, outgoing: current,
+        effects: [.correctionLearnedEnded(pillID: shown.id, presentation: current.id)])
+    }
+    guard state.featureSlotIsAvailable else { return .noChange }
+    return admitEntry(PillCatalog.entry(for: .correctionLearned(model), id: makeID()))
+  }
+
+  /// A different learned pill takes the slot with its own identity and a fresh
+  /// two-second dwell; the outgoing `.learned` offer is reported ended.
+  private mutating func replaceLearnedPill(
+    with model: LearnedCorrectionPillModel, outgoing: PillDefinition, effects: [PillEffect]
+  ) -> OverlayPlan {
+    let entry = PillCatalog.entry(for: .correctionLearned(model), id: makeID())
+    guard let definition = entry.definition else {
+      assertionFailure("the learned pill resolved to no definition")
+      return .noChange
+    }
+    state.set(current: definition, isHovered: false)
+    return OverlayPlan(
+      presentation: definition, didChange: true, expiryCommand: Self.command(for: definition),
+      effects: effects, announcement: entry.announcement)
+  }
+
+  /// Morph the still-current learned offer into `Undone` or `Couldn’t undo`:
+  /// same identity, button gone, its own fresh dwell.
+  private mutating func reduceCorrectionLearnedResult(
+    pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase
   ) -> OverlayPlan {
     guard isCurrent(presentation), let current = state.current,
-      case .correctionProposal(let shown) = current.content, shown.id == id,
-      case .offer = shown.phase
+      case .correctionLearned(let shown) = current.content, shown.id == pillID,
+      case .learned = shown.phase, phase != .learned
     else { return .noChange }
-    let result = CorrectionProposalCardModel(
-      id: shown.id, pairKey: shown.pairKey, original: shown.original, corrected: shown.corrected,
-      state: shown.state, phase: .result(outcome))
+    let seconds =
+      phase == .undone
+      ? CorrectionLearnedPillCopy.undoneDwellSeconds : CorrectionLearnedPillCopy.errorDwellSeconds
+    let result = LearnedCorrectionPillModel(
+      id: shown.id, wordID: shown.wordID, canonical: shown.canonical, kind: shown.kind, phase: phase)
     let updated = PillDefinition(
-      id: current.id, content: .correctionProposal(result),
-      expiry: .after(seconds: Self.correctionResultDwellSeconds),
+      id: current.id, content: .correctionLearned(result),
+      expiry: .after(seconds: seconds, pausesOnHover: false),
       requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated, isHovered: false)
     return OverlayPlan(
       presentation: updated, didChange: true,
-      expiryCommand: .arm(
-        id: current.id, seconds: Self.correctionResultDwellSeconds, target: .presentation))
+      expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
   }
 
-  /// Plan §3.1 step 9: the result phase shows for three seconds.
-  static let correctionResultDwellSeconds = 3.0
+  /// Empty the slot if it still holds the learned pill for `pillID`. No end
+  /// effect: the caller (the coordinator, through its presenter) already knows.
+  private mutating func reduceCorrectionLearnedClose(pillID: UUID) -> OverlayPlan {
+    guard let current = state.current, case .correctionLearned(let shown) = current.content,
+      shown.id == pillID
+    else { return .noChange }
+    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    return OverlayPlan(presentation: nil, didChange: true, expiryCommand: .cancel)
+  }
 
-  /// The effect a correction card owes when something else takes its slot. Only
-  /// a DIFFERENT presentation identity ends it; a same-id morph does not.
-  private static func correctionCardPreempted(
-    by incoming: PillDefinition?, replacing outgoing: PillDefinition?
-  ) -> [PillEffect] {
-    guard let outgoing, case .correctionProposal(let shown) = outgoing.content,
-      incoming?.id != outgoing.id
-    else { return [] }
-    return [.correctionProposalEnded(id: shown.id, presentation: outgoing.id, reason: .preempted)]
+  /// The save-error notice: admitted on an idle, empty slot, and allowed to
+  /// replace a learned pill (the person's newest action failed; that beats an
+  /// older offer, which is reported ended).
+  private mutating func reduceCorrectionLearnedSaveError(_ error: LearnedCorrectionSaveError)
+    -> OverlayPlan
+  {
+    guard state.pipelineIntent == .hidden else { return .noChange }
+    let entry = PillCatalog.entry(for: .correctionLearnedSaveError(error), id: makeID())
+    guard let definition = entry.definition else {
+      assertionFailure("the save-error notice resolved to no definition")
+      return .noChange
+    }
+    if let current = state.current {
+      guard case .correctionLearned = current.content else { return .noChange }
+      let preempted = Self.learnedPillPreempted(by: definition, replacing: current)
+      state.set(current: definition, isHovered: false)
+      return OverlayPlan(
+        presentation: definition, didChange: true, expiryCommand: Self.command(for: definition),
+        effects: preempted, announcement: entry.announcement)
+    }
+    guard state.featureSlotIsAvailable else { return .noChange }
+    return admit(definition, announcement: entry.announcement)
   }
 
   // **`announcement(forFeature:)` was DELETED with `OverlayRequest`** (#2292 C5c).
@@ -821,16 +884,14 @@ struct OverlayReducer {
 
   private mutating func reduceAction(_ id: PresentationID, _ action: PillAction) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // #996: the card's two controls are gated on the proposal it shows and on
-    // its phase. There is no keyboard dismiss: the card never takes focus, so
-    // an unanswered card leaves on its dwell (`expiryFired`) into Pending.
-    if case .correctionProposal(let shown) = current.content {
-      switch action {
-      case .acceptCorrectionProposal(let proposalID), .rejectCorrectionProposal(let proposalID):
-        guard proposalID == shown.id, case .offer = shown.phase else { return .noChange }
-      default:
-        break
-      }
+    // #996 auto-learn: Undo is gated on the pill it shows and on the `.learned`
+    // phase; a press on a result, or naming another pill, reaches nobody.
+    // There is no keyboard dismiss: the pill never takes focus, so an
+    // unanswered pill leaves on its dwell (`expiryFired`).
+    if case .undoLearnedCorrection(let pillID) = action {
+      guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
+        case .learned = shown.phase
+      else { return .noChange }
     }
     return OverlayPlan(presentation: current, didChange: false, deliverAction: action)
   }
@@ -884,13 +945,14 @@ struct OverlayReducer {
       break
     case .recording:
       effects.append(.recordingStateChanged(false))
-    case .notice, .bluetoothAwareness:
+    case .notice, .bluetoothAwareness, .correctionLearnedSaveError:
       break
-    case .correctionProposal(let shown):
-      // The offer or its result timed out. The coordinator decides whether that
-      // was an unanswered offer; the reducer only says the dwell fired.
-      effects.append(
-        .correctionProposalEnded(id: shown.id, presentation: current.id, reason: .expired))
+    case .correctionLearned(let shown):
+      // #996 auto-learn: only an unanswered offer owes an end report; a result
+      // phase timing out had nothing left to offer.
+      if case .learned = shown.phase {
+        effects.append(.correctionLearnedEnded(pillID: shown.id, presentation: current.id))
+      }
     }
     // **The pipeline returns to idle, and the first version did not do this.**
     // Shipped `hide()` sets `currentIntent = .hidden`, so

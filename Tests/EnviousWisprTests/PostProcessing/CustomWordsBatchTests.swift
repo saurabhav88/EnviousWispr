@@ -156,4 +156,32 @@ struct CustomWordsBatchTests {
     try mgr.updateBatch([], to: &words)
     #expect(words.count == before)
   }
+
+  // MARK: - Learned provenance through the batch doors (#996)
+
+  @Test("addBatch and updateBatch prune a mark outside aliases, keep a trimmed alias's mark, and leave every other field alone")
+  func batchDoorsNormalizeLearnedMarks() throws {
+    let (mgr, url) = Self.tempManager()
+    defer { Self.cleanup(url) }
+    var words = mgr.load() ?? []
+    let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let a = CustomWord(
+      canonical: "Tuist Test", aliases: [" twist "], category: .brand, priority: 2,
+      learnedAliases: [" twist ", "ghost"], learnedAt: learnedAt)
+    let ids = try mgr.addBatch([a], to: &words)
+    #expect(ids == [a.id])
+    let added = try #require(words.first { $0.id == a.id })
+    #expect(added.aliases == ["twist"] && added.learnedAliases == ["twist"])
+    #expect(added.learnedAt == learnedAt && added.category == .brand && added.priority == 2)
+
+    var edited = added
+    edited.aliases = ["to-ist", " twist "]
+    edited.learnedAliases = ["twist", "to-ist", "ghost"]
+    try mgr.updateBatch([edited], to: &words)
+    let updated = try #require(words.first { $0.id == a.id })
+    #expect(updated.aliases == ["to-ist", "twist"])
+    #expect(updated.learnedAliases == ["to-ist", "twist"], "alias order, no ghost")
+    #expect(updated.learnedAt == learnedAt && updated.priority == 2)
+    #expect(try #require(mgr.load()).first { $0.id == a.id } == updated, "disk agrees")
+  }
 }

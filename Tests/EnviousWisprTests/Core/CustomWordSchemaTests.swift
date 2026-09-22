@@ -114,4 +114,33 @@ struct CustomWordSchemaTests {
     let decoded = try JSONDecoder().decode(CustomWord.self, from: data)
     #expect(decoded.enrichmentPending == true)
   }
+
+  // MARK: - #996 learned provenance keys
+
+  @Test("Encode writes learnedAliases always (empty array for a plain word) and learnedAt only when present")
+  func encodeLearnedKeys() throws {
+    let plain = CustomWord(canonical: "Plain")
+    let plainJSON = String(decoding: try JSONEncoder().encode(plain), as: UTF8.self)
+    #expect(plainJSON.contains("\"learnedAliases\":[]"), "learnedAliases always written")
+    #expect(!plainJSON.contains("\"learnedAt\""), "learnedAt nil → key omitted")
+
+    let learned = CustomWord(
+      canonical: "Tuist", aliases: ["twist"], learnedAliases: ["twist"],
+      learnedAt: Date(timeIntervalSince1970: 1_800_000_000))
+    let learnedJSON = String(decoding: try JSONEncoder().encode(learned), as: UTF8.self)
+    #expect(learnedJSON.contains("\"learnedAliases\":[\"twist\"]"))
+    #expect(learnedJSON.contains("\"learnedAt\""))
+  }
+
+  @Test("Decode pre-#996 JSON (no learnedAliases/learnedAt) defaults to []/nil, alongside every earlier default")
+  func decodePre996() throws {
+    let json = """
+      {"id": "550E8400-E29B-41D4-A716-446655440000", "canonical": "Kubernetes", "aliases": ["k8s"],
+       "category": "domain", "priority": 0, "forceReplace": false, "caseSensitive": false,
+       "frequencyUsed": 3, "enrichmentPending": true}
+      """
+    let word = try JSONDecoder().decode(CustomWord.self, from: Data(json.utf8))
+    #expect(word.learnedAliases == [] && word.learnedAt == nil)
+    #expect(word.frequencyUsed == 3 && word.enrichmentPending == true, "earlier keys still read")
+  }
 }

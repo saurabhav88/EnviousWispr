@@ -10,8 +10,9 @@ BlackHole, wait for the paste, then fix the LAST word with the keyboard the
 way a person does (backspace over it, type "Saurabh"), and read what the
 feature did from `app.log`: was the paste watched (`learn_skipped` names why
 not), did the watch see the edit (`learn_observation_ended` names how it
-ended), did the judge run, did the card come, did Accept land. One row per
-app with the deciding token. The fix is typed, never set through
+ended), did the judge run, did the save land (`learn_added`, then the alias
+in `custom-words.json`), and was the Undo pill offered (`learn_undo_shown`,
+recorded, never pressed). One row per app with the deciding token. The fix is typed, never set through
 accessibility, because the question is whether the feature can SEE a fix in
 that app, and setting the value would answer a different question.
 
@@ -596,7 +597,7 @@ def run_app(app, args):
         # The chat-app path: the person fixes the word and sends at once, well
         # inside the 1.5 s quiet interval. Return is never pressed here; the
         # box is emptied the way a send empties it (select all, delete), which
-        # ends the watch with `textbox_emptied` and must flush the pending fix.
+        # ends the watch with `textbox_emptied` and must flush the unjudged fix.
         time.sleep(args.send_fast / 1000.0)  # settle: the founder-chosen gap between the last keystroke and the send
         require_frontmost(bundle)
         press("a", bundle, cmd=True)
@@ -622,21 +623,28 @@ def run_app(app, args):
     if verdict["accepted"] == 0:
         row["outcome"] = "judge_refused"
         return row, pid, doc
-    shown = d.wait_for("learn_card_shown", lambda: d.has(fix_mark, "learn_card_shown"), deadline=8.0)
-    if not shown:
-        row["outcome"] = "proposed_but_card_declined" if d.has(fix_mark, "learn_proposed") else "judged_but_not_proposed"
+    # The save is immediate: `learn_added` is the proof it landed (emitted only
+    # after the app's own post-write reread), `learn_save_failed` a terminal
+    # refusal with its reason. The pair the aligner sent is read from the
+    # Debug `judged` line so the landed check follows it.
+    added = d.wait_for("learn_added", lambda: re.search(r"learn_added state=(\w+)", d.log_since(fix_mark)), deadline=8.0)
+    if not added:
+        failed = re.search(r"learn_save_failed reason=(\w+)", d.log_since(fix_mark))
+        row["outcome"] = f"save_failed: {failed.group(1)}" if failed else "judged_accepted_but_no_learn_added"
         return row, pid, doc
-    d.screenshot(f"card-{app}.png")
-    button = d.wait_for("the card's Accept button", lambda: d.card_button("accept", CORRECT), deadline=6.0)
-    if button is None:
-        row["outcome"] = "card_shown_but_no_accept_button"
-        return row, pid, doc
-    perform_action(button, "AXPress")
-    resolved = d.wait_for("the accept to resolve", lambda: re.search(r"learn_resolved decision=accepted surface=card \S+ outcome=\w+", d.log_since(fix_mark)), deadline=10.0)
-    landed = d.wait_for("the alias in custom-words.json", lambda: (lambda entry: bool(entry) and heard.lower() in [a.lower() for a in (entry.get("aliases") or [])])(d.word_named(CORRECT)), deadline=5.0)
+    row["added_state"] = added.group(1)
+    pair = d.parse_judged_pair(fix_mark) or (heard, CORRECT)
+    row["judged_pair"] = list(pair)
+    landed = d.wait_for("the alias in custom-words.json", lambda: (lambda entry: bool(entry) and pair[0].lower() in [a.lower() for a in (entry.get("aliases") or [])])(d.word_named(pair[1])), deadline=5.0)
+    # The pill is recorded, never pressed: this drill asks whether the app can
+    # SEE and SAVE a fix in each app, not whether Undo works (the main drill).
+    shown = d.wait_for("learn_undo_shown", lambda: d.has(fix_mark, "learn_undo_shown"), deadline=3.0)
+    row["undo_shown"] = bool(shown)
+    if shown:
+        d.screenshot(f"pill-{app}.png")
     ended = re.search(r"learn_observation_ended reason=\w+ settled_bursts=\d+ app_class=\w+", d.log_since(mark))
     row["observation"] = ended.group(0) if ended else None
-    row["outcome"] = "learned" if (resolved and landed) else f"accept_failed: resolved={bool(resolved)} landed={bool(landed)}"
+    row["outcome"] = "learned" if landed else f"added_but_not_in_file: state={added.group(1)}"
     return row, pid, doc
 
 
@@ -663,8 +671,7 @@ def main():
     if others:
         raise d.Aborted(f"another EnviousWispr instance is running: {others}; refusing to choose")
     initially_running = d.app_pid() is not None
-    snaps = {"words": d.file_snapshot(d.WORDS), "ledger": d.file_snapshot(d.LEDGER),
-             "defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
+    snaps = {"words": d.file_snapshot(d.WORDS), "defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
     rows = []
     exit_code = 0
     route = None
@@ -678,7 +685,6 @@ def main():
         route.apply()
         d.stop_app()
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
-        d.file_restore(d.LEDGER, d.EMPTY_LEDGER)
         d.defaults_write_bool(True)
         d.launchctl_set(args.export)
         d.start_app()
@@ -693,7 +699,7 @@ def main():
             rows.append(row)
             print(f"  {row.get('outcome')}  heard={row.get('heard')!r} tier={row.get('paste_tier')}", flush=True)
             d.save("rows.json", rows)
-            time.sleep(1.0)  # settle: a result card's 3 s morph is harmless; a live offer must not be under the cleanup keys; no ack
+            time.sleep(2.5)  # settle: the 2 s Undo pill leaves on its own before the cleanup keys; nothing may press it
             if pid is not None:
                 try:
                     cleanup(app, pid, doc)
@@ -706,7 +712,6 @@ def main():
             # Each app starts from the same state: the word is forgotten again.
             d.stop_app()
             d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
-            d.file_restore(d.LEDGER, d.EMPTY_LEDGER)
             d.start_app()
     except d.Aborted as error:
         rows.append({"outcome": f"INSTRUMENT: {error}"})

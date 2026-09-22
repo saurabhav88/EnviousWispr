@@ -40,6 +40,9 @@ struct CustomTermsSection<Actions: View>: View {
   /// pagination, selection, and the empty state — never two separate lists
   /// that could disagree about which words are showing.
   @State private var selectedCategory: WordCategory?
+  /// #996: the Auto-learned pill, independent of the category pills; a word
+  /// must satisfy both. Never persisted.
+  @State private var autoLearnedOnly = false
   @State private var currentPage: Int = 0
   @State private var editingWord: CustomWord?
   @State private var isSelecting = false
@@ -51,7 +54,8 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   private var filteredWords: [CustomWord] {
-    CustomTermListPolicy.filtered(allWords, query: searchQuery, category: selectedCategory)
+    CustomTermListPolicy.filtered(
+      allWords, query: searchQuery, category: selectedCategory, autoLearnedOnly: autoLearnedOnly)
   }
 
   /// IDs eligible for bulk selection within the current search/filter — never
@@ -70,17 +74,12 @@ struct CustomTermsSection<Actions: View>: View {
     return CustomTermListPolicy.paged(filteredWords, page: safePage)
   }
 
-  /// #2494 review: an empty result can mean three different things — say
+  /// #2494 review: an empty result can mean four different things — say
   /// which one, don't claim the whole dictionary is empty when it's really
-  /// "no words in this category."
+  /// "no words in this category." The table lives in the policy (#996).
   private var emptyStateMessage: String {
-    if !searchQuery.isEmpty {
-      return "No matches for \"\(searchQuery)\"."
-    }
-    if selectedCategory != nil {
-      return "No words in this category."
-    }
-    return "No words yet. Add one with the button above."
+    CustomTermListPolicy.emptyStateMessage(
+      query: searchQuery, autoLearnedOnly: autoLearnedOnly, category: selectedCategory)
   }
 
   var body: some View {
@@ -133,6 +132,7 @@ struct CustomTermsSection<Actions: View>: View {
               .textFieldStyle(.plain)
               .onChange(of: searchQuery) { _, _ in currentPage = 0 }
               .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
+              .onChange(of: autoLearnedOnly) { _, _ in currentPage = 0 }
               .onChange(of: pageCount) { _, newCount in
                 if currentPage >= newCount { currentPage = max(0, newCount - 1) }
               }
@@ -314,8 +314,18 @@ struct CustomTermsSection<Actions: View>: View {
 
   private func termLabel(for word: CustomWord) -> some View {
     VStack(alignment: .leading, spacing: 2) {
-      Text(word.canonical)
-        .font(.body)
+      HStack(spacing: 5) {
+        Text(word.canonical)
+          .font(.body)
+        // #996: the app learned this word, or one of its sound-alikes, from
+        // the user's own edits. One predicate, shared with the filter.
+        if word.isAutoLearned {
+          Image(systemName: "sparkles")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.stAccent)
+            .accessibilityLabel(CustomTermProvenanceCopy.learnedFromYourEdits)
+        }
+      }
       Text(usageSubtitle(for: word))
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -348,6 +358,11 @@ struct CustomTermsSection<Actions: View>: View {
         {
           selectedCategory = category
         }
+      }
+      // #996: not a category. Its own selected state, combined with the
+      // category pill by AND, so "Person + Auto-learned" is one click each.
+      categoryPill(title: CustomTermProvenanceCopy.filterPill, isSelected: autoLearnedOnly) {
+        autoLearnedOnly.toggle()
       }
     }
   }

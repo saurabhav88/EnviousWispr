@@ -13,8 +13,9 @@ recogniser delivered between two anchor words, and then:
   - if it delivered the right spelling already: `already_right` (nothing to
     learn; the built-in corrector or the model knows the word);
   - otherwise fix the heard form to the right spelling through accessibility
-    and wait for the judge and the card; Accept the card; record what the
-    judge said, whether a card came, whether Accept landed the alias.
+    and wait for the judge and the save; record what the judge said, whether
+    the save landed the alias (`learn_added`, then the file), and whether the
+    Undo pill was offered (`learn_undo_shown`; it is never pressed).
 
 Every row names the outcome with the log token that decides it, so the table
 answers "which of my words would this catch, and why not the others". The
@@ -113,31 +114,28 @@ def replay_word(path, word, index):
     if verdict["accepted"] == 0:
         row["outcome"] = "judge_refused"
         return row
-    shown = d.wait_for("learn_card_shown", lambda: d.has(fix_mark, "learn_card_shown"), deadline=8.0)
-    if not shown:
-        proposed = d.has(fix_mark, "learn_proposed")
-        row["outcome"] = "proposed_but_card_declined" if proposed else "judged_but_not_proposed"
+    # The save is immediate: `learn_added` proves it landed (emitted only after
+    # the app's post-write reread); `learn_save_failed` is a terminal refusal.
+    added = d.wait_for("learn_added", lambda: re.search(r"learn_added state=(\w+)", d.log_since(fix_mark)), deadline=8.0)
+    if not added:
+        failed = re.search(r"learn_save_failed reason=(\w+)", d.log_since(fix_mark))
+        row["outcome"] = f"save_failed: {failed.group(1)}" if failed else "judged_accepted_but_no_learn_added"
         row["learn_lines"] = learn_tokens(mark)
         return row
-    button = d.wait_for("the card's Accept button", lambda: d.card_button("accept", canonical), deadline=6.0)
-    if button is None:
-        row["outcome"] = "card_shown_but_no_accept_button"
-        return row
-    # The card names the RUN the aligner found: for a multi-word term where only
-    # one word was misheard ("Clock Code" → "Claude Code") that is the one
+    row["added_state"] = added.group(1)
+    # The judge names the RUN the aligner found: for a multi-word term where
+    # only one word was misheard ("Clock Code" → "Claude Code") that is the one
     # changed word, so what lands is that pair, not the whole term. The Debug
-    # log names the pair; the landed check follows it.
-    proposed = re.search(r'proposed original="([^"]*)" corrected="([^"]*)"', d.log_since(fix_mark))
-    pair_original, pair_corrected = (proposed.group(1), proposed.group(2)) if proposed else (heard, canonical)
-    row["proposed_pair"] = [pair_original, pair_corrected]
-    perform_action(button, "AXPress")
-    resolved = d.wait_for("the accept to resolve", lambda: re.search(r"learn_resolved decision=accepted surface=card \S+ outcome=\w+", d.log_since(fix_mark)), deadline=10.0)
+    # `judged` line names the pair; the landed check follows it.
+    pair_original, pair_corrected = d.parse_judged_pair(fix_mark) or (heard, canonical)
+    row["judged_pair"] = [pair_original, pair_corrected]
     landed = d.wait_for("the alias in custom-words.json", lambda: (lambda entry: bool(entry) and pair_original.lower() in [a.lower() for a in (entry.get("aliases") or [])])(d.word_named(pair_corrected)), deadline=5.0)
-    row["resolved"] = resolved.group(0) if resolved else None
-    if resolved and landed:
+    # Recorded, never pressed: the pill is the main drill's question.
+    row["undo_shown"] = bool(d.wait_for("learn_undo_shown", lambda: d.has(fix_mark, "learn_undo_shown"), deadline=3.0))
+    if landed:
         row["outcome"] = "learned" if pair_corrected.lower() == canonical.lower() else "learned_one_word_of_term"
     else:
-        row["outcome"] = f"accept_failed: resolved={bool(resolved)} landed={bool(landed)}"
+        row["outcome"] = f"added_but_not_in_file: state={added.group(1)}"
     return row
 
 
@@ -165,8 +163,7 @@ def main():
     if others:
         raise d.Aborted(f"another EnviousWispr instance is running: {others}; refusing to choose")
     initially_running = d.app_pid() is not None
-    snaps = {"words": d.file_snapshot(d.WORDS), "ledger": d.file_snapshot(d.LEDGER),
-             "defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
+    snaps = {"words": d.file_snapshot(d.WORDS), "defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
     rows = []
     exit_code = 0
     route = None
@@ -179,10 +176,9 @@ def main():
             d.start_app()
         route = d.audio_route()
         route.apply()
-        # ONE relaunch on an empty word list and no ledger, so nothing helps the recogniser.
+        # ONE relaunch on an empty word list, so nothing helps the recogniser.
         d.stop_app()
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
-        d.file_restore(d.LEDGER, d.EMPTY_LEDGER)
         d.defaults_write_bool(True)
         d.launchctl_set(args.export)
         d.start_app()
@@ -199,8 +195,9 @@ def main():
             rows.append(row)
             print(f"  {row['outcome']}  heard={row.get('heard')!r}", flush=True)
             d.save("rows.json", rows)
-            # Leave no card on screen for the next word.
-            time.sleep(1.0)  # settle: a result card's 3 s morph is harmless; a live offer must not be
+            # Leave no pill on screen for the next word: the 2 s Undo window
+            # passes untouched (nothing here may press Undo).
+            time.sleep(2.5)  # settle: the Undo pill leaves on its own before the field is cleared
             end_mark = d.log_mark()
             d.clear_field(doc)
             # An emptied field ends a live watch (`textbox_emptied`); one that

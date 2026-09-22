@@ -11,8 +11,9 @@ import Foundation
 // actor. There is no app blocklist (founder 2026-09-19: no restrictions on
 // where we watch; nothing leaves the Mac); the only destination refusal is the
 // system's own secure-field subrole, which is a capability limit. Nothing here
-// writes vocabulary or the ledger: judged corrections are handed to
-// `CorrectionProposalCoordinator`, which owns steps 8–10.
+// writes vocabulary: judged corrections are handed to
+// `LearnedCorrectionCoordinator`, which saves at once and offers Undo
+// (2026-09-21 plan §3.1 steps 8 and 10).
 //
 // Three guards, kept separate on purpose:
 //   generation  the paste. A new paste supersedes everything before it.
@@ -42,7 +43,7 @@ import Foundation
 //                              |   bursts < 2, new snapshot     |   reserve call and pair keys → judge
 //   observer .ended            | current, live                  | observation_ended{reason, bursts};
 //                              |                                |   pending judge answers stay valid
-//   judge answer               | current, not cancelled,        | learn_judged, proposals
+//   judge answer               | current, not cancelled,        | learn_judged, vocabulary saves
 //                              |   revision unchanged           |
 //   judge answer               | otherwise                      | stale_result counted, dropped
 //   recordingStarted           | live, observing                | observer.finish: pending fix
@@ -68,20 +69,20 @@ import Foundation
 //   B3 observer event entry      | drop    | drop     | cancel: stop, count  | n/a    | n/a
 //   B4 judge task start          | stale   | ask      | cancel + stale       | ask    | stale
 //   B5 after `await judge`       | stale   | apply    | cancel + stale       | apply  | stale
-//   B6 propose loop              | re-checked before EACH proposal: the sink and every
-//                                |   `propose` can re-enter synchronously (a setting
-//                                |   observer); only a newer paste, toggle-off, model
-//                                |   removal or revision change drops the rest of the
-//                                |   answer as one stale result. An offer that starts a
-//                                |   dictation continues.
+//   B6 learn loop                | re-checked before EACH save: the sink and every
+//                                |   `learn` can re-enter synchronously (the presenter,
+//                                |   a setting observer); only a newer paste, toggle-off,
+//                                |   model removal or revision change drops the rest of
+//                                |   the answer as one stale result. A pill that replaces
+//                                |   the previous pill does not stop later saves.
 //
 // T sets `cancelled` even after E: the observation row was emitted once and
 // is not repeated, and a pending answer about text the user asked us to stop
 // watching is never applied. D no longer cancels (#996 cursor-aware settling,
 // Codex r30): a settled snapshot is evidence about THAT paste whatever is
 // dictated next, so a live observation finishes through the observer (flushing
-// a pending fix like a send) and pending answers stay valid; a card that
-// cannot show while the pipeline is busy waits in Pending.
+// a pending fix like a send) and pending answers stay valid; accepted pairs
+// save immediately, even when the Undo pill cannot claim the overlay slot.
 
 /// The runtime arm the watcher may ask. Production selection comes from
 /// `CorrectionJudgeArmSelection.select` and its measured qualification table;
@@ -98,6 +99,24 @@ struct FrontmostApplication: Equatable, Sendable {
   let bundleID: String?
 }
 
+/// The watcher's three telemetry events (#996 §4): why a paste was not
+/// watched, how a watched paste ended, and what the judge answered. Counts,
+/// durations and closed enums only, never text. `TelemetryService` conforms in
+/// the wiring; tests pass a spy. The learned coordinator's four events live on
+/// `LearnedCorrectionTelemetrySink`; `LearnFromEditsRuntimeTelemetrySink` is
+/// the union the runtime composes.
+@MainActor
+protocol LearnFromEditsTelemetrySink: AnyObject {
+  typealias T = TelemetryService.LearnFromEditsTelemetry
+  func learnSkipped(reason: T.SkipReason)
+  func learnObservationEnded(
+    reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int)
+  /// `queueWaitMs` nil = not measured by this arm (the wire row omits the key).
+  func learnJudged(
+    arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
+    queueWaitMs: Int?)
+}
+
 @MainActor
 struct ObservedCorrectionWatcherDependencies {
   let isLearnFromEditsOn: () -> Bool
@@ -109,7 +128,8 @@ struct ObservedCorrectionWatcherDependencies {
   let nowMs: () -> Int
   let userWords: () -> [CustomWord]
   let packTerms: () -> [CustomWord]
-  let coordinator: CorrectionProposalCoordinator
+  /// Saves an accepted correction at once and offers Undo (2026-09-21 plan).
+  let coordinator: LearnedCorrectionCoordinator
   /// Bound on ONE judge call, whatever the arm: the AFM judge bounds itself,
   /// the rules judge is immediate, but a Core ML `prediction` can wedge and
   /// nothing above it would ever answer. Production: `correctionJudgeDeadlineSeconds`
@@ -396,9 +416,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   // MARK: Steps 5–7: align, filter, judge
 
-  /// Synchronous up to the reservation: alignment, filtering, the refresh of
-  /// open pairs and the reservation of the call count and pair keys all happen
-  /// before any suspension, so two bursts cannot both submit the same pair.
+  /// Synchronous up to the reservation: alignment, filtering and the
+  /// reservation of the call count and pair keys all happen before any
+  /// suspension, so two bursts cannot both submit the same pair.
   private func judgeBurst(region: String, generation gen: UInt64, revision: UInt64) {
     guard let w = watch, w.generation == gen, w.isLive, let selected = w.selected,
       let target = w.target, w.judgeCalls < Self.maxJudgeCallsPerPaste
@@ -406,21 +426,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
     guard !alignment.limitExceeded, !alignment.runs.isEmpty else { return }
     let language = w.event.language
+    // The live words only: there is no rejection memory and no open-proposal
+    // ledger any more (2026-09-21 plan §3.1 step 11).
     let inputs = CorrectionCandidateFilter.Inputs(
-      userWords: deps.userWords(), packTerms: deps.packTerms(),
-      openProposals: deps.coordinator.openProposalsByPairKey,
-      rejectedPairKeys: deps.coordinator.rejectedPairKeys)
+      userWords: deps.userWords(), packTerms: deps.packTerms())
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
-    for f in filtered {
-      if case .refreshOpen(let id) = f.disposition {
-        // An open proposal's excerpt is centred on ITS run.
-        deps.coordinator.refresh(
-          id: id,
-          contextExcerpt: Self.contextExcerpt(
-            region, focusTokens: f.run.editedRange, limit: CorrectionProposal.contextExcerptLimit),
-          sourceBundleID: w.event.destinationBundleID)
-      }
-    }
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
     let eligible = filtered.filter {
       if case .candidate = $0.disposition { return true }
@@ -434,12 +444,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // pasted text centred on that group's first candidate through the run's
     // ORIGINAL-side token range, and every candidate in the request lies
     // inside that window (cloud review of PR #3054, rounds 5 and 6). Groups
-    // beyond the per-paste call budget are left unreserved. The proposal
-    // excerpts stored below stay on the edited region: that is what the card
-    // and the Pending row show.
+    // beyond the per-paste call budget are left unreserved.
     let arm = selected.arm
     let judge = selected.judge
-    let bundleID = w.event.destinationBundleID
     for group in Self.windowGroups(eligible, in: target.pastedText) {
       guard let live = watch, live.generation == gen, live.isLive,
         live.judgeCalls < Self.maxJudgeCallsPerPaste
@@ -459,8 +466,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       for key in prepared.byID.values.map(\.pairKey) { watch?.sentPairKeys.insert(key) }
       Task { @MainActor [weak self] in
         await self?.ask(
-          judge, arm: arm, request: request, prepared: prepared, language: language,
-          context: context, region: region, bundleID: bundleID, generation: gen, revision: revision)
+          judge, arm: arm, request: request, prepared: prepared, generation: gen,
+          revision: revision)
       }
     }
   }
@@ -468,7 +475,6 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   private func ask(
     _ judge: any CorrectionJudging, arm: TelemetryService.LearnFromEditsTelemetry.Arm,
     request: CorrectionJudgeRequest, prepared: CorrectionCandidateFilter.Prepared,
-    language: String?, context: String, region: String, bundleID: String?,
     generation gen: UInt64, revision: UInt64
   ) async {
     // B4: the queued call may run after the watch moved on. A reserved call
@@ -497,29 +503,28 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     #if DEBUG
       // Local debug log only (plan §11 UAT tokens): what the judge was asked and
       // what it answered, pair by pair, so a Live UAT can read a refusal from
-      // app.log the way it reads a proposal. Release logs no user text.
+      // app.log the way it reads a save. Release logs no user text.
       for decision in decisions {
         let pair =
           prepared.byID[decision.id].map { "\"\($0.run.coreOriginal)\" -> \"\($0.run.coreReplacement)\"" }
           ?? "id \(decision.id)"
-        CorrectionProposalCoordinator.debugLog("judged \(pair) verdict=\(decision.verdict)")
+        LearnedCorrectionCoordinator.debugLog("judged \(pair) verdict=\(decision.verdict)")
       }
     #endif
     for decision in decisions where decision.verdict.vocabularyCorrection {
-      guard let f = prepared.byID[decision.id], case .candidate(let state) = f.disposition else {
+      guard let f = prepared.byID[decision.id], case .candidate(let expectedTarget) = f.disposition
+      else {
         continue
       }
-      // B6: the emission above and each proposal below run injected callbacks
-      // synchronously; any of them may have cancelled or superseded the watch.
+      // B6: the emission above and each save below run injected callbacks
+      // synchronously (the presenter, the words coordinator); any of them may
+      // have cancelled or superseded the watch, and a stale watch saves no
+      // more. A save that merely replaced the previous pill is not a reason
+      // to stop: the settled evidence for the next pair is still valid.
       guard stillWanted(generation: gen, revision: revision) else { return }
-      // The proposal keeps an excerpt around ITS OWN edit (the Pending row and
-      // the card read it), not the judge's window around the first candidate.
-      _ = deps.coordinator.propose(
-        original: f.run.coreOriginal, corrected: f.run.coreReplacement, state: state,
-        language: language,
-        contextExcerpt: Self.contextExcerpt(
-          region, focusTokens: f.run.editedRange, limit: CorrectionProposal.contextExcerptLimit),
-        sourceBundleID: bundleID, advisorySafeAlias: decision.verdict.safeAlias)
+      deps.coordinator.learn(
+        original: f.run.coreOriginal, corrected: f.run.coreReplacement,
+        expectedTarget: expectedTarget)
     }
   }
 
@@ -604,7 +609,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// group is admitted to is the window the request is centred on; every run
   /// whose original tokens lie inside it joins, the rest anchor the next
   /// group. A pair key occurs once (a second edit of the same pair is the same
-  /// proposal), and a run whose original tokens cannot be found in the pasted
+  /// correction pair), and a run whose original tokens cannot be found in the pasted
   /// text is left out rather than judged under an unrelated window (Codex
   /// round 8).
   static func windowGroups(

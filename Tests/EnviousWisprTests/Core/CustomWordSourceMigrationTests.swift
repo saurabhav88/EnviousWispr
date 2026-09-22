@@ -38,7 +38,7 @@ struct CustomWordSourceMigrationTests {
       priority: 0,
       forceReplace: false,
       caseSensitive: false,
-      source: .observedAX  // runtime-only; should NOT survive encode
+      source: .builtin  // runtime-only; should NOT survive encode
     )
     let data = try JSONEncoder().encode(word)
     let serialized = String(data: data, encoding: .utf8) ?? ""
@@ -49,7 +49,7 @@ struct CustomWordSourceMigrationTests {
 
   @Test("Round-trip equality at persisted-field level — source flips to .user")
   func roundTripEqualityAtPersistedLevel() throws {
-    let original = CustomWord(canonical: "Kubeshark", source: .observedAX)
+    let original = CustomWord(canonical: "Kubeshark", source: .pack)
     let data = try JSONEncoder().encode(original)
     let decoded = try JSONDecoder().decode(CustomWord.self, from: data)
 
@@ -75,8 +75,17 @@ struct CustomWordSourceMigrationTests {
   @Test("Explicit source param is honored at construction")
   func explicitSourceHonored() {
     let b = CustomWord(canonical: "Builtin", source: .builtin)
-    let o = CustomWord(canonical: "Observed", source: .observedAX)
+    let p = CustomWord(canonical: "Packed", source: .pack)
     #expect(b.source == .builtin)
-    #expect(o.source == .observedAX)
+    #expect(p.source == .pack)
+  }
+
+  @Test("the runtime source set is exactly builtin, user and pack: a learned word is a user word with marks, never a source")
+  func sourceSetIsClosed() {
+    // #996 retired the runtime "observed" source; learned provenance lives on the word
+    // (`learnedAliases` / `learnedAt`) so it survives the persist boundary.
+    #expect(WordSource.allCases == [.builtin, .user, .pack])
+    let learned = CustomWord(canonical: "Tuist", aliases: ["twist"], learnedAliases: ["twist"], learnedAt: Date())
+    #expect(learned.source == .user && learned.isAutoLearned)
   }
 }

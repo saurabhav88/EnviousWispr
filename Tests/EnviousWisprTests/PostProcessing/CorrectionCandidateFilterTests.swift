@@ -19,20 +19,12 @@ import Testing
       labels: [.substitute])
   }
 
-  private func inputs(
-    userWords: [CustomWord] = [], packTerms: [CustomWord] = [], open: [String: UUID] = [:],
-    rejected: Set<String> = []
-  ) -> F.Inputs {
-    F.Inputs(
-      userWords: userWords, packTerms: packTerms, openProposals: open, rejectedPairKeys: rejected)
+  private func inputs(userWords: [CustomWord] = [], packTerms: [CustomWord] = []) -> F.Inputs {
+    F.Inputs(userWords: userWords, packTerms: packTerms)
   }
 
   private func disposition(_ r: EditAlignment.Run, _ inputs: F.Inputs) -> F.Disposition {
     F.filter(runs: [r], inputs: inputs)[0].disposition
-  }
-
-  private func key(_ o: String, _ c: String) -> String {
-    CorrectionPairKey.make(original: o, corrected: c)
   }
 
   // MARK: - Ineligible reasons
@@ -133,43 +125,23 @@ import Testing
     #expect(disposition(run("annie", "Annalou"), inputs(userWords: [kube])) == .candidate(.newWord))
   }
 
-  // MARK: - Ledger memory
+  // MARK: - No rejection memory (2026-09-21 plan)
 
   @Test(
-    "a rejected pair is dropped and never becomes a candidate or a refresh, whatever else applies")
-  func rejectedPair() {
-    let r = run("Sarah", "Saira")
-    let k = key("Sarah", "Saira")
-    #expect(disposition(r, inputs(rejected: [k])) == .rejected)
-    // Casing of the pair does not evade the tombstone.
-    #expect(disposition(run("sarah", "SAIRA"), inputs(rejected: [k])) == .rejected)
-    // Rejection outranks an open proposal and a covered target.
-    let open = UUID()
-    #expect(disposition(r, inputs(open: [k: open], rejected: [k])) == .rejected)
-    #expect(
-      disposition(
-        r, inputs(userWords: [CustomWord(canonical: "Saira", aliases: ["Sarah"])], rejected: [k]))
-        == .rejected)
-    // The reversed pair is a different key.
-    #expect(disposition(run("Saira", "Sarah"), inputs(rejected: [k])) == .candidate(.newWord))
-  }
-
-  @Test(
-    "an open proposal for the pair is refreshed, not re-judged; coverage and conflicts still win over it"
+    "the inputs are the live words only: a pair the user undid earlier is an ordinary candidate again, and the reversed pair is its own key"
   )
-  func openPairRefreshed() {
+  func noRejectionMemory() {
     let r = run("Sarah", "Saira")
-    let k = key("Sarah", "Saira")
-    let open = UUID()
-    #expect(disposition(r, inputs(open: [k: open])) == .refreshOpen(proposalID: open))
-    #expect(
-      disposition(run("sarah", "saira"), inputs(open: [k: open])) == .refreshOpen(proposalID: open))
+    #expect(disposition(r, inputs()) == .candidate(.newWord))
+    #expect(disposition(run("sarah", "SAIRA"), inputs()) == .candidate(.newWord))
+    #expect(disposition(run("Saira", "Sarah"), inputs()) == .candidate(.newWord))
     let covered = CustomWord(canonical: "Saira", aliases: ["Sarah"])
-    #expect(disposition(r, inputs(userWords: [covered], open: [k: open])) == .alreadyCovered)
+    #expect(disposition(r, inputs(userWords: [covered])) == .alreadyCovered)
     let conflict = CustomWord(canonical: "Sara", aliases: ["sarah"])
-    #expect(
-      disposition(r, inputs(userWords: [conflict], open: [k: open]))
-        == .ineligible(.aliasOwnedElsewhere))
+    #expect(disposition(r, inputs(userWords: [conflict])) == .ineligible(.aliasOwnedElsewhere))
+    // The inputs carry the two word lists and nothing else.
+    let mirror = Mirror(reflecting: inputs())
+    #expect(mirror.children.map { $0.label ?? "" } == ["userWords", "packTerms"])
   }
 
   // MARK: - Evidence
@@ -216,11 +188,10 @@ import Testing
     #expect(none.candidates.isEmpty && none.byID.isEmpty)
   }
 
-  @Test("similarity is computed only for candidates within the character budget; rejected and long runs get no evidence")
+  @Test("similarity is computed only for candidates within the character budget; ineligible and long runs get no evidence")
   func similarityBudget() {
-    let k = key("Sarah", "Saira")
-    let rejected = F.filter(runs: [run("Sarah", "Saira")], inputs: inputs(rejected: [k]))[0]
-    #expect(rejected.disposition == .rejected && rejected.similarity == nil)
+    let ineligible = F.filter(runs: [run("it", "it's")], inputs: inputs())[0]
+    #expect(ineligible.disposition == .ineligible(.contractionEnding) && ineligible.similarity == nil)
     let long = F.filter(runs: [run(String(repeating: "a", count: 300), String(repeating: "b", count: 300))], inputs: inputs())[0]
     #expect(long.disposition == .candidate(.newWord) && long.similarity == nil)
     let short = F.filter(runs: [run(String(repeating: "a", count: 200), String(repeating: "b", count: 200))], inputs: inputs())[0]
@@ -245,7 +216,6 @@ import Testing
       #expect(F.filter(runs: runs, inputs: inputs(userWords: [saira]))[0].disposition == .candidate(.existingWord(saira.id)), "\(pasted)")
       #expect(F.filter(runs: runs, inputs: inputs(packTerms: [packSaira]))[0].disposition == .candidate(.existingWord(packSaira.id)), "\(pasted)")
       #expect(F.filter(runs: runs, inputs: inputs(userWords: [conflict]))[0].disposition == .ineligible(.aliasOwnedElsewhere), "\(pasted)")
-      #expect(F.filter(runs: runs, inputs: inputs(rejected: [key("Sarah", "Saira")]))[0].disposition == .rejected, "\(pasted)")
       let prepared = F.prepare(F.filter(runs: runs, inputs: inputs()))
       // The judge sees the cores, never the decoration.
       #expect(prepared.candidates.map(\.replacement) == ["Saira"], "\(pasted)")
@@ -253,7 +223,7 @@ import Testing
     }
   }
 
-  @Test("straight and typographic quoting give the same target, ownership and rejection key; internal curly apostrophes survive")
+  @Test("straight and typographic quoting give the same target, ownership and pair key; internal curly apostrophes survive")
   func typographicQuotesMatchStraightOnes() throws {
     let saira = CustomWord(canonical: "Saira")
     let conflict = CustomWord(canonical: "Sara", aliases: ["sarah"])
@@ -264,7 +234,6 @@ import Testing
     let fc = F.filter(runs: curly, inputs: inputs(userWords: [saira]))[0]
     #expect(fs.pairKey == fc.pairKey && fs.disposition == fc.disposition && fs.disposition == .candidate(.existingWord(saira.id)))
     #expect(F.filter(runs: curly, inputs: inputs(userWords: [conflict]))[0].disposition == .ineligible(.aliasOwnedElsewhere))
-    #expect(F.filter(runs: curly, inputs: inputs(rejected: [fs.pairKey]))[0].disposition == .rejected)
     let oreilly = try #require(EditAlignment.align(pasted: "call oreily today", edited: "call O\u{2019}Reilly today").runs.first)
     #expect(oreilly.coreReplacement == "O\u{2019}Reilly")
   }
@@ -284,12 +253,9 @@ import Testing
   @Test("inputs are never mutated by filtering")
   func inputsUntouched() {
     let word = CustomWord(canonical: "Saira", aliases: ["Sarah"])
-    let open = [key("a", "b"): UUID()]
-    let rejected: Set<String> = [key("c", "d")]
-    let inp = inputs(userWords: [word], open: open, rejected: rejected)
+    let inp = inputs(userWords: [word])
     _ = F.filter(runs: [run("sarah", "Saira"), run("a", "b"), run("c", "d")], inputs: inp)
-    #expect(
-      inp.userWords == [word] && inp.openProposals == open && inp.rejectedPairKeys == rejected)
+    #expect(inp.userWords == [word] && inp.packTerms.isEmpty)
     #expect(word.aliases == ["Sarah"])
   }
 

@@ -4,20 +4,20 @@ import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
 import EnviousWisprServices
-import EnviousWisprStorage
 import Foundation
 
-// MARK: - Learn from edits: composition (#996 chunk 5h)
+// MARK: - Learn from edits: composition (#996 chunk 5h; auto-learn 2026-09-21)
 //
 // Everything the feature needs at runtime, built once at the composition root
-// and retained for the app's lifetime: the durable ledger, the vocabulary
-// access over the real word list, the proposal coordinator, the overlay
-// presenter (the coordinator holds it WEAKLY, so this holder is what keeps it
-// alive), the paste observer and the watcher (the paste registry holds
-// subscribers WEAKLY, likewise), the one arm-selection value the watcher and
-// the Settings row both read, and the source-app name lookup the Pending tab
-// uses. `WisprBootstrapper` constructs it and injects `coordinator`,
-// `availability` and `sourceAppName` into the Settings environment.
+// and retained for the app's lifetime: the vocabulary access over the real
+// word list, the learned-correction coordinator (saves at once, offers Undo),
+// the overlay presenter (the coordinator holds it WEAKLY, so this holder is
+// what keeps it alive), the paste observer and the watcher (the paste
+// registry holds subscribers WEAKLY, likewise), and the one arm-selection
+// value the watcher and the Settings row both read. `WisprBootstrapper`
+// constructs it and injects `availability` into the Settings environment.
+// The ask-first ledger (`correction-proposals.json`) is no longer read; its
+// file is removed once at launch (plan §3.1 step 12).
 //
 // Production's judge (#996 phase D): the DELIVERED classifier. `ModelDeliveryHome`
 // registers the `edit_judge` family; this type asks `EditJudgeFetchPolicy`
@@ -30,9 +30,19 @@ import Foundation
 // (`model_unavailable`) and the Settings row is disabled with its reason. The
 // Debug UAT door below stays the way an unshipped candidate serves.
 
-/// `TelemetryService` already carries the nine `learn*` emitters (5c); the
-/// coordinator and watcher talk to the protocol so a spy can stand in.
+/// `TelemetryService` carries the seven `learn*` emitters; the watcher and the
+/// coordinator each talk to their own protocol so a spy can stand in.
 extension TelemetryService: LearnFromEditsTelemetrySink {}
+
+/// What the runtime composes: the watcher's three events and the learned
+/// coordinator's four, one object. `TelemetryService` is it in production;
+/// the Debug logging sink wraps it; tests pass one spy.
+@MainActor
+protocol LearnFromEditsRuntimeTelemetrySink: LearnFromEditsTelemetrySink,
+  LearnedCorrectionTelemetrySink
+{}
+
+extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
 
 #if DEBUG
   /// Debug builds mirror every learn event into app.log as one
@@ -41,9 +51,9 @@ extension TelemetryService: LearnFromEditsTelemetrySink {}
   /// other drill does (`code-tooling.md` RULE: uat-verdicts-from-app-log).
   /// Forwards everything to the real sink; Release has no such type.
   @MainActor
-  final class LearnFromEditsLoggingSink: LearnFromEditsTelemetrySink {
-    private let inner: any LearnFromEditsTelemetrySink
-    init(_ inner: any LearnFromEditsTelemetrySink) { self.inner = inner }
+  final class LearnFromEditsLoggingSink: LearnFromEditsRuntimeTelemetrySink {
+    private let inner: any LearnFromEditsRuntimeTelemetrySink
+    init(_ inner: any LearnFromEditsRuntimeTelemetrySink) { self.inner = inner }
 
     private func log(_ line: String) {
       Task { await AppLogger.shared.log(line, category: "LearnFromEdits") }
@@ -65,38 +75,62 @@ extension TelemetryService: LearnFromEditsTelemetrySink {}
       log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs)")
       inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs)
     }
-    func learnProposed(state: T.TargetState) {
-      log("learn_proposed state=\(state.rawValue)")
-      inner.learnProposed(state: state)
-    }
-    func learnCardShown() {
-      log("learn_card_shown")
-      inner.learnCardShown()
-    }
-    func learnCardExpired() {
-      log("learn_card_expired")
-      inner.learnCardExpired()
-    }
-    func learnResolved(decision: T.Decision, surface: T.Surface, state: T.TargetState, outcome: T.ResolutionOutcome) {
-      log("learn_resolved decision=\(decision.rawValue) surface=\(surface.rawValue) state=\(state.rawValue) outcome=\(outcome.rawValue)")
-      inner.learnResolved(decision: decision, surface: surface, state: state, outcome: outcome)
-    }
     func learnSaveFailed(reason: T.SaveFailure) {
       log("learn_save_failed reason=\(reason.rawValue)")
       inner.learnSaveFailed(reason: reason)
     }
-    func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition) {
-      log("learn_ledger_untrusted kind=\(kind.rawValue) disposition=\(disposition.rawValue)")
-      inner.learnLedgerUntrusted(kind: kind, disposition: disposition)
+    func learnAdded(state: T.AddedState) {
+      log("learn_added state=\(state.rawValue)")
+      inner.learnAdded(state: state)
+    }
+    func learnUndoShown() {
+      log("learn_undo_shown")
+      inner.learnUndoShown()
+    }
+    func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
+      log("learn_undone kind=\(kind.rawValue) outcome=\(outcome.rawValue)")
+      inner.learnUndone(kind: kind, outcome: outcome)
     }
   }
 #endif
 
+/// Plan §3.1 step 12: the ask-first ledger's files are removed once at
+/// launch so nothing from the old design can revive. `remove` deletes the
+/// primary file and every archived sibling under `directory` by NAME (never
+/// read or decoded), returns how many it removed, and throws on the first
+/// failure; absence is success. Tests inject both closures.
+struct LegacyProposalLedgerCleanup: Sendable {
+  static let primaryFileName = "correction-proposals.json"
+  static let archivePrefix = "correction-proposals.untrusted-"
+
+  let remove: @MainActor (URL) throws -> Int
+  let log: @MainActor (String) -> Void
+
+  static let live = LegacyProposalLedgerCleanup(
+    remove: { directory in
+      let fm = FileManager.default
+      var removed = 0
+      let primary = directory.appendingPathComponent(primaryFileName)
+      if fm.fileExists(atPath: primary.path) {
+        try fm.removeItem(at: primary)
+        removed += 1
+      }
+      // A directory that cannot be listed is a failure to report, not "no
+      // archives": a stale ledger must not survive silently.
+      let names = try fm.contentsOfDirectory(atPath: directory.path)
+      for name in names where name.hasPrefix(archivePrefix) && name.hasSuffix(".json") {
+        try fm.removeItem(at: directory.appendingPathComponent(name))
+        removed += 1
+      }
+      return removed
+    },
+    log: { line in Task { await AppLogger.shared.log(line, category: "LearnFromEdits") } })
+}
+
 @MainActor
 final class LearnFromEditsWiring {
-  let store: CorrectionProposalStore
-  let coordinator: CorrectionProposalCoordinator
-  let presenter: CorrectionProposalOverlayPresenter
+  let coordinator: LearnedCorrectionCoordinator
+  let presenter: LearnedCorrectionOverlayPresenter
   let observer: any PastedRegionObserving
   let watcher: ObservedCorrectionWatcher
   /// The step 7 selection: the rules/AFM rungs read ONCE at composition, then
@@ -145,8 +179,10 @@ final class LearnFromEditsWiring {
     packs: VocabularyPackManager,
     overlay: OverlayDirector,
     pasteCompletionRegistry: PasteCompletionRegistry,
-    telemetry: any LearnFromEditsTelemetrySink,
-    storeDirectory: URL = AppConstants.appSupportURL,
+    telemetry: any LearnFromEditsRuntimeTelemetrySink,
+    /// Where the ask-first ledger used to live; cleaned once at launch.
+    legacyLedgerDirectory: URL = AppConstants.appSupportURL,
+    legacyCleanup: LegacyProposalLedgerCleanup = .live,
     osMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
     // Test seams, all defaulted to the live objects: a scripted observer and
     // frontmost app so a composition test can walk a paste to a card without
@@ -161,24 +197,41 @@ final class LearnFromEditsWiring {
     isOnboardingComplete: @escaping @MainActor () -> Bool = { true },
     compiledCacheDirectory: URL = CoreMLCorrectionJudge.defaultCompiledCacheDirectory()
   ) {
-    let store = CorrectionProposalStore(directory: storeDirectory)
     let suggestionService = customWords.suggestionService
-    let vocabulary = CorrectionVocabularyAccess(
+    let vocabulary = LearnedCorrectionVocabularyAccess(
       userWords: { [weak customWords] in customWords?.customWords ?? [] },
       packTerms: { [weak packs] in packs?.enabledPackTerms() ?? [] },
-      refreshTrustworthy: { [weak customWords] in
-        guard let customWords, customWords.refreshFromDiskIfPossible() else { return .unreadable }
-        return .fresh(customWords.customWords)
-      },
       save: { [weak customWords] word, spelling in
         guard let customWords else { return "Couldn't save" }
         return CustomWordSaveHelper.saveAndConfirm(word, carrying: spelling, through: customWords)
       },
+      remove: { [weak customWords] id in
+        guard let customWords else { return "Couldn't undo" }
+        return customWords.remove(id: id)
+      },
+      update: { [weak customWords] word in
+        guard let customWords else { return "Couldn't undo" }
+        return customWords.update(word)
+      },
+      removeOverride: { [weak customWords] id in
+        guard let customWords else { return "Couldn't undo" }
+        return customWords.removeUserOverride(id: id)
+      },
+      restoreBuiltinAndLearn: { [weak customWords] canonical, alias in
+        guard let customWords else { return .failed }
+        switch customWords.restoreBuiltinAndLearn(canonical: canonical, alias: alias) {
+        case .restored(let outcome): return .restored(outcome)
+        case .notFound: return .notFound
+        case .failed: return .failed
+        }
+      },
+      redeleteRestoredBuiltin: { [weak customWords] id in
+        guard let customWords else { return "Couldn't undo" }
+        return customWords.redeleteRestoredBuiltin(id: id)
+      },
       classify: { WordSuggestionService.classifyByHeuristic($0) })
-    let coordinator = CorrectionProposalCoordinator(
-      store: store, vocabulary: vocabulary, presenter: nil, telemetry: telemetry)
-    coordinator.initialize()
-    let presenter = CorrectionProposalOverlayPresenter(host: overlay, coordinator: coordinator)
+    let coordinator = LearnedCorrectionCoordinator(vocabulary: vocabulary, telemetry: telemetry)
+    let presenter = LearnedCorrectionOverlayPresenter(host: overlay, coordinator: coordinator)
     coordinator.attach(presenter: presenter)
 
     // Step 7 at composition: platform, measured qualification and
@@ -247,7 +300,16 @@ final class LearnFromEditsWiring {
         telemetry: telemetry))
     pasteCompletionRegistry.subscribe(watcher)
 
-    self.store = store
+    // Plan §3.1 step 12: the words coordinator has done its launch load by
+    // the time this is composed (the bootstrapper builds it first), so the
+    // old ledger can go. Once, by name, and never a reason to stop composing.
+    do {
+      let removed = try legacyCleanup.remove(legacyLedgerDirectory)
+      if removed > 0 { legacyCleanup.log("learn_legacy_ledger_removed files=\(removed)") }
+    } catch {
+      legacyCleanup.log("learn_legacy_ledger_removal_failed")
+    }
+
     self.coordinator = coordinator
     self.presenter = presenter
     self.observer = observer
@@ -576,23 +638,6 @@ final class LearnFromEditsWiring {
   func recordingStarted() {
     watcher.recordingStarted()
   }
-
-  /// The Pending tab's app-name lookup: the app's display name from its bundle,
-  /// nil when the id resolves to nothing (never the raw identifier).
-  static func sourceAppName(bundleID: String) -> String? {
-    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-      return nil
-    }
-    let bundle = Bundle(url: url)
-    let candidates: [String?] = [
-      bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
-      bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String,
-      url.deletingPathExtension().lastPathComponent,
-    ]
-    return candidates.compactMap { $0 }.first { !$0.isEmpty }
-  }
-
-  var sourceAppName: @MainActor (String) -> String? { { Self.sourceAppName(bundleID: $0) } }
 
   private final class SelectionBox {
     weak var wiring: LearnFromEditsWiring?

@@ -531,7 +531,7 @@ public struct WordCorrector: Sendable {
     // in the exact alias/canonical maps (Pass 1 multi-exact, Pass 3
     // single-exact) but are excluded from every fuzzy/compound pool
     // (Pass 0 nospace-compound, Pass 2 multi-fuzzy, Pass 4 single-fuzzy,
-    // Pass 5 canonical-fuzzy). Non-pack (user/builtin/observedAX) terms keep
+    // Pass 5 canonical-fuzzy). Non-pack (user/builtin) terms keep
     // their full behaviour. On any key clash, non-pack wins: the non-pack maps
     // are built first and authoritatively, then pack entries fill ONLY keys no
     // non-pack term claimed. This protects user terms from pack shadowing for

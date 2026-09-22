@@ -152,13 +152,19 @@ struct OverlayRootView: View {
         onClose: { press(.closeBluetoothAwareness, on: presentation) },
         onAdjustSettings: { press(.openBluetoothSettings, on: presentation) })
 
-    case .correctionProposal(let model):
-      CorrectionProposalCardView(
+    case .correctionLearned(let model):
+      // #996 auto-learn: Undo is dispatched with the model's own pill id, and
+      // only from the `.learned` phase (a result draws no button).
+      CorrectionLearnedPillView(
         model: model,
-        // The same director dwell the Escape pill draws; see `PillRenderState.dwell`.
-        dwell: frame.dwell,
-        onAccept: { press(.acceptCorrectionProposal(id: model.id), on: presentation) },
-        onReject: { press(.rejectCorrectionProposal(id: model.id), on: presentation) })
+        onUndo: {
+          if case .learned = model.phase {
+            press(.undoLearnedCorrection(pillID: model.id), on: presentation)
+          }
+        })
+
+    case .correctionLearnedSaveError(let error):
+      CorrectionLearnedSaveErrorView(error: error)
 
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(
