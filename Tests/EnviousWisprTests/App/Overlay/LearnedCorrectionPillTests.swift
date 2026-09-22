@@ -132,7 +132,7 @@ struct LearnedCorrectionPillCopyTests {
     #expect(CorrectionLearnedPillCopy.couldNotUndo == "Couldn\u{2019}t undo")
     #expect(
       CorrectionLearnedPillCopy.saveError(
-        LearnedCorrectionSaveError(canonical: "Tuist", reason: .targetGone))
+        LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
         == "Couldn\u{2019}t save \u{201C}Tuist\u{201D}")
     #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 2)
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
@@ -495,7 +495,7 @@ struct LearnedCorrectionPillDirectorTests {
     let clock3 = LearnedPillClock()
     let log3 = Log()
     let (d3, _) = director(clock3, log3)
-    let error = LearnedCorrectionSaveError(canonical: "Tuist", reason: .targetGone)
+    let error = LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)
     _ = d3.present(.correctionLearnedSaveError(error)) { log3.results.append($0) }
     #expect(log3.results.count == 1 && clock3.armedSeconds == [3])
     clock3.advance(to: 2.999)
@@ -670,7 +670,7 @@ struct LearnedCorrectionOverlayPresenterTests {
   @Test("a presented pill counts learn_undo_shown once; a declined one ends the Undo record without counting")
   func presentedAndDeclined() throws {
     let f = fixture()
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     #expect(f.host.requests.count == 1)
     #expect(f.telemetry.events == [.added(.newWord), .undoShown])
     #expect(f.coordinator.undoRecord != nil)
@@ -678,7 +678,7 @@ struct LearnedCorrectionOverlayPresenterTests {
     let refusing = LearnedOverlayHostFake()
     refusing.admitAs = nil
     let g = fixture(host: refusing)
-    g.coordinator.learn(original: "twist", corrected: "Tuist")
+    g.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     #expect(g.telemetry.events == [.added(.newWord)], "saved, no Undo offered")
     #expect(g.coordinator.undoRecord == nil)
   }
@@ -686,7 +686,7 @@ struct LearnedCorrectionOverlayPresenterTests {
   @Test("the director's Undo press reaches the coordinator and the same-identity Undone morph comes back; the end callback drops the record")
   func undoForwardingAndResult() throws {
     let f = fixture()
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     let pill = try #require(f.host.requests.first)
     let undo = try #require(f.host.undos.first)
     undo()
@@ -697,7 +697,7 @@ struct LearnedCorrectionOverlayPresenterTests {
     #expect(f.host.closes.isEmpty)
 
     let g = fixture()
-    g.coordinator.learn(original: "twist", corrected: "Tuist")
+    g.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     let ended = try #require(g.host.endeds.first)
     ended()
     #expect(g.coordinator.undoRecord == nil)
@@ -709,7 +709,7 @@ struct LearnedCorrectionOverlayPresenterTests {
   @Test("an Undo that fails morphs to the error line on the same identity; an already-changed word closes the pill")
   func undoErrorAndClose() throws {
     let f = fixture()
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     let pill = try #require(f.host.requests.first)
     f.library.removeRefusal = "locked"
     let undo = try #require(f.host.undos.first)
@@ -717,7 +717,7 @@ struct LearnedCorrectionOverlayPresenterTests {
     #expect(f.host.resolved.map(\.2) == [.undoError] && f.host.resolved.first?.0 == pill.id)
 
     let g = fixture()
-    g.coordinator.learn(original: "twist", corrected: "Tuist")
+    g.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     let pill2 = try #require(g.host.requests.first)
     g.library.userWords[0].category = .brand
     let undo2 = try #require(g.host.undos.first)
@@ -729,7 +729,7 @@ struct LearnedCorrectionOverlayPresenterTests {
   func saveError() {
     let f = fixture()
     f.library.saveRefusal = "disk full"
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     #expect(
       f.host.saveErrors == [
         LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)
@@ -742,8 +742,8 @@ struct LearnedCorrectionOverlayPresenterTests {
     let host = LearnedOverlayHostFake()
     host.deferResult = true
     let f = fixture(host: host)
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
-    f.coordinator.learn(original: "sara", corrected: "Saira")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
+    f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     #expect(host.requests.count == 2 && host.pendingResults.count == 2)
     host.answerPending()
     // The fake answers both relays from the LAST predicate, as the director

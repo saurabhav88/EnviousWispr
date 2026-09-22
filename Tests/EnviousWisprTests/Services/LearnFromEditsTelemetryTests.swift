@@ -5,7 +5,7 @@ import Testing
 
 #if DEBUG
 
-  /// #996 §4: the learn-from-edits payload contracts (twelve during the auto-learn migration, seven after chunk 5a). Key sets are frozen
+  /// #996 §4: the seven learn-from-edits payload contracts. Key sets are frozen
   /// so a renamed or added property is a deliberate change with a knowledge row
   /// behind it; every value is a closed enum or a count, never text.
   @Suite("learn-from-edits telemetry payloads (#996)", .serialized, .tags(.observabilityContract))
@@ -56,14 +56,8 @@ import Testing
       "custom_words.learn_judged": [
         "arm", "outcome", "candidates", "accepted", "latency_ms", "queue_wait_ms",
       ],
-      "custom_words.learn_proposed": ["state"],
-      "custom_words.learn_card_shown": [],
-      "custom_words.learn_card_expired": [],
-      "custom_words.learn_resolved": ["decision", "surface", "state", "outcome"],
       "custom_words.learn_save_failed": ["reason"],
-      "custom_words.learn_ledger_untrusted": ["kind", "disposition"],
-      // Auto-learn (2026-09-21 plan §3.1 step 11); chunk 5a removes the
-      // five ask-first rows above and leaves seven.
+      // Auto-learn (2026-09-21 plan §3.1 step 11).
       "custom_words.learn_added": ["state"],
       "custom_words.learn_undo_shown": [],
       "custom_words.learn_undone": ["kind", "outcome"],
@@ -80,18 +74,13 @@ import Testing
         t.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 3, accepted: 1, latencyMs: 812,
           queueWaitMs: 0)
-        t.learnProposed(state: .existingWord)
-        t.learnCardShown()
-        t.learnCardExpired()
-        t.learnResolved(decision: .accepted, surface: .card, state: .newWord, outcome: .added)
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
-        t.learnLedgerUntrusted(kind: .corrupt, disposition: .recovered)
         t.learnAdded(state: .packOverride)
         t.learnUndoShown()
         t.learnUndone(kind: .updated, outcome: .alreadyChanged)
       }
       let events = box.values
-      #expect(events.count == 12)
+      #expect(events.count == 7)
       #expect(Set(events.map(\.name)) == Set(Self.contract.keys))
       for event in events {
         let expected = try #require(Self.contract[event.name])
@@ -121,8 +110,8 @@ import Testing
         TelemetryService.shared.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 1, accepted: 1, latencyMs: 3,
           queueWaitMs: nil)
-        TelemetryService.shared.learnResolved(
-          decision: .rejected, surface: .pending, state: .existingWord, outcome: .tombstoned)
+        TelemetryService.shared.learnUndone(kind: .updated, outcome: .alreadyChanged)
+        TelemetryService.shared.learnSaveFailed(reason: .vocabularyWriteFailed)
       }
       let ended = try #require(
         box.values.first { $0.name == "custom_words.learn_observation_ended" })
@@ -138,13 +127,12 @@ import Testing
         box.values.last { $0.name == "custom_words.learn_judged" })
       #expect(unmeasured.intProps["queue_wait_ms"] == nil)
       #expect(unmeasured.intProps.keys.contains("queue_wait_ms") == false)
-      let resolved = try #require(box.values.first { $0.name == "custom_words.learn_resolved" })
+      let undone = try #require(box.values.first { $0.name == "custom_words.learn_undone" })
       #expect(
-        resolved.stringProps["decision"] == "rejected"
-          && resolved.stringProps["surface"] == "pending")
-      #expect(
-        resolved.stringProps["state"] == "existing_word"
-          && resolved.stringProps["outcome"] == "tombstoned")
+        undone.stringProps["kind"] == "updated"
+          && undone.stringProps["outcome"] == "already_changed")
+      let failed = try #require(box.values.first { $0.name == "custom_words.learn_save_failed" })
+      #expect(failed.stringProps["reason"] == "vocabulary_write_failed")
     }
   }
 
@@ -174,24 +162,10 @@ struct LearnFromEditsTelemetryVocabularyTests {
       T.JudgeOutcome.allCases.map(\.rawValue) == [
         "verdict", "unavailable", "not_granted", "deadline", "cancelled", "malformed",
       ])
-    #expect(T.TargetState.allCases.map(\.rawValue) == ["existing_word", "new_word"])
-    #expect(T.Decision.allCases.map(\.rawValue) == ["accepted", "rejected"])
-    #expect(T.Surface.allCases.map(\.rawValue) == ["card", "pending"])
-    #expect(
-      T.ResolutionOutcome.allCases.map(\.rawValue) == [
-        "added", "alias_added", "pack_override", "already_landed", "tombstoned",
-      ])
     #expect(
       T.SaveFailure.allCases.map(\.rawValue) == [
         "alias_owned_elsewhere", "target_gone", "vocabulary_write_failed",
-        "ledger_write_failed", "ledger_untrusted",
       ])
-    #expect(
-      T.LedgerUntrustedKind.allCases.map(\.rawValue) == [
-        "unreadable", "corrupt", "unsupported_version", "unknown_status",
-        "durability_unconfirmed",
-      ])
-    #expect(T.LedgerDisposition.allCases.map(\.rawValue) == ["recovered", "blocked"])
     #expect(T.AddedState.allCases.map(\.rawValue) == ["existing_word", "new_word", "pack_override"])
     #expect(T.UndoKind.allCases.map(\.rawValue) == ["added", "updated"])
     #expect(T.UndoOutcome.allCases.map(\.rawValue) == ["undone", "already_changed", "failed"])

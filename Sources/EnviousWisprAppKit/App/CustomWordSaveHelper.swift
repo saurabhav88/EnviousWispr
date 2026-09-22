@@ -4,13 +4,13 @@ import Foundation
 
 // MARK: - Custom word save helper (#996 §4, F3)
 //
-// The one App-layer owner of two questions Quick Add answered privately and
-// the learn-from-edits coordinator (chunk 5e) must answer the same way:
-// WHICH stored word does an accept write into, decided against the library as
-// it is NOW, and DID the write land. `quickAddTarget` and `saveAndConfirm` are
-// Quick Add's own implementations, moved here verbatim with their reasons;
-// `proposalTarget` is the corrected-string entrypoint the proposal card uses
-// and Quick Add never calls. Nothing here allocates a word id or writes on its
+// The one App-layer owner of target resolution and save confirmation shared by
+// Quick Add and the learned-correction coordinator: WHICH stored word does a
+// save write into, decided against the library as it is NOW, and DID the write
+// land. `quickAddTarget` and `saveAndConfirm` are Quick Add's own
+// implementations, moved here verbatim with their reasons; `proposalTarget` is
+// the corrected-string entrypoint auto-learn uses and Quick Add never calls.
+// Nothing here allocates a word id or writes on its
 // own: `saveAndConfirm` is the only write, and it goes through
 // `CustomWordsCoordinator`.
 
@@ -88,27 +88,27 @@ enum CustomWordSaveHelper {
   }
 
   /// What a learned correction should write INTO, decided against the library
-  /// as it is NOW, from the proposal's immutable corrected spelling (plan §3.1
-  /// step 10). The proposal has no ranking snapshot and no candidate id, so
+  /// as it is NOW, from the judged correction's corrected spelling (plan §3.1
+  /// step 10). The correction has no ranking snapshot and no candidate id, so
   /// the question is asked of the spelling alone.
   enum ProposalTarget: Equatable {
     /// A user word whose canonical is the corrected spelling. Carries the
-    /// CURRENT entry, never anything the proposal remembered.
+    /// CURRENT entry, never anything the correction remembered.
     case existing(CustomWord)
     /// An enabled pack term whose canonical is the corrected spelling, already
     /// converted to a user-owned override (`ownedByUser()` keeps the pack's
     /// id), exactly as Quick Add's `.override` does.
     case packOverride(CustomWord)
-    /// No word carries that canonical: the accept creates a new word.
+    /// No word carries that canonical: the learn creates a new word.
     case new
   }
 
-  /// Resolve the corrected spelling against the SUPPLIED current values: the
-  /// user's words first, then the enabled pack terms. Pure; allocates no id and
-  /// writes nothing. Matching uses the same normalisation as the filter that
-  /// proposed the card (`CorrectionPairKey.normalise`, NFC + casefold), so the
-  /// state assigned at proposal time and the target resolved at Accept agree
-  /// on what "the same canonical" means.
+  /// Resolve a learned correction's target from the corrected spelling alone,
+  /// against the SUPPLIED current values: the user's words first, then the
+  /// enabled pack terms. Pure; allocates no id and writes nothing. Matching
+  /// uses the same normalisation as the filter that admitted the correction
+  /// (`CorrectionPairKey.normalise`, NFC + casefold), so filtering and save
+  /// resolution agree on what "the same canonical" means.
   static func proposalTarget(
     for corrected: String, in words: [CustomWord], packTerms: [CustomWord]
   ) -> ProposalTarget {

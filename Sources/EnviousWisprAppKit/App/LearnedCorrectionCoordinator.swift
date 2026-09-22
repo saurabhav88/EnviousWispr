@@ -12,9 +12,9 @@ import Foundation
 // holds no durable state: the Undo record lives only as long as its pill, so
 // a crash between save and pill loses the Undo chance, never the word.
 //
-// Built beside `CorrectionProposalCoordinator` (ask-first, Pending, ledger);
-// chunk 4 of the plan switches the watcher over and chunk 5 deletes the old
-// flow. Nothing here reads or writes the proposal ledger.
+// Replaced the ask-first flow (a card with Accept/Reject, a Pending tab and a
+// proposal ledger on disk) in the 2026-09-21 plan; nothing here persists
+// anything but the word itself.
 
 /// The vocabulary the coordinator reads and writes, as value closures so the
 /// tests script every success, refusal, silent non-write and exact persisted
@@ -53,7 +53,7 @@ struct LearnedCorrectionVocabularyAccess {
   /// Remove a user OVERRIDE of a built-in WITHOUT tombstoning the built-in,
   /// so the built-in shows again exactly as before the learn. `remove(id:)`
   /// cannot do this: it tombstones any built-in the removed word's canonical
-  /// matches. Production binding (a manager method) lands with chunk 4.
+  /// matches. Production binds this to `CustomWordsCoordinator.removeUserOverride(id:)`.
   let removeOverride: (UUID) -> String?
   /// `CustomWordsManager.restoreBuiltinAndLearn(canonical:alias:)` in
   /// production, through the words coordinator so the live list republishes.
@@ -76,8 +76,8 @@ protocol LearnedCorrectionTelemetrySink: AnyObject {
   func learnSaveFailed(reason: T.SaveFailure)
 }
 
-/// The production sink is the service itself (chunk 4 wires it, wrapped in
-/// the same logging sink the old flow uses).
+/// The production sink is `TelemetryService`; `LearnFromEditsWiring` wraps it
+/// with the runtime's Debug logging sink.
 extension TelemetryService: LearnedCorrectionTelemetrySink {}
 
 /// What the pill shows (chunk 3b draws it). The mishearing is not on the
@@ -214,10 +214,11 @@ final class LearnedCorrectionCoordinator {
   // MARK: - Step 8: learn
 
   /// Save a judged correction now. `original` is the misheard form the user
-  /// replaced, `corrected` what they typed. Returns after the write is proven
-  /// (or refused) and the pill offered.
+  /// replaced, `corrected` what they typed, `expectedTarget` what the filter
+  /// saw at judge time. Returns after the write is proven (or refused) and the
+  /// pill offered.
   @discardableResult
-  func learn(original: String, corrected: String) -> LearnOutcome {
+  func learn(original: String, corrected: String, expectedTarget: LearnTargetState) -> LearnOutcome {
     let corrected = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
     let original = original.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -226,6 +227,12 @@ final class LearnedCorrectionCoordinator {
     let packTerms = vocabulary.packTerms()
     let target = CustomWordSaveHelper.proposalTarget(
       for: corrected, in: userWords, packTerms: packTerms)
+    // A word the judge was asked about as an EXISTING target that no longer
+    // carries the canonical is `target_gone` (plan §3.1 failure table), never
+    // silently recreated as a new word.
+    if case .existingWord = expectedTarget, case .new = target {
+      return refuse(canonical: corrected, reason: .targetGone)
+    }
 
     // 2. Both surfaces (the original as a trigger, the corrected phrase) must
     //    be free of another word's claim, the same check the candidate filter
@@ -261,7 +268,15 @@ final class LearnedCorrectionCoordinator {
       var updated = live
       updated.aliases.append(original)
       updated.learnedAliases.append(original)
-      if vocabulary.save(updated, original) != nil {
+      let saveError = vocabulary.save(updated, original)
+      // A target that is no longer in the live list after the write is a
+      // different failure from a write that did not land on it: the word
+      // vanished between the read that chose it and the save (plan §3.1
+      // failure table, `target_gone`).
+      guard vocabulary.userWords().contains(where: { $0.id == live.id }) else {
+        return refuse(canonical: corrected, reason: .targetGone)
+      }
+      if saveError != nil {
         return refuse(canonical: corrected, reason: .vocabularyWriteFailed)
       }
       wordID = live.id

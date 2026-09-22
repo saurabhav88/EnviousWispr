@@ -225,7 +225,7 @@ struct LearnedCorrectionCoordinatorTests {
     let saira = CustomWord(canonical: "Saira", aliases: ["sarah"], category: .person, priority: 2)
     f.library.userWords = [saira]
 
-    let outcome = f.coordinator.learn(original: "sara", corrected: "Saira")
+    let outcome = f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill))
     #expect(pill.kind == .updated && pill.canonical == "Saira" && pill.wordID == saira.id)
@@ -250,7 +250,7 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     let github = try #require(CustomWordsManager.builtinDefaults.first { $0.id == "github" }?.word)
     f.library.userWords = [github]
-    let outcome = f.coordinator.learn(original: "git-hub", corrected: "GitHub")
+    let outcome = f.coordinator.learn(original: "git-hub", corrected: "GitHub", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .updated)
     let live = try #require(f.library.userWords.first { $0.id == github.id })
@@ -269,7 +269,7 @@ struct LearnedCorrectionCoordinatorTests {
     let pack = CustomWord(canonical: "Tuist", aliases: ["twist"], category: .brand, source: .pack)
     f.library.packTerms = [pack]
 
-    let outcome = f.coordinator.learn(original: "to-ist", corrected: "Tuist")
+    let outcome = f.coordinator.learn(original: "to-ist", corrected: "Tuist", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .updated)
     let live = try #require(f.library.userWords.first { $0.id == pack.id })
@@ -288,7 +288,7 @@ struct LearnedCorrectionCoordinatorTests {
   )
   func newWordSaveAndUndo() throws {
     let f = fixture()
-    let outcome = f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    let outcome = f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .added && pill.canonical == "Kwmala")
     let live = try #require(f.library.userWords.first)
@@ -309,7 +309,7 @@ struct LearnedCorrectionCoordinatorTests {
     let github = try #require(CustomWordsManager.builtinDefaults.first { $0.id == "github" }?.word)
     f.library.deletedBuiltins = [github]
 
-    let outcome = f.coordinator.learn(original: "git-hub", corrected: "GitHub")
+    let outcome = f.coordinator.learn(original: "git-hub", corrected: "GitHub", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .updated && pill.wordID == github.id)
     let live = try #require(f.library.userWords.first { $0.id == github.id })
@@ -329,7 +329,7 @@ struct LearnedCorrectionCoordinatorTests {
   func alreadyCoveredRace() {
     let f = fixture()
     f.library.userWords = [CustomWord(canonical: "Saira", aliases: ["sara"])]
-    #expect(f.coordinator.learn(original: "Sara", corrected: "saira") == .alreadyCovered)
+    #expect(f.coordinator.learn(original: "Sara", corrected: "saira", expectedTarget: .newWord) == .alreadyCovered)
     #expect(f.library.saves.isEmpty && f.presenter.calls.isEmpty && f.telemetry.events.isEmpty)
     #expect(f.coordinator.undoRecord == nil)
   }
@@ -346,13 +346,38 @@ struct LearnedCorrectionCoordinatorTests {
     f.library.beforeWrite = { f.library.userWords = [] }
     f.library.silentSave = true
     #expect(
-      f.coordinator.learn(original: "sara", corrected: "Saira") == .refused(.vocabularyWriteFailed))
-    #expect(f.telemetry.events == [.saveFailed(.vocabularyWriteFailed)])
+      f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .existingWord(saira.id))
+        == .refused(.targetGone))
+    #expect(f.telemetry.events == [.saveFailed(.targetGone)])
     #expect(
       f.presenter.calls == [
-        .error(LearnedCorrectionSaveError(canonical: "Saira", reason: .vocabularyWriteFailed))
+        .error(LearnedCorrectionSaveError(canonical: "Saira", reason: .targetGone))
       ])
     #expect(f.coordinator.undoRecord == nil)
+  }
+
+  @Test(
+    "a word the judge saw as an existing target that is gone by the time the save resolves is refused as target_gone, never recreated"
+  )
+  func targetGoneBeforeResolution() {
+    let f = fixture()
+    let saira = CustomWord(canonical: "Saira")
+    // The filter saw Saira; the user deleted it while the judge was running.
+    f.library.userWords = []
+    #expect(
+      f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .existingWord(saira.id))
+        == .refused(.targetGone))
+    #expect(f.library.saves.isEmpty && f.library.userWords.isEmpty, "nothing was written")
+    #expect(f.telemetry.events == [.saveFailed(.targetGone)])
+    #expect(f.coordinator.undoRecord == nil)
+    // Control: the same spelling expected NEW is created.
+    let g = fixture()
+    g.library.userWords = []
+    if case .learned = g.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord) {
+    } else {
+      Issue.record("expected the new word to be learned")
+    }
+    #expect(g.library.userWords.map(\.canonical) == ["Saira"])
   }
 
   @Test(
@@ -365,7 +390,7 @@ struct LearnedCorrectionCoordinatorTests {
       CustomWord(canonical: "Saira"),
     ]
     #expect(
-      f.coordinator.learn(original: "sarah", corrected: "Saira") == .refused(.aliasOwnedElsewhere))
+      f.coordinator.learn(original: "sarah", corrected: "Saira", expectedTarget: .newWord) == .refused(.aliasOwnedElsewhere))
     #expect(f.library.saves.isEmpty && f.telemetry.events == [.saveFailed(.aliasOwnedElsewhere)])
   }
 
@@ -376,7 +401,7 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     f.library.userWords = [CustomWord(canonical: "Tuist", aliases: ["twist"])]
     #expect(
-      f.coordinator.learn(original: "twizt", corrected: "twist") == .refused(.aliasOwnedElsewhere))
+      f.coordinator.learn(original: "twizt", corrected: "twist", expectedTarget: .newWord) == .refused(.aliasOwnedElsewhere))
     #expect(f.library.saves.isEmpty)
   }
 
@@ -385,7 +410,7 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     f.library.saveRefusal = "disk full"
     #expect(
-      f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+      f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
         == .refused(.vocabularyWriteFailed))
     #expect(f.telemetry.events == [.saveFailed(.vocabularyWriteFailed)])
     #expect(f.coordinator.undoRecord == nil && f.library.userWords.isEmpty)
@@ -396,7 +421,7 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     f.library.silentSave = true
     #expect(
-      f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+      f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
         == .refused(.vocabularyWriteFailed))
     #expect(
       f.library.saves.count == 1 && f.telemetry.events == [.saveFailed(.vocabularyWriteFailed)])
@@ -408,7 +433,7 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     f.library.userWords = [CustomWord(canonical: "Saira")]
     // The fake trims on persist; the coordinator proposes " sara " untrimmed.
-    f.coordinator.learn(original: " sara ", corrected: "Saira")
+    f.coordinator.learn(original: " sara ", corrected: "Saira", expectedTarget: .newWord)
     let proposed = try #require(f.library.saves.first?.0)
     let record = try #require(f.coordinator.undoRecord)
     #expect(proposed.aliases == ["sara"], "the coordinator trims before proposing")
@@ -421,9 +446,9 @@ struct LearnedCorrectionCoordinatorTests {
   )
   func newLearnInvalidatesThePreviousRecord() throws {
     let f = fixture()
-    f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let first = try #require(shown(f))
-    f.coordinator.learn(original: "twist", corrected: "Tuist")
+    f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     let second = try #require(shown(f))
     #expect(f.coordinator.undoRecord?.pillID == second.id)
     #expect(f.presenter.calls == [.show(first), .show(second)], "two shows, no separate close")
@@ -436,7 +461,7 @@ struct LearnedCorrectionCoordinatorTests {
   @Test("admission counts learn_undo_shown once; a repeat or a stale admission counts nothing")
   func admissionCountsOnce() throws {
     let f = fixture()
-    f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.pillAdmitted(pillID: pill.id)
@@ -448,7 +473,7 @@ struct LearnedCorrectionCoordinatorTests {
     "expiry, decline or preemption removes the record; Undo afterwards is stale and writes nothing")
   func presentationEndRemovesTheRecord() throws {
     let f = fixture()
-    f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.coordinator.pillEnded(pillID: UUID())
     #expect(f.coordinator.undoRecord != nil, "a stale end is a no-op")
@@ -467,7 +492,7 @@ struct LearnedCorrectionCoordinatorTests {
   func changedLiveWordIsNotUndone() throws {
     let f = fixture()
     f.library.userWords = [CustomWord(canonical: "Saira")]
-    f.coordinator.learn(original: "sara", corrected: "Saira")
+    f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.userWords[0].category = .brand
     #expect(f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
@@ -481,7 +506,7 @@ struct LearnedCorrectionCoordinatorTests {
   @Test("Undo after the word was deleted by hand is already_changed")
   func deletedLiveWordIsNotUndone() throws {
     let f = fixture()
-    f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.userWords = []
     #expect(f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
@@ -492,7 +517,7 @@ struct LearnedCorrectionCoordinatorTests {
     "an Undo write that is refused, or that reports success without landing, never shows Undone")
   func undoRefusalAndSilentNonWrite() throws {
     let f = fixture()
-    f.coordinator.learn(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.library.removeRefusal = "locked"
     #expect(f.coordinator.undo(pillID: pill.id) == .failed)
@@ -502,7 +527,7 @@ struct LearnedCorrectionCoordinatorTests {
 
     let g = fixture()
     g.library.userWords = [CustomWord(canonical: "Saira")]
-    g.coordinator.learn(original: "sara", corrected: "Saira")
+    g.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill2 = try #require(shown(g))
     g.library.silentUpdate = true
     #expect(g.coordinator.undo(pillID: pill2.id) == .failed)
@@ -524,7 +549,7 @@ struct LearnedCorrectionCoordinatorTests {
   func telemetryIsEnumsOnly() throws {
     let f = fixture()
     f.library.userWords = [CustomWord(canonical: "Saira")]
-    f.coordinator.learn(original: "sara", corrected: "Saira")
+    f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
     let pill = try #require(shown(f))
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.undo(pillID: pill.id)

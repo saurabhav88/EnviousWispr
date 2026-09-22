@@ -30,12 +30,12 @@ import Foundation
 // (`model_unavailable`) and the Settings row is disabled with its reason. The
 // Debug UAT door below stays the way an unshipped candidate serves.
 
-/// `TelemetryService` already carries the nine `learn*` emitters (5c); the
-/// coordinator and watcher talk to the protocol so a spy can stand in.
+/// `TelemetryService` carries the seven `learn*` emitters; the watcher and the
+/// coordinator each talk to their own protocol so a spy can stand in.
 extension TelemetryService: LearnFromEditsTelemetrySink {}
 
-/// What the runtime composes: the watcher's sink and the learned
-/// coordinator's sink, one object. `TelemetryService` is it in production;
+/// What the runtime composes: the watcher's three events and the learned
+/// coordinator's four, one object. `TelemetryService` is it in production;
 /// the Debug logging sink wraps it; tests pass one spy.
 @MainActor
 protocol LearnFromEditsRuntimeTelemetrySink: LearnFromEditsTelemetrySink,
@@ -75,29 +75,9 @@ extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
       log("learn_judged arm=\(arm.rawValue) outcome=\(outcome.rawValue) candidates=\(candidates) accepted=\(accepted) latency_ms=\(latencyMs)")
       inner.learnJudged(arm: arm, outcome: outcome, candidates: candidates, accepted: accepted, latencyMs: latencyMs, queueWaitMs: queueWaitMs)
     }
-    func learnProposed(state: T.TargetState) {
-      log("learn_proposed state=\(state.rawValue)")
-      inner.learnProposed(state: state)
-    }
-    func learnCardShown() {
-      log("learn_card_shown")
-      inner.learnCardShown()
-    }
-    func learnCardExpired() {
-      log("learn_card_expired")
-      inner.learnCardExpired()
-    }
-    func learnResolved(decision: T.Decision, surface: T.Surface, state: T.TargetState, outcome: T.ResolutionOutcome) {
-      log("learn_resolved decision=\(decision.rawValue) surface=\(surface.rawValue) state=\(state.rawValue) outcome=\(outcome.rawValue)")
-      inner.learnResolved(decision: decision, surface: surface, state: state, outcome: outcome)
-    }
     func learnSaveFailed(reason: T.SaveFailure) {
       log("learn_save_failed reason=\(reason.rawValue)")
       inner.learnSaveFailed(reason: reason)
-    }
-    func learnLedgerUntrusted(kind: T.LedgerUntrustedKind, disposition: T.LedgerDisposition) {
-      log("learn_ledger_untrusted kind=\(kind.rawValue) disposition=\(disposition.rawValue)")
-      inner.learnLedgerUntrusted(kind: kind, disposition: disposition)
     }
     func learnAdded(state: T.AddedState) {
       log("learn_added state=\(state.rawValue)")

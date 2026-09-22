@@ -99,6 +99,24 @@ struct FrontmostApplication: Equatable, Sendable {
   let bundleID: String?
 }
 
+/// The watcher's three telemetry events (#996 §4): why a paste was not
+/// watched, how a watched paste ended, and what the judge answered. Counts,
+/// durations and closed enums only, never text. `TelemetryService` conforms in
+/// the wiring; tests pass a spy. The learned coordinator's four events live on
+/// `LearnedCorrectionTelemetrySink`; `LearnFromEditsRuntimeTelemetrySink` is
+/// the union the runtime composes.
+@MainActor
+protocol LearnFromEditsTelemetrySink: AnyObject {
+  typealias T = TelemetryService.LearnFromEditsTelemetry
+  func learnSkipped(reason: T.SkipReason)
+  func learnObservationEnded(
+    reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int)
+  /// `queueWaitMs` nil = not measured by this arm (the wire row omits the key).
+  func learnJudged(
+    arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
+    queueWaitMs: Int?)
+}
+
 @MainActor
 struct ObservedCorrectionWatcherDependencies {
   let isLearnFromEditsOn: () -> Bool
@@ -494,7 +512,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       }
     #endif
     for decision in decisions where decision.verdict.vocabularyCorrection {
-      guard let f = prepared.byID[decision.id], case .candidate = f.disposition else {
+      guard let f = prepared.byID[decision.id], case .candidate(let expectedTarget) = f.disposition
+      else {
         continue
       }
       // B6: the emission above and each save below run injected callbacks
@@ -503,7 +522,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       // more. A save that merely replaced the previous pill is not a reason
       // to stop: the settled evidence for the next pair is still valid.
       guard stillWanted(generation: gen, revision: revision) else { return }
-      deps.coordinator.learn(original: f.run.coreOriginal, corrected: f.run.coreReplacement)
+      deps.coordinator.learn(
+        original: f.run.coreOriginal, corrected: f.run.coreReplacement,
+        expectedTarget: expectedTarget)
     }
   }
 

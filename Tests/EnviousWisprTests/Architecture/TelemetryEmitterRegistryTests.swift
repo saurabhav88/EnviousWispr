@@ -58,13 +58,13 @@ struct TelemetryEmitterRegistryTests {
   /// new site, no new event, same per-take cadence; two properties on the existing row (checklist
   /// items 4-8: existing row, shape not content, Int on the wire, `take_id` unchanged, registry
   /// row unchanged).
-  /// #996: nine `custom_words.learn_*` sites (one emitter each in `TelemetryService`, all through
-  /// `emitLearnEvent`). #3069 added one new site: `file_import_completed` via
-  /// `TelemetryService.trackFileImportCompleted`. #996 auto-learn (2026-09-21 plan) added three
-  /// sites the same way: `learn_added`, `learn_undo_shown`, `learn_undone` (twelve during the
-  /// migration; chunk 5a retires five).
+  /// #996: seven `custom_words.learn_*` sites (one emitter each in `TelemetryService`, all through
+  /// `emitLearnEvent`): the watcher's `learn_skipped`, `learn_observation_ended`, `learn_judged`
+  /// and the auto-learn coordinator's `learn_save_failed`, `learn_added`, `learn_undo_shown`,
+  /// `learn_undone` (2026-09-21 plan; the ask-first flow's five were retired with it). #3069
+  /// added one new site: `file_import_completed` via `TelemetryService.trackFileImportCompleted`.
   static let sitesFingerprint =
-    "81e52e07f33dcc884bac79c6fd9030014099e75209067ccf397a33accd9c9ad4"
+    "ae0ae34f53398b8a88d7d8a1e794193e0623bb44a120e79d4dfe37b4e11261b4"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

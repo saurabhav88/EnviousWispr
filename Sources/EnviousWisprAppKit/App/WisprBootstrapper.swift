@@ -2084,9 +2084,7 @@ private struct MainWindowRoot: View {
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
       .environment(b.vocabularyPackManager)
-      // #996: the Learning row's enabled state. The ask-first Pending tab's
-      // inbox and app-name lookup are no longer composed (auto-learn,
-      // 2026-09-21 plan); the tab reads its defaults until chunk 5a deletes it.
+      // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
       .environment(b.learnFromEdits.availability)
       .environment(\.asrManager, b.asrManager)
       .environment(\.activeEngine, b.activeEngine)
