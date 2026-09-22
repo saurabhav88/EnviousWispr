@@ -195,9 +195,9 @@ def main():
             rows.append(row)
             print(f"  {row['outcome']}  heard={row.get('heard')!r}", flush=True)
             d.save("rows.json", rows)
-            # Leave no pill on screen for the next word: the 2 s Undo window
+            # Leave no pill on screen for the next word: the 3 s Undo window
             # passes untouched (nothing here may press Undo).
-            time.sleep(2.5)  # settle: the Undo pill leaves on its own before the field is cleared
+            time.sleep(3.5)  # settle: the 3 s Undo pill leaves on its own before the field is cleared
             end_mark = d.log_mark()
             d.clear_field(doc)
             # An emptied field ends a live watch (`textbox_emptied`); one that

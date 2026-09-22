@@ -5,7 +5,7 @@ import Foundation
 
 // MARK: - Auto-learn with Undo (#996, 2026-09-21 plan §3.1 steps 8 and 10)
 //
-// A judged spelling fix is SAVED AT ONCE and a two-second pill offers Undo
+// A judged spelling fix is SAVED AT ONCE and a three-second pill offers Undo
 // (founder 2026-09-21: "no accept, no reject. It just auto accepts with an
 // undo button", Wispr Flow's shape). This coordinator owns the one vocabulary
 // write, the exact Undo snapshot, and the three auto-learn telemetry rows. It
@@ -386,7 +386,7 @@ final class LearnedCorrectionCoordinator {
     undoRecord = nil
     // Known limit (final review 2026-09-22): this reads the live list THIS
     // process holds. A second instance of the app writing the same word to
-    // the shared file inside the two-second window is not seen here; the
+    // the shared file inside the Undo window is not seen here; the
     // manager's own reload-before-write applies the inverse by id. Two
     // instances never run together outside a dev-and-release UAT, and a
     // locked compare-and-write transaction would be a new manager contract.

@@ -1,6 +1,6 @@
 ---
 title: "Self-Learning Dictionary"
-description: "When you fix a misheard word in text EnviousWispr pasted a moment ago, the right spelling joins your dictionary on its own, with two seconds to undo. Which apps it works in, how the on-device judge decides, and what stays on your Mac."
+description: "When you fix a misheard word in text EnviousWispr pasted a moment ago, the right spelling joins your dictionary on its own, with three seconds to undo. Which apps it works in, how the on-device judge decides, and what stays on your Mac."
 category: "custom-words"
 section: "Dictionary"
 order: 5
@@ -8,7 +8,7 @@ keywords: ["self-learning dictionary", "learn from my edits", "learn from edits"
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
 updated: 2026-09-22
 ---
-When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you two seconds to undo. The next time EnviousWispr hears the same thing it writes the word you meant. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
+When EnviousWispr pastes a dictation and you then fix one word in it by hand, the word you typed joins your dictionary on its own, with the mishearing attached, and a small pill gives you three seconds to undo. The next time EnviousWispr hears the same thing it writes the word you meant. You never have to open Settings to teach it a name, and you never have to answer a question to keep it.
 
 ### What you see
 
@@ -18,7 +18,7 @@ When EnviousWispr pastes a dictation and you then fix one word in it by hand, th
 
 **Read the pill.** A pill appears where the EnviousWispr pill lives (the top of your screen unless you moved it). For a name EnviousWispr did not know it says **Added “Saoirse” to Dictionary**. If Saoirse was already in Your Words, or came from one of your vocabulary packs, it says **“Saoirse” updated**, because the mishearing was attached to the word you already had. Either way the word is saved before the pill appears.
 
-**Undo it if you want.** The pill carries one **Undo** button and stays for 2 seconds. Moving your pointer over it does not pause or extend that window. Click Undo and the pill says **Undone** for 1.5 seconds: a new word is removed, and an updated word goes back exactly to what it was before. Leave the pill alone and the word stays; there is nothing else to answer, now or later.
+**Undo it if you want.** The pill carries one **Undo** button and stays for 3 seconds. Moving your pointer over it does not pause or extend that window. Click Undo and the pill says **Undone** for 1.5 seconds: a new word is removed, and an updated word goes back exactly to what it was before. Leave the pill alone and the word stays; there is nothing else to answer, now or later.
 
 **Change your mind later.** Open **Settings** \> **Dictionary** \> **Your Words**. Words the Self-Learning Dictionary added carry a small sparkle, and so does each sound-alike it attached to a word you added yourself. Choose the **Auto-learned** filter to see only those. Edit or delete them the way you would any other word.
 

@@ -438,9 +438,11 @@ package enum PastedRegionLocator {
   /// therefore matches ANY run of whitespace in the value (spaces, tabs, line
   /// breaks, folded no-break spaces). A wrap that falls inside a word still
   /// does not match: the pasted text is known exactly, so a break where it
-  /// has no space is not the paste. Offsets always describe `value` as read;
-  /// `end` is past the last matched unit, so the located slice carries the
-  /// host's own rendering.
+  /// has no space is not the paste. Offsets always describe `value` as read.
+  /// A FINAL whitespace run reports `end` before its first line break, so the
+  /// located region never crosses from the pasted row into whatever the host
+  /// draws on the next one (#3100); an inner run still carries the host's
+  /// rendered wrap, and the located slice still carries its own rendering.
   package static func locate(pasted: String, in value: String) -> Location {
     guard !pasted.isEmpty else { return .absent }
     let haystack = value.utf16.map(foldSpace)
@@ -476,8 +478,8 @@ package enum PastedRegionLocator {
         i += 1
         continue
       }
-      if let end = matchWrapTolerant(needle, in: haystack, at: i) {
-        hits.append((start: i, end: end))
+      if let match = matchWrapTolerant(needle, in: haystack, at: i) {
+        hits.append((start: i, end: match.reported))
       }
       i += 1
     }
@@ -488,26 +490,55 @@ package enum PastedRegionLocator {
   /// nil. A needle space run of length k must meet a haystack whitespace run
   /// of length >= k and then takes the whole run; a needle non-space must
   /// equal the unit.
+  ///
+  /// `end` is what the match consumed. `reported` is what the REGION ends at,
+  /// and it never crosses the line break that closes the region's own row.
+  ///
+  /// #3100: a dictation carries a trailing space, a terminal reports each row
+  /// without its padding, so the needle's trailing space run meets the row's
+  /// LINE BREAK and, taking the whole run, carries the region onto the first
+  /// glyph of the next row. In an agent CLI the next row is the rule drawn
+  /// under the input box, one glyph repeated, and a 64-unit landmark cut from
+  /// it matches that rule in several places, so the region can never be
+  /// re-found. The FINAL run is therefore reported only as far as its first
+  /// line break; the match itself still consumes the whole run, and an inner
+  /// run still crosses a wrap, which is what makes a wrapped paste locatable.
   private static func matchWrapTolerant(_ needle: [UInt16], in haystack: [UInt16], at start: Int)
-    -> Int?
+    -> (end: Int, reported: Int)?
   {
     var n = 0
     var h = start
+    // Where the run that ends the needle first broke a line, if it did.
+    var finalRunBreak: Int?
     while n < needle.count {
       if needle[n] == 0x0020 {
         let needleRunStart = n
         while n < needle.count, needle[n] == 0x0020 { n += 1 }
         guard h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
         let haystackRunStart = h
-        while h < haystack.count, isSpaceUnit(haystack[h]) { h += 1 }
+        var firstBreak: Int?
+        while h < haystack.count, isSpaceUnit(haystack[h]) {
+          if firstBreak == nil, isLineBreakUnit(haystack[h]) { firstBreak = h }
+          h += 1
+        }
         guard h - haystackRunStart >= n - needleRunStart else { return nil }
+        finalRunBreak = n == needle.count ? firstBreak : nil
       } else {
         guard h < haystack.count, haystack[h] == needle[n] else { return nil }
         n += 1
         h += 1
+        finalRunBreak = nil
       }
     }
-    return h
+    // A needle that is ONLY whitespace can meet a run that begins with the
+    // break, which would clamp the region to nothing. The consumed end is
+    // right for that one shape, and polish never emits whitespace alone.
+    let reported = finalRunBreak ?? h
+    return (end: h, reported: reported == start ? h : reported)
+  }
+
+  static func isLineBreakUnit(_ unit: UInt16) -> Bool {
+    unit == 0x000A || unit == 0x000D
   }
 
   /// NO-BREAK SPACE, NARROW NO-BREAK SPACE and FIGURE SPACE read as U+0020.
@@ -670,6 +701,148 @@ package enum PastedRegionLocator {
     return previous[n] > limit
   }
 
+  /// Why an `.ambiguous` answer happened, in COUNTS ONLY.
+  ///
+  /// #3100: in a terminal the accessibility value is the screen, and the
+  /// screen is full of drawn rules and padding that repeat. Nothing here
+  /// carries a character of the user's text — the fields are lengths, hit
+  /// counts and shape numbers, so the report is safe to log on a real
+  /// machine while a real person dictates.
+  package struct AmbiguityReport: Equatable, Sendable {
+    /// `before`, `after` or `pasted`: which needle was not unique.
+    package let side: String
+    /// How many times the needle occurs, counted up to `hitCeiling`.
+    package let hits: Int
+    package let needleUTF16: Int
+    package let valueUTF16: Int
+    /// Lines in the value: a terminal answers with one row per line.
+    package let valueRows: Int
+    /// Distinct UTF-16 units in the needle. A drawn box rule has very few.
+    package let distinctUnits: Int
+    /// Longest run of one repeated unit in the needle.
+    package let longestRun: Int
+
+    package init(
+      side: String, hits: Int, needleUTF16: Int, valueUTF16: Int, valueRows: Int,
+      distinctUnits: Int, longestRun: Int
+    ) {
+      self.side = side
+      self.hits = hits
+      self.needleUTF16 = needleUTF16
+      self.valueUTF16 = valueUTF16
+      self.valueRows = valueRows
+      self.distinctUnits = distinctUnits
+      self.longestRun = longestRun
+    }
+
+    package var logLine: String {
+      "side=\(side) hits=\(hits) needle_utf16=\(needleUTF16) value_utf16=\(valueUTF16) "
+        + "value_rows=\(valueRows) distinct_units=\(distinctUnits) longest_run=\(longestRun)"
+    }
+  }
+
+  /// Counting stops here: the question is "more than one", not "how many".
+  package static let hitCeiling = 8
+
+  static func shape(of needle: [UInt16]) -> (distinct: Int, longestRun: Int) {
+    guard !needle.isEmpty else { return (0, 0) }
+    var seen = Set<UInt16>()
+    var longest = 1
+    var run = 1
+    for i in needle.indices {
+      seen.insert(needle[i])
+      if i > 0, needle[i] == needle[i - 1] {
+        run += 1
+        longest = max(longest, run)
+      } else {
+        run = 1
+      }
+    }
+    return (seen.count, longest)
+  }
+
+  static func rows(in units: [UInt16]) -> Int {
+    units.reduce(1) { $1 == 0x000A ? $0 + 1 : $0 }
+  }
+
+  static func report(side: String, needle: [UInt16], hits: Int, value: [UInt16])
+    -> AmbiguityReport
+  {
+    let s = shape(of: needle)
+    return AmbiguityReport(
+      side: side, hits: hits, needleUTF16: needle.count, valueUTF16: value.count,
+      valueRows: rows(in: value), distinctUnits: s.distinct, longestRun: s.longestRun)
+  }
+
+  /// The report for an `.ambiguous` answer from `locate(pasted:in:)`.
+  package static func ambiguityReport(pasted: String, in value: String) -> AmbiguityReport? {
+    let haystack = value.utf16.map(foldSpace)
+    let full = pasted.utf16.map(foldSpace)
+    var hits = wrapTolerantOccurrences(of: full, in: haystack, limit: hitCeiling)
+    var needle = full
+    if hits.isEmpty {
+      let trimmed = Array(full.reversed().drop(while: isSpaceUnit).reversed())
+      if !trimmed.isEmpty, trimmed.count < full.count {
+        hits = wrapTolerantOccurrences(of: trimmed, in: haystack, limit: hitCeiling)
+        needle = trimmed
+      }
+    }
+    guard hits.count > 1 else { return nil }
+    return report(side: "pasted", needle: needle, hits: hits.count, value: haystack)
+  }
+
+  /// The report for an `.ambiguous` answer from `locateRegion(in:anchors:)`.
+  /// Reports the FIRST side that is not unique, which is the side that ended
+  /// the watch.
+  package static func ambiguityReport(in value: String, anchors: PastedRegionAnchors)
+    -> AmbiguityReport?
+  {
+    let units = Array(value.utf16)
+    let before = Array(anchors.before.utf16)
+    let after = Array(anchors.after.utf16)
+    var start = 0
+    if !before.isEmpty {
+      let hits = occurrences(of: before, in: units, limit: hitCeiling)
+      guard hits.count == 1 else {
+        guard hits.count > 1 else { return nil }
+        return report(side: "before", needle: before, hits: hits.count, value: units)
+      }
+      start = hits[0] + before.count
+    }
+    if !after.isEmpty {
+      let tail = Array(units[start...])
+      let hits = occurrences(of: after, in: tail, limit: hitCeiling)
+      guard hits.count == 1 else {
+        guard hits.count > 1 else { return nil }
+        return report(side: "after", needle: after, hits: hits.count, value: units)
+      }
+    }
+    return nil
+  }
+
+  /// The report for a `.lost` answer from `locateRegion(in:anchors:)`: which
+  /// side vanished, and the shape of the landmark that did. Counts only.
+  package static func missingAnchorReport(in value: String, anchors: PastedRegionAnchors)
+    -> AmbiguityReport?
+  {
+    let units = Array(value.utf16)
+    let before = Array(anchors.before.utf16)
+    let after = Array(anchors.after.utf16)
+    var start = 0
+    if !before.isEmpty {
+      let hits = occurrences(of: before, in: units, limit: hitCeiling)
+      if hits.isEmpty { return report(side: "before", needle: before, hits: 0, value: units) }
+      guard hits.count == 1 else { return nil }
+      start = hits[0] + before.count
+    }
+    if !after.isEmpty {
+      let tail = Array(units[start...])
+      let hits = occurrences(of: after, in: tail, limit: hitCeiling)
+      if hits.isEmpty { return report(side: "after", needle: after, hits: 0, value: units) }
+    }
+    return nil
+  }
+
   /// Start offsets of `needle` in `haystack`, stopping after `limit` hits.
   static func occurrences(of needle: [UInt16], in haystack: [UInt16], limit: Int) -> [Int] {
     guard !needle.isEmpty, needle.count <= haystack.count else { return [] }
@@ -695,6 +868,47 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   private let ax: any PastedRegionAXOperations
   private let scheduler: any PastedRegionScheduling
+
+  /// #3100 probe: why the region stopped being unique, as counts only.
+  /// DEBUG builds only; a Release build logs nothing at all.
+  static func logAmbiguity(path: String, _ report: PastedRegionLocator.AmbiguityReport?) {
+    #if DEBUG
+      let detail = report?.logLine ?? "side=none_found"
+      Task {
+        await AppLogger.shared.log(
+          "anchor_ambiguous_probe path=\(path) \(detail)", level: .info,
+          category: "LearnFromEdits")
+      }
+    #endif
+  }
+
+  /// #3100 probe: why a region stopped being findable. `kind` is
+  /// `anchor_lost` (a landmark is gone) or `empty_region` (both landmarks are
+  /// there and nothing is left between them). Counts only; the pasted text is
+  /// read for ONE boolean, never logged.
+  static func logRegionRemoved(
+    path: String, kind: String, pastedText: String,
+    report: PastedRegionLocator.AmbiguityReport? = nil,
+    start: Int? = nil, end: Int? = nil, valueUTF16: Int
+  ) {
+    #if DEBUG
+      let trailing = pastedText.utf16.last.map { PastedRegionLocator.isSpaceUnit($0) } ?? false
+      var fields = [
+        "region_removed_probe", "path=\(path)", "kind=\(kind)",
+        "pasted_trailing_whitespace=\(trailing)", "value_utf16=\(valueUTF16)",
+      ]
+      if let report { fields.append(report.logLine) }
+      if let start, let end {
+        fields.append("start=\(start)")
+        fields.append("end=\(end)")
+        fields.append("region_utf16=\(max(0, end - start))")
+      }
+      let line = fields.joined(separator: " ")
+      Task {
+        await AppLogger.shared.log(line, level: .info, category: "LearnFromEdits")
+      }
+    #endif
+  }
 
   private struct Watch {
     let target: PastedRegionTarget
@@ -808,7 +1022,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
     case .text(let value):
       switch PastedRegionLocator.locate(pasted: pastedText, in: value) {
       case .absent: return .ended(.dictatedTextNotFound)
-      case .ambiguous: return .ended(.anchorAmbiguous)
+      case .ambiguous:
+        #if DEBUG
+          Self.logAmbiguity(
+            path: "capture", PastedRegionLocator.ambiguityReport(pasted: pastedText, in: value))
+        #endif
+        return .ended(.anchorAmbiguous)
       case .unique(let start, let end):
         let anchors = PastedRegionLocator.anchors(around: start, end: end, in: value)
         let units = Array(value.utf16)
@@ -1094,14 +1313,30 @@ package final class PastedRegionObserver: PastedRegionObserving {
       }
       switch PastedRegionLocator.locateRegion(in: value, anchors: target.anchors) {
       case .lost:
+        #if DEBUG
+          Self.logRegionRemoved(
+            path: "poll", kind: "anchor_lost", pastedText: target.pastedText,
+            report: PastedRegionLocator.missingAnchorReport(in: value, anchors: target.anchors),
+            valueUTF16: value.utf16.count)
+        #endif
         end(.regionRemoved)
         return .ended
       case .ambiguous:
+        #if DEBUG
+          Self.logAmbiguity(
+            path: "poll",
+            PastedRegionLocator.ambiguityReport(in: value, anchors: target.anchors))
+        #endif
         end(.anchorAmbiguous)
         return .ended
       case .located(let located):
         let region = located.text
         if region.isEmpty {
+          #if DEBUG
+            Self.logRegionRemoved(
+              path: "poll", kind: "empty_region", pastedText: target.pastedText,
+              start: located.start, end: located.end, valueUTF16: value.utf16.count)
+          #endif
           end(.regionRemoved)
           return .ended
         }

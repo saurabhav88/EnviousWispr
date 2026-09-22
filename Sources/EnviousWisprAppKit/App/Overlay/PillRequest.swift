@@ -183,7 +183,7 @@ enum PillRequest {
     payload: CancelUndoPayload,
     onPaste: (CancelUndoPayload) -> Void
   )
-  /// #996 auto-learn: the two-second Undo pill for a word just saved.
+  /// #996 auto-learn: the three-second Undo pill for a word just saved.
   /// `isStillWanted` is read immediately before a deferred first render
   /// commits (the coordinator may have replaced its Undo record meanwhile):
   /// false means the offer is rolled back unrendered and unannounced.

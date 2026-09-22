@@ -136,7 +136,7 @@ struct LearnedCorrectionPillCopyTests {
       CorrectionLearnedPillCopy.saveError(
         LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
         == "Couldn\u{2019}t save \u{201C}Tuist\u{201D}")
-    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 2)
+    #expect(CorrectionLearnedPillCopy.learnedDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.undoneDwellSeconds == 1.5)
     #expect(CorrectionLearnedPillCopy.errorDwellSeconds == 3)
     #expect(CorrectionLearnedPillCopy.minimumScale == 0.5)
@@ -196,7 +196,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a learned pill is admitted on an idle, empty slot with a 2 s dwell that hover does not pause, measured width, and a spoken sentence"
+    "a learned pill is admitted on an idle, empty slot with a 3 s dwell that hover does not pause, measured width, and a spoken sentence"
   )
   func admittedWhenIdleAndEmpty() throws {
     let id = PresentationID()
@@ -206,9 +206,9 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id == id && shown.content == .correctionLearned(model))
-    #expect(shown.expiry == .after(seconds: 2, pausesOnHover: false))
+    #expect(shown.expiry == .after(seconds: 3, pausesOnHover: false))
     #expect(shown.requestedWidth == .measured && shown.reservesFixedHeight == nil)
-    #expect(plan.expiryCommand == .arm(id: id, seconds: 2, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: id, seconds: 3, target: .presentation))
     #expect(plan.announcement?.isHighPriority == false)
     #expect(plan.announcement?.text == "Added \u{201C}Tuist\u{201D} to Dictionary. Undo available.")
     #expect(r.state.featureSlotIsAvailable == false, "no other feature displaces it")
@@ -242,7 +242,7 @@ struct LearnedCorrectionPillReducerTests {
   }
 
   @Test(
-    "a different learned pill replaces the current one: new identity, fresh 2 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
+    "a different learned pill replaces the current one: new identity, fresh 3 s, one end effect for the outgoing offer; a same-pill repeat changes nothing"
   )
   func replacementAndRepeat() throws {
     var ids = [PresentationID(), PresentationID()]
@@ -259,7 +259,7 @@ struct LearnedCorrectionPillReducerTests {
     #expect(plan.didChange)
     let shown = try #require(plan.presentation)
     #expect(shown.id != firstID && shown.content == .correctionLearned(second))
-    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 2, target: .presentation))
+    #expect(plan.expiryCommand == .arm(id: shown.id, seconds: 3, target: .presentation))
     #expect(plan.effects == [.correctionLearnedEnded(pillID: first.id, presentation: firstID)])
     #expect(plan.announcement?.text == "\u{201C}Saira\u{201D} updated. Undo available.")
   }
@@ -441,18 +441,18 @@ struct LearnedCorrectionPillDirectorTests {
     return model
   }
 
-  @Test("the pill is on screen at 1.999 s after admission and gone at 2.000 s, reported ended once")
-  func twoSecondWindow() throws {
+  @Test("the pill is on screen at 2.999 s after admission and gone at 3.000 s, reported ended once")
+  func undoWindow() throws {
     let clock = LearnedPillClock()
     let log = Log()
     let (d, _) = director(clock, log)
     let model = LearnedPillFixture.model()
     let receipt = try #require(d.present(request(model, log)) { log.results.append($0) })
     #expect(log.results == [.presented(receipt)])
-    #expect(clock.armedSeconds == [2], "the dwell armed at admission, for exactly two seconds")
-    clock.advance(to: 1.999)
+    #expect(clock.armedSeconds == [3], "the dwell armed at admission, for exactly three seconds")
+    clock.advance(to: 2.999)
     #expect(shown(d)?.id == model.id && log.ended == 0)
-    clock.advance(to: 2.0)
+    clock.advance(to: 3.0)
     #expect(d.renderModel.state.presentation == nil)
     #expect(log.ended == 1 && log.undos == 0)
   }
@@ -491,9 +491,9 @@ struct LearnedCorrectionPillDirectorTests {
     clock.advance(to: 0.5)
     d.resolveLearnedCorrection(
       pillID: model.id, presentation: receipt.presentationID, phase: .undone)
-    #expect(clock.armedSeconds == [2, 1.5])
+    #expect(clock.armedSeconds == [3, 1.5])
     clock.advance(to: 1.999)
-    #expect(shown(d)?.phase == .undone, "the old 2 s deadline was cancelled")
+    #expect(shown(d)?.phase == .undone, "the old 3 s deadline was cancelled")
     clock.advance(to: 2.0)
     #expect(d.renderModel.state.presentation == nil, "1.5 s after the morph at 0.5 s")
     #expect(log.ended == 0, "a result is not an unanswered offer")
@@ -541,9 +541,9 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(first.undos == 0, "the outgoing binding is gone")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: m2.id), for: r2)
     #expect(second.undos == 1)
-    clock.advance(to: 2.999)
-    #expect(shown(d)?.id == m2.id, "the second pill's own two seconds run from 1.0 s")
-    clock.advance(to: 3.0)
+    clock.advance(to: 3.999)
+    #expect(shown(d)?.id == m2.id, "the second pill's own three seconds run from 1.0 s")
+    clock.advance(to: 4.0)
     #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 1)
   }
 
@@ -557,10 +557,10 @@ struct LearnedCorrectionPillDirectorTests {
     let receipt = try #require(d.present(request(model, first)))
     #expect(d.present(request(model, second)) == nil, "a repeat keeps the incumbent's receipt; it is not a new admission")
     #expect(shown(d)?.id == model.id && d.isCurrent(receipt))
-    #expect(clock.armedSeconds == [2], "the repeat did not re-arm the dwell")
+    #expect(clock.armedSeconds == [3], "the repeat did not re-arm the dwell")
     try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
     #expect(first.undos == 1 && second.undos == 0)
-    clock.advance(to: 2)
+    clock.advance(to: 3)
     #expect(first.ended == 1 && second.ended == 0)
   }
 
