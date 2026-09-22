@@ -92,6 +92,12 @@ package struct RestoredBuiltinLearnOutcome: Sendable {
   package let preState: LearnedWordPreState
   package let word: CustomWord
   package let words: [CustomWord]
+
+  package init(preState: LearnedWordPreState, word: CustomWord, words: [CustomWord]) {
+    self.preState = preState
+    self.word = word
+    self.words = words
+  }
 }
 
 /// Why the launch-time `load()` came back nil (#1646), exposed so the

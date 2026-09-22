@@ -60,9 +60,11 @@ struct TelemetryEmitterRegistryTests {
   /// row unchanged).
   /// #996: nine `custom_words.learn_*` sites (one emitter each in `TelemetryService`, all through
   /// `emitLearnEvent`). #3069 added one new site: `file_import_completed` via
-  /// `TelemetryService.trackFileImportCompleted`.
+  /// `TelemetryService.trackFileImportCompleted`. #996 auto-learn (2026-09-21 plan) added three
+  /// sites the same way: `learn_added`, `learn_undo_shown`, `learn_undone` (twelve during the
+  /// migration; chunk 5a retires five).
   static let sitesFingerprint =
-    "b04b86c4b6dcdec033c42d226edfc65fc387a0838718a10170f0f9c99a83a741"
+    "81e52e07f33dcc884bac79c6fd9030014099e75209067ccf397a33accd9c9ad4"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

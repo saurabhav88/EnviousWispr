@@ -4237,7 +4237,10 @@ public final class TelemetryService {
     )
   }
 
-  // MARK: - Learn from edits (#996 §4, nine events)
+  // MARK: - Learn from edits (#996 §4; twelve emitters during the auto-learn
+  // migration: the ask-first flow's nine plus the auto-learn flow's three.
+  // Chunk 5a of the 2026-09-21 plan removes proposed / card_shown /
+  // card_expired / resolved / ledger_untrusted and leaves seven.)
   //
   // Counts, durations and closed enums only. No pasted text, no edited text, no
   // word, no bundle id, no exception text: the boundary is the network
@@ -4361,6 +4364,30 @@ public final class TelemetryService {
       case unknownStatus = "unknown_status"
       case durabilityUnconfirmed = "durability_unconfirmed"
     }
+
+    /// `learn_added.state` (auto-learn, 2026-09-21 plan §3.1 step 11): what
+    /// the immediate save did to the vocabulary. A restored built-in counts
+    /// as an existing word.
+    package enum AddedState: String, Sendable, CaseIterable {
+      case existingWord = "existing_word"
+      case newWord = "new_word"
+      case packOverride = "pack_override"
+    }
+
+    /// `learn_undone.kind`: what the pill had offered to undo.
+    package enum UndoKind: String, Sendable, CaseIterable {
+      case added
+      case updated
+    }
+
+    /// `learn_undone.outcome`: `undone` restored the exact pre-save state;
+    /// `already_changed` found the live word edited meanwhile and wrote
+    /// nothing; `failed` is a refused or silent non-write.
+    package enum UndoOutcome: String, Sendable, CaseIterable {
+      case undone
+      case alreadyChanged = "already_changed"
+      case failed
+    }
   }
 
   private func emitLearnEvent(_ name: String, _ props: [String: Any]) {
@@ -4444,6 +4471,27 @@ public final class TelemetryService {
   /// An Accept or Reject that could not complete.
   package func learnSaveFailed(reason: LearnFromEditsTelemetry.SaveFailure) {
     emitLearnEvent("custom_words.learn_save_failed", ["reason": reason.rawValue])
+  }
+
+  /// A judged correction was saved and proven on disk (auto-learn). Emitted
+  /// only after the post-write reread finds the word; a refused or silent
+  /// non-write is `learnSaveFailed` instead.
+  package func learnAdded(state: LearnFromEditsTelemetry.AddedState) {
+    emitLearnEvent("custom_words.learn_added", ["state": state.rawValue])
+  }
+
+  /// The Undo pill was admitted to the overlay: the only measure that a saved
+  /// word actually offered Undo (a refused admission saves without one).
+  package func learnUndoShown() {
+    emitLearnEvent("custom_words.learn_undo_shown", [:])
+  }
+
+  /// Undo was pressed. `outcome` says whether the exact pre-save state landed.
+  package func learnUndone(
+    kind: LearnFromEditsTelemetry.UndoKind, outcome: LearnFromEditsTelemetry.UndoOutcome
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_undone", ["kind": kind.rawValue, "outcome": outcome.rawValue])
   }
 
   /// The proposal ledger loaded untrusted (once per launch at most).

@@ -5,7 +5,7 @@ import Testing
 
 #if DEBUG
 
-  /// #996 §4: the nine learn-from-edits payload contracts. Key sets are frozen
+  /// #996 §4: the learn-from-edits payload contracts (twelve during the auto-learn migration, seven after chunk 5a). Key sets are frozen
   /// so a renamed or added property is a deliberate change with a knowledge row
   /// behind it; every value is a closed enum or a count, never text.
   @Suite("learn-from-edits telemetry payloads (#996)", .serialized, .tags(.observabilityContract))
@@ -62,11 +62,16 @@ import Testing
       "custom_words.learn_resolved": ["decision", "surface", "state", "outcome"],
       "custom_words.learn_save_failed": ["reason"],
       "custom_words.learn_ledger_untrusted": ["kind", "disposition"],
+      // Auto-learn (2026-09-21 plan §3.1 step 11); chunk 5a removes the
+      // five ask-first rows above and leaves seven.
+      "custom_words.learn_added": ["state"],
+      "custom_words.learn_undo_shown": [],
+      "custom_words.learn_undone": ["kind", "outcome"],
     ]
 
     @MainActor
-    @Test("all nine events fire once with exactly the contract keys and no untyped property")
-    func nineEventsFrozenKeys() throws {
+    @Test("every event fires once with exactly the contract keys and no untyped property")
+    func everyEventFrozenKeys() throws {
       let box = Self.capture {
         let t = TelemetryService.shared
         t.learnSkipped(reason: .destinationMismatch)
@@ -81,9 +86,12 @@ import Testing
         t.learnResolved(decision: .accepted, surface: .card, state: .newWord, outcome: .added)
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
         t.learnLedgerUntrusted(kind: .corrupt, disposition: .recovered)
+        t.learnAdded(state: .packOverride)
+        t.learnUndoShown()
+        t.learnUndone(kind: .updated, outcome: .alreadyChanged)
       }
       let events = box.values
-      #expect(events.count == 9)
+      #expect(events.count == 12)
       #expect(Set(events.map(\.name)) == Set(Self.contract.keys))
       for event in events {
         let expected = try #require(Self.contract[event.name])
@@ -184,6 +192,9 @@ struct LearnFromEditsTelemetryVocabularyTests {
         "durability_unconfirmed",
       ])
     #expect(T.LedgerDisposition.allCases.map(\.rawValue) == ["recovered", "blocked"])
+    #expect(T.AddedState.allCases.map(\.rawValue) == ["existing_word", "new_word", "pack_override"])
+    #expect(T.UndoKind.allCases.map(\.rawValue) == ["added", "updated"])
+    #expect(T.UndoOutcome.allCases.map(\.rawValue) == ["undone", "already_changed", "failed"])
     // Every bypass kind has its own outcome; the mapping is total.
     for bypass in CorrectionJudgeBypass.allCases {
       let mapped = T.JudgeOutcome(.bypass(bypass))
