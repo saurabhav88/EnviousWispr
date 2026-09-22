@@ -56,7 +56,7 @@ extension OverlayReducer {
         // commit itself so it can assert on the discard rather than infer it.
         return .noChange
       }
-      // PREPARE's effects, then COMMIT's own (#996: a correction card the
+      // PREPARE's effects, then COMMIT's own (#996: a learned pill the
       // recording displaced is reported at commit, not at prepare).
       return OverlayPlan(
         presentation: plan.presentation, didChange: plan.didChange,

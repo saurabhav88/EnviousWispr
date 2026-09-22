@@ -66,14 +66,10 @@ enum PillAction: Equatable, Sendable {
   case closeBluetoothAwareness
   /// bluetoothAwarenessAdjustSettingsHandler.
   case openBluetoothSettings
-  /// #996: the correction card's Accept. Carries the proposal UUID so a press
-  /// for a proposal the card no longer shows resolves nothing.
-  case acceptCorrectionProposal(id: UUID)
-  /// #996: the correction card's Reject. There is no dismiss action: the card
-  /// never takes keyboard focus, so an unanswered card leaves on its dwell.
-  case rejectCorrectionProposal(id: UUID)
   /// #996 auto-learn: the Undo pill's one button. Carries the pill's own UUID
-  /// so a press on a pill the slot no longer shows undoes nothing.
+  /// so a press on a pill the slot no longer shows undoes nothing. There is no
+  /// dismiss action: the pill never takes keyboard focus, so an unanswered
+  /// pill leaves on its dwell.
   case undoLearnedCorrection(pillID: UUID)
 }
 
@@ -98,16 +94,12 @@ enum PillEffect: Equatable, Sendable {
   /// setRecordingIntentObserver. Fires when the recording pill
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)
-  /// #996: an admitted correction card left the screen without a decision, and
-  /// the REDUCER says why: its dwell fired (`expired`) or something else took
-  /// the slot (`preempted`). The director routes it to
-  /// the card's own binding, which tells the proposal coordinator. Emitted at
-  /// most once per presentation identity.
-  case correctionProposalEnded(id: UUID, presentation: PresentationID, reason: CorrectionPresentationEnd)
   /// #996 auto-learn: an admitted Undo pill left the screen in its `.learned`
   /// phase without Undo being pressed (dwell fired, replaced by another
-  /// learned pill, or displaced). The coordinator drops its Undo record. A
-  /// result phase leaving is not reported: there was no Undo left to offer.
+  /// learned pill, or displaced). The director routes it to the pill's own
+  /// binding, which tells the learned coordinator to drop its Undo record.
+  /// Emitted at most once per presentation identity. A result phase leaving
+  /// is not reported: there was no Undo left to offer.
   case correctionLearnedEnded(pillID: UUID, presentation: PresentationID)
 }
 
@@ -191,24 +183,10 @@ enum PillRequest {
     payload: CancelUndoPayload,
     onPaste: (CancelUndoPayload) -> Void
   )
-  /// #996: the correction card. The token handed to every callback is the
-  /// admitted presentation's identity (`PresentationID.rawValue`), so the
-  /// coordinator's stale-click check and the reducer's stale-event check agree
-  /// on one UUID. `onEnded` fires once when the admitted card leaves without a
-  /// decision, with the reducer's reason. `isStillWanted` is read immediately
-  /// before the card is committed to the screen (a deferred first render can
-  /// land after a Pending click resolved the proposal): false means the offer
-  /// is rolled back unrendered, unannounced and reported `.notPresented`.
-  case correctionProposal(
-    model: CorrectionProposalCardModel,
-    isStillWanted: () -> Bool,
-    onAccept: (CorrectionPresentationToken) -> Void,
-    onReject: (CorrectionPresentationToken) -> Void,
-    onEnded: (CorrectionPresentationToken, CorrectionPresentationEnd) -> Void
-  )
   /// #996 auto-learn: the two-second Undo pill for a word just saved.
   /// `isStillWanted` is read immediately before a deferred first render
-  /// commits (the coordinator may have replaced its Undo record meanwhile);
+  /// commits (the coordinator may have replaced its Undo record meanwhile):
+  /// false means the offer is rolled back unrendered and unannounced.
   /// `onUndo` fires at most once, for the pill's own id; `onEnded` fires once
   /// when the `.learned` phase leaves the screen without Undo.
   case correctionLearned(

@@ -450,10 +450,6 @@ enum OverlayContent: Equatable, Sendable {
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
   case escapeRecovery(transcriptID: UUID)
-  /// #996: the learn-from-edits card. The model carries the proposal UUID and
-  /// its phase (offer with two buttons, or a typed result line); the reducer
-  /// owns the `PresentationID` separately.
-  case correctionProposal(CorrectionProposalCardModel)
   /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
   /// phase (learned with the Undo button, or a typed result line); the reducer
   /// owns the `PresentationID` separately.
@@ -463,12 +459,11 @@ enum OverlayContent: Equatable, Sendable {
 
   /// Whether the director must ask the owner `isStillWanted` immediately before
   /// this content reaches the screen (#996 chunk 5f, review round 2). Only the
-  /// card's OFFER and the Undo pill's `.learned` phase: each asks a question,
-  /// and the owner can withdraw it while a deferred first render is in flight.
-  /// A RESULT is the outcome of a decision already made; it follows the
-  /// reducer's same-id morph contract and must render regardless.
+  /// Undo pill's `.learned` phase: it asks a question, and the owner can
+  /// withdraw it while a deferred first render is in flight. A RESULT is the
+  /// outcome of a decision already made; it follows the reducer's same-id
+  /// morph contract and must render regardless.
   var reChecksOwnerBeforeRender: Bool {
-    if case .correctionProposal(let model) = self, case .offer = model.phase { return true }
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     return false
   }

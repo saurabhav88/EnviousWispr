@@ -162,37 +162,27 @@ struct LearnFromEditsCompositionTests {
     #expect(f.telemetry.events.last == .observationEnded(.nextDictationStarted, 0, .native))
   }
 
-  @Test("the Settings environment carries the selection's presentation; the old proposal coordinator and app-name lookup are no longer injected and read their defaults")
+  @Test("the Settings environment carries the selection's presentation")
   func settingsEnvironment() {
     let f = fixture()
     struct Probe: View {
-      @Environment(CorrectionProposalCoordinator.self) var coordinator: CorrectionProposalCoordinator?
       @Environment(LearnFromEditsAvailability.self) var availability: LearnFromEditsAvailability?
-      @Environment(\.pendingSourceAppName) var name
-      let report: @MainActor (CorrectionProposalCoordinator?, LearnFromEditsSettingsPresentation?, String?) -> Void
+      let report: @MainActor (LearnFromEditsSettingsPresentation?) -> Void
       var body: some View {
-        Color.clear.onAppear { report(coordinator, availability?.presentation, name("com.apple.finder")) }
+        Color.clear.onAppear { report(availability?.presentation) }
       }
     }
     final class Seen {
-      var coordinator: CorrectionProposalCoordinator?
       var presentation: LearnFromEditsSettingsPresentation?
-      var finder: String??
     }
     let seen = Seen()
-    let root = Probe { c, p, n in
-      seen.coordinator = c
-      seen.presentation = p
-      seen.finder = n
-    }
-    // Only what the bootstrapper injects now.
-    .environment(f.wiring.availability)
+    let root = Probe { p in seen.presentation = p }
+      // Only what the bootstrapper injects now.
+      .environment(f.wiring.availability)
     let host = NSHostingView(rootView: AnyView(root.frame(width: 10, height: 10)))
     host.layoutSubtreeIfNeeded()
     _ = host.fittingSize
-    #expect(seen.coordinator == nil, "no proposal coordinator is composed any more")
     #expect(seen.presentation == f.wiring.availability.presentation)
-    #expect(seen.finder == .some(nil), "the app-name lookup's default answers nothing")
   }
 
   #if DEBUG

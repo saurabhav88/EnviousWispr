@@ -214,9 +214,9 @@ struct LearnedCorrectionPillReducerTests {
     #expect(bluetooth.reduce(.correctionLearned(LearnedPillFixture.model())) == .noChange)
     #expect(bluetooth.state.current?.content == .bluetoothAwareness)
 
-    var card = OverlayReducer()
-    _ = card.reduce(.correctionProposed(CorrectionCardFixture.model()))
-    #expect(card.reduce(.correctionLearned(LearnedPillFixture.model())) == .noChange)
+    var status = OverlayReducer()
+    _ = status.reduce(.importStatus(message: "Imported 12 words"))
+    #expect(status.reduce(.correctionLearned(LearnedPillFixture.model())) == .noChange)
 
     var empty = OverlayReducer()
     #expect(empty.reduce(.correctionLearned(LearnedPillFixture.model(phase: .undone))) == .noChange)
@@ -527,6 +527,92 @@ struct LearnedCorrectionPillDirectorTests {
     #expect(shown(d)?.id == m2.id, "the second pill's own two seconds run from 1.0 s")
     clock.advance(to: 3.0)
     #expect(d.renderModel.state.presentation == nil && first.ended == 1 && second.ended == 1)
+  }
+
+  @Test("a same-pill repeat keeps the original binding: the press and the end still reach the first owner")
+  func repeatKeepsTheOriginalBinding() throws {
+    let clock = LearnedPillClock()
+    let first = Log()
+    let second = Log()
+    let (d, host) = director(clock, first)
+    let model = LearnedPillFixture.model()
+    let receipt = try #require(d.present(request(model, first)))
+    #expect(d.present(request(model, second)) == nil, "a repeat keeps the incumbent's receipt; it is not a new admission")
+    #expect(shown(d)?.id == model.id && d.isCurrent(receipt))
+    #expect(clock.armedSeconds == [2], "the repeat did not re-arm the dwell")
+    try host.sendUserActionThroughRoot(.undoLearnedCorrection(pillID: model.id), for: receipt)
+    #expect(first.undos == 1 && second.undos == 0)
+    clock.advance(to: 2)
+    #expect(first.ended == 1 && second.ended == 0)
+  }
+
+  @Test("an end callback that presents a newer pill wins: the stale plan is discarded, not applied over it")
+  func endCallbackMayReenter() throws {
+    let clock = LearnedPillClock()
+    let log = Log()
+    let (d, _) = director(clock, log)
+    let model = LearnedPillFixture.model()
+    let reentrant = PillRequest.correctionLearned(
+      model: model, isStillWanted: { true }, onUndo: {},
+      onEnded: {
+        log.ended += 1
+        // The owner reacts to the end by raising its own notice.
+        d.present(.warning(reason: .polishFailed))
+      })
+    _ = try #require(d.present(reentrant))
+
+    // Preemption by a pipeline notice: the re-entrant warning must be what stays.
+    d.present(.processing(phase: .transcribing))
+    #expect(log.ended == 1)
+    guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
+      Issue.record("the re-entrant pill is not on screen")
+      return
+    }
+    #expect(notice.kind == .notification, "the warning, not the processing pill, holds the slot")
+    #expect(d.renderModel.state.presentation?.id == d.renderModel.state.dwell?.id)
+
+    // Preemption by a recording COMMIT: same rule through the two-stage path.
+    d.dismissCurrent(.silent)
+    _ = try #require(d.present(reentrant))
+    d.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0.2, audioLevelProvider: { 0.2 }, recordingElapsedProvider: { nil },
+          isLocked: false)))
+    #expect(log.ended == 2)
+    guard case .notice? = d.renderModel.state.presentation?.content else {
+      Issue.record("the recording overwrote the re-entrant warning")
+      return
+    }
+  }
+
+  @Test("an owner check that presents a newer pill from inside itself loses to that pill: no rollback, no render of the stale offer, whether it answers true or false")
+  func ownerCheckMayReenter() {
+    for answer in [true, false] {
+      let clock = LearnedPillClock()
+      let log = Log()
+      let (d, host) = director(clock, log)
+      let model = LearnedPillFixture.model()
+      // The check raises a warning as a side effect; that warning must win.
+      let request = request(model, log, stillWanted: {
+        d.present(.warning(reason: .polishFailed))
+        return answer
+      })
+      _ = d.present(request) { log.results.append($0) }
+      #expect(log.results == [.notPresented], "the stale offer owes its caller only false (answer \(answer))")
+      guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
+        Issue.record("the re-entrant warning is not on screen (answer \(answer))")
+        return
+      }
+      #expect(notice.kind == .notification)
+      #expect(d.renderModel.state.presentation?.id == d.renderModel.state.dwell?.id, "the warning keeps its own timer")
+      #expect(host.presented.count == 1 && host.isShowing, "exactly one render: the warning")
+      // The reducer had admitted the offer before the render, so the warning
+      // preempts it there and the end is reported once; the owner was answered
+      // `.notPresented` and never `.presented`. What must not happen is a
+      // SECOND end from a rollback of the newer warning.
+      #expect(log.ended == 1, "one reducer-level end, no rollback end (answer \(answer))")
+    }
   }
 
   @Test(

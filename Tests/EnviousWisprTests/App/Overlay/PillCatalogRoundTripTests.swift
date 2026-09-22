@@ -68,12 +68,17 @@ struct PillCatalogRoundTripTests {
     }
   }
 
-  @Test("import status is the only request with no matching intent")
-  func onlyImportStatusHasNoIntent() {
-    #expect(PillCatalogRequest.importStatus(message: "x").matchingIntent == nil)
-    #expect(
-      PillCatalogRequest.correctionProposal(CorrectionCardFixture.model()).matchingIntent == nil,
-      "#996: the card is a feature route with no pipeline intent")
+  @Test("the three feature-only requests have no matching intent; every pipeline-derived one keeps its intent")
+  func featureOnlyRequestsHaveNoMatchingIntent() {
+    let featureOnly: [PillCatalogRequest] = [
+      .importStatus(message: "x"),
+      // #996 auto-learn: the Undo pill and its save error are feature routes
+      // with no pipeline intent.
+      .correctionLearned(LearnedPillFixture.model()),
+      .correctionLearnedSaveError(
+        LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)),
+    ]
+    #expect(featureOnly.allSatisfy { $0.matchingIntent == nil })
     for intent in Self.intents where !Self.isRecording(intent) {
       let request = PillCatalogRequest(nonRecording: intent)
       #expect(request?.matchingIntent != nil, "a pipeline-derived request lost its intent")
@@ -132,23 +137,22 @@ struct PillCatalogRoundTripTests {
   /// The catalog's own case count, asserted through a value each case produces
   /// rather than through a comment claiming a number.
   ///
-  /// **Nineteen non-recording requests: fifteen intent-derived plus four
-  /// feature-only cases (import status, the correction card, the Undo pill and
-  /// its save error).** `bluetoothAwareness` is a
+  /// **Eighteen non-recording requests: fifteen intent-derived plus three
+  /// feature-only cases (import status, the Undo pill and its save error).**
+  /// `bluetoothAwareness` is a
   /// pipeline intent AND was minted a second time by the feature reducer; those
   /// are two routes to one value, and C0 froze both and found them identical, so
   /// it counts once. A second Bluetooth arm would be the duplicate C0 deleted.
-  @Test("the staged catalog covers nineteen non-recording requests")
+  @Test("the staged catalog covers eighteen non-recording requests")
   func stagedCaseCount() {
     let requests: [PillCatalogRequest] =
       Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [
         .importStatus(message: "x"),
-        .correctionProposal(CorrectionCardFixture.model()),
         .correctionLearned(LearnedPillFixture.model()),
         .correctionLearnedSaveError(
           LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed)),
       ]
-    #expect(requests.count == 19)
+    #expect(requests.count == 18)
 
     let withoutDefinition = requests.filter {
       PillCatalog.entry(for: $0, id: PresentationID()).definition == nil
@@ -161,10 +165,10 @@ struct PillCatalogRoundTripTests {
   /// What `stagedCaseCount` cannot see (review r1 finding 3).
   ///
   /// **That test counts a list this file builds, so it is a claim about the list
-  /// and not about the enum.** A seventeenth case could be declared in
+  /// and not about the enum.** A twentieth case could be declared in
   /// `PillCatalogRequest` and every other test here would stay green: nothing in
   /// the round-trip reaches a case no intent maps to, and the count would still
-  /// read sixteen. Reading the declaration is the only way to ask the enum
+  /// read eighteen. Reading the declaration is the only way to ask the enum
   /// itself.
   ///
   /// **Update this set DELIBERATELY.** C3a adds `recording` and this test must go
@@ -195,10 +199,9 @@ struct PillCatalogRoundTripTests {
       "error", "advisory", "interruption", "passiveChip", "cachingModel",
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness", "escapeRecovery", "importStatus",
-      // #996 chunk 5f: the correction card, unfrozen deliberately.
-      "correctionProposal",
       // #996 auto-learn (2026-09-21 plan, chunk 3b): the Undo pill and its
-      // save-error notice, unfrozen deliberately.
+      // save-error notice, unfrozen deliberately. Chunk 5a removed the
+      // ask-first card's case the same way.
       "correctionLearned", "correctionLearnedSaveError",
     ]
     #expect(Set(names) == expected, "the catalog case set changed")
