@@ -225,7 +225,8 @@ struct LearnedCorrectionCoordinatorTests {
     let saira = CustomWord(canonical: "Saira", aliases: ["sarah"], category: .person, priority: 2)
     f.library.userWords = [saira]
 
-    let outcome = f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .newWord)
+    let outcome = f.coordinator.learn(
+      original: "sara", corrected: "Saira", expectedTarget: .existingWord(saira.id))
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill))
     #expect(pill.kind == .updated && pill.canonical == "Saira" && pill.wordID == saira.id)
@@ -250,7 +251,8 @@ struct LearnedCorrectionCoordinatorTests {
     let f = fixture()
     let github = try #require(CustomWordsManager.builtinDefaults.first { $0.id == "github" }?.word)
     f.library.userWords = [github]
-    let outcome = f.coordinator.learn(original: "git-hub", corrected: "GitHub", expectedTarget: .newWord)
+    let outcome = f.coordinator.learn(
+      original: "git-hub", corrected: "GitHub", expectedTarget: .existingWord(github.id))
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .updated)
     let live = try #require(f.library.userWords.first { $0.id == github.id })
@@ -269,7 +271,8 @@ struct LearnedCorrectionCoordinatorTests {
     let pack = CustomWord(canonical: "Tuist", aliases: ["twist"], category: .brand, source: .pack)
     f.library.packTerms = [pack]
 
-    let outcome = f.coordinator.learn(original: "to-ist", corrected: "Tuist", expectedTarget: .newWord)
+    let outcome = f.coordinator.learn(
+      original: "to-ist", corrected: "Tuist", expectedTarget: .existingWord(pack.id))
     let pill = try #require(shown(f))
     #expect(outcome == .learned(pill) && pill.kind == .updated)
     let live = try #require(f.library.userWords.first { $0.id == pack.id })
@@ -378,6 +381,31 @@ struct LearnedCorrectionCoordinatorTests {
       Issue.record("expected the new word to be learned")
     }
     #expect(g.library.userWords.map(\.canonical) == ["Saira"])
+  }
+
+  @Test(
+    "a word deleted and re-created under the same spelling while the judge ran is a different word: refused as target_gone, the stranger untouched"
+  )
+  func replacedTargetIsNotWrittenTo() {
+    let f = fixture()
+    let a = CustomWord(canonical: "Saira", category: .person)
+    let b = CustomWord(canonical: "Saira", category: .brand)
+    // The filter saw A; by the time the verdict lands, A is gone and B stands
+    // in its place with the same canonical.
+    f.library.userWords = [b]
+    #expect(
+      f.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .existingWord(a.id))
+        == .refused(.targetGone))
+    #expect(f.library.saves.isEmpty && f.library.userWords == [b], "B was not written to")
+    #expect(f.telemetry.events == [.saveFailed(.targetGone)])
+    // Control: expected B itself is learned onto B.
+    let g = fixture()
+    g.library.userWords = [b]
+    if case .learned = g.coordinator.learn(original: "sara", corrected: "Saira", expectedTarget: .existingWord(b.id)) {
+    } else {
+      Issue.record("expected the existing word B to be updated")
+    }
+    #expect(g.library.userWords.first?.aliases == ["sara"])
   }
 
   @Test(

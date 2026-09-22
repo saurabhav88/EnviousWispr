@@ -118,6 +118,25 @@ struct CustomWordSuggestionFlowTests {
       Issue.record("expected .cancelled")
     }
   }
+
+  @Test("removing a sparkled sound-alike chip drops its learned mark, so typing it back in makes it the person's own (#996)")
+  func removingAChipDropsItsLearnedMark() {
+    var word = CustomWord(
+      canonical: "Saira", aliases: ["sarah", "sara"], category: .person,
+      learnedAliases: ["sarah"])
+    CustomWordSuggestionFlow.removeAlias("sarah", from: &word)
+    #expect(word.aliases == ["sara"] && word.learnedAliases.isEmpty)
+    // Typed back in before saving: present, and NOT auto-learned any more.
+    word.aliases.append("sarah")
+    #expect(CustomWordsManager.sanitizeForPersistence(word).learnedAliases.isEmpty)
+    #expect(!word.isAutoLearned)
+    // Control: removing the plain chip leaves the learned mark on the other.
+    var other = CustomWord(
+      canonical: "Saira", aliases: ["sarah", "sara"], category: .person,
+      learnedAliases: ["sarah"])
+    CustomWordSuggestionFlow.removeAlias("sara", from: &other)
+    #expect(other.aliases == ["sarah"] && other.learnedAliases == ["sarah"])
+  }
 }
 
 /// Minimal deadline-bounded rendezvous, local to this file (mirrors

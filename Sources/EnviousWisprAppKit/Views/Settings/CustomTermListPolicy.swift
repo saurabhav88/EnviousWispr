@@ -56,8 +56,14 @@ enum CustomTermListPolicy {
   static func emptyStateMessage(
     query: String, autoLearnedOnly: Bool, category: WordCategory?
   ) -> String {
+    // The same trim `filtered` applies: a whitespace-only query is no search.
+    let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
     if !query.isEmpty { return "No matches for \"\(query)\"." }
-    if autoLearnedOnly { return CustomTermProvenanceCopy.noAutoLearnedWordsYet }
+    if autoLearnedOnly {
+      return category == nil
+        ? CustomTermProvenanceCopy.noAutoLearnedWordsYet
+        : CustomTermProvenanceCopy.noAutoLearnedWordsInCategory
+    }
     if category != nil { return "No words in this category." }
     return "No words yet. Add one with the button above."
   }
@@ -128,6 +134,8 @@ enum MatchStrictness: String, CaseIterable {
 enum CustomTermProvenanceCopy {
   static let filterPill = "Auto-learned"
   static let noAutoLearnedWordsYet = "No auto-learned words yet."
+  /// The Auto-learned pill AND a category pill, with nothing in both.
+  static let noAutoLearnedWordsInCategory = "No auto-learned words in this category."
   static let learnedFromYourEdits = "learned from your edits"
   static let learnedAliasesHelper = "Sparkled sound-alikes were learned from your edits."
 }

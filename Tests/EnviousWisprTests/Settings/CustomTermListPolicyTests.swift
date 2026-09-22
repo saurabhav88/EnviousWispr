@@ -309,6 +309,9 @@ struct CustomTermListPolicyTests {
   func provenanceCopyTable() {
     #expect(CustomTermProvenanceCopy.filterPill == "Auto-learned")
     #expect(CustomTermProvenanceCopy.noAutoLearnedWordsYet == "No auto-learned words yet.")
+    #expect(
+      CustomTermProvenanceCopy.noAutoLearnedWordsInCategory
+        == "No auto-learned words in this category.")
     #expect(CustomTermProvenanceCopy.learnedFromYourEdits == "learned from your edits")
     #expect(
       CustomTermProvenanceCopy.learnedAliasesHelper
@@ -322,7 +325,15 @@ struct CustomTermListPolicyTests {
         == "No matches for \"zz\".")
     #expect(
       CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: true, category: .person)
+        == "No auto-learned words in this category.")
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: true, category: nil)
         == "No auto-learned words yet.")
+    // A whitespace-only query is no search (the filter trims it), so the copy
+    // must not claim a search for "   " matched nothing.
+    #expect(
+      CustomTermListPolicy.emptyStateMessage(query: "   ", autoLearnedOnly: false, category: nil)
+        == "No words yet. Add one with the button above.")
     #expect(
       CustomTermListPolicy.emptyStateMessage(query: "", autoLearnedOnly: false, category: .person)
         == "No words in this category.")

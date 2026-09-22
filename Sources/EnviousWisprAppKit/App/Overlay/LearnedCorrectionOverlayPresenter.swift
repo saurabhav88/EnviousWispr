@@ -86,6 +86,12 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
     host.resolveLearnedCorrection(pillID: error.pillID, presentation: presentation, phase: .undoError)
   }
 
+  /// Known limit (second-pass review 2026-09-22): the notice is a feature
+  /// request, so a recording or a pipeline notice on screen at that moment
+  /// refuses it and the refusal is not queued; the failure is still counted
+  /// (`learn_save_failed`) and nothing was written. A queued notice would
+  /// need the director to hold state for a pill that is not on screen, which
+  /// the overlay contract does not do for any other feature.
   func showError(_ error: LearnedCorrectionSaveError) {
     host.present(.correctionLearnedSaveError(error)) { _ in }
   }

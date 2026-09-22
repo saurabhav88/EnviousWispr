@@ -227,11 +227,18 @@ final class LearnedCorrectionCoordinator {
     let packTerms = vocabulary.packTerms()
     let target = CustomWordSaveHelper.proposalTarget(
       for: corrected, in: userWords, packTerms: packTerms)
-    // A word the judge was asked about as an EXISTING target that no longer
-    // carries the canonical is `target_gone` (plan §3.1 failure table), never
-    // silently recreated as a new word.
-    if case .existingWord = expectedTarget, case .new = target {
-      return refuse(canonical: corrected, reason: .targetGone)
+    // The word the judge was asked about as an EXISTING target must still be
+    // THAT word (plan §3.1 failure table, `target_gone`): gone entirely, or
+    // replaced by another word with the same canonical while the judge ran,
+    // and the correction is refused rather than recreated or attached to a
+    // stranger that happens to spell the same.
+    if case .existingWord(let expectedID) = expectedTarget {
+      switch target {
+      case .existing(let word), .packOverride(let word):
+        if word.id != expectedID { return refuse(canonical: corrected, reason: .targetGone) }
+      case .new:
+        return refuse(canonical: corrected, reason: .targetGone)
+      }
     }
 
     // 2. Both surfaces (the original as a trigger, the corrected phrase) must

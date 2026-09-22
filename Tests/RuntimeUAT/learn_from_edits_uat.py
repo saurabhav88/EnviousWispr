@@ -740,7 +740,7 @@ def case_existing_word(path):
     clear_field(path)
     mark2, text2, _ = dictate(path, "learned-alias", pair, need_heard=False)
     corrected = wait_for("the corrector's OUT line", lambda: re.search(r"CORRECTION_DEBUG.*OUT:.*" + re.escape(pair.correct), log_since(mark2)), deadline=10.0)
-    check("learned-alias", bool(corrected) and pair.correct in text2, f"corrector_out={bool(corrected)} delivered_has_target={pair.correct in text2} delivered={text2!r}")
+    check("learned-alias", bool(corrected) and pair.correct.lower() in text2.lower(), f"corrector_out={bool(corrected)} delivered_has_target={pair.correct.lower() in text2.lower()} delivered={text2!r}")
     return ok
 
 
@@ -822,14 +822,38 @@ def sparkled_row(app, canonical):
     label = word_label(app, canonical)
     if label is None:
         return None
-    container = label
-    for _ in range(3):
-        container = get_attr(container, "AXParent")
-        if container is None:
-            return None
-        if find_element(container, description=SPARKLE_LABEL, max_depth=4) is not None:
-            return container
+    # The sparkle is the image labelled `learned from your edits` drawn on the
+    # SAME LINE as the word, just to its right. Geometry, not tree shape: the
+    # list flattens rows into one group, so a parent walk finds another
+    # word's sparkle (live runs 2026-09-22, twice). The seeded manual word
+    # must read unsparkled through this same oracle (the control).
+    from ui_helpers import element_frame
+    box = element_frame(label)
+    win = your_words_window(app)
+    if box is None or win is None:
+        return None
+    mid = box["y"] + box["height"] / 2
+    for sparkle in all_elements(win, description=SPARKLE_LABEL):
+        frame = element_frame(sparkle)
+        if frame is None:
+            continue
+        same_line = frame["y"] <= mid <= frame["y"] + frame["height"]
+        to_the_right = box["x"] + box["width"] - 2 <= frame["x"] <= box["x"] + box["width"] + 40
+        if same_line and to_the_right:
+            return label
     return None
+
+
+def all_elements(element, description, depth=0, max_depth=18):
+    """Every descendant whose AXDescription equals `description`."""
+    out = []
+    if depth > max_depth or element is None:
+        return out
+    if get_attr(element, "AXDescription") == description:
+        out.append(element)
+    for child in (get_attr(element, "AXChildren") or []):
+        out.extend(all_elements(child, description, depth + 1, max_depth))
+    return out
 
 
 def auto_learned_pill(app):

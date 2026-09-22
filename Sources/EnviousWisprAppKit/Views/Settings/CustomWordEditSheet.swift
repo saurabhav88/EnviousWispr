@@ -329,7 +329,7 @@ struct CustomWordEditSheet: View {
               .fixedSize(horizontal: false, vertical: true)
               .accessibilityValue(learned ? CustomTermProvenanceCopy.learnedFromYourEdits : "")
             Button {
-              word.aliases.removeAll { $0 == alias }
+              CustomWordSuggestionFlow.removeAlias(alias, from: &word)
             } label: {
               // An 8pt glyph inside a chip: the smallest target in the
               // whole window, and the one that deletes an alias.
@@ -464,6 +464,15 @@ enum CustomWordSuggestionFlow {
   /// is called, never a value captured before `fetch`'s await — a manual
   /// edit made while the suggestion request was in flight must never be
   /// silently overwritten by a stale pre-await snapshot.
+  /// Remove one sound-alike chip. The learned mark leaves with it (#996
+  /// second-pass review 2026-09-22): a sound-alike the person types back in
+  /// before saving is their own, not the app's, and must not come back
+  /// sparkled from a stale `learnedAliases` entry.
+  static func removeAlias(_ alias: String, from word: inout CustomWord) {
+    word.aliases.removeAll { $0 == alias }
+    word.learnedAliases.removeAll { $0 == alias }
+  }
+
   static func apply(
     suggestions: WordSuggestions?,
     currentAliases: [String],
