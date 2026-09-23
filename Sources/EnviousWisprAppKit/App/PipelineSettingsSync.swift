@@ -499,6 +499,9 @@ final class PipelineSettingsSync {
     // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
     // pending forever, with the model still on disk and nothing saying so.
     s1MiniRuntime?.retryPendingRemoval()
+    if settings.llmProvider == .egOne {
+      egOneRuntime?.retryPendingAdapterReconfiguration()
+    }
     guard forceReconciliation || egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)
   }

@@ -24,6 +24,8 @@ public final class EGOneDeliveryAdapter {
   /// no label rather than falling back to the internal revision, which is a
   /// path component and not a thing to put in front of a user.
   private let version: String?
+  /// Test seam for proving an adapter fault never enters base repair.
+  var onRepairForTesting: (@MainActor () -> Void)?
 
   public init(
     controller: ModelDeliveryController,
@@ -175,6 +177,7 @@ public final class EGOneDeliveryAdapter {
   /// One-shot repair after a cache-only load failure (§16.5); no-op when
   /// disabled.
   public func repair() async -> ModelDeliveryController.DeliveryOutcome {
+    onRepairForTesting?()
     if !isEnabled() {
       controllerNoteDisabled()
       if await controller.isAdmitted(registration) { return .admitted }
