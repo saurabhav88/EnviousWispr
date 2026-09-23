@@ -54,7 +54,7 @@ enum SettingsDefaultValues {
   static let vadSensitivity: Float = 0.5
   static let vadEnergyGate = true
 
-  // The three shortcut defaults are OWNED by `ShortcutRole.defaultBinding` and read here, rather
+  // The shortcut defaults are OWNED by `ShortcutRole.defaultBinding` and read here, rather
   // than written here and repeated in the service and in each Settings row. See that extension for
   // why: three unlinked copies of one value, whose drift symptom is a Reset button that takes the
   // user somewhere no fresh install goes.
@@ -62,6 +62,10 @@ enum SettingsDefaultValues {
   static let cancelModifiersRaw: UInt = ShortcutRole.cancel.defaultModifiers.rawValue
   static let quickAddKeyCode: Int = Int(ShortcutRole.quickAdd.defaultKeyCode)
   static let quickAddModifiersRaw: UInt = ShortcutRole.quickAdd.defaultModifiers.rawValue
+  static let pasteLastKeyCode: Int = Int(ShortcutRole.pasteLast.defaultKeyCode)
+  static let pasteLastModifiersRaw: UInt = ShortcutRole.pasteLast.defaultModifiers.rawValue
+  static let copyLastKeyCode: Int = Int(ShortcutRole.copyLast.defaultKeyCode)
+  static let copyLastModifiersRaw: UInt = ShortcutRole.copyLast.defaultModifiers.rawValue
   static let toggleKeyCode: Int = Int(ShortcutRole.record.defaultKeyCode)
   static let toggleModifiersRaw: UInt = ShortcutRole.record.defaultModifiers.rawValue
   static let pushToTalkKeyCode: Int = 49  // Space

@@ -35,6 +35,13 @@ struct KeybindRowDefaultsTests {
     #expect(
       ShortcutRole.quickAdd.defaultBinding
         == .keyboard(keyCode: 13, modifiers: [.control, .shift]))
+    // #3106: Wispr Flow's own defaults for the same two actions (founder decision).
+    #expect(
+      ShortcutRole.pasteLast.defaultBinding
+        == .keyboard(keyCode: 9, modifiers: [.control, .command]))
+    #expect(
+      ShortcutRole.copyLast.defaultBinding
+        == .keyboard(keyCode: 8, modifiers: [.control, .command]))
   }
 
   @Test("Quick Add ships as a CHORD, which is what keeps it out of an unsuspecting user's way")
@@ -51,7 +58,7 @@ struct KeybindRowDefaultsTests {
 
   // MARK: - Everyone reads the owner
 
-  @Test("What a fresh install stores is what the owner says, for all three roles")
+  @Test("What a fresh install stores is what the owner says, for every role")
   func storedDefaultsMatchTheOwner() {
     // True by construction now. Pinned because "by construction" is a property of today's code, and
     // a future edit that re-inlines a number here would be silent.
@@ -62,6 +69,13 @@ struct KeybindRowDefaultsTests {
     #expect(SettingsDefaultValues.quickAddKeyCode == Int(ShortcutRole.quickAdd.defaultKeyCode))
     #expect(
       SettingsDefaultValues.quickAddModifiersRaw == ShortcutRole.quickAdd.defaultModifiers.rawValue)
+    #expect(SettingsDefaultValues.pasteLastKeyCode == Int(ShortcutRole.pasteLast.defaultKeyCode))
+    #expect(
+      SettingsDefaultValues.pasteLastModifiersRaw
+        == ShortcutRole.pasteLast.defaultModifiers.rawValue)
+    #expect(SettingsDefaultValues.copyLastKeyCode == Int(ShortcutRole.copyLast.defaultKeyCode))
+    #expect(
+      SettingsDefaultValues.copyLastModifiersRaw == ShortcutRole.copyLast.defaultModifiers.rawValue)
   }
 
   // `@MainActor` on this case alone rather than the suite: `SettingsManager` is main-actor isolated
@@ -81,6 +95,7 @@ struct KeybindRowDefaultsTests {
     #expect(settings.cancelKeyCode == ShortcutRole.cancel.defaultKeyCode)
     #expect(settings.quickAddKeyCode == ShortcutRole.quickAdd.defaultKeyCode)
     #expect(settings.quickAddModifiers == ShortcutRole.quickAdd.defaultModifiers)
+    #expect(settings.shortcutBindings == .shipped, "all five, through the value the menu reads")
   }
 
   @MainActor
@@ -95,6 +110,8 @@ struct KeybindRowDefaultsTests {
     #expect(service.recordBinding == ShortcutRole.record.defaultBinding)
     #expect(service.cancelBinding == ShortcutRole.cancel.defaultBinding)
     #expect(service.quickAddBinding == ShortcutRole.quickAdd.defaultBinding)
+    #expect(service.binding(for: .pasteLast) == ShortcutRole.pasteLast.defaultBinding)
+    #expect(service.binding(for: .copyLast) == ShortcutRole.copyLast.defaultBinding)
   }
 
   // MARK: - The one source question left

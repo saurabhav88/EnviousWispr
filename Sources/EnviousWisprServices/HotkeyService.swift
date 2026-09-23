@@ -222,6 +222,18 @@ public final class HotkeyService {
   /// Required modifiers for the Quick Add hotkey, read from the same owner.
   public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers
 
+  /// Paste Last Dictation's key code (#3106), read from the same owner.
+  public var pasteLastKeyCode: UInt16 = ShortcutRole.pasteLast.defaultKeyCode
+
+  /// Paste Last Dictation's required modifiers.
+  public var pasteLastModifiers: NSEvent.ModifierFlags = ShortcutRole.pasteLast.defaultModifiers
+
+  /// Copy Last Dictation's key code (#3106), read from the same owner.
+  public var copyLastKeyCode: UInt16 = ShortcutRole.copyLast.defaultKeyCode
+
+  /// Copy Last Dictation's required modifiers.
+  public var copyLastModifiers: NSEvent.ModifierFlags = ShortcutRole.copyLast.defaultModifiers
+
   // MARK: - Lifecycle
 
   public private(set) var isSuspended = false
@@ -872,7 +884,16 @@ public final class HotkeyService {
     case .record: recordBinding
     case .cancel: cancelBinding
     case .quickAdd: quickAddBinding
+    case .pasteLast: .keyboard(keyCode: pasteLastKeyCode, modifiers: pasteLastModifiers)
+    case .copyLast: .keyboard(keyCode: copyLastKeyCode, modifiers: copyLastModifiers)
     }
+  }
+
+  /// Every role's current binding, the value the matcher reads (#3106).
+  package var bindings: ShortcutBindings {
+    ShortcutBindings(
+      record: recordBinding, cancel: cancelBinding, quickAdd: quickAddBinding,
+      pasteLast: binding(for: .pasteLast), copyLast: binding(for: .copyLast))
   }
 
   /// The current record binding, as one value.
@@ -912,8 +933,11 @@ public final class HotkeyService {
   private var keyCodeConsumedByCancel: UInt16?
 
   private var armedRoles: Set<ShortcutRole> {
-    // Quick Add is unconditional: it belongs to the app, not to a recording.
-    isCancelArmed ? [.record, .cancel, .quickAdd] : [.record, .quickAdd]
+    // Quick Add, Paste Last and Copy Last are unconditional: they belong to the app, not to a
+    // recording.
+    isCancelArmed
+      ? [.record, .cancel, .quickAdd, .pasteLast, .copyLast]
+      : [.record, .quickAdd, .pasteLast, .copyLast]
   }
 
   private func installModifierMonitors() {
@@ -1025,18 +1049,18 @@ public final class HotkeyService {
   ///
   /// **A shared chord is a policy question, and the event-tap path already answered it while the
   /// Carbon path had no answer at all.** `ShortcutMatcher.role(forBareModifierKeyCode:...)` checks
-  /// Quick Add LAST precisely because it is the least severe of the three roles
+  /// Quick Add after Record and Cancel precisely because it is less severe than both
   /// (`ShortcutRole`'s declaration order is severity order, and load-bearing). This is the same
-  /// ruling for the other dispatch mechanism: cancel outranks Quick Add on a chord they share, for
-  /// as long as cancel is armed.
+  /// ruling for the other dispatch mechanism: a higher role outranks Quick Add on a chord they
+  /// share, cancel for as long as it is armed.
   ///
   /// Every caller that used to call `registerQuickAddHotkey()` calls this instead, so the rule lives
   /// in one function rather than being asked again at each site — which is how the three shortcut
   /// defaults came to disagree in the first place (#1991 blocker 2, reproduced during this build).
   private func reconcileQuickAddRegistration() {
-    if Self.quickAddMayHoldItsChord(
-      isEnabled: isEnabled, isSuspended: isSuspended,
-      quickAdd: quickAddBinding, cancel: cancelBinding, isCancelArmed: isCancelArmed)
+    if Self.mayHoldItsChord(
+      .quickAdd, isEnabled: isEnabled, isSuspended: isSuspended, bindings: bindings,
+      armed: armedRoles)
     {
       registerQuickAddHotkey()
     } else {
@@ -1049,27 +1073,21 @@ public final class HotkeyService {
   /// Split out for the same reason `SelectionReader.refusalBeforeReading` is: the surrounding
   /// function talks to Carbon, and a rule reachable only through `RegisterEventHotKey` is a rule no
   /// test can state. Every branch here is one a user can produce by rebinding a shortcut.
-  package static func quickAddMayHoldItsChord(
-    isEnabled: Bool, isSuspended: Bool,
-    quickAdd: ShortcutBinding, cancel: ShortcutBinding, isCancelArmed: Bool
+  ///
+  /// #3106: generalised from `quickAddMayHoldItsChord` to any role, over `ShortcutMatcher
+  /// .mayHoldCarbonChord`, which owns the ruling and the reasons for it.
+  package static func mayHoldItsChord(
+    _ role: ShortcutRole, isEnabled: Bool, isSuspended: Bool,
+    bindings: ShortcutBindings, armed: Set<ShortcutRole>
   ) -> Bool {
     guard isEnabled, !isSuspended else { return false }
     // Cancel outranks Quick Add on a shared chord, for as long as cancel is armed — the same
     // severity order `ShortcutRole` declares and the bare-modifier matcher already applies.
     //
-    // **CARBON-equivalent, not `==` (#2432).** `RegisterEventHotKey` never sees Caps Lock,
-    // Function or Numeric Pad, so two bindings differing only there are ONE chord to the
-    // system while raw equality calls them different. This function decides whether Quick Add
-    // KEEPS its registration, so the wrong answer left both roles claiming one chord: Quick
-    // Add registers at start and holds it, cancel arrives second during a recording and is
-    // refused, and the user's cancel key opens the Quick Add panel while the recording runs.
-    // That is the same failure `cancelWinsASharedChord` already covers, reachable through a
-    // modifier Carbon discards.
-    //
     // `ShortcutMatcher` owns the comparison. It was written there and asked again here with
-    // `==`, and the note above `quickAddOwnsItsBinding` records that as a defect on this path
+    // `==`, and the note above `ownsItsBinding` records that as a defect on this path
     // rather than that one.
-    return !(ShortcutMatcher.carbonEquivalent(quickAdd, cancel) && isCancelArmed)
+    return ShortcutMatcher.mayHoldCarbonChord(role, in: bindings, armed: armed)
   }
 
   /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
@@ -1240,9 +1258,7 @@ public final class HotkeyService {
     guard
       let role = ShortcutMatcher.role(
         forBareModifierKeyCode: keyCode,
-        record: recordBinding,
-        cancel: cancelBinding,
-        quickAdd: quickAddBinding,
+        bindings: bindings,
         armed: armedRoles)
     else { return }
 
@@ -1253,6 +1269,12 @@ public final class HotkeyService {
     // below is what makes the compiler name every member, which is the entire reason `ShortcutRole`
     // was made a closed set.
     switch role {
+    case .pasteLast, .copyLast:
+      // #3106: matched and deliberately inert in this commit. The action, its press latch and its
+      // telemetry arrive together in the commit that wires them; an arm that fired half of that
+      // would be worse than one that does nothing.
+      return
+
     case .quickAdd:
       // Press only: a modifier RELEASE is not a gesture. Quick Add carries none of cancel's
       // aggregate-flag hazard, because it disarms nothing and destroys nothing — a stray second

@@ -228,14 +228,15 @@ final class MenuBarController: NSObject {
   /// and each exposed the next, which is the signature of describing a set instead of enumerating
   /// one.
   ///
-  /// The set is closed by the app's two dispatch paths, and each has an authority that already
-  /// decides ownership with the reasoning attached:
+  /// The set is closed by the app's two dispatch paths, and one authority,
+  /// `ShortcutMatcher.ownsItsBinding`, answers for both with the reasoning attached (#3106: five
+  /// roles, most severe first, and a higher role always wins):
   ///
   /// - a BARE MODIFIER is dispatched by `ShortcutMatcher.role(forBareModifierKeyCode:)`, which
-  ///   encodes record-wins-a-tie, cancel-outranks-Quick-Add-while-armed, and the refusal when the
-  ///   record chord needs that modifier;
-  /// - a CHORD is dispatched by Carbon, so it is `HotkeyService.quickAddMayHoldItsChord` plus
-  ///   inequality with Record on the modifiers Carbon actually registers.
+  ///   encodes record-wins-a-tie, cancel-outranks-Quick-Add-while-armed, and the refusal when a
+  ///   higher role's chord needs that modifier;
+  /// - a CHORD is dispatched by Carbon and is refused when a higher role holds the same chord on the
+  ///   modifiers Carbon actually registers, or a higher role's bare modifier intercepts it.
   ///
   /// `isBareModifier` decides which, so there is no third case to miss.
   ///
@@ -243,18 +244,9 @@ final class MenuBarController: NSObject {
   /// "this chord belongs to Start Recording", and the row itself still works. This menu exists
   /// BECAUSE the shortcut can fail, so advertising a chord that starts or cancels a recording is
   /// the one lie this surface must not tell.
-  static func quickAddShortcutLabel(
-    keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
-    recordKeyCode: UInt16, recordModifiers: NSEvent.ModifierFlags,
-    cancelKeyCode: UInt16, cancelModifiers: NSEvent.ModifierFlags
-  ) -> String? {
-    let quickAdd = ShortcutBinding.keyboard(keyCode: keyCode, modifiers: modifiers)
-    let record = ShortcutBinding.keyboard(keyCode: recordKeyCode, modifiers: recordModifiers)
-    let cancel = ShortcutBinding.keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers)
-    guard ShortcutMatcher.quickAddOwnsItsBinding(quickAdd: quickAdd, record: record, cancel: cancel)
-    else {
-      return nil
-    }
+  static func quickAddShortcutLabel(bindings: ShortcutBindings) -> String? {
+    guard ShortcutMatcher.ownsItsBinding(.quickAdd, in: bindings) else { return nil }
+    guard case .keyboard(let keyCode, let modifiers) = bindings.quickAdd else { return nil }
 
     let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
@@ -553,10 +545,7 @@ final class MenuBarController: NSObject {
       sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
-      quickAddShortcut: Self.quickAddShortcutLabel(
-        keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
-        recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
-        cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers),
+      quickAddShortcut: Self.quickAddShortcutLabel(bindings: settings.shortcutBindings),
       quickAddContext: quickAddContext,
       quickAddFallbackEnabled: settings.quickAddClipboardFallback,
       quickAdd: quickAdd,

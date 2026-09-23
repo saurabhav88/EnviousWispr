@@ -268,6 +268,16 @@ final class PipelineSettingsSync {
     case .quickAddModifiers:
       hotkeyService.quickAddModifiers = settings.quickAddModifiers
       hotkeyService.reapplyQuickAddBinding()
+    // #3106: the values reach the service so every ownership question reads the user's binding.
+    // Registration and re-registration of these two chords are wired with their dispatch.
+    case .pasteLastKeyCode:
+      hotkeyService.pasteLastKeyCode = settings.pasteLastKeyCode
+    case .pasteLastModifiers:
+      hotkeyService.pasteLastModifiers = settings.pasteLastModifiers
+    case .copyLastKeyCode:
+      hotkeyService.copyLastKeyCode = settings.copyLastKeyCode
+    case .copyLastModifiers:
+      hotkeyService.copyLastModifiers = settings.copyLastModifiers
     case .cancelModifiers:
       hotkeyService.cancelModifiers = settings.cancelModifiers
       hotkeyService.reapplyCancelBinding()

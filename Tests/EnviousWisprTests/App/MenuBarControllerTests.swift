@@ -307,10 +307,11 @@ struct MenuBarControllerTests {
     record: (UInt16, NSEvent.ModifierFlags) = (49, []),
     cancel: (UInt16, NSEvent.ModifierFlags) = (53, [])
   ) -> String? {
-    MenuBarController.quickAddShortcutLabel(
-      keyCode: keyCode, modifiers: modifiers,
-      recordKeyCode: record.0, recordModifiers: record.1,
-      cancelKeyCode: cancel.0, cancelModifiers: cancel.1)
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: record.0, modifiers: record.1)
+    bindings.cancel = .keyboard(keyCode: cancel.0, modifiers: cancel.1)
+    bindings.quickAdd = .keyboard(keyCode: keyCode, modifiers: modifiers)
+    return MenuBarController.quickAddShortcutLabel(bindings: bindings)
   }
 
   /// The mapping itself: what is worth showing, and what is not.
@@ -322,7 +323,7 @@ struct MenuBarControllerTests {
 
   /// **A chord another role owns must not be advertised here, and this is worse than a dead hint.**
   /// `ShortcutMatcher.role` gives Record priority on a shared binding and
-  /// `HotkeyService.quickAddMayHoldItsChord` unregisters Quick Add while a same-binding Cancel is
+  /// `HotkeyService.mayHoldItsChord` unregisters Quick Add while a same-binding Cancel is
   /// armed — so the advertised chord can START OR CANCEL A RECORDING. This menu exists because the
   /// shortcut can fail; sending the user to the heart path instead is the one lie it must not tell.
   /// Cloud review, PR #2427.
@@ -393,6 +394,22 @@ struct MenuBarControllerTests {
   func aChordCancelClaimsIsNotAdvertised() {
     #expect(Self.label(53, [.control], cancel: (53, [.control])) == nil)
     #expect(Self.label(53, [.control], cancel: (53, [.command])) != nil)
+  }
+
+  /// #3106: the ownership rule now asks EVERY higher role in both prefix directions. Two cases the
+  /// old rule advertised and the new one withholds, each with its paired accepted case.
+  @Test("A bare Quick Add an armed Cancel chord needs, and an Fn chord a bare Globe Record takes, are not advertised")
+  func newlyRefusedPrefixCases() {
+    // Bare Left Command Quick Add; Cancel is Command-Period. During a recording the Command press on
+    // the way to cancelling would open the Quick Add panel. Old answer: advertised.
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], cancel: (47, [.command])) == nil)
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], cancel: (47, [.control])) != nil)
+
+    // Record on bare Globe; Quick Add is Fn-Control-W. The Globe press starts a recording before
+    // the W arrives. Old answer: advertised, because the label only looked at the four modifiers
+    // Carbon keeps.
+    #expect(Self.label(13, [.function, .control], record: (ModifierKeyCodes.globe, [])) == nil)
+    #expect(Self.label(13, [.control], record: (ModifierKeyCodes.globe, [])) != nil)
   }
 
   @Test("A chord Record or Cancel owns is not advertised as Quick Add's")

@@ -40,7 +40,7 @@ import SwiftUI
 /// "Control Option W" that goes wrong the moment someone rebinds Quick Add
 /// on Keybinds; and, once that was fixed to read the live binding, that the
 /// live binding can still lose arbitration to Record or Cancel
-/// (`ShortcutMatcher.quickAddOwnsItsBinding`) — this tab must not advertise a
+/// (`ShortcutMatcher.ownsItsBinding`) — this tab must not advertise a
 /// chord that will not actually fire, so it falls back to pointing at the
 /// menu bar when that happens.
 struct QuickAddTeachingSection: View {
@@ -53,10 +53,7 @@ struct QuickAddTeachingSection: View {
   /// uses — never a second ownership check re-derived here). Showing a chord
   /// that will not actually trigger Quick Add is worse than showing nothing.
   private var shortcutDisplay: String? {
-    MenuBarController.quickAddShortcutLabel(
-      keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
-      recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
-      cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers)
+    MenuBarController.quickAddShortcutLabel(bindings: settings.shortcutBindings)
   }
 
   /// Step 2's full sentence, and now the ONLY place the chord is rendered. It

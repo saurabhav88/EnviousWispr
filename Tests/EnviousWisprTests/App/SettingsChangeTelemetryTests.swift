@@ -196,6 +196,13 @@ import Testing
       #expect(SettingsProjection.logicals(for: .pushToTalkModifiers) == [.pushToTalkHotkeyShape])
       #expect(SettingsProjection.logicals(for: .cancelKeyCode) == [.cancelHotkeyShape])
       #expect(SettingsProjection.logicals(for: .cancelModifiers) == [.cancelHotkeyShape])
+      // #3106: shape only, each role its own logical.
+      #expect(SettingsProjection.logicals(for: .pasteLastKeyCode) == [.pasteLastHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .pasteLastModifiers) == [.pasteLastHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .copyLastKeyCode) == [.copyLastHotkeyShape])
+      #expect(SettingsProjection.logicals(for: .copyLastModifiers) == [.copyLastHotkeyShape])
+      #expect(SettingsProjection.Logical.pasteLastHotkeyShape.rawValue == "paste_last_hotkey_shape")
+      #expect(SettingsProjection.Logical.copyLastHotkeyShape.rawValue == "copy_last_hotkey_shape")
       #expect(SettingsProjection.logicals(for: .llmModel) == [.llmModel])
       #expect(SettingsProjection.logicals(for: .ollamaModel) == [.llmModel])
       #expect(SettingsProjection.logicals(for: .selectedBackend).isEmpty)
