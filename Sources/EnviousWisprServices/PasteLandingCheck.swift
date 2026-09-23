@@ -1,3 +1,4 @@
+import ApplicationServices
 import Foundation
 
 /// What a key paste was OBSERVED to do to the focused field (#3106, step 1: observation only).
@@ -184,5 +185,132 @@ package enum PasteLandingCheck {
   /// Byte identity in UTF-16 code units.
   private static func identical(_ lhs: String, _ rhs: String) -> Bool {
     lhs.utf16.elementsEqual(rhs.utf16)
+  }
+}
+
+// MARK: - Preparation primitives (#3106 step 1, chunk 2)
+
+/// The ONE cumulative time budget for everything the landing check reads and registers before the
+/// paste is written.
+///
+/// Before each Accessibility call, `admit(_:)` is asked with the exact handle that call messages:
+/// it refuses when the budget is spent, and otherwise installs the REMAINING time as that handle's
+/// messaging timeout, so no call ever receives a fresh full bound. A refusal is remembered, and
+/// every later call is refused too.
+@MainActor
+package final class PasteLandingPrepareBudget {
+
+  /// Why a call was refused. Kept apart from any Accessibility answer, so a spent budget is never
+  /// mistaken for an unreadable field.
+  package enum Refusal: Sendable, Equatable {
+    /// The cumulative budget ran out.
+    case exhausted
+    /// The remaining time could not be installed on the handle, so the call would be unbounded.
+    case timeoutNotInstalled
+  }
+
+  /// The whole preparation may take this long. The same 0.5 s that bounds the paste path's own
+  /// focused-element query and the learn watcher's capture (`PasteService.axMessagingTimeoutSeconds`),
+  /// but spent ONCE across every call instead of once per call: a healthy host answers in
+  /// milliseconds, so this is a failure bound, not a latency target.
+  package static let defaultMs = Int(PasteService.axMessagingTimeoutSeconds * 1000)
+
+  private let totalMs: Int
+  private let startMs: Int
+  private let scheduler: any PastedRegionScheduling
+  private let ax: any PastedRegionAXOperations
+  package private(set) var refusal: Refusal?
+
+  package init(
+    totalMs: Int = PasteLandingPrepareBudget.defaultMs,
+    scheduler: any PastedRegionScheduling, ax: any PastedRegionAXOperations
+  ) {
+    self.totalMs = totalMs
+    self.scheduler = scheduler
+    self.ax = ax
+    self.startMs = scheduler.nowMs
+  }
+
+  /// Milliseconds spent since the budget was created: the log's `before_ms`.
+  package var elapsedMs: Int { scheduler.nowMs - startMs }
+
+  /// Whether the next Accessibility call on `handle` may run. Installs the remaining time on that
+  /// exact handle first.
+  package func admit(_ handle: AXUIElement) -> Bool {
+    guard refusal == nil else { return false }
+    let remainingMs = totalMs - elapsedMs
+    guard remainingMs > 0 else {
+      refusal = .exhausted
+      return false
+    }
+    guard ax.setMessagingTimeout(handle, seconds: Double(remainingMs) / 1000) else {
+      refusal = .timeoutNotInstalled
+      return false
+    }
+    return true
+  }
+}
+
+/// The focused element as the landing check may use it (#3106).
+package enum PasteLandingFocus {
+  case element(AXUIElement)
+  /// The application answered that nothing is focused.
+  case noFocus
+  /// The query failed, or the element's owner is another process or cannot be read.
+  case unreadable
+}
+
+/// Whether the field captured when the recording started is in the window that is focused now
+/// (#3106): the one fact knowable BEFORE the write that the paste would go to a different window
+/// of the same application.
+package enum PasteLandingTargetWindow: String, Sendable, CaseIterable {
+  case same
+  case different
+  /// No captured field, a stale one, an absent or non-element answer, a failed call, or a refusal
+  /// by the budget.
+  case unknown
+}
+
+@MainActor
+extension PasteLandingCheck {
+
+  /// The focused element of `application` (owned by `pid`), read through the budget. Nil when the
+  /// budget refused a call.
+  ///
+  /// The element's own process is checked, as `PasteService.focusedElement` does: an element
+  /// another process owns, or one whose owner cannot be read, is `unreadable`, never `noFocus`.
+  /// Only a genuine "nothing is focused" answer may later support an `unchanged/no_focus` verdict.
+  package static func focus(
+    of application: AXUIElement, pid: pid_t, ax: any PastedRegionAXOperations,
+    budget: PasteLandingPrepareBudget
+  ) -> PasteLandingFocus? {
+    guard budget.admit(application) else { return nil }
+    switch ax.focusedElement(ofApplication: application) {
+    case .noFocus: return .noFocus
+    case .queryFailed: return .unreadable
+    case .element(let element):
+      guard budget.admit(element) else { return nil }
+      guard let owner = ax.pid(of: element), owner == pid else { return .unreadable }
+      return .element(element)
+    }
+  }
+
+  /// `same` or `different` only when BOTH windows are read as elements; `unknown` otherwise.
+  package static func targetWindow(
+    captured: AXUIElement?, application: AXUIElement, ax: any PastedRegionAXOperations,
+    budget: PasteLandingPrepareBudget
+  ) -> PasteLandingTargetWindow {
+    guard let captured, budget.admit(captured),
+      case .window(let capturedWindow) = ax.window(of: captured),
+      budget.admit(application),
+      case .window(let focusedWindow) = ax.focusedWindow(of: application)
+    else { return .unknown }
+    return CFEqual(capturedWindow, focusedWindow) ? .same : .different
+  }
+
+  /// The notifications a landing check needs: value-changed and destroyed on the field plus
+  /// focus-changed on the application, or only focus-changed when nothing was focused.
+  package static func requiredNotifications(hasElement: Bool) -> Set<PastedRegionAXNotification> {
+    hasElement ? [.valueChanged, .elementDestroyed, .focusedElementChanged] : [.focusedElementChanged]
   }
 }
