@@ -29,16 +29,19 @@
       let sentence = "toast Tuist kotlin"
       let questions = [
         LearnedWordCheckQuestion(
-          id: 1, sentence: sentence, range: try #require(sentence.range(of: "toast")), word: "Tuist"
+          id: 1, sentence: sentence, range: try #require(sentence.range(of: "toast")),
+          contextRange: sentence.startIndex..<sentence.endIndex, word: "Tuist"
         ),
         LearnedWordCheckQuestion(
-          id: 2, sentence: sentence, range: try #require(sentence.range(of: "Tuist")), word: "Tuist"
+          id: 2, sentence: sentence, range: try #require(sentence.range(of: "Tuist")),
+          contextRange: sentence.startIndex..<sentence.endIndex, word: "Tuist"
         ),
         LearnedWordCheckQuestion(
           id: 3, sentence: sentence, range: try #require(sentence.range(of: "kotlin")),
-          word: "Kotlin"),
+          contextRange: sentence.startIndex..<sentence.endIndex, word: "Kotlin"),
         LearnedWordCheckQuestion(
-          id: 4, sentence: sentence, range: try #require(sentence.range(of: "toast")), word: "Rust"),
+          id: 4, sentence: sentence, range: try #require(sentence.range(of: "toast")),
+          contextRange: sentence.startIndex..<sentence.endIndex, word: "Rust"),
       ]
       let decisions = try await checker.decide(questions)
       #expect(checker.armName == "uat_scripted")

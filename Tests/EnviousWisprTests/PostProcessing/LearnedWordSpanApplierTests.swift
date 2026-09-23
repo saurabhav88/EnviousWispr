@@ -10,7 +10,9 @@ struct LearnedWordSpanApplierTests {
   func oneApprovedSpot() throws {
     let text = "The plot twist made Tuist famous."
     let range = try #require(text.range(of: "twist"))
-    let question = LearnedWordCheckQuestion(id: 0, sentence: text, range: range, word: "Tuist")
+    let question = LearnedWordCheckQuestion(
+      id: 0, sentence: text, range: range, contextRange: text.startIndex..<text.endIndex,
+      word: "Tuist")
 
     let result = LearnedWordSpanApplier.apply(
       text: text, questions: [question],
@@ -27,8 +29,12 @@ struct LearnedWordSpanApplierTests {
     let broad = try #require(text.range(of: "my Awdy"))
     let narrow = try #require(text.range(of: "Awdy"))
     let questions = [
-      LearnedWordCheckQuestion(id: 0, sentence: text, range: broad, word: "Audi"),
-      LearnedWordCheckQuestion(id: 1, sentence: text, range: narrow, word: "Audi")
+      LearnedWordCheckQuestion(
+        id: 0, sentence: text, range: broad, contextRange: text.startIndex..<text.endIndex,
+        word: "Audi"),
+      LearnedWordCheckQuestion(
+        id: 1, sentence: text, range: narrow, contextRange: text.startIndex..<text.endIndex,
+        word: "Audi")
     ]
     let decisions = [
       LearnedWordCheckDecision(questionID: 0, approved: true),
@@ -47,8 +53,12 @@ struct LearnedWordSpanApplierTests {
     let text = "Awdy arrived"
     let range = try #require(text.range(of: "Awdy"))
     let questions = [
-      LearnedWordCheckQuestion(id: 0, sentence: text, range: range, word: "Audi"),
-      LearnedWordCheckQuestion(id: 1, sentence: text, range: range, word: "Howdy")
+      LearnedWordCheckQuestion(
+        id: 0, sentence: text, range: range, contextRange: text.startIndex..<text.endIndex,
+        word: "Audi"),
+      LearnedWordCheckQuestion(
+        id: 1, sentence: text, range: range, contextRange: text.startIndex..<text.endIndex,
+        word: "Howdy")
     ]
     let decisions = [
       LearnedWordCheckDecision(questionID: 0, approved: true, score: 0.9),
@@ -90,7 +100,9 @@ struct LearnedWordSpanApplierTests {
   func invalidDecisions() throws {
     let text = "Awdy arrived"
     let range = try #require(text.range(of: "Awdy"))
-    let question = LearnedWordCheckQuestion(id: 0, sentence: text, range: range, word: "Audi")
+    let question = LearnedWordCheckQuestion(
+      id: 0, sentence: text, range: range, contextRange: text.startIndex..<text.endIndex,
+      word: "Audi")
     let result = LearnedWordSpanApplier.apply(
       text: text, questions: [question], decisions: [
         LearnedWordCheckDecision(questionID: 99, approved: true),
@@ -107,7 +119,8 @@ struct LearnedWordSpanApplierTests {
     let longer = "Awdy arrived much later"
     let start = longer.index(longer.startIndex, offsetBy: 16)
     let question = LearnedWordCheckQuestion(
-      id: 0, sentence: text, range: start..<longer.endIndex, word: "Audi")
+      id: 0, sentence: longer, range: start..<longer.endIndex,
+      contextRange: longer.startIndex..<longer.endIndex, word: "Audi")
     let result = LearnedWordSpanApplier.apply(
       text: text, questions: [question],
       decisions: [LearnedWordCheckDecision(questionID: 0, approved: true)],
@@ -122,8 +135,12 @@ struct LearnedWordSpanApplierTests {
     let first = try #require(text.range(of: "Awdy"))
     let second = try #require(text.range(of: "day toast"))
     let questions = [
-      LearnedWordCheckQuestion(id: 0, sentence: text, range: first, word: "Audi"),
-      LearnedWordCheckQuestion(id: 1, sentence: text, range: second, word: "Tuist")
+      LearnedWordCheckQuestion(
+        id: 0, sentence: text, range: first, contextRange: text.startIndex..<text.endIndex,
+        word: "Audi"),
+      LearnedWordCheckQuestion(
+        id: 1, sentence: text, range: second, contextRange: text.startIndex..<text.endIndex,
+        word: "Tuist")
     ]
     let result = LearnedWordSpanApplier.apply(
       text: text, questions: questions, decisions: [
