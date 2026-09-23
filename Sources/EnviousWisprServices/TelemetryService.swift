@@ -952,6 +952,40 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("dictation.last_reused", properties: props)
   }
 
+  /// A committed paste landing check resolved (#3106 step 1). One row per observed key paste.
+  ///
+  /// Describes the destination field's STATE after the paste, never whether the paste succeeded:
+  /// `unchanged` means `field_identical` or `no_focus`, and does not prove the paste failed. Shape
+  /// only: no text,
+  /// selection, window title, bundle id or manual-accessibility flag. `take_id` is omitted, never
+  /// invented, when the check carried none; the join's take-coverage query counts that row as a gap.
+  /// Sampled by `TelemetryVolumePolicy` (`unchanged` whole, `changed`/`unknown` at the common rate).
+  /// Reader: the "Paste landing" insight (analytics-operations.md FACT: app-posthog-events).
+  public func pasteLandingObserved(
+    takeID: String?, tier: String, observed: String, reason: String, appClass: String,
+    hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int
+  ) {
+    var props: [String: Any] = [
+      "tier": tier, "observed": observed, "reason": reason, "app_class": appClass,
+      "host_exposed_focus": hostExposedFocus, "target_window": targetWindow,
+      "before_ms": beforeMs, "resolve_ms": resolveMs,
+    ]
+    if let takeID { props["take_id"] = takeID }
+    #if DEBUG
+      // The raw dictionary too: the typed projection below drops any value of another type, so an
+      // exact-shape test reading only it could pass with an extra array on the wire.
+      testRawPropertiesHook?("paste.landing_observed", props)
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "paste.landing_observed",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("paste.landing_observed", properties: props)
+  }
+
   /// Quick Add ended (#2381). Shape only; the same privacy boundary as `quick_add.opened`.
   ///
   /// `candidate_rank` is the POSITION the user accepted, which is what says whether the ranking is

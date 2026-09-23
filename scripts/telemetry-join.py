@@ -130,6 +130,9 @@ TAKE_KEYED_EVENTS = (
     # list is the authority for which events carry `take_id`, and an event absent from it is
     # invisible to every join whatever its payload says.
     "paste.copies_observed",
+    # #3106 step 1. One row per committed landing check, keyed by the take id the delivery
+    # snapshotted before its awaits. A row without the key is a coverage gap, never re-keyed.
+    "paste.landing_observed",
     "recording.cap_warning_shown",
 )
 

@@ -348,14 +348,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       // also a manual-accessibility host) is counted as `browser` so the
       // funnel can be read per destination class; other Electron hosts are
       // `manual_accessibility`; everything else `native`.
-      w.appClass =
-        if BrowserAddressBarDetector.family(forBundleIdentifier: w.event.destinationBundleID) != nil {
-          .browser
-        } else if target.isManualAccessibilityHost {
-          .manualAccessibility
-        } else {
-          .native
-        }
+      w.appClass = PasteLandingAppClass.classify(
+        bundleIdentifier: w.event.destinationBundleID,
+        isManualAccessibilityHost: target.isManualAccessibilityHost)
       watch = w
       deps.observer.start(target) { [weak self] event in
         self?.handle(event, generation: gen)

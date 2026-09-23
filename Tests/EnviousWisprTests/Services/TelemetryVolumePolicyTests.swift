@@ -207,6 +207,43 @@ struct TelemetryVolumePolicyTests {
   }
 
   @Test(
+    "#3106 paste landing: unchanged is kept whole; changed and unknown are sampled; any other shape is kept whole"
+  )
+  func pasteLanding() throws {
+    let event = "paste.landing_observed"
+    for uuid in [Self.keptUUID, Self.droppedUUID, Self.edgeUUID] {
+      #expect(
+        Policy.decide(event: event, properties: ["observed": "unchanged"], uuid: uuid) == .keep,
+        "unchanged is the row step 2 is decided from")
+    }
+    for observed in ["changed", "unknown"] {
+      #expect(
+        Policy.decide(event: event, properties: ["observed": observed], uuid: Self.lastKeptUUID)
+          == .keepSampled(thresholdPercent: 10), Comment(rawValue: observed))
+      #expect(
+        Policy.decide(event: event, properties: ["observed": observed], uuid: Self.edgeUUID)
+          == .drop, Comment(rawValue: observed))
+    }
+    // Absent, mistyped, differently cased or a value from a newer build: never sampled away.
+    for properties: [String: Any] in [
+      [:], ["observed": 1], ["observed": "Changed"], ["observed": "retracted"],
+    ] {
+      #expect(
+        Policy.decide(event: event, properties: properties, uuid: Self.droppedUUID) == .keep,
+        Comment(rawValue: "\(properties)"))
+    }
+    let kept = try #require(
+      Policy.apply(
+        event: event, properties: ["observed": "changed", "take_id": "T"], uuid: Self.keptUUID))
+    #expect(kept["$sample_threshold"] as? Double == 0.1)
+    #expect(kept["$sampled_events"] as? [String] == [event])
+    #expect(kept["take_id"] as? String == "T")
+    let whole = try #require(
+      Policy.apply(event: event, properties: ["observed": "unchanged"], uuid: Self.droppedUUID))
+    #expect(whole["$sample_threshold"] == nil, "an unchanged row carries no weight: it counts once")
+  }
+
+  @Test(
     "proactive update check: fired is kept whole, known non-fired reasons are sampled, unknown reasons kept whole"
   )
   func proactiveCheck() {
@@ -262,7 +299,7 @@ struct TelemetryVolumePolicyTests {
       Policy.apply(
         event: "dictation.started", properties: ["take_id": "T", "backend": "parakeet"],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 3)
+    #expect(out["telemetry_policy_version"] as? Int == 4)
     #expect(out["take_id"] as? String == "T")
     #expect(out["$sample_threshold"] == nil)
     #expect(out.count == 3)
@@ -273,7 +310,7 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       Policy.apply(
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 3)
+    #expect(out["telemetry_policy_version"] as? Int == 4)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
     // A FRACTION, as posthog-js stores it: a percentage here would make the standard
     // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
@@ -308,7 +345,7 @@ struct TelemetryVolumePolicyTests {
           "note": "someone@example.com",
         ],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 3)
+    #expect(out["telemetry_policy_version"] as? Int == 4)
     // The two bundle stamps come from the CURRENT bundle, on every row, whether or not
     // `register()` has run: `Application Installed` rows carried no environment at all
     // before this (801 of 801 in the 30 days to 2026-09-15).

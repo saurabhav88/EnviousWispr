@@ -312,6 +312,19 @@ package enum PastedRegionFocus {
   case queryFailed(AXError)
 }
 
+/// One read of a window attribute (`AXWindow` of an element, `AXFocusedWindow` of an application),
+/// typed so an absent attribute, an answer that is not an element and a failed call stay three
+/// different facts (#3106).
+package enum PastedRegionWindowRead {
+  case window(AXUIElement)
+  /// `.noValue` / `.attributeUnsupported`: no window to report.
+  case absent
+  /// The attribute answered with something that is not an `AXUIElement`.
+  case notElement
+  /// The call failed, including a stale element (`.invalidUIElement`) and `.cannotComplete`.
+  case failed(AXError)
+}
+
 /// One read of the selected text range, UTF-16 units relative to the element.
 package enum PastedRegionSelectedRange: Sendable, Equatable {
   case range(location: Int, length: Int)
@@ -320,7 +333,7 @@ package enum PastedRegionSelectedRange: Sendable, Equatable {
   case unavailable
 }
 
-package enum PastedRegionAXNotification: Sendable, Equatable {
+package enum PastedRegionAXNotification: Sendable, Hashable, CaseIterable {
   case valueChanged
   case focusedElementChanged
   case elementDestroyed
@@ -329,6 +342,9 @@ package enum PastedRegionAXNotification: Sendable, Equatable {
 @MainActor
 package protocol PastedRegionAXRegistration: AnyObject {
   func invalidate()
+  /// The notifications that ACTUALLY registered (#3106). A partial registration is still
+  /// returned; a caller that needs every notification compares against what it asked for.
+  var registeredNotifications: Set<PastedRegionAXNotification> { get }
 }
 
 /// Every Accessibility operation the observer performs. The production
@@ -344,7 +360,8 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// The pid of the active (frontmost) application, nil when none is.
   func frontmostPID() -> pid_t?
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool
+  /// Nil when the attribute names could not be read: "could not tell" is not "unsupported".
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool?
   /// Returns whether the attribute write succeeded.
   func enableManualAccessibility(_ application: AXUIElement) -> Bool
   func readValue(of element: AXUIElement) -> PastedRegionValueRead
@@ -365,6 +382,27 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// registered; the caller keeps polling.
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
+    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+  ) -> (any PastedRegionAXRegistration)?
+
+  // MARK: #3106 paste landing check: one AX call per method, on the exact handle given
+
+  /// `AXFocusedUIElement` of THIS application handle, one call. The caller installs the handle's
+  /// messaging timeout first; nothing here creates another handle or sets its own bound.
+  func focusedElement(ofApplication application: AXUIElement) -> PastedRegionFocus
+  /// The process that owns `element`, or nil when it cannot be read.
+  func pid(of element: AXUIElement) -> pid_t?
+  /// `AXWindow` of `element`, one call.
+  func window(of element: AXUIElement) -> PastedRegionWindowRead
+  /// `AXFocusedWindow` of `application`, one call.
+  func focusedWindow(of application: AXUIElement) -> PastedRegionWindowRead
+  /// Registers value-changed and destroyed on `element` (when there is one) and focus-changed on
+  /// `application`. `admit` is asked before EACH `AXObserverAddNotification` with the handle that
+  /// call messages; a refusal stops registering. Returns nil when the observer could not be
+  /// created or nothing registered; otherwise `registeredNotifications` says what did.
+  func registerLanding(
+    pid: pid_t, element: AXUIElement?, application: AXUIElement,
+    admit: @MainActor (AXUIElement) -> Bool,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)?
 }
@@ -991,7 +1029,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // pids, so a later Electron process under a remembered number would never
     // be asked; one attribute write per paste is nothing (cloud review of
     // PR #3054, both rounds).
-    let isManualHost = ax.supportsManualAccessibility(application)
+    // An unreadable answer is treated as "not a manual host", exactly as before it could be told
+    // apart (#3106): the watcher's behaviour does not change.
+    let isManualHost = ax.supportsManualAccessibility(application) ?? false
     if isManualHost { _ = ax.enableManualAccessibility(application) }
 
     let element: AXUIElement
@@ -1065,14 +1105,29 @@ package final class PastedRegionObserver: PastedRegionObserving {
   package func readText(of element: AXUIElement, using reader: PastedRegionTextReader)
     -> PastedRegionValueRead
   {
+    // `admit` never refuses here, so the optional is always a read: the learn watcher's reads are
+    // bounded by the timeout its capture installed, exactly as before #3106.
+    Self.readText(of: element, using: reader, ax: ax, admit: { _ in true }) ?? .absent
+  }
+
+  /// The one implementation of both readers. `admit` is asked before EACH Accessibility call with
+  /// the handle that call messages (#3106's cumulative preparation budget installs the remaining
+  /// timeout there); nil means it refused and the read stopped, which is not an answer about the
+  /// field.
+  package static func readText(
+    of element: AXUIElement, using reader: PastedRegionTextReader,
+    ax: any PastedRegionAXOperations, admit: @MainActor (AXUIElement) -> Bool
+  ) -> PastedRegionValueRead? {
     switch reader {
     case .value:
+      guard admit(element) else { return nil }
       let read = ax.readValue(of: element)
       if case .text(let value) = read, value.utf16.count > PastedRegionTiming.maxValueUTF16 {
         return .tooLong
       }
       return read
     case .range:
+      guard admit(element) else { return nil }
       switch ax.characterCount(of: element) {
       case .failed(let error): return .failed(error)
       case .absent: return .absent
@@ -1080,6 +1135,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         guard count >= 0 else { return .absent }
         guard count <= PastedRegionTiming.maxValueUTF16 else { return .tooLong }
         guard count > 0 else { return .text("") }
+        guard admit(element) else { return nil }
         let read = ax.string(of: element, location: 0, length: count)
         if read == .notText { return read }
         // The host can change between the calls: a range read of the OLD
@@ -1090,6 +1146,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
         // `unstable`, and never a verdict on the host. A length mismatch under
         // a STABLE count is the host's own answer disagreeing with its count
         // (measured on other hosts, accessibility-macos.md) and stays `absent`.
+        guard admit(element) else { return nil }
         switch ax.characterCount(of: element) {
         case .count(let current) where current > PastedRegionTiming.maxValueUTF16:
           return .tooLong
@@ -1105,6 +1162,17 @@ package final class PastedRegionObserver: PastedRegionObserving {
         }
       }
     }
+  }
+
+  /// The element's whole text the way capture reads it: `AXValue` first, and the range reader only
+  /// when the value is absent or not text (a FAILED value read is not retried). Nil when `admit`
+  /// refused a call (#3106).
+  package static func readWholeText(
+    of element: AXUIElement, ax: any PastedRegionAXOperations, admit: @MainActor (AXUIElement) -> Bool
+  ) -> PastedRegionValueRead? {
+    guard let read = readText(of: element, using: .value, ax: ax, admit: admit) else { return nil }
+    guard read == .absent || read == .notText else { return read }
+    return readText(of: element, using: .range, ax: ax, admit: admit)
   }
 
   /// A failed Accessibility call at capture or during a watch. Only the codes
@@ -1652,11 +1720,11 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
 
   static let manualAccessibilityAttribute = "AXManualAccessibility" as CFString
 
-  package func supportsManualAccessibility(_ application: AXUIElement) -> Bool {
+  package func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
     var names: CFArray?
     guard AXUIElementCopyAttributeNames(application, &names) == .success,
       let list = names as? [String]
-    else { return false }
+    else { return nil }
     return list.contains(Self.manualAccessibilityAttribute as String)
   }
 
@@ -1732,6 +1800,57 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     }
   }
 
+  package func focusedElement(ofApplication application: AXUIElement) -> PastedRegionFocus {
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyAttributeValue(
+      application, kAXFocusedUIElementAttribute as CFString, &ref)
+    // The same mapping as `PasteService.focusedElement`: `.noValue` is the ordinary unfocused
+    // answer; a successful call with nothing usable is an absence, not a failure.
+    if PasteService.isUnfocusedResponse(error) { return .noFocus }
+    guard error == .success else { return .queryFailed(error) }
+    guard let value = ref, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .noFocus }
+    return .element(value as! AXUIElement)
+  }
+
+  package func pid(of element: AXUIElement) -> pid_t? {
+    var pid: pid_t = 0
+    return AXUIElementGetPid(element, &pid) == .success ? pid : nil
+  }
+
+  package func window(of element: AXUIElement) -> PastedRegionWindowRead {
+    Self.windowRead(element, attribute: kAXWindowAttribute as CFString)
+  }
+
+  package func focusedWindow(of application: AXUIElement) -> PastedRegionWindowRead {
+    Self.windowRead(application, attribute: kAXFocusedWindowAttribute as CFString)
+  }
+
+  private static func windowRead(_ handle: AXUIElement, attribute: CFString)
+    -> PastedRegionWindowRead
+  {
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyAttributeValue(handle, attribute, &ref)
+    switch error {
+    case .success:
+      guard let value = ref else { return .absent }
+      guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return .notElement }
+      return .window(value as! AXUIElement)
+    case .noValue, .attributeUnsupported:
+      return .absent
+    default:
+      return .failed(error)
+    }
+  }
+
+  package func registerLanding(
+    pid: pid_t, element: AXUIElement?, application: AXUIElement,
+    admit: @MainActor (AXUIElement) -> Bool,
+    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+  ) -> (any PastedRegionAXRegistration)? {
+    Registration.make(
+      pid: pid, element: element, application: application, admit: admit, handler: handler)
+  }
+
   /// One `AXObserver` per watch. The C callback receives the registration as
   /// its refcon and hops to the main actor; the run-loop source is added to
   /// the MAIN run loop, so callbacks arrive on the main thread.
@@ -1739,28 +1858,35 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)? {
-    Registration.make(pid: pid, element: element, application: application, handler: handler)
+    Registration.make(
+      pid: pid, element: element, application: application, admit: { _ in true },
+      handler: handler)
   }
 
   @MainActor
   final class Registration: PastedRegionAXRegistration {
     private let observer: AXObserver
-    private let element: AXUIElement
+    private let element: AXUIElement?
     private let application: AXUIElement
     private var handler: (@MainActor (PastedRegionAXNotification) -> Void)?
     private var registered: [(AXUIElement, CFString)] = []
     private var sourceAdded = false
 
-    private init(observer: AXObserver, element: AXUIElement, application: AXUIElement) {
+    private init(observer: AXObserver, element: AXUIElement?, application: AXUIElement) {
       self.observer = observer
       self.element = element
       self.application = application
     }
 
+    /// `admit` is asked before each `AXObserverAddNotification`; a refusal stops registering and
+    /// keeps what already succeeded (the learn watcher passes an `admit` that never refuses).
     static func make(
-      pid: pid_t, element: AXUIElement, application: AXUIElement,
+      pid: pid_t, element: AXUIElement?, application: AXUIElement,
+      admit: @MainActor (AXUIElement) -> Bool,
       handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
     ) -> Registration? {
+      // The budget is asked before the observer exists: a spent budget creates nothing.
+      guard admit(application) else { return nil }
       var observerRef: AXObserver?
       let created = AXObserverCreate(pid, Registration.callback, &observerRef)
       guard created == .success, let observer = observerRef else { return nil }
@@ -1768,14 +1894,17 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
         observer: observer, element: element, application: application)
       registration.handler = handler
       let refcon = Unmanaged.passUnretained(registration).toOpaque()
-      let wanted: [(AXUIElement, CFString)] = [
-        (element, kAXValueChangedNotification as CFString),
-        (element, kAXUIElementDestroyedNotification as CFString),
-        (application, kAXFocusedUIElementChangedNotification as CFString),
-      ]
-      for (target, name) in wanted
-      where AXObserverAddNotification(observer, target, name, refcon) == .success {
-        registration.registered.append((target, name))
+      var wanted: [(AXUIElement, CFString)] = []
+      if let element {
+        wanted.append((element, kAXValueChangedNotification as CFString))
+        wanted.append((element, kAXUIElementDestroyedNotification as CFString))
+      }
+      wanted.append((application, kAXFocusedUIElementChangedNotification as CFString))
+      for (target, name) in wanted {
+        guard admit(target) else { break }
+        if AXObserverAddNotification(observer, target, name, refcon) == .success {
+          registration.registered.append((target, name))
+        }
       }
       guard !registration.registered.isEmpty else { return nil }
       CFRunLoopAddSource(
@@ -1786,14 +1915,7 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
 
     private static let callback: AXObserverCallback = { _, _, notification, refcon in
       guard let refcon else { return }
-      let name = notification as String
-      let kind: PastedRegionAXNotification
-      switch name {
-      case kAXValueChangedNotification as String: kind = .valueChanged
-      case kAXUIElementDestroyedNotification as String: kind = .elementDestroyed
-      case kAXFocusedUIElementChangedNotification as String: kind = .focusedElementChanged
-      default: return
-      }
+      guard let kind = Registration.kind(of: notification as String) else { return }
       // The source lives on the main run loop, so this is the main thread. The
       // pointer is handed across the isolation boundary once, here, and read
       // only inside the main-actor block (`extract-before-assumeisolated`).
@@ -1801,6 +1923,19 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       MainActor.assumeIsolated {
         let registration = Unmanaged<Registration>.fromOpaque(opaque).takeUnretainedValue()
         registration.handler?(kind)
+      }
+    }
+
+    var registeredNotifications: Set<PastedRegionAXNotification> {
+      Set(registered.compactMap { Self.kind(of: $0.1 as String) })
+    }
+
+    private static func kind(of name: String) -> PastedRegionAXNotification? {
+      switch name {
+      case kAXValueChangedNotification as String: .valueChanged
+      case kAXUIElementDestroyedNotification as String: .elementDestroyed
+      case kAXFocusedUIElementChangedNotification as String: .focusedElementChanged
+      default: nil
       }
     }
 

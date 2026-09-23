@@ -1051,6 +1051,9 @@ struct KernelFinalizationWiring {
         // The legacy payload is what a route falls back to; §6 decides per route
         // whether the candidate may be committed instead.
         let pasteText = payloads.legacyText
+        // #3106 step 1: THIS take's id, read before the delivery awaits, so the landing check that
+        // resolves 1.5 s later carries its own take and never a later one's.
+        let deliveryTakeID = telemetryState.takeID
         let result = await deliverPaste(
           PasteDeliveryRequest(
             legacyText: pasteText,
@@ -1072,7 +1075,8 @@ struct KernelFinalizationWiring {
             // "retried and recovered" apart from "captured at record-start".
             targetElementIsRetried: caretCaptureRetried,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
-            terminalBudget: terminalBudget))
+            terminalBudget: terminalBudget,
+            takeID: deliveryTakeID))
         pasteResult = result
 
         // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
@@ -1129,6 +1133,14 @@ struct KernelFinalizationWiring {
           deliveryOutcome = .pasted
         } else {
           deliveryOutcome = .clipboardOnly
+        }
+        // #3106 step 1: the committed landing check resolves AFTER the outcome above is fixed,
+        // off the delivery path (its up-to-1.5 s watch is never awaited here or counted in the
+        // paste duration). The unstructured task keeps the check alive until it resolves; a
+        // later take starts its own and never cancels this one. Its only output in step 1 is the
+        // check's DEBUG line.
+        if let landingCheck = result.landingCheck {
+          Task { @MainActor in _ = await landingCheck.resolve() }
         }
       } else if config?.autoCopyToClipboard == true {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without

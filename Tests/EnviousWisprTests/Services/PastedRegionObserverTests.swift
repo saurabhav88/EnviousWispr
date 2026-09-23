@@ -27,6 +27,8 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   var frontmost: pid_t? = 42
   var registrationFails = false
   var registrations: [PastedRegionFakeRegistration] = []
+  /// Runs after each landing notification is added: lets a test spend time INSIDE the last call.
+  var afterLandingNotification: ((PastedRegionAXNotification) -> Void)?
 
   static func app(_ pid: pid_t) -> AXUIElement { AXUIElementCreateApplication(pid) }
   static func field(_ pid: pid_t) -> AXUIElement { AXUIElementCreateApplication(pid + 10_000) }
@@ -51,9 +53,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {
     subroles["\(CFHash(element))"] ?? .subrole(nil)
   }
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool {
+  /// pids whose attribute-name read fails (the answer is unreadable, not "no").
+  var manualReadFails: Set<pid_t> = []
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
     var pid: pid_t = 0
     AXUIElementGetPid(application, &pid)
+    if manualReadFails.contains(pid) { return nil }
     return manualHosts.contains(pid)
   }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool {
@@ -105,14 +110,101 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     registrations.append(registration)
     return registration
   }
+
+  // MARK: #3106 landing-check reads. Defaults are FAILURES, never a successful read.
+
+  /// Every landing-check AX call in order, with the pid of the handle it messaged. Tests assert
+  /// that nothing is called after the budget refuses.
+  var landingCalls: [(call: String, pid: pid_t)] = []
+  /// Runs before each landing-check AX call: a test advances the clock here to model a slow host.
+  var onLandingCall: ((String) -> Void)?
+  var focusedByApplication: [pid_t: PastedRegionFocus] = [:]
+  /// Window answers keyed by the pid of the handle asked (field handles are pid + 10_000).
+  var windows: [pid_t: PastedRegionWindowRead] = [:]
+  var focusedWindows: [pid_t: PastedRegionWindowRead] = [:]
+  /// Notifications whose `AXObserverAddNotification` fails in `registerLanding`.
+  var landingNotificationFailures: Set<PastedRegionAXNotification> = []
+  var landingRegistrations: [PastedRegionFakeRegistration] = []
+  /// Observers `registerLanding` created (the live `AXObserverCreate`).
+  var landingObserversCreated = 0
+  /// The owning pid each handle reports, keyed by the handle's own pid. Unscripted: a field handle
+  /// (pid + 10_000) belongs to its application, any other handle to itself.
+  var elementOwners: [pid_t: pid_t?] = [:]
+
+  private func noteLanding(_ call: String, _ handle: AXUIElement) {
+    var pid: pid_t = 0
+    AXUIElementGetPid(handle, &pid)
+    onLandingCall?(call)
+    landingCalls.append((call, pid))
+  }
+
+  func focusedElement(ofApplication application: AXUIElement) -> PastedRegionFocus {
+    noteLanding("focusedElement", application)
+    var pid: pid_t = 0
+    AXUIElementGetPid(application, &pid)
+    return focusedByApplication[pid] ?? .queryFailed(.cannotComplete)
+  }
+  func pid(of element: AXUIElement) -> pid_t? {
+    noteLanding("pid", element)
+    var handle: pid_t = 0
+    AXUIElementGetPid(element, &handle)
+    if let scripted = elementOwners[handle] { return scripted }
+    return handle >= 10_000 ? handle - 10_000 : handle
+  }
+  func window(of element: AXUIElement) -> PastedRegionWindowRead {
+    noteLanding("window", element)
+    var pid: pid_t = 0
+    AXUIElementGetPid(element, &pid)
+    return windows[pid] ?? .failed(.cannotComplete)
+  }
+  func focusedWindow(of application: AXUIElement) -> PastedRegionWindowRead {
+    noteLanding("focusedWindow", application)
+    var pid: pid_t = 0
+    AXUIElementGetPid(application, &pid)
+    return focusedWindows[pid] ?? .failed(.cannotComplete)
+  }
+  func registerLanding(
+    pid: pid_t, element: AXUIElement?, application: AXUIElement,
+    admit: @MainActor (AXUIElement) -> Bool,
+    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+  ) -> (any PastedRegionAXRegistration)? {
+    // The live order: the budget before the observer exists, then value-changed and destroyed on
+    // the element, then focus on the application.
+    guard admit(application) else { return nil }
+    guard !registrationFails else { return nil }
+    landingObserversCreated += 1
+    var wanted: [(AXUIElement, PastedRegionAXNotification)] = []
+    if let element {
+      wanted.append((element, .valueChanged))
+      wanted.append((element, .elementDestroyed))
+    }
+    wanted.append((application, .focusedElementChanged))
+    var registered: Set<PastedRegionAXNotification> = []
+    for (target, kind) in wanted {
+      guard admit(target) else { break }
+      noteLanding("add:\(kind)", target)
+      afterLandingNotification?(kind)
+      if !landingNotificationFailures.contains(kind) { registered.insert(kind) }
+    }
+    guard !registered.isEmpty else { return nil }
+    let registration = PastedRegionFakeRegistration(handler: handler, registered: registered)
+    landingRegistrations.append(registration)
+    return registration
+  }
 }
 
 @MainActor
 final class PastedRegionFakeRegistration: PastedRegionAXRegistration {
   let handler: @MainActor (PastedRegionAXNotification) -> Void
+  /// Empty by default: a fake never claims a complete registration it was not scripted to have.
+  let registeredNotifications: Set<PastedRegionAXNotification>
   private(set) var invalidated = 0
-  init(handler: @escaping @MainActor (PastedRegionAXNotification) -> Void) {
+  init(
+    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void,
+    registered: Set<PastedRegionAXNotification> = []
+  ) {
     self.handler = handler
+    self.registeredNotifications = registered
   }
   func invalidate() { invalidated += 1 }
   /// Deliver as the real observer would: even after `invalidate`, a callback

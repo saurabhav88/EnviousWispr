@@ -80,7 +80,7 @@ private final class CaptureAX: PastedRegionAXOperations {
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool { true }
   func frontmostPID() -> pid_t? { 42 }
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome { .subrole(nil) }
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool { manual }
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool? { manual }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool { true }
   func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange { .unavailable }
   func readValue(of element: AXUIElement) -> PastedRegionValueRead { .text(value) }
@@ -91,6 +91,20 @@ private final class CaptureAX: PastedRegionAXOperations {
   }
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
+    handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
+  ) -> (any PastedRegionAXRegistration)? { nil }
+  // #3106 landing-check reads: this fixture never reaches them, so each answers as a failure.
+  func focusedElement(ofApplication application: AXUIElement) -> PastedRegionFocus {
+    .queryFailed(.cannotComplete)
+  }
+  func pid(of element: AXUIElement) -> pid_t? { nil }
+  func window(of element: AXUIElement) -> PastedRegionWindowRead { .failed(.cannotComplete) }
+  func focusedWindow(of application: AXUIElement) -> PastedRegionWindowRead {
+    .failed(.cannotComplete)
+  }
+  func registerLanding(
+    pid: pid_t, element: AXUIElement?, application: AXUIElement,
+    admit: @MainActor (AXUIElement) -> Bool,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)? { nil }
 }
@@ -953,5 +967,44 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.ended(.focusChanged))
     #expect(telemetry.events.last == .observationEnded(.focusChanged, 0, .browser))
+  }
+
+  @Test("#3106 extraction: a non-browser manual host is manual_accessibility, a native host native")
+  func appClassManualAndNative() async {
+    let slack = makeWatcher()
+    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.tinyspeck.slackmacgap")
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: true))
+    ]
+    slack.pasteCompleted(paste(bundle: "com.tinyspeck.slackmacgap"))
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(telemetry.events.last == .observationEnded(.focusChanged, 0, .manualAccessibility))
+
+    let textEdit = makeWatcher()
+    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.TextEdit")
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: false))
+    ]
+    textEdit.pasteCompleted(paste(bundle: "com.apple.TextEdit"))
+    #expect(await waitUntil { observer.starts == 2 })
+    observer.fire(.ended(.focusChanged))
+    #expect(telemetry.events.last == .observationEnded(.focusChanged, 0, .native))
+  }
+
+  @Test("#3106 extraction: a take that never captured a target keeps the .other sentinel")
+  func appClassUncapturedIsOther() async {
+    let watcher = makeWatcher()
+    knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
+    observer.captureOutcomes = [.ended(.captureUnsupported)]
+    watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
+    #expect(
+      await waitUntil {
+        telemetry.events.contains { event in
+          if case .observationEnded(_, _, let appClass) = event { return appClass == .other }
+          return false
+        }
+      })
+    #expect(observer.starts == 0, "never captured, never observed")
   }
 }

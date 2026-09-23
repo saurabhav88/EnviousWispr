@@ -66,8 +66,13 @@ struct TelemetryEmitterRegistryTests {
   /// #3106 added one new site: `dictation.last_reused` via `TelemetryService.lastDictationReused`
   /// (per_user_action, keep; checklist: one row per deliberate Paste/Copy Last invocation, three
   /// closed string fields, no content, reader the "Last dictation reuse" insight).
+  /// #3106 step 1 added one new site: `paste.landing_observed` via
+  /// `TelemetryService.pasteLandingObserved` (per_take, sampled; checklist: one row per committed
+  /// landing check, closed enums, Int durations, no text or bundle id, reader the "Paste landing"
+  /// insight). Derived by removing that one line from the printed site list: the rest hashes to
+  /// the previous value.
   static let sitesFingerprint =
-    "77a442745a03db3e9583deea7e82d73b552d5b6126aa19d9a124fdbceb82a043"
+    "5a4f974486d602fee1aa5665ee8bbb4d8986a9ffcea242f49f223b35ca2d006d"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 
