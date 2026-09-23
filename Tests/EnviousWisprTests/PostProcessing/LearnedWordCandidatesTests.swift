@@ -9,19 +9,23 @@ struct LearnedWordCandidatesTests {
   @Test("learned provenance supplies only user and builtin words")
   func learnedProvenance() {
     let vocabulary = [
-      CustomWord(canonical: "Tuist", aliases: ["day toast"], learnedAliases: ["day toast"],
-                 learnedAt: Date(timeIntervalSince1970: 1)),
-      CustomWord(canonical: "Audi", aliases: ["manually typed"],
-                 learnedAliases: ["Awdy"]),
+      CustomWord(
+        canonical: "Tuist", aliases: ["day toast"], learnedAliases: ["day toast"],
+        learnedAt: Date(timeIntervalSince1970: 1)),
+      CustomWord(
+        canonical: "Audi", aliases: ["manually typed"],
+        learnedAliases: ["Awdy"]),
       CustomWord(canonical: "Queen", aliases: ["Qwen"]),
-      CustomWord(canonical: "Posthog", aliases: ["post hoc"], source: .pack,
-                 learnedAliases: ["post hoc"], learnedAt: Date(timeIntervalSince1970: 1))
+      CustomWord(
+        canonical: "Posthog", aliases: ["post hoc"], source: .pack,
+        learnedAliases: ["post hoc"], learnedAt: Date(timeIntervalSince1970: 1)),
     ]
 
-    #expect(LearnedWordCandidates.learnedWords(from: vocabulary) == [
-      LearnedWord(canonical: "Tuist", observedMisspellings: ["day toast"]),
-      LearnedWord(canonical: "Audi", observedMisspellings: ["Awdy"])
-    ])
+    #expect(
+      LearnedWordCandidates.learnedWords(from: vocabulary) == [
+        LearnedWord(canonical: "Tuist", observedMisspellings: ["day toast"]),
+        LearnedWord(canonical: "Audi", observedMisspellings: ["Awdy"]),
+      ])
   }
 
   @Test("the sound spot beside an already-correct Tuist is one question")
@@ -29,7 +33,8 @@ struct LearnedWordCandidatesTests {
     let text = "The plot twist made Tuist famous."
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: [])]
     let questions = LearnedWordCandidates.questions(for: text, learned: learned)
-    let twist = try #require(questions.first { String(text[$0.range]) == "twist" && $0.word == "Tuist" })
+    let twist = try #require(
+      questions.first { String(text[$0.range]) == "twist" && $0.word == "Tuist" })
 
     #expect(twist.sentence == "The plot twist made Tuist famous.")
     #expect(twist.rewritten == "The plot Tuist made Tuist famous.")
@@ -55,7 +60,8 @@ struct LearnedWordCandidatesTests {
     let text = "day toast"
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["day toast"])]
     let questions = LearnedWordCandidates.questions(for: text, learned: learned)
-    #expect(questions.filter { String(text[$0.range]) == "day toast" && $0.word == "Tuist" }.count == 1)
+    #expect(
+      questions.filter { String(text[$0.range]) == "day toast" && $0.word == "Tuist" }.count == 1)
   }
 
   @Test("observed spelling is case insensitive but needs whole-token boundaries")
@@ -101,8 +107,10 @@ struct LearnedWordCandidatesTests {
       LearnedWord(canonical: "Tuist", observedMisspellings: ["twist"]),
     ]
     let questions = LearnedWordCandidates.questions(for: text, learned: learned)
-    let cotton = try #require(questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "cotton" })
-    let twist = try #require(questions.first { $0.word == "Tuist" && String(text[$0.range]) == "twist" })
+    let cotton = try #require(
+      questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "cotton" })
+    let twist = try #require(
+      questions.first { $0.word == "Tuist" && String(text[$0.range]) == "twist" })
     #expect(cotton.contextText == "We use cotton daily.")
     #expect(cotton.contextRewritten == "We use Kotlin daily.")
     #expect(twist.contextText == "The plot twist surprised me.")
@@ -115,9 +123,20 @@ struct LearnedWordCandidatesTests {
   func dottedTermContext() throws {
     let text = "We opened mug.io with toast today. Then we left."
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]
-    let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
-      .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    let question = try #require(
+      LearnedWordCandidates.questions(for: text, learned: learned)
+        .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
     #expect(question.contextText == "We opened mug.io with toast today.")
+  }
+
+  @Test("an initialism's final period does not end the sentence")
+  func initialismContext() throws {
+    let text = "I joined the U.S. arm me last year. Then I left."
+    let learned = [LearnedWord(canonical: "Army", observedMisspellings: ["arm me"])]
+    let question = try #require(
+      LearnedWordCandidates.questions(for: text, learned: learned)
+        .first { $0.word == "Army" && String(text[$0.range]) == "arm me" })
+    #expect(question.contextText == "I joined the U.S. arm me last year.")
   }
 
   @Test("exclamation marks and ellipses end sentence context")
@@ -127,8 +146,9 @@ struct LearnedWordCandidatesTests {
       ("Please say toast! Then leave.", "Please say toast!"),
       ("Please say toast… Then leave.", "Please say toast…"),
     ] {
-      let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
-        .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+      let question = try #require(
+        LearnedWordCandidates.questions(for: text, learned: learned)
+          .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
       #expect(question.contextText == expected)
     }
   }
@@ -141,14 +161,18 @@ struct LearnedWordCandidatesTests {
       LearnedWord(canonical: "Kotlin", observedMisspellings: ["twist"]),
     ]
     let questions = LearnedWordCandidates.questions(for: text, learned: learned)
-    let toast = try #require(questions.first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
-    let twist = try #require(questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "twist" })
+    let toast = try #require(
+      questions.first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    let twist = try #require(
+      questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "twist" })
     #expect(toast.contextText == "Did you say toast?")
     #expect(twist.contextText == "The plot twist surprised me.")
 
     let newlineOnly = "Please say toast\nThen leave."
-    let newlineQuestion = try #require(LearnedWordCandidates.questions(
-      for: newlineOnly, learned: [learned[0]])
+    let newlineQuestion = try #require(
+      LearnedWordCandidates.questions(
+        for: newlineOnly, learned: [learned[0]]
+      )
       .first { $0.word == "Tuist" && String(newlineOnly[$0.range]) == "toast" })
     #expect(newlineQuestion.contextText == "Please say toast")
   }
@@ -159,8 +183,9 @@ struct LearnedWordCandidatesTests {
     let text = filler + " toast " + filler
     #expect(text.count > 1_000)
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]
-    let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
-      .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    let question = try #require(
+      LearnedWordCandidates.questions(for: text, learned: learned)
+        .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
     #expect(question.contextText.count <= 420)
     #expect(question.contextText.contains("toast"))
     #expect(question.contextRewritten.contains("Tuist"))

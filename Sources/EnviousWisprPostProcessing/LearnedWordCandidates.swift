@@ -1,5 +1,5 @@
-import Foundation
 import EnviousWisprCore
+import Foundation
 
 public struct LearnedWord: Sendable, Equatable {
   public let canonical: String
@@ -58,16 +58,18 @@ public enum LearnedWordCandidates: Sendable {
       for observed in entry.observedMisspellings where observed.isEmpty == false {
         var searchStart = text.startIndex
         while searchStart < text.endIndex,
-              let range = text.range(
-                of: observed, options: .caseInsensitive, range: searchStart..<text.endIndex)
+          let range = text.range(
+            of: observed, options: .caseInsensitive, range: searchStart..<text.endIndex)
         {
           let matched = text[range]
           let sameLettersIgnoringCase = matched.lowercased().unicodeScalars.elementsEqual(
             observed.lowercased().unicodeScalars)
-          let startsAtBoundary = range.lowerBound == text.startIndex
+          let startsAtBoundary =
+            range.lowerBound == text.startIndex
             || LearnedWordSpotFinder.isWordScalar(
               text.unicodeScalars[text.unicodeScalars.index(before: range.lowerBound)]) == false
-          let endsAtBoundary = range.upperBound == text.endIndex
+          let endsAtBoundary =
+            range.upperBound == text.endIndex
             || LearnedWordSpotFinder.isWordScalar(text.unicodeScalars[range.upperBound]) == false
             || Self.isSentencePeriod(in: text, at: range.upperBound)
           if sameLettersIgnoringCase && startsAtBoundary && endsAtBoundary {
@@ -115,7 +117,8 @@ public enum LearnedWordCandidates: Sendable {
     cursor = spot.upperBound
     while cursor < text.endIndex {
       if isSentenceEnd(in: text, at: cursor) {
-        upper = scalars[cursor] == "\n" || scalars[cursor] == "\r"
+        upper =
+          scalars[cursor] == "\n" || scalars[cursor] == "\r"
           ? cursor : scalars.index(after: cursor)
         break
       }
@@ -135,9 +138,11 @@ public enum LearnedWordCandidates: Sendable {
     let available = max(0, maxContextCharacters - text[spot].count)
     let leftCount = min(contextSideCharacters, available / 2)
     let rightCount = min(contextSideCharacters, available - leftCount)
-    lower = text.index(spot.lowerBound, offsetBy: -leftCount, limitedBy: sentence.lowerBound)
+    lower =
+      text.index(spot.lowerBound, offsetBy: -leftCount, limitedBy: sentence.lowerBound)
       ?? sentence.lowerBound
-    upper = text.index(spot.upperBound, offsetBy: rightCount, limitedBy: sentence.upperBound)
+    upper =
+      text.index(spot.upperBound, offsetBy: rightCount, limitedBy: sentence.upperBound)
       ?? sentence.upperBound
     let unsnapped = lower..<upper
     // Include whole edge words when a 200-character cut lands inside them.
@@ -176,6 +181,17 @@ public enum LearnedWordCandidates: Sendable {
   static func isSentencePeriod(in text: String, at index: String.Index) -> Bool {
     let scalars = text.unicodeScalars
     guard index < scalars.endIndex, scalars[index] == "." else { return false }
+    // The last period of an initialism ("U.S. Army") ends no sentence: an uppercase
+    // letter right after another period.
+    if index > scalars.startIndex {
+      let letter = scalars.index(before: index)
+      if letter > scalars.startIndex,
+        CharacterSet.uppercaseLetters.contains(scalars[letter]),
+        scalars[scalars.index(before: letter)] == "."
+      {
+        return false
+      }
+    }
     let next = scalars.index(after: index)
     return next == scalars.endIndex || scalars[next].properties.isWhitespace
   }
