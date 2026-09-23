@@ -165,6 +165,13 @@ public struct WordCorrector: Sendable {
     /// pack fuzzy tier must NEVER rewrite it — including the case where the
     /// non-pack tier made no replacement because no fix was needed.
     public let nonPackExactKeys: Set<String>
+    /// #3105: lowercased single and multi-word keys whose winning claim is
+    /// checker-only (a learned sound-alike, or a born-learned word's own
+    /// spelling). A token or span equal to one is withheld from EVERY pass,
+    /// fuzzy included: removing the key from the exact maps alone would let
+    /// Pass 2/4/5 score the learned surface against a nearby manual alias and
+    /// swap it anyway ("microphones" learned, "microphone" manual).
+    public let checkerOnlyKeys: Set<String>
   }
 
   // MARK: - Exact-trigger authority (#1667)
@@ -703,7 +710,9 @@ public struct WordCorrector: Sendable {
       packSingleFuzzyCandidates: packSingleFuzzyCandidates,
       packCanonicals: packCanonicals,
       packLowercasedCanonicals: packLowercasedCanonicals,
-      nonPackExactKeys: nonPackExactKeys
+      nonPackExactKeys: nonPackExactKeys,
+      checkerOnlyKeys: Set(triggerIndex.single.filter(\.value.checkerOnly).keys)
+        .union(triggerIndex.multi.filter(\.value.checkerOnly).keys)
     )
   }
 
@@ -989,6 +998,8 @@ public struct WordCorrector: Sendable {
             if Self.sliceContainsReservedTriggerWord(slice) {
               continue
             }
+            // #3105: a learned multi-word surface is the checker's alone.
+            if lookups.checkerOnlyKeys.contains(phrase) { continue }
 
             if let candidates = multiAliasByCount[span] {
               // #2312: TWO attempts when the span's LAST token carries a glued
@@ -1128,6 +1139,8 @@ public struct WordCorrector: Sendable {
       if Self.emojiTriggerReservedWords.contains(coreLower) {
         return token
       }
+      // #3105: a learned surface is the checker's alone.
+      if lookups.checkerOnlyKeys.contains(coreLower) { return token }
 
       // Compute the peeled form up front (used by steps 2 and 4 below).
       // The trigger is purely structural -- a dot followed by a non-empty

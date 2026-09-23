@@ -90,4 +90,16 @@ struct LearnedClaimPolicyTests {
     let manual = CustomWord(canonical: "HackClub")
     #expect(correct("go to hack club now", [manual]) == "go to HackClub now")
   }
+
+  @Test("a learned surface is not fuzzy-swapped to a nearby manual alias (Codex PR-1 review P1)")
+  func learnedSurfaceNeverFuzzySwaps() {
+    let mic = CustomWord(
+      canonical: "Microphone X", aliases: ["microphone", "microphones"],
+      learnedAliases: ["microphones"])
+    #expect(correct("two microphones on the desk", [mic]) == "two microphones on the desk")
+    #expect(correct("one microphone on the desk", [mic]) == "one Microphone X on the desk")
+    let multi = CustomWord(
+      canonical: "Hack Club", aliases: ["hack clubs", "hack club"], learnedAliases: ["hack clubs"])
+    #expect(correct("the hack clubs met", [multi]) == "the hack clubs met")
+  }
 }
