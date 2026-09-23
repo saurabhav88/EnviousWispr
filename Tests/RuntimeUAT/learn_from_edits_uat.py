@@ -122,6 +122,7 @@ PAIRS = {
                      negative=("the invoices", "a coffee")),
     "toggle-off": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "next-dictation": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
+    "deletion-only": Pair("Send the report to Vaish today", "report", "Send", "to", "report"),
 }
 
 results = []
@@ -717,7 +718,9 @@ def case_existing_word(path):
     """The corrected word is ALREADY in Your Words (seeded, no sound-alikes):
     the fix attaches the mishearing to it (`learn_added state=existing_word`,
     the pill says updated), Undo is not pressed, and the sound-alike is marked
-    learned. Then the learned word on the NEXT dictation of the same sentence."""
+    learned. Then the NEXT dictation of the same sentence: a learned sound-alike
+    never swaps text by itself (#3105 learn-only phase), so the heard form is
+    delivered as heard, and the corrector does not write the target.""" 
     pair = PAIRS["existing-word"]
     mark, _, heard = dictate(path, "existing-word", pair)
     apply_fix(path, "existing-word", heard, pair.correct)
@@ -738,10 +741,33 @@ def case_existing_word(path):
     # No Undo: the pill leaves on its own and the word persists (checked again
     # after the window in `case_persists_then_your_words`).
     clear_field(path)
-    mark2, text2, _ = dictate(path, "learned-alias", pair, need_heard=False)
-    corrected = wait_for("the corrector's OUT line", lambda: re.search(r"CORRECTION_DEBUG.*OUT:.*" + re.escape(pair.correct), log_since(mark2)), deadline=10.0)
-    check("learned-alias", bool(corrected) and pair.correct.lower() in text2.lower(), f"corrector_out={bool(corrected)} delivered_has_target={pair.correct.lower() in text2.lower()} delivered={text2!r}")
+    mark2, text2, heard2 = dictate(path, "learned-alias", pair, need_heard=False)
+    # Positive half first (code-uat.md FACT: a-negative-UAT-result-must-be-attributed):
+    # the take reached the corrector and the recogniser delivered the heard form
+    # again; only then does "the target is absent" say the learned alias held.
+    reached = wait_for("the take's Word Correction line", lambda: has(mark2, "WordCorrection enter"), deadline=10.0)
+    heard_again = pair.heard_in(text2 or "")
+    if not reached or heard_again is None or heard_again.lower() == pair.correct.lower():
+        raise Aborted(f"learned-alias: precondition not met (reached={bool(reached)} heard={heard_again!r} delivered={text2!r})")
+    check("learned-alias-not-swapped", pair.correct.lower() not in text2.lower(),
+          f"heard={heard_again!r} delivered_has_target={pair.correct.lower() in text2.lower()} delivered={text2!r}")
     return ok
+
+
+def case_deletion_only(path):
+    """#3105: a fix that only deletes letters (a half-typed edit) never reaches
+    the judge, and the watch's end row counts it as `unfinished_edits`. The
+    positive half is the observation-ended line itself, which carries the count."""
+    pair = PAIRS["deletion-only"]
+    mark, _, _ = dictate(path, "deletion-only", pair, need_heard=False)
+    apply_fix(path, "deletion-only", "report", "rep")
+    clear_field(path)
+    ended = wait_for("observation end", lambda: re.search(r"learn_observation_ended reason=\w+ settled_bursts=(\d+) app_class=\w+ duration_ms=\d+ unfinished_edits=(\d+)", log_since(mark)), deadline=15.0)
+    if not ended:
+        return check("deletion-only", False, "no learn_observation_ended line with unfinished_edits")
+    lines = "\n".join(learn_lines(mark))
+    ok = ended.group(2) == "1" and "learn_judged" not in lines and "learn_added" not in lines
+    return check("deletion-only", ok, f"ended={ended.group(0)} judged={'learn_judged' in lines} added={'learn_added' in lines}")
 
 
 def park_pointer():
@@ -1043,6 +1069,7 @@ def main():
             ("negative", True, None, True, case_negative),
             ("toggle-off", False, None, True, case_toggle_off),
             ("next-dictation", True, None, True, case_next_dictation),
+            ("deletion-only", True, None, True, case_deletion_only),
         ]
         for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
