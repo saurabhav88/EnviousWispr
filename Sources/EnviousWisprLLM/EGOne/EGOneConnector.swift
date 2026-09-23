@@ -63,6 +63,7 @@ public struct EGOneConnector: TranscriptPolisher {
     guard hasLearnedWordAdapter else { return body }
     var adapted = body
     adapted["lora"] = [["id": 0 as Int, "scale": 0.0 as Double] as [String: Any]]
+    adapted["id_slot"] = EGOneSlots.polish
     return adapted
   }
 

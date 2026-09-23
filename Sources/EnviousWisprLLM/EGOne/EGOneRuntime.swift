@@ -793,7 +793,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   ) -> [String] {
     let engine = engineArguments(for: provider)
     guard provider == .egOne, let learnedWordAdapterURL else { return engine }
-    return engine + ["--lora", learnedWordAdapterURL.path, "--lora-init-without-apply"]
+    return engine + [
+      "--lora", learnedWordAdapterURL.path, "--lora-init-without-apply",
+      "-np", String(EGOneSlots.totalCount), "--kv-unified", "--no-cache-idle-slots",
+    ]
   }
 
   private func bootServer(
