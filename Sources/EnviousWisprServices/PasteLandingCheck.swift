@@ -1,4 +1,5 @@
 import ApplicationServices
+import EnviousWisprCore
 import Foundation
 
 /// What a key paste was OBSERVED to do to the focused field (#3106, step 1: observation only).
@@ -117,14 +118,211 @@ package struct PasteLandingFacts: Sendable, Equatable {
   }
 }
 
-package enum PasteLandingCheck {
+/// One observation of one key paste (#3106 step 1): prepared and armed immediately before the
+/// write, committed only when that write succeeded, then resolved once, against the original
+/// target, into a `PasteLandingObserved` and one DEBUG log line. It observes; nothing it concludes
+/// writes to the clipboard, the overlay or the destination.
+///
+/// Lifecycle: `prepare` (a factory: before-image, target window, armed observer, all under one
+/// `PasteLandingPrepareBudget`) → `commit()` | `cancelUnlessCommitted()` → `resolve()`. Every
+/// terminal path invalidates exactly the registration that succeeded and any scheduled deadline;
+/// a generation guard makes callbacks queued before that do nothing. Two checks never supersede
+/// each other in step 1.
+@MainActor
+package final class PasteLandingCheck {
+
+  package let context: Context
+  private let application: AXUIElement
+  /// The field focused before the write, compared by `CFEqual` at resolution.
+  private let element: AXUIElement?
+  private let before: PasteLandingFacts.Before
+  private let frontmostBefore: pid_t?
+  private let manualAX: Bool
+  private let hostExposedFocus: Bool
+  package let targetWindow: PasteLandingTargetWindow
+  private let ax: any PastedRegionAXOperations
+  private let scheduler: any PastedRegionScheduling
+  private let log: @MainActor (String) -> Void
+
+  fileprivate(set) var beforeMs = 0
+  fileprivate var prepareBudgetExhausted = false
+  private var registration: (any PastedRegionAXRegistration)?
+  private var observerComplete = false
+  /// What ended the watch: the FIRST notification (armed or committed) or the deadline, whichever
+  /// came first. Latched: anything later is ignored, so neither a later notification of higher
+  /// table priority nor one after the deadline can change the verdict.
+  private enum Trigger: Equatable {
+    case notification(PastedRegionAXNotification)
+    case deadline
+  }
+  private var trigger: Trigger?
+  /// Bumped on every terminal transition: a callback carrying an older value does nothing.
+  private var generation = 0
+  package private(set) var phase: Phase = .armed
+  private var committedAtMs = 0
+  private var deadline: (any PastedRegionScheduledWork)?
+  /// Resumed by the first notification or the deadline, whichever comes first.
+  private var wake: CheckedContinuation<Void, Never>?
+  private var resolution: Task<PasteLandingObserved, Never>?
+  package private(set) var result: PasteLandingObserved?
+
+  fileprivate init(
+    context: Context, application: AXUIElement, element: AXUIElement?,
+    before: PasteLandingFacts.Before, frontmostBefore: pid_t?, manualAX: Bool,
+    hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
+    ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
+    log: @escaping @MainActor (String) -> Void
+  ) {
+    self.context = context
+    self.application = application
+    self.element = element
+    self.before = before
+    self.frontmostBefore = frontmostBefore
+    self.manualAX = manualAX
+    self.hostExposedFocus = hostExposedFocus
+    self.targetWindow = targetWindow
+    self.ax = ax
+    self.scheduler = scheduler
+    self.log = log
+  }
+
+  /// Registers the notifications before the write. A partial registration is kept, so a terminal
+  /// transition invalidates exactly what succeeded; the verdict sees it as incomplete.
+  fileprivate func arm(budget: PasteLandingPrepareBudget) {
+    let generation = self.generation
+    registration = ax.registerLanding(
+      pid: context.pid, element: element, application: application, admit: budget.admit,
+      handler: { [weak self] notification in self?.notified(notification, generation: generation) })
+    let required = Self.requiredNotifications(hasElement: element != nil)
+    observerComplete = registration.map { required.isSubset(of: $0.registeredNotifications) } ?? false
+  }
+
+  private func notified(_ notification: PastedRegionAXNotification, generation: Int) {
+    guard generation == self.generation, phase == .armed || phase == .committed,
+      trigger == nil
+    else { return }
+    trigger = .notification(notification)
+    if phase == .committed { wakeUp() }
+  }
+
+  /// The write succeeded: the check may now resolve. Idempotent; a cancelled check stays cancelled.
+  package func commit() {
+    guard phase == .armed else { return }
+    phase = .committed
+    committedAtMs = scheduler.nowMs
+    let generation = self.generation
+    deadline = scheduler.schedule(afterMs: PastedRegionTiming.settleMs) { [weak self] in
+      guard let self, generation == self.generation, self.trigger == nil else { return }
+      self.trigger = .deadline
+      self.wakeUp()
+    }
+  }
+
+  /// Every exit that is not a successful write. Idempotent; a committed check is left alone.
+  package func cancelUnlessCommitted() {
+    guard phase == .armed else { return }
+    phase = .cancelled
+    tearDown()
+  }
+
+  /// The verdict, once. Nil for a check that was never committed. Concurrent callers share one
+  /// resolution, one verdict and one log line.
+  package func resolve() async -> PasteLandingObserved? {
+    if let result { return result }
+    guard phase == .committed else { return nil }
+    if let resolution { return await resolution.value }
+    let task = Task { @MainActor in await self.runResolution() }
+    resolution = task
+    return await task.value
+  }
+
+  private func runResolution() async -> PasteLandingObserved {
+    // Ends at the first notification or the deadline, whichever came first; either may already
+    // have happened, including a notification that arrived between arm and commit.
+    if trigger == nil {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        wake = continuation
+      }
+    }
+    let observed = Self.classify(finalFacts())
+    result = observed
+    phase = .resolved
+    tearDown()
+    log(logLine(observed))
+    return observed
+  }
+
+  private func wakeUp() {
+    let continuation = wake
+    wake = nil
+    continuation?.resume()
+  }
+
+  /// The final bounded read: the target's life, the frontmost process, and the focused field.
+  private func finalFacts() -> PasteLandingFacts {
+    let terminated = !ax.isProcessRunning(context.pid)
+    let switched = !terminated && ax.frontmostPID() != frontmostBefore
+    let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
+    let after: PasteLandingFacts.After
+    switch Self.focus(of: application, pid: context.pid, ax: ax, budget: budget) {
+    case nil, .unreadable?:
+      after = .queryFailed
+    case .noFocus?:
+      after = .noFocus
+    case .element(let focused)?:
+      if let element, CFEqual(focused, element) {
+        // Only a field whose before-image was READABLE is read again: a secure field (or one that
+        // could not be read) is never read at resolution either, and its verdict cannot use it.
+        if case .field = before,
+          case .text(let text)? = PastedRegionObserver.readWholeText(
+            of: focused, ax: ax, admit: budget.admit)
+        {
+          after = .sameElement(text: text)
+        } else {
+          after = .sameElement(text: nil)
+        }
+      } else {
+        after = .otherElement
+      }
+    }
+    return PasteLandingFacts(
+      targetTerminated: terminated, frontmostChanged: switched,
+      prepareBudgetExhausted: prepareBudgetExhausted, before: before,
+      observerComplete: observerComplete, notifications: latchedNotifications, after: after,
+      payload: context.payload)
+  }
+
+  /// The one notification that ended the watch, or none when the deadline did.
+  private var latchedNotifications: Set<PastedRegionAXNotification> {
+    if case .notification(let notification) = trigger { return [notification] }
+    return []
+  }
+
+  /// Invalidates the registration and the deadline, and silences every callback already queued.
+  private func tearDown() {
+    generation += 1
+    registration?.invalidate()
+    registration = nil
+    deadline?.cancel()
+    deadline = nil
+    wakeUp()
+  }
+
+  /// Shape only: no text, selection, window title or take id (plan §3.4).
+  private func logLine(_ observed: PasteLandingObserved) -> String {
+    "PASTE_LANDING tier=\(context.tier.rawValue) observed=\(observed.observed) "
+      + "reason=\(observed.reason.rawValue) app=\(context.bundleID ?? "unknown") "
+      + "host_exposed_focus=\(hostExposedFocus) manual_ax=\(manualAX) "
+      + "target_window=\(targetWindow.rawValue) before_ms=\(beforeMs) "
+      + "resolve_ms=\(scheduler.nowMs - committedAtMs)"
+  }
 
   /// The verdict table, first match wins (plan §3.2). Rows are evaluated in the order listed there.
   ///
   /// Text is compared as UTF-16 code units, never with `String ==`: Swift equates canonically
   /// equivalent strings (a precomposed "é" and "e" plus a combining accent), which would call a
   /// field "identical" after a paste changed its bytes.
-  package static func classify(_ facts: PasteLandingFacts) -> PasteLandingObserved {
+  nonisolated package static func classify(_ facts: PasteLandingFacts) -> PasteLandingObserved {
     // Rows 1, 2, 3a: the observation itself is void.
     if facts.targetTerminated { return .unknown(.appTerminated) }
     if facts.frontmostChanged { return .unknown(.appSwitched) }
@@ -183,7 +381,7 @@ package enum PasteLandingCheck {
   }
 
   /// Byte identity in UTF-16 code units.
-  private static func identical(_ lhs: String, _ rhs: String) -> Bool {
+  nonisolated private static func identical(_ lhs: String, _ rhs: String) -> Bool {
     lhs.utf16.elementsEqual(rhs.utf16)
   }
 }
@@ -312,5 +510,117 @@ extension PasteLandingCheck {
   /// focus-changed on the application, or only focus-changed when nothing was focused.
   package static func requiredNotifications(hasElement: Bool) -> Set<PastedRegionAXNotification> {
     hasElement ? [.valueChanged, .elementDestroyed, .focusedElementChanged] : [.focusedElementChanged]
+  }
+}
+
+// MARK: - Lifecycle (#3106 step 1, chunk 3)
+
+extension PasteLandingCheck {
+
+  /// The only tiers a check may be prepared for: the three key pastes (plan §3.3).
+  package static let observedTiers: Set<PasteTier> = [.cgEvent, .appleScript, .menuPaste]
+
+  /// What the caller knows about the paste being observed.
+  package struct Context: Sendable {
+    package let tier: PasteTier
+    package let pid: pid_t
+    /// Snapshotted for the later telemetry chunk; never logged. The same type as
+    /// `KernelTelemetryState.takeID`.
+    package let takeID: String?
+    /// LOCAL log only; never telemetry.
+    package let bundleID: String?
+    package let payload: String
+
+    package init(tier: PasteTier, pid: pid_t, takeID: String?, bundleID: String?, payload: String) {
+      self.tier = tier
+      self.pid = pid
+      self.takeID = takeID
+      self.bundleID = bundleID
+      self.payload = payload
+    }
+  }
+
+  /// Where a check is in its one lifecycle.
+  package enum Phase: Sendable, Equatable {
+    case armed, committed, cancelled, resolved
+  }
+
+  /// The selected text of `text` for a UTF-16 `range`, or `.unavailable` for any range that is
+  /// negative, overflowing, out of bounds, or splits a character's scalars. Never clamped.
+  nonisolated package static func selection(
+    in text: String, range: PastedRegionSelectedRange
+  ) -> PasteLandingFacts.Selection {
+    guard case .range(let location, let length) = range, location >= 0, length >= 0 else {
+      return .unavailable
+    }
+    let (end, overflow) = location.addingReportingOverflow(length)
+    let units = text.utf16
+    guard !overflow, end <= units.count else { return .unavailable }
+    let lower = units.index(units.startIndex, offsetBy: location)
+    let upper = units.index(units.startIndex, offsetBy: end)
+    guard lower.samePosition(in: text.unicodeScalars) != nil,
+      upper.samePosition(in: text.unicodeScalars) != nil
+    else { return .unavailable }
+    return .text(String(text[lower..<upper]))
+  }
+
+  /// Prepares and arms a check, synchronously, immediately before the write. Nil for a tier this
+  /// check does not observe. `capturedTarget` is the element captured when the recording started.
+  package static func prepare(
+    _ context: Context, capturedTarget: AXUIElement?,
+    ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
+    log: (@MainActor (String) -> Void)? = nil
+  ) -> PasteLandingCheck? {
+    guard observedTiers.contains(context.tier) else { return nil }
+    let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
+    let application = ax.applicationElement(pid: context.pid)
+    let frontmostBefore = ax.frontmostPID()
+    // Read, never enabled: the check does not change the destination to improve an observation.
+    let manualAX = budget.admit(application) && ax.supportsManualAccessibility(application)
+
+    var element: AXUIElement?
+    let before: PasteLandingFacts.Before
+    switch focus(of: application, pid: context.pid, ax: ax, budget: budget) {
+    case nil, .unreadable?:
+      before = .unreadable
+    case .noFocus?:
+      before = .noFocus
+    case .element(let focused)?:
+      element = focused
+      before = beforeImage(of: focused, ax: ax, budget: budget)
+    }
+    let targetWindow = targetWindow(
+      captured: capturedTarget, application: application, ax: ax, budget: budget)
+
+    let check = PasteLandingCheck(
+      context: context, application: application, element: element, before: before,
+      frontmostBefore: frontmostBefore, manualAX: manualAX,
+      hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
+      ax: ax, scheduler: scheduler, log: log ?? Self.debugLog)
+    check.arm(budget: budget)
+    check.beforeMs = budget.elapsedMs
+    check.prepareBudgetExhausted = budget.refusal == .exhausted
+    return check
+  }
+
+  /// Secure, unreadable, over-limit or refused text is `unreadable`; otherwise the whole text and
+  /// what was selected in it.
+  private static func beforeImage(
+    of element: AXUIElement, ax: any PastedRegionAXOperations, budget: PasteLandingPrepareBudget
+  ) -> PasteLandingFacts.Before {
+    guard budget.admit(element) else { return .unreadable }
+    if SelectionReader.isSecureField(ax.subrole(of: element)) { return .unreadable }
+    guard case .text(let text)? = PastedRegionObserver.readWholeText(
+      of: element, ax: ax, admit: budget.admit)
+    else { return .unreadable }
+    guard budget.admit(element) else { return .field(text: text, selection: .unavailable) }
+    return .field(text: text, selection: selection(in: text, range: ax.selectedRange(of: element)))
+  }
+
+  /// The production DEBUG sink. Release builds log nothing.
+  private static let debugLog: @MainActor (String) -> Void = { line in
+    #if DEBUG
+      Task { await AppLogger.shared.log(line, level: .info, category: "PasteLanding") }
+    #endif
   }
 }

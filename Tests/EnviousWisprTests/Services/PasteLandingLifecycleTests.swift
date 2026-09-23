@@ -323,3 +323,251 @@ struct PasteLandingLifecycleTests {
     #expect(ax.landingCalls.isEmpty)
   }
 }
+
+// MARK: - Lifecycle (chunk 3): prepare, arm, commit or cancel, resolve once
+
+extension PasteLandingLifecycleTests {
+
+  /// A readable TextEdit-shaped target: pid 42 frontmost, its field focused and owned by it.
+  @MainActor
+  private final class Rig {
+    let ax = PastedRegionFakeAX()
+    let clock = PastedRegionFakeScheduler()
+    var lines: [String] = []
+    init(before: String = "Hello", after: String = "Hello") {
+      ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
+      ax.reads = [.text(before), .text(after)]
+      ax.selectedRange = .range(location: 5, length: 0)
+    }
+    func prepare(
+      tier: PasteTier = .cgEvent, captured: AXUIElement? = PastedRegionFakeAX.field(42),
+      payload: String = "send the draft", takeID: String = "TAKE-A"
+    ) -> PasteLandingCheck? {
+      PasteLandingCheck.prepare(
+        .init(tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit", payload: payload),
+        capturedTarget: captured, ax: ax, scheduler: clock, log: { self.lines.append($0) })
+    }
+    /// The one landing registration the check made.
+    var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
+  }
+
+  @Test("Only the three key-paste tiers are observed")
+  func onlyKeyPasteTiers() {
+    let rig = Rig()
+    #expect(rig.prepare(tier: .axDirect) == nil)
+    #expect(rig.prepare(tier: .clipboardOnly) == nil)
+    #expect(rig.prepare(tier: .cgEvent) != nil)
+    #expect(rig.prepare(tier: .appleScript) != nil)
+    #expect(rig.prepare(tier: .menuPaste) != nil)
+  }
+
+  @Test("Committed, nothing happens, the deadline passes: unchanged, one exact log line")
+  func deadlineUnchanged() async throws {
+    let rig = Rig()
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unchanged(.fieldIdentical))
+    #expect(
+      rig.lines == [
+        "PASTE_LANDING tier=cgevent observed=unchanged reason=field_identical "
+          + "app=com.apple.TextEdit host_exposed_focus=true manual_ax=false "
+          + "target_window=unknown before_ms=0 resolve_ms=1500"
+      ])
+    #expect(rig.registration?.invalidated == 1, "torn down after resolving")
+  }
+
+  @Test("A late change found only by the deadline read is text_differs")
+  func deadlineFindsLateChange() async throws {
+    let rig = Rig(after: "Hello send the draft")
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .changed(.textDiffers))
+  }
+
+  @Test("The first notification ends the watch early; the verdict follows the table")
+  func firstNotificationOutcomes() async throws {
+    for (notification, expected): (PastedRegionAXNotification, PasteLandingObserved) in [
+      (.valueChanged, .changed(.notifiedValue)),
+      (.focusedElementChanged, .unknown(.notifiedFocus)),
+      (.elementDestroyed, .unknown(.elementDestroyed)),
+    ] {
+      let rig = Rig()
+      rig.ax.windows[52] = .absent
+      let check = try #require(rig.prepare())
+      check.commit()
+      rig.registration?.fire(notification)
+      #expect(await check.resolve() == expected, "\(notification)")
+      #expect(rig.clock.now == 0, "no deadline was needed")
+    }
+  }
+
+  @Test("A notification between arm and commit is kept for the resolution")
+  func notificationBeforeCommitIsKept() async throws {
+    let rig = Rig()
+    let check = try #require(rig.prepare())
+    rig.registration?.fire(.valueChanged)
+    check.commit()
+    #expect(await check.resolve() == .changed(.notifiedValue))
+  }
+
+  @Test("Cancel before commit: registration invalidated, no verdict, no log, late callbacks ignored")
+  func cancelIsSilent() async throws {
+    let rig = Rig()
+    let check = try #require(rig.prepare())
+    check.cancelUnlessCommitted()
+    check.cancelUnlessCommitted()
+    rig.registration?.fire(.valueChanged)
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == nil)
+    #expect(check.phase == .cancelled)
+    #expect(rig.registration?.invalidated == 1, "exactly once")
+    #expect(rig.lines.isEmpty)
+  }
+
+  @Test("Cancel after commit does nothing; repeated and concurrent resolve share one verdict")
+  func commitWinsAndResolveIsOnce() async throws {
+    let rig = Rig()
+    let check = try #require(rig.prepare())
+    check.commit()
+    check.cancelUnlessCommitted()
+    #expect(check.phase == .committed)
+    rig.clock.advance(ms: 1_500)
+    async let first = check.resolve()
+    async let second = check.resolve()
+    let (a, b) = await (first, second)
+    #expect(a == .unchanged(.fieldIdentical) && b == a)
+    #expect(await check.resolve() == a)
+    #expect(rig.lines.count == 1, "one log line for three resolves")
+    rig.registration?.fire(.valueChanged)
+    #expect(check.result == a, "a callback after resolution changes nothing")
+  }
+
+  @Test("A terminated target outranks a frontmost change; a live target with another app in front is app_switched")
+  func terminationBeforeSwitch() async throws {
+    let rig = Rig()
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.ax.runningPIDs = []
+    rig.ax.frontmost = 7
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unknown(.appTerminated))
+
+    let other = Rig()
+    let second = try #require(other.prepare())
+    second.commit()
+    other.ax.frontmost = 7
+    other.clock.advance(ms: 1_500)
+    #expect(await second.resolve() == .unknown(.appSwitched))
+  }
+
+  @Test("Nothing focused: only the application's focus notification, and no_focus when it stays so")
+  func noFocus() async throws {
+    let rig = Rig()
+    rig.ax.focusedByApplication[42] = .noFocus
+    let check = try #require(rig.prepare(captured: nil))
+    #expect(rig.registration?.registeredNotifications == [.focusedElementChanged])
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unchanged(.noFocus))
+    #expect(rig.lines.first?.contains("host_exposed_focus=false") == true)
+  }
+
+  @Test("A failed focus query and a secure field are before_unreadable, never unchanged")
+  func unreadableBefore() async throws {
+    let failed = Rig()
+    failed.ax.focusedByApplication[42] = .queryFailed(.cannotComplete)
+    let a = try #require(failed.prepare())
+    a.commit()
+    failed.clock.advance(ms: 1_500)
+    #expect(await a.resolve() == .unknown(.beforeUnreadable))
+
+    let secure = Rig()
+    secure.ax.subroles["\(CFHash(PastedRegionFakeAX.field(42)))"] = .subrole("AXSecureTextField")
+    let b = try #require(secure.prepare())
+    b.commit()
+    secure.clock.advance(ms: 1_500)
+    #expect(await b.resolve() == .unknown(.beforeUnreadable))
+    #expect(secure.ax.readCount == 0, "a secure field's text is never read")
+  }
+
+  @Test("A partial registration is no_observer, and teardown invalidates what succeeded")
+  func partialRegistrationResolvesNoObserver() async throws {
+    let rig = Rig()
+    rig.ax.landingNotificationFailures = [.elementDestroyed]
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unknown(.noObserver))
+    #expect(rig.registration?.invalidated == 1)
+  }
+
+  @Test("A preparation budget spent at a nested read is prepare_budget, not an unreadable field")
+  func budgetExhaustedInPrepare() async throws {
+    let rig = Rig()
+    rig.clock.tickPerNowRead = 150  // the fourth clock read finds the 500 ms budget spent
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unknown(.prepareBudget))
+  }
+
+  @Test("Two overlapping checks resolve independently")
+  func overlappingChecks() async throws {
+    let rig = Rig()
+    rig.ax.reads = [.text("Hello"), .text("Hello"), .text("Hello"), .text("Hello!")]
+    let first = try #require(rig.prepare(takeID: "TAKE-A"))
+    let firstRegistration = rig.registration
+    first.commit()
+    let second = try #require(rig.prepare(takeID: "TAKE-B"))
+    second.commit()
+    #expect(first.context.takeID == "TAKE-A" && second.context.takeID == "TAKE-B")
+    firstRegistration?.fire(.valueChanged)
+    #expect(await first.resolve() == .changed(.notifiedValue))
+    rig.clock.advance(ms: 1_500)
+    #expect(await second.resolve() == .changed(.textDiffers))
+    #expect(rig.lines.count == 2)
+  }
+
+  @Test("The FIRST ending signal is latched: a later notification or the deadline changes nothing")
+  func firstTriggerIsLatched() async throws {
+    // focus then value: the focus verdict stands, though value outranks it in the table.
+    let a = Rig()
+    let first = try #require(a.prepare())
+    first.commit()
+    a.registration?.fire(.focusedElementChanged)
+    a.registration?.fire(.valueChanged)
+    #expect(await first.resolve() == .unknown(.notifiedFocus))
+
+    // value then focus: value stands.
+    let b = Rig()
+    let second = try #require(b.prepare())
+    second.commit()
+    b.registration?.fire(.valueChanged)
+    b.registration?.fire(.focusedElementChanged)
+    #expect(await second.resolve() == .changed(.notifiedValue))
+
+    // the deadline, then a value notification before resolve(): the deadline verdict stands.
+    let c = Rig()
+    let third = try #require(c.prepare())
+    third.commit()
+    c.clock.advance(ms: 1_500)
+    c.registration?.fire(.valueChanged)
+    #expect(await third.resolve() == .unchanged(.fieldIdentical))
+  }
+
+  @Test("Selection ranges are UTF-16 and never clamped")
+  func selectionRanges() {
+    let text = "a😀b"  // a, then two UTF-16 units for the emoji, then b
+    typealias C = PasteLandingCheck
+    #expect(C.selection(in: text, range: .range(location: 1, length: 2)) == .text("😀"))
+    #expect(C.selection(in: text, range: .range(location: 4, length: 0)) == .text(""))
+    #expect(C.selection(in: text, range: .range(location: 2, length: 1)) == .unavailable, "splits the emoji")
+    #expect(C.selection(in: text, range: .range(location: 0, length: 5)) == .unavailable, "past the end")
+    #expect(C.selection(in: text, range: .range(location: -1, length: 1)) == .unavailable)
+    #expect(C.selection(in: text, range: .range(location: 1, length: Int.max)) == .unavailable, "overflow")
+    #expect(C.selection(in: text, range: .unavailable) == .unavailable)
+  }
+}
