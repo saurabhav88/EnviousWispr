@@ -84,6 +84,10 @@ struct TelemetryEmitterRegistryTests {
   /// site, no new event, same per-take cadence; two optional properties on the existing
   /// (ungraded) row, present only on English (UK) takes: a closed string and an Int count, no
   /// text, `take_id` unchanged, registry row unchanged.
+  /// #3105: `learnObservationEnded` gained `unfinishedEdits`, which changes the enclosing-function
+  /// identity of the same single `custom_words.learn_observation_ended` site. No new site, no new
+  /// event, same once-per-watched-paste cadence; one Int count on the existing row (checklist items
+  /// 4-8: existing row, a count not content, Int on the wire, registry row unchanged).
   static let sitesFingerprint =
     "84d3a3df146e076a17542e93756a0605dd4a2612165119a781eea3188e435ce7"
   static let ungradedFingerprint =

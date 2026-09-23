@@ -54,7 +54,7 @@ import Testing
   func noLanguageGate() {
     #expect(
       F.IneligibleReason.allCases.map(\.rawValue) == [
-        "stopwordPhrase", "contractionEnding", "aliasOwnedElsewhere",
+        "stopwordPhrase", "contractionEnding", "unfinishedEdit", "aliasOwnedElsewhere",
       ])
     // A run in any script is judged on its own merits.
     #expect(disposition(run("さら", "サラ"), inputs()) == .candidate(.newWord))
@@ -285,5 +285,19 @@ import Testing
     let filtered = F.filter(runs: respelt.runs, inputs: inputs())
     #expect(filtered.map(\.disposition) == [.candidate(.newWord)])
     #expect(F.prepare(filtered).candidates.map(\.replacement) == ["CLAUDE.md"])
+  }
+
+  @Test("an edit that only deletes letters is unfinished; a padded name or a join still reaches the judge (#3105)")
+  func deletionOnlyEditIsUnfinished() {
+    for (original, corrected) in [
+      ("do fewer words", "drds"), ("Sorat", "S"), ("test experience", "texperience"),
+    ] {
+      #expect(
+        disposition(run(original, corrected), inputs()) == .ineligible(.unfinishedEdit),
+        "\(original) -> \(corrected)")
+    }
+    #expect(disposition(run("adiane", "Adian"), inputs()) == .candidate(.newWord))
+    #expect(disposition(run("Pay Pal", "PayPal"), inputs()) == .candidate(.newWord))
+    #expect(disposition(run("day toast", "Tuist"), inputs()) == .candidate(.newWord))
   }
 }

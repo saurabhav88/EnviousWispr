@@ -28,6 +28,10 @@ package enum CorrectionCandidateFilter {
     case stopwordPhrase
     /// The corrected run ends in a contraction suffix ("it's", "don't").
     case contractionEnding
+    /// The corrected run is the original with letters deleted and nothing
+    /// typed: an edit caught half-way ("do fewer words" -> "drds",
+    /// "Sorat" -> "S", #3105). A join that removes only spaces is not this.
+    case unfinishedEdit
     /// The corrected phrase, or the original as a trigger, is owned by a
     /// DIFFERENT word than the resolved target.
     case aliasOwnedElsewhere
@@ -35,6 +39,7 @@ package enum CorrectionCandidateFilter {
 
   /// Plan §3.1 step 6 dispositions. Precedence when several apply (highest
   /// first): `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
+  /// `ineligible(.unfinishedEdit)`,
   /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `candidate`. A
   /// covered pair is never sent to the judge.
   package enum Disposition: Sendable, Equatable {
@@ -112,6 +117,9 @@ package enum CorrectionCandidateFilter {
       return .ineligible(.stopwordPhrase)
     }
     if hasContractionEnding(run.coreReplacement) { return .ineligible(.contractionEnding) }
+    if isDeletionOnly(original: run.coreOriginal, corrected: run.coreReplacement) {
+      return .ineligible(.unfinishedEdit)
+    }
 
     let target = resolveTarget(corrected: run.coreReplacement, inputs: inputs)
     if let target, covers(target, original: run.coreOriginal) { return .alreadyCovered }
@@ -120,6 +128,27 @@ package enum CorrectionCandidateFilter {
     }
     if let target { return .candidate(.existingWord(target.id)) }
     return .candidate(.newWord)
+  }
+
+  /// #3105: the corrected text is the original with at least two letters
+  /// removed and nothing added (a case-insensitive subsequence). Every
+  /// real correction the judge learns types new letters ("day toast" -> "Tuist");
+  /// the junk it learned did not ("test experience" -> "texperience"). This is
+  /// a shape rule, so it holds on every settle path: a fix sent with Enter or
+  /// left with the caret beside it still reaches the judge. A join that only
+  /// removes spaces ("Pay Pal" -> "PayPal") is left to the judge
+  /// (edit-judge-human-speech-harvest.md FACT: join-only-edits-cannot-be-a-code-rule).
+  package static func isDeletionOnly(original: String, corrected: String) -> Bool {
+    let o = Array(original.lowercased())
+    let c = Array(corrected.lowercased())
+    guard c.count < o.count else { return false }
+    // Fewer than two letters removed is a real fix the recogniser padded
+    // ("adiane" -> "Adian"), not an edit abandoned half-way.
+    let removedLetters = o.filter { !$0.isWhitespace }.count - c.filter { !$0.isWhitespace }.count
+    guard removedLetters >= 2 else { return false }
+    var i = 0
+    for ch in o where i < c.count && ch == c[i] { i += 1 }
+    return i == c.count
   }
 
   /// The corrected spelling as an existing word: user words first, then the
