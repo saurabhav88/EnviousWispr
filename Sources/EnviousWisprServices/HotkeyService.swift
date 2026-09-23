@@ -64,6 +64,9 @@ public final class HotkeyService {
     /// #2381. Takes 4, not the free slot at 2: that gap is a RETIRED id whose meaning nobody wrote
     /// down, and a stale Carbon registration or an old log line could still carry it.
     case quickAdd = 4
+    /// #3106. Paste Last and Copy Last take the next two free ids; 2 stays retired.
+    case pasteLast = 5
+    case copyLast = 6
 
     /// Which role this Carbon registration belongs to. A switch, so a new id must declare one
     /// rather than borrowing a neighbour's telemetry name.
@@ -72,6 +75,19 @@ public final class HotkeyService {
       case .toggle: .record
       case .cancel: .cancel
       case .quickAdd: .quickAdd
+      case .pasteLast: .pasteLast
+      case .copyLast: .copyLast
+      }
+    }
+
+    /// The id an app shortcut registers under. Record and Cancel register through their own
+    /// paths, so they have no answer here.
+    init?(appShortcut role: ShortcutRole) {
+      switch role {
+      case .quickAdd: self = .quickAdd
+      case .pasteLast: self = .pasteLast
+      case .copyLast: self = .copyLast
+      case .record, .cancel: return nil
       }
     }
   }
@@ -89,7 +105,14 @@ public final class HotkeyService {
   private var eventHandlerToken: DesktopEffectToken?
   private var toggleHotkeyToken: DesktopEffectToken?
   private var cancelHotkeyToken: DesktopEffectToken?
-  private var quickAddHotkeyToken: DesktopEffectToken?
+  /// The Carbon registrations of the always-armed app shortcuts (Quick Add, Paste Last, Copy Last),
+  /// keyed by role. One table rather than one slot each, so a reconcile pass cannot forget a member.
+  private var appShortcutTokens: [ShortcutRole: DesktopEffectToken] = [:]
+
+  /// App shortcuts whose current physical press has been seen and not yet released (#3106). Paste
+  /// Last fires on the release and Copy Last on the first press; either way a held key or an
+  /// auto-repeat acts once. Cleared on stop and suspend, where a release may never arrive.
+  private var appShortcutsHeld: Set<ShortcutRole> = []
 
   /// Whether the cancel role is currently armed.
   ///
@@ -191,6 +214,17 @@ public final class HotkeyService {
   /// recording path, so refusing it mid-transcription would block a limb for a heart-path reason.
   public var onQuickAdd: (@MainActor () async -> Void)?
 
+  /// Paste Last Dictation fired (#3106). While nil the chord is not registered at all: a build in
+  /// which nothing answers must not take Control-Command-V away from the frontmost app.
+  public var onPasteLast: (@MainActor () async -> Void)? {
+    didSet { reconcileAppShortcutRegistrations() }
+  }
+
+  /// Copy Last Dictation fired (#3106). Registered only while set, for the same reason.
+  public var onCopyLast: (@MainActor () async -> Void)? {
+    didSet { reconcileAppShortcutRegistrations() }
+  }
+
   // MARK: - Configuration
 
   public var recordingMode: RecordingMode = .toggle
@@ -281,6 +315,8 @@ public final class HotkeyService {
   private enum PressAction: String {
     case start, toggle, cancel, lock, stop
     case quickAdd = "quick_add"
+    case pasteLast = "paste_last"
+    case copyLast = "copy_last"
     case ignoredProcessing = "ignored_processing"
     case ignoredCooldown = "ignored_cooldown"
   }
@@ -291,6 +327,8 @@ public final class HotkeyService {
     case toggle = "toggle_hotkey"
     case cancel = "cancel_hotkey"
     case quickAdd = "quick_add_hotkey"
+    case pasteLast = "paste_last_hotkey"
+    case copyLast = "copy_last_hotkey"
   }
 
   /// Injected clock for the 500ms double-press window and the lock cooldown.
@@ -362,6 +400,8 @@ public final class HotkeyService {
       switch trigger {
       case .cancel: cancelKeyCode
       case .quickAdd: quickAddKeyCode
+      case .pasteLast: pasteLastKeyCode
+      case .copyLast: copyLastKeyCode
       case .toggle, .ptt: toggleKeyCode
       }
     let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
@@ -380,14 +420,14 @@ public final class HotkeyService {
     // stopped or suspended", and a reconciler run against a service that has not yet admitted it is
     // running would refuse the registration it was called to make.
     isEnabled = true
-    reconcileQuickAddRegistration()
+    reconcileAppShortcutRegistrations()
     installModifierMonitors()
     // Cancel hotkey is NOT registered here — only during recording
   }
 
   public func stop() {
     unregisterCancelHotkey()
-    unregisterQuickAddHotkey()
+    unregisterAppShortcuts()
     unregisterToggleHotkey()
     removeCarbonEventHandler()
     removeModifierMonitors()
@@ -412,7 +452,7 @@ public final class HotkeyService {
     let wasArmed = isCancelArmed
     unregisterCancelHotkey()
     cancelArmedBeforeSuspend = wasArmed
-    unregisterQuickAddHotkey()
+    unregisterAppShortcuts()
     unregisterToggleHotkey()
     removeModifierMonitors()
     isSuspended = true
@@ -429,7 +469,7 @@ public final class HotkeyService {
     // WHETHER it may hold its chord is still the reconciler's call, because a recording can be in
     // flight and cancel may own that chord — `resume()` re-arms cancel two lines below.
     isSuspended = false
-    reconcileQuickAddRegistration()
+    reconcileAppShortcutRegistrations()
     installModifierMonitors()
     if cancelArmedBeforeSuspend { registerCancelHotkey() }
     cancelArmedBeforeSuspend = false
@@ -450,7 +490,7 @@ public final class HotkeyService {
     // chord, and Quick Add is registered at `start()` and holds its registration for the whole
     // session — so with both bound to one chord, cancel arrives second, is refused, and the user's
     // cancel key opens the Quick Add panel while the recording keeps running.
-    reconcileQuickAddRegistration()
+    reconcileAppShortcutRegistrations()
     guard cancelBinding.isCarbonRegistrable else { return }
     guard cancelHotkeyToken == nil else { return }
     cancelHotkeyToken = registerHotkey(
@@ -475,7 +515,7 @@ public final class HotkeyService {
     // Cancel has released the chord, so Quick Add may have it back. Unconditional rather than
     // guarded on a collision: the reconciler decides, and asking the question here as well would be
     // the same rule written twice.
-    reconcileQuickAddRegistration()
+    reconcileAppShortcutRegistrations()
   }
 
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
@@ -1040,12 +1080,14 @@ public final class HotkeyService {
     release(&toggleHotkeyToken)
   }
 
-  /// Register the Quick Add hotkey (#2381).
+  /// The always-armed app shortcuts, most severe first.
+  private static let appShortcutRoles: [ShortcutRole] = [.quickAdd, .pasteLast, .copyLast]
+
+  /// The ONE place that decides which app shortcuts hold their Carbon chords (#2381, #3106).
   ///
   /// Asked through the BINDING, exactly as the toggle and cancel paths ask it — a bare modifier
   /// cannot go to Carbon, and for that shape the already-installed `NSEvent` monitors observe it
   /// instead. Two spellings of that question is how the record and cancel paths drifted apart.
-  /// The ONE place that decides whether Quick Add may hold its Carbon chord.
   ///
   /// **A shared chord is a policy question, and the event-tap path already answered it while the
   /// Carbon path had no answer at all.** `ShortcutMatcher.role(forBareModifierKeyCode:...)` checks
@@ -1057,14 +1099,32 @@ public final class HotkeyService {
   /// Every caller that used to call `registerQuickAddHotkey()` calls this instead, so the rule lives
   /// in one function rather than being asked again at each site — which is how the three shortcut
   /// defaults came to disagree in the first place (#1991 blocker 2, reproduced during this build).
-  private func reconcileQuickAddRegistration() {
-    if Self.mayHoldItsChord(
-      .quickAdd, isEnabled: isEnabled, isSuspended: isSuspended, bindings: bindings,
-      armed: armedRoles)
-    {
-      registerQuickAddHotkey()
-    } else {
-      unregisterQuickAddHotkey()
+  ///
+  /// #3106: every refusal is applied BEFORE any grant, so a registration a role must give up is
+  /// released before another role asks Carbon for the same chord.
+  private func reconcileAppShortcutRegistrations() {
+    let decisions = Self.appShortcutRoles.map { ($0, mayRegisterAppShortcut($0)) }
+    for (role, may) in decisions where !may {
+      release(&appShortcutTokens[role])
+      // A press already seen belongs to a registration this role no longer holds; its release must
+      // not fire into a chord another role now owns.
+      appShortcutsHeld.remove(role)
+    }
+    for (role, may) in decisions where may { registerAppShortcut(role) }
+  }
+
+  /// Whether `role` may hold its chord now: the arbitration ruling, plus, for Paste Last and Copy
+  /// Last, an installed action.
+  private func mayRegisterAppShortcut(_ role: ShortcutRole) -> Bool {
+    guard
+      Self.mayHoldItsChord(
+        role, isEnabled: isEnabled, isSuspended: isSuspended, bindings: bindings, armed: armedRoles)
+    else { return false }
+    switch role {
+    case .quickAdd: return true
+    case .pasteLast: return onPasteLast != nil
+    case .copyLast: return onCopyLast != nil
+    case .record, .cancel: return false
     }
   }
 
@@ -1090,33 +1150,37 @@ public final class HotkeyService {
     return ShortcutMatcher.mayHoldCarbonChord(role, in: bindings, armed: armed)
   }
 
-  /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
-  private func registerQuickAddHotkey() {
-    guard quickAddBinding.isCarbonRegistrable else { return }
-    guard quickAddHotkeyToken == nil else { return }
-    quickAddHotkeyToken = registerHotkey(
-      id: HotkeyID.quickAdd.rawValue,
-      keyCode: quickAddKeyCode,
-      modifiers: carbonModifiers(from: quickAddModifiers)
-    )
+  /// Pure mechanism, no policy: `reconcileAppShortcutRegistrations` above decides whether to call it.
+  private func registerAppShortcut(_ role: ShortcutRole) {
+    guard let id = HotkeyID(appShortcut: role) else { return }
+    let binding = binding(for: role)
+    guard binding.isCarbonRegistrable, appShortcutTokens[role] == nil,
+      case .keyboard(let keyCode, let modifiers) = binding
+    else { return }
+    appShortcutTokens[role] = registerHotkey(
+      id: id.rawValue, keyCode: keyCode, modifiers: carbonModifiers(from: modifiers))
   }
 
-  private func unregisterQuickAddHotkey() {
-    release(&quickAddHotkeyToken)
+  private func unregisterAppShortcuts() {
+    for role in Self.appShortcutRoles { release(&appShortcutTokens[role]) }
+    appShortcutsHeld.removeAll()
   }
 
-  /// Re-apply the Quick Add binding after the user changes it.
+  /// Re-apply an app shortcut's binding after the user changes it (#2381 for Quick Add; #3106 for
+  /// Paste Last and Copy Last).
   ///
   /// Both halves, because the binding can change SHAPE — chord to bare modifier or back — which
   /// moves it between Carbon and the monitors. Re-registering without re-installing the monitors
   /// would leave the new shape unobserved, which is #1991's exact failure: a shortcut that is
   /// stored, displayed, and inert.
-  public func reapplyQuickAddBinding() {
-    unregisterQuickAddHotkey()
+  package func reapplyAppShortcutBinding(_ role: ShortcutRole) {
+    // The old chord's registration must go first: the token still holds it.
+    release(&appShortcutTokens[role])
+    appShortcutsHeld.remove(role)
     // The reconciler owns both questions the two guards below used to ask separately — may we
     // register at all, and may we hold THIS chord. Rebinding Quick Add onto the cancel chord during
     // a recording is exactly the case a bare `registerQuickAddHotkey()` here would get wrong.
-    reconcileQuickAddRegistration()
+    reconcileAppShortcutRegistrations()
     guard isEnabled, !isSuspended else { return }
     installModifierMonitors()
   }
@@ -1187,6 +1251,14 @@ public final class HotkeyService {
       // press-tracking state here would disturb an in-flight dictation for a limb's sake.
       Task { await onQuickAdd?() }
       emitHotkeyPressed(.quickAdd, trigger: .quickAdd)
+
+    case HotkeyID.pasteLast.rawValue:
+      guard carbonEventIsCurrent(for: .pasteLast) else { return }
+      handleLastDictationShortcut(.pasteLast, isPress: !isRelease)
+
+    case HotkeyID.copyLast.rawValue:
+      guard carbonEventIsCurrent(for: .copyLast) else { return }
+      handleLastDictationShortcut(.copyLast, isPress: !isRelease)
 
     default:
       break
@@ -1270,9 +1342,16 @@ public final class HotkeyService {
     // was made a closed set.
     switch role {
     case .pasteLast, .copyLast:
-      // #3106: matched and deliberately inert in this commit. The action, its press latch and its
-      // telemetry arrive together in the commit that wires them; an arm that fired half of that
-      // would be worse than one that does nothing.
+      // A bare-modifier rebind: the modifier's own press and release are the gesture.
+      //
+      // **`isPress` cannot see this key's release while the OTHER side's modifier is held** (the
+      // aggregate-flag hazard described under `.cancel` below): Right Command coming up with Left
+      // Command still down reads as a second press. But a flags-changed event for one key code is
+      // always a TRANSITION of that key, so a second event for a key already held is its release,
+      // whatever the aggregate flag says. Without this, Paste Last on bare Right Command would
+      // never fire for a user who rests on Left Command, and would stay latched until the next
+      // press.
+      handleLastDictationShortcut(role, isPress: isPress && !appShortcutsHeld.contains(role))
       return
 
     case .quickAdd:
@@ -1341,6 +1420,55 @@ public final class HotkeyService {
     } else {
       // Push-to-talk mode with hands-free support
       handleRecordAction(isPress: isPress)
+    }
+  }
+
+  /// Whether a Carbon event for `role` still belongs to a registration this service holds (#3106).
+  ///
+  /// Removing a registration does not recall an event already delivered, and `release` keeps a
+  /// token whose removal the adapter refused, so the id alone proves nothing. Asked of CURRENT state:
+  /// running, not suspended, the chord still ours now (a higher role may have taken it since the
+  /// press), and a registration held.
+  private func carbonEventIsCurrent(for role: ShortcutRole) -> Bool {
+    isEnabled && !isSuspended && mayRegisterAppShortcut(role) && appShortcutTokens[role] != nil
+  }
+
+  /// One press or release of Paste Last or Copy Last, from either dispatch path (#3106).
+  ///
+  /// **Paste fires on the RELEASE.** The action posts a synthetic Cmd+V; fired on the press, the
+  /// user's fingers are still on Control and Command, and a held modifier can ride into that paste
+  /// or turn it into a different chord. Wispr Flow ships the same choice for the same action
+  /// (static teardown, 2026-09-22). The action waits for the modifiers themselves to come up.
+  ///
+  /// **Copy fires on the press**: it posts no keystroke, so there is nothing for a held key to
+  /// spoil, and the clipboard is ready by the time the user reaches for Cmd+V.
+  ///
+  /// Either way one physical hold acts once: `appShortcutsHeld` absorbs auto-repeat and a stray
+  /// second press, and a release with no press seen is ignored.
+  ///
+  /// No `performCleanup()`, as with Quick Add: these never touch the recording path.
+  private func handleLastDictationShortcut(_ role: ShortcutRole, isPress: Bool) {
+    switch role {
+    case .pasteLast:
+      if isPress {
+        appShortcutsHeld.insert(.pasteLast)
+        return
+      }
+      guard appShortcutsHeld.remove(.pasteLast) != nil, let action = onPasteLast else { return }
+      Task { await action() }
+      emitHotkeyPressed(.pasteLast, trigger: .pasteLast)
+
+    case .copyLast:
+      guard isPress else {
+        appShortcutsHeld.remove(.copyLast)
+        return
+      }
+      guard appShortcutsHeld.insert(.copyLast).inserted, let action = onCopyLast else { return }
+      Task { await action() }
+      emitHotkeyPressed(.copyLast, trigger: .copyLast)
+
+    case .record, .cancel, .quickAdd:
+      return
     }
   }
 

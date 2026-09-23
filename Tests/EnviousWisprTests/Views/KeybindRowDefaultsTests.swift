@@ -154,6 +154,8 @@ struct KeybindRowDefaultsTests {
     for (label, role, setting) in [
       ("Recording keybind", "record", "toggle"), ("Cancel keybind", "cancel", "cancel"),
       ("Add-a-word keybind", "quickAdd", "quickAdd"),
+      ("Paste last dictation keybind", "pasteLast", "pasteLast"),
+      ("Copy last dictation keybind", "copyLast", "copyLast"),
     ] {
       let block = try Self.rowBlock(labelled: label)
       #expect(block.contains("role: .\(role)"))

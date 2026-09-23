@@ -301,6 +301,27 @@ package enum ShortcutMatcher {
     return true
   }
 
+  /// The more severe role that has taken `role`'s binding, or nil when `role` keeps it (#3106).
+  ///
+  /// The same two collisions `ownsItsBinding` asks about, answered with WHO, so a Keybinds row can
+  /// say which shortcut took its keys. `ownsItsBinding(role)` is true exactly when this is nil;
+  /// `ShortcutArbitrationTests` sweeps that equivalence.
+  package static func displacingRole(of role: ShortcutRole, in bindings: ShortcutBindings)
+    -> ShortcutRole?
+  {
+    let binding = bindings[role]
+    for higher in roles(above: role) {
+      let other = bindings[higher]
+      if carbonEquivalent(binding, other)
+        || bareModifier(other, isPrefixOf: binding, within: prefixModifiers)
+        || bareModifier(binding, isPrefixOf: other, within: prefixModifiers)
+      {
+        return higher
+      }
+    }
+    return nil
+  }
+
   /// Whether `role` may hold its Carbon registration now, given which roles are armed.
   ///
   /// **A shared chord is a policy question, and the event-tap path already answered it while the
@@ -457,5 +478,76 @@ package enum ShortcutMatcher {
       if bareModifier(bare, isPrefixOf: bindings[higher], within: prefixModifiers) { return nil }
     }
     return matched
+  }
+}
+
+/// Why a shortcut the user just recorded cannot be saved (#3106).
+package enum ShortcutRefusal: Equatable, Sendable {
+  /// A standard macOS shortcut every app uses (Copy, Paste, Quit, ...). Taking it globally would
+  /// break it in every app, and Paste Last on Command-V would re-trigger itself from its own paste.
+  case systemShortcut
+  /// Another shortcut already uses this exact key combination, as Carbon sees it.
+  case sameAs(ShortcutRole)
+  /// A bare modifier key and a chord that needs that modifier held: whichever is pressed, the other
+  /// one fires first or as well.
+  case modifierConflict(ShortcutRole)
+}
+
+extension ShortcutMatcher {
+
+  /// Standard macOS shortcuts a recorded binding may not take: the Edit menu's (Undo, Redo, Cut,
+  /// Copy, Paste, Select All) and the app-level ones every Mac app answers (Quit, Close, Hide,
+  /// Minimize, app switching, Spotlight, window cycling). A CLOSED set, taken from macOS's own
+  /// menus rather than from our users' data, so it is not a prediction about anyone's habits.
+  /// Compared Carbon-style, so a Caps Lock riding on the capture does not slip past it.
+  package static let reservedSystemChords: [ShortcutBinding] = [
+    .keyboard(keyCode: 6, modifiers: [.command]),  // Z  Undo
+    .keyboard(keyCode: 6, modifiers: [.command, .shift]),  // Z  Redo
+    .keyboard(keyCode: 7, modifiers: [.command]),  // X  Cut
+    .keyboard(keyCode: 8, modifiers: [.command]),  // C  Copy
+    .keyboard(keyCode: 9, modifiers: [.command]),  // V  Paste
+    .keyboard(keyCode: 0, modifiers: [.command]),  // A  Select All
+    .keyboard(keyCode: 12, modifiers: [.command]),  // Q  Quit
+    .keyboard(keyCode: 13, modifiers: [.command]),  // W  Close
+    .keyboard(keyCode: 4, modifiers: [.command]),  // H  Hide
+    .keyboard(keyCode: 46, modifiers: [.command]),  // M  Minimize
+    .keyboard(keyCode: 48, modifiers: [.command]),  // Tab  App switcher
+    .keyboard(keyCode: 49, modifiers: [.command]),  // Space  Spotlight
+    .keyboard(keyCode: 50, modifiers: [.command]),  // `  Cycle windows
+  ]
+
+  /// Whether `proposed` may be saved as `role`'s binding. Nil means it may.
+  ///
+  /// Refuses, founder-approved 2026-09-22:
+  /// - a standard macOS shortcut, for every role (as Wispr Flow does);
+  /// - an EXACT duplicate of any other role's binding, in both directions ("already in use", as
+  ///   Wispr Flow does): two rows on one chord is never what the user meant;
+  /// - a PREFIX collision (a bare modifier and a chord needing it, either direction) with a MORE
+  ///   severe role: that binding could never work, and capture is where it can be explained.
+  ///
+  /// **A prefix collision with a LESS severe role is allowed, deliberately** ("higher wins", from a
+  /// web-grounded council the founder requested). Arbitration gives the key to the higher role, the
+  /// lower one yields, and its own Keybinds row says so. Refusing instead would let a convenience
+  /// shortcut veto the heart's: with Paste Last on its shipped Control-Command-V, a user could not
+  /// move Record to bare Right Command or Right Control until they had first found and moved Paste
+  /// Last.
+  package static func refusal(
+    assigning proposed: ShortcutBinding, to role: ShortcutRole, in bindings: ShortcutBindings
+  ) -> ShortcutRefusal? {
+    if reservedSystemChords.contains(where: { carbonEquivalent($0, proposed) }) {
+      return .systemShortcut
+    }
+    for other in ShortcutRole.allCases where other != role {
+      if carbonEquivalent(proposed, bindings[other]) { return .sameAs(other) }
+    }
+    for other in roles(above: role) {
+      let existing = bindings[other]
+      if bareModifier(proposed, isPrefixOf: existing, within: prefixModifiers)
+        || bareModifier(existing, isPrefixOf: proposed, within: prefixModifiers)
+      {
+        return .modifierConflict(other)
+      }
+    }
+    return nil
   }
 }

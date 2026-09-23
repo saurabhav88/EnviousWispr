@@ -23,7 +23,7 @@ import Testing
 @MainActor
 @Suite struct HotkeyControllerInstallTests {
 
-  private static func makeFixture() -> (
+  private static func makeFixture(settings: SettingsManager = SettingsManager()) -> (
     controller: HotkeyController,
     hotkeyService: HotkeyService,
     starter: RecordingStarter,
@@ -38,7 +38,6 @@ import Testing
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
-    let settings = SettingsManager()
     let overlay = OverlayTestDouble.headlessDirector()
     let permissions = PermissionsService()
     let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
@@ -128,6 +127,28 @@ import Testing
     #expect(fx.hotkeyService.recordingMode == .pushToTalk)
     #expect(fx.hotkeyService.cancelKeyCode == 53)
     #expect(fx.hotkeyService.toggleKeyCode == 100)
+  }
+
+  /// #3106: the two new shortcuts are hydrated from settings at install, not left on the service's
+  /// shipped fallback until the user happens to edit them.
+  @Test func installPushesTheLastDictationBindings() {
+    // An isolated store: these four keys must not leak into the shared defaults other suites read.
+    let name = "ew.hotkeyControllerInstall." + UUID().uuidString
+    let suite = UserDefaults(suiteName: name)!
+    suite.removePersistentDomain(forName: name)
+    defer { suite.removePersistentDomain(forName: name) }
+    let fx = Self.makeFixture(settings: SettingsManager(defaults: suite))
+    fx.settings.pasteLastKeyCode = 2
+    fx.settings.pasteLastModifiers = [.command, .shift]
+    fx.settings.copyLastKeyCode = 3
+    fx.settings.copyLastModifiers = [.option, .shift]
+    fx.controller.install()
+    #expect(
+      fx.hotkeyService.binding(for: .pasteLast)
+        == .keyboard(keyCode: 2, modifiers: [.command, .shift]))
+    #expect(
+      fx.hotkeyService.binding(for: .copyLast)
+        == .keyboard(keyCode: 3, modifiers: [.option, .shift]))
   }
 
   @Test func onIsProcessingDelegatesToStarter() {

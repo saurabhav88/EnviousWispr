@@ -199,6 +199,103 @@ struct ShortcutArbitrationTests {
       ShortcutMatcher.carbonEquivalent(fnChord, .keyboard(keyCode: 9, modifiers: [.control])))
   }
 
+  // MARK: Capture-time refusal
+
+  @Test("A standard Mac shortcut is refused for every role, Caps Lock or not")
+  func systemShortcutsRefused() {
+    for role in ShortcutRole.allCases {
+      #expect(
+        ShortcutMatcher.refusal(
+          assigning: .keyboard(keyCode: 9, modifiers: [.command]), to: role, in: .shipped)
+          == .systemShortcut, "\(role): Command-V")
+      #expect(
+        ShortcutMatcher.refusal(
+          assigning: .keyboard(keyCode: 8, modifiers: [.command, .capsLock]), to: role,
+          in: .shipped) == .systemShortcut, "\(role): Command-C with Caps Lock")
+    }
+    // Paired: the shipped Control-Command chords are not system shortcuts.
+    #expect(
+      ShortcutMatcher.refusal(
+        assigning: ShortcutRole.pasteLast.defaultBinding, to: .pasteLast, in: .shipped) == nil)
+  }
+
+  @Test("Duplicates are refused both ways; a prefix clash only against a more severe role", arguments: ShortcutArbitrationTests.orderedPairs.map { [$0.higher, $0.lower] })
+  func captureRefusesOnlyUpward(_ pair: [ShortcutRole]) {
+    let (higher, lower) = (pair[0], pair[1])
+    let chord = ShortcutBinding.keyboard(keyCode: 9, modifiers: [.command, .option])
+    var bindings = Self.neutral()
+    Self.set(higher, chord, in: &bindings)
+    #expect(ShortcutMatcher.refusal(assigning: chord, to: lower, in: bindings) == .sameAs(higher))
+
+    // An exact duplicate is refused in BOTH directions (founder, 2026-09-22: "already in use").
+    bindings = Self.neutral()
+    Self.set(lower, chord, in: &bindings)
+    #expect(ShortcutMatcher.refusal(assigning: chord, to: higher, in: bindings) == .sameAs(lower))
+
+    // A PREFIX clash with a lower role is allowed: the higher role wins and the lower row says so.
+    bindings = Self.neutral()
+    Self.set(lower, .keyboard(keyCode: 3, modifiers: [.command]), in: &bindings)
+    #expect(
+      ShortcutMatcher.refusal(
+        assigning: .keyboard(keyCode: Self.rightCommand, modifiers: []), to: higher, in: bindings)
+        == nil)
+
+    // Prefix, both directions, against the higher role. Command-F, not Command-V: the latter is a
+    // standard Mac shortcut and would be refused for that reason first.
+    bindings = Self.neutral()
+    Self.set(higher, .keyboard(keyCode: Self.rightCommand, modifiers: []), in: &bindings)
+    #expect(
+      ShortcutMatcher.refusal(
+        assigning: .keyboard(keyCode: 3, modifiers: [.command]), to: lower, in: bindings)
+        == .modifierConflict(higher))
+    bindings = Self.neutral()
+    Self.set(higher, .keyboard(keyCode: 3, modifiers: [.command]), in: &bindings)
+    #expect(
+      ShortcutMatcher.refusal(
+        assigning: .keyboard(keyCode: Self.rightCommand, modifiers: []), to: lower, in: bindings)
+        == .modifierConflict(higher))
+  }
+
+  @Test("Record may move to bare Right Command even though Paste Last's default needs Command")
+  func recordIsNeverVetoedByALimb() {
+    #expect(
+      ShortcutMatcher.refusal(
+        assigning: .keyboard(keyCode: Self.rightCommand, modifiers: []), to: .record, in: .shipped)
+        == nil)
+    var moved = ShortcutBindings.shipped
+    moved.record = .keyboard(keyCode: Self.rightCommand, modifiers: [])
+    #expect(!ShortcutMatcher.ownsItsBinding(.pasteLast, in: moved), "Paste Last yields and says so")
+  }
+
+  @Test("The row's 'taken by' answer agrees with ownership for every probe")
+  func displacingRoleAgreesWithOwnership() {
+    let probes: [ShortcutBinding] = [
+      .keyboard(keyCode: Self.rightCommand, modifiers: []),
+      .keyboard(keyCode: 9, modifiers: [.command]),
+      .keyboard(keyCode: 9, modifiers: [.control, .command]),
+      .keyboard(keyCode: ModifierKeyCodes.globe, modifiers: []),
+      .keyboard(keyCode: 9, modifiers: [.function, .control]),
+    ]
+    for (higher, lower) in Self.orderedPairs {
+      for a in probes {
+        for b in probes {
+          var bindings = Self.neutral()
+          Self.set(higher, a, in: &bindings)
+          Self.set(lower, b, in: &bindings)
+          for role in [higher, lower] {
+            #expect(
+              ShortcutMatcher.ownsItsBinding(role, in: bindings)
+                == (ShortcutMatcher.displacingRole(of: role, in: bindings) == nil),
+              "\(role) with \(higher)=\(a), \(lower)=\(b)")
+          }
+        }
+      }
+    }
+    var moved = ShortcutBindings.shipped
+    moved.record = .keyboard(keyCode: Self.rightCommand, modifiers: [])
+    #expect(ShortcutMatcher.displacingRole(of: .pasteLast, in: moved) == .record)
+  }
+
   // MARK: Lower roles never decide a higher role's answer
 
   @Test("Changing a lower role's binding never changes a higher role's ownership")

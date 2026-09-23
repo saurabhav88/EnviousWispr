@@ -431,12 +431,19 @@ struct HotkeyRecorderView: View {
   /// separate completion handlers, so the decision cannot live in this view; it
   /// belongs to `SettingsManager.claimGlobeKeyGuidancePresentation`.
   var onBindingAccepted: (UInt16, NSEvent.ModifierFlags) -> Void = { _, _ in }
+  /// #3106: asked BEFORE either half of a binding is written, for a capture and for Reset alike.
+  /// Required, not defaulted, so no recorder can be placed without deciding what it refuses: the
+  /// recorder used to write both halves first and tell the owner afterwards, so an owner could only
+  /// object to a binding that was already saved and already registering.
+  let validate: (ShortcutBinding) -> ShortcutRefusal?
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
   // façade; the shared HotkeyService is no longer accessible via the former root state.
   @Environment(DictationRuntime.self) private var dictationRuntime
 
   @State private var isRecording = false
+  /// Why the last capture or Reset was refused, shown under the field until the next attempt.
+  @State private var refusal: ShortcutRefusal?
 
   private var isDefault: Bool {
     keyCode == defaultKeyCode && modifiers == defaultModifiers
@@ -483,6 +490,13 @@ struct HotkeyRecorderView: View {
           .stroke(isRecording ? colors.recordingBorder : Color.clear, lineWidth: 1)
       )
       .modifier(keyCaptureBehavior)
+
+      if let refusal {
+        Text(Self.message(for: refusal))
+          .font(.caption)
+          .foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       // Reset button
       if !isDefault {
@@ -534,6 +548,15 @@ struct HotkeyRecorderView: View {
           .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1.5)
       )
       .modifier(keyCaptureBehavior)
+
+      if let refusal {
+        Text(Self.message(for: refusal))
+          .font(.stHelper)
+          .foregroundStyle(.red)
+          .multilineTextAlignment(.trailing)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityLabel("Not saved. \(Self.message(for: refusal))")
+      }
 
       if !isDefault {
         Button("Reset to default", action: resetToDefault)
@@ -597,7 +620,7 @@ struct HotkeyRecorderView: View {
     }
 
     Task { @MainActor in
-      acceptBinding(from: event)
+      refusal = acceptBinding(from: event)
       stopRecording()
     }
   }
@@ -614,16 +637,59 @@ struct HotkeyRecorderView: View {
   /// the owner is notified, which both surfaces depend on: `onBindingAccepted`
   /// presents the Globe guidance, and the popover anchors on a control whose label
   /// must already read the new key.
-  func acceptBinding(from event: NSEvent) {
+  ///
+  /// #3106: returns the refusal, if any, and in that case writes NEITHER half and does not notify
+  /// the owner. The check has to come first: the owner is notified after the write, and a saved
+  /// binding reaches registration through the settings sync before any later check could object.
+  @discardableResult
+  func acceptBinding(from event: NSEvent) -> ShortcutRefusal? {
     let accepted = HotkeyCapture.binding(for: event)
+    if let refused = validate(.keyboard(keyCode: accepted.keyCode, modifiers: accepted.modifiers)) {
+      return refused
+    }
     keyCode = accepted.keyCode
     modifiers = accepted.modifiers
     onBindingAccepted(accepted.keyCode, accepted.modifiers)
+    return nil
+  }
+
+  /// Reset goes through the same check: another shortcut may have been moved onto this one's
+  /// default since it shipped. `internal` for the same reason `acceptBinding` is.
+  @discardableResult
+  func applyDefault() -> ShortcutRefusal? {
+    if let refused = validate(.keyboard(keyCode: defaultKeyCode, modifiers: defaultModifiers)) {
+      return refused
+    }
+    keyCode = defaultKeyCode
+    modifiers = defaultModifiers
+    return nil
   }
 
   private func resetToDefault() {
-    keyCode = defaultKeyCode
-    modifiers = defaultModifiers
+    refusal = applyDefault()
+  }
+
+  /// The sentence under the field. Names the other shortcut by the title its own row shows.
+  static func message(for refusal: ShortcutRefusal) -> String {
+    switch refusal {
+    case .systemShortcut:
+      return "That is a standard Mac shortcut. Choose another."
+    case .sameAs(let role):
+      return "Already used by \(title(of: role)). Choose another."
+    case .modifierConflict(let role):
+      return "Clashes with \(title(of: role)): one needs a key the other uses on its own."
+    }
+  }
+
+  /// A role as its Keybinds row names it. A switch, so a new role must be given a name here.
+  static func title(of role: ShortcutRole) -> String {
+    switch role {
+    case .record: return "the recording keybind"
+    case .cancel: return "the cancel keybind"
+    case .quickAdd: return "the add-a-word keybind"
+    case .pasteLast: return "Paste last dictation"
+    case .copyLast: return "Copy last dictation"
+    }
   }
 }
 

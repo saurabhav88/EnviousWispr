@@ -264,20 +264,22 @@ final class PipelineSettingsSync {
       hotkeyService.reapplyCancelBinding()
     case .quickAddKeyCode:
       hotkeyService.quickAddKeyCode = settings.quickAddKeyCode
-      hotkeyService.reapplyQuickAddBinding()
+      hotkeyService.reapplyAppShortcutBinding(.quickAdd)
     case .quickAddModifiers:
       hotkeyService.quickAddModifiers = settings.quickAddModifiers
-      hotkeyService.reapplyQuickAddBinding()
-    // #3106: the values reach the service so every ownership question reads the user's binding.
-    // Registration and re-registration of these two chords are wired with their dispatch.
+      hotkeyService.reapplyAppShortcutBinding(.quickAdd)
     case .pasteLastKeyCode:
       hotkeyService.pasteLastKeyCode = settings.pasteLastKeyCode
+      hotkeyService.reapplyAppShortcutBinding(.pasteLast)
     case .pasteLastModifiers:
       hotkeyService.pasteLastModifiers = settings.pasteLastModifiers
+      hotkeyService.reapplyAppShortcutBinding(.pasteLast)
     case .copyLastKeyCode:
       hotkeyService.copyLastKeyCode = settings.copyLastKeyCode
+      hotkeyService.reapplyAppShortcutBinding(.copyLast)
     case .copyLastModifiers:
       hotkeyService.copyLastModifiers = settings.copyLastModifiers
+      hotkeyService.reapplyAppShortcutBinding(.copyLast)
     case .cancelModifiers:
       hotkeyService.cancelModifiers = settings.cancelModifiers
       hotkeyService.reapplyCancelBinding()
