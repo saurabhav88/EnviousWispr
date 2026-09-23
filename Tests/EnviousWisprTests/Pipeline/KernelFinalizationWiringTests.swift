@@ -753,6 +753,58 @@ import os
       "delivery runs exactly once, with the legacy trailing space appended exactly once")
   }
 
+  @Test(
+    "#3106: a committed landing check resolves AFTER delivery returns, with this take's id",
+    .timeLimit(.minutes(1)))
+  func landingCheckResolvesAfterDelivery() async throws {
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let telemetryState = KernelTelemetryState()
+    telemetryState.takeID = "TAKE-42"
+    let ax = PastedRegionFakeAX()
+    ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
+    ax.reads = [.text("Hello"), .text("Hello")]
+    ax.selectedRange = .range(location: 5, length: 0)  // a caret, so the field can read unchanged
+    let clock = PastedRegionFakeScheduler()
+    let (lines, sink) = AsyncStream<String>.makeStream()
+    var requestTakeID: String??
+    var check: PasteLandingCheck?
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        requestTakeID = .some(request.takeID)
+        let prepared = PasteLandingCheck.prepare(
+          .init(
+            tier: .cgEvent, pid: 42, takeID: request.takeID, bundleID: "com.apple.TextEdit",
+            payload: request.legacyText),
+          capturedTarget: PastedRegionFakeAX.field(42), ax: ax, scheduler: clock,
+          log: { sink.yield($0) })
+        prepared?.commit()
+        check = prepared
+        var result = Self.deliveredResult
+        result.landingCheck = prepared
+        return result
+      },
+      telemetryState: telemetryState)
+
+    let outcome = await wiring.deliver("hello world", .ordinary)
+    let committed = try #require(check)
+    #expect(outcome == .pasted)
+    #expect(requestTakeID == .some("TAKE-42"), "snapshotted before the delivery awaited")
+    #expect(committed.context.takeID == "TAKE-42")
+    // Delivery returned without waiting out the 1.5 s watch: nothing has resolved yet.
+    #expect(committed.phase == .committed)
+    #expect(committed.result == nil)
+
+    telemetryState.takeID = "TAKE-43"  // the next take starts; this check keeps its own id
+    clock.advance(ms: 1_500)
+    var iterator = lines.makeAsyncIterator()
+    let line = try #require(await iterator.next())
+    #expect(line.hasPrefix("PASTE_LANDING tier=cgevent observed=unchanged reason=field_identical"))
+    #expect(committed.result == .unchanged(.fieldIdentical))
+    #expect(committed.context.takeID == "TAKE-42")
+  }
+
   @Test("a clipboard-only cascade result is non-fatal and still completes delivery")
   func clipboardOnlyIsNonFatal() async throws {
     let outcome = KernelFinalizationOutcome()
