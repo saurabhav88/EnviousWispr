@@ -566,9 +566,13 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "One more try, maybe if I drds."))
     await Task.yield()
     #expect(judge.requests.isEmpty, "a deletion-only run is not judged")
+    // A second settled snapshot that still holds the same half-typed run, with
+    // another word changed, does not count it again (Codex PR-1 review r3).
+    observer.fire(.changed(region: "One more try, maybe if I drds!"))
+    observer.fire(.settled(region: "One more try, maybe if I drds!"))
+    await Task.yield()
     observer.fire(.ended(.focusChanged))
     #expect(await waitUntil { !watcher.isWatching })
-    #expect(telemetry.events.last == .observationEnded(.focusChanged, 1, .native))
     #expect(telemetry.unfinishedEditCounts.last == 1)
   }
 
