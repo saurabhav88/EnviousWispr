@@ -70,6 +70,8 @@ public final class FileImportRunner {
   private let egOneRuntime: (any EGOneEndpointProviding)?
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
+  private let checkerSelectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
   /// Test seams (#3111), production defaults unchanged: the language recogniser the
   /// runner resolves with, the EG-1 polisher factory, and the prompt planner, so a test
@@ -90,12 +92,16 @@ public final class FileImportRunner {
 
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
+  /// An import is one invocation even when it has many parts. The first part's
+  /// resolved language and endpoint decide for every later part.
+  private var frozenCheckerSelection: LearnedWordCheckerSelection?
 
   public convenience init(
     keychainManager: KeychainManager,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    outputClassifierHolder: OutputClassifierHolder? = nil
+    outputClassifierHolder: OutputClassifierHolder? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.init(
       keychainManager: keychainManager, egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
@@ -120,6 +126,7 @@ public final class FileImportRunner {
     self.languageIdentifier = languageIdentifier
     self.makeEGOnePolisher = makeEGOnePolisher
     self.promptPlanner = promptPlanner
+    self.checkerSelectionProvider = checkerSelectionProvider
   }
 
   /// Freezes the configuration this import runs under. Called once, before the
@@ -127,6 +134,7 @@ public final class FileImportRunner {
   public func freeze(settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?) {
     frozenSettings = settings
     frozenVocabulary = vocabulary
+    frozenCheckerSelection = nil
   }
 
   /// Runs one part through the shipped chain.
@@ -251,6 +259,16 @@ public final class FileImportRunner {
     wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { wordCorrection.correctorVocabulary = frozenVocabulary }
     let learnedWordCheck = LearnedWordCheckStep()
+    learnedWordCheck.selectionProvider = { [weak self] provider, language in
+      guard let self else { return .init(absence: .serverUnavailable) }
+      if let frozenCheckerSelection = self.frozenCheckerSelection {
+        return frozenCheckerSelection
+      }
+      let selection = await self.checkerSelectionProvider?(provider, language)
+        ?? .init(absence: .serverUnavailable)
+      self.frozenCheckerSelection = selection
+      return selection
+    }
     learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { learnedWordCheck.correctorVocabulary = frozenVocabulary }
 

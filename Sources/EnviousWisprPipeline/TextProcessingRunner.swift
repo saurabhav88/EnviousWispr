@@ -235,6 +235,14 @@ internal final class TextProcessingRunner {
     // (the runner keeps the INPUT context on failure) and both passes read one set.
     context.englishSpelling = evidence.englishSpelling
     context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
+    if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
+      learnedStep.isEnabled(for: context),
+      let provider = learnedStep.selectionProvider
+    {
+      let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
+        ?? .none
+      context.frozenLearnedWordChecker = await provider(selectedProvider, resolution.language)
+    }
     var polishNotice: PolishNotice?
 
     let logger = self.logger

@@ -56,8 +56,8 @@ public final class ModelDeliveryHome {
   public private(set) var editJudgeHandle: DeliveredModelHandle?
   public private(set) var editJudgeRegistration: DeliveryRegistration?
   /// #3105: sibling of EG-1's exhaustive shard directory, with its own
-  /// identity and admission marker. The later runtime chunk calls the ensure
-  /// door when EG-1 is selected; registration alone starts no fetch.
+  /// identity and admission marker. Selection and launch call the ensure door;
+  /// registration alone starts no fetch.
   public private(set) var egOneCheckerRegistration: DeliveryRegistration?
   private let checkerDeliveryDefaults: UserDefaults?
 
@@ -527,9 +527,9 @@ public final class ModelDeliveryHome {
     }
   }
 
-  /// Future runtime trigger: EG-1 selected and admitted -> ensure checker.
-  /// No production caller exists in this chunk. Admission truth is read from
-  /// the controller, not inferred from an on-disk path or provider state.
+  /// Automatic trigger: EG-1 selected and admitted -> ensure checker.
+  /// The bootstrap launch pass and PipelineSettingsSync call this without
+  /// waiting for polish. Admission truth comes from the controller.
   public func ensureCheckerAdapterIfEGOneSelected(
     selected: Bool, baseRegistration: DeliveryRegistration, promptTemplateID: String
   ) async -> CheckerEnsureOutcome {

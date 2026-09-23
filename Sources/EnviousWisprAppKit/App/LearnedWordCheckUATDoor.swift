@@ -18,19 +18,22 @@
       return words.isEmpty ? nil : words
     }
 
-    static func install(
-      kernelDriver: KernelDictationDriver,
-      whisperKitKernelDriver: KernelDictationDriver
-    ) {
-      guard let raw = ProcessInfo.processInfo.environment[environmentKey] else { return }
+    static func configuration(
+      environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ScriptedLearnedWordChecker? {
+      guard let raw = environment[environmentKey] else { return nil }
       guard let words = parseApprovedWords(raw) else {
         log("learned-check UAT door REJECTED: empty list")
-        return
+        return nil
       }
       let checker = ScriptedLearnedWordChecker(approvedWords: words)
-      kernelDriver.learnedWordCheck.checker = checker
-      whisperKitKernelDriver.learnedWordCheck.checker = checker
-      log("learned-check UAT door ACTIVE: approve=\(words.count) words")
+      log("learned-check UAT door ACTIVE: words=\(words.count)")
+      if environment["EW_LEARNED_CHECK_EG1_ADAPTER"] != nil
+        || environment["EW_LEARNED_CHECK_EG1_THRESHOLD"] != nil
+      {
+        log("learned-check UAT door WINS over EG-1 adapter door")
+      }
+      return checker
     }
 
     private static func log(_ line: String) {

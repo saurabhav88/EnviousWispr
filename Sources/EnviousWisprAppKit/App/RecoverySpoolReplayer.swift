@@ -104,6 +104,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #2649: a recovered take is re-polished with the provider it was captured
   /// under, so the second engine needs its own handle here too.
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
+  private let checkerSelectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
@@ -141,6 +143,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
@@ -157,6 +160,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
+    self.checkerSelectionProvider = checkerSelectionProvider
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
   }
@@ -435,7 +439,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     let processor = RecoveryTextProcessor(
       keychainManager: keychainManager, outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
-      s1MiniRuntime: s1MiniRuntime)
+      s1MiniRuntime: s1MiniRuntime,
+      checkerSelectionProvider: checkerSelectionProvider)
     if let settings = recovered.settings { processor.applySettings(settings) }
     let vocab = currentVocabulary()
     processor.applyCustomWordsVocabulary(corrector: vocab.corrector, polish: vocab.polish)

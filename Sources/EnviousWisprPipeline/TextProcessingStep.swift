@@ -54,6 +54,8 @@ public struct TextProcessingContext: Sendable {
   /// same words even when `CustomWordsPropagator` broadcasts mid-take. Nil
   /// means the caller froze nothing; each step then reads its own lane.
   public var frozenCorrectorVocabulary: CorrectorVocabulary?
+  /// Frozen when this context is built, before any processing step can suspend.
+  public var frozenLearnedWordChecker: LearnedWordCheckerSelection?
   /// LLM provider used for polishing (e.g. "openai", "ollama").
   public var llmProvider: String?
   /// LLM model used for polishing (e.g. "gpt-4o-mini").

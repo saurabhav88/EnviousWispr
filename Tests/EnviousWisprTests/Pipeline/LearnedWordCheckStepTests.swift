@@ -56,11 +56,36 @@ struct LearnedWordCheckStepTests {
     try await step.process(TextProcessingContext(text: text, language: "en")).text
   }
 
-  @Test("no checker installed: the step is off and nothing changes")
+  @Test("no checker installed: the step records why and changes nothing")
   func noCheckerIsOff() async throws {
     let s = step(nil)
-    #expect(s.isEnabled == false)
+    #expect(s.isEnabled)
     #expect(try await run(s, twin) == twin)
+    #expect(s.lastOutcome?.fallbackReason == .noChecker)
+  }
+
+  @Test("a frozen ready choice survives a later provider change")
+  func frozenReadyChoice() async throws {
+    let s = step(nil)
+    var context = TextProcessingContext(text: twin, language: "en")
+    context.frozenLearnedWordChecker = LearnedWordCheckerSelection(
+      checker: Checker(mode: .approveWord("toast")), identity: "test_ready")
+    #expect(try await s.process(context).text.contains("day Tuist regenerated"))
+  }
+
+  @Test("a frozen absent choice stays absent after a checker appears")
+  func frozenAbsentChoiceAndFacts() async throws {
+    let s = step(.approveWord("toast"))
+    var recorded: [LearnedCheckTerminalFacts] = []
+    s.recordTerminalFacts = { _, facts in recorded.append(facts) }
+    var context = TextProcessingContext(text: twin, language: "en")
+    context.takeID = "take-absent"
+    context.frozenLearnedWordChecker = .init(absence: .adapterDownloading)
+    #expect(try await s.process(context).text == twin)
+    #expect(recorded.count == 1)
+    #expect(recorded.first?.fallbackReason == "no_checker")
+    #expect(recorded.first?.checkerStatus == "absent")
+    #expect(recorded.first?.absenceReason == "adapter_downloading")
   }
 
   @Test("only the approved spot changes; the everyday twin stays")
