@@ -341,10 +341,11 @@ extension PasteLandingLifecycleTests {
     }
     func prepare(
       tier: PasteTier = .cgEvent, captured: AXUIElement? = PastedRegionFakeAX.field(42),
-      payload: String = "send the draft", takeID: String = "TAKE-A"
+      payload: String = "send the draft", takeID: String = "TAKE-A",
+      bundleID: String = "com.apple.TextEdit"
     ) -> PasteLandingCheck? {
       PasteLandingCheck.prepare(
-        .init(tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit", payload: payload),
+        .init(tier: tier, pid: 42, takeID: takeID, bundleID: bundleID, payload: payload),
         capturedTarget: captured, ax: ax, scheduler: clock, log: { self.lines.append($0) })
     }
     /// The one landing registration the check made.
@@ -556,6 +557,27 @@ extension PasteLandingLifecycleTests {
     c.clock.advance(ms: 1_500)
     c.registration?.fire(.valueChanged)
     #expect(await third.resolve() == .unchanged(.fieldIdentical))
+  }
+
+  @Test("The app class comes from the snapshot: browser first, then manual host, then native")
+  func appClassFromSnapshot() throws {
+    // Safari is a recognised browser and not a manual host; Chrome is both, and browser wins.
+    let safari = Rig()
+    #expect(try #require(safari.prepare(bundleID: "com.apple.Safari")).appClass == .browser)
+    let chrome = Rig()
+    chrome.ax.manualHosts = [42]
+    #expect(try #require(chrome.prepare(bundleID: "com.google.Chrome")).appClass == .browser)
+    // An unrecognised manual-accessibility host, and a native one.
+    let slack = Rig()
+    slack.ax.manualHosts = [42]
+    let slackCheck = try #require(slack.prepare(bundleID: "com.tinyspeck.slackmacgap"))
+    #expect(slackCheck.appClass == .manualAccessibility)
+    let textEdit = Rig()
+    #expect(try #require(textEdit.prepare()).appClass == .native)
+    // Snapshotted: the host stops answering, another app comes forward; the class stands.
+    slack.ax.manualHosts = []
+    slack.ax.frontmost = 7
+    #expect(slackCheck.appClass == .manualAccessibility)
   }
 
   @Test("Selection ranges are UTF-16 and never clamped")

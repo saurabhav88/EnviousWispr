@@ -140,6 +140,12 @@ package final class PasteLandingCheck {
   private let manualAX: Bool
   private let hostExposedFocus: Bool
   package let targetWindow: PasteLandingTargetWindow
+  /// The destination's class, from the bundle id and manual-accessibility answer snapshotted at
+  /// prepare: a later take, focus change or frontmost app cannot change it (#3106, for telemetry).
+  package var appClass: TelemetryService.LearnFromEditsTelemetry.AppClass {
+    PasteLandingAppClass.classify(
+      bundleIdentifier: context.bundleID, isManualAccessibilityHost: manualAX)
+  }
   private let ax: any PastedRegionAXOperations
   private let scheduler: any PastedRegionScheduling
   private let log: @MainActor (String) -> Void
