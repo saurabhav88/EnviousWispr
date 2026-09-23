@@ -134,9 +134,10 @@ internal struct PasteDeliveryResult {
   var copiesEvidence: PasteCopiesEvidence?
   /// #2652. Whether the Tier 1 accessibility SETTER ran. Narrower than "evidence exists".
   var copiesSetterReached = false
-  /// #3106. The committed arrival session of the key paste that delivered, or nil (Tier 1, Tier 3,
-  /// or no key paste succeeded). Observation only in PR A: nothing reads its landing to decide
-  /// anything; the wiring keeps it alive until its one report, after the outcome is computed.
+  /// #3106. The arrival session of the paste that delivered: a key tier's committed session, or
+  /// Tier 1's edit-only one (no landing); nil for Tier 3 or when nothing delivered. Observation only
+  /// in PR A: nothing reads its landing to decide anything; the wiring keeps a key tier's session
+  /// alive until its one report, and the delivery event hands it to #996.
   var arrivalCapture: PasteArrivalCapture? = nil
 
   var pasteTierLabel: String {
@@ -676,6 +677,14 @@ internal final class PasteCascadeExecutor {
       switch disposition {
       case .delivered:
         tier = .axDirect
+        // #3106 PR A: Tier 1 wrote the field itself, so there is nothing to observe landing; #996
+        // still asks the same owner for its edit-watch capture, with the text this route
+        // actually submitted. Only a DELIVERED write gets one.
+        if let app = request.targetApp, let submitted = insert.writeCall.attemptedText {
+          committedArrivalCapture = PasteArrivalCapture.editOnly(
+            pid: app.processIdentifier, bundleID: app.bundleIdentifier, payload: submitted,
+            ax: landingAX, scheduler: landingScheduler)
+        }
       case .continueCascade, .stopUnverified:
         // `tierFailureReason` stays the single authority for these strings, so
         // the switch cannot drift from the enum.

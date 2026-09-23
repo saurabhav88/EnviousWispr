@@ -55,9 +55,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   }
   /// pids whose attribute-name read fails (the answer is unreadable, not "no").
   var manualReadFails: Set<pid_t> = []
+  /// Every manual-accessibility question, by pid, in order.
+  var manualQueries: [pid_t] = []
   func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
     var pid: pid_t = 0
     AXUIElementGetPid(application, &pid)
+    manualQueries.append(pid)
     if manualReadFails.contains(pid) { return nil }
     return manualHosts.contains(pid)
   }

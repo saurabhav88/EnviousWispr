@@ -80,7 +80,9 @@ struct PasteArrivalCaptureTests {
     }
     func result() async -> PastedRegionCaptureOutcome {
       if outcome == nil {
-        await PasteArrivalCaptureTests.awaitSignal("#996's request resolved") { fire in resolved = fire }
+        await PasteArrivalCaptureTests.awaitSignal("#996's request resolved") { fire in
+          resolved = fire
+        }
       }
       return outcome ?? .ended(.captureUnsupported)
     }
@@ -90,7 +92,9 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Positives
 
-  @Test("a value notification wakes a read that finds the new occurrence at once; one report, all torn down")
+  @Test(
+    "a value notification wakes a read that finds the new occurrence at once; one report, all torn down"
+  )
   func immediateHit() throws {
     let session = try prepare()
     #expect(session.registrationComplete)
@@ -141,7 +145,8 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Negatives and their guards
 
-  @Test("a stable field without the text is absent at 300 ms, then shadowed to 1.5 s before one report")
+  @Test(
+    "a stable field without the text is absent at 300 ms, then shadowed to 1.5 s before one report")
   func stableMissShadowsThenReports() throws {
     let session = try prepare()
     session.commit()
@@ -171,7 +176,9 @@ struct PasteArrivalCaptureTests {
     #expect(reports.list.map(\.lateCheck) == [.found(ms: 325)])
   }
 
-  @Test("an incomplete registration, a focus change or a destroyed element makes a negative inconclusive")
+  @Test(
+    "an incomplete registration, a focus change or a destroyed element makes a negative inconclusive"
+  )
   func negativesNeedAnIntactComparison() throws {
     ax.landingNotificationFailures = [.elementDestroyed]
     let partial = try prepare()
@@ -203,7 +210,9 @@ struct PasteArrivalCaptureTests {
     #expect(reports.list.count == 1, "not a miss: reported at once, no shadow")
   }
 
-  @Test("with the text already there, an unchanged count needs a selection that rules out an identical replacement")
+  @Test(
+    "with the text already there, an unchanged count needs a selection that rules out an identical replacement"
+  )
   func nonzeroBaselineNeedsTheSelection() throws {
     ax.reads = [.text("thanks ")]
     ax.selectedRange = .range(location: 7, length: 0)
@@ -242,7 +251,9 @@ struct PasteArrivalCaptureTests {
     #expect(moved.landing == .inconclusive(.moved))
   }
 
-  @Test("an unknown manual-accessibility answer, a secure field, or an unreadable baseline never makes a negative")
+  @Test(
+    "an unknown manual-accessibility answer, a secure field, or an unreadable baseline never makes a negative"
+  )
   func unknownEvidenceIsNotANegative() throws {
     ax.manualReadFails = [pid]
     let unknown = try prepare()
@@ -369,7 +380,9 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Cancellation and stale callbacks
 
-  @Test("cancel before commit is silent; after commit it is inconclusive/cancelled; after the decision it keeps it")
+  @Test(
+    "cancel before commit is silent; after commit it is inconclusive/cancelled; after the decision it keeps it"
+  )
   func cancellation() async throws {
     let unwritten = try prepare()
     unwritten.cancelUnlessCommitted()
@@ -485,7 +498,9 @@ struct PasteArrivalCaptureTests {
     #expect(outcome == .ended(.dictatedTextNotFound))
   }
 
-  @Test("#996 watches only the occurrence PROVEN new: the pre-write selection proves it, a caret never does")
+  @Test(
+    "#996 watches only the occurrence PROVEN new: the pre-write selection proves it, a caret never does"
+  )
   func editRequestPicksOnlyTheNewOccurrence() async throws {
     // Where the paste went is known (the caret was at the end), so the new occurrence is [7, 14),
     // even with the post-paste caret parked on the OLD one at 7.
@@ -533,9 +548,92 @@ struct PasteArrivalCaptureTests {
     #expect(outcome == .ended(.captureUnsupported))
   }
 
+  // MARK: Tier 1 (AX direct): #996 only
+
+  func editOnly(_ payload: String = "Sarah ") -> PasteArrivalCapture {
+    PasteArrivalCapture.editOnly(
+      pid: pid, bundleID: "com.apple.TextEdit", payload: payload, ax: ax, scheduler: scheduler)
+  }
+
+  @Test(
+    "a Tier 1 session observes no landing: no AX work, no timer, no decision, no report, nothing to await"
+  )
+  func editOnlyObservesNoLanding() async throws {
+    let session = editOnly()
+    #expect(session.phase == .finished)
+    #expect(ax.readCount == 0 && ax.landingCalls.isEmpty && ax.landingRegistrations.isEmpty)
+    #expect(ax.selectedRangeReads == 0 && ax.enableCalls.isEmpty)
+    #expect(scheduler.scheduledCount == 0, "no deadline, poll or shadow")
+    #expect(await session.landingDecision() == nil)
+    await session.terminated()  // returns at once: the wiring's owner task holds nothing
+    session.cancel()
+    #expect(reports.list.isEmpty && scheduler.scheduledCount == 0)
+  }
+
+  @Test(
+    "a Tier 1 session gives #996 its capture: opt-in at the request, a late arrival, the paste time kept"
+  )
+  func editOnlyCapturesForTheWatch() async throws {
+    ax.manualHosts = [pid]
+    ax.reads = [.text("Hi ")]
+    let session = editOnly()
+    #expect(ax.enableCalls.isEmpty, "nothing before #996 asks")
+    let probe = await startEditRequest(session, pastedAtMs: 9)
+    #expect(ax.enableCalls == [pid], "opted in once, at #996's first read")
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    guard case .captured(let target) = await probe.result() else {
+      Issue.record("expected captured")
+      return
+    }
+    #expect(target.renderedText == "Sarah ")
+    #expect(target.pastedAtMs == 9)
+    #expect(target.isManualAccessibilityHost)
+    #expect(ax.enableCalls == [pid])
+  }
+
+  @Test("a Tier 1 session asks about manual accessibility only behind an installed timeout")
+  func editOnlyManualQueryIsBounded() async throws {
+    ax.manualHosts = [pid]
+    ax.timeoutFailsFor = [pid]
+    let refused = await startEditRequest(editOnly()).result()
+    #expect(refused == .ended(.captureUnsupported), "the reader's own bounded failure")
+    #expect(ax.manualQueries.isEmpty && ax.enableCalls.isEmpty, "no unbounded query, no opt-in")
+
+    ax.timeoutFailsFor = []
+    ax.reads = [.text("Hi Sarah ")]
+    let timeoutsBefore = ax.timeoutsSet.count
+    guard case .captured = await startEditRequest(editOnly()).result() else {
+      Issue.record("expected captured")
+      return
+    }
+    #expect(ax.manualQueries.first == pid, "asked once the bound is in place")
+    let first = ax.timeoutsSet.dropFirst(timeoutsBefore).first
+    #expect(
+      first?.0 == pid && first?.1 == PasteService.axMessagingTimeoutSeconds, "the bound comes first"
+    )
+  }
+
+  @Test(
+    "a Tier 1 session has no baseline: one occurrence is watched, two are ambiguous, none times out at 1.5 s"
+  )
+  func editOnlyWithoutABaseline() async throws {
+    ax.reads = [.text("thanks thanks ")]
+    let twice = await startEditRequest(editOnly("thanks ")).result()
+    #expect(twice == .ended(.anchorAmbiguous))
+
+    ax.reads = [.text("Hi ")]
+    let missing = await startEditRequest(editOnly())
+    scheduler.advance(ms: 1_475)
+    #expect(missing.outcome == nil, "still inside the request's own 1.5 s")
+    scheduler.advance(ms: 25)
+    #expect(await missing.result() == .ended(.dictatedTextNotFound))
+  }
+
   // MARK: Preparation
 
-  @Test("only the three key-paste tiers are observed; neither preparation nor commit opts a host in")
+  @Test(
+    "only the three key-paste tiers are observed; neither preparation nor commit opts a host in")
   func preparation() throws {
     #expect(
       PasteArrivalCapture.prepare(

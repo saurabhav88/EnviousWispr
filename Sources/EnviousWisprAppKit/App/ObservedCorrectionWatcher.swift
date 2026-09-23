@@ -135,23 +135,6 @@ struct ObservedCorrectionWatcherDependencies {
   /// nothing above it would ever answer. Production: `correctionJudgeDeadlineSeconds`
   /// plus one, so the AFM judge's own deadline reports first. Tests shorten it.
   var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
-  /// Capture grace (#996, app matrix 2026-09-20): a key-event paste (Tier 2
-  /// Cmd+V into Slack, Word, Chrome) lands AFTER the completion event fires,
-  /// so the first read of the focused field can still show the pre-paste text
-  /// (Slack and Word: `dictated_text_not_found` 25 ms after the paste, the text
-  /// present a second later). The capture is retried this many more times,
-  /// `captureRetryDelayMs` apart, before `dictated_text_not_found` or
-  /// `no_focused_element` is final. 10 × 150 ms = 1.5 s: the Tier 2b MENU
-  /// paste (an AppleScript click on Edit › Paste, Slack when the key event
-  /// is refused) lands later than the key event and missed a 0.9 s grace
-  /// twice on 2026-09-20; 1.5 s is also the settle interval, so a person who
-  /// starts fixing inside it is caught by the first poll after capture.
-  var captureRetries = 10
-  var captureRetryDelayMs = 150
-  /// The wait between capture attempts; tests inject an immediate one.
-  var sleepMs: (Int) async -> Void = { ms in
-    try? await Task.sleep(for: .milliseconds(ms))
-  }
   let telemetry: any LearnFromEditsTelemetrySink
 }
 
@@ -311,25 +294,26 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       return
     }
     w.selected = selected
-    var outcome = deps.observer.capture(
-      pid: frontmost.pid, pastedText: w.event.pastedText, pastedAtMs: w.pastedAtMs)
-    var retries = deps.captureRetries
-    while retries > 0, Self.deservesCaptureGrace(outcome) {
-      retries -= 1
-      await deps.sleepMs(deps.captureRetryDelayMs)
-      // Anything can have happened during the wait: a new paste, a dictation,
-      // the toggle. The same re-reads as after the capabilities await.
-      guard let live = watch, live.generation == gen, live.isLive else { return }
-      guard deps.isLearnFromEditsOn() else {
-        skip(.toggleOff, generation: gen)
-        return
-      }
-      guard let again = deps.frontmost(), again.pid == frontmost.pid else {
-        skip(.destinationMismatch, generation: gen)
-        return
-      }
-      outcome = deps.observer.capture(
-        pid: frontmost.pid, pastedText: w.event.pastedText, pastedAtMs: w.pastedAtMs)
+    // #3106 PR A: the paste's own arrival session reads the field and owns the retries (its capture
+    // grace runs from THIS request, however long the gates above took). The watcher only asks.
+    guard let editCapture = w.event.editCapture else {
+      watch = w
+      watch?.ended = true
+      emitEnded(reason: .captureUnsupported, generation: gen)
+      return
+    }
+    let outcome = await editCapture.editWatchCapture(pastedAtMs: w.pastedAtMs)
+    // Anything can have happened during the await: a new paste, a dictation,
+    // the toggle. The same re-reads as after the capabilities await; a stale
+    // answer never starts a watch on a later take.
+    guard let live = watch, live.generation == gen, live.isLive else { return }
+    guard deps.isLearnFromEditsOn() else {
+      skip(.toggleOff, generation: gen)
+      return
+    }
+    guard let again = deps.frontmost(), again.pid == frontmost.pid else {
+      skip(.destinationMismatch, generation: gen)
+      return
     }
     switch outcome {
     case .skipped(let reason):
@@ -355,17 +339,6 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       deps.observer.start(target) { [weak self] event in
         self?.handle(event, generation: gen)
       }
-    }
-  }
-
-  /// The two capture answers a slow host gives before the paste has landed:
-  /// no focused element yet, or a field that does not contain the text yet.
-  /// Everything else (secure field, wrong app, permission, unreadable value,
-  /// an ambiguous or oversize value, a captured target) is final at once.
-  static func deservesCaptureGrace(_ outcome: PastedRegionCaptureOutcome) -> Bool {
-    switch outcome {
-    case .ended(.dictatedTextNotFound), .skipped(.noFocusedElement): return true
-    case .captured, .skipped, .ended: return false
     }
   }
 

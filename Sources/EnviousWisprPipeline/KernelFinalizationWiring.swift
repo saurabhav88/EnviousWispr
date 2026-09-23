@@ -1129,7 +1129,10 @@ struct KernelFinalizationWiring {
               // #996: THIS take's learn language (the resolver's permissive
               // answer, not the confidence-gated cleanup one), cleared at
               // `processText` entry so it can never be the previous take's.
-              language: outcome.learnLanguage))
+              language: outcome.learnLanguage,
+              // #3106 PR A: the one post-write reader for THIS paste; #996 asks it after its
+              // gates instead of capturing on its own.
+              editCapture: result.arrivalCapture))
           deliveryOutcome = .pasted
         } else {
           deliveryOutcome = .clipboardOnly

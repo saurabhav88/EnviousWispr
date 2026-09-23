@@ -17,6 +17,15 @@ import Foundation
 ///   that did not happen.
 /// - NO: dictation copy-only branch (no paste attempted).
 /// - NO: saved-transcript Copy/Paste buttons (manual UI gesture, not dictation).
+/// #3106 PR A: the one owner of the post-write read for a delivered paste, as #996 sees it. The
+/// watcher asks it once, after its own gates, for the region to watch; the owner does the fresh read
+/// and its retries. Main-actor isolated (so the conforming session is `Sendable` without an escape):
+/// its answer holds Accessibility handles and never leaves the main actor.
+@MainActor
+package protocol PasteEditCapturing: AnyObject, Sendable {
+  func editWatchCapture(pastedAtMs: Int) async -> PastedRegionCaptureOutcome
+}
+
 public struct PasteCompletionEvent: Sendable {
   public let pastedText: String
   public let destinationBundleID: String?
@@ -30,15 +39,29 @@ public struct PasteCompletionEvent: Sendable {
   /// gate (every language is eligible, founder decision 2026-09-21); consumers
   /// never re-derive or guess it.
   public let language: String?
+  /// #3106 PR A: the arrival session of THIS delivered paste (a key tier's committed session, or
+  /// Tier 1's edit-only one). Nil only for an event built without one (tests); a delivered
+  /// dictation always carries it.
+  package let editCapture: (any PasteEditCapturing)?
 
   public init(
     pastedText: String, destinationBundleID: String?, timestamp: Date = Date(),
     language: String? = nil
   ) {
+    self.init(
+      pastedText: pastedText, destinationBundleID: destinationBundleID, timestamp: timestamp,
+      language: language, editCapture: nil)
+  }
+
+  package init(
+    pastedText: String, destinationBundleID: String?, timestamp: Date = Date(),
+    language: String? = nil, editCapture: (any PasteEditCapturing)?
+  ) {
     self.pastedText = pastedText
     self.destinationBundleID = destinationBundleID
     self.timestamp = timestamp
     self.language = language
+    self.editCapture = editCapture
   }
 }
 

@@ -10,11 +10,10 @@ import Testing
 
 // MARK: - Fakes
 
-/// A scripted observer: capture answers from a queue, events fired by the test.
+/// A scripted observer: edit observation only (#3106 PR A moved capture to the paste's arrival
+/// session); events are fired by the test.
 @MainActor
 final class ObserverFake: PastedRegionObserving {
-  var captureOutcomes: [PastedRegionCaptureOutcome] = []
-  private(set) var captures: [(pid_t, String, Int)] = []
   private(set) var starts = 0
   private(set) var stops = 0
   private(set) var startedTargets: [PastedRegionTarget] = []
@@ -33,10 +32,6 @@ final class ObserverFake: PastedRegionObserving {
     return t
   }
 
-  func capture(pid: pid_t, pastedText: String, pastedAtMs: Int) -> PastedRegionCaptureOutcome {
-    captures.append((pid, pastedText, pastedAtMs))
-    return captureOutcomes.isEmpty ? .ended(.captureUnsupported) : captureOutcomes.removeFirst()
-  }
   func start(
     _ target: PastedRegionTarget, onEvent: @escaping @MainActor (PastedRegionEvent) -> Void
   ) {
@@ -60,6 +55,38 @@ final class ObserverFake: PastedRegionObserving {
     handler(.ended(reason))
   }
   func fire(_ event: PastedRegionEvent) { onEvent?(event) }
+}
+
+/// The paste's arrival session as #996 sees it (#3106 PR A): one scripted answer per request, the
+/// requests recorded with the paste time they carried. `hold` parks a request until the test calls
+/// `release(_:)`, to move the world while the watcher is awaiting its answer.
+@MainActor
+final class EditCaptureFake: PasteEditCapturing {
+  var outcomes: [PastedRegionCaptureOutcome] = []
+  private(set) var requests: [Int] = []
+  var hold = false
+  private var parked: CheckedContinuation<Void, Never>?
+  /// Fires when a request arrives (before any hold), so a test waits on the subject, not on time.
+  var onRequest: (@MainActor () -> Void)?
+
+  func editWatchCapture(pastedAtMs: Int) async -> PastedRegionCaptureOutcome {
+    requests.append(pastedAtMs)
+    onRequest?()
+    if hold {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        parked = continuation
+      }
+    }
+    return outcomes.isEmpty ? .ended(.captureUnsupported) : outcomes.removeFirst()
+  }
+
+  var isParked: Bool { parked != nil }
+
+  func release() {
+    let continuation = parked
+    parked = nil
+    continuation?.resume()
+  }
 }
 
 /// Minimal AX fake only used to build a real `PastedRegionTarget` fixture.
@@ -207,6 +234,8 @@ struct ObservedCorrectionWatcherTests {
   typealias T = TelemetryService.LearnFromEditsTelemetry
 
   let observer = ObserverFake()
+  /// Every paste in a test carries this one scripted session; its queue answers in order.
+  let edits = EditCaptureFake()
   let clock = ObserverClock()
   let judge = JudgeFake()
   let library = LearnedLibraryFake()
@@ -223,10 +252,6 @@ struct ObservedCorrectionWatcherTests {
     var judgeDeadlineSeconds: Double = WordSuggestionService.correctionJudgeDeadlineSeconds + 1
     var frontmost: FrontmostApplication? = FrontmostApplication(
       pid: 42, bundleID: "com.apple.Notes")
-    /// Production grace: ten more capture attempts. The test sleeper is immediate
-    /// unless a test installs one that moves the world between attempts.
-    var captureRetries = 10
-    var sleeper: (Int) async -> Void = { _ in }
   }
   let knobs = Knobs()
 
@@ -258,8 +283,6 @@ struct ObservedCorrectionWatcherTests {
         coordinator: coordinator,
         telemetry: telemetry)
     deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
-    deps.captureRetries = knobs.captureRetries
-    deps.sleepMs = { ms in await knobs.sleeper(ms) }
     return ObservedCorrectionWatcher(dependencies: deps)
   }
 
@@ -269,7 +292,8 @@ struct ObservedCorrectionWatcherTests {
   )
     -> PasteCompletionEvent
   {
-    PasteCompletionEvent(pastedText: text, destinationBundleID: bundle, language: language)
+    PasteCompletionEvent(
+      pastedText: text, destinationBundleID: bundle, language: language, editCapture: edits)
   }
 
   @Test(
@@ -282,10 +306,10 @@ struct ObservedCorrectionWatcherTests {
     #expect(telemetry.events.isEmpty, "the skip is deferred")
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.skipped(.toggleOff)])
-    #expect(observer.captures.isEmpty && watcher.isWatching == false)
+    #expect(edits.requests.isEmpty && watcher.isWatching == false)
 
     knobs.toggle = true
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste())
@@ -294,7 +318,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitForEvents(telemetry, count: 2))
     #expect(telemetry.events.last == .skipped(.watchActive))
     #expect(await waitUntil { observer.starts == 1 })
-    #expect(observer.captures.count == 1)
+    #expect(edits.requests.count == 1)
   }
 
   @Test("gate order in the deferred task: model, destination, then the observer's own skips; no language gate")
@@ -328,120 +352,133 @@ struct ObservedCorrectionWatcherTests {
     watcher.pasteCompleted(paste(bundle: "com.apple.Terminal"))
     #expect(await waitForEvents(telemetry, count: 4))
     #expect(telemetry.events.last == .skipped(.destinationMismatch), "mismatch, not a blocklist")
-    #expect(observer.captures.isEmpty, "no Accessibility work before the gates pass")
+    #expect(edits.requests.isEmpty, "no Accessibility work before the gates pass")
 
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.Notes")
-    // A secure field is final at once; "no focused element" and "text not
-    // found" get the capture grace (one attempt plus `captureRetries` retries)
-    // before they are reported, because a key-event paste lands after the
-    // completion event.
-    let attempts = knobs.captureRetries + 1
-    observer.captureOutcomes =
-      [.skipped(.secureField)] + Array(repeating: .skipped(.noFocusedElement), count: attempts)
-      + Array(repeating: .ended(.dictatedTextNotFound), count: attempts)
+    // Past the gates the watcher asks the paste's arrival session ONCE; the session owns the
+    // capture grace (#3106 PR A, `PasteArrivalCaptureTests`). Its final answers map to the
+    // watcher's skips and ends as before.
+    edits.outcomes = [
+      .skipped(.secureField), .skipped(.noFocusedElement), .ended(.dictatedTextNotFound),
+    ]
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 5))
     #expect(telemetry.events.last == .skipped(.secureField))
-    #expect(observer.captures.count == 1)
+    #expect(edits.requests.count == 1)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 6))
     #expect(telemetry.events.last == .skipped(.noFocusedElement))
-    #expect(observer.captures.count == 1 + attempts)
+    #expect(edits.requests.count == 2)
     watcher.pasteCompleted(paste())
     #expect(await waitForEvents(telemetry, count: 7))
     #expect(telemetry.events.last == .observationEnded(.dictatedTextNotFound, 0, .other))
-    #expect(observer.captures.count == 1 + 2 * attempts && observer.captures.allSatisfy { $0.0 == 42 })
+    #expect(edits.requests.count == 3)
     #expect(observer.starts == 0)
   }
 
-  @Test(
-    "capture grace: a host whose paste lands late (no focus, then the old text, then the new text) is captured on the third read, with nothing reported for the misses"
-  )
-  func captureGraceLandsLate() async {
-    // The observer's unstable range snapshot (#3073) reports as this outcome
-    // precisely because it is the one the grace retries.
-    #expect(ObservedCorrectionWatcher.deservesCaptureGrace(.ended(.dictatedTextNotFound)))
-    let watcher = makeWatcher()
-    observer.captureOutcomes = [
-      .skipped(.noFocusedElement), .ended(.dictatedTextNotFound),
-      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0)),
-    ]
-    watcher.pasteCompleted(paste())
-    #expect(await waitUntil { observer.starts == 1 })
-    #expect(observer.captures.count == 3)
-    #expect(telemetry.events.isEmpty, "no skip and no end for the two misses")
-    #expect(watcher.isWatching)
+  /// Starts a paste whose capture request parks, and returns once the request has arrived: the
+  /// watcher is now awaiting the session, and the test can move the world before `release()`.
+  func pasteAndPark(_ watcher: ObservedCorrectionWatcher) async {
+    edits.hold = true
+    let edits = edits
+    await withCheckedContinuation { (arrived: CheckedContinuation<Void, Never>) in
+      edits.onRequest = {
+        edits.onRequest = nil
+        arrived.resume()
+      }
+      watcher.pasteCompleted(paste())
+    }
   }
 
-  @Test("capture grace stops at the toggle going off during the wait: one toggle_off, one capture, no start")
-  func captureGraceStopsAtToggleOff() async {
-    let knobs = knobs
-    var watcherRef: ObservedCorrectionWatcher?
-    knobs.sleeper = { _ in
-      knobs.toggle = false
-      watcherRef?.learnFromEditsChanged(isOn: false)
-    }
+  @Test("the watcher asks only after every gate, including a judge-capability answer that is late")
+  func captureWaitsForTheGates() async {
+    judge.holdCapabilities = true
     let watcher = makeWatcher()
-    watcherRef = watcher
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
+    #expect(await waitUntil { judge.capabilitiesRequests == 1 })
+    #expect(edits.requests.isEmpty, "no Accessibility work while the capability answer is pending")
+    judge.release()
+    #expect(await waitUntil { observer.starts == 1 })
+    #expect(edits.requests.count == 1, "asked once, after the gate")
+  }
+
+  @Test("the toggle going off while the session answers: one toggle_off, no start")
+  func toggleOffDuringTheAwait() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher)
+    knobs.toggle = false
+    watcher.learnFromEditsChanged(isOn: false)
+    edits.release()
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.skipped(.toggleOff)])
-    #expect(observer.captures.count == 1 && observer.starts == 0)
+    #expect(edits.requests.count == 1 && observer.starts == 0)
     #expect(watcher.isWatching == false && watcher.toggledOffMidWatch == 1)
-    // The loop's own toggle re-read finds the watch already cancelled: no second skip.
-    #expect(await waitUntil { observer.captures.count == 1 })
+    // The watcher's own toggle re-read after the await finds the watch already cancelled.
+    #expect(await waitUntil { !edits.isParked })
     #expect(telemetry.events.count == 1)
   }
 
-  @Test("capture grace stops when a dictation starts during the wait: one next_dictation_started row, no start, no later skip")
-  func captureGraceStopsAtRecordingStart() async {
-    let knobs = knobs
-    var watcherRef: ObservedCorrectionWatcher?
-    knobs.sleeper = { _ in watcherRef?.recordingStarted() }
+  @Test("a dictation starting while the session answers: one next_dictation_started row, no start")
+  func recordingStartDuringTheAwait() async {
     let watcher = makeWatcher()
-    watcherRef = watcher
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
-    watcher.pasteCompleted(paste())
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher)
+    watcher.recordingStarted()
+    edits.release()
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 0, .other)])
-    #expect(observer.captures.count == 1 && observer.starts == 0)
-    #expect(watcher.isWatching == false)
+    #expect(await waitUntil { !edits.isParked })
+    #expect(observer.starts == 0 && watcher.isWatching == false)
   }
 
-  @Test("capture grace spends the paste's own ceiling budget: the target started after every wait still carries the original paste time")
-  func captureGraceKeepsThePasteTime() async throws {
-    let knobs = knobs
-    let clock = clock
-    knobs.sleeper = { ms in clock.now += ms }
+  @Test("a destination change while the session answers: destination_mismatch, no start")
+  func destinationChangeDuringTheAwait() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher)
+    knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail")
+    edits.release()
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(telemetry.events.last == .skipped(.destinationMismatch))
+    #expect(observer.starts == 0 && watcher.isWatching == false)
+  }
+
+  @Test("a stale answer never starts a watch on a later take")
+  func staleAnswerStartsNothing() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher)
+    // The take ends (a new dictation), and the old answer then arrives.
+    watcher.recordingStarted()
+    edits.release()
+    #expect(await waitUntil { !edits.isParked })
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(observer.starts == 0, "the old answer started nothing")
+  }
+
+  @Test("the request carries the paste's own time, whenever it is asked")
+  func captureKeepsThePasteTime() async throws {
     let watcher = makeWatcher()
     clock.now = 1_000
-    let retries = knobs.captureRetries
-    observer.captureOutcomes =
-      Array(repeating: .ended(.dictatedTextNotFound), count: retries)
-      + [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 1_000))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 1_000))]
     watcher.pasteCompleted(paste())
+    clock.now = 9_000
     #expect(await waitUntil { observer.starts == 1 })
-    #expect(observer.captures.count == retries + 1)
-    #expect(clock.now == 1_000 + retries * 150, "\(retries) waits of 150 ms, 1.5 s in production")
-    #expect(observer.captures.allSatisfy { $0.2 == 1_000 }, "every retry names the ORIGINAL paste time")
+    #expect(edits.requests == [1_000], "the ORIGINAL paste time, not the time of the request")
     let started = try #require(observer.startedTargets.first)
     #expect(started.pastedAtMs == 1_000)
   }
 
-  @Test("capture grace stops at a destination change between attempts: the wait is where the world moves")
-  func captureGraceRechecksGates() async {
-    let knobs = knobs
-    // The sleeper stands in for the wall-clock gap between attempts; here the
-    // person switches to Mail during the first gap.
-    knobs.sleeper = { _ in knobs.frontmost = FrontmostApplication(pid: 7, bundleID: "com.apple.Mail") }
+  @Test("a delivered event without a session is ended as unsupported, never captured")
+  func noSessionIsUnsupported() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = Array(repeating: .ended(.dictatedTextNotFound), count: knobs.captureRetries + 1)
-    watcher.pasteCompleted(paste())
+    watcher.pasteCompleted(
+      PasteCompletionEvent(pastedText: "Ask sarah today", destinationBundleID: "com.apple.Notes"))
     #expect(await waitForEvents(telemetry, count: 1))
-    #expect(telemetry.events.last == .skipped(.destinationMismatch))
-    #expect(observer.captures.count == 1, "one miss, one gap, then the gate refused a second read")
-    #expect(observer.starts == 0 && watcher.isWatching == false)
+    #expect(telemetry.events.last == .observationEnded(.captureUnsupported, 0, .other))
+    #expect(observer.starts == 0)
   }
 
   @Test(
@@ -450,7 +487,7 @@ struct ObservedCorrectionWatcherTests {
   func settledBurstSaves() async throws {
     let watcher = makeWatcher()
     clock.now = 500
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 500))
     ]
     watcher.pasteCompleted(paste())
@@ -458,7 +495,7 @@ struct ObservedCorrectionWatcherTests {
     // clock moved after the callback does not change it.
     clock.now = 9_000
     #expect(await waitUntil { observer.starts == 1 })
-    #expect(observer.captures.first?.2 == 500)
+    #expect(edits.requests.first == 500)
 
     observer.fire(.changed(region: "Ask Saira today"))
     observer.fire(.settled(region: "Ask Saira today"))
@@ -492,7 +529,7 @@ struct ObservedCorrectionWatcherTests {
     "two bursts at most, two judge calls at most, and burst two never re-sends burst one's pair")
   func twoBurstLimit() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah about the invoice", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste("Ask sarah about the invoice"))
@@ -519,7 +556,7 @@ struct ObservedCorrectionWatcherTests {
     knobs.judgeDeadlineSeconds = 0.05
     let watcher = makeWatcher()
     judge.holdAnswers = true
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste())
@@ -539,7 +576,7 @@ struct ObservedCorrectionWatcherTests {
   func staleResult() async {
     let watcher = makeWatcher()
     judge.holdAnswers = true
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0)),
       .skipped(.secureField),
     ]
@@ -567,7 +604,7 @@ struct ObservedCorrectionWatcherTests {
   func revisionStaleness() async {
     let watcher = makeWatcher()
     judge.holdAnswers = true
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
@@ -582,7 +619,7 @@ struct ObservedCorrectionWatcherTests {
     // settled snapshot is still evidence, so the answer is used.
     observer.fire(.ended(.focusChanged))
     let watcher2 = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Call sarah now", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Call sarah now", pastedAtMs: 0))]
     watcher2.pasteCompleted(paste("Call sarah now"))
     #expect(await waitUntil { observer.starts == 2 })
     observer.fire(.settled(region: "Call Saira now"))
@@ -599,7 +636,7 @@ struct ObservedCorrectionWatcherTests {
   func dictationAfterNaturalEnd() async {
     let watcher = makeWatcher()
     judge.holdAnswers = true
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
@@ -624,7 +661,7 @@ struct ObservedCorrectionWatcherTests {
     // 1. The settings observer entry point while the judge holds.
     let watcher = makeWatcher()
     judge.holdAnswers = true
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
@@ -642,7 +679,7 @@ struct ObservedCorrectionWatcherTests {
     // 2. No entry point call at all: the setting is re-read when the answer lands.
     knobs.toggle = true
     let watcher2 = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Call sarah now", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Call sarah now", pastedAtMs: 0))]
     watcher2.pasteCompleted(paste("Call sarah now"))
     #expect(await waitUntil { observer.starts == 2 })
     observer.fire(.settled(region: "Call Saira now"))
@@ -659,14 +696,14 @@ struct ObservedCorrectionWatcherTests {
     judge.holdAnswers = false
     judge.holdCapabilities = true
     let watcher3 = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher3.pasteCompleted(paste())
     #expect(await waitUntil { judge.capabilitiesRequests == 3 })
     knobs.toggle = false
     judge.release()
     #expect(await waitForEvents(telemetry, count: 3))
     #expect(telemetry.events.last == .skipped(.toggleOff))
-    #expect(observer.captures.count == 2 && watcher3.isWatching == false, "no AX work after the toggle")
+    #expect(edits.requests.count == 2 && watcher3.isWatching == false, "no AX work after the toggle")
   }
 
   @Test(
@@ -674,7 +711,7 @@ struct ObservedCorrectionWatcherTests {
   )
   func dictationAfterSettledBurstStillProposes() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.settled(region: "Ask Saira today"))
@@ -692,7 +729,7 @@ struct ObservedCorrectionWatcherTests {
   @Test("a dictation while a fix is pending (seen, not yet settled) flushes it through the observer and proposes it")
   func dictationFlushesPendingFix() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.changed(region: "Ask Saira today"))
@@ -712,7 +749,7 @@ struct ObservedCorrectionWatcherTests {
   )
   func reentrantDictationDuringOffer() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah about the invoice", pastedAtMs: 0))
     ]
     presenter.onOffer = { _ in watcher.recordingStarted() }
@@ -733,7 +770,7 @@ struct ObservedCorrectionWatcherTests {
   func bypass() async {
     let watcher = makeWatcher()
     judge.bypass = .deadline
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste())
@@ -750,7 +787,7 @@ struct ObservedCorrectionWatcherTests {
   func coveredAndUndone() async throws {
     library.userWords = [CustomWord(canonical: "Saira", aliases: ["sarah"])]
     let watcher = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste())
@@ -764,7 +801,7 @@ struct ObservedCorrectionWatcherTests {
     // Learn, undo, fix again: the pair is offered again.
     library.userWords = [saira]
     let watcher2 = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher2.pasteCompleted(paste())
@@ -778,7 +815,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(await waitUntil { !watcher2.isWatching })
 
     let watcher3 = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher3.pasteCompleted(paste())
@@ -793,7 +830,7 @@ struct ObservedCorrectionWatcherTests {
   )
   func toggleOffMidWatchAndExcerpt() async {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
     watcher.pasteCompleted(paste())
@@ -837,7 +874,7 @@ struct ObservedCorrectionWatcherTests {
     let filler = String(repeating: "word ", count: 300)  // 1,500 units, over two windows
     let pasted = "ask sara today " + filler + "call sarah tonight"
     let edited = "ask Saira today " + filler + "call Saira tonight"
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.changed(region: edited))
@@ -854,7 +891,7 @@ struct ObservedCorrectionWatcherTests {
 
     // Control: two edits inside one window share one request.
     let watcher2 = makeWatcher()
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "ask jon today and call tomm tonight", pastedAtMs: 0))
     ]
     watcher2.pasteCompleted(paste("ask jon today and call tomm tonight"))
@@ -920,7 +957,7 @@ struct ObservedCorrectionWatcherTests {
     let filler = String(repeating: "word ", count: 300)
     let pasted = "ask sara today " + filler + "call sarah tonight"
     let edited = "ask Saira today " + filler + "call Saira tonight"
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.changed(region: edited))
@@ -945,7 +982,7 @@ struct ObservedCorrectionWatcherTests {
   )
   func flushedBurstBeforeEndStillSaves() async throws {
     let watcher = makeWatcher()
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste())
     #expect(await waitUntil { observer.starts == 1 })
     // The observer's `end(.textboxEmptied)` flush: `.settled` then `.ended`, back to back.
@@ -962,7 +999,7 @@ struct ObservedCorrectionWatcherTests {
   func appClass() async {
     let watcher = makeWatcher()
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
-    observer.captureOutcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
     #expect(await waitUntil { observer.starts == 1 })
     observer.fire(.ended(.focusChanged))
@@ -973,7 +1010,7 @@ struct ObservedCorrectionWatcherTests {
   func appClassManualAndNative() async {
     let slack = makeWatcher()
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.tinyspeck.slackmacgap")
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: true))
     ]
     slack.pasteCompleted(paste(bundle: "com.tinyspeck.slackmacgap"))
@@ -983,7 +1020,7 @@ struct ObservedCorrectionWatcherTests {
 
     let textEdit = makeWatcher()
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.apple.TextEdit")
-    observer.captureOutcomes = [
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0, manual: false))
     ]
     textEdit.pasteCompleted(paste(bundle: "com.apple.TextEdit"))
@@ -996,7 +1033,7 @@ struct ObservedCorrectionWatcherTests {
   func appClassUncapturedIsOther() async {
     let watcher = makeWatcher()
     knobs.frontmost = FrontmostApplication(pid: 42, bundleID: "com.google.Chrome")
-    observer.captureOutcomes = [.ended(.captureUnsupported)]
+    edits.outcomes = [.ended(.captureUnsupported)]
     watcher.pasteCompleted(paste(bundle: "com.google.Chrome"))
     #expect(
       await waitUntil {

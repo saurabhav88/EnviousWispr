@@ -135,7 +135,8 @@ extension PasteArrivalCapture {
   /// The notifications an arrival session needs: value-changed and destroyed on the field plus
   /// focus-changed on the application, or only focus-changed when nothing was focused.
   package static func requiredNotifications(hasElement: Bool) -> Set<PastedRegionAXNotification> {
-    hasElement ? [.valueChanged, .elementDestroyed, .focusedElementChanged] : [.focusedElementChanged]
+    hasElement
+      ? [.valueChanged, .elementDestroyed, .focusedElementChanged] : [.focusedElementChanged]
   }
 
   /// The selected text of `text` for a UTF-16 `range`, or nil for any range that is negative,
@@ -304,7 +305,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
 ///
 /// Reads never overlap: every read is one synchronous `attemptArrival` on the main actor.
 @MainActor
-package final class PasteArrivalCapture {
+package final class PasteArrivalCapture: PasteEditCapturing {
 
   /// What the caller knows about the paste being observed.
   package struct Context: Sendable {
@@ -353,8 +354,11 @@ package final class PasteArrivalCapture {
   private let application: AXUIElement
   let baseline: Baseline
   private let frontmostBefore: pid_t?
-  /// Nil when the question could not be asked or answered: never "does not support it".
-  private let manualAX: Bool?
+  /// Nil when the question could not be asked or answered: never "does not support it". An
+  /// edit-only session asks it at #996's first request instead of before a write.
+  private var manualAX: Bool?
+  /// Tier 1 (AX direct): no key paste to observe, only #996's edit-watch capture.
+  private var isEditOnly = false
   private let hostExposedFocus: Bool
   package let targetWindow: PasteLandingTargetWindow
   private let ax: any PastedRegionAXOperations
@@ -481,6 +485,25 @@ package final class PasteArrivalCapture {
     return session
   }
 
+  /// Tier 1 (AX direct) wrote the field itself, so there is no key paste to observe: no baseline,
+  /// no registration, no deadline, shadow, report or log line. The session exists only so #996 asks
+  /// the SAME owner for its edit-watch capture as after a key paste (a fresh read, its own 1.5 s),
+  /// with `payload` the text that route actually submitted. Created only after a delivered write.
+  package static func editOnly(
+    pid: pid_t, bundleID: String?, payload: String, ax: any PastedRegionAXOperations,
+    scheduler: any PastedRegionScheduling
+  ) -> PasteArrivalCapture {
+    let session = PasteArrivalCapture(
+      context: .init(tier: .axDirect, pid: pid, takeID: nil, bundleID: bundleID, payload: payload),
+      application: ax.applicationElement(pid: pid), baseline: .unreadable, frontmostBefore: nil,
+      manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
+      reporter: { _ in }, log: { _ in })
+    session.isEditOnly = true
+    session.wasCommitted = true
+    session.phase = .finished
+    return session
+  }
+
   /// A secure, unreadable, over-limit or refused field is `unreadable`; otherwise its text's
   /// occurrence count (possibly incomplete), the reader that produced it, and the selection.
   private static func baselineField(
@@ -492,12 +515,15 @@ package final class PasteArrivalCapture {
     // AXValue first, the range reader only for an absent or non-text value: the same order as
     // every capture, so the reader recorded here is the one a later attempt will use.
     var reader = PastedRegionTextReader.value
-    guard var read = PastedRegionObserver.readText(of: element, using: reader, ax: ax, admit: budget.admit)
+    guard
+      var read = PastedRegionObserver.readText(
+        of: element, using: reader, ax: ax, admit: budget.admit)
     else { return .unreadable }
     if read == .absent || read == .notText {
       reader = .range
-      guard let ranged = PastedRegionObserver.readText(
-        of: element, using: reader, ax: ax, admit: budget.admit)
+      guard
+        let ranged = PastedRegionObserver.readText(
+          of: element, using: reader, ax: ax, admit: budget.admit)
       else { return .unreadable }
       read = ranged
     }
@@ -579,6 +605,15 @@ package final class PasteArrivalCapture {
   }
 
   private func enableManualAccessibilityOnce() {
+    // An edit-only session had no budgeted preparation, so it asks here, behind the same guards and
+    // bound as the reader: a query behind a failed timeout could block the main actor. Unasked, the
+    // read below returns its own bounded failure.
+    if isEditOnly, manualAX == nil, ax.isTrusted(), ax.isProcessRunning(context.pid),
+      ax.frontmostPID() == context.pid,
+      ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
+    {
+      manualAX = ax.supportsManualAccessibility(application)
+    }
     guard !manualAccessibilityEnabled, manualAX == true else { return }
     manualAccessibilityEnabled = true
     _ = ax.enableManualAccessibility(application)
@@ -715,7 +750,8 @@ package final class PasteArrivalCapture {
       case .readable(let field):
         guard CFEqual(field.element, element) else { return .inconclusive(.moved) }
         guard field.reader == reader else { return .inconclusive(.readerChanged) }
-        guard case .complete(let beforeHits) = before, case .complete(let afterHits) = field.occurrences
+        guard case .complete(let beforeHits) = before,
+          case .complete(let afterHits) = field.occurrences
         else { return .inconclusive(.countIncomplete) }
         if afterHits.count < beforeHits.count { return .inconclusive(.countDecreased) }
         // Equal counts. The field must also be byte-identical (UTF-16 units, never `String ==`,
@@ -732,9 +768,11 @@ package final class PasteArrivalCapture {
           PasteArrivalCapture.selectedText(in: beforeValue, range: selection) != nil
         else { return .inconclusive(.selectionUnavailable) }
         // Validated above: non-negative, no overflow, in bounds, on scalar boundaries.
-        let overlaps = length > 0 && beforeHits.contains { hit in
-          hit.start < location + length && location < hit.end
-        }
+        let overlaps =
+          length > 0
+          && beforeHits.contains { hit in
+            hit.start < location + length && location < hit.end
+          }
         return overlaps ? .inconclusive(.selectionOverlap) : .absent
       case .unstable: return .inconclusive(.unstable)
       case .noFocus: return .inconclusive(.moved)
@@ -926,7 +964,9 @@ extension PasteArrivalCapture {
   private func editAttempt(pastedAtMs: Int) -> (PastedRegionCaptureOutcome, retryable: Bool) {
     switch reader.attemptArrival(pid: context.pid, pastedText: context.payload) {
     case .readable(let field):
-      guard case .complete(let hits) = field.occurrences else { return (.ended(.captureUnsupported), false) }
+      guard case .complete(let hits) = field.occurrences else {
+        return (.ended(.captureUnsupported), false)
+      }
       switch newRegion(in: field, hits: hits) {
       case .notYet:
         return (.ended(.dictatedTextNotFound), true)
@@ -938,7 +978,8 @@ extension PasteArrivalCapture {
             PastedRegionTarget(
               pid: context.pid, application: field.application, element: field.element,
               pastedText: context.payload, renderedText: hit.text,
-              anchors: PastedRegionLocator.anchors(around: hit.start, end: hit.end, in: field.value),
+              anchors: PastedRegionLocator.anchors(
+                around: hit.start, end: hit.end, in: field.value),
               isManualAccessibilityHost: field.manualAccessibility ?? false,
               pastedAtMs: pastedAtMs, reader: field.reader)),
           false
@@ -949,7 +990,8 @@ extension PasteArrivalCapture {
     case .secureField: return (.skipped(.secureField), false)
     case .destinationMismatch: return (.skipped(.destinationMismatch), false)
     case .unsupported: return (.ended(.captureUnsupported), false)
-    case .queryFailed(let error): return (.ended(PastedRegionObserver.endReason(forQueryFailure: error)), false)
+    case .queryFailed(let error):
+      return (.ended(PastedRegionObserver.endReason(forQueryFailure: error)), false)
     case .permissionLost: return (.ended(.permissionLost), false)
     case .appTerminated: return (.ended(.appTerminated), false)
     }
@@ -977,7 +1019,10 @@ extension PasteArrivalCapture {
   private func newRegion(
     in field: PastedRegionReadableField, hits: [PastedRegionLocator.Located]
   ) -> NewRegion {
-    guard case .field(let element, let reader, let beforeValue, .complete(let beforeHits), let selection) = baseline,
+    guard
+      case .field(
+        let element, let reader, let beforeValue, .complete(let beforeHits), let selection) =
+        baseline,
       CFEqual(element, field.element), field.reader == reader
     else {
       switch hits.count {

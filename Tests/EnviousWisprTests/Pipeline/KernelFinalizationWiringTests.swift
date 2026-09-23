@@ -893,6 +893,47 @@ import os
     #expect(observer.events.first?.pastedText == "hello ")
   }
 
+  @Test(
+    "the completion event carries exactly its delivery's arrival session: a key tier's or Tier 1's edit-only one"
+  )
+  func completionEventCarriesItsArrivalSession() async {
+    let ax = PastedRegionFakeAX()
+    ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
+    ax.reads = [.text("Hello")]
+    let clock = PastedRegionFakeScheduler()
+    // Not `#require`: its expansion wants Sendable arguments, and the fakes hold AX handles.
+    guard
+      let keyed = PasteArrivalCapture.prepare(
+        .init(tier: .cgEvent, pid: 42, takeID: nil, bundleID: nil, payload: "hello "),
+        capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: clock,
+        report: { _ in }, log: { _ in })
+    else {
+      Issue.record("the key-tier session did not prepare")
+      return
+    }
+    keyed.commit()
+    let tier1 = PasteArrivalCapture.editOnly(
+      pid: 42, bundleID: nil, payload: "hello ", ax: ax, scheduler: clock)
+    for session in [keyed, tier1] {
+      let registry = PasteCompletionRegistry()
+      let observer = CapturingObserver()
+      registry.subscribe(observer)
+      let context = KernelSessionContext()
+      context.config = .testDefault(autoPasteToActiveApp: true)
+      let wiring = makeWiring(
+        context: context,
+        deliverPaste: { _ in
+          var result = Self.deliveredResult
+          result.arrivalCapture = session
+          return result
+        }, registry: registry)
+      _ = await wiring.deliver("hello", .ordinary)
+      #expect(observer.events.count == 1)
+      #expect(observer.events.first?.editCapture === session)
+    }
+    keyed.cancel()
+  }
+
   @Test("the completion event carries the payload the route actually committed")
   func completionEventCarriesTheDeliveredPayload() async throws {
     // #629's subscriber watches for edits to the pasted text and learns custom
@@ -2671,7 +2712,9 @@ import os
       SeamCasingOracleRuntime.setPreparationOverrideForTesting { _ in
         // REPORTS the production transition, never performs one: the drain has
         // genuinely started this builder, which is the fact under test.
-        leasesDuringPreparation.withLock { $0 = SeamCasingOracleRuntime.outstandingLeasesForTesting() }
+        leasesDuringPreparation.withLock {
+          $0 = SeamCasingOracleRuntime.outstandingLeasesForTesting()
+        }
         preparationEntered.signal()
         return SeamCasingOracle(
           unavailableReason: nil,
@@ -2786,7 +2829,8 @@ import os
     }
   }
 
-  @Test("#1946 A timed-out casing decision keeps its latch, its evidence and its neighbours' leases")
+  @Test(
+    "#1946 A timed-out casing decision keeps its latch, its evidence and its neighbours' leases")
   func timedOutCasingDecisionPreservesLatchEvidenceAndLeases() async throws {
     // The preservation obligation. Casing's timeout execution and its
     // lease-release scheduling both change in this chunk, so what the timeout
@@ -3007,7 +3051,6 @@ import os
 
 }
 
-
 /// Hand-advanced logical clock for the tick-rate test. Local `@MainActor` copy:
 /// the `ManualClock` in `LoadProgressWatcherTests` is `private` to that suite and
 /// cannot be reused. Satisfies the `@MainActor () -> TimeInterval` clock seam.
@@ -3225,7 +3268,9 @@ extension KernelFinalizationWiringTests {
 @MainActor
 extension KernelFinalizationWiringTests {
 
-  @Test("#996 a delivered paste carries the take's resolved language; a clipboard-only take emits nothing")
+  @Test(
+    "#996 a delivered paste carries the take's resolved language; a clipboard-only take emits nothing"
+  )
   func completionEventCarriesLanguage() async throws {
     let registry = PasteCompletionRegistry()
     let observer = CapturingObserver()
