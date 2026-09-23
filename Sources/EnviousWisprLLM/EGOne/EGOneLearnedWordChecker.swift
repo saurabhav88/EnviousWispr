@@ -66,11 +66,19 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
     data: Data, questions: [LearnedWordCheckQuestion],
     threshold: Double
   ) throws -> [LearnedWordCheckDecision] {
-    guard let results = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-      results.count == questions.count
-    else { throw CheckerError.invalidResponse }
     // llama-server answers an array prompt with one object per prompt, each carrying the
-    // prompt's position as `index`; the reply order is not promised, so match on it.
+    // prompt's position as `index`; the reply order is not promised, so match on it. A
+    // one-prompt array comes back as a bare object, not a one-element array.
+    let json = try JSONSerialization.jsonObject(with: data)
+    let results: [[String: Any]]
+    if let many = json as? [[String: Any]] {
+      results = many
+    } else if let one = json as? [String: Any] {
+      results = [one]
+    } else {
+      throw CheckerError.invalidResponse
+    }
+    guard results.count == questions.count else { throw CheckerError.invalidResponse }
     var byIndex: [Int: [String: Any]] = [:]
     for result in results {
       guard let index = result["index"] as? Int, (0..<questions.count).contains(index),

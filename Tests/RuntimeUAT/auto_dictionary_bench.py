@@ -62,7 +62,7 @@ SENTENCES = [
 TRIGGER = 5  # the first five are the Auto Dictionary sentences
 
 TOTAL_RE = re.compile(r"Pipeline timing TOTAL: ([\d.]+)s \(ASR=([\d.]+)s, polish=([\d.]+)s, paste=([\d.]+)s\)")
-STEP_RE = re.compile(r"StepTiming: step=(.+?) ms=(\d+) ran=(true|false)")
+STEP_RE = re.compile(r"StepTiming: step=(.+?) ms=([\d.]+) ran=(true|false)")
 CHECK_RE = re.compile(r"LearnedWordCheck: flagged=(\d+) approved=(\d+) applied=(\d+) contested=(\d+) latency_ms=(\d+) arm=(\S+) reason=(\S+)")
 
 
@@ -111,7 +111,7 @@ def take(doc, arm, idx, sentence, expect):
     if not total:
         raise lfe.Aborted(f"{arm}-{idx}: no Pipeline timing TOTAL line")
     body = lfe.log_since(mark)
-    steps = {m.group(1): int(m.group(2)) for m in STEP_RE.finditer(body) if m.group(3) == "true"}
+    steps = {m.group(1): float(m.group(2)) for m in STEP_RE.finditer(body) if m.group(3) == "true"}
     check = CHECK_RE.search(body)
     lfe.clear_field(doc)
     return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) < TRIGGER,
