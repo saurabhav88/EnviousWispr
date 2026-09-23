@@ -36,7 +36,8 @@ public enum LearnedWordCandidates: Sendable {
   }
 
   public static func questions(
-    for text: String, learned: [LearnedWord], maxSpots: Int = 16
+    for text: String, learned: [LearnedWord], maxSpots: Int = 16,
+    language: String? = nil
   ) -> [LearnedWordCheckQuestion] {
     guard text.isEmpty == false, learned.isEmpty == false else { return [] }
     var candidates = [Candidate]()
@@ -80,10 +81,15 @@ public enum LearnedWordCandidates: Sendable {
       }
     }
 
-    // Sound matches fill whatever the exact spellings left of the budget.
+    // Filter after the finder has selected its top spots. Rejected spots do not
+    // free finder slots for lower-ranked matches; exact observed spellings above
+    // remain questions even when their text is common English.
     let finder = LearnedWordSpotFinder()
     let words = LearnedWordSpotFinder.prepare(learned.map(\.canonical))
+    let isEnglish = language?.split(whereSeparator: { $0 == "-" || $0 == "_" })
+      .first?.lowercased() == "en"
     for spot in finder.spots(in: text, words: words, maxSpots: maxSpots) {
+      if isEnglish && isAllCommonEnglishWords(spot.text) { continue }
       add(spot.range, word: spot.word)
     }
 
@@ -98,6 +104,29 @@ public enum LearnedWordCandidates: Sendable {
         id: id, sentence: text, range: candidate.range,
         contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)
     }
+  }
+
+  /// Match spots.py's re.findall(r"[a-z0-9']+", span.lower()). An empty
+  /// token list, digits, and non-ASCII words are not evidence of common English.
+  private static func isAllCommonEnglishWords(_ span: String) -> Bool {
+    var token = String()
+    var found = false
+    for scalar in span.lowercased().unicodeScalars {
+      if (97...122).contains(scalar.value) || (48...57).contains(scalar.value)
+        || scalar.value == 39
+      {
+        token.unicodeScalars.append(scalar)
+      } else if token.isEmpty == false {
+        found = true
+        if CommonEnglishSpotWords.words.contains(token) == false { return false }
+        token = ""
+      }
+    }
+    if token.isEmpty == false {
+      found = true
+      if CommonEnglishSpotWords.words.contains(token) == false { return false }
+    }
+    return found
   }
 
   private static func contextRange(
