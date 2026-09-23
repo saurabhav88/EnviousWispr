@@ -170,7 +170,7 @@ def main():
 
     initially_running = lfe.app_pid() is not None
     snaps = {"words": lfe.file_snapshot(lfe.WORDS), "adapter": door_get(ADAPTER_KEY), "threshold": door_get(THRESHOLD_KEY)}
-    rows, audio_restored, route = [], True, None
+    rows, audio_restored, route, doc = [], True, None, None
     try:
         if lfe.app_pid() is None:
             start_app()
@@ -197,6 +197,8 @@ def main():
                     print(f"  {arm} {r['idx']:02d} total={r['total_ms']} asr={r['asr_ms']} polish={r['polish_ms']} "
                           f"check={r['check_ms']} {'[AD]' if r['trigger'] else ''}", flush=True)
     finally:
+        if doc is not None:
+            lfe.close_doc(doc)
         if route is not None:
             try:
                 route.restore()
