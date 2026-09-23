@@ -932,7 +932,6 @@ extension PasteArrivalCapture {
     guard wasCommitted else { return .ended(.captureUnsupported) }
     let request = EditRequest(startedAtMs: scheduler.nowMs, pastedAtMs: pastedAtMs)
     editRequest = request
-    enableManualAccessibilityIfNeeded()
     return await withCheckedContinuation { continuation in
       request.waiters.append(continuation)
       stepEditRequest(request)
@@ -946,6 +945,8 @@ extension PasteArrivalCapture {
 
   private func stepEditRequest(_ request: EditRequest) {
     guard request.result == nil else { return }
+    // Before every attempt, like the landing reads: a failed opt-in is asked again (bounded).
+    enableManualAccessibilityIfNeeded()
     let (outcome, retryable) = editAttempt(pastedAtMs: request.pastedAtMs)
     request.last = outcome
     onEditAttempt?()

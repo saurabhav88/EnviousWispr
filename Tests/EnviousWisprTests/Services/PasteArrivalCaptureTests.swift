@@ -712,6 +712,24 @@ struct PasteArrivalCaptureTests {
     #expect(ax.enableCalls == [pid])
   }
 
+  @Test("a Tier 1 capture asks a failed opt-in again on its own retries, then captures")
+  func editOnlyRetriesAFailedOptIn() async throws {
+    ax.manualHosts = [pid]
+    ax.enableSucceeds = false
+    ax.focused[pid] = .noFocus  // a host that hides its field until opted in
+    let probe = await startEditRequest(editOnly())
+    #expect(ax.enableCalls == [pid])
+    ax.enableSucceeds = true
+    ax.focused[pid] = .element(field)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    guard case .captured = await probe.result() else {
+      Issue.record("expected captured after the second opt-in")
+      return
+    }
+    #expect(ax.enableCalls == [pid, pid])
+  }
+
   @Test("a Tier 1 session asks about manual accessibility only behind an installed timeout")
   func editOnlyManualQueryIsBounded() async throws {
     ax.manualHosts = [pid]
