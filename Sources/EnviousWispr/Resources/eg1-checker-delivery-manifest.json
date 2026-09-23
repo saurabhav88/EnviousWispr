@@ -3,20 +3,20 @@
   "identity": {
     "family": "eg_one_checker",
     "name": "eg1c",
-    "revision": "eg1c-v1",
+    "revision": "eg1c-v2",
     "variant": "f16",
     "runtimeABI": "llamacpp-eg1-v1"
   },
   "files": [
     {
-      "path": "eg1c-v1-f16.gguf",
-      "sizeBytes": 66094848,
-      "sha256": "9cd6818538dadac4219b60a6f87c172773337a2cc37c14552e6e31d538b2cd29",
-      "component": "eg1c-v1-f16.gguf"
+      "path": "eg1c-v2-f16.gguf",
+      "sizeBytes": 66094912,
+      "sha256": "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
+      "component": "eg1c-v2-f16.gguf"
     }
   ],
   "optionalFiles": [],
-  "totalBytes": 66094848,
+  "totalBytes": 66094912,
   "sources": [
     {
       "id": "our_copy",
@@ -28,15 +28,15 @@
     "installLocation": "egOneCheckerCache",
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": true,
-    "entrypointFile": "eg1c-v1-f16.gguf"
+    "entrypointFile": "eg1c-v2-f16.gguf"
   },
   "checkerContract": {
     "version": 1,
-    "adapterFileName": "eg1c-v1-f16.gguf",
-    "adapterSizeBytes": 66094848,
-    "adapterSHA256": "9cd6818538dadac4219b60a6f87c172773337a2cc37c14552e6e31d538b2cd29",
+    "adapterFileName": "eg1c-v2-f16.gguf",
+    "adapterSizeBytes": 66094912,
+    "adapterSHA256": "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
     "format": "gguf-lora",
-    "qualifiedThreshold": "0.9",
+    "qualifiedThreshold": "0.7",
     "qualifiedLanguages": [
       "en"
     ],
@@ -57,5 +57,5 @@
       "runtimeABI": "llamacpp-eg1-v1"
     }
   },
-  "manifestDigest": "23223db7690014dad663926ae6155a8f19531fdf5e022772dc29cf74d3728e07"
+  "manifestDigest": "cabd451d5160713283adc195986ba890c0a68f0dec863aa1086c72a90329914f"
 }
