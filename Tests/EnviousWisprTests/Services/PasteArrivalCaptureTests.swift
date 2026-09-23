@@ -335,23 +335,26 @@ struct PasteArrivalCaptureTests {
     #expect(session.landing == .inconclusive(.manualAccessibilityUnknown))
   }
 
-  @Test("a host that needs the opt-in is no_target only after the opt-in succeeded")
-  func noFocusNeedsASuccessfulOptIn() throws {
+  @Test("a host that needs the opt-in is never no_target, whether or not its opt-in succeeds")
+  func noFocusOnAManualHostIsNeverNoTarget() throws {
     ax.focusedByApplication[pid] = .noFocus
     ax.focused[pid] = .noFocus
     ax.manualHosts = [pid]
-    ax.enableSucceeds = false
-    let refused = try prepare(bundle: "com.google.Chrome")
-    refused.commit()
+    for succeeds in [false, true] {
+      ax.enableSucceeds = succeeds
+      reports.list = []
+      let session = try prepare(bundle: "com.google.Chrome")
+      session.commit()
+      scheduler.advance(ms: 300)
+      #expect(session.landing == .inconclusive(.manualAccessibilityHost), "opt-in \(succeeds)")
+      #expect(reports.list.count == 1, "not a miss: reported at once, no shadow")
+    }
+    // The control: a host that needs no opt-in, with the same answers, is no_target.
+    ax.manualHosts = []
+    let native = try prepare()
+    native.commit()
     scheduler.advance(ms: 300)
-    #expect(refused.landing == .inconclusive(.manualAccessibilityNotEnabled))
-    #expect(reports.list.count == 1, "not a miss: reported at once, no shadow")
-
-    ax.enableSucceeds = true
-    let optedIn = try prepare(bundle: "com.google.Chrome")
-    optedIn.commit()
-    scheduler.advance(ms: 300)
-    #expect(optedIn.landing == .noTarget)
+    #expect(native.landing == .noTarget)
   }
 
   @Test("a destination lost during the shadow censors the late check instead of claiming no hit")

@@ -122,7 +122,7 @@ private final class CaptureAX: PastedRegionAXOperations {
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)? { nil }
-  // #3106 landing-check reads: this fixture never reaches them, so each answers as a failure.
+  // #3106 arrival-session reads: this fixture never reaches them, so each answers as a failure.
   func focusedElement(ofApplication application: AXUIElement) -> PastedRegionFocus {
     .queryFailed(.cannotComplete)
   }

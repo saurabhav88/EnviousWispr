@@ -214,9 +214,9 @@ package enum PasteArrivalLanding: Sendable, Equatable {
     case selectionUnavailable = "selection_unavailable"
     case selectionOverlap = "selection_overlap"
     case manualAccessibilityUnknown = "manual_accessibility_unknown"
-    /// A host that needs the manual-accessibility opt-in, whose opt-in failed: its "no focus" can
-    /// hide a focused field.
-    case manualAccessibilityNotEnabled = "manual_accessibility_not_enabled"
+    /// A host that needs the manual-accessibility opt-in answered "no focus" before the write: that
+    /// answer can hide a focused field, and a later opt-in does not prove it was true.
+    case manualAccessibilityHost = "manual_accessibility_host"
     case appSwitched = "app_switched"
     case appTerminated = "app_terminated"
   }
@@ -389,8 +389,6 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private var committedAtMs = 0
   private var generation = 0
   private var manualAccessibilityEnabled = false
-  /// Whether that one opt-in succeeded.
-  private var manualAccessibilityOptedIn = false
   private var poll: (any PastedRegionScheduledWork)?
   private var deadline: (any PastedRegionScheduledWork)?
   private var shadowEnd: (any PastedRegionScheduledWork)?
@@ -621,7 +619,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     }
     guard !manualAccessibilityEnabled, manualAX == true else { return }
     manualAccessibilityEnabled = true
-    manualAccessibilityOptedIn = ax.enableManualAccessibility(application)
+    _ = ax.enableManualAccessibility(application)
   }
 
   private func notified(_ notification: PastedRegionAXNotification, generation: Int) {
@@ -737,11 +735,10 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       // An Electron host that was never opted in answers "no focus" while a field has it; when
       // whether this is such a host is unknown, "nothing focused" cannot be trusted either.
       guard manualAX != nil else { return .inconclusive(.manualAccessibilityUnknown) }
-      // A host that needs the opt-in shows its focus only once opted in, so its "no focus" is
-      // trusted only after a successful opt-in (a Chromium browser counts as a browser miss).
-      if manualAX == true, !manualAccessibilityOptedIn {
-        return .inconclusive(.manualAccessibilityNotEnabled)
-      }
+      // A host that needs the opt-in (a Chromium browser, which counts as a browser miss) may hide
+      // a focused field until opted in, and even an opt-in that succeeds after the write does not
+      // prove its pre-write "no focus" or expose the field at once. Never no_target.
+      if manualAX == true { return .inconclusive(.manualAccessibilityHost) }
       switch attempt {
       case .noFocus: return .noTarget
       case .permissionLost: return .cannotRead(.permissionLost)

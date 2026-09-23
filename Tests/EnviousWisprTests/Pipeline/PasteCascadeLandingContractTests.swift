@@ -14,7 +14,7 @@ import Testing
 /// so no test can run the three writers. Parsed with `SwiftParser`, the compiler's own front end,
 /// so comments and strings can never satisfy or break it. Shape only: it cannot prove a Cmd+V
 /// landed.
-@Suite("Paste cascade landing-check placement (#3106)", .tags(.driftGuard))
+@Suite("Paste cascade arrival-session placement (#3106)", .tags(.driftGuard))
 struct PasteCascadeLandingContractTests {
 
   /// The three key-paste writers, the tier each delivers, and the omnibox re-check that must stay

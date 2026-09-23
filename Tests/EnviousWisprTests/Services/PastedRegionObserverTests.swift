@@ -114,12 +114,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     return registration
   }
 
-  // MARK: #3106 landing-check reads. Defaults are FAILURES, never a successful read.
+  // MARK: #3106 arrival-session reads. Defaults are FAILURES, never a successful read.
 
-  /// Every landing-check AX call in order, with the pid of the handle it messaged. Tests assert
+  /// Every arrival-session AX call in order, with the pid of the handle it messaged. Tests assert
   /// that nothing is called after the budget refuses.
   var landingCalls: [(call: String, pid: pid_t)] = []
-  /// Runs before each landing-check AX call: a test advances the clock here to model a slow host.
+  /// Runs before each arrival-session AX call: a test advances the clock here to model a slow host.
   var onLandingCall: ((String) -> Void)?
   var focusedByApplication: [pid_t: PastedRegionFocus] = [:]
   /// Window answers keyed by the pid of the handle asked (field handles are pid + 10_000).
