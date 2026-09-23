@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """The paste arrival session across real destination apps (#3106, the evidence for PR B).
 
-    python3 Tests/RuntimeUAT/paste_landing_matrix_uat.py [--apps slack,notes,...] [--takes 3]
+    python3 Tests/RuntimeUAT/paste_landing_matrix_uat.py [--apps slack,notes,...] [--takes 3] [--chunks 2]
+
+`--chunks N` dictates the SAME sentence N times back to back into one staged field, the way a person
+dictates in chunks: every chunk after the first is an identical repeat, so a verdict can only be
+right by telling the new occurrence from the older ones (#3106 PR A's occurrence count). Chunk k
+landed when the field holds k copies of the sentence's marker phrase.
+
+`--prefill-chars N` first fills the staged (empty, owned) field with the sentence repeated to N
+characters, through accessibility, so the take is measured against a near-limit field full of
+identical occurrences: the pre-dispatch cost is the row's `before_ms` (#3106 PR A's measurement).
+Chunk k then landed when the field holds (prefilled copies + k) markers.
 
 For each app: open a fresh, focused text field (the staging `learn_from_edits_apps_uat.py`
 already uses for these apps), take one silent dictation through BlackHole, then pair what
@@ -28,6 +38,7 @@ instrument gap, text left behind or a failed restore; 2 when fewer rows than req
 """
 import argparse
 import os
+import re
 import sys
 import time
 
@@ -55,6 +66,13 @@ NOT_SAFE_HERE = {"ghostty": "a terminal exposes no readable field",
                  "notes": "an empty new note reads None, and staging cannot prove the focused note "
                           "is the new one (last_dictation_uat.py covers Notes by note id)"}
 DEFAULT_APPS = "textedit,safari,gmail,slack,obsidian"
+# Counted to tell chunk k's landing from k - 1's. Not "Maya": the silent takes' speech is heard as
+# "Midea" or "Mighty" on some takes (2026-09-23, 3 of 8), while this phrase came through every time.
+MARKER = "tomorrow morning"
+
+
+def marker_count(text):
+    return len(re.findall(r"\b" + MARKER + r"\b", text.lower()))
 KEY_TIERS = ("cgevent", "applescript", "menu_paste")
 ROUTE = {"route": None}  # the run's silent audio route, applied once before any app is staged
 
@@ -140,11 +158,12 @@ def safe_cleanup(app, pid, doc, staged, may_clear):
     return True, "cleared"
 
 
-def one_take(app):
-    """Stage `app`, take one dictation, and return its row, or raise Aborted for an instrument
-    gap (such a row is never evidence). Cleanup is attempted however staging or the take ends."""
+def one_take(app, chunks=1, prefill_chars=0):
+    """Stage `app`, take `chunks` dictations into the one staged field, and return one row per
+    chunk, or raise Aborted for an instrument gap (such a row is never evidence). Cleanup is
+    attempted however staging or the takes end."""
     bundle, name, _kind = apps.APPS[app]
-    row = {"app": app}
+    rows = []
     # Cleanup is authorised only once a take is properly set up (below): a failed stage never
     # reaches the keyboard cleanup, which acts on whatever has focus.
     pid, doc, staged, may_clear = None, None, None, False
@@ -167,44 +186,67 @@ def one_take(app):
             if not same_element(focused_element(pid), staged):
                 raise u.Aborted(f"{app}: focus left the staged field before the take")
         may_clear = True  # staged, empty, still focused: from here on the field holds only our text
-        base = u.log_size()
-        lines, cascades = p.take(app, base, bundle=bundle, route=ROUTE["route"])
-        if app != "ghostty" and not same_element(focused_element(pid), staged):
-            # Detects an observed move; it cannot prove focus never left and came back mid-hold.
-            # The text may be wherever focus went. It is NOT cleared: this run did not stage that
-            # field and cannot prove the text there is its take, so select-all + delete could destroy
-            # the person's own content. The recipient is unverified; only the frontmost app is named.
-            raise u.Aborted(
-                f"{app}: focus moved during the take; "
-                f"current frontmost={apps.frontmost_bundle()!r}; "
-                "paste recipient and field unverified; REMOVE BY HAND"
-            )
-        tiers = [t for t, target in cascades if target.strip().lower() == bundle.lower()]
-        mine = [line for line in lines if line[3] == bundle and tiers and line[0] == tiers[0]]
-        if len(tiers) != 1 or len(lines) != len(mine) or len(mine) != int(tiers[0] in KEY_TIERS):
-            raise u.Aborted(f"{app}: incomplete paste evidence: tiers={tiers} "
-                            f"cascades={cascades} lines={len(lines)} matching={len(mine)}")
-        row["tier"] = tiers[0]
-        value = element_value(staged)
-        if value is None:
-            raise u.Aborted(f"{app}: the staged field could not be read; landing unverified")
-        # Landed is read from the STAGED destination field only; what the app produced is not what
-        # it received, and another field is not the one the paste was aimed at.
-        row["landed"] = "Y" if u.sentence_overlap(value) >= 5 else "N"
-        row["read_by"] = "staged field"
-        if mine:
-            (tier, observed, reason, _app, _app_class, hef, manual, window, before_ms, resolve_ms,
-             _late_check, _late_found_ms) = mine[0]
-            row.update(observed=observed, reason=reason, host_exposed_focus=hef, manual_ax=manual,
-                       target_window=window, before_ms=before_ms, lines=1)
-        else:
-            row.update(observed="-", reason="-", lines=0)  # ax_direct etc.: no verdict, no evidence
-        # A false MISS: the text landed, yet the session reported one of the two negatives step 2
-        # may act on (#3106 PR A vocabulary).
-        row["false_miss"] = row["landed"] == "Y" and row["observed"] in ("absent", "no_target")
-        u.check(f"{app}: no false miss", not row["false_miss"],
-                f"landed={row['landed']} verdict={row['observed']}/{row['reason']}")
-        return row
+        prefilled = 0
+        if prefill_chars:
+            from ui_helpers import set_attr
+            copies = max(1, prefill_chars // (len(u.SENTENCE) + 1))
+            set_attr(staged, "AXValue", " ".join([u.SENTENCE] * copies) + " ")
+            time.sleep(0.5)  # settle: the page applies the value; read back below
+            filled = element_value(staged)
+            if filled is None or marker_count(filled) != copies:
+                raise u.Aborted(f"{app}: the prefill did not land ({copies} copies asked, "
+                                f"{None if filled is None else marker_count(filled)} read)")
+            prefilled = copies
+            print(f"    prefilled {len(filled)} characters, {copies} copies of the sentence")
+        for chunk in range(1, chunks + 1):
+            row = {"app": app, "chunk": chunk, "prefilled": prefilled}
+            if chunk > 1:
+                # The previous chunk's session reports by its 1.5 s shadow horizon; settle past it
+                # so the byte offset below cannot catch that chunk's late line.
+                time.sleep(2.0)
+                if not same_element(focused_element(pid), staged):
+                    raise u.Aborted(f"{app}: focus left the staged field before chunk {chunk}")
+            base = u.log_size()
+            lines, cascades = p.take(app, base, bundle=bundle, route=ROUTE["route"])
+            if app != "ghostty" and not same_element(focused_element(pid), staged):
+                # Detects an observed move; it cannot prove focus never left and came back mid-hold.
+                # The text may be wherever focus went. It is NOT cleared: this run did not stage that
+                # field and cannot prove the text there is its take, so select-all + delete could destroy
+                # the person's own content. The recipient is unverified; only the frontmost app is named.
+                raise u.Aborted(
+                    f"{app}: focus moved during the take; "
+                    f"current frontmost={apps.frontmost_bundle()!r}; "
+                    "paste recipient and field unverified; REMOVE BY HAND"
+                )
+            tiers = [t for t, target in cascades if target.strip().lower() == bundle.lower()]
+            mine = [line for line in lines if line[3] == bundle and tiers and line[0] == tiers[0]]
+            if len(tiers) != 1 or len(lines) != len(mine) or len(mine) != int(tiers[0] in KEY_TIERS):
+                raise u.Aborted(f"{app}: incomplete paste evidence: tiers={tiers} "
+                                f"cascades={cascades} lines={len(lines)} matching={len(mine)}")
+            row["tier"] = tiers[0]
+            value = element_value(staged)
+            if value is None:
+                raise u.Aborted(f"{app}: the staged field could not be read; landing unverified")
+            # Landed is read from the STAGED destination field only; what the app produced is not what
+            # it received, and another field is not the one the paste was aimed at.
+            # Chunk k landed when the field holds k copies of the marker (chunk 1: the old rule too).
+            landed = u.sentence_overlap(value) >= 5 and marker_count(value) >= prefilled + chunk
+            row["landed"] = "Y" if landed else "N"
+            row["read_by"] = "staged field"
+            if mine:
+                (tier, observed, reason, _app, _app_class, hef, manual, window, before_ms, resolve_ms,
+                 _late_check, _late_found_ms) = mine[0]
+                row.update(observed=observed, reason=reason, host_exposed_focus=hef, manual_ax=manual,
+                           target_window=window, before_ms=before_ms, resolve_ms=resolve_ms, lines=1)
+            else:
+                row.update(observed="-", reason="-", lines=0)  # ax_direct etc.: no verdict, no evidence
+            # A false MISS: the text landed, yet the session reported one of the two negatives step 2
+            # may act on (#3106 PR A vocabulary).
+            row["false_miss"] = row["landed"] == "Y" and row["observed"] in ("absent", "no_target")
+            u.check(f"{app} chunk {chunk}: no false miss", not row["false_miss"],
+                    f"landed={row['landed']} verdict={row['observed']}/{row['reason']}")
+            rows.append(row)
+        return rows
     finally:
         if p.TAKE_STUCK["stuck"]:
             # A recording may still be live: no keystroke may be posted into any app now.
@@ -221,10 +263,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apps", default=DEFAULT_APPS)
     parser.add_argument("--takes", type=int, default=1)
+    parser.add_argument("--chunks", type=int, default=1)
+    parser.add_argument("--prefill-chars", type=int, default=0)
     args = parser.parse_args()
     requested = [a.strip() for a in args.apps.split(",") if a.strip()]
-    if not requested or args.takes < 1:
-        parser.error("name at least one app and at least one take")
+    if not requested or args.takes < 1 or args.chunks < 1:
+        parser.error("name at least one app, at least one take and at least one chunk")
     unsafe = {a: NOT_SAFE_HERE[a] for a in requested if a in NOT_SAFE_HERE}
     if unsafe:
         parser.error(f"not driven here: {unsafe}")
@@ -268,7 +312,7 @@ def main():
             for n in range(args.takes):
                 print(f"\n== {app}, take {n + 1}")
                 try:
-                    rows.append(one_take(app))
+                    rows.extend(one_take(app, args.chunks, args.prefill_chars))
                 except p.LiveTakeNotStopped:
                     raise  # never stage another app over a take that will not stop
                 except (u.Aborted, apps.d.Aborted) as e:
@@ -313,12 +357,12 @@ def main():
             cleanup_check("devices restored", sink.restore())  # outermost: whatever failed before
         except BaseException as exc:
             cleanup_check("devices restored", False, repr(exc))
-    print("\n| app | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | false miss |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    print("\n| app | chunk | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | resolve_ms | false miss |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:
-        print(f"| {r['app']} | {r['tier']} | {r['landed']} | {r['read_by']} | {r['observed']} | {r['reason']} | "
+        print(f"| {r['app']} | {r['chunk']} | {r['tier']} | {r['landed']} | {r['read_by']} | {r['observed']} | {r['reason']} | "
               f"{r.get('target_window', '-')} | {r.get('host_exposed_focus', '-')} | {r.get('manual_ax', '-')} | "
-              f"{r.get('before_ms', '-')} | {'YES' if r['false_miss'] else 'no'} |")
+              f"{r.get('before_ms', '-')} | {r.get('resolve_ms', '-')} | {'YES' if r['false_miss'] else 'no'} |")
     if not any(r["tier"] in KEY_TIERS for r in rows):
         u.record("landing verdict coverage", "ABORT",
                  "no key-paste tier produced a PASTE_LANDING verdict")
@@ -328,7 +372,7 @@ def main():
     if any(r["false_miss"] for r in rows) or failed:
         return 1
     # A pass needs every requested row: an app that could not be staged or read is not a pass.
-    return 0 if len(rows) == len(requested) * args.takes else 2
+    return 0 if len(rows) == len(requested) * args.takes * args.chunks else 2
 
 
 if __name__ == "__main__":
