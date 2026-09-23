@@ -164,14 +164,15 @@ def address_bar_value():
 EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea"}
 
 
-def take(label, base):
-    """One silent push-to-talk take into whatever Chrome has focused. Returns the landing match."""
+def take(label, base, bundle=CHROME):
+    """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
+    Returns every landing line and paste-cascade line written since `base`."""
     from silent_audio import AudioRoute, take_was_virtual
     route = AudioRoute()
     route.install_restore_handlers()
     try:
         route.apply()
-        u.require_front(CHROME, f"{label}: before the take")
+        u.require_front(bundle, f"{label}: before the take")
         if label in EXPECTED_FOCUS and focused_role() != EXPECTED_FOCUS[label]:
             # Checked immediately before the hold: the paste goes wherever focus is NOW, and an
             # address bar focused here would make a no-focus phase pass on text that landed.
