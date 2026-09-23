@@ -430,11 +430,31 @@ package final class WisprBootstrapper {
     #else
       let learnedWordAdapter: (url: URL, threshold: Double)? = nil
     #endif
+    let learnedWordAdapterProvider: @MainActor () async -> URL? = {
+      #if DEBUG
+        if let debugAdapter = LearnedWordCheckEGOneDoor.configuration() {
+          return debugAdapter.url
+        }
+      #endif
+      guard let base = egOneUpgrade?.registration,
+        let promptTemplateID = egOneManifest?.promptTemplateID
+      else { return nil }
+      return await modelDelivery.admittedCompatibleEGOneCheckerURL(
+        baseRegistration: base, promptTemplateID: promptTemplateID)
+    }
     let egOneRuntime = EGOneRuntime(
       manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
-      learnedWordAdapterURL: learnedWordAdapter?.url)
+      learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
+    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+      Task {
+        await modelDelivery.controller.addStateObserver { identity, _ in
+          guard identity == checkerIdentity else { return }
+          Task { @MainActor in egOneRuntime.adapterAvailabilityDidChange() }
+        }
+      }
+    }
     if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).

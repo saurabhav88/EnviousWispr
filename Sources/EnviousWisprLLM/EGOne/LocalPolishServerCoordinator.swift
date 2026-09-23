@@ -30,10 +30,15 @@ import os
 public struct LocalPolishTarget: Sendable {
   public let provider: LLMProvider
   public let configuration: EGOneServerManager.Configuration
+  /// Reads the existing take/import pin owner immediately before eviction.
+  public let isPinned: @Sendable () async -> Bool
 
-  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration) {
+  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration,
+    isPinned: @escaping @Sendable () async -> Bool = { false }
+  ) {
     self.provider = provider
     self.configuration = configuration
+    self.isPinned = isPinned
   }
 }
 
@@ -72,6 +77,9 @@ public actor LocalPolishServerCoordinator {
   /// This is the identity half of the rule; the manager's own state is the
   /// process half, and neither alone is sufficient.
   private var resident: LLMProvider?
+  private var residentTarget: LocalPolishTarget?
+  private var deferredRequest: (request: LocalPolishIntent, intent: Int)?
+  private var recordedCheckerFailure: EGOneServerManager.CheckerFailureReason?
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
@@ -147,9 +155,24 @@ public actor LocalPolishServerCoordinator {
       guard resident == provider else { return }
       target = nil
     }
+    // A ready start cannot change argv. Adapter arrival/removal is an explicit
+    // stop and boot, and neither that nor a model switch may evict a pinned
+    // take or import. The release callback retries the latest deferred intent.
+    let changesProcess = resident != nil && (
+      resident != target?.provider
+        || residentTarget?.configuration.learnedWordAdapterURL
+          != target?.configuration.learnedWordAdapterURL)
+    if changesProcess, await residentTarget?.isPinned() == true {
+      guard intent >= honouredIntent else { return }
+      honouredIntent = intent
+      deferredRequest = (request, intent)
+      return
+    }
+    guard intent >= honouredIntent else { return }
     honouredIntent = intent
+    deferredRequest = nil
 
-    if let resident, resident != target?.provider {
+    if let resident, changesProcess {
       // Stop the outgoing model BEFORE recording the new resident, so a start
       // that fails leaves the field honestly empty rather than naming a model
       // that is not running.
@@ -160,11 +183,40 @@ public actor LocalPolishServerCoordinator {
       // it no longer owns.
       observers[resident]?(.stopped)
       setResident(nil)
+      residentTarget = nil
     }
 
     guard intent >= honouredIntent, let target else { return }
     setResident(target.provider)
+    residentTarget = target
     await manager.start(configuration: target.configuration)
+    if target.provider == .egOne, resident == .egOne {
+      let reason = await manager.checkerFailureReason
+      guard resident == .egOne,
+        residentTarget?.configuration.learnedWordAdapterURL
+          == target.configuration.learnedWordAdapterURL
+      else { return }
+      if let reason {
+        recordedCheckerFailure = reason
+      } else if target.configuration.learnedWordAdapterURL != nil {
+        recordedCheckerFailure = nil
+      }
+    }
+  }
+
+  /// Called when the shared take/import pin is released. Rechecks the pin;
+  /// a newer provider intent supersedes an older deferred adapter change.
+  public func retryDeferredReconfiguration() async {
+    guard let deferredRequest else { return }
+    await transition(to: deferredRequest.request, intent: deferredRequest.intent)
+  }
+
+  public func checkerFailureReason() -> EGOneServerManager.CheckerFailureReason? {
+    recordedCheckerFailure
+  }
+
+  public func currentBootCheckerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {
+    await manager.checkerFailureReason
   }
 
   /// Health for `provider`. Returns red when a DIFFERENT model is resident,

@@ -557,6 +557,23 @@ public final class ModelDeliveryHome {
     return .delivery(await controller.ensureModelAvailable(checker))
   }
 
+  /// Read-only boot source. A file path alone cannot supply an adapter:
+  /// both admission markers and the signed compatibility pin must agree.
+  public func admittedCompatibleEGOneCheckerURL(
+    baseRegistration: DeliveryRegistration, promptTemplateID: String
+  ) async -> URL? {
+    guard let checker = egOneCheckerRegistration,
+      let contract = checker.manifest.checkerContract,
+      await controller.isAdmitted(baseRegistration),
+      await controller.isAdmitted(checker),
+      compatibility(
+        contract: contract,
+        admittedBase: AdmittedEGOneBase(
+          manifest: baseRegistration.manifest, promptTemplateID: promptTemplateID)) == .compatible
+    else { return nil }
+    return checker.installDirectory.appendingPathComponent(contract.adapterFileName)
+  }
+
   // MARK: - #996 phase D: the correction judge's own controls
 
   /// Start, resume or retry the judge download. Kill-switch guarded like the
