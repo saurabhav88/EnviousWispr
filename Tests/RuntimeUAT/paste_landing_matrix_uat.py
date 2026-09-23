@@ -43,10 +43,30 @@ from escape_recovery_uat import screen_is_locked  # noqa: E402
 # instrument gap; terminals stay on the founder's hand-run sheet.
 # Mail is not a default either: its drafts share one subject across runs, so cleanup cannot tell
 # this run's compose window from an older one. It stays on the hand-run sheet until it can.
+# Each refusal measured on 2026-09-23 by staging the app and reading its focused element.
 NOT_SAFE_HERE = {"ghostty": "a terminal exposes no readable field",
-                 "mail": "its draft title is shared across runs, so cleanup cannot own it"}
-DEFAULT_APPS = "textedit,notes,safari,gmail,word,excel,slack,vscode,discord,obsidian,whatsapp"
+                 "mail": "its draft title is shared across runs, so cleanup cannot own it",
+                 "word": "focus lands on an AXSplitGroup, not the document's text",
+                 "excel": "a grid cell exposes no readable value",
+                 "vscode": "focus lands on an AXButton, not the editor",
+                 "whatsapp": "the composer's value is unreadable (None), so landing cannot be read",
+                 "discord": "staging needs a conversation the founder opened",
+                 "notes": "an empty new note reads None, and staging cannot prove the focused note "
+                          "is the new one (last_dictation_uat.py covers Notes by note id)"}
+DEFAULT_APPS = "textedit,safari,gmail,slack,obsidian"
 KEY_TIERS = ("cgevent", "applescript", "menu_paste")
+ROUTE = {"route": None}  # the run's silent audio route, applied once before any app is staged
+
+
+def clear_and_verify_modifiers():
+    """Post the clearing event once, then poll both state sources until they read clean."""
+    w.clear_modifier_flags()
+
+    def clean():
+        flags = w.modifier_flags()
+        return flags is not None and not any(flags.values())
+
+    return u.wait_for("modifier flags cleared", clean, deadline=2.0)
 
 
 def focused_element(pid):
@@ -63,6 +83,26 @@ def element_value(element):
 def same_element(a, b):
     from CoreFoundation import CFEqual
     return a is not None and b is not None and CFEqual(a, b)
+
+
+def focus_page_textarea(pid, bundle):
+    """Safari's staging page asks for autofocus, but Safari leaves focus in the address bar
+    (measured 2026-09-23: AXTextField holding the file URL). Click into the page's one text area,
+    as a person does (setting AXFocused did not move Safari's focus, measured the same day), and
+    return it only when focus is confirmed there, else None."""
+    from urllib.parse import unquote, urlsplit
+    from ui_helpers import find_element, get_attr, get_ax_app
+    tab = apps.osa('tell application "Safari" to get URL of current tab of front window')
+    url = urlsplit(tab.stdout.strip())
+    if (tab.returncode != 0 or url.scheme != "file"
+            or os.path.realpath(unquote(url.path)) != os.path.realpath(apps.LOCAL_PAGE)):
+        raise u.Aborted("safari: the local staging page is not the active tab")
+    window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+    area = find_element(window, role="AXTextArea", max_depth=60) if window is not None else None
+    if area is None:
+        return None
+    apps.click_into(area, "the page's text area", bundle)
+    return area if same_element(focused_element(pid), area) else None
 
 
 def safe_cleanup(app, pid, doc, staged, may_clear):
@@ -132,6 +172,8 @@ def one_take(app):
         # The field this run owns: scored and cleaned by THIS identity, never "whatever is
         # focused later" (a moved focus could read or clear another field).
         staged = focused_element(pid)
+        if app == "safari":
+            staged = focus_page_textarea(pid, bundle)  # never the address bar Safari leaves focused
         if staged is None and app != "ghostty":
             raise u.Aborted(f"{app}: no focused field after staging")
         # A landing check resolves up to 1.5 s after its paste; the previous app's cleanup and this
@@ -147,7 +189,7 @@ def one_take(app):
                 raise u.Aborted(f"{app}: focus left the staged field before the take")
         may_clear = True  # staged, empty, still focused: from here on the field holds only our text
         base = u.log_size()
-        lines, cascades = p.take(app, base, bundle=bundle)
+        lines, cascades = p.take(app, base, bundle=bundle, route=ROUTE["route"])
         if app != "ghostty" and not same_element(focused_element(pid), staged):
             # Detects an observed move; it cannot prove focus never left and came back mid-hold.
             raise u.Aborted(f"{app}: focus left the staged field during the take; text may be elsewhere")
@@ -175,10 +217,15 @@ def one_take(app):
                 f"landed={row['landed']} verdict={row['observed']}/{row['reason']}")
         return row
     finally:
-        if pid is None:
-            pid = apps.pid_for(bundle, name)  # a partial stage (a Mail draft) is still cleaned
-        ok, detail = p.quiet(f"{app} cleanup", safe_cleanup, app, pid, doc, staged, may_clear)
-        u.check(f"{app}: this run's text removed", ok, detail)
+        if p.TAKE_STUCK["stuck"]:
+            # A recording may still be live: no keystroke may be posted into any app now.
+            u.check(f"{app}: this run's text removed", False,
+                    "skipped: a take would not stop, so no keyboard cleanup runs")
+        else:
+            if pid is None:
+                pid = apps.pid_for(bundle, name)  # a partial stage (a Mail draft) is still cleaned
+            ok, detail = p.quiet(f"{app} cleanup", safe_cleanup, app, pid, doc, staged, may_clear)
+            u.check(f"{app}: this run's text removed", ok, detail)
 
 
 def main():
@@ -198,7 +245,17 @@ def main():
     if screen_is_locked():
         print("ABORT: the screen is locked")
         return 2
-    from silent_audio import AlertSink
+    # Signals first, before ANY device changes: each becomes KeyboardInterrupt, so the `finally`
+    # below always runs and decides what is safe to restore. Never the route's own handlers,
+    # which restore the microphone unconditionally.
+    import signal
+
+    def interrupt(_signum, _frame):
+        raise KeyboardInterrupt
+
+    for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signum, interrupt)
+    from silent_audio import AlertSink, AudioRoute
     w._INPUT_WARN = False
     w.connect()
     try:
@@ -206,29 +263,50 @@ def main():
     except u.Aborted as e:
         print(f"ABORT: {e}")
         return 2
-    sink = AlertSink()
-    if not sink.apply():
-        print(f"ABORT: alert and output devices did not switch to BlackHole (restored: {sink.restore()})")
-        return 2
-    rows, unstaged = [], []
+    rows, unstaged, sink, route = [], [], AlertSink(), None
     try:
+        if not sink.apply():
+            raise u.Aborted("the alert and output devices did not switch to BlackHole")
+        # Once, before any app is staged: switching the microphone opens and closes our Settings,
+        # which must not happen between an app's staging and its take.
+        route = AudioRoute()
+        route.apply()
+        ROUTE["route"] = route
         for app in requested:
             for n in range(args.takes):
                 print(f"\n== {app}, take {n + 1}")
                 try:
                     rows.append(one_take(app))
+                except p.LiveTakeNotStopped:
+                    raise  # never stage another app over a take that will not stop
                 except (u.Aborted, apps.d.Aborted) as e:
                     unstaged.append(app)
                     u.record(f"{app}: a scored row", "ABORT", str(e))  # an instrument gap, never evidence
                     break
+    except (u.Aborted, KeyboardInterrupt) as e:
+        u.record("run", "ABORT", repr(e))
     finally:
+        # Each step is attempted on its own; none can skip the next.
         for label, step in [("clipboard restored byte for byte", lambda: u.pasteboard_restore(snapshot)),
-                            ("modifier flags cleared", u.modifiers_cleared)]:
+                            ("modifier flags cleared", clear_and_verify_modifiers)]:
             try:
                 u.check(label, bool(step()))
-            except Exception as exc:
+            except BaseException as exc:
                 u.check(label, False, repr(exc))
-        u.check("devices restored", sink.restore())
+        try:
+            if route is not None:
+                # The flag, not the exception: it survives a later error replacing the exception.
+                if u.check("every matrix take stopped", not p.TAKE_STUCK["stuck"]):
+                    u.check("microphone and app device restored", route.restore())
+                else:
+                    print("    the virtual microphone is LEFT in place: quit the dev app, then run "
+                          "`python3 Tests/RuntimeUAT/silent_audio.py restore`")
+        except BaseException as exc:
+            u.check("microphone and app device restored", False, repr(exc))
+        try:
+            u.check("devices restored", sink.restore())  # outermost: whatever failed before
+        except BaseException as exc:
+            u.check("devices restored", False, repr(exc))
     print("\n| app | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | false unchanged |")
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:

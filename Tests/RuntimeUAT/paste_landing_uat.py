@@ -164,20 +164,43 @@ def address_bar_value():
 EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea"}
 
 
-def take(label, base, bundle=CHROME):
+class LiveTakeNotStopped(u.Aborted):
+    """A take that will not stop: no later step may stage another app or restore the microphone."""
+
+
+# Set BEFORE LiveTakeNotStopped is raised, so the fact survives even if a later cleanup error
+# replaces the exception on its way out: callers read this flag, not only the exception.
+TAKE_STUCK = {"stuck": False}
+
+
+def take(label, base, bundle=CHROME, route=None):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
-    Returns every landing line and paste-cascade line written since `base`."""
+    Returns every landing line and paste-cascade line written since `base`.
+
+    `route`: an AudioRoute the CALLER already applied and will restore. Switching the route opens
+    and closes EnviousWispr's Settings, and focus does not always return to the app under test
+    (measured 2026-09-23: Slack lost the front to our window), so a multi-app run applies it once."""
     from silent_audio import AudioRoute, take_was_virtual
-    route = AudioRoute()
-    route.install_restore_handlers()
+    own = route is None
+    hold = {"entered": False, "completed": False}
+    if own:
+        route = AudioRoute()
+        route.install_restore_handlers()
+    else:
+        # Fail closed: stuck until a stop is CONFIRMED below, so an interrupt anywhere (even while
+        # stopping) leaves the flag up, and the caller neither types nor restores the microphone.
+        TAKE_STUCK["stuck"] = True
     try:
-        route.apply()
+        if own:
+            route.apply()
         u.require_front(bundle, f"{label}: before the take")
         if label in EXPECTED_FOCUS and focused_role() != EXPECTED_FOCUS[label]:
             # Checked immediately before the hold: the paste goes wherever focus is NOW, and an
             # address bar focused here would make a no-focus phase pass on text that landed.
             raise u.Aborted(f"{label}: focus is {focused_role()!r}, not {EXPECTED_FOCUS[label]}")
+        hold["entered"] = True
         w.record_tts(SENTENCE)
+        hold["completed"] = True
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
         starts = u.log_since(base).count("Recording started")
@@ -185,11 +208,23 @@ def take(label, base, bundle=CHROME):
         u.check(f"{label}: the take captured through the virtual device", virtual, str(transports))
     finally:
         try:
-            stopped = u.stop_any_live_take(base_offset=None)
-        except Exception as exc:
+            stopped = u.stop_any_live_take(base_offset=base)  # this take's own markers only
+        except BaseException as exc:  # an interrupt while stopping is an UNCONFIRMED stop
             print(f"    (stopping the take raised {exc!r})")
             stopped = False
-        u.end_take_then_restore(route, label, stopped)
+        if stopped and hold["entered"] and not hold["completed"]:
+            # Interrupted INSIDE the hold: "no start marker" may only mean the start has not been
+            # logged yet. Only a terminal marker since `base` confirms the take ended.
+            log = u.log_since(base)
+            stopped = (log.count("Recording started") == 1
+                       and log.rfind("dictation_terminal") > log.rfind("Recording started"))
+        if own:
+            u.end_take_then_restore(route, label, stopped)
+        elif stopped:
+            TAKE_STUCK["stuck"] = False  # cleared only after the stop is confirmed
+        else:
+            raise LiveTakeNotStopped(f"{label}: a take would not stop; the run stops here and the "
+                                     "virtual microphone is left in place until it ends")
     # The check resolves up to 1.5 s after the paste; the take itself takes a few seconds more.
     u.wait_for("a PASTE_LANDING line", lambda: LANDING.search(u.log_since(base)), deadline=25.0)
     text = u.log_since(base)
