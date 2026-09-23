@@ -6,6 +6,68 @@ import Testing
 
 @Suite("Learned word candidates (#3105)", .tags(.productOutcome))
 struct LearnedWordCandidatesTests {
+  private let eightWords = [
+    "Tuist", "Qwen", "PostHog", "Kotlin", "Supabase", "Ollama", "Vercel", "Kaggle",
+  ].map { LearnedWord(canonical: $0, observedMisspellings: []) }
+
+  @Test("common English sound spots are removed after selection")
+  func commonEnglishSoundSpots() {
+    let text = "I will call the dentist tomorrow to move my appointment"
+    let raw = LearnedWordSpotFinder().spots(
+      in: text, words: LearnedWordSpotFinder.prepare(eightWords.map(\.canonical)), maxSpots: 16)
+    let questions = LearnedWordCandidates.questions(
+      for: text, learned: eightWords, language: "en")
+    // At wordfreq's 5.6 cutoff, "call" is 5.51. Every selected spot in this
+    // exact sentence includes it, so the rule cannot reduce this one count.
+    #expect(questions.count == raw.count)
+    #expect(questions.allSatisfy { String(text[$0.range]).lowercased().contains("call") })
+
+    let extended = text + ". We have a great time"
+    let extendedRaw = LearnedWordSpotFinder().spots(
+      in: extended, words: LearnedWordSpotFinder.prepare(eightWords.map(\.canonical)),
+      maxSpots: 16)
+    let extendedQuestions = LearnedWordCandidates.questions(
+      for: extended, learned: eightWords, language: "en")
+    #expect(extendedQuestions.count < extendedRaw.count)
+    #expect(extendedQuestions.contains { String(extended[$0.range]) == "time" } == false)
+  }
+
+  @Test("rare words and split terms still reach the checker")
+  func rareSoundMatches() {
+    let kotlin = [LearnedWord(canonical: "Kotlin", observedMisspellings: [])]
+    let cotton = "rewrote the client in cotton"
+    #expect(LearnedWordCandidates.questions(for: cotton, learned: kotlin, language: "en")
+      .contains { $0.word == "Kotlin" && String(cotton[$0.range]) == "cotton" })
+
+    let supabase = [LearnedWord(canonical: "Supabase", observedMisspellings: [])]
+    let split = "super base"
+    #expect(LearnedWordCandidates.questions(for: split, learned: supabase, language: "en")
+      .contains { $0.word == "Supabase" && String(split[$0.range]) == split })
+  }
+
+  @Test("an exact common-word alias survives; other languages keep prior sound spots")
+  func exactAliasAndLanguageGate() {
+    let text = "Please go home"
+    let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["home"])]
+    let exact = LearnedWordCandidates.questions(for: text, learned: learned, language: "en")
+    #expect(exact.contains { String(text[$0.range]) == "home" && $0.word == "Tuist" })
+
+    let soundOnly = [LearnedWord(canonical: "Ollama", observedMisspellings: [])]
+    let plain = "I think we will go home tomorrow"
+    let unfiltered = LearnedWordSpotFinder().spots(
+      in: plain, words: LearnedWordSpotFinder.prepare(["Ollama"]), maxSpots: 1)
+    #expect(unfiltered.count == 1)
+    #expect(LearnedWordCandidates.questions(
+      for: plain, learned: soundOnly, maxSpots: 1, language: "en").isEmpty)
+    #expect(LearnedWordCandidates.questions(
+      for: plain.uppercased(), learned: soundOnly, maxSpots: 1,
+      language: "en-US").isEmpty)
+    #expect(LearnedWordCandidates.questions(
+      for: plain, learned: soundOnly, maxSpots: 1, language: "de").count == 1)
+    #expect(LearnedWordCandidates.questions(
+      for: plain, learned: soundOnly, maxSpots: 1, language: nil).count == 1)
+  }
+
   @Test("learned provenance supplies only user and builtin words")
   func learnedProvenance() {
     let vocabulary = [
