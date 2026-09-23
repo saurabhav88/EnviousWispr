@@ -297,6 +297,7 @@ import Testing
         "\(original) -> \(corrected)")
     }
     #expect(disposition(run("adiane", "Adian"), inputs()) == .candidate(.newWord))
+    #expect(disposition(run("Johnson's", "Johnson"), inputs()) == .candidate(.newWord))
     #expect(disposition(run("Pay Pal", "PayPal"), inputs()) == .candidate(.newWord))
     #expect(disposition(run("day toast", "Tuist"), inputs()) == .candidate(.newWord))
   }
