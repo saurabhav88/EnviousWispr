@@ -28,7 +28,8 @@ WHAT EACH VERDICT READS
   pill itself is not observed here; "no pill appeared" stays a manual Phase 3 check.
 
 The takes add dictations to the real History (the dev build shares the shipped app's store). The
-clipboard, audio devices and Chrome tabs are restored; each phase runs under the beep meter.
+clipboard, audio devices and Chrome tabs are restored; every stretch that plays no speech runs under
+the beep meter at the silent ceiling (the takes are not metered: their speech plays into BlackHole).
 """
 import os
 import re
@@ -138,6 +139,31 @@ def textbox_value():
     return get_attr(focused, "AXValue") if focused is not None else None
 
 
+def address_bar_value():
+    """The front Chrome window's address bar text, or None. Read only to compare; never printed."""
+    from ui_helpers import find_app_pid, get_attr, get_ax_app
+    pid = find_app_pid("Google Chrome")
+    window = get_attr(get_ax_app(pid), "AXFocusedWindow") if pid else None
+    found = []
+
+    def walk(element, depth=0):
+        if element is None or depth > 30 or found:
+            return
+        if (get_attr(element, "AXRole") == "AXTextField"
+                and "Address" in str(get_attr(element, "AXDescription") or "")):
+            value = get_attr(element, "AXValue")
+            found.append(None if value is None else str(value))  # a failed read stays None
+            return
+        for child in get_attr(element, "AXChildren") or []:
+            walk(child, depth + 1)
+
+    walk(window)
+    return found[0] if found else None
+
+
+EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea"}
+
+
 def take(label, base):
     """One silent push-to-talk take into whatever Chrome has focused. Returns the landing match."""
     from silent_audio import AudioRoute, take_was_virtual
@@ -146,6 +172,10 @@ def take(label, base):
     try:
         route.apply()
         u.require_front(CHROME, f"{label}: before the take")
+        if label in EXPECTED_FOCUS and focused_role() != EXPECTED_FOCUS[label]:
+            # Checked immediately before the hold: the paste goes wherever focus is NOW, and an
+            # address bar focused here would make a no-focus phase pass on text that landed.
+            raise u.Aborted(f"{label}: focus is {focused_role()!r}, not {EXPECTED_FOCUS[label]}")
         w.record_tts(SENTENCE)
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
@@ -165,16 +195,42 @@ def take(label, base):
     return LANDING.findall(text), CASCADE.findall(text)
 
 
+def quiet(label, fn, *args):
+    """Run a stretch that plays NO speech under the beep meter, at the silent ceiling. The take is
+    never metered: its speech plays into the same BlackHole device the meter records
+    (`BeepMeter`: "never around a step that plays speech"; measured here -30.7 dB)."""
+    from silent_audio import BeepMeter
+    meter = BeepMeter(f"/tmp/ew-uat-3106-landing-beep-{label.replace(' ', '-')}-{u.RUN_ID}.wav")
+    with meter:
+        result = fn(*args)
+    db = meter.max_db()
+    u.check(f"{label}: no alert beep while it ran", db is not None and db < BeepMeter.QUIET_CEILING_DB,
+            f"max {db} dB, ceiling {BeepMeter.QUIET_CEILING_DB} (silence -91, alert beep -21)")
+    return result
+
+
 def phase(name):
     print(f"\n== {name}: one dictation into a Chrome page ({'box focused' if name == 'focused' else 'nothing focused'})")
-    open_page(name)
+    quiet(f"{name} staging", open_page, name)
+    bar_before = address_bar_value()
+    restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")  # before the take
     sentinel = f"ew-uat-sentinel-landing-{name}"
     u.set_clipboard_text(sentinel)
     base = u.log_size()
-    lines, cascades = take(name, base)
+    lines, cascades = take(name, base)  # not metered: speech plays into BlackHole
+    quiet(f"{name} checks", verify, name, lines, cascades, bar_before, restore_on, sentinel)
+
+
+def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     chrome_tiers = [t for t, app in cascades if app.strip() == CHROME]
-    u.check(f"{name}: one paste into Chrome, by the cgevent tier (the feature path)",
-            chrome_tiers == ["cgevent"], str(cascades))
+    # The focused box must take cgevent, the tier this control exists to prove. With no text
+    # field, the cascade routes a non-text focus to the Edit menu's Paste (tier 2c, measured
+    # 2026-09-23: `menu_paste`), which the check observes too; any of the three proves the path.
+    wanted = ["cgevent"] if name == "focused" else None
+    u.check(f"{name}: one paste into Chrome, by an observed key-paste tier",
+            (chrome_tiers == wanted) if wanted else
+            (len(chrome_tiers) == 1 and chrome_tiers[0] in ("cgevent", "applescript", "menu_paste")),
+            str(cascades))
     u.check(f"{name}: exactly one PASTE_LANDING line", len(lines) == 1, str(lines))
     if len(lines) != 1:
         return
@@ -186,6 +242,13 @@ def phase(name):
           f"before_ms={before_ms} resolve_ms={resolve_ms}")
     u.check(f"{name}: preparation stayed inside its 500 ms budget", int(before_ms) <= 500,
             f"before_ms={before_ms}")
+    bar_after = address_bar_value()
+    # Exact, and readable both times: the page is static, so ANY change means something landed
+    # there (a one-word paste would pass an overlap test).
+    u.check(f"{name}: the address bar is exactly as before the take",
+            bar_before is not None and bar_after is not None and bar_after == bar_before,
+            f"readable before={bar_before is not None} after={bar_after is not None} "
+            f"unchanged={bar_after == bar_before}")
     if name == "focused":
         value = textbox_value() or ""
         u.check(f"{name}: the words landed in the box (5+ of 7 words)",
@@ -197,7 +260,6 @@ def phase(name):
         # nowhere and the field did not change. Only `changed` would be a false observation.
         u.check(f"{name}: observed is unchanged or unknown, never changed",
                 observed in ("unchanged", "unknown"), f"{observed}/{reason}")
-    restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
     if restore_on:
         u.check(f"{name}: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
@@ -214,9 +276,14 @@ def phase_textedit():
     required when the take uses `ax_direct`; one is recorded if it appears."""
     print("\n== textedit: regression control, one dictation into an empty document")
     sentinel = "ew-uat-sentinel-landing-textedit"
+    restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")  # before the take
     u.set_clipboard_text(sentinel)
     base = u.log_size()
-    delivered = u.phase_dictate()  # the plan 1 driver's own take: new document, silent, one take
+    delivered = u.phase_dictate()  # the plan 1 driver's own take (speech: not metered)
+    quiet("textedit checks", verify_textedit, base, delivered, restore_on, sentinel)
+
+
+def verify_textedit(base, delivered, restore_on, sentinel):
     text = u.log_since(base)
     tiers = [t for t, app in CASCADE.findall(text) if app.strip() == "com.apple.TextEdit"]
     u.check("textedit: one paste into TextEdit, not clipboard-only",
@@ -226,7 +293,6 @@ def phase_textedit():
     u.check("textedit: the fresh document holds one copy of the dictation",
             u.sentence_overlap(delivered) >= 5 and len(delivered) < 1.5 * len(SENTENCE),
             f"{u.sentence_overlap(delivered)}/7 len={len(delivered)} {delivered[:80]!r}")
-    restore_on = u.defaults_value("restoreClipboardAfterPaste") in (None, "1")
     if restore_on:
         u.check("textedit: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
@@ -266,10 +332,11 @@ def main():
     try:
         u.run_metered("control", lambda: None)
         for name in wanted:
+            # Metered inside each phase, around the stretches that play no speech.
             if name == "textedit":
-                u.run_metered(name, phase_textedit)
+                phase_textedit()
             else:
-                u.run_metered(name, phase, name)
+                phase(name)
     except u.Aborted as e:
         u.record("run", "ABORT", str(e))
     finally:

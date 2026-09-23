@@ -360,7 +360,8 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// The pid of the active (frontmost) application, nil when none is.
   func frontmostPID() -> pid_t?
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool
+  /// Nil when the attribute names could not be read: "could not tell" is not "unsupported".
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool?
   /// Returns whether the attribute write succeeded.
   func enableManualAccessibility(_ application: AXUIElement) -> Bool
   func readValue(of element: AXUIElement) -> PastedRegionValueRead
@@ -1028,7 +1029,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // pids, so a later Electron process under a remembered number would never
     // be asked; one attribute write per paste is nothing (cloud review of
     // PR #3054, both rounds).
-    let isManualHost = ax.supportsManualAccessibility(application)
+    // An unreadable answer is treated as "not a manual host", exactly as before it could be told
+    // apart (#3106): the watcher's behaviour does not change.
+    let isManualHost = ax.supportsManualAccessibility(application) ?? false
     if isManualHost { _ = ax.enableManualAccessibility(application) }
 
     let element: AXUIElement
@@ -1717,11 +1720,11 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
 
   static let manualAccessibilityAttribute = "AXManualAccessibility" as CFString
 
-  package func supportsManualAccessibility(_ application: AXUIElement) -> Bool {
+  package func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
     var names: CFArray?
     guard AXUIElementCopyAttributeNames(application, &names) == .success,
       let list = names as? [String]
-    else { return false }
+    else { return nil }
     return list.contains(Self.manualAccessibilityAttribute as String)
   }
 

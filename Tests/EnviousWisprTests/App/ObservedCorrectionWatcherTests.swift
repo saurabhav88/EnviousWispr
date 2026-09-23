@@ -80,7 +80,7 @@ private final class CaptureAX: PastedRegionAXOperations {
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool { true }
   func frontmostPID() -> pid_t? { 42 }
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome { .subrole(nil) }
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool { manual }
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool? { manual }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool { true }
   func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange { .unavailable }
   func readValue(of element: AXUIElement) -> PastedRegionValueRead { .text(value) }

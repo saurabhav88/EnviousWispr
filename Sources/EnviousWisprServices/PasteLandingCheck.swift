@@ -137,18 +137,29 @@ package final class PasteLandingCheck {
   private let element: AXUIElement?
   private let before: PasteLandingFacts.Before
   private let frontmostBefore: pid_t?
-  private let manualAX: Bool
+  /// Nil when the question could not be asked or answered (budget refused, or the read failed):
+  /// "could not read" is never
+  /// recorded as "does not support it" (second-pass review, #3106).
+  private let manualAX: Bool?
   private let hostExposedFocus: Bool
   package let targetWindow: PasteLandingTargetWindow
   /// The destination's class, from the bundle id and manual-accessibility answer snapshotted at
   /// prepare: a later take, focus change or frontmost app cannot change it (#3106, for telemetry).
+  /// With the manual-accessibility answer unread, a browser is still a browser (the bundle id
+  /// decides that); anything else is `other`, never a guessed `native`.
   package var appClass: TelemetryService.LearnFromEditsTelemetry.AppClass {
-    PasteLandingAppClass.classify(
+    guard let manualAX else {
+      let byBundle = PasteLandingAppClass.classify(
+        bundleIdentifier: context.bundleID, isManualAccessibilityHost: false)
+      return byBundle == .browser ? .browser : .other
+    }
+    return PasteLandingAppClass.classify(
       bundleIdentifier: context.bundleID, isManualAccessibilityHost: manualAX)
   }
   private let ax: any PastedRegionAXOperations
   private let scheduler: any PastedRegionScheduling
   private let log: @MainActor (String) -> Void
+  private let reporter: @MainActor (Row) -> Void
 
   fileprivate(set) var beforeMs = 0
   fileprivate var prepareBudgetExhausted = false
@@ -174,10 +185,10 @@ package final class PasteLandingCheck {
 
   fileprivate init(
     context: Context, application: AXUIElement, element: AXUIElement?,
-    before: PasteLandingFacts.Before, frontmostBefore: pid_t?, manualAX: Bool,
+    before: PasteLandingFacts.Before, frontmostBefore: pid_t?, manualAX: Bool?,
     hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
-    log: @escaping @MainActor (String) -> Void
+    log: @escaping @MainActor (String) -> Void, reporter: @escaping @MainActor (Row) -> Void
   ) {
     self.context = context
     self.application = application
@@ -190,6 +201,7 @@ package final class PasteLandingCheck {
     self.ax = ax
     self.scheduler = scheduler
     self.log = log
+    self.reporter = reporter
   }
 
   /// Registers the notifications before the write. A partial registration is kept, so a terminal
@@ -319,18 +331,19 @@ package final class PasteLandingCheck {
   /// repeated or concurrent `resolve()` calls cannot emit twice. After the log line and after the
   /// verdict is fixed: it reports and decides nothing (plan §3.5).
   private func report(_ observed: PasteLandingObserved) {
-    TelemetryService.shared.pasteLandingObserved(
-      takeID: context.takeID, tier: context.tier.rawValue, observed: observed.observed,
-      reason: observed.reason.rawValue, appClass: appClass.rawValue,
-      hostExposedFocus: hostExposedFocus, targetWindow: targetWindow.rawValue,
-      beforeMs: beforeMs, resolveMs: scheduler.nowMs - committedAtMs)
+    reporter(
+      Row(
+        takeID: context.takeID, tier: context.tier.rawValue, observed: observed.observed,
+        reason: observed.reason.rawValue, appClass: appClass.rawValue,
+        hostExposedFocus: hostExposedFocus, targetWindow: targetWindow.rawValue,
+        beforeMs: beforeMs, resolveMs: scheduler.nowMs - committedAtMs))
   }
 
   /// Shape only: no text, selection, window title or take id (plan §3.4).
   private func logLine(_ observed: PasteLandingObserved) -> String {
     "PASTE_LANDING tier=\(context.tier.rawValue) observed=\(observed.observed) "
       + "reason=\(observed.reason.rawValue) app=\(context.bundleID ?? "unknown") "
-      + "host_exposed_focus=\(hostExposedFocus) manual_ax=\(manualAX) "
+      + "host_exposed_focus=\(hostExposedFocus) manual_ax=\(manualAX.map(String.init) ?? "unknown") "
       + "target_window=\(targetWindow.rawValue) before_ms=\(beforeMs) "
       + "resolve_ms=\(scheduler.nowMs - committedAtMs)"
   }
@@ -543,6 +556,44 @@ extension PasteLandingCheck {
 
 extension PasteLandingCheck {
 
+  /// The one `paste.landing_observed` row a resolution produces, as values. The live reporter
+  /// hands it to `TelemetryService.pasteLandingObserved`; a test reporter captures it directly,
+  /// so no test has to hold the process-wide telemetry hook across the resolution's await.
+  package struct Row: Equatable, Sendable {
+    package let takeID: String?
+    package let tier: String
+    package let observed: String
+    package let reason: String
+    package let appClass: String
+    package let hostExposedFocus: Bool
+    package let targetWindow: String
+    package let beforeMs: Int
+    package let resolveMs: Int
+
+    package init(
+      takeID: String?, tier: String, observed: String, reason: String, appClass: String,
+      hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int
+    ) {
+      self.takeID = takeID
+      self.tier = tier
+      self.observed = observed
+      self.reason = reason
+      self.appClass = appClass
+      self.hostExposedFocus = hostExposedFocus
+      self.targetWindow = targetWindow
+      self.beforeMs = beforeMs
+      self.resolveMs = resolveMs
+    }
+  }
+
+  /// The production reporter: the vendor event.
+  package static let liveReport: @MainActor (Row) -> Void = { row in
+    TelemetryService.shared.pasteLandingObserved(
+      takeID: row.takeID, tier: row.tier, observed: row.observed, reason: row.reason,
+      appClass: row.appClass, hostExposedFocus: row.hostExposedFocus,
+      targetWindow: row.targetWindow, beforeMs: row.beforeMs, resolveMs: row.resolveMs)
+  }
+
   /// The only tiers a check may be prepared for: the three key pastes (plan §3.3).
   package static let observedTiers: Set<PasteTier> = [.cgEvent, .appleScript, .menuPaste]
 
@@ -601,14 +652,16 @@ extension PasteLandingCheck {
   package static func prepare(
     _ context: Context, capturedTarget: AXUIElement?, restoringCapturedTimeoutTo restoreSeconds: Double,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
-    log: (@MainActor (String) -> Void)? = nil
+    log: (@MainActor (String) -> Void)? = nil, report: (@MainActor (Row) -> Void)? = nil
   ) -> PasteLandingCheck? {
     guard observedTiers.contains(context.tier) else { return nil }
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
     let application = ax.applicationElement(pid: context.pid)
     let frontmostBefore = ax.frontmostPID()
     // Read, never enabled: the check does not change the destination to improve an observation.
-    let manualAX = budget.admit(application) && ax.supportsManualAccessibility(application)
+    // Nil when the budget refused the call OR the read itself failed: either way unread.
+    let manualAX: Bool? =
+      budget.admit(application) ? ax.supportsManualAccessibility(application) : nil
 
     var element: AXUIElement?
     let before: PasteLandingFacts.Before
@@ -628,7 +681,7 @@ extension PasteLandingCheck {
       context: context, application: application, element: element, before: before,
       frontmostBefore: frontmostBefore, manualAX: manualAX,
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
-      ax: ax, scheduler: scheduler, log: log ?? Self.debugLog)
+      ax: ax, scheduler: scheduler, log: log ?? Self.debugLog, reporter: report ?? Self.liveReport)
     check.arm(budget: budget)
     let finished = budget.completedPreparation()
     check.beforeMs = finished.elapsedMs

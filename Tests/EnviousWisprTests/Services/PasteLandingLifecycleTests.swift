@@ -597,6 +597,35 @@ extension PasteLandingLifecycleTests {
     #expect(await third.resolve() == .unchanged(.fieldIdentical))
   }
 
+  @Test("An unread manual-accessibility answer is other (or browser by bundle), never native")
+  func appClassUnread() async throws {
+    // The application handle refuses its timeout, so the budget never asks the question.
+    let slack = Rig()
+    slack.ax.timeoutFailsFor = [Self.pid]
+    let check = try #require(slack.prepare(bundleID: "com.tinyspeck.slackmacgap"))
+    #expect(check.appClass == .other)
+    check.commit()
+    slack.clock.advance(ms: 1_500)
+    _ = await check.resolve()
+    #expect(slack.lines.first?.contains("manual_ax=unknown") == true, "\(slack.lines)")
+    let chrome = Rig()
+    chrome.ax.timeoutFailsFor = [Self.pid]
+    #expect(try #require(chrome.prepare(bundleID: "com.google.Chrome")).appClass == .browser)
+    // The call ran but its read failed: also unread.
+    let failed = Rig()
+    failed.ax.manualReadFails = [Self.pid]
+    let failedCheck = try #require(failed.prepare(bundleID: "com.tinyspeck.slackmacgap"))
+    #expect(failedCheck.appClass == .other)
+    failedCheck.commit()
+    failed.clock.advance(ms: 1_500)
+    _ = await failedCheck.resolve()
+    #expect(failed.lines.first?.contains("manual_ax=unknown") == true, "\(failed.lines)")
+    // Paired: the same Slack check with the question answered "no" is native, as before.
+    let answered = Rig()
+    #expect(
+      try #require(answered.prepare(bundleID: "com.tinyspeck.slackmacgap")).appClass == .native)
+  }
+
   @Test("The app class comes from the snapshot: browser first, then manual host, then native")
   func appClassFromSnapshot() throws {
     // Safari is a recognised browser and not a manual host; Chrome is both, and browser wins.

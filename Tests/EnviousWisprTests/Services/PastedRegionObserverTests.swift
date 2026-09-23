@@ -53,9 +53,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func subrole(of element: AXUIElement) -> SelectionReader.SubroleOutcome {
     subroles["\(CFHash(element))"] ?? .subrole(nil)
   }
-  func supportsManualAccessibility(_ application: AXUIElement) -> Bool {
+  /// pids whose attribute-name read fails (the answer is unreadable, not "no").
+  var manualReadFails: Set<pid_t> = []
+  func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
     var pid: pid_t = 0
     AXUIElementGetPid(application, &pid)
+    if manualReadFails.contains(pid) { return nil }
     return manualHosts.contains(pid)
   }
   func enableManualAccessibility(_ application: AXUIElement) -> Bool {
