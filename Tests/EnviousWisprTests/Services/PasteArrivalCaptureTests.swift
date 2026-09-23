@@ -642,6 +642,32 @@ struct PasteArrivalCaptureTests {
     #expect(reports.list.map(\.lateCheck) == [.completedNoHit], "the landing report is untouched")
   }
 
+  @Test(
+    "a failed opt-in is asked again at a later read, at most three times, and never after it succeeds"
+  )
+  func failedOptInIsRetriedBounded() throws {
+    ax.manualHosts = [pid]
+    ax.enableSucceeds = false
+    let recovers = try prepare()
+    recovers.commit()
+    scheduler.advance(ms: 25)
+    #expect(ax.enableCalls == [pid])
+    ax.enableSucceeds = true
+    scheduler.advance(ms: 25)
+    #expect(ax.enableCalls == [pid, pid], "asked again after the failure")
+    scheduler.advance(ms: 100)
+    #expect(ax.enableCalls == [pid, pid], "never again once it succeeded")
+    recovers.cancel()
+
+    ax.enableCalls = []
+    ax.enableSucceeds = false
+    let busy = try prepare()
+    busy.commit()
+    scheduler.advance(ms: 300)
+    #expect(ax.enableCalls == [pid, pid, pid], "three bounded attempts, then no more")
+    busy.cancel()
+  }
+
   // MARK: Tier 1 (AX direct): #996 only
 
   func editOnly(_ payload: String = "Sarah ") -> PasteArrivalCapture {

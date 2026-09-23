@@ -360,8 +360,6 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// Nil when the question could not be asked or answered: never "does not support it". An
   /// edit-only session asks it at #996's first request instead of before a write.
   private var manualAX: Bool?
-  /// Tier 1 (AX direct): no key paste to observe, only #996's edit-watch capture.
-  private var isEditOnly = false
   private let hostExposedFocus: Bool
   package let targetWindow: PasteLandingTargetWindow
   private let ax: any PastedRegionAXOperations
@@ -389,6 +387,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private var committedAtMs = 0
   private var generation = 0
   private var manualAccessibilityEnabled = false
+  private var manualAccessibilityAttempts = 0
+  private static let maxManualAccessibilityAttempts = 3
   private var poll: (any PastedRegionScheduledWork)?
   private var deadline: (any PastedRegionScheduledWork)?
   private var shadowEnd: (any PastedRegionScheduledWork)?
@@ -501,7 +501,6 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       application: ax.applicationElement(pid: pid), baseline: .unreadable, frontmostBefore: nil,
       manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
       reporter: { _ in }, log: { _ in })
-    session.isEditOnly = true
     session.wasCommitted = true
     session.phase = .finished
     return session
@@ -607,19 +606,21 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     }
   }
 
-  private func enableManualAccessibilityOnce() {
-    // An edit-only session had no budgeted preparation, so it asks here, behind the same guards and
-    // bound as the reader: a query behind a failed timeout could block the main actor. Unasked, the
-    // read below returns its own bounded failure.
-    if isEditOnly, manualAX == nil, ax.isTrusted(), ax.isProcessRunning(context.pid),
-      ax.frontmostPID() == context.pid,
+  /// The manual-accessibility opt-in, before a read. Asked behind the reader's own guards and
+  /// bound (a query behind a failed timeout could block the main actor); an edit-only session, or
+  /// a key paste whose preparation could not ask, asks the support question here. Success is
+  /// recorded only when the write succeeds: a host too busy to answer is asked again at a later
+  /// read, up to `maxManualAccessibilityAttempts` bounded attempts per session.
+  private func enableManualAccessibilityIfNeeded() {
+    guard !manualAccessibilityEnabled, manualAX != false,
+      manualAccessibilityAttempts < Self.maxManualAccessibilityAttempts,
+      ax.isTrusted(), ax.isProcessRunning(context.pid), ax.frontmostPID() == context.pid,
       ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
-    {
-      manualAX = ax.supportsManualAccessibility(application)
-    }
-    guard !manualAccessibilityEnabled, manualAX == true else { return }
-    manualAccessibilityEnabled = true
-    _ = ax.enableManualAccessibility(application)
+    else { return }
+    manualAccessibilityAttempts += 1
+    if manualAX == nil { manualAX = ax.supportsManualAccessibility(application) }
+    guard manualAX == true else { return }
+    manualAccessibilityEnabled = ax.enableManualAccessibility(application)
   }
 
   private func notified(_ notification: PastedRegionAXNotification, generation: Int) {
@@ -654,7 +655,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// One read. A new occurrence ends the watch at once (before the decision: `found`; during the
   /// shadow: a late hit). Anything else waits for the next wakeup.
   private func read() {
-    enableManualAccessibilityOnce()
+    enableManualAccessibilityIfNeeded()
     let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
     guard let found = newOccurrence(in: attempt) else {
       if phase == .shadowing, !stillObservable(attempt) { shadowObservable = false }
@@ -702,7 +703,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// The deadline passed without a new occurrence: one bounded final read, then the negative rules.
   private func decideAtDeadline() {
     guard phase == .watching else { return }
-    enableManualAccessibilityOnce()
+    enableManualAccessibilityIfNeeded()
     let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
     if let found = newOccurrence(in: attempt) {
       publish(.found(found))
@@ -931,7 +932,7 @@ extension PasteArrivalCapture {
     guard wasCommitted else { return .ended(.captureUnsupported) }
     let request = EditRequest(startedAtMs: scheduler.nowMs, pastedAtMs: pastedAtMs)
     editRequest = request
-    enableManualAccessibilityOnce()
+    enableManualAccessibilityIfNeeded()
     return await withCheckedContinuation { continuation in
       request.waiters.append(continuation)
       stepEditRequest(request)

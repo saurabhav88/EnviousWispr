@@ -773,7 +773,9 @@ import os
     let (lines, sink) = AsyncStream<String>.makeStream()
     var requestTakeID: String??
     let holder = WeakSession()
+    let finalization = KernelFinalizationOutcome()
     let wiring = makeWiring(
+      outcome: finalization,
       context: context,
       deliverPaste: { request in
         requestTakeID = .some(request.takeID)
@@ -794,6 +796,8 @@ import os
     let outcome = await wiring.deliver("hello world", .ordinary)
     #expect(outcome == .pasted)
     #expect(requestTakeID == .some("TAKE-42"), "snapshotted before the delivery awaited")
+    // The recorded paste result also holds the session; drop it so only the owner task can.
+    finalization.pasteResult = nil
     // Delivery returned without waiting for the decision; the cascade result and the delivery
     // closure are gone, and the test holds the session only weakly: the wiring's owner holds it.
     #expect(holder.session?.context.takeID == "TAKE-42")
