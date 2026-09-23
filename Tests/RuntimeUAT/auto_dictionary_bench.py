@@ -179,11 +179,16 @@ def main():
         doc = lfe.new_doc("bench")
         lfe.prove_oracle(doc)
         for arm in ("off", "on"):
+            # Relaunch on the ORIGINAL devices, then switch to BlackHole while the app runs: an app that
+            # launches with BlackHole already selected is ~1 s slower per take (#3114), which would inflate
+            # both arms' absolute times.
+            route.restore()
             lfe.stop_app()
             lfe.file_restore(lfe.WORDS, learned_dictionary(snaps["words"]))
             door_set(ADAPTER_KEY, args.adapter if arm == "on" else None)
             door_set(THRESHOLD_KEY, args.threshold if arm == "on" else None)
             mark = start_app()
+            route.apply()
             if arm == "on" and not lfe.wait_for("the EG-1 checker door", lambda: lfe.has(mark, "learned-check EG-1 door ACTIVE"), deadline=30.0):
                 raise lfe.Aborted("the EG-1 checker door did not report ACTIVE")
             cold = take(doc, arm, 0, *SENTENCES[0])
