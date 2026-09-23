@@ -1,17 +1,34 @@
 import Foundation
 
-/// One possible learned-word replacement in the original sentence.
+/// One possible learned-word replacement in the full post-correction text.
 public struct LearnedWordCheckQuestion: Sendable, Equatable {
   public let id: Int
   public let sentence: String
   public let range: Range<String.Index>
+  public let contextRange: Range<String.Index>
   public let word: String
 
-  public init(id: Int, sentence: String, range: Range<String.Index>, word: String) {
+  public init(
+    id: Int, sentence: String, range: Range<String.Index>, contextRange: Range<String.Index>,
+    word: String
+  ) {
+    precondition(sentence.startIndex <= contextRange.lowerBound
+      && contextRange.lowerBound <= range.lowerBound
+      && range.upperBound <= contextRange.upperBound
+      && contextRange.upperBound <= sentence.endIndex)
     self.id = id
     self.sentence = sentence
     self.range = range
+    self.contextRange = contextRange
     self.word = word
+  }
+
+  public var contextText: String { String(sentence[contextRange]) }
+
+  public var contextRewritten: String {
+    var result = sentence[contextRange]
+    result.replaceSubrange(range, with: word)
+    return String(result)
   }
 
   public var rewritten: String {

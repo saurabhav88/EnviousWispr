@@ -9,7 +9,8 @@ struct EGOneLearnedWordCheckerTests {
   private static func question() -> LearnedWordCheckQuestion {
     let sentence = "I said toast"
     return LearnedWordCheckQuestion(
-      id: 7, sentence: sentence, range: sentence.range(of: "toast")!, word: "Tuist")
+      id: 7, sentence: sentence, range: sentence.range(of: "toast")!,
+      contextRange: sentence.startIndex..<sentence.endIndex, word: "Tuist")
   }
 
   @Test func trainedChatMLPromptIsPinned() {
@@ -18,13 +19,34 @@ struct EGOneLearnedWordCheckerTests {
     #expect(EGOneLearnedWordChecker.prompt(for: Self.question()) == expected)
   }
 
-  @Test func oneBatchRequestCarriesEveryPromptAndAdapterScale() {
+  @Test func multiSentencePromptShowsOnlyTheSpotSentence() {
+    let text = "We use cotton daily. The plot twist surprised me."
+    let question = LearnedWordCheckQuestion(
+      id: 0, sentence: text, range: text.range(of: "twist")!,
+      contextRange: text.range(of: "The plot twist surprised me.")!, word: "Tuist")
+    let prompt = EGOneLearnedWordChecker.prompt(for: question)
+    #expect(prompt.contains("A: The plot twist surprised me.\n"))
+    #expect(prompt.contains("B: The plot Tuist surprised me.<|im_end|>"))
+    #expect(prompt.contains("We use cotton daily.") == false)
+  }
+
+  @Test func eachRequestCarriesOnePromptAndItsCheckerSlot() {
     let checker = EGOneLearnedWordChecker(threshold: 0.5) { nil }
     #expect(checker.armName == "eg1_lora")
     #expect(checker.scoresAreComparable)
-    let questions = [Self.question(), Self.question()]
-    let body = EGOneLearnedWordChecker.makeRequestBody(questions)
-    #expect((body["prompt"] as? [String])?.count == 2)
+    let body = EGOneLearnedWordChecker.makeRequestBody(Self.question(), index: 0)
+    #expect(body["prompt"] as? String == EGOneLearnedWordChecker.prompt(for: Self.question()))
+    #expect(body["id_slot"] as? Int == 1)
+    let sentence = "We said coffee"
+    let second = LearnedWordCheckQuestion(
+      id: 8, sentence: sentence, range: sentence.range(of: "coffee")!,
+      contextRange: sentence.startIndex..<sentence.endIndex, word: "Kaggle")
+    let secondBody = EGOneLearnedWordChecker.makeRequestBody(second, index: 1)
+    #expect(secondBody["prompt"] as? String == EGOneLearnedWordChecker.prompt(for: second))
+    #expect(secondBody["id_slot"] as? Int == 2)
+    let secondLoRA = secondBody["lora"] as? [[String: Any]]
+    #expect(secondLoRA?.first?["id"] as? Int == 0)
+    #expect(secondLoRA?.first?["scale"] as? Double == 1.0)
     #expect(body["n_predict"] as? Int == 1)
     #expect(body["n_probs"] as? Int == 20)
     #expect(body["temperature"] as? Int == 0)
@@ -35,40 +57,29 @@ struct EGOneLearnedWordCheckerTests {
     #expect(lora?.first?["scale"] as? Double == 1.0)
   }
 
+  @Test func checkerSlotsWrapAfterEightQuestions() {
+    let slots = (0..<16).map {
+      EGOneLearnedWordChecker.makeRequestBody(Self.question(), index: $0)["id_slot"] as? Int
+    }
+    #expect(slots == [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8])
+  }
+
   @Test func adapterFlagsAreOnlyOnConfiguredEGOneLaunch() {
     let path = URL(fileURLWithPath: "/tmp/check.gguf")
-    let baseline = EGOneRuntime.engineArguments(for: .egOne)
+    let baseline = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     #expect(EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == baseline)
     #expect(
       EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: path)
-        == baseline + ["--lora", path.path, "--lora-init-without-apply"])
+        == baseline + [
+          "--lora", path.path, "--lora-init-without-apply",
+          "-np", "9", "--kv-unified", "--no-cache-idle-slots",
+        ])
     #expect(
       EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: path)
-        == EGOneRuntime.engineArguments(for: .s1Mini))
-  }
-
-  /// A real two-question reply from the bundled llama-server (EG-1 1.2 + checker adapter
-  /// eg1c-v1, 2026-09-23), trimmed to the fields the parser reads and put in reverse order:
-  /// the server tags each result with its prompt's `index`. Expected scores were computed
-  /// from this reply by a separate Python reader, not by the parser under test.
-  private static let realReply =
-    #"[{"index":1,"completion_probabilities":[{"top_logprobs":[{"token":"A","logprob":-1.0609683158691041e-05},{"token":"B","logprob":-11.54736614227295},{"token":"C","logprob":-14.84553050994873},{"token":"Answer","logprob":-15.046477317810059},{"token":"No","logprob":-16.26599884033203},{"token":"The","logprob":-16.371965408325195},{"token":"None","logprob":-16.59360122680664},{"token":"D","logprob":-17.149703979492188},{"token":"An","logprob":-17.899316787719727},{"token":"N","logprob":-17.994251251220703},{"token":"\u0410","logprob":-18.271198272705078},{"token":"F","logprob":-18.349491119384766},{"token":"Neither","logprob":-18.57546043395996},{"token":"P","logprob":-18.660369873046875},{"token":"E","logprob":-18.68130874633789},{"token":"T","logprob":-18.705230712890625},{"token":"W","logprob":-18.817646026611328},{"token":"I","logprob":-19.03915786743164},{"token":"H","logprob":-19.052358627319336},{"token":"Not","logprob":-19.111757278442383}]}]},{"index":0,"completion_probabilities":[{"top_logprobs":[{"token":"A","logprob":-0.1656564325094223},{"token":"B","logprob":-1.880261778831482},{"token":"Answer","logprob":-10.11136531829834},{"token":"C","logprob":-10.360852241516113},{"token":"The","logprob":-12.160506248474121},{"token":"None","logprob":-12.316654205322266},{"token":"D","logprob":-12.843440055847168},{"token":"An","logprob":-13.176762580871582},{"token":"N","logprob":-13.229437828063965},{"token":"F","logprob":-13.394225120544434},{"token":"Assistant","logprob":-13.547582626342773},{"token":"No","logprob":-13.693490982055664},{"token":"E","logprob":-13.913171768188477},{"token":"Neither","logprob":-13.9204683303833},{"token":"P","logprob":-13.928181648254395},{"token":"W","logprob":-14.235458374023438},{"token":"O","logprob":-14.29381275177002},{"token":"H","logprob":-14.380805015563965},{"token":"In","logprob":-14.579191207885742},{"token":"I","logprob":-14.61187744140625}]}]}]"#
-
-  @Test func realServerReplyBecomesComparableScoresMatchedByIndex() throws {
-    let twist = "The day twist regenerated my whole Xcode project."
-    let plot = "The plot twist surprised me."
-    let questions = [
-      LearnedWordCheckQuestion(
-        id: 11, sentence: twist, range: twist.range(of: "twist")!, word: "Tuist"),
-      LearnedWordCheckQuestion(
-        id: 12, sentence: plot, range: plot.range(of: "twist")!, word: "Tuist"),
-    ]
-    let decisions = try EGOneLearnedWordChecker.parseDecisions(
-      data: Data(Self.realReply.utf8), questions: questions, threshold: 0.1)
-    #expect(decisions.map(\.questionID) == [11, 12])
-    #expect(abs((decisions[0].score ?? -1) - 0.1525673348536626) < 1e-9)
-    #expect(abs((decisions[1].score ?? -1) - 9.661465684240984e-06) < 1e-12)
-    #expect(decisions.map(\.approved) == [true, false])
+        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
+    #expect(
+      EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil)
+        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
   }
 
   /// A real one-question reply from the same engine and adapter: a one-prompt array comes
@@ -79,27 +90,24 @@ struct EGOneLearnedWordCheckerTests {
   @Test func realSingleQuestionReplyIsABareObject() throws {
     let coffee = "The new coffee shop downtown opens at seven every day."
     let question = LearnedWordCheckQuestion(
-      id: 21, sentence: coffee, range: coffee.range(of: "coffee")!, word: "Kaggle")
-    let decisions = try EGOneLearnedWordChecker.parseDecisions(
-      data: Data(Self.realSingleReply.utf8), questions: [question], threshold: 0.5)
-    #expect(decisions.map(\.questionID) == [21])
-    #expect(abs((decisions[0].score ?? -1) - 8.855370908720138e-07) < 1e-12)
-    #expect(decisions[0].approved == false)
+      id: 21, sentence: coffee, range: coffee.range(of: "coffee")!,
+      contextRange: coffee.startIndex..<coffee.endIndex, word: "Kaggle")
+    let decision = try EGOneLearnedWordChecker.parseDecision(
+      data: Data(Self.realSingleReply.utf8), question: question, threshold: 0.5)
+    #expect(decision.questionID == 21)
+    #expect(abs((decision.score ?? -1) - 8.855370908720138e-07) < 1e-12)
+    #expect(decision.approved == false)
   }
 
-  @Test func duplicateOrMissingIndexThrows() {
-    let reply =
-      #"[{"index":0,"completion_probabilities":[{"top_logprobs":[{"token":"A","logprob":-0.1}]}]},{"index":0,"completion_probabilities":[{"top_logprobs":[{"token":"B","logprob":-0.1}]}]}]"#
+  @Test func singleReplyRejectsArrayAndWrongIndex() {
     #expect(throws: EGOneLearnedWordChecker.CheckerError.self) {
-      _ = try EGOneLearnedWordChecker.parseDecisions(
-        data: Data(reply.utf8), questions: [Self.question(), Self.question()], threshold: 0.5)
+      _ = try EGOneLearnedWordChecker.parseDecision(
+        data: Data("[]".utf8), question: Self.question(), threshold: 0.5)
     }
-  }
-
-  @Test func missingResultThrows() {
+    let wrongIndex = #"{"index":1,"completion_probabilities":[]}"#
     #expect(throws: EGOneLearnedWordChecker.CheckerError.self) {
-      _ = try EGOneLearnedWordChecker.parseDecisions(
-        data: Data("[]".utf8), questions: [Self.question()], threshold: 0.5)
+      _ = try EGOneLearnedWordChecker.parseDecision(
+        data: Data(wrongIndex.utf8), question: Self.question(), threshold: 0.5)
     }
   }
 
@@ -122,10 +130,12 @@ struct EGOneLearnedWordCheckerTests {
       try JSONSerialization.data(withJSONObject: baseline, options: .sortedKeys)
         == JSONSerialization.data(withJSONObject: absent, options: .sortedKeys))
     #expect(absent["lora"] == nil)
+    #expect(absent["id_slot"] == nil)
     let loaded = try EGOneConnector.makeRequestBody(
       system: "sys", user: "text", config: config, hasLearnedWordAdapter: true)
     let lora = loaded["lora"] as? [[String: Any]]
     #expect(lora?.first?["id"] as? Int == 0)
     #expect(lora?.first?["scale"] as? Double == 0.0)
+    #expect(loaded["id_slot"] as? Int == 0)
   }
 }

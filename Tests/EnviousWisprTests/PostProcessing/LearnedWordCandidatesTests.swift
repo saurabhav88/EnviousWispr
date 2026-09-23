@@ -93,6 +93,81 @@ struct LearnedWordCandidatesTests {
     #expect(spans.first.map { text[..<$0.range.lowerBound].hasSuffix("on the ") } == true)
   }
 
+  @Test("each spot gets its own sentence while full-text spans stay intact")
+  func sentenceContexts() throws {
+    let text = "We use cotton daily. The plot twist surprised me."
+    let learned = [
+      LearnedWord(canonical: "Kotlin", observedMisspellings: ["cotton"]),
+      LearnedWord(canonical: "Tuist", observedMisspellings: ["twist"]),
+    ]
+    let questions = LearnedWordCandidates.questions(for: text, learned: learned)
+    let cotton = try #require(questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "cotton" })
+    let twist = try #require(questions.first { $0.word == "Tuist" && String(text[$0.range]) == "twist" })
+    #expect(cotton.contextText == "We use cotton daily.")
+    #expect(cotton.contextRewritten == "We use Kotlin daily.")
+    #expect(twist.contextText == "The plot twist surprised me.")
+    #expect(twist.contextRewritten == "The plot Tuist surprised me.")
+    #expect(twist.sentence == text)
+    #expect(twist.rewritten == "We use cotton daily. The plot Tuist surprised me.")
+  }
+
+  @Test("a dotted term stays in the spot's sentence")
+  func dottedTermContext() throws {
+    let text = "We opened mug.io with toast today. Then we left."
+    let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]
+    let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
+      .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    #expect(question.contextText == "We opened mug.io with toast today.")
+  }
+
+  @Test("exclamation marks and ellipses end sentence context")
+  func otherSentenceEnds() throws {
+    let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]
+    for (text, expected) in [
+      ("Please say toast! Then leave.", "Please say toast!"),
+      ("Please say toast… Then leave.", "Please say toast…"),
+    ] {
+      let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
+        .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+      #expect(question.contextText == expected)
+    }
+  }
+
+  @Test("question marks and newlines end sentence context")
+  func questionMarkAndNewlineContexts() throws {
+    let text = "Did you say toast?\nThe plot twist surprised me."
+    let learned = [
+      LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"]),
+      LearnedWord(canonical: "Kotlin", observedMisspellings: ["twist"]),
+    ]
+    let questions = LearnedWordCandidates.questions(for: text, learned: learned)
+    let toast = try #require(questions.first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    let twist = try #require(questions.first { $0.word == "Kotlin" && String(text[$0.range]) == "twist" })
+    #expect(toast.contextText == "Did you say toast?")
+    #expect(twist.contextText == "The plot twist surprised me.")
+
+    let newlineOnly = "Please say toast\nThen leave."
+    let newlineQuestion = try #require(LearnedWordCandidates.questions(
+      for: newlineOnly, learned: [learned[0]])
+      .first { $0.word == "Tuist" && String(newlineOnly[$0.range]) == "toast" })
+    #expect(newlineQuestion.contextText == "Please say toast")
+  }
+
+  @Test("a long run-on take keeps a bounded context containing the spot")
+  func longRunOnContext() throws {
+    let filler = Array(repeating: "filler", count: 80).joined(separator: " ")
+    let text = filler + " toast " + filler
+    #expect(text.count > 1_000)
+    let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]
+    let question = try #require(LearnedWordCandidates.questions(for: text, learned: learned)
+      .first { $0.word == "Tuist" && String(text[$0.range]) == "toast" })
+    #expect(question.contextText.count <= 420)
+    #expect(question.contextText.contains("toast"))
+    #expect(question.contextRewritten.contains("Tuist"))
+    #expect(question.contextRange.lowerBound <= question.range.lowerBound)
+    #expect(question.range.upperBound <= question.contextRange.upperBound)
+  }
+
   @Test("one budget bounds every question, however often an alias repeats")
   func totalBudget() {
     let learned = [LearnedWord(canonical: "Tuist", observedMisspellings: ["toast"])]

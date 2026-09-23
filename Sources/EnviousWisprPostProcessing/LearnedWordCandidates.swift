@@ -12,6 +12,11 @@ public struct LearnedWord: Sendable, Equatable {
 }
 
 public enum LearnedWordCandidates: Sendable {
+  // Keep each checker prompt near its one-sentence training shape and within shared KV.
+  private static let maxContextCharacters = 400
+  private static let contextSideCharacters = 200
+  private static let maxBoundaryOverhang = 20
+
   private struct Candidate {
     let range: Range<String.Index>
     let word: String
@@ -87,8 +92,83 @@ public enum LearnedWordCandidates: Sendable {
       return $0.word < $1.word
     }
     return candidates.enumerated().map { id, candidate in
-      LearnedWordCheckQuestion(id: id, sentence: text, range: candidate.range, word: candidate.word)
+      LearnedWordCheckQuestion(
+        id: id, sentence: text, range: candidate.range,
+        contextRange: contextRange(in: text, around: candidate.range), word: candidate.word)
     }
+  }
+
+  private static func contextRange(
+    in text: String, around spot: Range<String.Index>
+  ) -> Range<String.Index> {
+    let scalars = text.unicodeScalars
+    var lower = text.startIndex
+    var cursor = text.startIndex
+    while cursor < spot.lowerBound {
+      if isSentenceEnd(in: text, at: cursor) {
+        lower = scalars.index(after: cursor)
+      }
+      cursor = scalars.index(after: cursor)
+    }
+
+    var upper = text.endIndex
+    cursor = spot.upperBound
+    while cursor < text.endIndex {
+      if isSentenceEnd(in: text, at: cursor) {
+        upper = scalars[cursor] == "\n" || scalars[cursor] == "\r"
+          ? cursor : scalars.index(after: cursor)
+        break
+      }
+      cursor = scalars.index(after: cursor)
+    }
+    while lower < spot.lowerBound && scalars[lower].properties.isWhitespace {
+      lower = scalars.index(after: lower)
+    }
+    while upper > spot.upperBound {
+      let previous = scalars.index(before: upper)
+      guard scalars[previous].properties.isWhitespace else { break }
+      upper = previous
+    }
+
+    let sentence = lower..<upper
+    guard text[sentence].count > maxContextCharacters else { return sentence }
+    let available = max(0, maxContextCharacters - text[spot].count)
+    let leftCount = min(contextSideCharacters, available / 2)
+    let rightCount = min(contextSideCharacters, available - leftCount)
+    lower = text.index(spot.lowerBound, offsetBy: -leftCount, limitedBy: sentence.lowerBound)
+      ?? sentence.lowerBound
+    upper = text.index(spot.upperBound, offsetBy: rightCount, limitedBy: sentence.upperBound)
+      ?? sentence.upperBound
+    let unsnapped = lower..<upper
+    // Include whole edge words when a 200-character cut lands inside them.
+    while lower > sentence.lowerBound, lower < spot.lowerBound,
+      LearnedWordSpotFinder.isWordScalar(scalars[lower]),
+      LearnedWordSpotFinder.isWordScalar(scalars[scalars.index(before: lower)])
+    {
+      lower = text.index(before: lower)
+    }
+    while upper < sentence.upperBound, upper > spot.upperBound,
+      LearnedWordSpotFinder.isWordScalar(scalars[upper]),
+      LearnedWordSpotFinder.isWordScalar(scalars[scalars.index(before: upper)])
+    {
+      upper = text.index(after: upper)
+    }
+    // A single overlong token has no nearby word boundary; keep the bounded
+    // window rather than sending the full run-on take to the shared KV.
+    if text[lower..<upper].count > maxContextCharacters + maxBoundaryOverhang {
+      return unsnapped
+    }
+    return lower..<upper
+  }
+
+  private static func isSentenceEnd(in text: String, at index: String.Index) -> Bool {
+    let scalars = text.unicodeScalars
+    let scalar = scalars[index]
+    if scalar == "\n" || scalar == "\r" { return true }
+    if scalar == "." { return isSentencePeriod(in: text, at: index) }
+    guard scalar == "!" || scalar == "?" || scalar == "…" else { return false }
+    let next = scalars.index(after: index)
+    return next == scalars.endIndex || scalars[next].properties.isWhitespace
   }
 
   /// A period that ends a sentence ("... my coffee mug."), not one inside a dotted
