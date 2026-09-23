@@ -37,10 +37,11 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func isProcessRunning(_ pid: pid_t) -> Bool { runningPIDs.contains(pid) }
   func applicationElement(pid: pid_t) -> AXUIElement { Self.app(pid) }
   /// Electron-shaped: a pid listed here answers `.noFocus` until
-  /// `enableManualAccessibility` has been called for it.
+  /// `enableManualAccessibility` has SUCCEEDED for it.
   var focusOnlyAfterOptIn: Set<pid_t> = []
+  private(set) var enabledPIDs: Set<pid_t> = []
   func focusedElement(pid: pid_t) -> PastedRegionFocus {
-    if focusOnlyAfterOptIn.contains(pid), !enableCalls.contains(pid) { return .noFocus }
+    if focusOnlyAfterOptIn.contains(pid), !enabledPIDs.contains(pid) { return .noFocus }
     return focused[pid] ?? .noFocus
   }
   func setMessagingTimeout(_ element: AXUIElement, seconds: Double) -> Bool {
@@ -68,6 +69,7 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     var pid: pid_t = 0
     AXUIElementGetPid(application, &pid)
     enableCalls.append(pid)
+    if enableSucceeds { enabledPIDs.insert(pid) }
     return enableSucceeds
   }
   /// Answer for `selectedRange(of:)`; unavailable by default so every test

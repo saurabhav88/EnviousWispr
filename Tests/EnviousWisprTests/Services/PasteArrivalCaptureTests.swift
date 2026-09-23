@@ -716,12 +716,12 @@ struct PasteArrivalCaptureTests {
   func editOnlyRetriesAFailedOptIn() async throws {
     ax.manualHosts = [pid]
     ax.enableSucceeds = false
-    ax.focused[pid] = .noFocus  // a host that hides its field until opted in
+    ax.focusOnlyAfterOptIn = [pid]  // hides its field until an opt-in SUCCEEDS
+    ax.reads = [.text("Hi Sarah ")]
     let probe = await startEditRequest(editOnly())
     #expect(ax.enableCalls == [pid])
+    #expect(probe.outcome == nil, "the field is still hidden after the failed opt-in")
     ax.enableSucceeds = true
-    ax.focused[pid] = .element(field)
-    ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 25)
     guard case .captured = await probe.result() else {
       Issue.record("expected captured after the second opt-in")
