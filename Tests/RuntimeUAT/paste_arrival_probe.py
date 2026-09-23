@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import signal
 import sys
 import time
 import uuid
@@ -38,14 +39,14 @@ POLL_S = 0.005
 TOUR_REFUSED = {"com.mitchellh.ghostty", "com.apple.Terminal", "com.googlecode.iterm2"}
 
 
-def frontmost_bundle() -> str | None:
-    """Asked of each on-screen app's OWN `AXFrontmost` (`ax_oracle.is_frontmost`).
+def frontmost_app() -> tuple[str, int] | None:
+    """(bundle, pid) of the app that owns focus, asked of each on-screen app's OWN `AXFrontmost`.
 
     Both `NSWorkspace.frontmostApplication()` and `runningApplications()` are maintained by
     workspace notifications that need a run loop this process does not spin: the first never
     moves, and the second never learns of an app launched after the probe started (measured
     2026-09-23: Word, opened mid-tour, was never found). The window server's on-screen list is a
-    live query, so its owners are the candidates.
+    live query, so its owners are the candidates, and the pid found here is carried everywhere.
     """
     from AppKit import NSRunningApplication
     from Quartz import CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListOptionOnScreenOnly
@@ -58,52 +59,71 @@ def frontmost_bundle() -> str | None:
         if ax_oracle.is_frontmost(pid):
             app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
             bundle = None if app is None else app.bundleIdentifier()
-            return None if bundle is None else str(bundle)
+            return None if bundle is None else (str(bundle), pid)
     return None
 
 
-def wait_for_next_app(done: set[str], timeout: float) -> str | None:
+def focused_element(pid: int):
+    from ApplicationServices import AXUIElementCopyAttributeValue, AXUIElementCreateApplication
+    err, value = AXUIElementCopyAttributeValue(
+        AXUIElementCreateApplication(pid), "AXFocusedUIElement", None)
+    return value if err == 0 else None
+
+
+def require_target(pid: int, chosen) -> None:
+    """The chosen app is still in front AND the chosen field still has focus, checked immediately
+    before every paste: a focus move must never paste into a field the person did not choose."""
+    from CoreFoundation import CFEqual
+    if not ax_oracle.is_frontmost(pid):
+        raise RuntimeError("target app lost the front before paste")
+    current = focused_element(pid)
+    if current is None or not CFEqual(current, chosen):
+        raise RuntimeError("chosen field lost focus before paste")
+
+
+def enable_manual_ax(pid: int) -> None:
+    """Electron hosts expose their text only after AXManualAccessibility, as the app itself sets."""
+    from ApplicationServices import AXUIElementCreateApplication, AXUIElementSetAttributeValue
+    AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility", True)
+
+
+def wait_for_next_app(done: set[str], timeout: float) -> tuple[str, int] | None:
     """The next frontmost app, not yet measured and not a terminal, with a readable focused box."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        bundle = frontmost_bundle()
-        if bundle and bundle not in done and bundle not in TOUR_REFUSED:
-            enable_manual_ax(bundle)
-            if ax_oracle.read_focused(bundle).ok:
+        front = frontmost_app()
+        if front and front[0] not in done and front[0] not in TOUR_REFUSED:
+            bundle, pid = front
+            enable_manual_ax(pid)
+            if ax_oracle.read_focused(bundle, pid=pid).ok:
                 # The person must STAY in that box for 2 s: passing through an app on the way to
                 # another (Cmd+Tab) must never paste into whatever that app had focused.
                 print(f"  {bundle}: starting in 2 s unless you leave it", flush=True)
                 stable_until = time.monotonic() + 2.0
-                while time.monotonic() < stable_until and frontmost_bundle() == bundle:
+                while time.monotonic() < stable_until and frontmost_app() == front:
                     time.sleep(0.1)  # settle: poll interval of the 2 s stay-put signal wait
-                if frontmost_bundle() == bundle and ax_oracle.read_focused(bundle).ok:
-                    return bundle
+                if frontmost_app() == front and ax_oracle.read_focused(bundle, pid=pid).ok:
+                    return front
                 continue
         time.sleep(0.25)  # settle: poll interval of a signal wait (focus state) bounded by `timeout`
     return None
 
 
-def wait_for_focus(bundle: str, timeout: float) -> bool:
+def wait_for_focus(bundle: str, timeout: float) -> tuple[str, int] | None:
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        pid = ax_oracle.pid_for_bundle(bundle)
-        if pid and ax_oracle.is_frontmost(pid) and ax_oracle.read_focused(bundle).ok:
-            return True
+        front = frontmost_app()
+        if front and front[0] == bundle:
+            enable_manual_ax(front[1])
+            if ax_oracle.read_focused(bundle, pid=front[1]).ok:
+                return front
         time.sleep(0.25)  # settle: poll interval of a signal wait (focus state) bounded by `timeout`
-    return False
+    return None
 
 
-def enable_manual_ax(bundle: str) -> None:
-    """Electron hosts expose their text only after AXManualAccessibility, as the app itself sets."""
-    from ApplicationServices import AXUIElementCreateApplication, AXUIElementSetAttributeValue
-    pid = ax_oracle.pid_for_bundle(bundle)
-    if pid:
-        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility", True)
-
-
-def find_paste_menu_item(bundle: str):
+def find_paste_menu_item(pid: int):
     """The menu bar item whose shortcut is plain Cmd+V: the app's Edit > Paste, found by shortcut
-    rather than title so a localized menu still matches (the app's own Tier 2b/2c route presses
+    rather than title so a localized menu still matches (the app's own Tier 2c route presses
     the same item through AX)."""
     from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue
 
@@ -111,8 +131,7 @@ def find_paste_menu_item(bundle: str):
         err, value = AXUIElementCopyAttributeValue(el, name, None)
         return value if err == 0 else None
 
-    pid = ax_oracle.pid_for_bundle(bundle)
-    bar = attr(AXUIElementCreateApplication(pid), "AXMenuBar") if pid else None
+    bar = attr(AXUIElementCreateApplication(pid), "AXMenuBar")
     for top in attr(bar, "AXChildren") or []:
         for menu in attr(top, "AXChildren") or []:
             for item in attr(menu, "AXChildren") or []:
@@ -121,39 +140,39 @@ def find_paste_menu_item(bundle: str):
     return None
 
 
-def dispatch_paste(bundle: str, route: str) -> None:
-    if route == "key":
-        simulate_input.press_key("v", cmd=True)
-        return
-    from ApplicationServices import AXUIElementPerformAction
-    item = find_paste_menu_item(bundle)
-    if item is None:
-        raise RuntimeError(f"{bundle}: no Cmd+V menu item found")
-    if AXUIElementPerformAction(item, "AXPress") != 0:
-        raise RuntimeError(f"{bundle}: AXPress on Paste failed")
-
-
-def one_trial(bundle: str, limit_s: float, route: str = "key") -> dict:
+def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key") -> dict:
     phrase = f"probe {uuid.uuid4().hex[:8]} "
-    before = ax_oracle.read_focused(bundle)
+    before = ax_oracle.read_focused(bundle, pid=pid)
     if not before.ok:
         return {"verdict": "unreadable", "why": before.why}
+    # The menu item is found BEFORE the clock starts, so lookup time is never counted as arrival.
+    item = find_paste_menu_item(pid) if route == "menu" else None
+    if route == "menu" and item is None:
+        raise RuntimeError(f"{bundle}: no Cmd+V menu item found")
     set_clipboard_text(phrase)
     # settle: the app's own cascade leaves the same gap between its board write and the key
     time.sleep(0.15)
+    require_target(pid, chosen)
     samples = 0
     t0 = time.monotonic()
-    dispatch_paste(bundle, route)
+    if route == "key":
+        simulate_input.press_key("v", cmd=True)
+    else:
+        from ApplicationServices import AXUIElementPerformAction
+        if AXUIElementPerformAction(item, "AXPress") != 0:
+            raise RuntimeError(f"{bundle}: AXPress on Paste failed")
     posted_ms = (time.monotonic() - t0) * 1000
     first_change_ms = None
     while True:
         elapsed = time.monotonic() - t0
-        scan = ax_oracle.read_focused(bundle)
+        scan = ax_oracle.read_focused(bundle, pid=pid)
         samples += 1
         value = scan.fields[0].value if scan.ok and scan.fields else None
         if value is not None and first_change_ms is None and value != before.fields[0].value:
             first_change_ms = elapsed * 1000
         if value is not None and phrase.strip() in value:
+            # The first AX observation after dispatch: an UPPER bound on arrival. A 5 ms sleep
+            # between reads is not a guaranteed 5 ms sample period (each read takes its own time).
             return {"verdict": "arrived", "arrived_ms": round(elapsed * 1000, 1),
                     "first_change_ms": None if first_change_ms is None else round(first_change_ms, 1),
                     "post_ms": round(posted_ms, 1), "samples": samples}
@@ -163,14 +182,18 @@ def one_trial(bundle: str, limit_s: float, route: str = "key") -> dict:
         time.sleep(POLL_S)  # settle: the probe's sampling interval IS the measurement resolution
 
 
-def measure(bundle: str, reps: int, limit: float, route: str = "key") -> list[dict]:
+def measure(bundle: str, pid: int, reps: int, limit: float, route: str = "key") -> list[dict]:
+    chosen = focused_element(pid)  # the field the person chose, held for every repetition
+    if chosen is None:
+        print(f"  {bundle}: no focused field; skipping", flush=True)
+        return []
     results = []
     for i in range(reps):
-        pid = ax_oracle.pid_for_bundle(bundle)
-        if not (pid and ax_oracle.is_frontmost(pid)):
-            print(f"  {bundle} lost the front; stopping this app", flush=True)
+        try:
+            r = one_trial(bundle, pid, chosen, limit, route)
+        except RuntimeError as error:
+            print(f"  {bundle}: stopping this app: {error}", flush=True)
             break
-        r = one_trial(bundle, limit, route)
         results.append(r)
         print(f"  paste {i + 1}: {r}", flush=True)
         # settle: spacing between trials so one paste's rendering cannot overlap the next clock
@@ -180,7 +203,7 @@ def measure(bundle: str, reps: int, limit: float, route: str = "key") -> list[di
         print(f"SUMMARY {bundle} route={route}: {len(arrived)}/{len(results)} arrived; min={arrived[0]} ms "
               f"median={arrived[len(arrived) // 2]} ms max={arrived[-1]} ms", flush=True)
     else:
-        print(f"SUMMARY {bundle}: nothing arrived in {len(results)} pastes", flush=True)
+        print(f"SUMMARY {bundle} route={route}: nothing arrived in {len(results)} pastes", flush=True)
     return results
 
 
@@ -196,6 +219,13 @@ def main() -> int:
     ap.add_argument("--apps", type=int, default=6, help="tour mode: how many apps to measure")
     args = ap.parse_args()
 
+    from wispr_eyes import clear_modifier_flags, modifier_flags
+
+    def stop(_signum, _frame):
+        raise KeyboardInterrupt
+
+    # Installed BEFORE the snapshot: SIGTERM (TaskStop) must run the restore below, not kill it.
+    signal.signal(signal.SIGTERM, stop)
     simulate_input.DEFAULT_DELAY = 0  # no sleep after the key: the clock starts at the post
     snap = pasteboard_snapshot()
     try:
@@ -204,24 +234,33 @@ def main() -> int:
             while len(done) < args.apps:
                 print(f"Click into an empty text box in the next app ({len(done) + 1}/{args.apps})...",
                       flush=True)
-                bundle = wait_for_next_app(done, args.focus_wait)
-                if bundle is None:
+                front = wait_for_next_app(done, args.focus_wait)
+                if front is None:
                     print("No new app within the wait; ending the tour", flush=True)
                     break
-                print(f"Measuring {bundle}", flush=True)
-                measure(bundle, args.reps, args.limit, args.route)
-                done.add(bundle)
+                print(f"Measuring {front[0]}", flush=True)
+                measure(front[0], front[1], args.reps, args.limit, args.route)
+                done.add(front[0])
         else:
-            enable_manual_ax(args.bundle)
             print(f"Waiting up to {args.focus_wait:.0f}s for a focused text box in {args.bundle}...",
                   flush=True)
-            if not wait_for_focus(args.bundle, args.focus_wait):
+            front = wait_for_focus(args.bundle, args.focus_wait)
+            if front is None:
                 print("ABORT: that app is not frontmost with a readable focused text box", flush=True)
                 return 2
-            measure(args.bundle, args.reps, args.limit, args.route)
+            measure(front[0], front[1], args.reps, args.limit, args.route)
     finally:
-        ok = pasteboard_restore(snap)
-        print(f"clipboard restored: {ok}", flush=True)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            clear_modifier_flags()
+            flags = modifier_flags()
+            if flags is None or any(flags.values()):
+                raise RuntimeError(f"modifiers remain held: {flags}")
+        finally:
+            ok = pasteboard_restore(snap)
+            print(f"clipboard restored: {ok}", flush=True)
+            if not ok:
+                raise RuntimeError("clipboard restore failed")
     return 0
 
 
