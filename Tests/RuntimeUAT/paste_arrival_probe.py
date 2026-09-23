@@ -89,7 +89,39 @@ def enable_manual_ax(bundle: str) -> None:
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility", True)
 
 
-def one_trial(bundle: str, limit_s: float) -> dict:
+def find_paste_menu_item(bundle: str):
+    """The menu bar item whose shortcut is plain Cmd+V: the app's Edit > Paste, found by shortcut
+    rather than title so a localized menu still matches (the app's own Tier 2b/2c route presses
+    the same item through AX)."""
+    from ApplicationServices import AXUIElementCreateApplication, AXUIElementCopyAttributeValue
+
+    def attr(el, name):
+        err, value = AXUIElementCopyAttributeValue(el, name, None)
+        return value if err == 0 else None
+
+    pid = ax_oracle.pid_for_bundle(bundle)
+    bar = attr(AXUIElementCreateApplication(pid), "AXMenuBar") if pid else None
+    for top in attr(bar, "AXChildren") or []:
+        for menu in attr(top, "AXChildren") or []:
+            for item in attr(menu, "AXChildren") or []:
+                if attr(item, "AXMenuItemCmdChar") == "V" and attr(item, "AXMenuItemCmdModifiers") == 0:
+                    return item
+    return None
+
+
+def dispatch_paste(bundle: str, route: str) -> None:
+    if route == "key":
+        simulate_input.press_key("v", cmd=True)
+        return
+    from ApplicationServices import AXUIElementPerformAction
+    item = find_paste_menu_item(bundle)
+    if item is None:
+        raise RuntimeError(f"{bundle}: no Cmd+V menu item found")
+    if AXUIElementPerformAction(item, "AXPress") != 0:
+        raise RuntimeError(f"{bundle}: AXPress on Paste failed")
+
+
+def one_trial(bundle: str, limit_s: float, route: str = "key") -> dict:
     phrase = f"probe {uuid.uuid4().hex[:8]} "
     before = ax_oracle.read_focused(bundle)
     if not before.ok:
@@ -99,7 +131,7 @@ def one_trial(bundle: str, limit_s: float) -> dict:
     time.sleep(0.15)
     samples = 0
     t0 = time.monotonic()
-    simulate_input.press_key("v", cmd=True)
+    dispatch_paste(bundle, route)
     posted_ms = (time.monotonic() - t0) * 1000
     first_change_ms = None
     while True:
@@ -119,21 +151,21 @@ def one_trial(bundle: str, limit_s: float) -> dict:
         time.sleep(POLL_S)  # settle: the probe's sampling interval IS the measurement resolution
 
 
-def measure(bundle: str, reps: int, limit: float) -> list[dict]:
+def measure(bundle: str, reps: int, limit: float, route: str = "key") -> list[dict]:
     results = []
     for i in range(reps):
         pid = ax_oracle.pid_for_bundle(bundle)
         if not (pid and ax_oracle.is_frontmost(pid)):
             print(f"  {bundle} lost the front; stopping this app", flush=True)
             break
-        r = one_trial(bundle, limit)
+        r = one_trial(bundle, limit, route)
         results.append(r)
         print(f"  paste {i + 1}: {r}", flush=True)
         # settle: spacing between trials so one paste's rendering cannot overlap the next clock
         time.sleep(0.8)
     arrived = sorted(r["arrived_ms"] for r in results if r["verdict"] == "arrived")
     if arrived:
-        print(f"SUMMARY {bundle}: {len(arrived)}/{len(results)} arrived; min={arrived[0]} ms "
+        print(f"SUMMARY {bundle} route={route}: {len(arrived)}/{len(results)} arrived; min={arrived[0]} ms "
               f"median={arrived[len(arrived) // 2]} ms max={arrived[-1]} ms", flush=True)
     else:
         print(f"SUMMARY {bundle}: nothing arrived in {len(results)} pastes", flush=True)
@@ -146,6 +178,8 @@ def main() -> int:
     ap.add_argument("--reps", type=int, default=5)
     ap.add_argument("--limit", type=float, default=3.0, help="seconds to wait per paste")
     ap.add_argument("--focus-wait", type=float, default=60.0)
+    ap.add_argument("--route", choices=("key", "menu"), default="key",
+                    help="key = synthetic Cmd+V; menu = AXPress on the app's Cmd+V menu item")
     ap.add_argument("--tour", action="store_true", help="measure each app the person clicks into")
     ap.add_argument("--apps", type=int, default=6, help="tour mode: how many apps to measure")
     args = ap.parse_args()
@@ -163,7 +197,7 @@ def main() -> int:
                     print("No new app within the wait; ending the tour", flush=True)
                     break
                 print(f"Measuring {bundle}", flush=True)
-                measure(bundle, args.reps, args.limit)
+                measure(bundle, args.reps, args.limit, args.route)
                 done.add(bundle)
         else:
             enable_manual_ax(args.bundle)
@@ -172,7 +206,7 @@ def main() -> int:
             if not wait_for_focus(args.bundle, args.focus_wait):
                 print("ABORT: that app is not frontmost with a readable focused text box", flush=True)
                 return 2
-            measure(args.bundle, args.reps, args.limit)
+            measure(args.bundle, args.reps, args.limit, args.route)
     finally:
         ok = pasteboard_restore(snap)
         print(f"clipboard restored: {ok}", flush=True)
