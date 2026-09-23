@@ -39,14 +39,26 @@ TOUR_REFUSED = {"com.mitchellh.ghostty", "com.apple.Terminal", "com.googlecode.i
 
 
 def frontmost_bundle() -> str | None:
-    """Asked of each regular app's OWN `AXFrontmost` (`ax_oracle.is_frontmost`).
-    `NSWorkspace.frontmostApplication()` never moves in a process without a run loop; see
-    `ax_oracle.is_frontmost` for the measurement."""
-    from AppKit import NSApplicationActivationPolicyRegular, NSWorkspace
-    for app in NSWorkspace.sharedWorkspace().runningApplications():
-        if app.activationPolicy() == NSApplicationActivationPolicyRegular \
-                and ax_oracle.is_frontmost(app.processIdentifier()):
-            return None if app.bundleIdentifier() is None else str(app.bundleIdentifier())
+    """Asked of each on-screen app's OWN `AXFrontmost` (`ax_oracle.is_frontmost`).
+
+    Both `NSWorkspace.frontmostApplication()` and `runningApplications()` are maintained by
+    workspace notifications that need a run loop this process does not spin: the first never
+    moves, and the second never learns of an app launched after the probe started (measured
+    2026-09-23: Word, opened mid-tour, was never found). The window server's on-screen list is a
+    live query, so its owners are the candidates.
+    """
+    from AppKit import NSRunningApplication
+    from Quartz import CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListOptionOnScreenOnly
+    seen: set[int] = set()
+    for window in CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID) or []:
+        pid = int(window.get("kCGWindowOwnerPID", 0))
+        if pid in seen or window.get("kCGWindowLayer", 1) != 0:
+            continue
+        seen.add(pid)
+        if ax_oracle.is_frontmost(pid):
+            app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+            bundle = None if app is None else app.bundleIdentifier()
+            return None if bundle is None else str(bundle)
     return None
 
 
