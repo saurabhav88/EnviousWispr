@@ -542,6 +542,24 @@ struct ObservedCorrectionWatcherTests {
     #expect(watcher.isWatching == false)
   }
 
+  @Test("a half-typed fix that only deletes letters never reaches the judge and is counted (#3105)")
+  func deletionOnlyEditIsWithheldAndCounted() async {
+    let watcher = makeWatcher()
+    observer.captureOutcomes = [
+      .captured(ObserverFake.target(pasted: "One more try, maybe if I do fewer words.", pastedAtMs: 0))
+    ]
+    watcher.pasteCompleted(paste("One more try, maybe if I do fewer words."))
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.changed(region: "One more try, maybe if I drds."))
+    observer.fire(.settled(region: "One more try, maybe if I drds."))
+    await Task.yield()
+    #expect(judge.requests.isEmpty, "a deletion-only run is not judged")
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !watcher.isWatching })
+    #expect(telemetry.events.last == .observationEnded(.focusChanged, 1, .native))
+    #expect(telemetry.unfinishedEditCounts.last == 1)
+  }
+
   @Test(
     "two bursts at most, two judge calls at most, and burst two never re-sends burst one's pair")
   func twoBurstLimit() async {

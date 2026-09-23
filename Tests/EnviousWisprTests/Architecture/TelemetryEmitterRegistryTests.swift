@@ -79,6 +79,10 @@ struct TelemetryEmitterRegistryTests {
   /// #3106 PR B: one NEW event, `paste.landing_retained`, one site in `pasteLandingRetained`
   /// (checklist: new registry row, per_take, kept whole, shape only with no text, Bool
   /// `pill_shown`, `take_id` in TAKE_KEYED_EVENTS, reader the #3106 release review).
+  /// #3105: `learnObservationEnded` gained `unfinishedEdits`, which changes the enclosing-function
+  /// identity of the same single `custom_words.learn_observation_ended` site. No new site, no new
+  /// event, same once-per-watched-paste cadence; one Int count on the existing row (checklist items
+  /// 4-8: existing row, a count not content, Int on the wire, registry row unchanged).
   static let sitesFingerprint =
     "f8f0047ef994e2c9132be9bf5fe6d5b353e64fa666eb83ecd8664cf3e9770b15"
   static let ungradedFingerprint =

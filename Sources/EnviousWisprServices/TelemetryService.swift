@@ -4451,16 +4451,19 @@ public final class TelemetryService {
   }
 
   /// One watched paste ended. `settledBursts` is how many settled snapshots
-  /// were taken (0, 1 or 2); `durationMs` is paste to end.
+  /// were taken (0, 1 or 2); `durationMs` is paste to end. `unfinishedEdits`
+  /// counts runs the candidate filter withheld from the judge as deletion-only
+  /// half-typed fixes (#3105), a count only, never the text.
   package func learnObservationEnded(
     reason: PastedRegionEndReason, settledBursts: Int,
-    appClass: LearnFromEditsTelemetry.AppClass, durationMs: Int
+    appClass: LearnFromEditsTelemetry.AppClass, durationMs: Int, unfinishedEdits: Int
   ) {
     emitLearnEvent(
       "custom_words.learn_observation_ended",
       [
         "reason": reason.rawValue, "settled_bursts": settledBursts,
         "app_class": appClass.rawValue, "duration_ms": durationMs,
+        "unfinished_edits": unfinishedEdits,
       ])
   }
 

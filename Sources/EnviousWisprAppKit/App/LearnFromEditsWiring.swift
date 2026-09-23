@@ -64,10 +64,13 @@ extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
       inner.learnSkipped(reason: reason)
     }
     func learnObservationEnded(
-      reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int
+      reason: PastedRegionEndReason, settledBursts: Int, appClass: T.AppClass, durationMs: Int,
+      unfinishedEdits: Int
     ) {
-      log("learn_observation_ended reason=\(reason.rawValue) settled_bursts=\(settledBursts) app_class=\(appClass.rawValue) duration_ms=\(durationMs)")
-      inner.learnObservationEnded(reason: reason, settledBursts: settledBursts, appClass: appClass, durationMs: durationMs)
+      log("learn_observation_ended reason=\(reason.rawValue) settled_bursts=\(settledBursts) app_class=\(appClass.rawValue) duration_ms=\(durationMs) unfinished_edits=\(unfinishedEdits)")
+      inner.learnObservationEnded(
+        reason: reason, settledBursts: settledBursts, appClass: appClass, durationMs: durationMs,
+        unfinishedEdits: unfinishedEdits)
     }
     func learnJudged(
       arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int, queueWaitMs: Int?
