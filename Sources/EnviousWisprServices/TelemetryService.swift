@@ -1532,7 +1532,8 @@ public final class TelemetryService {
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
         "delivery_disposition", "vad_conditioning_reason", "learned_check_arm",
-        "learned_check_fallback_reason",
+        "learned_check_fallback_reason", "learned_check_checker_identity",
+        "learned_check_checker_status", "learned_check_absence_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }

@@ -78,14 +78,16 @@ public struct LearnedCheckTerminalFacts: Equatable, Sendable {
   /// `no_checker`, `no_candidates`, `checker_error`, `malformed_answer` or `deadline`; nil when the step
   /// reached a decision.
   public var fallbackReason: String?
+  /// Signed checker revision or the Debug scripted door; nil when absent.
   public var checkerIdentity: String?
+  /// `ran` or `no_checker`.
   public var checkerStatus: String
   public var absenceReason: String?
 
   public init(
     flagged: Int, approved: Int, applied: Int, contested: Int, latencyMs: Int, arm: String,
     fallbackReason: String?, checkerIdentity: String? = nil,
-    checkerStatus: String = "ready", absenceReason: String? = nil
+    checkerStatus: String = "ran", absenceReason: String? = nil
   ) {
     self.flagged = flagged
     self.approved = approved
@@ -106,6 +108,9 @@ public struct LearnedCheckTerminalFacts: Equatable, Sendable {
       "learned_check_latency_ms": latencyMs, "learned_check_arm": arm,
     ]
     if let fallbackReason { out["learned_check_fallback_reason"] = fallbackReason }
+    if let checkerIdentity { out["learned_check_checker_identity"] = checkerIdentity }
+    out["learned_check_checker_status"] = checkerStatus
+    if let absenceReason { out["learned_check_absence_reason"] = absenceReason }
     return out
   }
 }

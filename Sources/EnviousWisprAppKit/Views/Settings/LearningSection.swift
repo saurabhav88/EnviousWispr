@@ -1,6 +1,38 @@
 import AppKit
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
+
+/// Settings copy is a projection of the same frozen-choice owner used by takes.
+/// It has no delivery, language, or provider selection rule of its own.
+struct LearnedCheckerSettingsStatus: Equatable {
+  let line: String
+  let canRetry: Bool
+  static let retryTitle = "Try again"
+
+  init(selection: LearnedWordCheckerSelection) {
+    if selection.checker != nil {
+      line = "Checked by: EG-1. Learned words are checked before they're used in English."
+      canRetry = false
+      return
+    }
+    canRetry = selection.retryAvailable
+    switch selection.absence {
+    case .adapterDownloading:
+      line = "Learn-only: EG-1's word check is downloading. Learned words are saved for later."
+    case .adapterDeliveryFailed:
+      line = selection.retryAvailable
+        ? "Learn-only: EG-1's word check couldn't download. Learned words are saved for later."
+        : "Learn-only: EG-1's word check isn't available yet. Learned words are saved for later."
+    case .notEGOne:
+      line = "Learn-only: This polish choice doesn't use learned words yet."
+    case .unqualifiedLanguage:
+      line = "Learn-only: Learned words are checked in English only."
+    case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable, .none:
+      line = "Learn-only: EG-1's word check isn't ready. Learned words are saved for later."
+    }
+  }
+}
 
 /// Learn from... tab of the Dictionary page. Two ways the app can pick up words
 /// without being told each one: learn from the user's own edits (#996, live
@@ -25,6 +57,17 @@ struct LearningSection: View {
   /// picture; this view never reads the selection, the OS or the delivery
   /// layer itself.
   @Environment(LearnFromEditsAvailability.self) private var availability
+  @Environment(EGOneCheckerEligibility.self) private var checkerEligibility
+  @State private var checkerStatus: LearnedCheckerSettingsStatus?
+
+  private var checkerStatusKey: String {
+    let language: String
+    switch settings.languageMode {
+    case .auto: language = "en"
+    case .locked(let code): language = code
+    }
+    return "\(settings.llmProvider.rawValue):\(language):\(checkerEligibility.statusRevision)"
+  }
 
   var body: some View {
     @Bindable var settings = settings
@@ -48,6 +91,17 @@ struct LearningSection: View {
           onConfirm: { contactsImport.confirmImport() },
           onCancel: { contactsImport.cancelImport() })
       }
+    }
+    .task(id: checkerStatusKey) {
+      let language: String
+      switch settings.languageMode {
+      case .auto: language = "en"
+      case .locked(let code): language = code
+      }
+      let selection = await checkerEligibility.selection(
+        provider: settings.llmProvider, language: language)
+      guard !Task.isCancelled else { return }
+      checkerStatus = LearnedCheckerSettingsStatus(selection: selection)
     }
   }
 
@@ -79,6 +133,21 @@ struct LearningSection: View {
         Text(LearnFromEditsSettingsPresentation.rowCopy)
           .settingsReadingCopy()
           .fixedSize(horizontal: false, vertical: true)
+        if let checkerStatus {
+          HStack(alignment: .center, spacing: 8) {
+            Text(checkerStatus.line)
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+            if checkerStatus.canRetry {
+              Spacer(minLength: 8)
+              SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
+                isEnabled: true) {
+                Task { await checkerEligibility.retryDownload() }
+              }
+            }
+          }
+        }
         // Which apps it works in, how the on-device judge runs and what a
         // remembered word reaches are the article's job, not the card's
         // (same shape as the Live Preview engines link).

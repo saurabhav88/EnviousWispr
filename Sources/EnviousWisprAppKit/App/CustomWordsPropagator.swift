@@ -154,8 +154,10 @@ func wireCustomWords(
 
 /// Splits a flat `[CustomWord]` into the two typed lanes. The corrector lane
 /// receives ALL terms (user/builtin + installed pack terms); the polish lane
-/// receives only non-pack terms — pack-sourced terms must never reach the
-/// polish prompt (bible §2.2, #633 Phase 9). The type distinction
+/// receives non-pack terms that the user added directly. Auto-learned words
+/// and sound-alikes stay in the checker lane until its qualified decision;
+/// no polish engine, including a cloud provider, may apply them from a prompt.
+/// Pack-sourced terms must never reach the polish prompt (bible §2.2, #633 Phase 9). The type distinction
 /// (`CorrectorVocabulary` vs `PolishVocabulary`) is the compile-time seam; this
 /// `source != .pack` filter is the assembly-side enforcement.
 @MainActor
@@ -166,7 +168,13 @@ enum LanePartitioner {
     return (
       corrector: CorrectorVocabulary(terms: words, generation: generation),
       polish: PolishVocabulary(
-        terms: words.filter { $0.source != .pack }, generation: generation)
+        terms: words.compactMap { word in
+          guard word.source != .pack, word.learnedAt == nil else { return nil }
+          var promptWord = word
+          let learned = Set(word.learnedAliases)
+          promptWord.aliases.removeAll { learned.contains($0) }
+          return promptWord
+        }, generation: generation)
     )
   }
 }

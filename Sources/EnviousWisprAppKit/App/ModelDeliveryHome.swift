@@ -553,6 +553,7 @@ public final class ModelDeliveryHome {
     guard DeliveryFlags.snapshot(family: .egOneChecker, defaults: defaults).familyEnabled else {
       return .deliveryDisabled
     }
+    await recordFirstRunBaseline(for: checker)
     await controller.sweepSupersededStaging(checker)
     return .delivery(await controller.ensureModelAvailable(checker))
   }

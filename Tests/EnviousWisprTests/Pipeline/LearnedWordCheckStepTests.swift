@@ -84,8 +84,31 @@ struct LearnedWordCheckStepTests {
     #expect(try await s.process(context).text == twin)
     #expect(recorded.count == 1)
     #expect(recorded.first?.fallbackReason == "no_checker")
-    #expect(recorded.first?.checkerStatus == "absent")
+    #expect(recorded.first?.checkerStatus == "no_checker")
     #expect(recorded.first?.absenceReason == "adapter_downloading")
+  }
+
+  @Test("the absence vocabulary is closed and content-free")
+  func absenceCodes() {
+    let values: [(LearnedWordCheckerAbsence, String)] = [
+      (.notEGOne, "not_eg_one"), (.baseNotAdmitted, "base_not_admitted"),
+      (.adapterDownloading, "adapter_downloading"),
+      (.adapterDeliveryFailed, "adapter_delivery_failed"),
+      (.baseMismatch("family"), "base_mismatch_family"),
+      (.baseMismatch("revision"), "base_mismatch_revision"),
+      (.baseMismatch("variant"), "base_mismatch_variant"),
+      (.baseMismatch("shard_hash"), "base_mismatch_shard_hash"),
+      (.baseMismatch("prompt_template"), "base_mismatch_prompt_template"),
+      (.baseMismatch("runtime"), "base_mismatch_runtime"),
+      (.unqualifiedLanguage, "unqualified_language"),
+      (.serverWithoutAdapter("adapter_missing"), "server_without_adapter_adapter_missing"),
+      (.serverWithoutAdapter("adapter_server_exited"),
+        "server_without_adapter_adapter_server_exited"),
+      (.serverWithoutAdapter("adapter_server_never_ready"),
+        "server_without_adapter_adapter_server_never_ready"),
+      (.serverUnavailable, "server_unavailable"),
+    ]
+    for (absence, expected) in values { #expect(absence.code == expected) }
   }
 
   @Test("only the approved spot changes; the everyday twin stays")

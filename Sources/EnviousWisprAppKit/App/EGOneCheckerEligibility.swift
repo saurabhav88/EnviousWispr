@@ -3,11 +3,14 @@ import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import Foundation
+import Observation
 
 /// The only production decision about whether a text invocation may use the
 /// learned-word adapter. Admission and the running endpoint are separate facts.
 @MainActor
+@Observable
 final class EGOneCheckerEligibility {
+  private(set) var statusRevision = 0
   private let delivery: ModelDeliveryHome
   private let base: DeliveryRegistration?
   private let promptTemplateID: String?
@@ -31,6 +34,15 @@ final class EGOneCheckerEligibility {
     #endif
   }
 
+  func statusDidChange() { statusRevision &+= 1 }
+
+  func retryDownload() async {
+    guard let base, let promptTemplateID else { return }
+    _ = await delivery.ensureCheckerAdapterIfEGOneSelected(
+      selected: true, baseRegistration: base, promptTemplateID: promptTemplateID)
+    statusDidChange()
+  }
+
   func selection(provider: LLMProvider, language: String?) async -> LearnedWordCheckerSelection {
     #if DEBUG
       if let debugScriptedChecker {
@@ -51,7 +63,7 @@ final class EGOneCheckerEligibility {
     // path on disk as an admitted adapter.
     let endpoint = adapterAdmitted ? await runtime.activeEndpoint() : nil
     let serverReason = adapterAdmitted ? await runtime.checkerFailureReason()?.rawValue : nil
-    return Self.evaluate(
+    let answer = Self.evaluate(
       provider: provider, baseAdmitted: baseAdmitted, adapterAdmitted: adapterAdmitted,
       deliveryState: deliveryState,
       hostConfigured: ModelDeliveryHome.checkerHostIsConfigured(adapter.manifest),
@@ -60,6 +72,10 @@ final class EGOneCheckerEligibility {
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       language: language, endpoint: endpoint, serverReason: serverReason,
       debugThreshold: debugThreshold)
+    if let checker = answer.checker {
+      return .init(checker: checker, identity: adapter.manifest.identity.revision)
+    }
+    return answer
   }
 
   static func evaluate(
@@ -82,7 +98,8 @@ final class EGOneCheckerEligibility {
     guard adapterAdmitted else {
       guard hostConfigured else { return absent(.adapterDeliveryFailed) }
       switch deliveryState {
-      case .failed, .cancelled: return absent(.adapterDeliveryFailed)
+      case .failed, .cancelled:
+        return .init(absence: .adapterDeliveryFailed, retryAvailable: true)
       case .notReady, .preparing, .downloading, .verifying, .admitted:
         return absent(.adapterDownloading)
       }
