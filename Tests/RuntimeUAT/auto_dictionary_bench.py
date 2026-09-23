@@ -16,8 +16,8 @@ TWO ARMS, same sentences, same order:
   off: Auto Dictionary checker not installed (today's product, learned words inert)
   on:  the EG-1 checker installed through the Debug door (`EW_LEARNED_CHECK_EG1_ADAPTER`)
 Each arm: relaunch, one warm-up take (reported separately as COLD, not in the medians), then
-`rounds` passes over the sentences. Half the sentences carry a sound-alike of a learned word
-(the checker is asked), half carry none (the step runs and finds nothing).
+`rounds` passes over the sentences. Six of twelve sentences carry a sound-alike of a learned word (the checker is asked), one of them a
+three-sentence take; the rest, including a second three-sentence take, carry none.
 
 WHAT IT TOUCHES AND PUTS BACK. The same shared-data rules as the learn-from-edits drill
 (code-uat.md RULE: uat-writes-reach-the-founders-REAL-data): `custom-words.json` byte for byte,
@@ -58,8 +58,14 @@ SENTENCES = [
     ("I will call the dentist tomorrow to move my appointment", "dentist"),
     ("Remember to water the plants while we are away next week", "plants"),
     ("The new coffee shop downtown opens at seven every day", "coffee"),
+    # Multi-sentence takes: each checker question must carry only its own sentence.
+    ("We had a long planning meeting this morning. The Android team rewrote the client in cotton last spring. "
+     "After that we moved the auth tables to super base and everything got faster", "planning"),
+    ("I spent the whole afternoon on the budget spreadsheet. Then I walked the dog around the park twice. "
+     "Tomorrow I want to finish the slides before the team review", "budget"),
 ]
-TRIGGER = 5  # the first five are the Auto Dictionary sentences
+# Sentences that carry a learned word's sound-alike (the checker is asked about them).
+TRIGGER_IDX = {0, 1, 2, 3, 4, 10}
 
 TOTAL_RE = re.compile(r"Pipeline timing TOTAL: ([\d.]+)s \(ASR=([\d.]+)s, polish=([\d.]+)s, paste=([\d.]+)s\)")
 STEP_RE = re.compile(r"StepTiming: step=(.+?) ms=([\d.]+) ran=(true|false)")
@@ -114,7 +120,7 @@ def take(doc, arm, idx, sentence, expect):
     steps = {m.group(1): float(m.group(2)) for m in STEP_RE.finditer(body) if m.group(3) == "true"}
     check = CHECK_RE.search(body)
     lfe.clear_field(doc)
-    return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) < TRIGGER,
+    return {"arm": arm, "idx": idx, "sentence": sentence, "trigger": idx % len(SENTENCES) in TRIGGER_IDX,
             "total_ms": round(float(total.group(1)) * 1000), "asr_ms": round(float(total.group(2)) * 1000),
             "polish_ms": round(float(total.group(3)) * 1000), "paste_ms": round(float(total.group(4)) * 1000),
             "steps_ms": steps, "check": check.group(0) if check else None,
