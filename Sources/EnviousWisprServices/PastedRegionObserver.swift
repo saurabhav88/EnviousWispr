@@ -211,6 +211,50 @@ package enum PastedRegionCaptureOutcome: Equatable {
   }
 }
 
+/// One bounded attempt to see the pasted text in the destination's focused field (#3106 PR A):
+/// every cause kept apart, for the arrival session that retries it. Holds Accessibility handles,
+/// so it stays on the main actor and is never `Sendable`.
+package enum PastedRegionArrivalAttempt {
+  /// A complete, stable read of a readable field, with every occurrence of the pasted text in it
+  /// (or why the count could not finish).
+  case readable(PastedRegionReadableField)
+  /// The value changed between reads: not yet stable, never a stable absence.
+  case unstable(element: AXUIElement, reader: PastedRegionTextReader)
+  /// The application answered that nothing is focused.
+  case noFocus
+  /// Secure, or a subrole that could not be read (fail closed): never read.
+  case secureField
+  /// The destination process is not the active application.
+  case destinationMismatch
+  case unsupported(PastedRegionUnsupportedRead)
+  /// The focus query or the text read failed with this error.
+  case queryFailed(AXError)
+  case permissionLost
+  case appTerminated
+}
+
+/// Why a field could not be read at all (never "the text is absent").
+package enum PastedRegionUnsupportedRead: Sendable, Equatable {
+  /// A messaging timeout could not be installed, so any read would be unbounded.
+  case timeoutNotInstalled
+  /// Neither reader answered with text.
+  case absent
+  case notText
+  /// Over `PastedRegionTiming.maxValueUTF16`.
+  case tooLong
+}
+
+/// The readable field an arrival attempt saw.
+package struct PastedRegionReadableField {
+  package let application: AXUIElement
+  package let element: AXUIElement
+  package let reader: PastedRegionTextReader
+  package let value: String
+  /// Whether the application advertises `AXManualAccessibility`; nil when that could not be read.
+  package let manualAccessibility: Bool?
+  package let occurrences: PastedRegionLocator.Occurrences
+}
+
 /// Everything a watch needs, fixed at capture.
 package struct PastedRegionTarget: Equatable {
   package let pid: pid_t
@@ -1099,18 +1143,37 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   // MARK: Capture (§3.1 step 2)
 
-  package func capture(pid: pid_t, pastedText: String, pastedAtMs: Int)
-    -> PastedRegionCaptureOutcome
-  {
-    guard ax.isTrusted() else { return .ended(.permissionLost) }
-    guard pid > 0, ax.isProcessRunning(pid) else { return .ended(.appTerminated) }
+  /// What one bounded read of the destination's focused field produced, before anyone decides what
+  /// it means. The ONE implementation of the capture's Accessibility mechanics (#3106 PR A): the
+  /// legacy `capture` and the typed `attemptArrival` both project from it, so their trust, process,
+  /// frontmost, bound, secure-field and reader rules cannot drift apart.
+  private enum FocusedFieldRead {
+    case field(
+      application: AXUIElement, element: AXUIElement, reader: PastedRegionTextReader,
+      read: PastedRegionValueRead, manualAccessibility: Bool?)
+    case permissionLost
+    case appTerminated
+    case destinationMismatch
+    /// A messaging timeout could not be installed on the application or the field.
+    case timeoutNotInstalled
+    case noFocus
+    case focusQueryFailed(AXError)
+    case secureField
+  }
+
+  /// - Parameter enableManualAccessibility: the legacy capture opts an Electron/Chromium host in
+  ///   on EVERY capture (below); the arrival attempt never writes the attribute, because its
+  ///   session enables it once after dispatch and then only reads (#3106 PR A).
+  private func readFocusedField(pid: pid_t, enableManualAccessibility: Bool) -> FocusedFieldRead {
+    guard ax.isTrusted() else { return .permissionLost }
+    guard pid > 0, ax.isProcessRunning(pid) else { return .appTerminated }
     // A process-local focused element survives an app switch, so the ACTIVE
     // application is checked separately, here and on every observation.
-    guard ax.frontmostPID() == pid else { return .skipped(.destinationMismatch) }
+    guard ax.frontmostPID() == pid else { return .destinationMismatch }
     let application = ax.applicationElement(pid: pid)
     // A read behind a failed bound is unbounded: refuse rather than hang.
     guard ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
-    else { return .ended(.captureUnsupported) }
+    else { return .timeoutNotInstalled }
 
     // Electron/Chromium hosts expose nothing until asked, INCLUDING the focused
     // element: asked after the focus query, the opt-in would never run for a
@@ -1119,23 +1182,23 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // pids, so a later Electron process under a remembered number would never
     // be asked; one attribute write per paste is nothing (cloud review of
     // PR #3054, both rounds).
-    // An unreadable answer is treated as "not a manual host", exactly as before it could be told
-    // apart (#3106): the watcher's behaviour does not change.
-    let isManualHost = ax.supportsManualAccessibility(application) ?? false
-    if isManualHost { _ = ax.enableManualAccessibility(application) }
+    let manualAccessibility = ax.supportsManualAccessibility(application)
+    if enableManualAccessibility, manualAccessibility ?? false {
+      _ = ax.enableManualAccessibility(application)
+    }
 
     let element: AXUIElement
     switch ax.focusedElement(pid: pid) {
     case .element(let focused): element = focused
-    case .noFocus: return .skipped(.noFocusedElement)
-    case .queryFailed(let error): return .ended(Self.endReason(forQueryFailure: error))
+    case .noFocus: return .noFocus
+    case .queryFailed(let error): return .focusQueryFailed(error)
     }
     // A descendant does not inherit the application's timeout (#1332).
     guard ax.setMessagingTimeout(element, seconds: PasteService.axMessagingTimeoutSeconds)
-    else { return .ended(.captureUnsupported) }
+    else { return .timeoutNotInstalled }
 
     // Secure fields are never observed. `unreadable` is secure (fail closed).
-    if SelectionReader.isSecureField(ax.subrole(of: element)) { return .skipped(.secureField) }
+    if SelectionReader.isSecureField(ax.subrole(of: element)) { return .secureField }
 
     // `AXValue` first. An editor that has none, or answers with something
     // that is not a string, may still expose its text through the
@@ -1147,6 +1210,36 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if read == .absent || read == .notText {
       reader = .range
       read = readText(of: element, using: reader)
+    }
+    return .field(
+      application: application, element: element, reader: reader, read: read,
+      manualAccessibility: manualAccessibility)
+  }
+
+  package func capture(pid: pid_t, pastedText: String, pastedAtMs: Int)
+    -> PastedRegionCaptureOutcome
+  {
+    let application: AXUIElement
+    let element: AXUIElement
+    let reader: PastedRegionTextReader
+    let read: PastedRegionValueRead
+    let isManualHost: Bool
+    switch readFocusedField(pid: pid, enableManualAccessibility: true) {
+    case .permissionLost: return .ended(.permissionLost)
+    case .appTerminated: return .ended(.appTerminated)
+    case .destinationMismatch: return .skipped(.destinationMismatch)
+    case .timeoutNotInstalled: return .ended(.captureUnsupported)
+    case .noFocus: return .skipped(.noFocusedElement)
+    case .focusQueryFailed(let error): return .ended(Self.endReason(forQueryFailure: error))
+    case .secureField: return .skipped(.secureField)
+    case .field(let app, let field, let fieldReader, let fieldRead, let manualAccessibility):
+      application = app
+      element = field
+      reader = fieldReader
+      read = fieldRead
+      // An unreadable answer is treated as "not a manual host", exactly as before it could be told
+      // apart (#3106): the watcher's behaviour does not change.
+      isManualHost = manualAccessibility ?? false
     }
     switch read {
     case .text(let value):
@@ -1176,6 +1269,38 @@ package final class PastedRegionObserver: PastedRegionObserving {
       return .ended(.dictatedTextNotFound)
     case .failed(let error):
       return .ended(Self.endReason(forQueryFailure: error))
+    }
+  }
+
+  /// One bounded attempt to see the pasted text, for the arrival session that retries it (#3106
+  /// PR A). The same Accessibility mechanics as `capture` (`readFocusedField`), without the
+  /// manual-accessibility write, and without collapsing causes: a stable read with no occurrence
+  /// keeps its field, reader and value for the baseline comparison; an unstable read is never a
+  /// stable absence; a repeated phrase is a readable field with several positions, not an
+  /// ambiguity.
+  package func attemptArrival(pid: pid_t, pastedText: String) -> PastedRegionArrivalAttempt {
+    switch readFocusedField(pid: pid, enableManualAccessibility: false) {
+    case .permissionLost: return .permissionLost
+    case .appTerminated: return .appTerminated
+    case .destinationMismatch: return .destinationMismatch
+    case .timeoutNotInstalled: return .unsupported(.timeoutNotInstalled)
+    case .noFocus: return .noFocus
+    case .focusQueryFailed(let error): return .queryFailed(error)
+    case .secureField: return .secureField
+    case .field(let application, let element, let reader, let read, let manualAccessibility):
+      switch read {
+      case .text(let value):
+        return .readable(
+          PastedRegionReadableField(
+            application: application, element: element, reader: reader, value: value,
+            manualAccessibility: manualAccessibility,
+            occurrences: PastedRegionLocator.occurrences(ofPasted: pastedText, in: value)))
+      case .unstable: return .unstable(element: element, reader: reader)
+      case .absent: return .unsupported(.absent)
+      case .notText: return .unsupported(.notText)
+      case .tooLong: return .unsupported(.tooLong)
+      case .failed(let error): return .queryFailed(error)
+      }
     }
   }
 

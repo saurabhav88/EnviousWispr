@@ -724,6 +724,108 @@ struct PastedRegionObserverCaptureTests {
     }
     #expect(target.isManualAccessibilityHost && ax.enableCalls == [pid])
   }
+
+  // MARK: The typed arrival attempt (#3106 PR A)
+
+  /// `[start, end)` pairs of a readable attempt's complete count; nil for anything else.
+  private func spans(_ attempt: PastedRegionArrivalAttempt) -> [[Int]]? {
+    guard case .readable(let field) = attempt, case .complete(let hits) = field.occurrences else {
+      return nil
+    }
+    return hits.map { [$0.start, $0.end] }
+  }
+
+  @Test("a stable read without the text keeps its field, reader and value: a zero count, not a refusal")
+  func arrivalZeroHitsKeepTheField() throws {
+    let attempt = observer.attemptArrival(pid: pid, pastedText: "Saira")
+    guard case .readable(let field) = attempt else {
+      Issue.record("expected a readable field, got \(attempt)")
+      return
+    }
+    #expect(CFEqual(field.element, PastedRegionFakeAX.field(pid)))
+    #expect(CFEqual(field.application, PastedRegionFakeAX.app(pid)))
+    #expect(field.reader == .value)
+    #expect(field.value == "Ask Sarah today")
+    #expect(field.occurrences == .complete([]))
+    // The legacy capture of the same read is the collapsed cause #996 retries.
+    #expect(observer.capture(pid: pid, pastedText: "Saira", pastedAtMs: 0) == .ended(.dictatedTextNotFound))
+  }
+
+  @Test("a repeated phrase is a readable field with every position; the legacy capture still calls it ambiguous")
+  func arrivalCountsARepeat() {
+    ax.reads = [.text("Sarah met Sarah")]
+    #expect(spans(observer.attemptArrival(pid: pid, pastedText: "Sarah")) == [[0, 5], [10, 15]])
+    #expect(observer.capture(pid: pid, pastedText: "Sarah", pastedAtMs: 0) == .ended(.anchorAmbiguous))
+  }
+
+  @Test("the attempt never writes AXManualAccessibility, and an unreadable support answer stays unknown")
+  func arrivalNeverOptsIn() {
+    ax.manualHosts = [pid]
+    guard case .readable(let host) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected a readable field")
+      return
+    }
+    #expect(host.manualAccessibility == true)
+    #expect(ax.enableCalls == [], "the arrival session opts in once after dispatch, never per attempt")
+    ax.manualReadFails = [pid]
+    guard case .readable(let unknown) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected a readable field")
+      return
+    }
+    #expect(unknown.manualAccessibility == nil, "could not read is not 'does not support it'")
+  }
+
+  @Test("refusals keep their cause and read nothing: permission, focus, frontmost, bound, secure, failed query")
+  func arrivalRefusalsKeepTheirCause() {
+    ax.trusted = false
+    guard case .permissionLost = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected permissionLost")
+      return
+    }
+    ax.trusted = true
+    guard case .appTerminated = observer.attemptArrival(pid: 7, pastedText: "Sarah") else {
+      Issue.record("expected appTerminated")
+      return
+    }
+    ax.frontmost = 7
+    guard case .destinationMismatch = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected destinationMismatch")
+      return
+    }
+    ax.frontmost = pid
+    ax.timeoutFailsFor = [pid + 10_000]
+    guard case .unsupported(.timeoutNotInstalled) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected unsupported(timeoutNotInstalled)")
+      return
+    }
+    ax.timeoutFailsFor = []
+    ax.subroles["\(CFHash(PastedRegionFakeAX.field(pid)))"] = .subrole(kAXSecureTextFieldSubrole as String)
+    guard case .secureField = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected secureField")
+      return
+    }
+    ax.subroles = [:]
+    ax.focused[pid] = .noFocus
+    guard case .noFocus = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected noFocus")
+      return
+    }
+    ax.focused[pid] = .queryFailed(.cannotComplete)
+    guard case .queryFailed(.cannotComplete) = observer.attemptArrival(pid: pid, pastedText: "Sarah") else {
+      Issue.record("expected queryFailed(cannotComplete)")
+      return
+    }
+    #expect(ax.readCount == 0, "nothing was read behind any refusal")
+  }
+
+  @Test("an over-limit value is unsupported, not a zero count")
+  func arrivalTooLongIsUnsupported() {
+    ax.reads = [.text(String(repeating: "x", count: 20_001))]
+    guard case .unsupported(.tooLong) = observer.attemptArrival(pid: pid, pastedText: "x") else {
+      Issue.record("expected unsupported(tooLong)")
+      return
+    }
+  }
 }
 
 // MARK: - Observation
@@ -1935,6 +2037,28 @@ struct PastedRegionRangeReaderCaptureTests {
     ax.counts = [.count(n), .count(n + 5)]
     ax.rangeReads = [.text(host)]
     #expect(observer.readText(of: PastedRegionFakeAX.field(pid), using: .range) == .unstable)
+  }
+
+  @Test("a count that changes across the range read is an UNSTABLE arrival attempt, never a stable zero count (#3106 PR A)")
+  func arrivalUnstableIsNotAbsent() {
+    ax.reads = [.absent]
+    let n = host.utf16.count
+    ax.counts = [.count(n), .count(n + 1)]
+    ax.rangeReads = [.text(host)]
+    guard case .unstable(let element, let reader) = observer.attemptArrival(pid: pid, pastedText: "Saira")
+    else {
+      Issue.record("expected unstable")
+      return
+    }
+    #expect(CFEqual(element, PastedRegionFakeAX.field(pid)) && reader == .range)
+    // The same host, stable: a readable field through the range reader with a zero count.
+    ax.counts = [.count(n)]
+    ax.rangeReads = [.text(host)]
+    guard case .readable(let field) = observer.attemptArrival(pid: pid, pastedText: "Saira") else {
+      Issue.record("expected readable")
+      return
+    }
+    #expect(field.reader == .range && field.occurrences == .complete([]))
   }
 
   @Test("readText is the one owner of the ceiling for both readers")
