@@ -367,7 +367,7 @@ def scan(bundle_id: str, max_nodes: int = 20000, max_depth: int = 45) -> Scan:
     return Scan(ok=True, nodes_visited=visited, fields=_dedupe(found))
 
 
-def read_focused(bundle_id: str) -> Scan:
+def read_focused(bundle_id: str, *, pid: int | None = None) -> Scan:
     """Read the FOCUSED element only. One call, no tree walk.
 
     **This is the oracle that works, and the tree walk is the one that did not.** The
@@ -390,7 +390,11 @@ def read_focused(bundle_id: str) -> Scan:
         raise OracleUntrusted("harness process is not Accessibility-trusted")
     if screen_is_locked():
         raise ScreenLocked("the Mac is locked; no reading here means anything")
-    pid = pid_for_bundle(bundle_id)
+    # A caller that found the pid LIVE (the window server) passes it: `pid_for_bundle` reads
+    # `NSWorkspace.runningApplications()`, which never learns of an app launched after this
+    # process started when no run loop spins.
+    if pid is None:
+        pid = pid_for_bundle(bundle_id)
     if pid is None:
         return Scan(ok=False, why="app_not_running")
     application = AXUIElementCreateApplication(pid)

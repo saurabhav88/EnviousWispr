@@ -172,19 +172,51 @@ def press_key(key_name, cmd=False, shift=False, alt=False, ctrl=False):
     if ctrl:
         flags |= kCGEventFlagMaskControl
 
-    # Key down. Flags are set unconditionally, including to 0 — see the note in
-    # `type_text`: a new event inherits ambient modifier state, so a conditional
-    # set latches a modifier into every later event.
-    down_event = CGEventCreateKeyboardEvent(None, keycode, True)
-    CGEventSetFlags(down_event, flags)
-    CGEventPost(kCGHIDEventTap, down_event)
+    # The modifiers are FRAMED: each is pressed with its own flagsChanged event before the key and
+    # released after it, as a keyboard does. A flag set on the key events alone left the modifier
+    # latched down in the session state, and every later keystroke inherited it (measured
+    # 2026-09-23: Command stayed latched after Cmd+W, `wispr_eyes.modifier_flags` read
+    # session=0x100000, until a separate process cleared it).
+    held = [(code, mask) for code, mask, on in (
+        (59, kCGEventFlagMaskControl, ctrl), (58, kCGEventFlagMaskAlternate, alt),
+        (56, kCGEventFlagMaskShift, shift), (55, kCGEventFlagMaskCommand, cmd)) if on]
 
-    # Key up.
-    up_event = CGEventCreateKeyboardEvent(None, keycode, False)
-    CGEventSetFlags(up_event, flags)
-    CGEventPost(kCGHIDEventTap, up_event)
+    # Every event is BUILT before any is posted: a modifier-down posted before a later event failed
+    # to build would stay held (the failure `SyntheticCopyChord.swift` documents).
+    events = []
+    cumulative = 0
+    for code, mask in held:
+        cumulative |= mask
+        events.append(_flags_changed_event(code, cumulative, True))
+    # Key down and up. Flags are set unconditionally, including to 0 — see the note in
+    # `type_text`: a new event inherits ambient modifier state, so a conditional set latches a
+    # modifier into every later event.
+    for is_down in (True, False):
+        key_event = CGEventCreateKeyboardEvent(None, keycode, is_down)
+        if key_event is not None:
+            CGEventSetFlags(key_event, flags)
+        events.append(key_event)
+    for code, mask in reversed(held):
+        cumulative &= ~mask
+        events.append(_flags_changed_event(code, cumulative, False))
+    if any(event is None for event in events):
+        raise RuntimeError(f"press_key({key_name!r}): an event could not be created; nothing posted")
+    for event in events:
+        CGEventPost(kCGHIDEventTap, event)
 
     time.sleep(DEFAULT_DELAY)
+
+
+def _flags_changed_event(keycode, flags, is_down):
+    """One flagsChanged event for `keycode` carrying the FULL modifier state after the change, or
+    None when it cannot be created. Built, not posted."""
+    event = CGEventCreateKeyboardEvent(None, keycode, is_down)
+    if event is None:
+        return None
+    CGEventSetType(event, kCGEventFlagsChanged)
+    CGEventSetFlags(event, flags)
+    CGEventSetIntegerValueField(event, kCGKeyboardEventKeycode, keycode)
+    return event
 
 
 def type_text(text, delay=None):
@@ -291,10 +323,19 @@ def modifier_up(keycode):
 
 
 def hold_modifier(keycode, duration=2.0):
-    """Press a modifier key, hold for *duration* seconds, then release."""
-    modifier_down(keycode)
-    time.sleep(duration)
-    modifier_up(keycode)
+    """Press a modifier key, hold for *duration* seconds, then release. The release is posted in a
+    `finally`: an interrupt during the hold must not leave the key (a push-to-talk key) down. Both
+    events are built first, and the press is posted INSIDE the `try`, so no gap exists between
+    posting it and owning its release."""
+    down = _flags_changed_event(keycode, _MODIFIER_FLAGS.get(keycode, 0), True)
+    up = _flags_changed_event(keycode, 0, False)
+    if down is None or up is None:
+        raise RuntimeError(f"hold_modifier({keycode}): an event could not be created; nothing posted")
+    try:
+        CGEventPost(kCGHIDEventTap, down)
+        time.sleep(duration)
+    finally:
+        CGEventPost(kCGHIDEventTap, up)
 
 
 def scroll(dx=0, dy=0, x=None, y=None):
@@ -339,17 +380,20 @@ def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=Fal
     if ctrl:
         flags |= kCGEventFlagMaskControl
 
-    # Key down. Unconditional flags, same reason as `type_text`.
+    # Both events are BUILT before the press is posted, and the release is posted in a `finally`:
+    # an interrupt during the hold must not leave the key down. Unconditional flags, same reason
+    # as `type_text`.
     down_event = CGEventCreateKeyboardEvent(None, keycode, True)
-    CGEventSetFlags(down_event, flags)
-    CGEventPost(kCGHIDEventTap, down_event)
-
-    time.sleep(duration)
-
-    # Key up
     up_event = CGEventCreateKeyboardEvent(None, keycode, False)
+    if down_event is None or up_event is None:
+        raise RuntimeError(f"hold_key({key_name!r}): an event could not be created; nothing posted")
+    CGEventSetFlags(down_event, flags)
     CGEventSetFlags(up_event, flags)
-    CGEventPost(kCGHIDEventTap, up_event)
+    try:
+        CGEventPost(kCGHIDEventTap, down_event)
+        time.sleep(duration)
+    finally:
+        CGEventPost(kCGHIDEventTap, up_event)
     time.sleep(DEFAULT_DELAY)
 
 

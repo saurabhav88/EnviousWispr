@@ -284,7 +284,36 @@ def stage(app):
         activate_app(pid)
         if not wait_frontmost(bundle):
             raise d.Aborted(f"{app}: never became frontmost")
-        time.sleep(2.0)  # settle: the local page loads and autofocuses its textarea; a file:// load has no observable ack from here
+        time.sleep(2.0)  # settle: the local page loads; a file:// load has no observable ack from here
+        # The page asks for autofocus, but Safari leaves focus in the ADDRESS BAR (measured
+        # 2026-09-23: AXTextField holding the file URL), where a take would land. Require this
+        # page to be the active tab, then click into its text area as a person does (setting
+        # AXFocused did not move Safari's focus), and confirm focus is there.
+        from urllib.parse import unquote, urlsplit
+
+        def require_local_page():
+            tab = osa('tell application "Safari" to get URL of current tab of front window')
+            url = urlsplit(tab.stdout.strip())
+            if (tab.returncode != 0 or url.scheme != "file"
+                    or os.path.realpath(unquote(url.path)) != os.path.realpath(LOCAL_PAGE)):
+                raise d.Aborted("safari: the local staging page is not the active tab")
+
+        require_local_page()
+        # Waited for, not assumed: Safari publishes the page's AX tree after the load (measured
+        # 2026-09-23: absent at 2 s, present seconds later).
+        def page_area():
+            window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+            return find_element(window, role="AXTextArea", max_depth=60) if window is not None else None
+        area = d.wait_for("the page's text area in the AX tree", page_area, deadline=10.0)
+        if area is None:
+            raise d.Aborted("safari: the page's text area was not found")
+        require_local_page()  # the wait above can outlast a tab switch: recheck before clicking
+        click_into(area, "the page's text area", bundle)
+        from CoreFoundation import CFEqual
+        focused = get_attr(get_ax_app(pid), "AXFocusedUIElement")
+        if focused is None or not CFEqual(focused, area):  # the SAME element it clicked
+            raise d.Aborted("safari: focus did not reach the page's text area")
+        require_local_page()
         return pid, None
     if app == "gmail":
         subprocess.run(["open", "-a", name, GMAIL_COMPOSE], check=True)
