@@ -190,6 +190,23 @@ struct LocalPolishServerCoordinatorTests {
     }
   }
 
+  @Test("a same-model restatement never refuses a lease, whichever task runs first (#3105)")
+  func restatementDoesNotMarkChanging() async {
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
+    let restateIntent = coordinator.claimIntent()
+    let restating = Task { await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: restateIntent) }
+    let acquiring = Task { await coordinator.acquireLease(for: .egOne) }
+    let admission = await acquiring.value
+    await restating.value
+    guard case .granted(let lease) = admission else {
+      Issue.record("an idempotent restatement refused the resident server's lease")
+      return
+    }
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    await coordinator.releaseLease(lease)
+  }
+
   @Test("release retries the latest deferred provider switch (#3105)")
   func releaseRetriesDeferredSwitch() async {
     let coordinator = LocalPolishServerCoordinator()

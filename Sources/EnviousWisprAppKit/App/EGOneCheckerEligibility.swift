@@ -109,10 +109,11 @@ final class EGOneCheckerEligibility {
     case .refused(let reason): return absent(.baseMismatch(reason.code))
     }
     guard adapterAdmitted else {
-      guard hostConfigured else { return absent(.adapterDeliveryFailed) }
       // The delivery switch off means no fetch will ever start; reporting
-      // "downloading" would be a status that never resolves.
+      // "downloading" would be a status that never resolves. Checked before
+      // the host, so a switched-off delivery reports why even while unhosted.
       guard deliveryEnabled else { return absent(.deliveryDisabled) }
+      guard hostConfigured else { return absent(.adapterDeliveryFailed) }
       switch deliveryState {
       case .failed, .cancelled:
         return .init(absence: .adapterDeliveryFailed, retryAvailable: true)

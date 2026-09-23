@@ -1776,16 +1776,20 @@ package final class WisprBootstrapper {
           weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
           asrManager, localPolishRuntimes
         ] in
-        // #3105: the run's server hold goes first, so the forced reconcile
-        // below is not deferred behind the import that just ended.
-        Task { await localPolishRuntimes.releaseImportHold() }
+        // #3105: THIS run's server hold is taken synchronously, so a later
+        // import's hold can never be the one released, and the forced reconcile
+        // waits for the release rather than being deferred behind it.
+        let releaseHold = localPolishRuntimes.releaseImportHold()
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
-        // #2772: FORCED. An import that started its own bundled polisher armed no
-        // pending flag, so the unforced call returned without reconciling and the
-        // import's engine stayed resident in place of dictation's.
-        settingsSync.retryDeferredEGOneDeactivation(
-          settings: settings, forceReconciliation: true)
+        Task { @MainActor in
+          await releaseHold?.value
+          // #2772: FORCED. An import that started its own bundled polisher armed no
+          // pending flag, so the unforced call returned without reconciling and the
+          // import's engine stayed resident in place of dictation's.
+          settingsSync.retryDeferredEGOneDeactivation(
+            settings: settings, forceReconciliation: true)
+        }
         // **Recovery needs its OWN wake.** A poke that finds the selected and
         // active engines already matching returns without reaching recovery, so
         // a scan that released its mutation gate because an import held the

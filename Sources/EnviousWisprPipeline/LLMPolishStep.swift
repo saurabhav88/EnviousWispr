@@ -18,9 +18,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
   public var llmProvider: LLMProvider = .none
-  /// Frozen before a local take starts. A transition already in progress
-  /// cannot provide that take's selected server, so this limb skips cleanly.
-  public var localServerChangingAtFreeze = false
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
   /// #2649: the user's S1-mini control-line picks. Frozen per recording like
@@ -577,9 +574,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-    // A file-import part, re-polish, or recovery replay may enter without a
-    // whole-take hold. Keep the server resident through the actual inference.
-    // A live take already has a longer hold; this second token is harmless.
+    // #3105: every caller (live take, file-import part, re-polish, recovery
+    // replay) holds the bundled server through the actual inference. A live
+    // take deliberately takes no hold at recording start: that would put an
+    // actor hop on the heart path before audio. A server change during the
+    // recording is answered here, as the limb's existing skip. A file import
+    // also holds for its whole run (`LocalPolishRuntimeSet.holdForImport`).
     var inferenceLease: (runtime: any EGOneLeaseProviding, lease: LocalPolishServerLease)?
     defer {
       if let inferenceLease {
@@ -742,9 +742,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: nil
       }
     if let handles = localServerHandles {
-      guard !localServerChangingAtFreeze else {
-        throw LLMError.localEngineSkipped(.notReady, provider)
-      }
       guard let runtime = handles.runtime else {
         throw LLMError.localEngineSkipped(.notReady, provider)
       }
