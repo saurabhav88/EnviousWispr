@@ -4,9 +4,9 @@ description: "Set the keys that start, stop, and cancel dictation."
 category: "recording-and-keybinds"
 section: "Recording"
 order: 4
-keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w"]
-related: ["adding-a-word-from-your-selection", "escape-recovery"]
-updated: 2026-09-05
+keywords: ["keybind", "keybinds", "hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app", "quick add shortcut", "control shift w", "paste last dictation", "copy last dictation", "control command v", "control command c"]
+related: ["adding-a-word-from-your-selection", "escape-recovery", "transcript-history"]
+updated: 2026-09-23
 ---
 Your keybind is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 
@@ -44,9 +44,26 @@ The same page carries a setting called **Escape Recovery**, on unless you switch
 
 ### The Quick Add key
 
-The same page has one more keybind, under **Add a Word**. Highlight a misheard word anywhere on your Mac, press it, and a small panel offers to add the right spelling to your dictionary. It is **Control Shift W** unless you change it.
+The same page has a keybind under **Add a Word**. Highlight a misheard word anywhere on your Mac, press it, and a small panel offers to add the right spelling to your dictionary. It is **Control Shift W** unless you change it.
 
 Version 2.4.7 moved it to those keys. The old ones shared the Option key with the record key, so pressing them could start a recording instead of opening the panel. If you had already chosen your own keys, yours are untouched. See [Adding a Word From Your Selection](/help/adding-a-word-from-your-selection/).
+
+### Paste or copy your last dictation
+
+Two more keybinds sit under **Last Dictation**. They reuse the last thing you dictated, so you never have to say it twice.
+
+- **Paste last dictation**, **Control Command V** unless you change it. It pastes into the app you were in when you pressed the keys.
+- **Copy last dictation**, **Control Command C** unless you change it. It puts your last dictation on your clipboard, ready for Cmd+V anywhere.
+
+The same paste is in the menu bar menu as **Paste Last Dictation**, with the start of the text shown under it. See [History](/help/transcript-history/) for which dictation counts as the last one.
+
+While EnviousWispr is running, pressing either combination usually runs EnviousWispr's action rather than the other app's. In Terminal, Control Command V is normally Paste Escaped Text, and some apps, such as Final Cut Pro, use Control Command C. If you rely on those, choose different keys here.
+
+### Combinations it refuses
+
+Each keybind box refuses a combination that another keybind on the page already uses, and the standard Mac shortcuts such as Cmd+C, Cmd+V and Cmd+Q, so a new keybind cannot break copying or quitting.
+
+A box also refuses a combination that includes a single key a more important keybind uses on its own. If you later set your recording keybind to a single key such as Right Command, and another row's combination includes it (both Last Dictation defaults use Command), the recording keybind wins. That row then says **Not active** and names the keybind using its keys, so you can choose another.
 
 ### If your keybind stops working
 

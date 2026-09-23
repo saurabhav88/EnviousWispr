@@ -128,4 +128,38 @@ struct LastDictationSelectionTests {
     #expect(coordinator.lastDictationTextForReuse(id: offered.id) == nil)
     #expect(coordinator.lastPasteableDictation() == nil)
   }
+
+  // MARK: #3106 Live UAT input seams (DEBUG builds only)
+  //
+  // Each fakes the INPUT to the real eligibility check or read-by-id, never an outcome.
+  // Synchronous, so no other main-actor test interleaves while the static fault is armed; cleared
+  // in `defer`.
+  #if DEBUG
+
+    @Test("Imported-only seam: the real check sees every row as imported, nothing is offered")
+    func importedOnlySeam() {
+      let coordinator = makeCoordinator()
+      let row = dictation("send the draft", ageSeconds: 5)
+      coordinator.setTranscriptsForTesting([row])
+      defer { TranscriptCoordinator.clearReuseInputFault() }
+      TranscriptCoordinator.reuseInputFault = .importedOnly
+      #expect(coordinator.lastPasteableDictation() == nil)
+      #expect(coordinator.lastDictationTextForReuse(id: row.id) == nil)
+      TranscriptCoordinator.clearReuseInputFault()
+      #expect(coordinator.lastPasteableDictation()?.id == row.id, "positive control once cleared")
+    }
+
+    @Test("Drop seam: the sampled row is missing from the NEXT read of its id, once")
+    func dropNextSampledRowSeam() {
+      let coordinator = makeCoordinator()
+      let row = dictation("send the draft", ageSeconds: 5)
+      coordinator.setTranscriptsForTesting([row])
+      defer { TranscriptCoordinator.clearReuseInputFault() }
+      TranscriptCoordinator.reuseInputFault = .dropNextSampledRow
+      #expect(coordinator.lastPasteableDictation()?.id == row.id, "the menu still renders it")
+      #expect(TranscriptCoordinator.reuseInputFault == nil, "armed once, spent by the sample")
+      #expect(coordinator.lastDictationTextForReuse(id: row.id) == nil, "gone for the action")
+      #expect(coordinator.lastDictationTextForReuse(id: row.id) == "send the draft", "one-shot")
+    }
+  #endif
 }

@@ -532,6 +532,83 @@ def menu():
             print(f"[menu] {get_attr(c,'AXTitle') or get_attr(c,'AXDescription') or '?'}")
     except Exception as e: print(f"menu error: {e}")
 
+def _status_menu_items():
+    """The status item and the AXMenuItems of its open menu (empty when closed)."""
+    bar = get_attr(_app, "AXExtrasMenuBar")
+    items = (get_attr(bar, "AXChildren") or []) if bar else []
+    if not items:
+        return None, []
+    status = items[0]
+    found = []
+    for menu_el in (get_attr(status, "AXChildren") or []):
+        for item in (get_attr(menu_el, "AXChildren") or []):
+            found.append(item)
+    return status, found
+
+
+def status_menu_snapshot_real(settle=0.6):
+    """#3106: open OUR status menu with a real mouse click and read every row.
+
+    Returns a list of dicts {title, enabled, description} in menu order, or None when the menu
+    could not be opened. Closes the menu again with a second real click on the status item. A
+    real click, not AXPress, because the Paste Last Dictation row samples its target in
+    `menuNeedsUpdate`, and only the tracking loop a click enters is the path users take.
+    """
+    _ensure_connected()
+    import simulate_input as _si
+    from ui_helpers import element_center
+    status, _ = _status_menu_items()
+    centre = element_center(status) if status is not None else None
+    if centre is None:
+        print("status_menu_snapshot_real: no status item frame")
+        return None
+    _si.click(*centre)
+    time.sleep(settle)  # settle: the menu renders inside AppKit's tracking loop; no AX ack
+    _, rows = _status_menu_items()
+    out = [{"title": str(get_attr(r, "AXTitle") or ""),
+            "enabled": bool(get_attr(r, "AXEnabled")),
+            "description": str(get_attr(r, "AXDescription") or "")} for r in rows]
+    _si.click(*centre)
+    time.sleep(0.3)  # settle: menu dismissal
+    return out if out else None
+
+
+def click_status_menu_item_real(title, settle=0.6):
+    """#3106: choose a row of OUR status menu with two real mouse clicks.
+
+    Returns {"opened", "found", "enabled", "clicked"}. Fails closed: an item without a frame is
+    never clicked by guesswork; the menu is dismissed and `clicked` is False.
+    """
+    _ensure_connected()
+    import simulate_input as _si
+    from ui_helpers import element_center
+    result = {"opened": False, "found": False, "enabled": False, "clicked": False}
+    status, _ = _status_menu_items()
+    centre = element_center(status) if status is not None else None
+    if centre is None:
+        print("click_status_menu_item_real: no status item frame")
+        return result
+    _si.click(*centre)
+    time.sleep(settle)  # settle: the menu renders inside AppKit's tracking loop; no AX ack
+    _, rows = _status_menu_items()
+    result["opened"] = bool(rows)
+    item = next((r for r in rows if str(get_attr(r, "AXTitle") or "").startswith(title)), None)
+    if item is None:
+        _si.click(*centre)
+        print(f"click_status_menu_item_real: no row titled {title!r}")
+        return result
+    result["found"] = True
+    result["enabled"] = bool(get_attr(item, "AXEnabled"))
+    point = element_center(item)
+    if point is None or not result["enabled"]:
+        _si.click(*centre)
+        print(f"click_status_menu_item_real: {title!r} has no frame or is disabled")
+        return result
+    _si.click(*point)
+    result["clicked"] = True
+    return result
+
+
 def type_text(text):
     _ensure_connected()
     try:

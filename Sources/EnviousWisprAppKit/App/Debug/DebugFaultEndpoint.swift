@@ -41,7 +41,9 @@
   ///   `force_default_input_absent`, `clear_default_input_absent` (#1714 —
   ///   force the input resolver to see no system default so the list-fallback
   ///   rung actually runs in Live UAT; both refuse while capture is active and
-  ///   tear down any idle warm source first).
+  ///   tear down any idle warm source first); `force_reuse_imported_only`,
+  ///   `force_reuse_drop_next_sampled_row`, `clear_reuse_fault` (#3106 — the
+  ///   imported-only History and deleted-after-render reuse cases).
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
   ///
@@ -317,6 +319,20 @@
       case "clear_default_input_absent":
         guard let audioCapture else { return "ERR no_dependency" }
         return audioCapture.debugSetDefaultInputAbsent(false) ? "OK" : "ERR capture_active"
+
+      // #3106 Live UAT: the two reuse cases a driver cannot stage without deleting the founder's
+      // History. Each fault is on the INPUT to the real eligibility check / read-by-id.
+      case "force_reuse_imported_only":
+        TranscriptCoordinator.reuseInputFault = .importedOnly
+        return "OK"
+
+      case "force_reuse_drop_next_sampled_row":
+        TranscriptCoordinator.reuseInputFault = .dropNextSampledRow
+        return "OK"
+
+      case "clear_reuse_fault":
+        TranscriptCoordinator.clearReuseInputFault()
+        return "OK"
 
       case "query_state":
         let p = kernelDriver.state

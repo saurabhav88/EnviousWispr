@@ -965,6 +965,12 @@ final class TranscriptCoordinator {
     guard let row = transcripts.first(where: { Self.isReusableDictation($0, at: now) }) else {
       return nil
     }
+    #if DEBUG
+      if Self.reuseInputFault == .dropNextSampledRow {
+        Self.reuseInputFault = nil
+        Self.droppedReuseRowID = row.id
+      }
+    #endif
     return (row.id, row.displayText)
   }
 
@@ -975,7 +981,16 @@ final class TranscriptCoordinator {
   /// must keep offering imported and held rows there. Reuse is narrower: only a dictation the
   /// user actually made and received.
   func lastDictationTextForReuse(id: UUID) -> String? {
-    guard let row = transcripts.first(where: { $0.id == id }),
+    var rows = transcripts
+    #if DEBUG
+      // The sampled row, gone from the rows this ONE read sees: the same read a deletion after
+      // the menu rendered would meet.
+      if let dropped = Self.droppedReuseRowID, dropped == id {
+        Self.droppedReuseRowID = nil
+        rows = rows.filter { $0.id != dropped }
+      }
+    #endif
+    guard let row = rows.first(where: { $0.id == id }),
       Self.isReusableDictation(row, at: Date())
     else { return nil }
     return row.displayText
@@ -993,10 +1008,37 @@ final class TranscriptCoordinator {
   ///   is reused is exactly the text that was delivered.
   private static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
     isVisible(row, at: now)
-      && !row.isImported
+      && !isImportedForReuse(row)
       && row.escapeRecoveredAt == nil
       && !row.displayText.allSatisfy(\.isWhitespace)
   }
+
+  private static func isImportedForReuse(_ row: Transcript) -> Bool {
+    #if DEBUG
+      if reuseInputFault == .importedOnly { return true }
+    #endif
+    return row.isImported
+  }
+
+  #if DEBUG
+    /// #3106 Live UAT input seams, armed ONLY through `DebugFaultEndpoint` (a DEBUG build launched
+    /// with `EW_FAULT_INJECTION=1`). They fault the INPUT to the real eligibility check and the
+    /// real read-by-id, never the outcome, and never touch stored History.
+    enum ReuseInputFault: Equatable {
+      /// Every row reads as imported to the eligibility check: History with only imported rows.
+      case importedOnly
+      /// One-shot: the next row the menu (or a chord) samples is missing from the next read of
+      /// that id, as if it were deleted after the menu rendered.
+      case dropNextSampledRow
+    }
+    static var reuseInputFault: ReuseInputFault?
+    private(set) static var droppedReuseRowID: UUID?
+
+    static func clearReuseInputFault() {
+      reuseInputFault = nil
+      droppedReuseRowID = nil
+    }
+  #endif
 
   /// Everything the pill needs to restore a held row, or nil if it may not be
   /// restored (#2087).

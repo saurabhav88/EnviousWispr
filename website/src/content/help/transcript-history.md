@@ -4,9 +4,9 @@ description: "Finding, reusing, and deleting your past dictations and transcript
 category: "features"
 section: "History"
 order: 1
-keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log"]
+keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log", "paste again", "paste last dictation", "copy last dictation"]
 related: ["transcribe-a-file", "transcribe-a-file-speaker-labels", "clipboard-preservation", "escape-recovery"]
-updated: 2026-09-13
+updated: 2026-09-23
 ---
 EnviousWispr saves everything it transcribes so you can find it again later. History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/). To see them, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 
@@ -21,6 +21,15 @@ History gives you several ways to work with past recordings.
 - **Search.** Type in **Search history** to find text from an earlier dictation or transcript, the name of an imported file, or a speaker you renamed.
 - **Copy or paste.** Copy a past dictation or transcript back to your clipboard, or paste it straight into the app you are in.
 - **Delete records.** Remove a single dictation or transcript you no longer need, or delete all of them at once. Delete all removes every item in History, including any a filter or search is hiding.
+
+### Paste your last dictation again
+
+You do not need to open History to reuse your most recent dictation.
+
+- **Paste it.** Press **Control Command V**, or choose **Paste Last Dictation** in the menu bar menu. It pastes into the app you are in. The menu shows the start of the text under the item, so you can check it before you click.
+- **Copy it.** Press **Control Command C** to put it on your clipboard.
+
+The last dictation is your newest dictation in History. Imported transcripts are skipped, and so is a cancelled dictation still counting down in History, until you press **Keep** on it. Anything you have deleted is skipped too. When there is nothing to reuse, the menu item is greyed out. Nothing happens while you are recording, and paste does nothing while an EnviousWispr window such as History is in front, though copy still works. Your **Restore clipboard after paste** setting works here too: see [Clipboard Preservation](/help/clipboard-preservation/). Change either key in **Keybinds**: see [Customizing Your Keybind](/help/customizing-your-keybind/).
 
 ### Where it is kept
 
