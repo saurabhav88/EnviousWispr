@@ -170,7 +170,17 @@ def one_take(app):
         lines, cascades = p.take(app, base, bundle=bundle, route=ROUTE["route"])
         if app != "ghostty" and not same_element(focused_element(pid), staged):
             # Detects an observed move; it cannot prove focus never left and came back mid-hold.
-            raise u.Aborted(f"{app}: focus left the staged field during the take; text may be elsewhere")
+            # The text may be in the field that took focus. It is NOT cleared: this run did not
+            # stage that field, and select-all + delete there could destroy the person's own
+            # content. It is named instead, so a person can remove the take by hand.
+            now = focused_element(pid)
+            role = None
+            if now is not None:
+                from ui_helpers import get_attr
+                role = get_attr(now, "AXRole")
+            raise u.Aborted(f"{app}: focus left the staged field during the take; text may be in "
+                            f"frontmost={apps.frontmost_bundle()!r} field role={role!r}; "
+                            f"REMOVE BY HAND (this run never clears a field it did not stage)")
         tiers = [t for t, target in cascades if target.strip().lower() == bundle.lower()]
         mine = [line for line in lines if line[3] == bundle and tiers and line[0] == tiers[0]]
         if len(tiers) != 1 or len(lines) != len(mine) or len(mine) != int(tiers[0] in KEY_TIERS):
