@@ -295,8 +295,12 @@ def stage(app):
         if (tab.returncode != 0 or url.scheme != "file"
                 or os.path.realpath(unquote(url.path)) != os.path.realpath(LOCAL_PAGE)):
             raise d.Aborted("safari: the local staging page is not the active tab")
-        window = get_attr(get_ax_app(pid), "AXFocusedWindow")
-        area = find_element(window, role="AXTextArea", max_depth=60) if window is not None else None
+        # Waited for, not assumed: Safari publishes the page's AX tree after the load (measured
+        # 2026-09-23: absent at 2 s, present seconds later).
+        def page_area():
+            window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+            return find_element(window, role="AXTextArea", max_depth=60) if window is not None else None
+        area = d.wait_for("the page's text area in the AX tree", page_area, deadline=10.0)
         if area is None:
             raise d.Aborted("safari: the page's text area was not found")
         click_into(area, "the page's text area", bundle)
