@@ -29,6 +29,7 @@ enum ShippedModelNames {
   static let current: [ModelFamily: Set<String>] = [
     .editJudge: ["xenc-mmbert-small"],
     .egOne: ["eg-1"],
+    .egOneChecker: ["eg1c"],
     .parakeet: ["parakeet-tdt-0.6b-v3-coreml"],
     .s1Mini: ["s1-mini"],
     .whisperKit: ["whisperkit-coreml"],
@@ -65,6 +66,7 @@ enum ShippedModelNames {
   static let variants: [String: Set<String>] = [
     "edit_judge|xenc-mmbert-small": ["fp16"],
     "eg_one|eg-1": ["q5km"],
+    "eg_one_checker|eg1c": ["f16"],
     "parakeet|parakeet-tdt-0.6b-v3-coreml": ["int8"],
     "s1_mini|s1-mini": ["q4km"],
     "whisper_kit|whisperkit-coreml": [
