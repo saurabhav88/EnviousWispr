@@ -7,7 +7,8 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
   public let armName = "eg1_lora"
   public let scoresAreComparable = true
 
-  public static let systemPrompt = "[Task: check] A word from the user's dictionary may have been misheard in a dictated sentence. A is the sentence as transcribed. B writes the dictionary word at one spot. Answer B only if the speaker meant the dictionary word there; otherwise answer A. Answer with one letter."
+  public static let systemPrompt =
+    "[Task: check] A word from the user's dictionary may have been misheard in a dictated sentence. A is the sentence as transcribed. B writes the dictionary word at one spot. Answer B only if the speaker meant the dictionary word there; otherwise answer A. Answer with one letter."
 
   private let threshold: Double
   private let endpoint: @Sendable () async -> EGOneEndpoint?
@@ -61,14 +62,24 @@ public struct EGOneLearnedWordChecker: LearnedWordChecking {
     }
   }
 
-  static func parseDecisions(data: Data, questions: [LearnedWordCheckQuestion],
+  static func parseDecisions(
+    data: Data, questions: [LearnedWordCheckQuestion],
     threshold: Double
   ) throws -> [LearnedWordCheckDecision] {
     guard let results = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
       results.count == questions.count
     else { throw CheckerError.invalidResponse }
-    return try zip(questions, results).map { question, result in
-      guard let first = (result["probs"] as? [[String: Any]])?.first,
+    // llama-server answers an array prompt with one object per prompt, each carrying the
+    // prompt's position as `index`; the reply order is not promised, so match on it.
+    var byIndex: [Int: [String: Any]] = [:]
+    for result in results {
+      guard let index = result["index"] as? Int, (0..<questions.count).contains(index),
+        byIndex.updateValue(result, forKey: index) == nil
+      else { throw CheckerError.invalidResponse }
+    }
+    return try questions.enumerated().map { position, question in
+      guard let result = byIndex[position],
+        let first = (result["completion_probabilities"] as? [[String: Any]])?.first,
         let top = first["top_logprobs"] as? [[String: Any]]
       else { throw CheckerError.invalidResponse }
       var a = 0.0
