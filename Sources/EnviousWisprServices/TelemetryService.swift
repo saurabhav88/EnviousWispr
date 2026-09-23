@@ -933,6 +933,25 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("quick_add.opened", properties: props)
   }
 
+  /// Paste or Copy Last Dictation was invoked (#3106). One row per deliberate invocation.
+  ///
+  /// Shape only: which action, from where, and what happened. Never the text, the row id, the take
+  /// id or the target application. `outcome=dispatched` means Cmd+V was posted, not that it landed.
+  /// Reader: the "Last dictation reuse" insight (analytics-operations.md FACT: app-posthog-events).
+  public func lastDictationReused(action: String, source: String, outcome: String) {
+    let props: [String: Any] = ["action": action, "source": source, "outcome": outcome]
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.last_reused",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("dictation.last_reused", properties: props)
+  }
+
   /// Quick Add ended (#2381). Shape only; the same privacy boundary as `quick_add.opened`.
   ///
   /// `candidate_rank` is the POSITION the user accepted, which is what says whether the ranking is

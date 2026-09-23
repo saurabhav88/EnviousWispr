@@ -220,6 +220,11 @@ public final class HotkeyService {
     didSet { reconcileAppShortcutRegistrations() }
   }
 
+  /// The Paste Last chord went DOWN (#3106). Synchronous, on the press turn, so the owner can
+  /// sample which application the user was in at that moment: the paste itself fires on the
+  /// release, and by then focus may have moved. Fires once per physical hold.
+  public var onPasteLastPressed: (@MainActor () -> Void)?
+
   /// Copy Last Dictation fired (#3106). Registered only while set, for the same reason.
   public var onCopyLast: (@MainActor () async -> Void)? {
     didSet { reconcileAppShortcutRegistrations() }
@@ -1451,7 +1456,9 @@ public final class HotkeyService {
     switch role {
     case .pasteLast:
       if isPress {
-        appShortcutsHeld.insert(.pasteLast)
+        if appShortcutsHeld.insert(.pasteLast).inserted, onPasteLast != nil {
+          onPasteLastPressed?()
+        }
         return
       }
       guard appShortcutsHeld.remove(.pasteLast) != nil, let action = onPasteLast else { return }

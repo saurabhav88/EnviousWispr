@@ -63,8 +63,11 @@ struct TelemetryEmitterRegistryTests {
   /// and the auto-learn coordinator's `learn_save_failed`, `learn_added`, `learn_undo_shown`,
   /// `learn_undone` (2026-09-21 plan; the ask-first flow's five were retired with it). #3069
   /// added one new site: `file_import_completed` via `TelemetryService.trackFileImportCompleted`.
+  /// #3106 added one new site: `dictation.last_reused` via `TelemetryService.lastDictationReused`
+  /// (per_user_action, keep; checklist: one row per deliberate Paste/Copy Last invocation, three
+  /// closed string fields, no content, reader the "Last dictation reuse" insight).
   static let sitesFingerprint =
-    "ae0ae34f53398b8a88d7d8a1e794193e0623bb44a120e79d4dfe37b4e11261b4"
+    "77a442745a03db3e9583deea7e82d73b552d5b6126aa19d9a124fdbceb82a043"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

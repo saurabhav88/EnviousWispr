@@ -244,9 +244,11 @@ final class MenuBarController: NSObject {
   /// "this chord belongs to Start Recording", and the row itself still works. This menu exists
   /// BECAUSE the shortcut can fail, so advertising a chord that starts or cancels a recording is
   /// the one lie this surface must not tell.
-  static func quickAddShortcutLabel(bindings: ShortcutBindings) -> String? {
-    guard ShortcutMatcher.ownsItsBinding(.quickAdd, in: bindings) else { return nil }
-    guard case .keyboard(let keyCode, let modifiers) = bindings.quickAdd else { return nil }
+  ///
+  /// #3106: asked for any role, so the Paste Last Dictation item follows the same rule.
+  static func shortcutLabel(for role: ShortcutRole, bindings: ShortcutBindings) -> String? {
+    guard ShortcutMatcher.ownsItsBinding(role, in: bindings) else { return nil }
+    guard case .keyboard(let keyCode, let modifiers) = bindings[role] else { return nil }
 
     let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
@@ -365,7 +367,7 @@ final class MenuBarController: NSObject {
     // NOW, and above the Settings separator because neither is configuration.
     let quickAdd = Self.quickAddItem(
       state.quickAdd, fallbackEnabled: state.quickAddFallbackEnabled)
-    // **No key equivalent, deliberately** — see `quickAddShortcutLabel`. The chord rides in the
+    // **No key equivalent, deliberately** — see `shortcutLabel`. The chord rides in the
     // title as text, so the menu teaches the fast path without registering a second way to fire it.
     let quickAddItem = NSMenuItem(
       title: Self.quickAddTitle(base: quickAdd.title, shortcut: state.quickAddShortcut),
@@ -393,6 +395,32 @@ final class MenuBarController: NSObject {
     quickAddItem.representedObject = QuickAddMenuSelection(
       result: state.quickAdd.selectionResult, context: state.quickAddContext)
     menu.addItem(quickAddItem)
+
+    // Paste Last Dictation (#3106), directly under Quick Add: the other thing a user does to the
+    // app they are in right now. Always present; disabled when nothing may be reused. Its chord
+    // rides in the title as text, never as a key equivalent, for the reason `shortcutLabel` gives.
+    let pasteLastItem = NSMenuItem(
+      title: Self.quickAddTitle(base: "Paste Last Dictation", shortcut: state.pasteLastShortcut),
+      action: #selector(pasteLastDictationAction), keyEquivalent: "")
+    pasteLastItem.keyEquivalentModifierMask = []
+    pasteLastItem.image = NSImage(
+      systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Paste last dictation")
+    pasteLastItem.target = self
+    pasteLastItem.isEnabled = state.lastDictation != nil
+    // The row id and the target ride on the ITEM, sampled when the menu opened, for the same
+    // reasons Quick Add's selection does. The TEXT does not: the action re-reads the row by id.
+    pasteLastItem.representedObject = state.lastDictation
+    if let lastDictation = state.lastDictation {
+      // VoiceOver may skip the disabled preview row below, so the item itself carries it.
+      pasteLastItem.setAccessibilityLabel("Paste Last Dictation: \(lastDictation.preview)")
+    }
+    menu.addItem(pasteLastItem)
+    if let lastDictation = state.lastDictation {
+      let preview = NSMenuItem(title: lastDictation.preview, action: nil, keyEquivalent: "")
+      preview.isEnabled = false
+      preview.indentationLevel = 1
+      menu.addItem(preview)
+    }
 
     // Transcribe a File (#2772): the founder asked for it in the first UAT round of the
     // import wizard. Opens the unified window on that page; the page itself does the rest.
@@ -521,10 +549,15 @@ final class MenuBarController: NSObject {
   /// posting a chord at a pid nobody sampled. A default that reached out to `NSWorkspace` would be a
   /// second sample waiting for a caller who omits it, which is the shape `SelectionReader` records
   /// cloud review finding on PR #2428.
+  ///
+  /// **`lastDictationTarget` is defaulted to nil for the same reason (#3106).** Only the menu-open
+  /// path samples the frontmost application; a nil target makes a click refuse (`target_gone`)
+  /// rather than paste into whatever is in front.
   private func currentViewState(
     quickAdd: QuickAddMenuState = .nothingSelected,
     quickAddContext: SelectionReader.AcquisitionContext = .init(
-      pid: nil, bundleIdentifier: nil, focusedSubrole: nil)
+      pid: nil, bundleIdentifier: nil, focusedSubrole: nil),
+    lastDictationTarget: NSRunningApplication? = nil
   ) -> MenuBarViewState {
     // #1019: read the pending-update state (non-critical only — critical routes
     // to Sparkle's own UX) and the active-dictation guard.
@@ -545,7 +578,7 @@ final class MenuBarController: NSObject {
       sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
-      quickAddShortcut: Self.quickAddShortcutLabel(bindings: settings.shortcutBindings),
+      quickAddShortcut: Self.shortcutLabel(for: .quickAdd, bindings: settings.shortcutBindings),
       quickAddContext: quickAddContext,
       quickAddFallbackEnabled: settings.quickAddClipboardFallback,
       quickAdd: quickAdd,
@@ -561,7 +594,13 @@ final class MenuBarController: NSObject {
       updateAvailable: pending != nil,
       updateDisplayVersion: pending?.displayVersion,
       installEnabled: pending != nil && !installRefused,
-      appearancePreference: settings.appearancePreference
+      appearancePreference: settings.appearancePreference,
+      pasteLastShortcut: Self.shortcutLabel(for: .pasteLast, bindings: settings.shortcutBindings),
+      lastDictation: actions.lastDictation().map {
+        LastDictationMenuState(
+          rowID: $0.id, preview: LastDictationMenuState.preview(of: $0.text),
+          target: lastDictationTarget)
+      }
     )
   }
 
@@ -582,6 +621,12 @@ final class MenuBarController: NSObject {
         context: SelectionReader.AcquisitionContext(
           pid: nil, bundleIdentifier: nil, focusedSubrole: nil))
     actions.addSelectedWord(carried.result, carried.context)
+  }
+
+  /// Hands the row id and target sampled at menu-open to the action, which re-reads the row.
+  @objc private func pasteLastDictationAction(_ sender: NSMenuItem) {
+    let carried = sender.representedObject as? LastDictationMenuState
+    actions.pasteLastDictation(carried?.rowID, carried?.target)
   }
 
   @objc private func continueOnboardingAction() {
@@ -641,6 +686,11 @@ extension MenuBarController: NSMenuDelegate {
   nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
     MainActor.assumeIsolated {
       if let currentMenu = statusItem?.menu {
+        // #3106: the Paste Last target, taken FIRST. The Quick Add read below may take up to 0.5s,
+        // and the item must carry the application that was in front when the menu opened. The
+        // measurement below is why this is the user's application rather than us.
+        let lastDictationTarget = NSWorkspace.shared.frontmostApplication
+
         // The one read, at the one moment it is about the user's document rather than about us.
         //
         // **MEASURED rather than assumed, and the claim is exactly the measurement.** A standalone
@@ -695,7 +745,9 @@ extension MenuBarController: NSMenuDelegate {
         }()
         renderMenu(
           into: currentMenu,
-          state: currentViewState(quickAdd: quickAdd, quickAddContext: readContext))
+          state: currentViewState(
+            quickAdd: quickAdd, quickAddContext: readContext,
+            lastDictationTarget: lastDictationTarget))
       }
       updateIcon()
     }
@@ -718,6 +770,31 @@ struct MenuBarActions: Sendable {
   let openPermissions: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
+  /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.
+  let lastDictation: @MainActor () -> (id: UUID, text: String)?
+  /// Paste the dictation with this row id into this application (#3106), both sampled at menu-open.
+  let pasteLastDictation: @MainActor (UUID?, NSRunningApplication?) -> Void
+}
+
+/// What the Paste Last Dictation row shows and carries to its click (#3106).
+struct LastDictationMenuState: Equatable {
+  let rowID: UUID
+  /// The greyed preview line. Display only; the paste re-reads the row by id.
+  let preview: String
+  /// The application frontmost when the menu opened, or nil when the menu was built without that
+  /// sample (a click then refuses rather than pasting into whatever is in front).
+  let target: NSRunningApplication?
+
+  /// The approved preview: the first line only, then the shared bounded display at 30 characters.
+  /// Leading blank lines are skipped first, so a dictation that opens with a newline previews its
+  /// words rather than an empty row; only lines AFTER the first one with text are cut.
+  static let previewCharacters = 30
+
+  static func preview(of text: String) -> String {
+    let body = text.drop(while: { $0.isWhitespace || $0.isNewline })
+    let firstLine = body.prefix(while: { !$0.isNewline })
+    return HeardWordDisplay.bounded(String(firstLine), characters: previewCharacters)
+  }
 }
 
 /// What one rendered Quick Add row carries to its own click (#2465).
@@ -821,4 +898,8 @@ struct MenuBarViewState: Equatable {
   var installEnabled: Bool = false
   /// #1047: current window-appearance preference, for the Appearance submenu checkmark.
   var appearancePreference: AppearancePreference = .system
+  /// #3106: the Paste Last chord as readable text, or nil when `.pasteLast` does not own it.
+  var pasteLastShortcut: String? = nil
+  /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
+  var lastDictation: LastDictationMenuState? = nil
 }
