@@ -7,12 +7,6 @@ import Testing
 
 @Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
 struct EGOneAdapterLifecycleTests {
-  private actor Pin {
-    var held = false
-    func set(_ value: Bool) { held = value }
-    func read() -> Bool { held }
-  }
-
   /// A tiny HTTP server that records argv before answering /health. An
   /// adapter-failure marker makes only --lora launches exit before readiness.
   private struct Fixture {
@@ -149,24 +143,27 @@ struct EGOneAdapterLifecycleTests {
   func deferredRestartAndEndpointFlag() async throws {
     let fixture = try Fixture()
     let coordinator = LocalPolishServerCoordinator()
-    let pin = Pin()
     defer { fixture.cleanup() }
     let bare = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(),
-      isPinned: { await pin.read() })
+      provider: .egOne, configuration: fixture.configuration())
     let adapted = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter),
-      isPinned: { await pin.read() })
+      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
     await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
     #expect(
       Array(try fixture.launches()[0].suffix(6)) == EGOneRuntime.engineArguments(for: .egOne))
-    await pin.set(true)
+    let admission = await coordinator.acquireLease(for: .egOne)
+    let lease: LocalPolishServerLease
+    switch admission {
+    case .granted(let granted): lease = granted
+    case .changing:
+      Issue.record("ready server refused a lease")
+      return
+    }
     await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
     #expect(try fixture.launches().count == 1)
-    await pin.set(false)
-    await coordinator.retryDeferredReconfiguration()
+    await coordinator.releaseLease(lease)
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == true)
     #expect(try fixture.launches().count == 2)
 

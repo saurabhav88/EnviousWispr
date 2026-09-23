@@ -83,9 +83,11 @@ public final class FileImportRunner {
 
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
-  /// An import is one invocation even when it has many parts. The first part's
-  /// resolved language and endpoint decide for every later part.
-  private var frozenCheckerSelection: LearnedWordCheckerSelection?
+  /// An import is one invocation even when it has many parts, so the endpoint
+  /// is chosen once. The choice is keyed by each part's resolved language: a
+  /// judge qualified for English must not run on a later Spanish part because
+  /// the first part happened to be English. Key "" is an unresolved language.
+  private var frozenCheckerSelections: [String: LearnedWordCheckerSelection] = [:]
 
   public init(
     keychainManager: KeychainManager,
@@ -106,7 +108,7 @@ public final class FileImportRunner {
   public func freeze(settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?) {
     frozenSettings = settings
     frozenVocabulary = vocabulary
-    frozenCheckerSelection = nil
+    frozenCheckerSelections = [:]
   }
 
   /// Runs one part through the shipped chain.
@@ -229,12 +231,11 @@ public final class FileImportRunner {
     let learnedWordCheck = LearnedWordCheckStep()
     learnedWordCheck.selectionProvider = { [weak self] provider, language in
       guard let self else { return .init(absence: .serverUnavailable) }
-      if let frozenCheckerSelection = self.frozenCheckerSelection {
-        return frozenCheckerSelection
-      }
+      let key = language ?? ""
+      if let frozen = self.frozenCheckerSelections[key] { return frozen }
       let selection = await self.checkerSelectionProvider?(provider, language)
         ?? .init(absence: .serverUnavailable)
-      self.frozenCheckerSelection = selection
+      self.frozenCheckerSelections[key] = selection
       return selection
     }
     learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled

@@ -11,7 +11,7 @@ import Testing
 struct LearnedCheckTerminalTelemetryTests {
   private let facts = LearnedCheckTerminalFacts(
     flagged: 3, approved: 1, applied: 1, contested: 0, latencyMs: 142, arm: "eg1_lora",
-    fallbackReason: nil, checkerIdentity: "eg1c-v1", checkerStatus: "ran")
+    fallbackReason: nil, checkerIdentity: "eg1c-v2", checkerStatus: "ran")
 
   @Test("the facts project onto the terminal row with the learned_check_ keys only")
   func projection() throws {
@@ -29,14 +29,14 @@ struct LearnedCheckTerminalTelemetryTests {
       ])
     #expect(props["learned_check_applied"] as? Int == 1)
     #expect(props["learned_check_arm"] as? String == "eg1_lora")
-    #expect(props["learned_check_checker_identity"] as? String == "eg1c-v1")
+    #expect(props["learned_check_checker_identity"] as? String == "eg1c-v2")
     #expect(props["learned_check_checker_status"] as? String == "ran")
     #expect(props["learned_check_absence_reason"] == nil)
   }
 
   @Test("each closed absence value reaches the terminal row without content",
     arguments: [
-      "not_eg_one", "base_not_admitted", "adapter_downloading", "adapter_delivery_failed",
+      "not_eg_one", "base_not_admitted", "adapter_downloading", "adapter_delivery_failed", "delivery_disabled",
       "base_mismatch_family", "base_mismatch_revision", "base_mismatch_variant",
       "base_mismatch_shard_hash", "base_mismatch_prompt_template", "base_mismatch_runtime",
       "unqualified_language", "server_without_adapter_adapter_missing",

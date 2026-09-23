@@ -36,7 +36,10 @@ final class EGOneCheckerEligibility {
 
   func statusDidChange() { statusRevision &+= 1 }
 
-  func retryDownload() async {
+  /// Starts or retries the word check's download for a run that uses EG-1:
+  /// the Dictionary's "Try again", and a file import that picked EG-1 while
+  /// dictation uses another engine (the selection-driven ensure never fires).
+  func requestAdapterDownload() async {
     guard let base, let promptTemplateID else { return }
     _ = await delivery.ensureCheckerAdapterIfEGOneSelected(
       selected: true, baseRegistration: base, promptTemplateID: promptTemplateID)
@@ -51,6 +54,15 @@ final class EGOneCheckerEligibility {
       }
     #endif
     guard provider == .egOne else { return .init(absence: .notEGOne) }
+    let judge = LearnedWordJudge(
+      displayName: LLMProvider.egOne.displayName,
+      qualifiedLanguages:
+        delivery.egOneCheckerRegistration?.manifest.checkerContract?.qualifiedLanguages ?? [])
+    return await egOneSelection(language: language).naming(judge)
+  }
+
+  private func egOneSelection(language: String?) async -> LearnedWordCheckerSelection {
+    let provider = LLMProvider.egOne
     guard let base, let promptTemplateID else { return .init(absence: .baseNotAdmitted) }
     let baseAdmitted = await delivery.controller.isAdmitted(base)
     guard baseAdmitted else { return .init(absence: .baseNotAdmitted) }
@@ -67,6 +79,7 @@ final class EGOneCheckerEligibility {
       provider: provider, baseAdmitted: baseAdmitted, adapterAdmitted: adapterAdmitted,
       deliveryState: deliveryState,
       hostConfigured: ModelDeliveryHome.checkerHostIsConfigured(adapter.manifest),
+      deliveryEnabled: delivery.checkerDeliveryEnabled,
       contract: contract,
       admittedBase: AdmittedEGOneBase(
         manifest: base.manifest, promptTemplateID: promptTemplateID),
@@ -80,7 +93,7 @@ final class EGOneCheckerEligibility {
 
   static func evaluate(
     provider: LLMProvider, baseAdmitted: Bool, adapterAdmitted: Bool,
-    deliveryState: DeliveryState, hostConfigured: Bool = true,
+    deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: EGOneCheckerContract?,
     admittedBase: AdmittedEGOneBase?, language: String?, endpoint: EGOneEndpoint?,
     serverReason: String?, debugThreshold: Double? = nil
@@ -97,6 +110,9 @@ final class EGOneCheckerEligibility {
     }
     guard adapterAdmitted else {
       guard hostConfigured else { return absent(.adapterDeliveryFailed) }
+      // The delivery switch off means no fetch will ever start; reporting
+      // "downloading" would be a status that never resolves.
+      guard deliveryEnabled else { return absent(.deliveryDisabled) }
       switch deliveryState {
       case .failed, .cancelled:
         return .init(absence: .adapterDeliveryFailed, retryAvailable: true)

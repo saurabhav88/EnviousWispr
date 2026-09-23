@@ -130,14 +130,22 @@ public struct DeliveryManifest: Codable, Sendable, Equatable {
         checkerContract.adapterSizeBytes == file.sizeBytes,
         checkerContract.adapterSHA256 == file.sha256,
         checkerContract.format == "gguf-lora",
-        checkerContract.qualifiedThreshold == "0.9",
-        checkerContract.qualifiedLanguages == ["en"],
+        // The signed contract, not this parser, names what a judge revision is
+        // qualified for, so a newly qualified language or threshold is a
+        // manifest change. The parser only refuses values no judge can mean.
+        let threshold = Double(checkerContract.qualifiedThreshold), threshold.isFinite,
+        threshold > 0, threshold <= 1,
+        !checkerContract.qualifiedLanguages.isEmpty,
+        Set(checkerContract.qualifiedLanguages).count == checkerContract.qualifiedLanguages.count,
+        checkerContract.qualifiedLanguages.allSatisfy({
+          (2...3).contains($0.count) && $0.allSatisfy({ "abcdefghijklmnopqrstuvwxyz".contains($0) })
+        }),
         checkerContract.adapterSizeBytes > 0,
         !checkerContract.base.revision.isEmpty,
         !checkerContract.base.variant.isEmpty,
         !checkerContract.base.promptTemplateID.isEmpty,
         checkerContract.base.runtimeABI == identity.runtimeABI,
-        checkerContract.base.shardSHA256.count == 8,
+        !checkerContract.base.shardSHA256.isEmpty,
         checkerContract.base.shardSHA256.allSatisfy({ $0.count == 64 && $0.allSatisfy({ "0123456789abcdef".contains($0) }) })
       else { throw ManifestError.structurallyInvalid("invalid EG-1 checker contract") }
     } else if checkerContract != nil {

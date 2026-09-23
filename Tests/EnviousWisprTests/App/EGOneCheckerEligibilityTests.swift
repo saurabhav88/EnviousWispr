@@ -25,11 +25,12 @@ struct EGOneCheckerEligibilityTests {
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)), appSupportOverride: temp)
       let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil)
-      let checker = try #require(LearnedWordCheckUATDoor.configuration(environment: [
-        LearnedWordCheckUATDoor.environmentKey: "Tuist",
-        "EW_LEARNED_CHECK_EG1_ADAPTER": "/missing/checker.gguf",
-        "EW_LEARNED_CHECK_EG1_THRESHOLD": "0.99",
-      ]))
+      let checker = try #require(
+        LearnedWordCheckUATDoor.configuration(environment: [
+          LearnedWordCheckUATDoor.environmentKey: "Tuist",
+          "EW_LEARNED_CHECK_EG1_ADAPTER": "/missing/checker.gguf",
+          "EW_LEARNED_CHECK_EG1_THRESHOLD": "0.99",
+        ]))
       let eligibility = EGOneCheckerEligibility(
         delivery: delivery, base: nil, promptTemplateID: nil, runtime: runtime,
         debugThreshold: 0.99, debugScriptedChecker: checker)
@@ -39,17 +40,19 @@ struct EGOneCheckerEligibilityTests {
         #expect(selection.checker?.armName == "uat_scripted")
         #expect(selection.absence == nil)
       }
-      #expect((await eligibility.selection(provider: .egOne, language: nil)).identity
-        == "uat_scripted")
+      #expect(
+        (await eligibility.selection(provider: .egOne, language: nil)).identity
+          == "uat_scripted")
       let emptyChecker = LearnedWordCheckUATDoor.configuration(environment: [
-        LearnedWordCheckUATDoor.environmentKey: " ,  \t ",
+        LearnedWordCheckUATDoor.environmentKey: " ,  \t "
       ])
       #expect(emptyChecker?.armName == nil)
       let emptyEligibility = EGOneCheckerEligibility(
         delivery: delivery, base: nil, promptTemplateID: nil, runtime: runtime,
         debugScriptedChecker: emptyChecker)
-      #expect((await emptyEligibility.selection(provider: .s1Mini, language: "de")).absence
-        == .notEGOne)
+      #expect(
+        (await emptyEligibility.selection(provider: .s1Mini, language: "de")).absence
+          == .notEGOne)
     }
   #endif
 
@@ -58,13 +61,22 @@ struct EGOneCheckerEligibilityTests {
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
     let resources = root.appendingPathComponent("Sources/EnviousWispr/Resources")
-    let checker = try DeliveryManifest.load(from: Data(contentsOf: resources
-      .appendingPathComponent("eg1-checker-delivery-manifest.json")))
+    let checker = try DeliveryManifest.load(
+      from: Data(
+        contentsOf:
+          resources
+          .appendingPathComponent("eg1-checker-delivery-manifest.json")))
     let contract = try #require(checker.checkerContract)
-    let base = try DeliveryManifest.load(from: Data(contentsOf: resources
-      .appendingPathComponent("eg1-delivery-manifest.json")))
-    return (contract, AdmittedEGOneBase(
-      manifest: base, promptTemplateID: contract.base.promptTemplateID))
+    let base = try DeliveryManifest.load(
+      from: Data(
+        contentsOf:
+          resources
+          .appendingPathComponent("eg1-delivery-manifest.json")))
+    return (
+      contract,
+      AdmittedEGOneBase(
+        manifest: base, promptTemplateID: contract.base.promptTemplateID)
+    )
   }
 
   @Test("ready, loading, mismatch, absent, and language refusal use one owner")
@@ -91,35 +103,64 @@ struct EGOneCheckerEligibilityTests {
     #expect(select(provider: .appleIntelligence).absence == .notEGOne)
     #expect(select(provider: .openAI).absence == .notEGOne)
     #expect(select(baseAdmitted: false).absence == .baseNotAdmitted)
-    #expect(select(adapterAdmitted: false, state: .downloading(
-      fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2)).absence == .adapterDownloading)
-    #expect(select(adapterAdmitted: false, state: .cancelled(resumable: true))
-      .absence == .adapterDeliveryFailed)
-    #expect(select(adapterAdmitted: false, state: .cancelled(resumable: true))
-      .retryAvailable)
-    #expect(!EGOneCheckerEligibility.evaluate(
-      provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
-      deliveryState: .notReady, hostConfigured: false, contract: contract,
-      admittedBase: base, language: "en", endpoint: ready, serverReason: nil).retryAvailable)
-    #expect(select(admittedBase: try mismatchedBase()).absence
-      == .baseMismatch("prompt_template"))
+    #expect(
+      select(
+        adapterAdmitted: false,
+        state: .downloading(
+          fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2)
+      ).absence == .adapterDownloading)
+    #expect(
+      select(adapterAdmitted: false, state: .cancelled(resumable: true))
+        .absence == .adapterDeliveryFailed)
+    #expect(
+      select(adapterAdmitted: false, state: .cancelled(resumable: true))
+        .retryAvailable)
+    #expect(
+      !EGOneCheckerEligibility.evaluate(
+        provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
+        deliveryState: .notReady, hostConfigured: false, contract: contract,
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+      ).retryAvailable)
+    #expect(
+      EGOneCheckerEligibility.evaluate(
+        provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
+        deliveryState: .notReady, deliveryEnabled: false, contract: contract,
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+      ).absence
+        == .deliveryDisabled)
+    #expect(
+      EGOneCheckerEligibility.evaluate(
+        provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
+        deliveryState: .admitted, deliveryEnabled: false, contract: contract,
+        admittedBase: base, language: "en", endpoint: ready, serverReason: nil
+      ).checker != nil)
+    #expect(
+      select(admittedBase: try mismatchedBase()).absence
+        == .baseMismatch("prompt_template"))
     #expect(select(language: "de").absence == .unqualifiedLanguage)
     #expect(select(language: nil).absence == .unqualifiedLanguage)
-    #expect(EGOneCheckerEligibility.evaluate(
-      provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
-      deliveryState: .admitted, contract: contract, admittedBase: base,
-      language: "en", endpoint: nil, serverReason: nil).absence == .serverUnavailable)
-    #expect(select(endpoint: .init(port: 12345, authToken: "test", contextTokens: 1024),
-      serverReason: "adapter_server_exited").absence
-      == .serverWithoutAdapter("adapter_server_exited"))
+    #expect(
+      EGOneCheckerEligibility.evaluate(
+        provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
+        deliveryState: .admitted, contract: contract, admittedBase: base,
+        language: "en", endpoint: nil, serverReason: nil
+      ).absence == .serverUnavailable)
+    #expect(
+      select(
+        endpoint: .init(port: 12345, authToken: "test", contextTokens: 1024),
+        serverReason: "adapter_server_exited"
+      ).absence
+        == .serverWithoutAdapter("adapter_server_exited"))
   }
 
   private func mismatchedBase() throws -> AdmittedEGOneBase {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
-    let base = try DeliveryManifest.load(from: Data(contentsOf: root.appendingPathComponent(
-      "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
+    let base = try DeliveryManifest.load(
+      from: Data(
+        contentsOf: root.appendingPathComponent(
+          "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
     return AdmittedEGOneBase(manifest: base, promptTemplateID: "wrong")
   }
 }

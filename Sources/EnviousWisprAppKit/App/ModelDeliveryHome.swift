@@ -66,6 +66,14 @@ public final class ModelDeliveryHome {
   public static let TODOCheckerAdapterHostBaseURL =
     "https://adapter-host-pending.invalid/eg1-checker/"
 
+  /// The one read of the checker family's delivery switch, shared by the
+  /// ensure path and the eligibility owner so they cannot disagree.
+  public var checkerDeliveryEnabled: Bool {
+    let defaults = checkerDeliveryDefaults
+      ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    return DeliveryFlags.snapshot(family: .egOneChecker, defaults: defaults).familyEnabled
+  }
+
   public static func checkerHostIsConfigured(_ manifest: DeliveryManifest) -> Bool {
     guard manifest.identity.family == .egOneChecker,
       manifest.sources.count == 1,
@@ -548,11 +556,7 @@ public final class ModelDeliveryHome {
       return .incompatible(reason)
     }
     guard Self.checkerHostIsConfigured(checker.manifest) else { return .hostNotConfigured }
-    let defaults = checkerDeliveryDefaults
-      ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
-    guard DeliveryFlags.snapshot(family: .egOneChecker, defaults: defaults).familyEnabled else {
-      return .deliveryDisabled
-    }
+    guard checkerDeliveryEnabled else { return .deliveryDisabled }
     await recordFirstRunBaseline(for: checker)
     await controller.sweepSupersededStaging(checker)
     return .delivery(await controller.ensureModelAvailable(checker))

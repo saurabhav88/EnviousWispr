@@ -18,6 +18,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
   public var llmProvider: LLMProvider = .none
+  /// Frozen before a local take starts. A transition already in progress
+  /// cannot provide that take's selected server, so this limb skips cleanly.
+  public var localServerChangingAtFreeze = false
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
   /// #2649: the user's S1-mini control-line picks. Frozen per recording like
@@ -553,6 +556,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    // A file-import part, re-polish, or recovery replay may enter without a
+    // whole-take hold. Keep the server resident through the actual inference.
+    // A live take already has a longer hold; this second token is harmless.
+    var inferenceLease: (runtime: any EGOneLeaseProviding, lease: LocalPolishServerLease)?
+    defer {
+      if let inferenceLease {
+        Task { await inferenceLease.runtime.releaseLocalServerLease(inferenceLease.lease) }
+      }
+    }
     onWillProcess?()
     // #827 PR-8: snapshot the mutable provider/model at entry. process()
     // suspends at the polish await, so every read after it must come from
@@ -709,8 +721,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: nil
       }
     if let handles = localServerHandles {
+      guard !localServerChangingAtFreeze else {
+        throw LLMError.localEngineSkipped(.notReady, provider)
+      }
       guard let runtime = handles.runtime else {
         throw LLMError.localEngineSkipped(.notReady, provider)
+      }
+      if let owner = runtime as? any EGOneLeaseProviding {
+        switch await owner.acquireLocalServerLease() {
+        case .granted(let lease): inferenceLease = (owner, lease)
+        case .changing: throw LLMError.localEngineSkipped(.notReady, provider)
+        }
       }
       guard let endpoint = await runtime.activeEndpoint() else {
         // Also the answer when ANOTHER model holds the server: the coordinator

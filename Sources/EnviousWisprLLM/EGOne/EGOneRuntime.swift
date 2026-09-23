@@ -12,6 +12,14 @@ public protocol EGOneEndpointProviding: AnyObject {
   func activeEndpoint() async -> EGOneEndpoint?
 }
 
+/// Only a process-owning runtime offers admission. Endpoint-only test doubles
+/// still exercise routing without pretending to own the bundled server.
+@MainActor
+public protocol EGOneLeaseProviding: EGOneEndpointProviding {
+  func acquireLocalServerLease() async -> LocalPolishLeaseAdmission
+  func releaseLocalServerLease(_ lease: LocalPolishServerLease) async
+}
+
 /// Observable lifecycle events the AppKit layer forwards to telemetry.
 ///
 /// #1348 Phase 3: EG-1's DOWNLOAD lifecycle telemetry now flows through the
@@ -90,7 +98,7 @@ public enum EGOnePausedInstallState: String, Sendable, Equatable {
 /// state, health, and server activation; only the byte-moving relocated.
 @Observable
 @MainActor
-public final class EGOneRuntime: EGOneEndpointProviding {
+public final class EGOneRuntime: EGOneLeaseProviding {
 
   // MARK: - Published state (settings UI reads these)
 
@@ -554,11 +562,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     removalPending = false
     activationGeneration += 1
-    // Stamped on the main actor, in the order the user acted. Inside the task
-    // the order would be whatever the scheduler chose.
+    // Keep the user's Remove in the same intent order as provider switches.
     let intent = server.claimIntent()
     Task {
-      await self.server.transition(to: .idle(self.provider), intent: intent)
+      // The prior stop/delete split established why selection, rather than an
+      // intent stamp, must still decide deletion after the awaited exclusion.
       // The stop can be superseded, and the two halves of this task do NOT
       // deserve the same guard. A superseded stop is harmless — the server is
       // running because somebody newer asked for it. A superseded DELETE
@@ -574,8 +582,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // Unset reads as "not selected" and the deletion proceeds: the user
       // asked for this explicitly, and refusing on a missing closure would
       // make removal unreachable rather than safe.
-      guard self.isActiveProvider?() != true else { return }
-      _ = await delivery.remove()
+      // #3105: the coordinator now owns the entire stop-to-delete exclusion.
+      // A lease that appears after the old MainActor refusal waits here; a
+      // take that arrives later sees changing before it freezes.
+      await self.server.beginRemoval(for: self.provider, intent: intent)
+      if self.isActiveProvider?() != true {
+        _ = await delivery.remove()
+      } else {
+        // Reselection while the removal waited on a lease keeps the bytes.
+        // Re-issue activation because the exclusive stop may have won after
+        // the earlier activation; the coordinator defers it until endRemoval.
+        self.activateAndProbe()
+      }
+      await self.server.endRemoval()
     }
   }
 
@@ -834,8 +853,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     guard generation == activationGeneration else { return }
     await server.transition(
       to: .run(LocalPolishTarget(
-        provider: provider, configuration: configuration,
-        isPinned: { [weak self] in await self?.isPinnedInFlight?() == true })),
+        provider: provider, configuration: configuration)),
       intent: intent)
   }
 
@@ -866,6 +884,15 @@ public final class EGOneRuntime: EGOneEndpointProviding {
 
   public func activeEndpoint() async -> EGOneEndpoint? {
     await server.endpoint(for: provider)
+  }
+
+  public func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
+    await server.acquireLease(for: provider)
+  }
+
+  public func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
+    await server.releaseLease(lease)
+    retryPendingRemoval()
   }
 
   // MARK: - Helpers

@@ -30,16 +30,31 @@ import os
 public struct LocalPolishTarget: Sendable {
   public let provider: LLMProvider
   public let configuration: EGOneServerManager.Configuration
-  /// Reads the existing take/import pin owner immediately before eviction.
-  public let isPinned: @Sendable () async -> Bool
 
-  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration,
-    isPinned: @escaping @Sendable () async -> Bool = { false }
-  ) {
+  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration) {
     self.provider = provider
     self.configuration = configuration
-    self.isPinned = isPinned
   }
+}
+
+/// A physical hold on the resident bundled server. The coordinator alone
+/// admits and releases these tokens; callers cannot infer safety from a frozen
+/// configuration read on another actor.
+public struct LocalPolishServerLease: Sendable {
+  fileprivate let id: UUID
+  fileprivate let provider: LLMProvider
+
+  fileprivate init(provider: LLMProvider) {
+    id = UUID()
+    self.provider = provider
+  }
+}
+
+public enum LocalPolishLeaseAdmission: Sendable {
+  case granted(LocalPolishServerLease)
+  /// The server is stopping, starting, or does not yet hold this provider.
+  /// The optional polish limb uses its existing unchanged-text fallback.
+  case changing
 }
 
 /// What a caller is asking the coordinator for.
@@ -79,6 +94,9 @@ public actor LocalPolishServerCoordinator {
   private var resident: LLMProvider?
   private var residentTarget: LocalPolishTarget?
   private var deferredRequest: (request: LocalPolishIntent, intent: Int)?
+  private var leases: [UUID: LLMProvider] = [:]
+  private var changing = false
+  private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   private var recordedCheckerFailure: EGOneServerManager.CheckerFailureReason?
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
@@ -129,6 +147,55 @@ public actor LocalPolishServerCoordinator {
 
   public init() {}
 
+  /// Admission and the eviction decision share this actor's non-suspending
+  /// turn. A take either gets a hold before a transition decides to stop, or
+  /// sees changing before it freezes its local-polish choice.
+  public func acquireLease(for provider: LLMProvider) -> LocalPolishLeaseAdmission {
+    guard !changing, resident == provider else { return .changing }
+    let lease = LocalPolishServerLease(provider: provider)
+    leases[lease.id] = provider
+    return .granted(lease)
+  }
+
+  public func releaseLease(_ lease: LocalPolishServerLease) async {
+    guard leases.removeValue(forKey: lease.id) == lease.provider else { return }
+    wakeRemovalWaiters()
+    if leases.isEmpty { await retryDeferredReconfiguration() }
+  }
+
+  public func hasLease(for provider: LLMProvider) -> Bool {
+    leases.values.contains(provider)
+  }
+
+  /// Reserve the server for Remove Model, including the artifact deletion that
+  /// follows the stop. New takes see changing before they freeze. A live hold
+  /// waits on its release signal instead of racing a separate MainActor read.
+  public func beginRemoval(for provider: LLMProvider, intent: Int) async {
+    honouredIntent = max(honouredIntent, intent)
+    while changing || leases.values.contains(provider) {
+      await withCheckedContinuation { removalWaiters.append($0) }
+    }
+    changing = true
+    if resident == provider {
+      await manager.stop()
+      observers[provider]?(.stopped)
+      setResident(nil)
+      residentTarget = nil
+    }
+  }
+
+  public func endRemoval() async {
+    changing = false
+    wakeRemovalWaiters()
+    await retryDeferredReconfiguration()
+  }
+
+  private func wakeRemovalWaiters() {
+    let waiters = removalWaiters
+    removalWaiters = []
+    waiters.forEach { $0.resume() }
+  }
+
   /// Drive the server to `target`, or to nothing when `target` is nil.
   ///
   /// One entry point, because starting and stopping are not independent
@@ -143,6 +210,11 @@ public actor LocalPolishServerCoordinator {
     // A stamp older than one already honoured describes a world the user has
     // moved on from. Obeying it is exactly the defect this replaced.
     guard intent >= honouredIntent else { return }
+    if changing {
+      honouredIntent = intent
+      deferredRequest = (request, intent)
+      return
+    }
 
     let target: LocalPolishTarget?
     switch request {
@@ -162,8 +234,7 @@ public actor LocalPolishServerCoordinator {
       resident != target?.provider
         || residentTarget?.configuration.learnedWordAdapterURL
           != target?.configuration.learnedWordAdapterURL)
-    if changesProcess, await residentTarget?.isPinned() == true {
-      guard intent >= honouredIntent else { return }
+    if changesProcess, !leases.isEmpty {
       honouredIntent = intent
       deferredRequest = (request, intent)
       return
@@ -171,13 +242,13 @@ public actor LocalPolishServerCoordinator {
     guard intent >= honouredIntent else { return }
     honouredIntent = intent
     deferredRequest = nil
+    changing = changesProcess || target != nil
 
     if let resident, changesProcess {
       // Stop the outgoing model BEFORE recording the new resident, so a start
       // that fails leaves the field honestly empty rather than naming a model
       // that is not running.
       await manager.stop()
-      guard intent >= honouredIntent else { return }
       // Whoever actually lost the process is told so, rather than whichever
       // provider the caller named: its row must not keep showing a live server
       // it no longer owns.
@@ -186,10 +257,24 @@ public actor LocalPolishServerCoordinator {
       residentTarget = nil
     }
 
-    guard intent >= honouredIntent, let target else { return }
+    if intent < honouredIntent {
+      changing = false
+      wakeRemovalWaiters()
+      await retryDeferredReconfiguration()
+      return
+    }
+    guard let target else {
+      changing = false
+      wakeRemovalWaiters()
+      await retryDeferredReconfiguration()
+      return
+    }
     setResident(target.provider)
     residentTarget = target
     await manager.start(configuration: target.configuration)
+    changing = false
+    wakeRemovalWaiters()
+    await retryDeferredReconfiguration()
     if target.provider == .egOne, resident == .egOne {
       let reason = await manager.checkerFailureReason
       guard resident == .egOne,
@@ -204,8 +289,8 @@ public actor LocalPolishServerCoordinator {
     }
   }
 
-  /// Called when the shared take/import pin is released. Rechecks the pin;
-  /// a newer provider intent supersedes an older deferred adapter change.
+  /// Called when the last server lease is released. Rechecks actor-owned
+  /// leases; a newer provider intent supersedes an older deferred adapter change.
   public func retryDeferredReconfiguration() async {
     guard let deferredRequest else { return }
     await transition(to: deferredRequest.request, intent: deferredRequest.intent)
@@ -348,5 +433,32 @@ public final class LocalPolishRuntimeSet {
     case .s1Mini: return s1Mini
     case .appleIntelligence, .ollama, .openAI, .gemini, .claude, .none: return nil
     }
+  }
+
+  /// #3105: the file import's whole-run hold on its bundled server. Each part
+  /// also holds one through its own inference; this one covers the gaps
+  /// between parts, so a provider switch or adapter change made mid-import
+  /// waits for the run's end instead of landing between two parts.
+  private var importHold: (runtime: EGOneRuntime, lease: LocalPolishServerLease)?
+
+  /// Takes the import's hold once its server is ready. False when the server
+  /// is changing; the caller refuses the local cleanup as for a missing
+  /// endpoint.
+  public func holdForImport(_ provider: LLMProvider) async -> Bool {
+    await releaseImportHold()
+    guard let runtime = runtime(for: provider) else { return false }
+    switch await runtime.acquireLocalServerLease() {
+    case .granted(let lease):
+      importHold = (runtime, lease)
+      return true
+    case .changing:
+      return false
+    }
+  }
+
+  public func releaseImportHold() async {
+    guard let hold = importHold else { return }
+    importHold = nil
+    await hold.runtime.releaseLocalServerLease(hold.lease)
   }
 }
