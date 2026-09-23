@@ -86,6 +86,7 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
+    egOneLearnedWordChecker: (any LearnedWordChecking)? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?,
     /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
     /// nil.
@@ -115,6 +116,7 @@ final class PipelineSettingsSync {
     self.hotkeyService = hotkeyService
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
+    self.egOneLearnedWordChecker = egOneLearnedWordChecker
     self.ollamaRemotenessLookup = ollamaRemotenessLookup
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
@@ -151,6 +153,14 @@ final class PipelineSettingsSync {
   /// #2649: the second local engine. Switching TO it must start it, and
   /// switching AWAY must stop it, exactly as EG-1 does.
   private let s1MiniRuntime: EGOneRuntime?
+  private let egOneLearnedWordChecker: (any LearnedWordChecking)?
+
+  private func syncEGOneLearnedWordChecker(provider: LLMProvider) {
+    guard egOneLearnedWordChecker != nil else { return }
+    let checker = provider == .egOne ? egOneLearnedWordChecker : nil
+    kernelDriver.learnedWordCheck.checker = checker
+    whisperKitKernelDriver.learnedWordCheck.checker = checker
+  }
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
   /// at each `startRecording` and are not seeded here.
@@ -158,10 +168,13 @@ final class PipelineSettingsSync {
   /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
   /// in the former root state init) owns that fanout. See Phase D (#496).
   func applyInitialSettings(_ settings: SettingsManager) {
+    syncEGOneLearnedWordChecker(provider: settings.llmProvider)
     kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    kernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     kernelDriver.spokenPunctuationEnabled = settings.spokenPunctuationEnabled
@@ -222,6 +235,7 @@ final class PipelineSettingsSync {
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
+      syncEGOneLearnedWordChecker(provider: settings.llmProvider)
       // Eviction fires for RAM management (#295). Pipeline polish uses the
       // frozen value from `DictationSessionConfig`; live steps are seeded per
       // recording, so nothing to mirror here since #1106 removed re-polish.
@@ -291,6 +305,8 @@ final class PipelineSettingsSync {
     case .wordCorrectionEnabled:
       kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      kernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      whisperKitKernelDriver.learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
     case .fillerRemovalEnabled:
       kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
       whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled

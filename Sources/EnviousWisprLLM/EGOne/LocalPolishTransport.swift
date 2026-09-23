@@ -31,7 +31,9 @@ enum LocalPolishTransport {
     config: LLMProviderConfig,
     parse: (Data) throws -> LLMResult
   ) async throws -> LLMResult {
-    let body = try EGOneConnector.makeRequestBody(system: system, user: user, config: config)
+    let body = try EGOneConnector.makeRequestBody(
+      system: system, user: user, config: config,
+      hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter)
 
     var request = URLRequest(url: endpoint.chatCompletionsURL)
     request.httpMethod = "POST"

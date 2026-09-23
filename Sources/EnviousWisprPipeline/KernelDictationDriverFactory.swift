@@ -520,6 +520,7 @@ public enum KernelDictationDriverFactory {
     let limbSteps = LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
+      learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),

@@ -228,6 +228,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// `EGOneServerManager.ProbeSpec`.
   private let probeSpec: EGOneServerManager.ProbeSpec
   private let serverBinaryURL: URL?
+  private let learnedWordAdapterURL: URL?
 
   // MARK: - Init
 
@@ -244,7 +245,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
-    provider: LLMProvider = .egOne
+    provider: LLMProvider = .egOne,
+    learnedWordAdapterURL: URL? = nil
   ) {
     self.provider = provider
     // Derived from the provider rather than taken as a parameter: the two must
@@ -271,6 +273,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
+    self.learnedWordAdapterURL = learnedWordAdapterURL
     self.delivery = delivery
     self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
     // Restore the paused projection from the last launch (#2109, whole-diff
@@ -785,6 +788,14 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
   }
 
+  nonisolated static func launchArguments(
+    for provider: LLMProvider, learnedWordAdapterURL: URL?
+  ) -> [String] {
+    let engine = engineArguments(for: provider)
+    guard provider == .egOne, let learnedWordAdapterURL else { return engine }
+    return engine + ["--lora", learnedWordAdapterURL.path, "--lora-init-without-apply"]
+  }
+
   private func bootServer(
     manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int
   ) async {
@@ -794,7 +805,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // The verified admitted location (install dir + resolved install path).
       modelURL: delivery.installedArtifactURL,
       contextTokens: manifest.contextTokens,
-      extraArguments: Self.engineArguments(for: provider)
+      extraArguments: Self.launchArguments(
+        for: provider, learnedWordAdapterURL: learnedWordAdapterURL),
+      learnedWordAdapterURL: provider == .egOne ? learnedWordAdapterURL : nil
     )
     await server.transition(
       to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
