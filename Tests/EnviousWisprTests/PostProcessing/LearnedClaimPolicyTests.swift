@@ -102,4 +102,36 @@ struct LearnedClaimPolicyTests {
       canonical: "Hack Club", aliases: ["hack clubs", "hack club"], learnedAliases: ["hack clubs"])
     #expect(correct("the hack clubs met", [multi]) == "the hack clubs met")
   }
+
+  @Test("no pass rewrites a word inside a learned phrase (Codex PR-1 review r2 P1)")
+  func manualAliasInsideLearnedPhraseStays() {
+    let tool = CustomWord(
+      canonical: "AIDesignTool", aliases: ["ai design tool"], learnedAliases: ["ai design tool"])
+    let ai = CustomWord(canonical: "AI", aliases: ["ai"])
+    #expect(correct("try the ai design tool now", [tool, ai]) == "try the ai design tool now")
+    #expect(correct("ask the ai now", [tool, ai]) == "ask the AI now")
+  }
+
+  @Test("a born-learned multi-word word is not fuzzy-rewritten to another word (r2 P1)")
+  func bornLearnedMultiWordIsProtected() {
+    let club = CustomWord(canonical: "Hack Club", learnedAt: learnedAt)
+    let other = CustomWord(canonical: "HackClubs", aliases: ["hack clubs"])
+    #expect(correct("the hack club met", [club, other]) == "the hack club met")
+  }
+
+  @Test("the domain-peeled form of a learned surface is protected too (r2 P2)")
+  func peeledLearnedSurfaceIsProtected() {
+    let mic = CustomWord(
+      canonical: "Microphone X", aliases: ["microphone", "microphones"],
+      learnedAliases: ["microphones"])
+    #expect(correct("see microphones.com today", [mic]) == "see microphones.com today")
+  }
+
+  @Test("masking restores every learned token byte for byte, punctuation included")
+  func maskRoundTrip() {
+    let tuist = CustomWord(
+      canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"], learnedAt: learnedAt)
+    let text = "\"Toast,\" she said, toast! (toast)"
+    #expect(correct(text, [tuist]) == text)
+  }
 }
