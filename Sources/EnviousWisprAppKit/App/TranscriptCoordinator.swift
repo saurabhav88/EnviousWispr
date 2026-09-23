@@ -951,6 +951,53 @@ final class TranscriptCoordinator {
     return current.displayText
   }
 
+  /// The newest dictation the menu bar and the Paste/Copy Last Dictation shortcuts may offer
+  /// again (#3106), or nil when there is none.
+  ///
+  /// Read from every visible row, NOT `filteredTranscripts`: those shortcuts work from any app, so
+  /// what History's own filter or search happens to show must not decide which text they reuse.
+  /// Returns the full `displayText`; the menu shortens it for display.
+  ///
+  /// A SNAPSHOT for rendering. Acting on it goes through `lastDictationTextForReuse(id:)`,
+  /// which reads the row again at that moment.
+  func lastPasteableDictation() -> (id: UUID, text: String)? {
+    let now = Date()
+    guard let row = transcripts.first(where: { Self.isReusableDictation($0, at: now) }) else {
+      return nil
+    }
+    return (row.id, row.displayText)
+  }
+
+  /// The text to reuse for row `id`, read fresh at call time, or nil if that row may no longer
+  /// be reused (#3106): deleted, expired, or no longer eligible.
+  ///
+  /// Deliberately separate from `textForDelivery(_:)`, which serves History's own buttons and
+  /// must keep offering imported and held rows there. Reuse is narrower: only a dictation the
+  /// user actually made and received.
+  func lastDictationTextForReuse(id: UUID) -> String? {
+    guard let row = transcripts.first(where: { $0.id == id }),
+      Self.isReusableDictation(row, at: Date())
+    else { return nil }
+    return row.displayText
+  }
+
+  /// One eligibility rule for both queries above, applied at the time of each read, so the two
+  /// cannot disagree about the same row in the same state. The row can still change between the
+  /// menu's read and the action's: an edit or deletion in between is meant to make the action
+  /// refuse it.
+  ///
+  /// - Imported rows are files put through Transcribe a File, not something the user said.
+  /// - Held rows (`escapeRecoveredAt`) are cancelled takes that were never delivered; offering
+  ///   one here would paste words the user chose to throw away.
+  /// - Whitespace-only text would paste nothing visible. Checked, never trimmed: the text that
+  ///   is reused is exactly the text that was delivered.
+  private static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
+    isVisible(row, at: now)
+      && !row.isImported
+      && row.escapeRecoveredAt == nil
+      && !row.displayText.allSatisfy(\.isWhitespace)
+  }
+
   /// Everything the pill needs to restore a held row, or nil if it may not be
   /// restored (#2087).
   ///
