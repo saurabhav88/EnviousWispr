@@ -142,9 +142,13 @@ package enum CorrectionCandidateFilter {
     let o = Array(original.lowercased())
     let c = Array(corrected.lowercased())
     guard c.count < o.count else { return false }
-    // Fewer than two letters removed is a real fix the recogniser padded
-    // ("adiane" -> "Adian"), not an edit abandoned half-way.
-    let removedLetters = o.filter { !$0.isWhitespace }.count - c.filter { !$0.isWhitespace }.count
+    // Fewer than two LETTERS removed is a real fix the recogniser padded
+    // ("adiane" -> "Adian", "Johnson's" -> "Johnson"), not an edit abandoned
+    // half-way. Accepted residual (Codex PR-1 review P2, hypothetical): a
+    // completed fix that deletes two or more letters ("microphoness" ->
+    // "microphone") is not learned; the recogniser was not seen to pad a word
+    // with two junk letters, and the #3105 junk this stops was.
+    let removedLetters = o.filter(\.isLetter).count - c.filter(\.isLetter).count
     guard removedLetters >= 2 else { return false }
     var i = 0
     for ch in o where i < c.count && ch == c[i] { i += 1 }
