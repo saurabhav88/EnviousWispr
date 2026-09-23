@@ -34,7 +34,8 @@ struct PasteLandingTelemetryTests {
         .init(
           tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit",
           payload: "send the draft to Maya"),
-        capturedTarget: PastedRegionFakeAX.field(42), ax: ax, scheduler: clock,
+        capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
+        scheduler: clock,
         log: { self.lines.append($0) })
     }
   }

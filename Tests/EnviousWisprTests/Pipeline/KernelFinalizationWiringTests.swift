@@ -777,8 +777,8 @@ import os
           .init(
             tier: .cgEvent, pid: 42, takeID: request.takeID, bundleID: "com.apple.TextEdit",
             payload: request.legacyText),
-          capturedTarget: PastedRegionFakeAX.field(42), ax: ax, scheduler: clock,
-          log: { sink.yield($0) })
+          capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
+          scheduler: clock, log: { sink.yield($0) })
         prepared?.commit()
         check = prepared
         var result = Self.deliveredResult

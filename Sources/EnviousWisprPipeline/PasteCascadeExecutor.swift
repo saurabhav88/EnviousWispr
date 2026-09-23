@@ -349,15 +349,22 @@ internal final class PasteCascadeExecutor {
   private let landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler()
 
   /// Prepares and arms the observation for one key-paste tier, immediately before its write.
+  ///
+  /// `tier1BoundTheTarget`: whether Tier 1 already installed its 0.5 s bound on
+  /// `request.targetElement` (`PasteService.insertViaAccessibility(boundMessagingTimeout:)`, the
+  /// only other setter of that handle's timeout). That is the value put back after preparation;
+  /// otherwise `0`, the global default the handle had.
   private func prepareLandingCheck(
     tier: PasteTier, app: NSRunningApplication, payloadText: String,
-    request: PasteDeliveryRequest
+    request: PasteDeliveryRequest, tier1BoundTheTarget: Bool
   ) -> PasteLandingCheck? {
     PasteLandingCheck.prepare(
       .init(
         tier: tier, pid: app.processIdentifier, takeID: request.takeID,
         bundleID: app.bundleIdentifier, payload: payloadText),
-      capturedTarget: request.targetElement, ax: landingAX, scheduler: landingScheduler)
+      capturedTarget: request.targetElement,
+      restoringCapturedTimeoutTo: tier1BoundTheTarget ? PasteService.axMessagingTimeoutSeconds : 0,
+      ax: landingAX, scheduler: landingScheduler)
   }
 
   /// The pasteboard every clipboard write in this cascade goes to.
@@ -715,7 +722,8 @@ internal final class PasteCascadeExecutor {
         // the omnibox re-check below, which must stay the LAST AX-touching step before the write.
         // Cancelled by the branch-local defer on every exit but a dispatched Cmd+V.
         let landingCheck = prepareLandingCheck(
-          tier: .cgEvent, app: app, payloadText: payload.text, request: request)
+          tier: .cgEvent, app: app, payloadText: payload.text, request: request,
+          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
         defer { landingCheck?.cancelUnlessCommitted() }
         // Cloud review rounds 2 and 4 (PR #2451): both activation AND
         // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
@@ -832,7 +840,8 @@ internal final class PasteCascadeExecutor {
         // #3106 step 1: prepared after the clipboard write and BEFORE the omnibox re-check below,
         // which stays the last AX-touching step before `pasteViaAppleScript`.
         let landingCheck = prepareLandingCheck(
-          tier: .appleScript, app: app, payloadText: payload.text, request: request)
+          tier: .appleScript, app: app, payloadText: payload.text, request: request,
+          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
         defer { landingCheck?.cancelUnlessCommitted() }
         // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
         // decision at all — the force-activate and settle sleep above can move
@@ -946,7 +955,8 @@ internal final class PasteCascadeExecutor {
             tiersAttempted.append(.menuPaste)
             // #3106 step 1: prepared once the enabled item is known, immediately before AXPress.
             let landingCheck = prepareLandingCheck(
-              tier: .menuPaste, app: app, payloadText: payload.text, request: request)
+              tier: .menuPaste, app: app, payloadText: payload.text, request: request,
+          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
             defer { landingCheck?.cancelUnlessCommitted() }
             if PasteService.pressMenuItem(menuItem) {
               tier = .menuPaste

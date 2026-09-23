@@ -450,6 +450,14 @@ package final class PasteLandingPrepareBudget {
   /// Milliseconds spent since the budget was created: the log's `before_ms`.
   package var elapsedMs: Int { scheduler.nowMs - startMs }
 
+  /// The preparation's final accounting, sampled ONCE after the last call. Exhausted also when
+  /// the last admitted call used up the remaining time: no later admission would ever refuse it,
+  /// so `refusal` alone would call a 500 ms preparation complete (final review, #3106).
+  package func completedPreparation() -> (elapsedMs: Int, exhausted: Bool) {
+    let elapsed = elapsedMs
+    return (elapsed, refusal == .exhausted || elapsed >= totalMs)
+  }
+
   /// Whether the next Accessibility call on `handle` may run. Installs the remaining time on that
   /// exact handle first.
   package func admit(_ handle: AXUIElement) -> Bool {
@@ -584,8 +592,14 @@ extension PasteLandingCheck {
 
   /// Prepares and arms a check, synchronously, immediately before the write. Nil for a tier this
   /// check does not observe. `capturedTarget` is the element captured when the recording started.
+  /// - Parameter restoringCapturedTimeoutTo: the messaging timeout `capturedTarget` carried before
+  ///   preparation, put back on it once preparation ends. The budget installs its shrinking
+  ///   timeout on every handle it admits, and the captured field is the DELIVERY path's handle,
+  ///   later read by `PasteCopiesObserver`: an observer may not change what it observes. Apple
+  ///   keeps the timeout per `AXUIElement` object, so only this one shared handle needs it; `0`
+  ///   restores the global default.
   package static func prepare(
-    _ context: Context, capturedTarget: AXUIElement?,
+    _ context: Context, capturedTarget: AXUIElement?, restoringCapturedTimeoutTo restoreSeconds: Double,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
     log: (@MainActor (String) -> Void)? = nil
   ) -> PasteLandingCheck? {
@@ -616,8 +630,10 @@ extension PasteLandingCheck {
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
       ax: ax, scheduler: scheduler, log: log ?? Self.debugLog)
     check.arm(budget: budget)
-    check.beforeMs = budget.elapsedMs
-    check.prepareBudgetExhausted = budget.refusal == .exhausted
+    let finished = budget.completedPreparation()
+    check.beforeMs = finished.elapsedMs
+    check.prepareBudgetExhausted = finished.exhausted
+    if let capturedTarget { _ = ax.setMessagingTimeout(capturedTarget, seconds: restoreSeconds) }
     return check
   }
 

@@ -27,6 +27,8 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   var frontmost: pid_t? = 42
   var registrationFails = false
   var registrations: [PastedRegionFakeRegistration] = []
+  /// Runs after each landing notification is added: lets a test spend time INSIDE the last call.
+  var afterLandingNotification: ((PastedRegionAXNotification) -> Void)?
 
   static func app(_ pid: pid_t) -> AXUIElement { AXUIElementCreateApplication(pid) }
   static func field(_ pid: pid_t) -> AXUIElement { AXUIElementCreateApplication(pid + 10_000) }
@@ -178,6 +180,7 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     for (target, kind) in wanted {
       guard admit(target) else { break }
       noteLanding("add:\(kind)", target)
+      afterLandingNotification?(kind)
       if !landingNotificationFailures.contains(kind) { registered.insert(kind) }
     }
     guard !registered.isEmpty else { return nil }

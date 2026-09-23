@@ -342,11 +342,12 @@ extension PasteLandingLifecycleTests {
     func prepare(
       tier: PasteTier = .cgEvent, captured: AXUIElement? = PastedRegionFakeAX.field(42),
       payload: String = "send the draft", takeID: String = "TAKE-A",
-      bundleID: String = "com.apple.TextEdit"
+      bundleID: String = "com.apple.TextEdit", restore: Double = 0
     ) -> PasteLandingCheck? {
       PasteLandingCheck.prepare(
         .init(tier: tier, pid: 42, takeID: takeID, bundleID: bundleID, payload: payload),
-        capturedTarget: captured, ax: ax, scheduler: clock, log: { self.lines.append($0) })
+        capturedTarget: captured, restoringCapturedTimeoutTo: restore, ax: ax, scheduler: clock,
+        log: { self.lines.append($0) })
     }
     /// The one landing registration the check made.
     var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
@@ -513,6 +514,43 @@ extension PasteLandingLifecycleTests {
     check.commit()
     rig.clock.advance(ms: 1_500)
     #expect(await check.resolve() == .unknown(.prepareBudget))
+  }
+
+  @Test("The last registration spending the rest of the budget is prepare_budget, not complete")
+  func budgetSpentByTheLastCall() async throws {
+    let rig = Rig()
+    rig.ax.afterLandingNotification = { kind in
+      if kind == .focusedElementChanged { rig.clock.advance(ms: 600) }
+    }
+    let check = try #require(rig.prepare())
+    check.commit()
+    rig.clock.advance(ms: 1_500)
+    #expect(await check.resolve() == .unknown(.prepareBudget))
+    // Paired: the same preparation without the slow last call completes.
+    let control = Rig()
+    let clean = try #require(control.prepare())
+    clean.commit()
+    control.clock.advance(ms: 1_500)
+    #expect(await clean.resolve() == .unchanged(.fieldIdentical))
+  }
+
+  @Test("The delivery path's field handle gets its own timeout back, and only that handle")
+  func capturedTimeoutRestored() throws {
+    // 0.25, not production's 0.5: the budget itself installs 0.5 on a fresh preparation, so a
+    // restore to 0.5 could not be told from no restore at all. The fake gives the captured and the
+    // focused field one pid, so the check reads the LAST install on that pid.
+    let fieldPid = Self.fieldPid
+    for restore in [0.0, 0.25] {
+      let rig = Rig()
+      _ = try #require(rig.prepare(restore: restore))
+      let onField = rig.ax.timeoutsSet.filter { $0.0 == fieldPid }
+      #expect(onField.count >= 2, "the budget bounded it, then it was put back")
+      #expect(onField.last?.1 == restore, "restored to \(restore)")
+    }
+    // No captured field: no restore is written anywhere.
+    let rig = Rig()
+    _ = try #require(rig.prepare(captured: nil, restore: 0.25))
+    #expect(!rig.ax.timeoutsSet.contains { $0.1 == 0.25 })
   }
 
   @Test("Two overlapping checks resolve independently")
