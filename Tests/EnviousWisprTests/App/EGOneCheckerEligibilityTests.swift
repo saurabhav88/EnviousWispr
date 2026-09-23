@@ -95,6 +95,12 @@ struct EGOneCheckerEligibilityTests {
       fractionCompleted: 0.5, bytesWritten: 1, totalBytes: 2)).absence == .adapterDownloading)
     #expect(select(adapterAdmitted: false, state: .cancelled(resumable: true))
       .absence == .adapterDeliveryFailed)
+    #expect(select(adapterAdmitted: false, state: .cancelled(resumable: true))
+      .retryAvailable)
+    #expect(!EGOneCheckerEligibility.evaluate(
+      provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
+      deliveryState: .notReady, hostConfigured: false, contract: contract,
+      admittedBase: base, language: "en", endpoint: ready, serverReason: nil).retryAvailable)
     #expect(select(admittedBase: try mismatchedBase()).absence
       == .baseMismatch("prompt_template"))
     #expect(select(language: "de").absence == .unqualifiedLanguage)

@@ -83,6 +83,8 @@ package final class WisprBootstrapper {
   /// property is the plan's named cost (ceiling 34 -> 35, Bible entry in
   /// EnviousWisprAppCeilingsTests).
   let modelDelivery: ModelDeliveryHome
+  /// The take selector also answers the Dictionary status line.
+  let checkerEligibility: EGOneCheckerEligibility
 
   /// #1386 PR-2. Stored because nothing else owns it: it is reached only through a closure
   /// `SetupCoordinator` calls once, and a closure capture cannot keep it alive. Held here, it
@@ -705,6 +707,18 @@ package final class WisprBootstrapper {
       promptTemplateID: checkerPromptTemplateID, runtime: egOneRuntime,
       debugThreshold: debugLearnedWordAdapter?.threshold,
       debugScriptedChecker: debugScriptedChecker)
+    egOneRuntime.onEvent = { event in
+      EGOneTelemetryBridge.handler(engine: .egOne)(event)
+      Task { @MainActor in checkerEligibility.statusDidChange() }
+    }
+    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+      Task {
+        await modelDelivery.controller.addStateObserver { identity, _ in
+          guard identity == checkerIdentity else { return }
+          Task { @MainActor in checkerEligibility.statusDidChange() }
+        }
+      }
+    }
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -1900,6 +1914,7 @@ package final class WisprBootstrapper {
     self.whisperKitRetirement = whisperKitRetirement
     self.localPolishRuntimes = localPolishRuntimes
     self.modelDelivery = modelDelivery
+    self.checkerEligibility = checkerEligibility
     self.audioDeviceList = audioDeviceList
     self.pillAppearance = pillAppearance
     self.inputDevicePreferenceReconciler = inputDevicePreferenceReconciler
@@ -2164,6 +2179,7 @@ private struct MainWindowRoot: View {
       .environment(b.backendMetadata)
       .environment(b.engineCoordinator)
       .environment(b.modelDelivery)
+      .environment(b.checkerEligibility)
       .environment(b.dictationRuntime)
       .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).

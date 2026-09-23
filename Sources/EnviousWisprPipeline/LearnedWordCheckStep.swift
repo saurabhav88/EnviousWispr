@@ -25,17 +25,21 @@ public struct LearnedWordCheckerSelection: Sendable {
   public let checker: (any LearnedWordChecking)?
   public let identity: String?
   public let absence: LearnedWordCheckerAbsence?
+  /// Only a failed or cancelled fetch on a configured source offers a retry.
+  public let retryAvailable: Bool
 
   public init(checker: any LearnedWordChecking, identity: String) {
     self.checker = checker
     self.identity = identity
     absence = nil
+    retryAvailable = false
   }
 
-  public init(absence: LearnedWordCheckerAbsence) {
+  public init(absence: LearnedWordCheckerAbsence, retryAvailable: Bool = false) {
     checker = nil
     identity = nil
     self.absence = absence
+    self.retryAvailable = retryAvailable
   }
 }
 
@@ -180,8 +184,10 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
               contested: outcome.contested, latencyMs: outcome.latencyMs, arm: outcome.arm,
               fallbackReason: outcome.fallbackReason?.rawValue,
               checkerIdentity: selection?.identity ?? checker?.armName,
-              checkerStatus: checker == nil ? "absent" : "ready",
-              absenceReason: checker == nil ? (selection?.absence?.code ?? "not_configured") : nil))
+              checkerStatus: checker == nil ? "no_checker" : "ran",
+              absenceReason: checker == nil
+                ? (selection?.absence?.code ?? LearnedWordCheckerAbsence.serverUnavailable.code)
+                : nil))
         }
         Task {
           await AppLogger.shared.log(

@@ -75,6 +75,20 @@ struct CustomWordsPropagatorTests {
     CustomWord(canonical: canonical, source: source)
   }
 
+  @Test("learned entries cannot enter a local or cloud polish prompt")
+  func learnedWordsStayInCheckerLane() {
+    let learned = CustomWord(
+      canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
+      learnedAt: Date(timeIntervalSince1970: 1_790_000_000))
+    let manual = CustomWord(
+      canonical: "Saoirse", aliases: ["sur-sha", "source"], learnedAliases: ["source"])
+    let lanes = LanePartitioner.split([learned, manual], generation: 7)
+    #expect(lanes.corrector.terms == [learned, manual])
+    #expect(lanes.polish.terms.map(\.canonical) == ["Saoirse"])
+    #expect(lanes.polish.terms.first?.aliases == ["sur-sha"])
+    #expect(lanes.polish.generation == 7)
+  }
+
   // MARK: - Unit: weak storage
 
   @Test("Weak storage — corrector consumer is deinit'd after autoreleasepool exits")
