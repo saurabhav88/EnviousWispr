@@ -496,8 +496,9 @@ package enum ShortcutRefusal: Equatable, Sendable {
 extension ShortcutMatcher {
 
   /// Standard macOS shortcuts a recorded binding may not take: the Edit menu's (Undo, Redo, Cut,
-  /// Copy, Paste, Select All) and the app-level ones every Mac app answers (Quit, Close, Hide,
-  /// Minimize, app switching, Spotlight, window cycling). A CLOSED set, taken from macOS's own
+  /// Copy, Paste, Select All, Find), the File menu's (New, Open, Save, Print), and the app-level
+  /// ones every Mac app answers (Settings, Quit, Close, Hide, Minimize, app switching, Spotlight,
+  /// window cycling). A CLOSED set, taken from macOS's own
   /// menus rather than from our users' data, so it is not a prediction about anyone's habits.
   /// Compared Carbon-style, so a Caps Lock riding on the capture does not slip past it.
   package static let reservedSystemChords: [ShortcutBinding] = [
@@ -507,6 +508,12 @@ extension ShortcutMatcher {
     .keyboard(keyCode: 8, modifiers: [.command]),  // C  Copy
     .keyboard(keyCode: 9, modifiers: [.command]),  // V  Paste
     .keyboard(keyCode: 0, modifiers: [.command]),  // A  Select All
+    .keyboard(keyCode: 3, modifiers: [.command]),  // F  Find
+    .keyboard(keyCode: 45, modifiers: [.command]),  // N  New
+    .keyboard(keyCode: 31, modifiers: [.command]),  // O  Open
+    .keyboard(keyCode: 1, modifiers: [.command]),  // S  Save
+    .keyboard(keyCode: 35, modifiers: [.command]),  // P  Print
+    .keyboard(keyCode: 43, modifiers: [.command]),  // ,  Settings
     .keyboard(keyCode: 12, modifiers: [.command]),  // Q  Quit
     .keyboard(keyCode: 13, modifiers: [.command]),  // W  Close
     .keyboard(keyCode: 4, modifiers: [.command]),  // H  Hide

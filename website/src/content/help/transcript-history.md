@@ -26,8 +26,8 @@ History gives you several ways to work with past recordings.
 
 You do not need to open History to reuse your most recent dictation.
 
-- **Paste it.** Press **Control Command V**, or choose **Paste Last Dictation** in the menu bar menu. It pastes into the app you are in. The menu shows the start of the text under the item, so you can check it before you click.
-- **Copy it.** Press **Control Command C** to put it on your clipboard.
+- **Paste it.** Press **Control Command V** (unless you changed it in Keybinds), or choose **Paste Last Dictation** in the menu bar menu. It pastes into the app you are in. The menu shows the start of the text under the item, so you can check it before you click.
+- **Copy it.** Press **Control Command C** (unless you changed it) to put it on your clipboard.
 
 The last dictation is your newest dictation in History. Imported transcripts are skipped, and so is a cancelled dictation still counting down in History, until you press **Keep** on it. Anything you have deleted is skipped too. When there is nothing to reuse, the menu item is greyed out. Nothing happens while you are recording, and paste does nothing while an EnviousWispr window such as History is in front, though copy still works. Your **Restore clipboard after paste** setting works here too: see [Clipboard Preservation](/help/clipboard-preservation/). Change either key in **Keybinds**: see [Customizing Your Keybind](/help/customizing-your-keybind/).
 

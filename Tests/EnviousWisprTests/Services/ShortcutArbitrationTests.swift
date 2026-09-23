@@ -213,6 +213,14 @@ struct ShortcutArbitrationTests {
           assigning: .keyboard(keyCode: 8, modifiers: [.command, .capsLock]), to: role,
           in: .shipped) == .systemShortcut, "\(role): Command-C with Caps Lock")
     }
+    // The File menu and Find, which every document app answers (second-pass review, #3106).
+    for (key, name) in [(1, "S Save"), (45, "N New"), (31, "O Open"), (35, "P Print"),
+                        (3, "F Find"), (43, ", Settings")] as [(UInt16, String)] {
+      #expect(
+        ShortcutMatcher.refusal(
+          assigning: .keyboard(keyCode: key, modifiers: [.command]), to: .quickAdd, in: .shipped)
+          == .systemShortcut, "Command-\(name)")
+    }
     // Paired: the shipped Control-Command chords are not system shortcuts.
     #expect(
       ShortcutMatcher.refusal(
@@ -234,22 +242,22 @@ struct ShortcutArbitrationTests {
 
     // A PREFIX clash with a lower role is allowed: the higher role wins and the lower row says so.
     bindings = Self.neutral()
-    Self.set(lower, .keyboard(keyCode: 3, modifiers: [.command]), in: &bindings)
+    Self.set(lower, .keyboard(keyCode: 3, modifiers: [.command, .option]), in: &bindings)
     #expect(
       ShortcutMatcher.refusal(
         assigning: .keyboard(keyCode: Self.rightCommand, modifiers: []), to: higher, in: bindings)
         == nil)
 
-    // Prefix, both directions, against the higher role. Command-F, not Command-V: the latter is a
-    // standard Mac shortcut and would be refused for that reason first.
+    // Prefix, both directions, against the higher role. Command-Option-F, not Command-V or
+    // Command-F: those are standard Mac shortcuts and would be refused for that reason first.
     bindings = Self.neutral()
     Self.set(higher, .keyboard(keyCode: Self.rightCommand, modifiers: []), in: &bindings)
     #expect(
       ShortcutMatcher.refusal(
-        assigning: .keyboard(keyCode: 3, modifiers: [.command]), to: lower, in: bindings)
+        assigning: .keyboard(keyCode: 3, modifiers: [.command, .option]), to: lower, in: bindings)
         == .modifierConflict(higher))
     bindings = Self.neutral()
-    Self.set(higher, .keyboard(keyCode: 3, modifiers: [.command]), in: &bindings)
+    Self.set(higher, .keyboard(keyCode: 3, modifiers: [.command, .option]), in: &bindings)
     #expect(
       ShortcutMatcher.refusal(
         assigning: .keyboard(keyCode: Self.rightCommand, modifiers: []), to: lower, in: bindings)

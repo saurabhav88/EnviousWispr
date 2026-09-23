@@ -654,6 +654,9 @@ public enum ClipboardCleanup {
     /// The board was not ours to take, and nothing was touched: a dictation's paste is still being
     /// read, or Quick Add is mid-transaction. The text stays in History.
     case clipboardBusy
+    /// The write did not take: reading the board back did not return the text. Nothing was pasted,
+    /// and the prior clipboard was put back where it could be. The text stays in History.
+    case writeFailed
   }
 
   /// Paste `text` into the frontmost app because the user asked for it again (#3106).
@@ -666,21 +669,31 @@ public enum ClipboardCleanup {
   /// after the usual delay under the usual change-count guard; with it off, the text stays.
   ///
   /// - Parameter dispatch: posts Cmd+V and returns whether it was posted. Never writes the board.
+  /// - Parameter write: puts `text` on `board` and returns the change count after the write. Tests
+  ///   pass a write that does not take; production uses the default.
   public static func manualPaste(
-    text: String, restore: Bool, on board: NSPasteboard, dispatch: () -> Bool
+    text: String, restore: Bool, on board: NSPasteboard,
+    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite, dispatch: () -> Bool
   ) -> ManualClipboardResult {
     guard claimBoardForManualWrite(board) else { return .clipboardBusy }
     // Photographed only now, after any stale pending work was dropped, so this reads the board as it
     // really stands. `snapshotForDelivery` would also inherit a pending payload, but none survives
-    // `claimBoardForManualWrite`.
-    let snapshot = restore ? snapshotForDelivery(from: board) : nil
-    let changeCountAfterWrite = PasteService.copyToClipboardReturningChangeCount(text, to: board)
+    // `claimBoardForManualWrite`. Taken even with restore off: a write that does not take has
+    // already cleared the board, and the user's clipboard must come back either way.
+    let snapshot = snapshotForDelivery(from: board)
+    let changeCountAfterWrite = write(text, board)
+    // Proven, not assumed: `setString` can refuse, and a Cmd+V then would paste whatever the board
+    // holds instead of the dictation.
+    guard boardHolds(text, board) else {
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      return .writeFailed
+    }
     guard dispatch() else {
       // Nothing was pasted, so there is nothing to wait for and nothing to hand back yet: the
       // text on the board is now the user's only way to paste it.
       return .dispatchFailed
     }
-    if let snapshot {
+    if restore {
       scheduleRestore(
         snapshot, changeCountAfterPaste: changeCountAfterWrite, tier: .cgEvent, on: board)
     }
@@ -689,10 +702,29 @@ public enum ClipboardCleanup {
 
   /// Put `text` on the clipboard for the user to paste themselves (#3106). No restore: the text on
   /// the clipboard is the whole point.
-  public static func manualCopy(text: String, on board: NSPasteboard) -> ManualClipboardResult {
+  public static func manualCopy(
+    text: String, on board: NSPasteboard,
+    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite
+  ) -> ManualClipboardResult {
     guard claimBoardForManualWrite(board) else { return .clipboardBusy }
-    PasteService.copyToClipboard(text, to: board)
+    // Kept only to put the user's clipboard back if the write does not take.
+    let prior = PasteService.saveClipboard(from: board)
+    let changeCountAfterWrite = write(text, board)
+    guard boardHolds(text, board) else {
+      PasteService.restoreClipboard(prior, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      return .writeFailed
+    }
     return .copied
+  }
+
+  /// The real write behind `manualPaste` and `manualCopy`.
+  public static func defaultManualWrite(_ text: String, _ board: NSPasteboard) -> Int {
+    PasteService.copyToClipboardReturningChangeCount(text, to: board)
+  }
+
+  /// Whether the board's string is exactly `text`, compared in UTF-16 code units.
+  private static func boardHolds(_ text: String, _ board: NSPasteboard) -> Bool {
+    board.string(forType: .string).map { $0.utf16.elementsEqual(text.utf16) } ?? false
   }
 
   /// Take the board for a manual write, or refuse without touching anything.

@@ -35,6 +35,7 @@ struct LastDictationActionTests {
     var heldPolls = 0
     var sleeps = 0
     var pasteResult: ClipboardCleanup.ManualClipboardResult = .dispatched
+    var copyResult: ClipboardCleanup.ManualClipboardResult = .copied
     var pastes: [(text: String, restore: Bool)] = []
     var copies: [String] = []
     var permissionsOpened = 0
@@ -92,7 +93,7 @@ struct LastDictationActionTests {
         },
         manualCopy: { text in
           fake.copies.append(text)
-          return .copied
+          return fake.copyResult
         },
         openPermissions: { fake.permissionsOpened += 1 },
         report: { action, source, outcome in fake.reports.append((action, source, outcome.rawValue))
@@ -176,7 +177,7 @@ struct LastDictationActionTests {
     let action = makeAction(fake)
     await action.pasteFromMenu(rowID: fake.row?.id, target: a)
     action.notePasteChordPressed()
-    await action.pasteFromChord()
+    await action.pasteFromChord().value
     #expect(outcomes(fake) == ["recording", "ax_denied", "ax_denied"])
     #expect(fake.permissionsOpened == 1, "the chord has nowhere to show the fix")
     #expect(fake.pastes.isEmpty)
@@ -191,7 +192,7 @@ struct LastDictationActionTests {
     fake.frontmost = a
     let action = makeAction(fake)
     action.notePasteChordPressed()
-    await action.pasteFromChord()
+    await action.pasteFromChord().value
     #expect(outcomes(fake) == ["dispatched"])
     #expect(fake.pastes.map(\.text) == ["Send the draft to Maya."])
     #expect(fake.pastes.first?.restore == true, "the user's clipboard setting is passed through")
@@ -220,7 +221,7 @@ struct LastDictationActionTests {
     let action = makeAction(fake)
     action.notePasteChordPressed()
     fake.frontmost = b  // focus moved between press and release
-    await action.pasteFromChord()
+    await action.pasteFromChord().value
     #expect(fake.activated == [a.processIdentifier], "brought A back; never pasted into B")
     #expect(outcomes(fake) == ["dispatched"])
     #expect(fake.pastes.count == 1)
@@ -235,7 +236,7 @@ struct LastDictationActionTests {
     let action = makeAction(fake)
     action.notePasteChordPressed()
     fake.frontmost = b
-    await action.pasteFromChord()
+    await action.pasteFromChord().value
     #expect(outcomes(fake) == ["focus_lost"])
     #expect(fake.pastes.isEmpty)
   }
@@ -323,6 +324,59 @@ struct LastDictationActionTests {
     #expect(fake.pastes.isEmpty)
   }
 
+  // MARK: Final review fixes (#3106)
+
+  @Test("Two whole Paste gestures before either task runs: each keeps its own press-time target")
+  func overlappingGesturesKeepTheirTargets() async throws {
+    let (a, b) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    let action = makeAction(fake)
+    action.notePasteChordPressed()
+    let first = action.pasteFromChord()  // released in A; its task has not run yet
+    fake.frontmost = b
+    action.notePasteChordPressed()
+    let second = action.pasteFromChord()  // then pressed and released in B
+    await first.value
+    await second.value
+    #expect(fake.activated == [a.processIdentifier, b.processIdentifier], "A for the first, B for the second")
+    #expect(outcomes(fake) == ["dispatched", "dispatched"])
+  }
+
+  @Test("Copy takes the row present at the press, whatever happens after")
+  func copyUsesTheRowAtThePress() {
+    let fake = Fake()
+    let pressed = fake.row?.text
+    let action = makeAction(fake)
+    action.copyFromChord()
+    fake.row = (UUID(), "A newer dictation.")
+    #expect(fake.copies == [pressed].compactMap { $0 })
+  }
+
+  @Test("A modifier pressed during the activation wait stops the paste before any write")
+  func modifierHeldDuringActivationRefuses() async throws {
+    let (a, b) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = b  // the target must be brought forward
+    fake.duringActivation = { fake.heldPolls = Int.max }  // the user presses Control meanwhile
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    #expect(fake.activated == [a.processIdentifier])
+    #expect(outcomes(fake) == ["keys_held"])
+    #expect(fake.pastes.isEmpty)
+  }
+
+  @Test("A clipboard write that did not take is reported, for Paste and for Copy")
+  func writeFailedIsReported() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    fake.pasteResult = .writeFailed
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    fake.copyResult = .writeFailed
+    makeAction(fake).copyFromChord()
+    #expect(outcomes(fake) == ["write_failed", "write_failed"])
+  }
+
   // MARK: Re-checks after the awaits
 
   @Test("With nothing to paste, that is the answer even when Accessibility is also missing")
@@ -334,9 +388,25 @@ struct LastDictationActionTests {
     fake.axTrusted = false
     let action = makeAction(fake)
     action.notePasteChordPressed()
-    await action.pasteFromChord()
+    await action.pasteFromChord().value
     #expect(outcomes(fake) == ["no_dictation"])
     #expect(fake.permissionsOpened == 0)
+  }
+
+  @Test("Without Accessibility, a quit target or our own window says so and opens nothing")
+  func targetRefusalsBeforeAccessibility() async throws {
+    let (a, us) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.own = us
+    fake.frontmost = a
+    fake.axTrusted = false
+    fake.terminated = [a.processIdentifier]
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    fake.terminated = []
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: us)
+    #expect(outcomes(fake) == ["target_gone", "own_window"])
+    #expect(fake.permissionsOpened == 0, "granting Accessibility would not make either pasteable")
+    #expect(fake.pastes.isEmpty)
   }
 
   @Test("What changes during the modifier wait is checked BEFORE focus is moved")

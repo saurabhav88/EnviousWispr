@@ -1394,7 +1394,7 @@ package final class WisprBootstrapper {
       application: presentationEffects.application,
       openPermissions: openPermissionsWindow)
     hotkeyService.onPasteLastPressed = { lastDictationAction.notePasteChordPressed() }
-    hotkeyService.onPasteLast = { await lastDictationAction.pasteFromChord() }
+    hotkeyService.onPasteLast = { lastDictationAction.pasteFromChord() }
     hotkeyService.onCopyLast = { lastDictationAction.copyFromChord() }
 
     let menuBarController = MenuBarController(

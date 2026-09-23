@@ -137,6 +137,71 @@ struct ManualClipboardTransactionTests {
     }
   }
 
+  // MARK: A write that does not take
+
+  /// `setString` refusing after `clearContents`: the board is empty, not holding the dictation.
+  private static func refusedWrite(_ text: String, _ pb: NSPasteboard) -> Int {
+    pb.clearContents()
+    return pb.changeCount
+  }
+
+  @Test(
+    "A paste whose write does not take posts no Cmd+V and puts the clipboard back, restore on or off",
+    arguments: [true, false])
+  func pasteWriteFailed(restore: Bool) async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var dispatches = 0
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: restore, on: pb, write: Self.refusedWrite
+      ) {
+        dispatches += 1
+        return true
+      }
+
+      #expect(result == .writeFailed)
+      #expect(dispatches == 0)
+      #expect(!ClipboardCleanup.hasPending)
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  @Test("A copy whose write does not take says so and puts the clipboard back")
+  func copyWriteFailed() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let result = ClipboardCleanup.manualCopy(
+        text: "send the draft to Maya", on: pb, write: Self.refusedWrite)
+
+      #expect(result == .writeFailed)
+      #expect(!ClipboardCleanup.hasPending)
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  @Test("A write that lands different text counts as not taken: exact match, not a prefix")
+  func pasteWriteLandsOtherText() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      var dispatches = 0
+      let result = ClipboardCleanup.manualPaste(
+        text: "send the draft to Maya", restore: false, on: pb,
+        write: { text, board in
+          board.clearContents()
+          board.setString(String(text.dropLast()), forType: .string)
+          return board.changeCount
+        }
+      ) {
+        dispatches += 1
+        return true
+      }
+
+      #expect(result == .writeFailed)
+      #expect(dispatches == 0)
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
   // MARK: When the board is not ours
 
   @Test("A dictation's paste still being read: both refuse without touching the board")

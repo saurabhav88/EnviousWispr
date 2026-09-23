@@ -83,7 +83,7 @@ struct LastDictationHotkeyTests {
   }
 
   /// Accepted fires, read synchronously: `hotkey.pressed` is emitted on the same turn as the
-  /// decision to fire, while the callback itself runs in a Task a moment later.
+  /// decision to fire.
   private func fired(_ spy: Spy, _ action: String) -> Int {
     spy.presses.filter { $0.action == action }.count
   }
@@ -186,6 +186,68 @@ struct LastDictationHotkeyTests {
     #expect(fired(spy, "copy_last") == 2)
     #expect(await spy.wait(until: { spy.copies == 2 }))
     #expect(spy.presses.last?.trigger == "copy_last_hotkey")
+    service.stop()
+  }
+
+  @Test("When Carbon refuses to drop the old chord on a rebind, the old chord fires nothing")
+  func refusedRemovalLeavesTheOldChordInert() {
+    let (service, effects, spy) = makeService()
+    effects.refuseRemovals = true
+    service.copyLastKeyCode = 7  // X
+    service.copyLastModifiers = [.control, .command]
+    service.reapplyAppShortcutBinding(.copyLast)
+    // Carbon still delivers the OLD Control-Command-C under Copy Last's id.
+    service.handleCarbonHotkey(id: copyID, isRelease: false)
+    #expect(fired(spy, "copy_last") == 0, "the chord that fired is not the one the user set")
+    service.handleCarbonHotkey(id: copyID, isRelease: true)
+
+    // Paired: once the removal goes through, the new chord registers and fires.
+    effects.refuseRemovals = false
+    service.reapplyAppShortcutBinding(.copyLast)
+    #expect(effects.registrations.last { $0.id == copyID }?.keyCode == 7)
+    service.handleCarbonHotkey(id: copyID, isRelease: false)
+    #expect(fired(spy, "copy_last") == 1)
+    service.stop()
+  }
+
+  @Test("After a refused removal, the next recording's reconcile recovers the new chord unasked")
+  func refusedRemovalRecoversOnTheNextReconcile() {
+    let (service, effects, spy) = makeService()
+    effects.refuseRemovals = true
+    service.copyLastKeyCode = 7  // X
+    service.copyLastModifiers = [.control, .command]
+    service.reapplyAppShortcutBinding(.copyLast)
+    #expect(effects.registrations.last { $0.id == copyID }?.keyCode != 7, "still blocked")
+
+    // No reapply: a recording starting and ending is the ordinary reconcile that retries.
+    effects.refuseRemovals = false
+    service.registerCancelHotkey()
+    service.unregisterCancelHotkey()
+    #expect(effects.registrations.last { $0.id == copyID }?.keyCode == 7)
+    service.handleCarbonHotkey(id: copyID, isRelease: false)
+    #expect(fired(spy, "copy_last") == 1)
+    service.stop()
+  }
+
+  @Test("Quick Add and Cancel keep their old behaviour on a refused removal: the new chord registers (#3108)")
+  func refusedRemovalLeavesOtherRolesAsBefore() {
+    let (service, effects, _) = makeService()
+    effects.refuseRemovals = true
+    let quickAddBefore = effects.registrations.filter { $0.id == quickAddID }.count
+    service.quickAddKeyCode = 13  // W
+    service.quickAddModifiers = [.control, .shift]
+    service.reapplyAppShortcutBinding(.quickAdd)
+    #expect(effects.registrations.filter { $0.id == quickAddID }.count == quickAddBefore + 1)
+    #expect(effects.registrations.last { $0.id == quickAddID }?.keyCode == 13)
+
+    let cancelID = UInt32(3)
+    service.registerCancelHotkey()
+    service.unregisterCancelHotkey()
+    service.registerCancelHotkey()
+    #expect(effects.registrations.filter { $0.id == cancelID }.count == 2,
+            "a refused Cancel removal does not stop the next recording's Cancel registering")
+    service.unregisterCancelHotkey()
+    effects.refuseRemovals = false
     service.stop()
   }
 

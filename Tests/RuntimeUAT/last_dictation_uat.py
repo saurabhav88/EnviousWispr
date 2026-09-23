@@ -20,7 +20,7 @@ WHAT EACH VERDICT READS
 
 THE EXPECTED TEXT IS NOT THE SUBJECT'S OWN READER
 -------------------------------------------------
-The dictation is created here from a known sentence; its token ("Maya") is the independent check.
+The dictation is created here from a known sentence; word overlap with it is the independent check.
 The exact text pastes are compared against is what the dictation DELIVERED into document A, read
 through AX: the row's text as the pipeline produced it, not as the reuse path reads it. Delivery
 appends ONE separating space after the sentence (measured 2026-09-23: document A read
@@ -31,7 +31,9 @@ one trailing space, and a paste carrying the space would fail.
 DATA THIS TOUCHES
 -----------------
 It adds one dictation to the real History (the dev build shares the shipped app's store) and
-never deletes any row. It changes no setting. The clipboard is restored from the snapshot.
+never deletes any row. It changes no setting. The clipboard is restored from the snapshot. Phase
+`notes` makes one note in the iCloud Notes account (the only account here), then deletes it and
+purges it from Recently Deleted.
 """
 import os
 import re
@@ -47,7 +49,11 @@ from escape_recovery_uat import field_text, new_textedit_doc, screen_is_locked  
 
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 SENTENCE = "Send the draft to Maya tomorrow morning."
-TOKEN = "Maya"
+def sentence_overlap(text):
+    """How many of SENTENCE's words appear in `text`, case- and punctuation-blind."""
+    words = lambda t: re.findall(r"[a-z]+", t.lower())
+    got = set(words(text))
+    return sum(1 for wd in words(SENTENCE) if wd in got)
 # Every document this run opens is new: TextEdit REOPENS an already-open path with its old text,
 # which made a second run read the first run's paste plus its own (measured 2026-09-23).
 RUN_ID = time.strftime("%H%M%S")
@@ -353,10 +359,16 @@ def phase_dictate():
             print(f"    (stopping the take raised {exc!r})")
             stopped = False
         end_take_then_restore(route, "dictate", stopped)
-    ok = wait_for("the dictation to land in document A", lambda: TOKEN in doc_text(path),
-                  deadline=20.0)
+    # Recognised as the spoken sentence by word overlap, not by one exact word: the fallback `say`
+    # voice made the ASR hear "Maya" as "Mighty" on one run in two (2026-09-23), which is the
+    # recogniser, not this feature. Document A is new this run, so what lands there is this take;
+    # the overlap is the independent check that it is the sentence we spoke. The reuse oracle is
+    # whatever was delivered, so a misheard word cannot make a paste check pass or fail.
+    ok = wait_for("the dictation to land in document A",
+                  lambda: sentence_overlap(doc_text(path)) >= 5, deadline=20.0)
     delivered = doc_text(path)
-    check("dictate: the take landed in document A", ok, repr(delivered[:80]))
+    check("dictate: the take landed in document A (5+ of the sentence's 7 words)", ok,
+          f"{sentence_overlap(delivered)}/7 {delivered[:80]!r}")
     if not ok:
         raise Aborted("no dictation landed; every reuse check below would test a stale row")
     return delivered[:-1] if delivered.endswith(" ") else delivered
@@ -1022,6 +1034,162 @@ def stop_any_live_take(base_offset):
                     > log_since(offset).rfind("Recording started"), deadline=30.0)
 
 
+import uuid  # noqa: E402
+
+# A UUID, not RUN_ID (time of day only): cleanup deletes by this title, so it must name no other note.
+NOTES_TITLE = f"ew-uat-3106-notes-{uuid.uuid4().hex}"
+NOTES_STATE = {"ran": False, "launched": False, "id": None, "before": None}
+
+
+def _osa(src):
+    import subprocess
+    r = subprocess.run(["osascript", "-e", src], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+
+def notes_running():
+    from AppKit import NSRunningApplication
+    return len(NSRunningApplication.runningApplicationsWithBundleIdentifier_("com.apple.Notes")) > 0
+
+
+def notes_plaintext():
+    if not NOTES_STATE["id"]:
+        return None
+    rc, out, _ = _osa(f'tell application "Notes" to get plaintext of note id "{NOTES_STATE["id"]}"')
+    return out if rc == 0 else None
+
+
+def notes_with_title():
+    """How many notes in the account carry this run's title, or None when Notes cannot say."""
+    rc, out, _ = _osa(f'tell application "Notes" to count (every note of account "iCloud" '
+                      f'whose name is "{NOTES_TITLE}")')
+    return int(out) if rc == 0 and out.isdigit() else None
+
+
+def focus_note_body():
+    """Put the caret on the empty second line of the shown note, through AX (no key, no click, so
+    nothing can beep). `show` leaves the NOTE LIST focused (measured 2026-09-23), so a paste
+    without this would land nowhere. True only when AX reports the body focused, caret at the end."""
+    from AppKit import NSRunningApplication
+    from ApplicationServices import (AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
+                                     AXUIElementSetAttributeValue, AXValueCreate,
+                                     kAXValueCFRangeType)
+    from Foundation import NSMakeRange
+    apps = NSRunningApplication.runningApplicationsWithBundleIdentifier_("com.apple.Notes")
+    if len(apps) != 1:
+        return False
+    app = AXUIElementCreateApplication(apps[0].processIdentifier())
+
+    def attr(e, a):
+        err, v = AXUIElementCopyAttributeValue(e, a, None)
+        return v if err == 0 else None
+
+    def areas(e, depth=0):
+        if e is None or depth > 25:
+            return []
+        found = [e] if attr(e, "AXRole") == "AXTextArea" else []
+        for c in attr(e, "AXChildren") or []:
+            found += areas(c, depth + 1)
+        return found
+
+    body = [a for a in areas(attr(app, "AXFocusedWindow"))
+            if str(attr(a, "AXValue") or "").startswith(NOTES_TITLE)]
+    if len(body) != 1:
+        return False
+    before = str(attr(body[0], "AXValue"))
+    end = len(before)
+    AXUIElementSetAttributeValue(body[0], "AXFocused", True)
+    AXUIElementSetAttributeValue(body[0], "AXSelectedTextRange",
+                                 AXValueCreate(kAXValueCFRangeType, NSMakeRange(end, 0)))
+    time.sleep(0.2)
+    focused = attr(app, "AXFocusedUIElement")
+    caret = attr(focused, "AXSelectedTextRange") if focused is not None else None
+    ok = (focused is not None and attr(focused, "AXRole") == "AXTextArea"
+          and caret is not None and f"location:{end} length:0" in str(caret))
+    NOTES_STATE["before"] = before if ok else None
+    return ok
+
+
+def phase_notes(expected):
+    """The plan's own Live UAT case: dictated into TextEdit, pasted into a Notes note from the menu.
+
+    Notes here has only an iCloud account, so the note syncs while it exists; `notes_cleanup`
+    deletes it and purges it from Recently Deleted, and quits Notes if this phase launched it."""
+    print("\n== notes: menu paste into a Notes note, a second app")
+    NOTES_STATE["ran"] = True
+    NOTES_STATE["launched"] = not notes_running()
+    if not check("notes: no note carries this run's title before it is made",
+                 notes_with_title() == 0, str(notes_with_title())):
+        return
+    # Created on its own, so a failure in showing or activating cannot hide a note that exists.
+    rc, nid, err = _osa(f'''tell application "Notes"
+  set n to make new note at folder "Notes" of account "iCloud" with properties {{body:"<div>{NOTES_TITLE}</div><div><br></div>"}}
+  return id of n
+end tell''')
+    NOTES_STATE["id"] = nid if rc == 0 and nid.startswith("x-coredata://") else None
+    if not check("notes: a test note was created", NOTES_STATE["id"] is not None, err or nid):
+        return
+    rc, _, err = _osa(f'''tell application "Notes"
+  show note id "{NOTES_STATE["id"]}"
+  activate
+end tell''')
+    if not check("notes: the note is shown", rc == 0, err):
+        return
+    require_front("com.apple.Notes", "notes")
+    if not check("notes: the caret is in the note body", wait_for(
+            "the note body focused", focus_note_body, deadline=3.0)):
+        return
+    sentinel = "ew-uat-sentinel-notes"
+    set_clipboard_text(sentinel)
+    base = log_size()
+    clicked = w.click_status_menu_item_real("Paste Last Dictation")
+    check("notes: the item was clicked with real clicks", clicked.get("clicked", False), str(clicked))
+    ok = wait_for("a menu paste outcome", lambda: reuse_lines(base), deadline=5.0)
+    lines = reuse_lines(base)
+    check("notes: one outcome, dispatched", ok and lines == [("paste", "menu", "dispatched")],
+          str(lines))
+    wait_for("the paste to arrive", lambda: (notes_plaintext() or NOTES_TITLE) != NOTES_TITLE,
+             deadline=5.0)
+    text = notes_plaintext() or ""
+    # The oracle is the body AX read before the paste plus the dictation, nothing else: the caret
+    # sits after the body's blank line, so the text lands on line 3 (measured 2026-09-23:
+    # 'title\n\nSend the draft...'). Plaintext and AXValue agree on that shape.
+    before = NOTES_STATE["before"] or ""
+    check("notes: the note holds the dictation exactly once, at the caret",
+          before.startswith(NOTES_TITLE) and text == before + expected,
+          f"before={before!r} after={text[:120]!r}")
+    check("notes: the previous clipboard is back",
+          wait_for("the clipboard restore", lambda: clipboard_text() == sentinel, deadline=5.0),
+          repr(clipboard_text()))
+
+
+def notes_cleanup():
+    """Delete this run's note by its id, purge it from Recently Deleted by its UUID title, and quit
+    Notes if the phase launched it. Verified: no note with this run's title is left. A note made
+    but never given back an id is still found by that title, which no other note can carry."""
+    if not NOTES_STATE["ran"]:
+        return True  # the phase never ran: nothing was made
+    if NOTES_STATE["id"]:
+        _osa(f'tell application "Notes" to delete note id "{NOTES_STATE["id"]}"')
+        time.sleep(0.5)
+    rc, out, err = _osa(f'''tell application "Notes"
+  delete (every note of folder "Notes" of account "iCloud" whose name is "{NOTES_TITLE}")
+  delay 0.5
+  set victims to (every note of folder "Recently Deleted" of account "iCloud" whose name is "{NOTES_TITLE}")
+  repeat with n in victims
+    delete n
+  end repeat
+  delay 0.5
+  return count of (every note of account "iCloud" whose name is "{NOTES_TITLE}")
+end tell''')
+    gone = rc == 0 and out == "0"
+    if not gone:
+        print(f"    (note not verified deleted: rc={rc} left={out!r} err={err!r})")
+    if NOTES_STATE["launched"]:
+        _osa('tell application "Notes" to quit')
+    return gone
+
+
 def close_run_documents():
     """Close the TextEdit documents THIS run opened (paths carry RUN_ID) without saving, delete
     their files, and return whether that is VERIFIED: the AppleScript exited 0, no open document
@@ -1053,7 +1221,7 @@ end tell"""], capture_output=True, text=True)
     return ok
 
 
-PHASES = ["menu", "copy_chord", "paste_chord", "held_chord", "keys_held", "own_window",
+PHASES = ["menu", "notes", "copy_chord", "paste_chord", "held_chord", "keys_held", "own_window",
           "keybinds", "clipboard_manager", "restore_off", "imported_only", "deleted_after_render",
           "recording_in_flight"]
 
@@ -1122,7 +1290,7 @@ def main():
             expected = phase_dictate()
             chosen = PHASES if "all" in wanted else [p for p in PHASES if p in wanted]
             for name in chosen:
-                if name != "menu" and not chords:
+                if name not in ("menu", "notes") and not chords:
                     continue
                 fn = globals()[f"phase_{name}"]
                 if name in ("keys_held", "recording_in_flight"):
@@ -1140,6 +1308,7 @@ def main():
             ("keybind settings restored exactly", restore_keybind_state),
             ("modifier flags cleared", modifiers_cleared),
             ("run documents closed", close_run_documents),
+            ("the Notes test note deleted", notes_cleanup),
         ]:
             try:
                 check(name, bool(step()))
@@ -1153,6 +1322,11 @@ def main():
     failed = [r for r in results if r[1] in ("FAIL", "ABORT")]
     skipped = sum(1 for _, s, _ in results if s == "SKIP")
     print(f"\n{passed} passed, {len(failed)} failed, {skipped} skipped")
+    # A full run proves every phase or it proves nothing about the ones it skipped: a skip there is
+    # INCONCLUSIVE, not green. A named-phase run may skip, and says so above.
+    if skipped and "all" in wanted:
+        print("INCONCLUSIVE: a full run skipped a required phase; it is not a pass")
+        return 1
     return 1 if failed else 0
 
 

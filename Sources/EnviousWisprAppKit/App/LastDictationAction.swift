@@ -45,6 +45,8 @@ final class LastDictationAction {
     /// The task running the paste was cancelled during one of its waits, so nothing was written.
     /// Distinct from `keys_held`: nothing about the user's keys is known when this is reported.
     case cancelled
+    /// The clipboard write did not take (read back and not found), so nothing was pasted or copied.
+    case writeFailed = "write_failed"
   }
 
   /// Everything this action touches, injected so a test drives it without a desktop.
@@ -96,11 +98,16 @@ final class LastDictationAction {
     chordTarget = environment.frontmost()
   }
 
-  /// The Paste Last chord was released.
-  func pasteFromChord() async {
+  /// The Paste Last chord was released. SYNCHRONOUS on the release turn: the press-time target and
+  /// the row to paste are taken now, into this invocation's own task, so a second press arriving
+  /// before that task runs cannot replace either (final review, #3106). The returned task lets a
+  /// caller (a test) wait for this one invocation.
+  @discardableResult
+  func pasteFromChord() -> Task<Void, Never> {
     let target = chordTarget
     chordTarget = nil
-    await paste(rowID: environment.lastPasteable()?.id, target: target, source: .chord)
+    let rowID = environment.lastPasteable()?.id
+    return Task { await paste(rowID: rowID, target: target, source: .chord) }
   }
 
   /// The menu item was chosen. `rowID` and `target` were sampled when the menu opened.
@@ -122,6 +129,7 @@ final class LastDictationAction {
     switch environment.manualCopy(text) {
     case .copied: return .copied
     case .clipboardBusy: return .clipboardBusy
+    case .writeFailed: return .writeFailed
     // `manualCopy` produces neither; mapped rather than trapped so a future change surfaces as a
     // wrong-looking outcome in telemetry instead of a crash on the user's keypress.
     case .dispatched, .dispatchFailed: return .dispatchFailed
@@ -141,9 +149,11 @@ final class LastDictationAction {
     guard !environment.isDictationActive() else { return .recording }
     // Before Accessibility: with nothing to paste, the truthful answer is that, not a permission.
     guard let rowID, environment.textForReuse(rowID) != nil else { return .noDictation }
-    guard environment.isAccessibilityTrusted() else { return refuseAccessibility(source) }
+    // The target before Accessibility, for the same reason: granting the permission cannot make a
+    // quit app or our own window pasteable, so sending the user to Permissions would be untrue.
     guard let target, !environment.isTerminated(target) else { return .targetGone }
     guard !environment.isOwnApplication(target) else { return .ownWindow }
+    guard environment.isAccessibilityTrusted() else { return refuseAccessibility(source) }
 
     // The user's fingers may still be on the chord's modifiers when its key comes up. Wait for them
     // to be OBSERVED up, not for a guessed interval.
@@ -175,11 +185,16 @@ final class LastDictationAction {
     if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
     guard isFrontmost(target) else { return .focusLost }
     guard let text = environment.textForReuse(rowID) else { return .noDictation }
+    // Read AGAIN immediately before the write: the activation wait above can take up to 500 ms, and
+    // a Control or Command pressed during it would ride into the synthetic Cmd+V (final review,
+    // #3106). No await separates this read from the write, so it is the state the paste meets.
+    guard !environment.modifiersHeld() else { return .keysHeld }
 
     switch environment.manualPaste(text, environment.restoreClipboard()) {
     case .dispatched: return .dispatched
     case .dispatchFailed: return .dispatchFailed
     case .clipboardBusy: return .clipboardBusy
+    case .writeFailed: return .writeFailed
     // `manualPaste` never copies without dispatching; mapped rather than trapped, as in `copy()`.
     case .copied: return .dispatchFailed
     }
@@ -189,8 +204,8 @@ final class LastDictationAction {
   private func recheck(rowID: UUID, target: NSRunningApplication, source: Source) -> Outcome? {
     if environment.isDictationActive() { return .recording }
     if environment.textForReuse(rowID) == nil { return .noDictation }
-    if !environment.isAccessibilityTrusted() { return refuseAccessibility(source) }
     if environment.isTerminated(target) { return .targetGone }
+    if !environment.isAccessibilityTrusted() { return refuseAccessibility(source) }
     return nil
   }
 

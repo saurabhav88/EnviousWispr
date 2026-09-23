@@ -12,9 +12,9 @@ When your dictation does not appear in the app you were typing in, work through 
 
 ### First, get your words back
 
-Click into the text box, then press **Control Command V**, or click the EnviousWispr icon in your menu bar and choose **Paste Last Dictation**. Your last dictation is pasted again, so you do not have to repeat yourself. To paste it somewhere yourself, press **Control Command C** to copy it and then Cmd+V. You can change both keys in **Keybinds**; see [Customizing Your Keybind](/help/customizing-your-keybind/).
+Click into the text box, then press your Paste Last Dictation keys (**Control Command V** unless you changed them), or click the EnviousWispr icon in your menu bar and choose **Paste Last Dictation**. Your last dictation is pasted again, so you do not have to repeat yourself. To paste it somewhere yourself, press your Copy Last Dictation keys (**Control Command C** unless you changed them) and then Cmd+V. Your current keys are in **Keybinds**; see [Customizing Your Keybind](/help/customizing-your-keybind/).
 
-If that does not paste either, the checks below find the cause. Without Accessibility permission the menu item opens the permission settings for you, while the keys do nothing.
+If that does not paste either, the checks below find the cause. Pasting needs Accessibility permission: without it the menu item opens the permission settings for you, and the paste keys do nothing. Copying works either way.
 
 ### 1. Check Accessibility permission
 

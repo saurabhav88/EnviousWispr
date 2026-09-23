@@ -44,7 +44,7 @@ import Testing
         Set(LastDictationAction.Outcome.allCases.map(\.rawValue)) == [
           "dispatched", "copied", "dispatch_failed", "clipboard_busy", "no_dictation",
           "own_window", "target_gone", "recording", "ax_denied", "keys_held", "focus_lost",
-          "cancelled",
+          "cancelled", "write_failed",
         ])
     }
   }

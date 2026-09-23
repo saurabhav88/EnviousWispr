@@ -61,7 +61,7 @@ While EnviousWispr is running, pressing either combination usually runs EnviousW
 
 ### Combinations it refuses
 
-Each keybind box refuses a combination that another keybind on the page already uses, and the standard Mac shortcuts such as Cmd+C, Cmd+V and Cmd+Q, so a new keybind cannot break copying or quitting.
+Each keybind box refuses a combination that another keybind on the page already uses, and the standard Mac shortcuts such as Cmd+C, Cmd+V and Cmd+Q, so a new keybind cannot break copying, saving or quitting.
 
 A box also refuses a combination that includes a single key a more important keybind uses on its own. If you later set your recording keybind to a single key such as Right Command, and another row's combination includes it (both Last Dictation defaults use Command), the recording keybind wins. That row then says **Not active** and names the keybind using its keys, so you can choose another.
 
