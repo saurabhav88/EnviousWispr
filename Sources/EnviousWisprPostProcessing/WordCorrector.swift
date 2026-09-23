@@ -211,6 +211,15 @@ public struct WordCorrector: Sendable {
     /// Carried here so `buildLookups` can separate the two populations without
     /// rebuilding either map.
     package let isPack: Bool
+    /// The claim is an AUTOMATICALLY learned one (#3105): a sound-alike in the
+    /// word's `learnedAliases`, or any claim of a word the app created from an
+    /// edit (`learnedAt`). It still OWNS its key, so learning and import keep
+    /// refusing a collision against it, but it never swaps text by itself: only
+    /// the learned-word checker may change a learned word's spot. `buildLookups`
+    /// projects deterministic claims only, from the same resolved winners, so a
+    /// checker-only winner leaves its key with no swap rather than reviving the
+    /// claim it shadowed.
+    package var checkerOnly: Bool = false
   }
 
   /// A key claimed twice in an ordinary namespace, recorded rather than logged.
@@ -345,7 +354,7 @@ public struct WordCorrector: Sendable {
     /// The ordinary-namespace maps in `buildLookups`' shape, optionally limited
     /// to non-pack owners for the fuzzy pools that must exclude pack terms.
     func canonicalsByKey(
-      _ namespace: ExactTriggerNamespace, nonPackOnly: Bool = false
+      _ namespace: ExactTriggerNamespace, nonPackOnly: Bool = false, deterministicOnly: Bool = false
     ) -> [String: String] {
       let source: [String: TriggerOwner]
       switch namespace {
@@ -355,6 +364,7 @@ public struct WordCorrector: Sendable {
       }
       return source.reduce(into: [String: String]()) { result, entry in
         guard !nonPackOnly || !entry.value.isPack else { return }
+        guard !deterministicOnly || !entry.value.checkerOnly else { return }
         result[entry.key] = entry.value.canonical
       }
     }
@@ -451,7 +461,6 @@ public struct WordCorrector: Sendable {
 
     // Non-pack aliases: last writer wins in the ordinary namespaces.
     for word in nonPackWords {
-      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
       // Empty keys are NOT filtered, here or below. The construction this
       // replaces inserted them, and a refactor that quietly drops entries is
       // not a refactor. They are inert at runtime (Pass 0 requires three
@@ -468,6 +477,9 @@ public struct WordCorrector: Sendable {
             ExactTriggerCollision(
               key: key, existingCanonical: existing.canonical, winningCanonical: word.canonical))
         }
+        let owner = TriggerOwner(
+          wordID: word.id, canonical: word.canonical, isPack: false,
+          checkerOnly: isCheckerOnly(alias: alias, of: word))
         if namespace == .multi { index.multi[key] = owner } else { index.single[key] = owner }
       }
     }
@@ -484,7 +496,8 @@ public struct WordCorrector: Sendable {
         }
         continue
       }
-      index.single[key] = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
+      index.single[key] = TriggerOwner(
+        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
     }
 
     // No-space namespace, non-pack only. Canonical is unconditional and last
@@ -493,13 +506,15 @@ public struct WordCorrector: Sendable {
     // canonical can overwrite an earlier alias. Three rules, one map — the
     // reason a hand-rolled mirror kept getting this wrong.
     for word in nonPackWords {
-      let owner = TriggerOwner(wordID: word.id, canonical: word.canonical, isPack: false)
       let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
-      index.nospace[nospace] = owner
+      index.nospace[nospace] = TriggerOwner(
+        wordID: word.id, canonical: word.canonical, isPack: false, checkerOnly: word.learnedAt != nil)
       for alias in word.aliases {
         let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
         guard index.nospace[aliasNospace] == nil else { continue }
-        index.nospace[aliasNospace] = owner
+        index.nospace[aliasNospace] = TriggerOwner(
+          wordID: word.id, canonical: word.canonical, isPack: false,
+          checkerOnly: isCheckerOnly(alias: alias, of: word))
       }
     }
 
@@ -521,6 +536,12 @@ public struct WordCorrector: Sendable {
     }
 
     return index
+  }
+
+  /// #3105: a learned sound-alike, or any alias of a word the app created from
+  /// an edit, may only be applied by the learned-word checker.
+  private static func isCheckerOnly(alias: String, of word: CustomWord) -> Bool {
+    word.learnedAt != nil || word.learnedAliases.contains(alias)
   }
 
   /// Build the lookup structures for a given vocabulary. Pure function.
@@ -571,13 +592,16 @@ public struct WordCorrector: Sendable {
       }
     #endif
 
-    let singleAliasMap = triggerIndex.canonicalsByKey(.single)
-    let multiAliasMap = triggerIndex.canonicalsByKey(.multi)
+    // #3105: only deterministic claims swap. Checker-only (learned) winners
+    // stay in the index for ownership and are filtered here, never earlier, so
+    // the claim a learned alias shadowed is not revived.
+    let singleAliasMap = triggerIndex.canonicalsByKey(.single, deterministicOnly: true)
+    let multiAliasMap = triggerIndex.canonicalsByKey(.multi, deterministicOnly: true)
 
     // The NON-PACK exact maps. The fuzzy/compound pools derive from these so
     // pack terms can never become fuzzy candidates.
-    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true)
-    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true)
+    let nonPackSingleAliasMap = triggerIndex.canonicalsByKey(.single, nonPackOnly: true, deterministicOnly: true)
+    let nonPackMultiAliasMap = triggerIndex.canonicalsByKey(.multi, nonPackOnly: true, deterministicOnly: true)
 
     // Every non-pack canonical key (INCLUDING multi-word canonicals, which get
     // no exact-map self-entry). A pack term must never claim one of these keys,
@@ -605,8 +629,9 @@ public struct WordCorrector: Sendable {
       if canonicalToWord[ck] == nil { canonicalToWord[ck] = word }
     }
 
-    // Fuzzy + compound + canonical-fuzzy pools: NON-PACK words ONLY.
-    let canonicals = nonPackWords.map(\.canonical)
+    // Fuzzy + compound + canonical-fuzzy pools: NON-PACK words ONLY, and never a
+    // word the app learned from an edit (#3105: the checker alone uses it).
+    let canonicals = nonPackWords.filter { $0.learnedAt == nil }.map(\.canonical)
     let lowercasedCanonicals = canonicals.map { $0.lowercased() }
     let singleFuzzyCandidates = nonPackSingleAliasMap.map {
       Lookups.SurfaceCanonical(surface: $0.key, canonical: $0.value)
@@ -622,7 +647,7 @@ public struct WordCorrector: Sendable {
     // an imported alias equal to an existing multi-word canonical's space-free
     // form was reported collision-free, persisted, and then never fired,
     // because Pass 0 resolved the n-gram here first.
-    let nospaceCanonicalMap = triggerIndex.canonicalsByKey(.nospace)
+    let nospaceCanonicalMap = triggerIndex.canonicalsByKey(.nospace, deterministicOnly: true)
 
     // #992 pack fuzzy tier (LOWER authority). Single-word pack terms whose
     // scored surface length ≥ packFuzzyMinLength, built from the SAME lowercased
@@ -658,7 +683,11 @@ public struct WordCorrector: Sendable {
     // #992 precedence: every token the non-pack vocabulary already recognizes
     // as-is (single alias keys + canonical self-entries via nonPackSingleAliasMap,
     // plus all non-pack canonicals). The pack fuzzy tier is skipped for these.
-    let nonPackExactKeys = Set(nonPackSingleAliasMap.keys).union(nonPackCanonicalKeys)
+    // Checker-only (learned) keys count too: a surface the user's own vocabulary
+    // claims must never be handed to the pack fuzzy tier just because its own
+    // claim no longer swaps deterministically (#3105).
+    let nonPackExactKeys = Set(triggerIndex.canonicalsByKey(.single, nonPackOnly: true).keys)
+      .union(nonPackCanonicalKeys)
 
     return Lookups(
       singleAliasMap: singleAliasMap,

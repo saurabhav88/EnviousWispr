@@ -63,8 +63,12 @@ struct TelemetryEmitterRegistryTests {
   /// and the auto-learn coordinator's `learn_save_failed`, `learn_added`, `learn_undo_shown`,
   /// `learn_undone` (2026-09-21 plan; the ask-first flow's five were retired with it). #3069
   /// added one new site: `file_import_completed` via `TelemetryService.trackFileImportCompleted`.
+  /// #3105: `learnObservationEnded` gained `unfinishedEdits`, which changes the enclosing-function
+  /// identity of the same single `custom_words.learn_observation_ended` site. No new site, no new
+  /// event, same once-per-watched-paste cadence; one Int count on the existing row (checklist items
+  /// 4-8: existing row, a count not content, Int on the wire, registry row unchanged).
   static let sitesFingerprint =
-    "ae0ae34f53398b8a88d7d8a1e794193e0623bb44a120e79d4dfe37b4e11261b4"
+    "2860e254498dfd7e7d0b0f6b2b778d76e50cc4368ccc0c317cbeedaa8ecd33fe"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 
