@@ -170,17 +170,14 @@ def one_take(app):
         lines, cascades = p.take(app, base, bundle=bundle, route=ROUTE["route"])
         if app != "ghostty" and not same_element(focused_element(pid), staged):
             # Detects an observed move; it cannot prove focus never left and came back mid-hold.
-            # The text may be in the field that took focus. It is NOT cleared: this run did not
-            # stage that field, and select-all + delete there could destroy the person's own
-            # content. It is named instead, so a person can remove the take by hand.
-            now = focused_element(pid)
-            role = None
-            if now is not None:
-                from ui_helpers import get_attr
-                role = get_attr(now, "AXRole")
-            raise u.Aborted(f"{app}: focus left the staged field during the take; text may be in "
-                            f"frontmost={apps.frontmost_bundle()!r} field role={role!r}; "
-                            f"REMOVE BY HAND (this run never clears a field it did not stage)")
+            # The text may be wherever focus went. It is NOT cleared: this run did not stage that
+            # field and cannot prove the text there is its take, so select-all + delete could destroy
+            # the person's own content. The recipient is unverified; only the frontmost app is named.
+            raise u.Aborted(
+                f"{app}: focus moved during the take; "
+                f"current frontmost={apps.frontmost_bundle()!r}; "
+                "paste recipient and field unverified; REMOVE BY HAND"
+            )
         tiers = [t for t, target in cascades if target.strip().lower() == bundle.lower()]
         mine = [line for line in lines if line[3] == bundle and tiers and line[0] == tiers[0]]
         if len(tiers) != 1 or len(lines) != len(mine) or len(mine) != int(tiers[0] in KEY_TIERS):
@@ -241,7 +238,10 @@ def main():
     def interrupt(_signum, _frame):
         raise KeyboardInterrupt
 
-    for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    # Every attended terminal control that could end or suspend the run with a device changed:
+    # Ctrl+C, a kill, a closed terminal, Ctrl+\ and Ctrl+Z.
+    handled = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT, signal.SIGTSTP)
+    for signum in handled:
         signal.signal(signum, interrupt)
     from silent_audio import AlertSink, AudioRoute
     w._INPUT_WARN = False
@@ -274,27 +274,41 @@ def main():
     except (u.Aborted, KeyboardInterrupt) as e:
         u.record("run", "ABORT", repr(e))
     finally:
+        for signum in handled:  # nothing may interrupt the restores
+            signal.signal(signum, signal.SIG_IGN)
+
+        def cleanup_check(name, ok, detail=""):
+            """`u.check` that records BEFORE printing and survives a closed terminal: a print that
+            raises must not skip the restores after it."""
+            status = "PASS" if ok else "FAIL"
+            u.results.append((name, status, detail))
+            try:
+                print(f"  {status}  {name}{('  :: ' + detail) if detail else ''}")
+            except (OSError, ValueError):
+                pass
+            return ok
+
         # Each step is attempted on its own; none can skip the next.
         for label, step in [("clipboard restored byte for byte", lambda: u.pasteboard_restore(snapshot)),
                             ("modifier flags cleared", clear_and_verify_modifiers)]:
             try:
-                u.check(label, bool(step()))
+                cleanup_check(label, bool(step()))
             except BaseException as exc:
-                u.check(label, False, repr(exc))
+                cleanup_check(label, False, repr(exc))
         try:
             if route is not None:
                 # The flag, not the exception: it survives a later error replacing the exception.
-                if u.check("every matrix take stopped", not p.TAKE_STUCK["stuck"]):
-                    u.check("microphone and app device restored", route.restore())
+                if cleanup_check("every matrix take stopped", not p.TAKE_STUCK["stuck"]):
+                    cleanup_check("microphone and app device restored", route.restore())
                 else:
                     print("    the virtual microphone is LEFT in place: quit the dev app, then run "
                           "`python3 Tests/RuntimeUAT/silent_audio.py restore`")
         except BaseException as exc:
-            u.check("microphone and app device restored", False, repr(exc))
+            cleanup_check("microphone and app device restored", False, repr(exc))
         try:
-            u.check("devices restored", sink.restore())  # outermost: whatever failed before
+            cleanup_check("devices restored", sink.restore())  # outermost: whatever failed before
         except BaseException as exc:
-            u.check("devices restored", False, repr(exc))
+            cleanup_check("devices restored", False, repr(exc))
     print("\n| app | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | false unchanged |")
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:

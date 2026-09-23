@@ -227,7 +227,10 @@ def main() -> int:
         raise KeyboardInterrupt
 
     # Installed BEFORE the snapshot: SIGTERM (TaskStop) must run the restore below, not kill it.
-    for signum in (signal.SIGTERM, signal.SIGHUP):  # a closed terminal sends SIGHUP
+    # Every attended terminal control that could end or suspend the run with the clipboard
+    # changed: a kill, a closed terminal, Ctrl+\ and Ctrl+Z (Ctrl+C is KeyboardInterrupt already).
+    handled = (signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT, signal.SIGTSTP)
+    for signum in handled:
         signal.signal(signum, stop)
     simulate_input.DEFAULT_DELAY = 0  # no sleep after the key: the clock starts at the post
     snap = pasteboard_snapshot()
@@ -255,7 +258,7 @@ def main() -> int:
                 return 2
             measure(front[0], front[1], args.reps, args.limit, args.route)
     finally:
-        for signum in (signal.SIGTERM, signal.SIGHUP):
+        for signum in handled + (signal.SIGINT,):  # nothing may interrupt the restore
             signal.signal(signum, signal.SIG_IGN)
         try:
             clear_modifier_flags()
