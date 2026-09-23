@@ -136,6 +136,19 @@ package enum PastedRegionTiming {
   package static let caretCapMs = 10_000
   /// Wall-clock ceiling from paste; observation never outlives it.
   package static let ceilingMs = 60_000
+  /// #3106 PR A, the arrival session. The landing decision is published at the first new
+  /// occurrence, or at this deadline from dispatch when none was seen. Measured 2026-09-23 on this
+  /// M4 Pro (#3106 comments 5798082590, 5798253620): 46/46 Cmd+V and 13/14 AX-menu pastes were
+  /// first observed at 0.2-120 ms; the one miss was a real miss. A trial value: the late-hit shadow
+  /// below measures whether any real paste arrives after it.
+  package static let landingDeadlineMs = 300
+  /// The session's poll backstop between notification wakeups. A requested cadence: one read can
+  /// take longer, and only one read runs at a time.
+  package static let arrivalPollMs = 25
+  /// How long a potential eligible miss keeps being read after its decision, to catch a late hit.
+  /// Also #996's capture opportunity, counted from its own first request (the grace the watcher's
+  /// ten 150 ms retries gave it, #996 app matrix 2026-09-20).
+  package static let arrivalShadowMs = 1500
   /// Values longer than this are never read into memory as evidence.
   package static let maxValueUTF16 = 20_000
   /// Context kept either side of the pasted text to re-find the region.
