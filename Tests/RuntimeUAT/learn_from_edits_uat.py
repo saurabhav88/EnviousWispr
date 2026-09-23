@@ -435,6 +435,12 @@ def field_text(path):
 
 def new_doc(name):
     path = f"/tmp/ew-lfe-{name}.txt"
+    # A window left open by an earlier run would see the truncation below as "changed by another
+    # application" and raise an autosave sheet that takes focus from the text area, so every paste
+    # falls back to clipboard-only. Close any such window first.
+    close_doc(path)
+    if textedit_area(path) is not None:
+        close_doc(path)  # a Revert above keeps the window open; close it once more
     open(path, "w").close()
     subprocess.run(["open", "-a", "TextEdit", path], check=True)
     if not wait_for("the TextEdit window", lambda: textedit_area(path) is not None, deadline=15.0):
@@ -464,14 +470,16 @@ def close_doc(path):
             button = get_attr(window, "AXCloseButton")
             if button is not None:
                 perform_action(button, "AXPress")
-    # An unsaved-changes sheet may follow; "Delete" discards. It has no ack.
+    # An unsaved-changes sheet may follow ("Delete" discards), or the autosave-conflict sheet
+    # ("Revert" keeps the file on disk). Neither has an ack.
     for _ in range(3):
         time.sleep(0.5)  # settle: the sheet appears with no observable ack
         pid = find_app_pid("TextEdit")
         if pid is None:
             break
         app = get_ax_app(pid)
-        button = find_element(app, role="AXButton", title="Delete")
+        button = (find_element(app, role="AXButton", title="Delete")
+                  or find_element(app, role="AXButton", title="Revert"))
         if button is None:
             break
         perform_action(button, "AXPress")
