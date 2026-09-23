@@ -85,26 +85,6 @@ def same_element(a, b):
     return a is not None and b is not None and CFEqual(a, b)
 
 
-def focus_page_textarea(pid, bundle):
-    """Safari's staging page asks for autofocus, but Safari leaves focus in the address bar
-    (measured 2026-09-23: AXTextField holding the file URL). Click into the page's one text area,
-    as a person does (setting AXFocused did not move Safari's focus, measured the same day), and
-    return it only when focus is confirmed there, else None."""
-    from urllib.parse import unquote, urlsplit
-    from ui_helpers import find_element, get_attr, get_ax_app
-    tab = apps.osa('tell application "Safari" to get URL of current tab of front window')
-    url = urlsplit(tab.stdout.strip())
-    if (tab.returncode != 0 or url.scheme != "file"
-            or os.path.realpath(unquote(url.path)) != os.path.realpath(apps.LOCAL_PAGE)):
-        raise u.Aborted("safari: the local staging page is not the active tab")
-    window = get_attr(get_ax_app(pid), "AXFocusedWindow")
-    area = find_element(window, role="AXTextArea", max_depth=60) if window is not None else None
-    if area is None:
-        return None
-    apps.click_into(area, "the page's text area", bundle)
-    return area if same_element(focused_element(pid), area) else None
-
-
 def safe_cleanup(app, pid, doc, staged, may_clear):
     """Clear this run's text from the field this run STAGED, and only from it.
 
@@ -171,9 +151,7 @@ def one_take(app):
         pid, doc = p.quiet(f"{app} staging", apps.stage, app)
         # The field this run owns: scored and cleaned by THIS identity, never "whatever is
         # focused later" (a moved focus could read or clear another field).
-        staged = focused_element(pid)
-        if app == "safari":
-            staged = focus_page_textarea(pid, bundle)  # never the address bar Safari leaves focused
+        staged = focused_element(pid)  # Safari's staging now puts focus in its page's text area
         if staged is None and app != "ghostty":
             raise u.Aborted(f"{app}: no focused field after staging")
         # A landing check resolves up to 1.5 s after its paste; the previous app's cleanup and this
