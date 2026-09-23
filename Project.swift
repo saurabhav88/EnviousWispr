@@ -565,6 +565,7 @@ let project = Project(
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
         "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-checker-delivery-manifest.json",
         // #2649: S1-mini — the third-party normalizer that sits beside EG-1 in
         // the polish picker. Same Bundle.main route and the same two trust
         // roots as EG-1: s1-manifest.json is the RUNTIME root (what to launch

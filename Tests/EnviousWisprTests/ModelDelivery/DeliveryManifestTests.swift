@@ -702,6 +702,7 @@ enum ManifestFixture {
       ],
       admission: manifest.admission,
       runtimeIdentityDigest: manifest.runtimeIdentityDigest,
+      checkerContract: manifest.checkerContract,
       manifestDigest: manifest.manifestDigest)
     let d = defaults()
     d.set("our_copy,backup", forKey: "modelDelivery.parakeet.sourceOrder")
