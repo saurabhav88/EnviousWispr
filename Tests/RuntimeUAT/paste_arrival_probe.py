@@ -185,15 +185,15 @@ def one_trial(bundle: str, pid: int, chosen, limit_s: float, route: str = "key")
 def measure(bundle: str, pid: int, reps: int, limit: float, route: str = "key") -> list[dict]:
     chosen = focused_element(pid)  # the field the person chose, held for every repetition
     if chosen is None:
-        print(f"  {bundle}: no focused field; skipping", flush=True)
-        return []
+        raise RuntimeError(f"{bundle}: no focused field")
     results = []
     for i in range(reps):
         try:
             r = one_trial(bundle, pid, chosen, limit, route)
         except RuntimeError as error:
-            print(f"  {bundle}: stopping this app: {error}", flush=True)
-            break
+            # A safety refusal is incomplete evidence: the run fails rather than report a
+            # shorter sample as if it were the requested one.
+            raise RuntimeError(f"{bundle}: paste {i + 1}/{reps} aborted: {error}") from error
         results.append(r)
         print(f"  paste {i + 1}: {r}", flush=True)
         # settle: spacing between trials so one paste's rendering cannot overlap the next clock
@@ -218,6 +218,8 @@ def main() -> int:
     ap.add_argument("--tour", action="store_true", help="measure each app the person clicks into")
     ap.add_argument("--apps", type=int, default=6, help="tour mode: how many apps to measure")
     args = ap.parse_args()
+    if args.reps < 1 or args.apps < 1 or args.limit <= 0 or args.focus_wait <= 0:
+        ap.error("reps, apps, limit, and focus-wait must be positive")
 
     from wispr_eyes import clear_modifier_flags, modifier_flags
 
@@ -241,6 +243,8 @@ def main() -> int:
                 print(f"Measuring {front[0]}", flush=True)
                 measure(front[0], front[1], args.reps, args.limit, args.route)
                 done.add(front[0])
+            if len(done) != args.apps:
+                return 2
         else:
             print(f"Waiting up to {args.focus_wait:.0f}s for a focused text box in {args.bundle}...",
                   flush=True)
