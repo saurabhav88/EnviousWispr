@@ -640,6 +640,83 @@ public enum ClipboardCleanup {
     }
   }
 
+  // MARK: - Reusing the last dictation on request (#3106)
+
+  /// What a Paste or Copy Last Dictation request did to the board.
+  public enum ManualClipboardResult: Equatable, Sendable {
+    /// The text was written and Cmd+V was posted. Says nothing about where the paste landed.
+    case dispatched
+    /// The text was written for the user to paste themselves.
+    case copied
+    /// The text was written but Cmd+V could not be posted. The text is left on the board, so the
+    /// user can still paste it by hand, and no restore is scheduled.
+    case dispatchFailed
+    /// The board was not ours to take, and nothing was touched: a dictation's paste is still being
+    /// read, or Quick Add is mid-transaction. The text stays in History.
+    case clipboardBusy
+  }
+
+  /// Paste `text` into the frontmost app because the user asked for it again (#3106).
+  ///
+  /// **Synchronous on purpose: no `await` between deciding and writing.** The caller does all of its
+  /// waiting (activating the target, re-checking the row) BEFORE calling this, so a dictation or a
+  /// Quick Add transaction cannot start between the busy check and the write.
+  ///
+  /// Obeys the same restore setting as a dictation. With restore on, the user's clipboard comes back
+  /// after the usual delay under the usual change-count guard; with it off, the text stays.
+  ///
+  /// - Parameter dispatch: posts Cmd+V and returns whether it was posted. Never writes the board.
+  public static func manualPaste(
+    text: String, restore: Bool, on board: NSPasteboard, dispatch: () -> Bool
+  ) -> ManualClipboardResult {
+    guard claimBoardForManualWrite(board) else { return .clipboardBusy }
+    // Photographed only now, after any stale pending work was dropped, so this reads the board as it
+    // really stands. `snapshotForDelivery` would also inherit a pending payload, but none survives
+    // `claimBoardForManualWrite`.
+    let snapshot = restore ? snapshotForDelivery(from: board) : nil
+    let changeCountAfterWrite = PasteService.copyToClipboardReturningChangeCount(text, to: board)
+    guard dispatch() else {
+      // Nothing was pasted, so there is nothing to wait for and nothing to hand back yet: the
+      // text on the board is now the user's only way to paste it.
+      return .dispatchFailed
+    }
+    if let snapshot {
+      scheduleRestore(
+        snapshot, changeCountAfterPaste: changeCountAfterWrite, tier: .cgEvent, on: board)
+    }
+    return .dispatched
+  }
+
+  /// Put `text` on the clipboard for the user to paste themselves (#3106). No restore: the text on
+  /// the clipboard is the whole point.
+  public static func manualCopy(text: String, on board: NSPasteboard) -> ManualClipboardResult {
+    guard claimBoardForManualWrite(board) else { return .clipboardBusy }
+    PasteService.copyToClipboard(text, to: board)
+    return .copied
+  }
+
+  /// Take the board for a manual write, or refuse without touching anything.
+  ///
+  /// Refuses exactly where `beginTakeover` refuses, for the same reasons:
+  /// - a FRESH pending restore or legacy rewrite means a dictation just wrote the board and the target
+  ///   app may still be reading it; writing now would replace the paste mid-read (the wrong-text
+  ///   failure `beginTakeover` documents);
+  /// - an active Quick Add takeover is holding the user's clipboard across awaits, and this write
+  ///   would be restored over or mistaken for the target app's Copy response.
+  ///
+  /// A reuse request is a limb, like Quick Add, so it yields rather than taking the board from
+  /// either. A STALE pending operation is cancelled: its board has already moved on, and left armed
+  /// it would fire on top of this write.
+  private static func claimBoardForManualWrite(_ board: NSPasteboard) -> Bool {
+    guard activeTakeover == nil else { return false }
+    if let current = pending {
+      guard board.changeCount != current.changeCountAfterPaste else { return false }
+      pending = nil
+      current.task.cancel()
+    }
+    return true
+  }
+
   // MARK: - Private
 
   /// - Parameter body: performs the cleanup and returns whether it applied.

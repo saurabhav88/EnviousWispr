@@ -2167,6 +2167,16 @@ public enum PasteService {
     dispatchCmdV()
   }
 
+  /// Post Cmd+V to the frontmost app and report whether it was posted (#3106).
+  ///
+  /// Writes NOTHING to the clipboard: the caller has already put the text there inside its own
+  /// clipboard transaction (`ClipboardCleanup.manualPaste`). `pasteToActiveApp` writes the board
+  /// itself, so calling it there would write twice; `simulatePaste` drops the result, which is kept
+  /// for its History and Escape Recovery callers.
+  public static func postPasteKeystroke() -> Bool {
+    dispatchCmdV()
+  }
+
   // MARK: - Tier 2c: Language-agnostic Edit > Paste via Accessibility menu (#729)
 
   /// True when an AX menu item's command-key equivalent is exactly ⌘V (no
