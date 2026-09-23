@@ -452,7 +452,7 @@ package protocol PastedRegionAXOperations: AnyObject {
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)?
 
-  // MARK: #3106 paste landing check: one AX call per method, on the exact handle given
+  // MARK: #3106 paste arrival session: one AX call per method, on the exact handle given
 
   /// `AXFocusedUIElement` of THIS application handle, one call. The caller installs the handle's
   /// messaging timeout first; nothing here creates another handle or sets its own bound.

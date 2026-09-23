@@ -24,6 +24,10 @@ import Foundation
 @MainActor
 package protocol PasteEditCapturing: AnyObject, Sendable {
   func editWatchCapture(pastedAtMs: Int) async -> PastedRegionCaptureOutcome
+  /// The watch that asked is gone: end a pending request now (its waiters get
+  /// `captureUnsupported`) and read nothing more for it. Touches nothing else the owner does
+  /// (a key paste's landing decision, shadow and report go on). Idempotent.
+  func cancelEditWatchCapture()
 }
 
 public struct PasteCompletionEvent: Sendable {

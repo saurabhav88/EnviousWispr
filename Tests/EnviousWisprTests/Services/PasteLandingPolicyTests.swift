@@ -28,7 +28,7 @@ struct PasteLandingPolicyTests {
     var others: [PasteArrivalLanding] = PasteArrivalLanding.Found.allCases.map { .found($0) }
     others += PasteArrivalLanding.CannotRead.allCases.map { .cannotRead($0) }
     others += PasteArrivalLanding.Inconclusive.allCases.map { .inconclusive($0) }
-    #expect(others.count == 1 + 5 + 16)
+    #expect(others.count == 1 + 5 + 17)
     for landing in others {
       for appClass in AppClass.allCases {
         #expect(

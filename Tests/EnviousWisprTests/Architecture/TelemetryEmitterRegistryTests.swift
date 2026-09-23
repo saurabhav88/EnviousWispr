@@ -68,7 +68,7 @@ struct TelemetryEmitterRegistryTests {
   /// closed string fields, no content, reader the "Last dictation reuse" insight).
   /// #3106 step 1 added one new site: `paste.landing_observed` via
   /// `TelemetryService.pasteLandingObserved` (per_take, sampled; checklist: one row per committed
-  /// landing check, closed enums, Int durations, no text or bundle id, reader the "Paste landing"
+  /// arrival session (PR A), closed enums, Int durations, no text or bundle id, reader the "Paste landing"
   /// insight). Derived by removing that one line from the printed site list: the rest hashes to
   /// the previous value.
   /// #3106 PR A: the same single `paste.landing_observed` site gained two parameters

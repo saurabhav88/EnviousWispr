@@ -81,6 +81,8 @@ final class EditCaptureFake: PasteEditCapturing {
   }
 
   var isParked: Bool { parked != nil }
+  private(set) var cancels = 0
+  func cancelEditWatchCapture() { cancels += 1 }
 
   func release() {
     let continuation = parked
@@ -410,6 +412,7 @@ struct ObservedCorrectionWatcherTests {
     await pasteAndPark(watcher)
     knobs.toggle = false
     watcher.learnFromEditsChanged(isOn: false)
+    #expect(edits.cancels == 1, "the pending capture stops reading")
     edits.release()
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.skipped(.toggleOff)])
@@ -426,11 +429,25 @@ struct ObservedCorrectionWatcherTests {
     edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
     await pasteAndPark(watcher)
     watcher.recordingStarted()
+    #expect(edits.cancels == 1, "the pending capture stops reading")
     edits.release()
     #expect(await waitForEvents(telemetry, count: 1))
     #expect(telemetry.events == [.observationEnded(.nextDictationStarted, 0, .other)])
     #expect(await waitUntil { !edits.isParked })
     #expect(observer.starts == 0 && watcher.isWatching == false)
+  }
+
+  @Test("the judge removed while the session answers: the capture stops, no start, no row")
+  func modelLossDuringTheAwait() async {
+    let watcher = makeWatcher()
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    await pasteAndPark(watcher)
+    watcher.modelBecameUnavailable()
+    #expect(edits.cancels == 1, "the pending capture stops reading")
+    edits.release()
+    #expect(await waitUntil { !edits.isParked })
+    #expect(await waitUntil { watcher.isWatching == false })
+    #expect(observer.starts == 0 && telemetry.events.isEmpty)
   }
 
   @Test("a destination change while the session answers: destination_mismatch, no start")

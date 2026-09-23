@@ -335,6 +335,25 @@ struct PasteArrivalCaptureTests {
     #expect(session.landing == .inconclusive(.manualAccessibilityUnknown))
   }
 
+  @Test("a host that needs the opt-in is no_target only after the opt-in succeeded")
+  func noFocusNeedsASuccessfulOptIn() throws {
+    ax.focusedByApplication[pid] = .noFocus
+    ax.focused[pid] = .noFocus
+    ax.manualHosts = [pid]
+    ax.enableSucceeds = false
+    let refused = try prepare(bundle: "com.google.Chrome")
+    refused.commit()
+    scheduler.advance(ms: 300)
+    #expect(refused.landing == .inconclusive(.manualAccessibilityNotEnabled))
+    #expect(reports.list.count == 1, "not a miss: reported at once, no shadow")
+
+    ax.enableSucceeds = true
+    let optedIn = try prepare(bundle: "com.google.Chrome")
+    optedIn.commit()
+    scheduler.advance(ms: 300)
+    #expect(optedIn.landing == .noTarget)
+  }
+
   @Test("a destination lost during the shadow censors the late check instead of claiming no hit")
   func shadowLossCensors() throws {
     let session = try prepare()
@@ -546,6 +565,28 @@ struct PasteArrivalCaptureTests {
     retrying.cancel()
     let outcome = await probe.result()
     #expect(outcome == .ended(.captureUnsupported))
+  }
+
+  @Test("#996 withdrawing its request stops its reads at once; the landing shadow and report go on")
+  func withdrawnEditRequestStopsReading() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.phase == .shadowing)
+    let probe = await startEditRequest(session)
+    final class Count { var attempts = 0 }
+    let count = Count()
+    session.onEditAttempt = { count.attempts += 1 }
+    scheduler.advance(ms: 50)
+    let before = count.attempts
+    #expect(before > 0, "the request is retrying")
+    session.cancelEditWatchCapture()
+    #expect(await probe.result() == .ended(.captureUnsupported))
+    scheduler.advance(ms: 500)
+    #expect(count.attempts == before, "no read for a withdrawn request")
+    session.cancelEditWatchCapture()  // idempotent
+    scheduler.advance(ms: 1_000)
+    #expect(reports.list.map(\.lateCheck) == [.completedNoHit], "the landing report is untouched")
   }
 
   // MARK: Tier 1 (AX direct): #996 only

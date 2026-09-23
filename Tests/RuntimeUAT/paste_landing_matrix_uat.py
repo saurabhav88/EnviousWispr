@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The paste landing check across real destination apps (#3106, the evidence for step 2).
+"""The paste arrival session across real destination apps (#3106, the evidence for PR B).
 
     python3 Tests/RuntimeUAT/paste_landing_matrix_uat.py [--apps slack,notes,...] [--takes 3]
 
@@ -155,7 +155,7 @@ def one_take(app):
         staged = focused_element(pid)  # Safari's staging now puts focus in its page's text area
         if staged is None and app != "ghostty":
             raise u.Aborted(f"{app}: no focused field after staging")
-        # A landing check resolves up to 1.5 s after its paste; the previous app's cleanup and this
+        # A session decides at 300 ms and reports by its 1.5 s shadow horizon; the previous app's cleanup and this
         # staging already take longer, and this settle makes the gap explicit, so the byte offset
         # below cannot catch the previous take's late line.
         time.sleep(2.0)

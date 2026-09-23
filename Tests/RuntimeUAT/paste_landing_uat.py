@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live UAT for the paste landing check (#3106 step 1), driven synthetically and silently.
+"""Live UAT for the paste arrival session (#3106 PR A), driven synthetically and silently.
 
     python3 Tests/RuntimeUAT/paste_landing_uat.py            # all three phases
     python3 Tests/RuntimeUAT/paste_landing_uat.py focused    # one phase
@@ -23,7 +23,7 @@ WHAT EACH VERDICT READS
 - Arrival (focused phase): the page's text box value, read through accessibility, compared by word
   overlap with the spoken sentence (the recogniser may mishear one word; `last_dictation_uat.py`).
 - Clipboard: a sentinel is put on the board before the take; with the founder's restore setting on,
-  it must be back afterwards. The landing check must not change that either way.
+  it must be back afterwards. The arrival session must not change that either way.
 - Tier, not pill: the take's tier is not `clipboard_only`, the only tier that shows the notice. The
   pill itself is not observed here; "no pill appeared" stays a manual Phase 3 check.
 
@@ -74,7 +74,7 @@ def open_page(name):
     with open(path, "w") as fh:
         fh.write('<!doctype html><meta charset="utf-8"><title>ew landing '
                  f'{name}</title><body style="font:18px sans-serif;padding:24px">'
-                 '<p>Paste landing check (local page, nothing is sent anywhere).</p>'
+                 '<p>Paste arrival check (local page, nothing is sent anywhere).</p>'
                  + PAGES[name] + '</body>')
     subprocess.run(["open", "-a", "Google Chrome", path], check=True)
     OPENED.add(name)
@@ -344,7 +344,7 @@ def verify_textedit(base, delivered, restore_on, sentinel):
     lines = LANDING.findall(text)
     print(f"    tier={tiers} PASTE_LANDING lines={lines}")
     if tiers == ["ax_direct"]:
-        u.check("textedit: no landing check on the ax_direct tier", lines == [], str(lines))
+        u.check("textedit: no landing row on the ax_direct tier", lines == [], str(lines))
 
 
 PHASES = ["focused", "nofocus", "textedit"]

@@ -679,10 +679,13 @@ internal final class PasteCascadeExecutor {
         tier = .axDirect
         // #3106 PR A: Tier 1 wrote the field itself, so there is nothing to observe landing; #996
         // still asks the same owner for its edit-watch capture, with the text this route
-        // actually submitted. Only a DELIVERED write gets one.
-        if let app = request.targetApp, let submitted = insert.writeCall.attemptedText {
+        // actually submitted. Only a DELIVERED write gets one. The destination is the written
+        // element's own process when no app was recorded (the two are captured independently).
+        if let submitted = insert.writeCall.attemptedText,
+          let pid = request.targetApp?.processIdentifier ?? landingAX.pid(of: element)
+        {
           committedArrivalCapture = PasteArrivalCapture.editOnly(
-            pid: app.processIdentifier, bundleID: app.bundleIdentifier, payload: submitted,
+            pid: pid, bundleID: request.targetApp?.bundleIdentifier, payload: submitted,
             ax: landingAX, scheduler: landingScheduler)
         }
       case .continueCascade, .stopUnverified:

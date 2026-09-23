@@ -214,6 +214,9 @@ package enum PasteArrivalLanding: Sendable, Equatable {
     case selectionUnavailable = "selection_unavailable"
     case selectionOverlap = "selection_overlap"
     case manualAccessibilityUnknown = "manual_accessibility_unknown"
+    /// A host that needs the manual-accessibility opt-in, whose opt-in failed: its "no focus" can
+    /// hide a focused field.
+    case manualAccessibilityNotEnabled = "manual_accessibility_not_enabled"
     case appSwitched = "app_switched"
     case appTerminated = "app_terminated"
   }
@@ -386,6 +389,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private var committedAtMs = 0
   private var generation = 0
   private var manualAccessibilityEnabled = false
+  /// Whether that one opt-in succeeded.
+  private var manualAccessibilityOptedIn = false
   private var poll: (any PastedRegionScheduledWork)?
   private var deadline: (any PastedRegionScheduledWork)?
   private var shadowEnd: (any PastedRegionScheduledWork)?
@@ -616,7 +621,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     }
     guard !manualAccessibilityEnabled, manualAX == true else { return }
     manualAccessibilityEnabled = true
-    _ = ax.enableManualAccessibility(application)
+    manualAccessibilityOptedIn = ax.enableManualAccessibility(application)
   }
 
   private func notified(_ notification: PastedRegionAXNotification, generation: Int) {
@@ -732,6 +737,11 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       // An Electron host that was never opted in answers "no focus" while a field has it; when
       // whether this is such a host is unknown, "nothing focused" cannot be trusted either.
       guard manualAX != nil else { return .inconclusive(.manualAccessibilityUnknown) }
+      // A host that needs the opt-in shows its focus only once opted in, so its "no focus" is
+      // trusted only after a successful opt-in (a Chromium browser counts as a browser miss).
+      if manualAX == true, !manualAccessibilityOptedIn {
+        return .inconclusive(.manualAccessibilityNotEnabled)
+      }
       switch attempt {
       case .noFocus: return .noTarget
       case .permissionLost: return .cannotRead(.permissionLost)
@@ -926,6 +936,11 @@ extension PasteArrivalCapture {
       request.waiters.append(continuation)
       stepEditRequest(request)
     }
+  }
+
+  package func cancelEditWatchCapture() {
+    guard let request = editRequest else { return }
+    resolveEditRequest(request, .ended(.captureUnsupported))
   }
 
   private func stepEditRequest(_ request: EditRequest) {

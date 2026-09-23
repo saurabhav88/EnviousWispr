@@ -16,7 +16,7 @@ import Testing
 ///   the main actor, which nothing can interleave.
 @MainActor
 @Suite(
-  "Paste landing check: its telemetry row (#3106)", .tags(.observabilityContract), .serialized)
+  "Paste arrival session: its telemetry row (#3106)", .tags(.observabilityContract), .serialized)
 struct PasteLandingTelemetryTests {
 
   /// A readable TextEdit-shaped target, as in `PasteLandingLifecycleTests`: pid 42 frontmost, its

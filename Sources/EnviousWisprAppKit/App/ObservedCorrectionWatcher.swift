@@ -222,6 +222,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       return
     }
     watch?.cancelled = true
+    w.event.editCapture?.cancelEditWatchCapture()
     deps.observer.stop()
     emitEnded(reason: .nextDictationStarted, generation: w.generation)
   }
@@ -249,6 +250,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     guard let w = watch, !w.cancelled else { return }
     watch?.cancelled = true
     guard !w.ended else { return }
+    w.event.editCapture?.cancelEditWatchCapture()
     deps.observer.stop()
   }
 
@@ -262,6 +264,8 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     guard let w = watch, w.generation == gen, !w.cancelled else { return }
     watch?.cancelled = true
     guard !w.ended else { return }
+    // A pending capture stops reading for a watch that no longer exists.
+    w.event.editCapture?.cancelEditWatchCapture()
     deps.observer.stop()
     toggledOffMidWatch += 1
     deps.telemetry.learnSkipped(reason: .toggleOff)

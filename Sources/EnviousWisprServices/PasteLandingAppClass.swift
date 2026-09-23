@@ -1,7 +1,7 @@
 import Foundation
 
 /// How a paste destination exposes its text, as a closed class for analytics (#3106): one owner
-/// for the decision the learn watcher made inline, now shared with the paste landing check.
+/// for the decision the learn watcher made inline, now shared with the paste arrival session.
 ///
 /// Never which app it is: the answer is `browser`, `manual_accessibility` or `native`, the values of
 /// `TelemetryService.LearnFromEditsTelemetry.AppClass`. `other` is not produced here; it stays the

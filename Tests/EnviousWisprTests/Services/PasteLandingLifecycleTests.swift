@@ -14,7 +14,7 @@ import Testing
 /// Every answer comes from `PastedRegionFakeAX`; the clock is `PastedRegionFakeScheduler`. Nothing
 /// here talks to a real application.
 @MainActor
-@Suite("Paste landing check: preparation primitives (#3106)", .tags(.productOutcome))
+@Suite("Paste arrival session: preparation primitives (#3106)", .tags(.productOutcome))
 struct PasteLandingLifecycleTests {
 
   private static let pid: pid_t = 42
