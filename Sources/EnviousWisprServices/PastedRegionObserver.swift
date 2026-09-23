@@ -499,6 +499,78 @@ package enum PastedRegionLocator {
     }
   }
 
+  /// Every occurrence of the pasted text, for counting (#3106: a NEW occurrence is what proves a
+  /// paste landed, so a phrase already in the field, or a second identical chunk, must count).
+  package enum Occurrences: Equatable {
+    /// The scan finished. `[start, end)` per occurrence in the value's own UTF-16 offsets, ordered
+    /// by `start`; empty only when the text genuinely does not occur.
+    case complete([Located])
+    /// The scan could not answer. Never a partial list: a count missing hits past the stopping
+    /// point would read as "the paste did not land".
+    case incomplete(Incomplete)
+  }
+
+  package enum Incomplete: Equatable {
+    /// The value or pasted text exceeds `PastedRegionTiming.maxValueUTF16`.
+    case tooLong
+    /// The scan spent `workBudget` unit examinations before it finished.
+    case workBudget
+  }
+
+  /// Haystack units the matcher may examine in one count. A healthy count costs about
+  /// value length x (1 + partial-match depth); a value near the 20,000-unit limit that repeats a
+  /// long prefix of the pasted text is the adversarial case this bounds. (#3106 PR A measures the
+  /// real cost before this number is relied on.)
+  package static let occurrenceWorkBudget = 2_000_000
+
+  /// `locate`'s matching, counted instead of classified. Same folding (`foldSpace`), same
+  /// wrap-tolerant matcher, same leading-space anchoring. At each start the full text is tried
+  /// first and the trailing-whitespace-omitted form only if the full text does not match there,
+  /// so one occurrence rendered either way counts ONCE. Unlike `locate`, the omitted form is tried
+  /// per position, not only when the full text is absent everywhere: one full rendering must not
+  /// hide a second, trimmed one. `locate` keeps its own exact-first rule for #996.
+  package static func occurrences(
+    ofPasted pasted: String, in value: String, workBudget: Int = occurrenceWorkBudget
+  ) -> Occurrences {
+    guard workBudget >= 0 else { return .incomplete(.workBudget) }
+    let limit = PastedRegionTiming.maxValueUTF16
+    guard value.utf16.prefix(limit + 1).count <= limit,
+      pasted.utf16.prefix(limit + 1).count <= limit
+    else { return .incomplete(.tooLong) }
+    guard !pasted.isEmpty else { return .complete([]) }
+    let haystack = value.utf16.map(foldSpace)
+    let full = pasted.utf16.map(foldSpace)
+    let trimmedForm = Array(full.reversed().drop(while: isSpaceUnit).reversed())
+    let trimmed: [UInt16]? = trimmedForm.isEmpty || trimmedForm.count == full.count ? nil : trimmedForm
+    let units = Array(value.utf16)
+    var work = workBudget
+    var found: [Located] = []
+    var i = 0
+    while i < haystack.count {
+      // Leading-space anchoring, as in `wrapTolerantOccurrences`: once per host whitespace run.
+      // Both forms share the first unit, so one check serves both.
+      if full[0] == 0x0020, i > 0, isSpaceUnit(haystack[i - 1]) {
+        i += 1
+        continue
+      }
+      var match = full.count <= haystack.count - i
+        ? matchWrapTolerant(full, in: haystack, at: i, work: &work) : nil
+      if work < 0 { return .incomplete(.workBudget) }
+      if match == nil, let trimmed, trimmed.count <= haystack.count - i {
+        match = matchWrapTolerant(trimmed, in: haystack, at: i, work: &work)
+        if work < 0 { return .incomplete(.workBudget) }
+      }
+      if let match {
+        found.append(
+          Located(
+            text: String(decoding: units[i..<match.reported], as: UTF16.self),
+            start: i, end: match.reported))
+      }
+      i += 1
+    }
+    return .complete(found)
+  }
+
   /// `occurrences(of:in:limit:)` where a run of U+0020 in `needle` matches a
   /// run of whitespace units in `haystack` at least as long. Every other unit
   /// must match exactly. Returns `[start, end)` per hit, `end` depending on
@@ -544,6 +616,16 @@ package enum PastedRegionLocator {
   private static func matchWrapTolerant(_ needle: [UInt16], in haystack: [UInt16], at start: Int)
     -> (end: Int, reported: Int)?
   {
+    var unmetered = Int.max
+    return matchWrapTolerant(needle, in: haystack, at: start, work: &unmetered)
+  }
+
+  /// The matcher itself. `work` is decremented once per haystack unit examined; a caller that
+  /// meters it reads a negative remainder as "stopped, not answered" (#3106: the occurrence
+  /// count must never mistake a refused scan for a complete one).
+  private static func matchWrapTolerant(
+    _ needle: [UInt16], in haystack: [UInt16], at start: Int, work: inout Int
+  ) -> (end: Int, reported: Int)? {
     var n = 0
     var h = start
     // Where the run that ends the needle first broke a line, if it did.
@@ -551,18 +633,26 @@ package enum PastedRegionLocator {
     while n < needle.count {
       if needle[n] == 0x0020 {
         let needleRunStart = n
-        while n < needle.count, needle[n] == 0x0020 { n += 1 }
-        guard h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
+        while n < needle.count, needle[n] == 0x0020 {
+          work -= 1
+          guard work >= 0 else { return nil }
+          n += 1
+        }
+        work -= 1
+        guard work >= 0, h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
         let haystackRunStart = h
         var firstBreak: Int?
         while h < haystack.count, isSpaceUnit(haystack[h]) {
+          work -= 1
+          if work < 0 { return nil }
           if firstBreak == nil, isLineBreakUnit(haystack[h]) { firstBreak = h }
           h += 1
         }
         guard h - haystackRunStart >= n - needleRunStart else { return nil }
         finalRunBreak = n == needle.count ? firstBreak : nil
       } else {
-        guard h < haystack.count, haystack[h] == needle[n] else { return nil }
+        work -= 1
+        guard work >= 0, h < haystack.count, haystack[h] == needle[n] else { return nil }
         n += 1
         h += 1
         finalRunBreak = nil

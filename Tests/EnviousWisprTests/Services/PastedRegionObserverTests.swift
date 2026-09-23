@@ -527,6 +527,80 @@ struct PastedRegionLocatorTests {
     #expect(PastedRegionTiming.editDistanceCellBudget == 16_000_000)
     #expect(PastedRegionTiming.maxConsecutiveReadFailures == 3)
   }
+
+  // MARK: Occurrence counting (#3106 PR A)
+
+  /// `[start, end)` pairs of a complete count, or nil when the count is incomplete. Expected
+  /// offsets below are literal UTF-16 positions worked out by hand, never produced by the
+  /// enumerator.
+  private func spans(_ result: L.Occurrences) -> [[Int]]? {
+    guard case .complete(let hits) = result else { return nil }
+    return hits.map { [$0.start, $0.end] }
+  }
+
+  @Test("an identical chunk pasted twice counts twice")
+  func occurrencesCountAnIdenticalRepeat() {
+    #expect(spans(L.occurrences(ofPasted: "thanks ", in: "thanks ")) == [[0, 7]])
+    #expect(spans(L.occurrences(ofPasted: "thanks ", in: "thanks thanks ")) == [[0, 7], [7, 14]])
+  }
+
+  @Test("a phrase already earlier in the field counts with the new one")
+  func occurrencesCountAnEarlierPhrase() {
+    // "Please " 0-6, "Send it " 7-14, "now. " 15-19, "Send it " 20-27.
+    #expect(
+      spans(L.occurrences(ofPasted: "Send it ", in: "Please Send it now. Send it "))
+        == [[7, 15], [20, 28]])
+  }
+
+  @Test("one full and one trailing-space-omitted rendering both count; locate keeps its full match")
+  func occurrencesCountMixedRenderings() {
+    // At 0 the full "Saira " matches; at 10 only "Saira" fits (the field ends there).
+    #expect(spans(L.occurrences(ofPasted: "Saira ", in: "Saira and Saira")) == [[0, 6], [10, 15]])
+    // Characterization: `locate` still tries the omitted form only when the full form is absent
+    // everywhere, so it reports the one full match as unique (#996's exact-first rule).
+    #expect(L.locate(pasted: "Saira ", in: "Saira and Saira") == .unique(start: 0, end: 6))
+  }
+
+  @Test("one occurrence rendered with its trailing space counts once, not once per form")
+  func occurrencesCountOnePositionOnce() {
+    #expect(spans(L.occurrences(ofPasted: "Saira ", in: "Ask Saira today")) == [[4, 10]])
+  }
+
+  @Test("host space variants, a terminal wrap and a preceding emoji keep the value's offsets")
+  func occurrencesKeepTheValuesOffsets() {
+    #expect(spans(L.occurrences(ofPasted: "hi there", in: "hi\u{00A0}there")) == [[0, 8]])
+    // The needle's one space meets the host's "\n  " run of three units.
+    #expect(spans(L.occurrences(ofPasted: "one two", in: "one\n  two")) == [[0, 9]])
+    // U+1F600 is two UTF-16 units, then a space: "Saira" starts at 3.
+    #expect(spans(L.occurrences(ofPasted: "Saira", in: "\u{1F600} Saira")) == [[3, 8]])
+  }
+
+  @Test("empty text, and a trim that leaves nothing, invent no match")
+  func occurrencesInventNothing() {
+    #expect(spans(L.occurrences(ofPasted: "", in: "anything")) == [])
+    #expect(spans(L.occurrences(ofPasted: "Saira", in: "Ask Sarah today")) == [])
+    #expect(spans(L.occurrences(ofPasted: " ", in: "ab")) == [])
+  }
+
+  @Test("an oversized value or a spent work budget is incomplete, never a partial count")
+  func occurrencesRefuseRatherThanUndercount() {
+    let oversized = String(repeating: "a", count: PastedRegionTiming.maxValueUTF16 + 1)
+    #expect(L.occurrences(ofPasted: "a", in: oversized) == .incomplete(.tooLong))
+    #expect(L.occurrences(ofPasted: "aaab", in: "aaaaaaaaaaaaaaaa", workBudget: 10) == .incomplete(.workBudget))
+    // Near the size limit, a value that repeats a long prefix of the text costs about
+    // 19,900 starts x 101 units, past the default budget: the count refuses instead of running on.
+    let repeated = String(repeating: "a", count: PastedRegionTiming.maxValueUTF16 - 1) + "b"
+    let needle = String(repeating: "a", count: 100) + "c"
+    #expect(L.occurrences(ofPasted: needle, in: repeated) == .incomplete(.workBudget))
+    // Every unit the matcher walks is charged, including a long space run in the TEXT: about
+    // 100 starts x 53 units here, past a 1,000 budget (uncharged, it cost about 300 and answered).
+    let spaced = String(repeating: "a ", count: 100)
+    let wide = "a" + String(repeating: " ", count: 50) + "b"
+    #expect(L.occurrences(ofPasted: wide, in: spaced, workBudget: 1_000) == .incomplete(.workBudget))
+    let oversizedText = String(repeating: "b", count: PastedRegionTiming.maxValueUTF16 + 1)
+    #expect(L.occurrences(ofPasted: oversizedText, in: "b") == .incomplete(.tooLong))
+    #expect(L.occurrences(ofPasted: "a", in: "a", workBudget: -1) == .incomplete(.workBudget))
+  }
 }
 
 // MARK: - Capture
