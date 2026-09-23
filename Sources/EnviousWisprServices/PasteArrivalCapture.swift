@@ -723,8 +723,11 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// become `absent` or `noTarget`; every doubt is `inconclusive`, every unreadable answer
   /// `cannotRead`.
   private func negative(from attempt: PastedRegionArrivalAttempt) -> PasteArrivalLanding {
+    // Whole-app causes first: every check below only asks whether a comparison can be trusted, and
+    // must not hide that the app quit, lost the front, or took back our permission.
     if !ax.isProcessRunning(context.pid) { return .inconclusive(.appTerminated) }
     if ax.frontmostPID() != frontmostBefore { return .inconclusive(.appSwitched) }
+    if case .permissionLost = attempt { return .cannotRead(.permissionLost) }
     if prepareBudgetExhausted { return .inconclusive(.budgetSpent) }
     switch baseline {
     case .unreadable:

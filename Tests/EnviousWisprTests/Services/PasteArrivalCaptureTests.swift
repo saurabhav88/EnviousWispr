@@ -357,6 +357,56 @@ struct PasteArrivalCaptureTests {
     #expect(native.landing == .noTarget)
   }
 
+  @Test(
+    "permission lost by the final read is cannot_read/permission_lost behind every comparison doubt"
+  )
+  func permissionLossIsNeverHidden() throws {
+    // Each doubt alone (trust intact) is its own inconclusive; with trust gone it is permission_lost.
+    let doubts: [(String, PasteArrivalLanding, () -> Void)] = [
+      (
+        "manual host, nothing focused", .inconclusive(.manualAccessibilityHost),
+        {
+          ax.focusedByApplication[pid] = .noFocus
+          ax.focused[pid] = .noFocus
+          ax.manualHosts = [pid]
+        }
+      ),
+      (
+        "unknown host, nothing focused", .inconclusive(.manualAccessibilityUnknown),
+        {
+          ax.focusedByApplication[pid] = .noFocus
+          ax.focused[pid] = .noFocus
+          ax.manualReadFails = [pid]
+        }
+      ),
+      (
+        "incomplete registration", .inconclusive(.registrationIncomplete),
+        {
+          ax.landingNotificationFailures = [.elementDestroyed]
+        }
+      ),
+      ("spent budget", .inconclusive(.budgetSpent), { scheduler.tickPerNowRead = 150 }),
+    ]
+    for (name, doubtAlone, arrange) in doubts {
+      for losesTrust in [false, true] {
+        ax.trusted = true
+        ax.focusedByApplication[pid] = .element(field)
+        ax.focused[pid] = .element(field)
+        ax.manualHosts = []
+        ax.manualReadFails = []
+        ax.landingNotificationFailures = []
+        arrange()
+        let session = try prepare()
+        scheduler.tickPerNowRead = 0
+        session.commit()
+        if losesTrust { ax.trusted = false }
+        scheduler.advance(ms: 300)
+        let expected = losesTrust ? .cannotRead(.permissionLost) : doubtAlone
+        #expect(session.landing == expected, "\(name), trust lost: \(losesTrust)")
+      }
+    }
+  }
+
   @Test("a destination lost during the shadow censors the late check instead of claiming no hit")
   func shadowLossCensors() throws {
     let session = try prepare()
