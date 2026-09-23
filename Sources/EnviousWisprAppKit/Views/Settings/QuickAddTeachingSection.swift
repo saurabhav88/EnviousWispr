@@ -35,12 +35,12 @@ import SwiftUI
 ///
 /// **The shortcut shown is the LIVE configured one, run through the SAME
 /// ownership check the menu bar's own hint uses
-/// (`MenuBarController.quickAddShortcutLabel`) rather than a bare format
+/// (`MenuBarController.shortcutLabel`) rather than a bare format
 /// call** — two more cloud-review rounds caught, in order: a hardcoded
 /// "Control Option W" that goes wrong the moment someone rebinds Quick Add
 /// on Keybinds; and, once that was fixed to read the live binding, that the
 /// live binding can still lose arbitration to Record or Cancel
-/// (`ShortcutMatcher.quickAddOwnsItsBinding`) — this tab must not advertise a
+/// (`ShortcutMatcher.ownsItsBinding`) — this tab must not advertise a
 /// chord that will not actually fire, so it falls back to pointing at the
 /// menu bar when that happens.
 struct QuickAddTeachingSection: View {
@@ -49,14 +49,11 @@ struct QuickAddTeachingSection: View {
 
   /// The chord to teach, or `nil` when Quick Add's configured binding has
   /// lost arbitration to Record or Cancel (`MenuBarController
-  /// .quickAddShortcutLabel`, the same authority the menu bar's own hint
+  /// .shortcutLabel`, the same authority the menu bar's own hint
   /// uses — never a second ownership check re-derived here). Showing a chord
   /// that will not actually trigger Quick Add is worse than showing nothing.
   private var shortcutDisplay: String? {
-    MenuBarController.quickAddShortcutLabel(
-      keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
-      recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
-      cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers)
+    MenuBarController.shortcutLabel(for: .quickAdd, bindings: settings.shortcutBindings)
   }
 
   /// Step 2's full sentence, and now the ONLY place the chord is rendered. It

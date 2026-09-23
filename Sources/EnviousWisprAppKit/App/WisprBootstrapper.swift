@@ -1380,6 +1380,23 @@ package final class WisprBootstrapper {
       presentationEffects: presentationEffects,
       settings: settings)
 
+    // #3106: Paste and Copy Last Dictation. One action owns the menu item and both chords; the
+    // chords are wired here, and installing `onPasteLast` / `onCopyLast` is what lets the hotkey
+    // service register them at all.
+    let openPermissionsWindow: @MainActor () -> Void = {
+      navigationCoordinator.request(.permissions)
+      appWindowCoordinator.showWindow()
+    }
+    let lastDictationAction = LastDictationAction.live(
+      transcripts: transcriptCoordinator,
+      liveRecordingState: liveRecordingState,
+      settings: settings,
+      application: presentationEffects.application,
+      openPermissions: openPermissionsWindow)
+    hotkeyService.onPasteLastPressed = { lastDictationAction.notePasteChordPressed() }
+    hotkeyService.onPasteLast = { lastDictationAction.pasteFromChord() }
+    hotkeyService.onCopyLast = { lastDictationAction.copyFromChord() }
+
     let menuBarController = MenuBarController(
       liveRecordingState: liveRecordingState,
       backendMetadata: backendMetadata,
@@ -1397,12 +1414,15 @@ package final class WisprBootstrapper {
           navigationCoordinator.request(.transcribeFile)
           appWindowCoordinator.showWindow()
         },
-        openPermissions: {
-          navigationCoordinator.request(.permissions)
-          appWindowCoordinator.showWindow()
-        },
+        openPermissions: openPermissionsWindow,
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
-        quit: { NSApp.terminate(nil) }
+        quit: { NSApp.terminate(nil) },
+        lastDictation: { [weak transcriptCoordinator] in
+          transcriptCoordinator?.lastPasteableDictation()
+        },
+        pasteLastDictation: { rowID, target in
+          Task { await lastDictationAction.pasteFromMenu(rowID: rowID, target: target) }
+        }
       )
     )
 

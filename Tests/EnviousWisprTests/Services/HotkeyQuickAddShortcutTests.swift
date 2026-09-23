@@ -316,6 +316,8 @@ struct HotkeyQuickAddShortcutTests {
     #expect(ShortcutRole.record.telemetryKind == "toggle")
     #expect(ShortcutRole.cancel.telemetryKind == "cancel")
     #expect(ShortcutRole.quickAdd.telemetryKind == "quick_add")
+    #expect(ShortcutRole.pasteLast.telemetryKind == "paste_last")
+    #expect(ShortcutRole.copyLast.telemetryKind == "copy_last")
 
     let names = ShortcutRole.allCases.map(\.telemetryKind)
     #expect(Set(names).count == names.count, "two roles sharing a name make the field ambiguous")
@@ -325,7 +327,7 @@ struct HotkeyQuickAddShortcutTests {
   func roleOrderIsSeverityOrder() {
     // `bareModifierRoleAtRisk` takes the FIRST matching case, so reordering this enum silently
     // relabels that telemetry instead of failing to compile. Pinned here so it cannot.
-    #expect(ShortcutRole.allCases == [.record, .cancel, .quickAdd])
+    #expect(ShortcutRole.allCases == [.record, .cancel, .quickAdd, .pasteLast, .copyLast])
   }
 
   // MARK: - Telemetry names the right subject
@@ -363,6 +365,27 @@ struct HotkeyQuickAddShortcutTests {
   }
   // MARK: - A chord two roles share (#2381 review r2)
 
+  /// The registration ruling for Quick Add against a given Cancel, with every other role on its
+  /// shipped binding (Record is bare Right Option, which no case here collides with).
+  ///
+  /// #3106: `quickAddMayHoldItsChord(quickAdd:cancel:isCancelArmed:)` became
+  /// `HotkeyService.mayHoldItsChord(_:isEnabled:isSuspended:bindings:armed:)`; this keeps the cases
+  /// below reading exactly as they did against the same two inputs.
+  private static func mayHold(
+    isEnabled: Bool, isSuspended: Bool, quickAdd: ShortcutBinding, cancel: ShortcutBinding,
+    isCancelArmed: Bool
+  ) -> Bool {
+    var bindings = ShortcutBindings.shipped
+    bindings.quickAdd = quickAdd
+    bindings.cancel = cancel
+    let armed: Set<ShortcutRole> =
+      isCancelArmed
+      ? [.record, .cancel, .quickAdd, .pasteLast, .copyLast]
+      : [.record, .quickAdd, .pasteLast, .copyLast]
+    return HotkeyService.mayHoldItsChord(
+      .quickAdd, isEnabled: isEnabled, isSuspended: isSuspended, bindings: bindings, armed: armed)
+  }
+
   @Test("Cancel outranks Quick Add on a shared chord, for as long as cancel is armed")
   func cancelWinsASharedChord() {
     // `RegisterEventHotKey` REFUSES a duplicate chord, and Quick Add registers at start() and holds
@@ -373,12 +396,12 @@ struct HotkeyQuickAddShortcutTests {
     let shared = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
 
     #expect(
-      !HotkeyService.quickAddMayHoldItsChord(
+      !Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: true))
     // Disarmed, the chord is Quick Add's again. Without this the fix would be "Quick Add never works
     // if it ever collided", which is a different defect.
     #expect(
-      HotkeyService.quickAddMayHoldItsChord(
+      Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: false)
     )
   }
@@ -391,7 +414,7 @@ struct HotkeyQuickAddShortcutTests {
     let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
 
     #expect(
-      HotkeyService.quickAddMayHoldItsChord(
+      Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: true
       ))
   }
@@ -414,20 +437,20 @@ struct HotkeyQuickAddShortcutTests {
     let cancel = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
 
     #expect(
-      !HotkeyService.quickAddMayHoldItsChord(
+      !Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: true),
       "Carbon registers one chord for both, so Quick Add must give it up while cancel is armed")
     // The paired accepted case, so a rule that refused whenever cancel was armed cannot pass.
     #expect(
-      HotkeyService.quickAddMayHoldItsChord(
+      Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: false))
   }
 
   /// The MIRROR of the case above, and the reason the comparison narrows BOTH sides rather than
   /// one. A user can save the dropped modifier on either binding, so the pair where CANCEL carries
-  /// Caps Lock is as reachable as the pair where Quick Add does — and `quickAddMayHoldItsChord`
+  /// Caps Lock is as reachable as the pair where Quick Add does — and `mayHoldItsChord`
   /// always passes Quick Add first, so only this case exercises the second argument's narrowing.
   ///
   /// #2743 found the gap: narrowing one side only is a NO-OP against the case above, because Quick
@@ -440,13 +463,13 @@ struct HotkeyQuickAddShortcutTests {
       keyCode: 13, modifiers: [.control, .shift, .capsLock])
 
     #expect(
-      !HotkeyService.quickAddMayHoldItsChord(
+      !Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: true),
       "Carbon registers one chord for both whichever side carries Caps Lock")
     // The paired accepted case, so a rule that refused whenever cancel was armed cannot pass.
     #expect(
-      HotkeyService.quickAddMayHoldItsChord(
+      Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: false))
     #expect(ShortcutMatcher.carbonEquivalent(quickAdd, cancel))
@@ -460,7 +483,7 @@ struct HotkeyQuickAddShortcutTests {
     let cancel = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control])
 
     #expect(
-      HotkeyService.quickAddMayHoldItsChord(
+      Self.mayHold(
         isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: true))
   }
@@ -479,19 +502,45 @@ struct HotkeyQuickAddShortcutTests {
     #expect(withLatch != without, "raw equality still disagrees, which is the whole point")
   }
 
+  /// #3106, through the real service: Record on bare Right Option and Quick Add on Option-W. The
+  /// Option press starts a recording before the W completes the chord, so holding the Carbon
+  /// registration too would make one press do both. Quick Add gives the registration up; the
+  /// Left-Option route is deliberately unavailable for this conflicting binding.
+  @Test("Quick Add does not register a chord Record's bare modifier intercepts")
+  func quickAddYieldsChordInterceptedByBareRecord() {
+    let (service, effects) = makeHotkeyService()
+    service.toggleKeyCode = rightOption
+    service.toggleModifiers = []
+    service.quickAddKeyCode = wKeyCode
+    service.quickAddModifiers = [.option]
+    service.start()
+    #expect(!effects.didRegister(id: quickAddCarbonID))
+    service.stop()
+
+    // Paired: a chord Record's key does not take is registered as before.
+    let (other, otherEffects) = makeHotkeyService()
+    other.toggleKeyCode = rightOption
+    other.toggleModifiers = []
+    other.quickAddKeyCode = wKeyCode
+    other.quickAddModifiers = [.control, .shift]
+    other.start()
+    #expect(otherEffects.didRegister(id: quickAddCarbonID))
+    other.stop()
+  }
+
   @Test("A stopped or suspended service holds no Quick Add chord, collision or not")
   func stoppedOrSuspendedHoldsNothing() {
     let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
     let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
 
     #expect(
-      !HotkeyService.quickAddMayHoldItsChord(
+      !Self.mayHold(
         isEnabled: false, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: false))
     // Suspended is the shortcut recorder being open. Holding a chord then is what makes a rebind
     // capture our own hotkey instead of the user's keypress.
     #expect(
-      !HotkeyService.quickAddMayHoldItsChord(
+      !Self.mayHold(
         isEnabled: true, isSuspended: true, quickAdd: quickAdd, cancel: cancel,
         isCancelArmed: false))
   }

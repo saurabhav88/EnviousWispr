@@ -88,6 +88,9 @@ enum SettingsProjection {
     /// #2381. Shape only — `chord` or `modifier_only` — never the key code, which would say
     /// which physical key a named user pressed.
     case quickAddHotkeyShape = "quick_add_hotkey_shape"
+    /// #3106. Shape only, like Quick Add's.
+    case pasteLastHotkeyShape = "paste_last_hotkey_shape"
+    case copyLastHotkeyShape = "copy_last_hotkey_shape"
     case playRecordingSounds = "play_recording_sounds"
     case recordingSoundPairing = "recording_sound_pairing"
     /// #1413. The chosen mode only (a closed four-value enum); never which app or
@@ -160,6 +163,8 @@ enum SettingsProjection {
     case .pushToTalkKeyCode, .pushToTalkModifiers: return [.pushToTalkHotkeyShape]
     case .cancelKeyCode, .cancelModifiers: return [.cancelHotkeyShape]
     case .quickAddKeyCode, .quickAddModifiers: return [.quickAddHotkeyShape]
+    case .pasteLastKeyCode, .pasteLastModifiers: return [.pasteLastHotkeyShape]
+    case .copyLastKeyCode, .copyLastModifiers: return [.copyLastHotkeyShape]
     case .playRecordingSounds: return [.playRecordingSounds]
     case .recordingSoundPairing: return [.recordingSoundPairing]
     case .otherAudioWhileDictating: return [.otherAudioWhileDictating]
@@ -249,6 +254,8 @@ enum SettingsProjection {
     case .pushToTalkHotkeyShape: return hotkeyShape(settings.pushToTalkKeyCode)
     case .cancelHotkeyShape: return hotkeyShape(settings.cancelKeyCode)
     case .quickAddHotkeyShape: return hotkeyShape(settings.quickAddKeyCode)
+    case .pasteLastHotkeyShape: return hotkeyShape(settings.pasteLastKeyCode)
+    case .copyLastHotkeyShape: return hotkeyShape(settings.copyLastKeyCode)
     case .playRecordingSounds: return onOff(settings.playRecordingSounds)
     case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
     case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue

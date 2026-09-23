@@ -264,10 +264,22 @@ final class PipelineSettingsSync {
       hotkeyService.reapplyCancelBinding()
     case .quickAddKeyCode:
       hotkeyService.quickAddKeyCode = settings.quickAddKeyCode
-      hotkeyService.reapplyQuickAddBinding()
+      hotkeyService.reapplyAppShortcutBinding(.quickAdd)
     case .quickAddModifiers:
       hotkeyService.quickAddModifiers = settings.quickAddModifiers
-      hotkeyService.reapplyQuickAddBinding()
+      hotkeyService.reapplyAppShortcutBinding(.quickAdd)
+    case .pasteLastKeyCode:
+      hotkeyService.pasteLastKeyCode = settings.pasteLastKeyCode
+      hotkeyService.reapplyAppShortcutBinding(.pasteLast)
+    case .pasteLastModifiers:
+      hotkeyService.pasteLastModifiers = settings.pasteLastModifiers
+      hotkeyService.reapplyAppShortcutBinding(.pasteLast)
+    case .copyLastKeyCode:
+      hotkeyService.copyLastKeyCode = settings.copyLastKeyCode
+      hotkeyService.reapplyAppShortcutBinding(.copyLast)
+    case .copyLastModifiers:
+      hotkeyService.copyLastModifiers = settings.copyLastModifiers
+      hotkeyService.reapplyAppShortcutBinding(.copyLast)
     case .cancelModifiers:
       hotkeyService.cancelModifiers = settings.cancelModifiers
       hotkeyService.reapplyCancelBinding()

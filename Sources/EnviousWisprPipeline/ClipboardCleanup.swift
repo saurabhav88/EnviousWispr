@@ -640,6 +640,115 @@ public enum ClipboardCleanup {
     }
   }
 
+  // MARK: - Reusing the last dictation on request (#3106)
+
+  /// What a Paste or Copy Last Dictation request did to the board.
+  public enum ManualClipboardResult: Equatable, Sendable {
+    /// The text was written and Cmd+V was posted. Says nothing about where the paste landed.
+    case dispatched
+    /// The text was written for the user to paste themselves.
+    case copied
+    /// The text was written but Cmd+V could not be posted. The text is left on the board, so the
+    /// user can still paste it by hand, and no restore is scheduled.
+    case dispatchFailed
+    /// The board was not ours to take, and nothing was touched: a dictation's paste is still being
+    /// read, or Quick Add is mid-transaction. The text stays in History.
+    case clipboardBusy
+    /// The write did not take: reading the board back did not return the text. Nothing was pasted,
+    /// and the prior clipboard was put back where it could be. The text stays in History.
+    case writeFailed
+  }
+
+  /// Paste `text` into the frontmost app because the user asked for it again (#3106).
+  ///
+  /// **Synchronous on purpose: no `await` between deciding and writing.** The caller does all of its
+  /// waiting (activating the target, re-checking the row) BEFORE calling this, so a dictation or a
+  /// Quick Add transaction cannot start between the busy check and the write.
+  ///
+  /// Obeys the same restore setting as a dictation. With restore on, the user's clipboard comes back
+  /// after the usual delay under the usual change-count guard; with it off, the text stays.
+  ///
+  /// - Parameter dispatch: posts Cmd+V and returns whether it was posted. Never writes the board.
+  /// - Parameter write: puts `text` on `board` and returns the change count after the write. Tests
+  ///   pass a write that does not take; production uses the default.
+  public static func manualPaste(
+    text: String, restore: Bool, on board: NSPasteboard,
+    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite, dispatch: () -> Bool
+  ) -> ManualClipboardResult {
+    guard claimBoardForManualWrite(board) else { return .clipboardBusy }
+    // Photographed only now, after any stale pending work was dropped, so this reads the board as it
+    // really stands. `snapshotForDelivery` would also inherit a pending payload, but none survives
+    // `claimBoardForManualWrite`. Taken even with restore off: a write that does not take has
+    // already cleared the board, and the user's clipboard must come back either way.
+    let snapshot = snapshotForDelivery(from: board)
+    let changeCountAfterWrite = write(text, board)
+    // Proven, not assumed: `setString` can refuse, and a Cmd+V then would paste whatever the board
+    // holds instead of the dictation.
+    guard boardHolds(text, board) else {
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      return .writeFailed
+    }
+    guard dispatch() else {
+      // Nothing was pasted, so there is nothing to wait for and nothing to hand back yet: the
+      // text on the board is now the user's only way to paste it.
+      return .dispatchFailed
+    }
+    if restore {
+      scheduleRestore(
+        snapshot, changeCountAfterPaste: changeCountAfterWrite, tier: .cgEvent, on: board)
+    }
+    return .dispatched
+  }
+
+  /// Put `text` on the clipboard for the user to paste themselves (#3106). No restore: the text on
+  /// the clipboard is the whole point.
+  public static func manualCopy(
+    text: String, on board: NSPasteboard,
+    write: @MainActor (String, NSPasteboard) -> Int = defaultManualWrite
+  ) -> ManualClipboardResult {
+    guard claimBoardForManualWrite(board) else { return .clipboardBusy }
+    // Kept only to put the user's clipboard back if the write does not take.
+    let prior = PasteService.saveClipboard(from: board)
+    let changeCountAfterWrite = write(text, board)
+    guard boardHolds(text, board) else {
+      PasteService.restoreClipboard(prior, changeCountAfterPaste: changeCountAfterWrite, on: board)
+      return .writeFailed
+    }
+    return .copied
+  }
+
+  /// The real write behind `manualPaste` and `manualCopy`.
+  public static func defaultManualWrite(_ text: String, _ board: NSPasteboard) -> Int {
+    PasteService.copyToClipboardReturningChangeCount(text, to: board)
+  }
+
+  /// Whether the board's string is exactly `text`, compared in UTF-16 code units.
+  private static func boardHolds(_ text: String, _ board: NSPasteboard) -> Bool {
+    board.string(forType: .string).map { $0.utf16.elementsEqual(text.utf16) } ?? false
+  }
+
+  /// Take the board for a manual write, or refuse without touching anything.
+  ///
+  /// Refuses exactly where `beginTakeover` refuses, for the same reasons:
+  /// - a FRESH pending restore or legacy rewrite means a dictation just wrote the board and the target
+  ///   app may still be reading it; writing now would replace the paste mid-read (the wrong-text
+  ///   failure `beginTakeover` documents);
+  /// - an active Quick Add takeover is holding the user's clipboard across awaits, and this write
+  ///   would be restored over or mistaken for the target app's Copy response.
+  ///
+  /// A reuse request is a limb, like Quick Add, so it yields rather than taking the board from
+  /// either. A STALE pending operation is cancelled: its board has already moved on, and left armed
+  /// it would fire on top of this write.
+  private static func claimBoardForManualWrite(_ board: NSPasteboard) -> Bool {
+    guard activeTakeover == nil else { return false }
+    if let current = pending {
+      guard board.changeCount != current.changeCountAfterPaste else { return false }
+      pending = nil
+      current.task.cancel()
+    }
+    return true
+  }
+
   // MARK: - Private
 
   /// - Parameter body: performs the cleanup and returns whether it applied.

@@ -205,6 +205,34 @@ struct KeybindsSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(SettingsCardSurface())
       }
+
+      // ── Reuse the last dictation (#3106) ─────────────────────────────
+      VStack(alignment: .leading, spacing: 10) {
+        eyebrow("Last Dictation")
+
+        VStack(alignment: .leading, spacing: 14) {
+          ProminentHotkeyRow(
+            title: "Paste last dictation",
+            description: "Paste the last thing you dictated",
+            keyCode: $settings.pasteLastKeyCode,
+            modifiers: $settings.pasteLastModifiers,
+            role: .pasteLast,
+            accessibilityLabel: "Paste last dictation keybind"
+          )
+          Divider().overlay(Color.stDivider)
+          ProminentHotkeyRow(
+            title: "Copy last dictation",
+            description: "Copy the last thing you dictated",
+            keyCode: $settings.copyLastKeyCode,
+            modifiers: $settings.copyLastModifiers,
+            role: .copyLast,
+            accessibilityLabel: "Copy last dictation keybind"
+          )
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(SettingsCardSurface())
+      }
     }
   }
 
@@ -341,6 +369,22 @@ private struct ProminentHotkeyRow: View {
   let role: ShortcutRole
   let accessibilityLabel: String
 
+  @Environment(SettingsManager.self) private var settings
+
+  /// "Not active: the recording keybind (Right ⌘) uses these keys. Choose another."
+  ///
+  /// Cancel listens only while recording, so a row it displaces still works the rest of the time
+  /// (registration gives the chord back when Cancel disarms); the sentence says exactly that.
+  static func notActiveMessage(taker: ShortcutRole, bindings: ShortcutBindings) -> String {
+    guard case .keyboard(let keyCode, let modifiers) = bindings[taker] else { return "" }
+    let keys = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+    let who = HotkeyRecorderView.title(of: taker)
+    if taker == .cancel {
+      return "Works only when you are not recording: \(who) (\(keys)) uses these keys while you record."
+    }
+    return "Not active: \(who) (\(keys)) uses these keys. Choose another."
+  }
+
   private var defaultKeyCode: UInt16 { role.defaultKeyCode }
   private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
   /// #1987 — nil on rows that are not the recording keybind, so only the toggle
@@ -355,6 +399,16 @@ private struct ProminentHotkeyRow: View {
           .foregroundStyle(.stTextPrimary)
         Text(description)
           .settingsReadingCopy()
+        // #3106: a binding a MORE severe shortcut has taken (a user may move Record onto a key this
+        // one needs) keeps working for that shortcut and stops working for this one. Said here, on
+        // the row that stopped, naming who took it, rather than leaving a keybind on screen that
+        // silently does nothing. Founder-approved 2026-09-22 after a web-grounded council
+        // (GPT and Gemini both chose "the higher shortcut wins, the lower row says so").
+        if let taker = ShortcutMatcher.displacingRole(of: role, in: settings.shortcutBindings) {
+          Text(Self.notActiveMessage(taker: taker, bindings: settings.shortcutBindings))
+            .font(.stHelper)
+            .foregroundStyle(.stAccent)
+        }
       }
       Spacer(minLength: 12)
       HotkeyRecorderView(
@@ -364,7 +418,11 @@ private struct ProminentHotkeyRow: View {
         defaultModifiers: defaultModifiers,
         label: accessibilityLabel,
         style: .prominent,
-        onBindingAccepted: { code, mods in onBindingAccepted?(code, mods) }
+        onBindingAccepted: { code, mods in onBindingAccepted?(code, mods) },
+        // Asked against every other row's CURRENT binding, read at the moment of the capture.
+        validate: { [role, settings] proposed in
+          ShortcutMatcher.refusal(assigning: proposed, to: role, in: settings.shortcutBindings)
+        }
       )
       .frame(width: 260)
     }

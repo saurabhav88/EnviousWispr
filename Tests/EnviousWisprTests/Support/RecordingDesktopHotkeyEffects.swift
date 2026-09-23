@@ -83,13 +83,14 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
     return failMonitorInstalls ? nil : DesktopEffectToken()
   }
 
+  /// When set, every removal is refused, as Carbon can refuse `UnregisterEventHotKey`. Off by
+  /// default so no suite has to reason about a failure the OS rarely produces.
+  var refuseRemovals = false
+
   @discardableResult
   func remove(_ token: DesktopEffectToken) -> Bool {
     removed.append(token)
-    // Always succeeds. A fake that refused would exercise the retry path, which
-    // no current test asks for; add a programmable flag when one does, rather
-    // than making every suite reason about a failure the OS rarely produces.
-    return true
+    return !refuseRemovals
   }
 
   // MARK: - Assertions helpers

@@ -951,6 +951,95 @@ final class TranscriptCoordinator {
     return current.displayText
   }
 
+  /// The newest dictation the menu bar and the Paste/Copy Last Dictation shortcuts may offer
+  /// again (#3106), or nil when there is none.
+  ///
+  /// Read from every visible row, NOT `filteredTranscripts`: those shortcuts work from any app, so
+  /// what History's own filter or search happens to show must not decide which text they reuse.
+  /// Returns the full `displayText`; the menu shortens it for display.
+  ///
+  /// A SNAPSHOT for rendering. Acting on it goes through `lastDictationTextForReuse(id:)`,
+  /// which reads the row again at that moment.
+  func lastPasteableDictation() -> (id: UUID, text: String)? {
+    let now = Date()
+    guard let row = transcripts.first(where: { Self.isReusableDictation($0, at: now) }) else {
+      return nil
+    }
+    #if DEBUG
+      if Self.reuseInputFault == .dropNextSampledRow {
+        Self.reuseInputFault = nil
+        Self.droppedReuseRowID = row.id
+      }
+    #endif
+    return (row.id, row.displayText)
+  }
+
+  /// The text to reuse for row `id`, read fresh at call time, or nil if that row may no longer
+  /// be reused (#3106): deleted, expired, or no longer eligible.
+  ///
+  /// Deliberately separate from `textForDelivery(_:)`, which serves History's own buttons and
+  /// must keep offering imported and held rows there. Reuse is narrower: only a dictation the
+  /// user actually made and received.
+  func lastDictationTextForReuse(id: UUID) -> String? {
+    var rows = transcripts
+    #if DEBUG
+      // The sampled row, gone from the rows this ONE read sees: the same read a deletion after
+      // the menu rendered would meet.
+      if let dropped = Self.droppedReuseRowID, dropped == id {
+        Self.droppedReuseRowID = nil
+        rows = rows.filter { $0.id != dropped }
+      }
+    #endif
+    guard let row = rows.first(where: { $0.id == id }),
+      Self.isReusableDictation(row, at: Date())
+    else { return nil }
+    return row.displayText
+  }
+
+  /// One eligibility rule for both queries above, applied at the time of each read, so the two
+  /// cannot disagree about the same row in the same state. The row can still change between the
+  /// menu's read and the action's: an edit or deletion in between is meant to make the action
+  /// refuse it.
+  ///
+  /// - Imported rows are files put through Transcribe a File, not something the user said.
+  /// - Held rows (`escapeRecoveredAt`) are cancelled takes that were never delivered; offering
+  ///   one here would paste words the user chose to throw away.
+  /// - Whitespace-only text would paste nothing visible. Checked, never trimmed: the text that
+  ///   is reused is exactly the text that was delivered.
+  private static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
+    isVisible(row, at: now)
+      && !isImportedForReuse(row)
+      && row.escapeRecoveredAt == nil
+      && !row.displayText.allSatisfy(\.isWhitespace)
+  }
+
+  private static func isImportedForReuse(_ row: Transcript) -> Bool {
+    #if DEBUG
+      if reuseInputFault == .importedOnly { return true }
+    #endif
+    return row.isImported
+  }
+
+  #if DEBUG
+    /// #3106 Live UAT input seams, armed ONLY through `DebugFaultEndpoint` (a DEBUG build launched
+    /// with `EW_FAULT_INJECTION=1`). They fault the INPUT to the real eligibility check and the
+    /// real read-by-id, never the outcome, and never touch stored History.
+    enum ReuseInputFault: Equatable {
+      /// Every row reads as imported to the eligibility check: History with only imported rows.
+      case importedOnly
+      /// One-shot: the next row the menu (or a chord) samples is missing from the next read of
+      /// that id, as if it were deleted after the menu rendered.
+      case dropNextSampledRow
+    }
+    static var reuseInputFault: ReuseInputFault?
+    private(set) static var droppedReuseRowID: UUID?
+
+    static func clearReuseInputFault() {
+      reuseInputFault = nil
+      droppedReuseRowID = nil
+    }
+  #endif
+
   /// Everything the pill needs to restore a held row, or nil if it may not be
   /// restored (#2087).
   ///

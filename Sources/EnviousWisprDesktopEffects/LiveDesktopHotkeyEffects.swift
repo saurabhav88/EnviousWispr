@@ -190,7 +190,12 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     guard let resource = resources.removeValue(forKey: token) else { return true }
     switch resource {
     case .hotkey(let ref):
-      UnregisterEventHotKey(ref)
+      // Same contract as the handler below: a refused removal leaves the chord registered, so the
+      // caller keeps its token and knows the old chord can still fire (#3106 final review).
+      guard UnregisterEventHotKey(ref) == noErr else {
+        resources[token] = .hotkey(ref)
+        return false
+      }
     case .handler(let ref, let box):
       // Order matters: the handler must be detached before the box it points at
       // is released, or an in-flight callback resolves freed memory. If Carbon

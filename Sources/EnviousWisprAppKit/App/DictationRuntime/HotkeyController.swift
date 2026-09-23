@@ -58,6 +58,12 @@ final class HotkeyController {
     // register its own compiled-in default until the user happened to edit the shortcut.
     hotkeyService.quickAddKeyCode = settings.quickAddKeyCode
     hotkeyService.quickAddModifiers = settings.quickAddModifiers
+    // #3106, same reason: without these the two chords would run on their shipped defaults until
+    // the user edited them, whatever they had saved.
+    hotkeyService.pasteLastKeyCode = settings.pasteLastKeyCode
+    hotkeyService.pasteLastModifiers = settings.pasteLastModifiers
+    hotkeyService.copyLastKeyCode = settings.copyLastKeyCode
+    hotkeyService.copyLastModifiers = settings.copyLastModifiers
     hotkeyService.toggleKeyCode = settings.toggleKeyCode
     hotkeyService.toggleModifiers = settings.toggleModifiers
     hotkeyService.onToggleRecording = { [weak starter] in

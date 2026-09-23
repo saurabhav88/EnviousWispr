@@ -33,6 +33,10 @@ public final class SettingsManager {
     case cancelModifiers
     case quickAddKeyCode
     case quickAddModifiers
+    case pasteLastKeyCode
+    case pasteLastModifiers
+    case copyLastKeyCode
+    case copyLastModifiers
     case toggleKeyCode
     case toggleModifiers
     case pushToTalkKeyCode
@@ -101,6 +105,7 @@ public final class SettingsManager {
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
+    "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
     "restoreClipboardAfterPaste", "quickAddClipboardFallback",
     "smartInsertion", "escapeRecoveryEnabled",
@@ -547,6 +552,48 @@ public final class SettingsManager {
       defaults.set(quickAddModifiers.rawValue, forKey: "quickAddModifiersRaw")
       onChange?(.quickAddModifiers)
     }
+  }
+
+  /// Paste Last Dictation's key code (#3106). Same shape as Quick Add's: the `didSet` is the only
+  /// writer, so a change cannot persist without notifying.
+  public var pasteLastKeyCode: UInt16 {
+    didSet {
+      defaults.set(Int(pasteLastKeyCode), forKey: "pasteLastKeyCode")
+      onChange?(.pasteLastKeyCode)
+    }
+  }
+
+  public var pasteLastModifiers: NSEvent.ModifierFlags {
+    didSet {
+      defaults.set(pasteLastModifiers.rawValue, forKey: "pasteLastModifiersRaw")
+      onChange?(.pasteLastModifiers)
+    }
+  }
+
+  /// Copy Last Dictation's key code (#3106).
+  public var copyLastKeyCode: UInt16 {
+    didSet {
+      defaults.set(Int(copyLastKeyCode), forKey: "copyLastKeyCode")
+      onChange?(.copyLastKeyCode)
+    }
+  }
+
+  public var copyLastModifiers: NSEvent.ModifierFlags {
+    didSet {
+      defaults.set(copyLastModifiers.rawValue, forKey: "copyLastModifiersRaw")
+      onChange?(.copyLastModifiers)
+    }
+  }
+
+  /// Every shortcut as the matcher reads it (#3106): the five saved bindings, so the menu and
+  /// Settings ask `ShortcutMatcher` about what the user configured.
+  package var shortcutBindings: ShortcutBindings {
+    ShortcutBindings(
+      record: .keyboard(keyCode: toggleKeyCode, modifiers: toggleModifiers),
+      cancel: .keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers),
+      quickAdd: .keyboard(keyCode: quickAddKeyCode, modifiers: quickAddModifiers),
+      pasteLast: .keyboard(keyCode: pasteLastKeyCode, modifiers: pasteLastModifiers),
+      copyLast: .keyboard(keyCode: copyLastKeyCode, modifiers: copyLastModifiers))
   }
 
   public var toggleKeyCode: UInt16 {
@@ -1103,6 +1150,20 @@ public final class SettingsManager {
     let savedQuickAddModRaw = defaults.object(forKey: "quickAddModifiersRaw") as? UInt
     quickAddModifiers = NSEvent.ModifierFlags(
       rawValue: savedQuickAddModRaw ?? SettingsDefaultValues.quickAddModifiersRaw)
+
+    let savedPasteLastKeyCode = defaults.object(forKey: "pasteLastKeyCode") as? Int
+    pasteLastKeyCode = UInt16(savedPasteLastKeyCode ?? SettingsDefaultValues.pasteLastKeyCode)
+
+    let savedPasteLastModRaw = defaults.object(forKey: "pasteLastModifiersRaw") as? UInt
+    pasteLastModifiers = NSEvent.ModifierFlags(
+      rawValue: savedPasteLastModRaw ?? SettingsDefaultValues.pasteLastModifiersRaw)
+
+    let savedCopyLastKeyCode = defaults.object(forKey: "copyLastKeyCode") as? Int
+    copyLastKeyCode = UInt16(savedCopyLastKeyCode ?? SettingsDefaultValues.copyLastKeyCode)
+
+    let savedCopyLastModRaw = defaults.object(forKey: "copyLastModifiersRaw") as? UInt
+    copyLastModifiers = NSEvent.ModifierFlags(
+      rawValue: savedCopyLastModRaw ?? SettingsDefaultValues.copyLastModifiersRaw)
 
     let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
     toggleKeyCode = UInt16(savedToggleKeyCode ?? SettingsDefaultValues.toggleKeyCode)

@@ -181,6 +181,60 @@ struct SettingsDefaultsRoutingTests {
     #expect(modifierChanges == 1)
   }
 
+  // MARK: - Paste and Copy Last Dictation shortcuts (#3106)
+
+  @Test("Paste Last and Copy Last ship on Control-Command-V/C and belong to unified defaults")
+  func lastDictationShortcutDefaults() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    #expect(settings.pasteLastKeyCode == 9)
+    #expect(settings.pasteLastModifiers == [.control, .command])
+    #expect(settings.copyLastKeyCode == 8)
+    #expect(settings.copyLastModifiers == [.control, .command])
+    for key in ["pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw"] {
+      #expect(
+        SettingsManager.unifiedDefaultsKeys.filter { $0 == key }.count == 1,
+        "\(key): missing from unified keys means it never migrates to the shared suite (#923)")
+    }
+  }
+
+  @Test("Rebound Paste Last and Copy Last shortcuts survive a relaunch")
+  func lastDictationShortcutsPersist() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.pasteLastKeyCode = 2  // D
+    settings.pasteLastModifiers = [.command, .shift]
+    settings.copyLastKeyCode = 3  // F
+    settings.copyLastModifiers = [.option]
+
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.pasteLastKeyCode == 2)
+    #expect(reloaded.pasteLastModifiers == [.command, .shift])
+    #expect(reloaded.copyLastKeyCode == 3)
+    #expect(reloaded.copyLastModifiers == [.option])
+  }
+
+  @Test("Each half of each new binding emits its own SettingKey exactly once")
+  func lastDictationShortcutsNotify() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    var counts: [String: Int] = [:]
+    settings.onChange = { key in
+      switch key {
+      case .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers:
+        counts["\(key)", default: 0] += 1
+      default: break
+      }
+    }
+    settings.pasteLastKeyCode = 2
+    settings.pasteLastModifiers = [.command]
+    settings.copyLastKeyCode = 3
+    settings.copyLastModifiers = [.command]
+    #expect(
+      counts == [
+        "pasteLastKeyCode": 1, "pasteLastModifiers": 1, "copyLastKeyCode": 1,
+        "copyLastModifiers": 1,
+      ])
+  }
+
   @Test("Smart insertion change emits its SettingKey exactly once")
   func smartInsertionNotifies() {
     let settings = SettingsManager(defaults: Self.freshSuite())

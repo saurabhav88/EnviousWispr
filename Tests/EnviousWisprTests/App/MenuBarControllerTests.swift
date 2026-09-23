@@ -131,6 +131,7 @@ struct MenuBarControllerTests {
         "",  // separator
         "Start Recording",
         "Add Selected Word  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
+        "Paste Last Dictation",  // #3106, disabled: this fixture has nothing to reuse
         "Transcribe a File...",  // #2772, opens the window on that page; above the divider (#2811)
         "",  // separator
         "Settings...",
@@ -145,8 +146,8 @@ struct MenuBarControllerTests {
     #expect(menu.items[1].isEnabled == false)
     // Separators are separators.
     #expect(menu.items[2].isSeparatorItem)
-    #expect(menu.items[6].isSeparatorItem)
-    #expect(menu.items[9].isSeparatorItem)
+    #expect(menu.items[7].isSeparatorItem)
+    #expect(menu.items[10].isSeparatorItem)
     // Settings carries the comma key-equivalent; Quit carries "q".
     #expect(item(menu, "Settings...")?.keyEquivalent == ",")
     #expect(item(menu, "Quit \(AppConstants.appName)")?.keyEquivalent == "q")
@@ -251,6 +252,89 @@ struct MenuBarControllerTests {
       "the action carries the TITLE's text and the sample it came from, never a later read")
   }
 
+  // MARK: - Paste Last Dictation (#3106)
+
+  @Test("Paste Last Dictation sits directly under Quick Add, disabled when nothing may be reused")
+  func pasteLastRowPlacementAndDisabledState() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
+
+    let quickAddIndex = menu.items.firstIndex { $0.title.hasPrefix("Add Selected Word") }
+    let pasteIndex = menu.items.firstIndex { $0.title.hasPrefix("Paste Last Dictation") }
+    #expect(quickAddIndex != nil && pasteIndex == quickAddIndex.map { $0 + 1 })
+    let paste = pasteIndex.map { menu.items[$0] }
+    #expect(paste?.isEnabled == false, "History has nothing to reuse")
+    #expect(paste?.keyEquivalent == "" && paste?.keyEquivalentModifierMask == [])
+    if let pasteIndex, menu.items.indices.contains(pasteIndex + 1) {
+      #expect(menu.items[pasteIndex + 1].indentationLevel == 0, "no preview row without a dictation")
+    }
+  }
+
+  @Test("With a dictation: a disabled first-line preview under the item, and the chord text")
+  func pasteLastRowPreviewAndChord() throws {
+    let controller = makeController()
+    let menu = NSMenu()
+    var state = fixture(pipelineState: .idle)
+    let rowID = UUID()
+    state.lastDictation = LastDictationMenuState(
+      rowID: rowID,
+      preview: LastDictationMenuState.preview(
+        of: "Send the draft to Maya tomorrow morning please\nSecond line"),
+      target: nil)
+    state.pasteLastShortcut = "\u{2303}\u{2318} V"
+    controller.renderMenu(into: menu, state: state)
+
+    let pasteIndex = try #require(
+      menu.items.firstIndex { $0.title.hasPrefix("Paste Last Dictation") })
+    let paste = menu.items[pasteIndex]
+    #expect(paste.title == "Paste Last Dictation  \u{2303}\u{2318} V")
+    #expect(paste.isEnabled)
+    let preview = menu.items[pasteIndex + 1]
+    #expect(preview.title == "Send the draft to Maya tomorro\u{2026}", "first line, 30 characters")
+    #expect(preview.isEnabled == false)
+    #expect(paste.accessibilityLabel()?.contains(preview.title) == true, "VoiceOver hears it")
+  }
+
+  @Test("The preview takes only the first line and bounds it at 30 characters")
+  func pasteLastPreviewRule() {
+    #expect(LastDictationMenuState.preview(of: "short") == "short")
+    #expect(LastDictationMenuState.preview(of: "one\ntwo") == "one")
+    #expect(LastDictationMenuState.preview(of: "one\r\ntwo") == "one")
+    #expect(
+      LastDictationMenuState.preview(of: "\n\nopens with a newline\nsecond") == "opens with a newline",
+      "a leading blank line previews the words, not an empty row")
+    let exactly30 = String(repeating: "a", count: 30)
+    #expect(LastDictationMenuState.preview(of: exactly30) == exactly30)
+    #expect(
+      LastDictationMenuState.preview(of: exactly30 + "b") == exactly30 + "\u{2026}")
+  }
+
+  @Test("Choosing the item carries the row id and target sampled at menu-open, never the text")
+  func pasteLastRowCarriesItsSample() {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    var state = fixture(pipelineState: .idle)
+    let rowID = UUID()
+    let target = NSRunningApplication.current
+    state.lastDictation = LastDictationMenuState(rowID: rowID, preview: "hello", target: target)
+    controller.renderMenu(into: menu, state: state)
+
+    perform(itemPrefixed(menu, "Paste Last Dictation"))
+    #expect(
+      spy.fired == ["pasteLastDictation:\(rowID.uuidString):\(target.processIdentifier)"])
+  }
+
+  @Test("The chord text appears only while Paste Last owns its chord")
+  func pasteLastChordLabelFollowsOwnership() {
+    #expect(
+      MenuBarController.shortcutLabel(for: .pasteLast, bindings: .shipped) == "\u{2303}\u{2318} V")
+    var moved = ShortcutBindings.shipped
+    moved.record = .keyboard(keyCode: ModifierKeyCodes.rightCommand, modifiers: [])
+    #expect(MenuBarController.shortcutLabel(for: .pasteLast, bindings: moved) == nil)
+  }
+
   // Re-homed from `QuickAddMenuItemTests`, which owns the PURE title decisions and has no
   // controller, no fixture and no way to click anything. `the-rig-decides-where-a-test-lives`: this
   // case needs a rendered menu and an action spy, and those live here.
@@ -272,7 +356,7 @@ struct MenuBarControllerTests {
   }
 
   /// **The shortcut is user-editable, so advertising a hard-coded one teaches a lie after a
-  /// rebind.** Shown as text rather than as a key equivalent — see `quickAddShortcutLabel`.
+  /// rebind.** Shown as text rather than as a key equivalent — see `shortcutLabel`.
   @Test("A rebound shortcut is what the menu advertises")
   func theMenuFollowsTheConfiguredBinding() {
     let controller = makeController()
@@ -307,10 +391,11 @@ struct MenuBarControllerTests {
     record: (UInt16, NSEvent.ModifierFlags) = (49, []),
     cancel: (UInt16, NSEvent.ModifierFlags) = (53, [])
   ) -> String? {
-    MenuBarController.quickAddShortcutLabel(
-      keyCode: keyCode, modifiers: modifiers,
-      recordKeyCode: record.0, recordModifiers: record.1,
-      cancelKeyCode: cancel.0, cancelModifiers: cancel.1)
+    var bindings = ShortcutBindings.shipped
+    bindings.record = .keyboard(keyCode: record.0, modifiers: record.1)
+    bindings.cancel = .keyboard(keyCode: cancel.0, modifiers: cancel.1)
+    bindings.quickAdd = .keyboard(keyCode: keyCode, modifiers: modifiers)
+    return MenuBarController.shortcutLabel(for: .quickAdd, bindings: bindings)
   }
 
   /// The mapping itself: what is worth showing, and what is not.
@@ -322,7 +407,7 @@ struct MenuBarControllerTests {
 
   /// **A chord another role owns must not be advertised here, and this is worse than a dead hint.**
   /// `ShortcutMatcher.role` gives Record priority on a shared binding and
-  /// `HotkeyService.quickAddMayHoldItsChord` unregisters Quick Add while a same-binding Cancel is
+  /// `HotkeyService.mayHoldItsChord` unregisters Quick Add while a same-binding Cancel is
   /// armed — so the advertised chord can START OR CANCEL A RECORDING. This menu exists because the
   /// shortcut can fail; sending the user to the heart path instead is the one lie it must not tell.
   /// Cloud review, PR #2427.
@@ -393,6 +478,22 @@ struct MenuBarControllerTests {
   func aChordCancelClaimsIsNotAdvertised() {
     #expect(Self.label(53, [.control], cancel: (53, [.control])) == nil)
     #expect(Self.label(53, [.control], cancel: (53, [.command])) != nil)
+  }
+
+  /// #3106: the ownership rule now asks EVERY higher role in both prefix directions. Two cases the
+  /// old rule advertised and the new one withholds, each with its paired accepted case.
+  @Test("A bare Quick Add an armed Cancel chord needs, and an Fn chord a bare Globe Record takes, are not advertised")
+  func newlyRefusedPrefixCases() {
+    // Bare Left Command Quick Add; Cancel is Command-Period. During a recording the Command press on
+    // the way to cancelling would open the Quick Add panel. Old answer: advertised.
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], cancel: (47, [.command])) == nil)
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], cancel: (47, [.control])) != nil)
+
+    // Record on bare Globe; Quick Add is Fn-Control-W. The Globe press starts a recording before
+    // the W arrives. Old answer: advertised, because the label only looked at the four modifiers
+    // Carbon keeps.
+    #expect(Self.label(13, [.function, .control], record: (ModifierKeyCodes.globe, [])) == nil)
+    #expect(Self.label(13, [.control], record: (ModifierKeyCodes.globe, [])) != nil)
   }
 
   @Test("A chord Record or Cancel owns is not advertised as Quick Add's")
@@ -728,7 +829,13 @@ struct MenuBarControllerTests {
         openTranscribeFile: { spy.fired.append("openTranscribeFile") },
         openPermissions: { spy.fired.append("openPermissions") },
         toggleRecording: { spy.fired.append("toggleRecording") },
-        quit: { spy.fired.append("quit") }
+        quit: { spy.fired.append("quit") },
+        lastDictation: { spy.lastDictation },
+        pasteLastDictation: { rowID, target in
+          spy.fired.append(
+            "pasteLastDictation:\(rowID?.uuidString ?? "none"):"
+              + "\(target.map { String($0.processIdentifier) } ?? "none")")
+        }
       )
     )
     return controller
@@ -907,4 +1014,6 @@ struct QuickAddMenuItemTests {
 @MainActor
 final class ActionSpy {
   var fired: [String] = []
+  /// #3106: what `lastDictation` answers; nil means History has nothing to reuse.
+  var lastDictation: (id: UUID, text: String)?
 }

@@ -123,6 +123,8 @@ HARNESS_STATUS = {
     "scroll":          {"status": "primitive", "issue": None, "note": "CGEvent: run_in_background"},
     "wait_for":        {"status": "primitive", "issue": None, "note": ""},
     "select_word_at":  {"status": "primitive", "issue": None, "note": ""},
+    "status_menu_snapshot_real": {"status": "primitive", "issue": "#3106", "note": "REAL CGEvent clicks open/close the status menu and read every row; never AXPress, because the Paste Last row samples its target in menuNeedsUpdate"},
+    "click_status_menu_item_real": {"status": "primitive", "issue": "#3106", "note": "two REAL clicks; fails closed without a frame or on a disabled item"},
     "modifier_flags":  {"status": "primitive", "issue": None, "note": ""},
     "clear_modifier_flags": {"status": "primitive", "issue": None, "note": "after any CGEvent drive that could leave a modifier stuck"},
     "acquisition_verdict": {"status": "primitive", "issue": None, "note": "selection-acquisition route reading"},

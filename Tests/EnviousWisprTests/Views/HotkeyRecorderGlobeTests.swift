@@ -591,7 +591,10 @@ import Testing
       onBindingAccepted: { code, mods in
         box.callbackArguments.append((code, mods))
         box.seenAtCallback.append((box.keyCode, box.modifiers))
-      }
+      },
+      // #3106: every capture here is one the validator allows; refusals are covered in
+      // HotkeyRecorderValidationTests.
+      validate: { _ in nil }
     )
   }
 

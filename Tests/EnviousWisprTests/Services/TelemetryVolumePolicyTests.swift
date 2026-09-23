@@ -104,7 +104,10 @@ struct TelemetryVolumePolicyTests {
           event: "hotkey.pressed", properties: ["press_action": action], uuid: Self.lastKeptUUID)
           == Self.sampled, "bucket 9 is the last kept bucket")
     }
-    for action in ["lock", "stop", "cancel", "ignored_processing", "quick_add", "unheard_of"] {
+    for action in [
+      "lock", "stop", "cancel", "ignored_processing", "quick_add", "paste_last", "copy_last",
+      "unheard_of",
+    ] {
       #expect(
         Policy.decide(
           event: "hotkey.pressed", properties: ["press_action": action], uuid: Self.droppedUUID)
