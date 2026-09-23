@@ -20,23 +20,31 @@ struct CheckerSelectionPathTests {
 
   private let spoken = "The day toast regenerated my project."
   private var vocabulary: CorrectorVocabulary {
-    .init(terms: [.init(
-      canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
-      learnedAt: Date(timeIntervalSince1970: 1_790_000_000))], generation: 1)
+    .init(
+      terms: [
+        .init(
+          canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
+          learnedAt: Date(timeIntervalSince1970: 1_790_000_000))
+      ], generation: 1)
   }
 
   private var choices: [LearnedWordCheckerSelection] {
-    [.init(checker: Approver(), identity: "test_ready"),
+    [
+      .init(checker: Approver(), identity: "test_ready"),
       .init(absence: .adapterDownloading),
       .init(absence: .baseMismatch("prompt_template")),
       .init(absence: .serverUnavailable),
-      .init(absence: .unqualifiedLanguage)]
+      .init(absence: .unqualifiedLanguage),
+    ]
   }
 
-  private func snapshot(backend: ASRBackendType = .parakeet) -> RecordingSettingsSnapshot {
+  private func snapshot(
+    backend: ASRBackendType = .parakeet, languageMode: LanguageMode = .locked("en"),
+    engineDetectsLanguage: Bool = false
+  ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
-      backendType: backend, backendSupportsLanguageDetection: false,
-      languageMode: .locked("en"), wordCorrectionEnabled: true,
+      backendType: backend, backendSupportsLanguageDetection: engineDetectsLanguage,
+      languageMode: languageMode, wordCorrectionEnabled: true,
       fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, llmProvider: LLMProvider.egOne.rawValue,
       llmModel: "none", s1Control: nil)
@@ -47,7 +55,8 @@ struct CheckerSelectionPathTests {
     for choice in choices {
       var calls: [(LLMProvider, String?)] = []
       let processor = RecoveryTextProcessor(
-        keychainManager: KeychainManager(), checkerSelectionProvider: { provider, language in
+        keychainManager: KeychainManager(),
+        checkerSelectionProvider: { provider, language in
           calls.append((provider, language))
           return choice
         })
@@ -65,7 +74,8 @@ struct CheckerSelectionPathTests {
     for choice in choices {
       var calls: [(LLMProvider, String?)] = []
       let runner = FileImportRunner(
-        keychainManager: KeychainManager(), checkerSelectionProvider: { provider, language in
+        keychainManager: KeychainManager(),
+        checkerSelectionProvider: { provider, language in
           calls.append((provider, language))
           return choice
         })
@@ -81,7 +91,8 @@ struct CheckerSelectionPathTests {
   func importDoesNotPromoteMidRun() async throws {
     var calls = 0
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(), checkerSelectionProvider: { _, _ in
+      keychainManager: KeychainManager(),
+      checkerSelectionProvider: { _, _ in
         calls += 1
         return calls == 1
           ? .init(absence: .adapterDownloading)
@@ -93,6 +104,29 @@ struct CheckerSelectionPathTests {
     #expect(first.text == second.text)
     #expect(second.text.contains("Tuist") == false)
     #expect(calls == 1)
+  }
+
+  @Test("an import asks again when a later part's engine language differs")
+  func importKeysSelectionByLanguage() async throws {
+    var calls: [String?] = []
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(),
+      checkerSelectionProvider: { _, language in
+        calls.append(language)
+        return language == "en"
+          ? .init(checker: Approver(), identity: "test_ready")
+          : .init(absence: .unqualifiedLanguage)
+      })
+    runner.freeze(
+      settings: snapshot(backend: .whisperKit, languageMode: .auto, engineDetectsLanguage: true),
+      vocabulary: vocabulary)
+    let english = try await runner.process(part: spoken, engineLanguage: "en")
+    let spanish = try await runner.process(part: spoken, engineLanguage: "es")
+    let englishAgain = try await runner.process(part: spoken, engineLanguage: "en")
+    #expect(english.text.contains("Tuist"))
+    #expect(spanish.text.contains("Tuist") == false)
+    #expect(englishAgain.text.contains("Tuist"))
+    #expect(calls == ["en", "es"])
   }
 
   @Test("both live language evidence shapes freeze their selection before the chain")

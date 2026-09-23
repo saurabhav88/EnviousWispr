@@ -11,26 +11,43 @@ struct LearnedCheckerSettingsStatus: Equatable {
   static let retryTitle = "Try again"
 
   init(selection: LearnedWordCheckerSelection) {
+    // The judge's owner names it and its languages; the copy has no engine or
+    // language of its own, so a new judge or language needs no edit here.
+    let judge = selection.judge?.displayName ?? "The polish engine"
+    let languages = Self.languageList(selection.judge?.qualifiedLanguages ?? [])
     if selection.checker != nil {
-      line = "Checked by: EG-1. Learned words are checked before they're used in English."
+      line = languages.map {
+        "Checked by: \(judge). Learned words are checked before they're used in \($0)."
+      } ?? "Checked by: \(judge). Learned words are checked before they're used."
       canRetry = false
       return
     }
     canRetry = selection.retryAvailable
     switch selection.absence {
     case .adapterDownloading:
-      line = "Learn-only: EG-1's word check is downloading. Learned words are saved for later."
-    case .adapterDeliveryFailed:
+      line = "Learn-only: \(judge)'s word check is downloading. Learned words are saved for later."
+    case .adapterDeliveryFailed, .deliveryDisabled:
       line = selection.retryAvailable
-        ? "Learn-only: EG-1's word check couldn't download. Learned words are saved for later."
-        : "Learn-only: EG-1's word check isn't available yet. Learned words are saved for later."
+        ? "Learn-only: \(judge)'s word check couldn't download. Learned words are saved for later."
+        : "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later."
     case .notEGOne:
       line = "Learn-only: This polish choice doesn't use learned words yet."
     case .unqualifiedLanguage:
-      line = "Learn-only: Learned words are checked in English only."
+      line = languages.map { "Learn-only: Learned words are checked in \($0) only." }
+        ?? "Learn-only: Learned words aren't checked in this language yet."
     case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable, .none:
-      line = "Learn-only: EG-1's word check isn't ready. Learned words are saved for later."
+      line = "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later."
     }
+  }
+
+  /// "English", "English and German": names in English, the app's UI language.
+  static func languageList(_ codes: [String]) -> String? {
+    let english = Locale(identifier: "en")
+    let names = codes.map { english.localizedString(forLanguageCode: $0) ?? $0 }
+    guard !names.isEmpty else { return nil }
+    let formatter = ListFormatter()
+    formatter.locale = english
+    return formatter.string(from: names)
   }
 }
 
@@ -143,7 +160,7 @@ struct LearningSection: View {
               Spacer(minLength: 8)
               SettingsActionButton(title: LearnedCheckerSettingsStatus.retryTitle,
                 isEnabled: true) {
-                Task { await checkerEligibility.retryDownload() }
+                Task { await checkerEligibility.requestAdapterDownload() }
               }
             }
           }

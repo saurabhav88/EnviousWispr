@@ -902,6 +902,7 @@ public enum KernelDictationDriverFactory {
       // the same synchronous turn, so a `.stoppedWaitingForDecode` retention is
       // registered before `AbandonedDecodeHold` can exist to settle it.
       driver?.fireSessionEndedWithoutSaveIfNeeded()
+      driver?.releaseLocalServerLeaseAfterTerminal()
       driver?.onSessionTerminalAccepted?(snapshot.takeID)
     }
 

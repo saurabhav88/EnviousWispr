@@ -94,6 +94,7 @@ struct LearnedWordCheckStepTests {
       (.notEGOne, "not_eg_one"), (.baseNotAdmitted, "base_not_admitted"),
       (.adapterDownloading, "adapter_downloading"),
       (.adapterDeliveryFailed, "adapter_delivery_failed"),
+      (.deliveryDisabled, "delivery_disabled"),
       (.baseMismatch("family"), "base_mismatch_family"),
       (.baseMismatch("revision"), "base_mismatch_revision"),
       (.baseMismatch("variant"), "base_mismatch_variant"),

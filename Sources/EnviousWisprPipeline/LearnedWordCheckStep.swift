@@ -4,7 +4,7 @@ import EnviousWisprServices
 import Foundation
 
 public enum LearnedWordCheckerAbsence: Sendable, Equatable {
-  case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed
+  case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed, deliveryDisabled
   case baseMismatch(String), unqualifiedLanguage, serverWithoutAdapter(String), serverUnavailable
 
   public var code: String {
@@ -13,11 +13,26 @@ public enum LearnedWordCheckerAbsence: Sendable, Equatable {
     case .baseNotAdmitted: "base_not_admitted"
     case .adapterDownloading: "adapter_downloading"
     case .adapterDeliveryFailed: "adapter_delivery_failed"
+    case .deliveryDisabled: "delivery_disabled"
     case .baseMismatch(let reason): "base_mismatch_\(reason)"
     case .unqualifiedLanguage: "unqualified_language"
     case .serverWithoutAdapter(let reason): "server_without_adapter_\(reason)"
     case .serverUnavailable: "server_unavailable"
     }
+  }
+}
+
+/// The judge that owns the selected polish engine's learned-word check, named
+/// for the Dictionary status line. Each judge's owner fills it, so a new judge
+/// or a newly qualified language needs no edit to the copy.
+public struct LearnedWordJudge: Sendable, Equatable {
+  public let displayName: String
+  /// Lowercase language codes the judge revision is qualified for.
+  public let qualifiedLanguages: [String]
+
+  public init(displayName: String, qualifiedLanguages: [String]) {
+    self.displayName = displayName
+    self.qualifiedLanguages = qualifiedLanguages
   }
 }
 
@@ -27,19 +42,33 @@ public struct LearnedWordCheckerSelection: Sendable {
   public let absence: LearnedWordCheckerAbsence?
   /// Only a failed or cancelled fetch on a configured source offers a retry.
   public let retryAvailable: Bool
+  /// Nil when the selected engine has no judge (`notEGOne`) or in tests.
+  public let judge: LearnedWordJudge?
 
-  public init(checker: any LearnedWordChecking, identity: String) {
+  public init(checker: any LearnedWordChecking, identity: String, judge: LearnedWordJudge? = nil) {
     self.checker = checker
     self.identity = identity
     absence = nil
     retryAvailable = false
+    self.judge = judge
   }
 
-  public init(absence: LearnedWordCheckerAbsence, retryAvailable: Bool = false) {
+  public init(
+    absence: LearnedWordCheckerAbsence, retryAvailable: Bool = false, judge: LearnedWordJudge? = nil
+  ) {
     checker = nil
     identity = nil
     self.absence = absence
     self.retryAvailable = retryAvailable
+    self.judge = judge
+  }
+
+  public func naming(_ judge: LearnedWordJudge) -> LearnedWordCheckerSelection {
+    if let checker, let identity {
+      return .init(checker: checker, identity: identity, judge: judge)
+    }
+    return .init(
+      absence: absence ?? .serverUnavailable, retryAvailable: retryAvailable, judge: judge)
   }
 }
 

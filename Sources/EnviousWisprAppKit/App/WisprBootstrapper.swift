@@ -711,9 +711,31 @@ package final class WisprBootstrapper {
       EGOneTelemetryBridge.handler(engine: .egOne)(event)
       Task { @MainActor in checkerEligibility.statusDidChange() }
     }
-    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+    // One ensure, three triggers: selecting EG-1, launch, and the base model's
+    // own admission. A first-time EG-1 download passes the first two while the
+    // base is still arriving, and nothing else would start the word check's
+    // download once it lands.
+    let ensureCheckerAdapter: @MainActor () -> Void = { [weak settings, modelDelivery] in
       Task {
-        await modelDelivery.controller.addStateObserver { identity, _ in
+        guard let base = checkerBaseRegistration,
+          let prompt = checkerPromptTemplateID
+        else { return }
+        _ = await modelDelivery.ensureCheckerAdapterIfEGOneSelected(
+          selected: settings?.llmProvider == .egOne,
+          baseRegistration: base, promptTemplateID: prompt)
+      }
+    }
+    if let checkerIdentity = modelDelivery.egOneCheckerRegistration?.manifest.identity {
+      let baseIdentity = checkerBaseRegistration?.manifest.identity
+      Task {
+        await modelDelivery.controller.addStateObserver { identity, state in
+          if identity == baseIdentity, case .admitted = state {
+            Task { @MainActor in
+              ensureCheckerAdapter()
+              checkerEligibility.statusDidChange()
+            }
+            return
+          }
           guard identity == checkerIdentity else { return }
           Task { @MainActor in checkerEligibility.statusDidChange() }
         }
@@ -730,16 +752,7 @@ package final class WisprBootstrapper {
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         await checkerEligibility.selection(provider: provider, language: language)
       },
-      ensureCheckerAdapter: { [weak settings, modelDelivery] in
-        Task {
-          guard let base = checkerBaseRegistration,
-            let prompt = checkerPromptTemplateID
-          else { return }
-          _ = await modelDelivery.ensureCheckerAdapterIfEGOneSelected(
-            selected: settings?.llmProvider == .egOne,
-            baseRegistration: base, promptTemplateID: prompt)
-        }
-      },
+      ensureCheckerAdapter: ensureCheckerAdapter,
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
@@ -1761,8 +1774,11 @@ package final class WisprBootstrapper {
       onEngineReleased: {
         [
           weak engineCoordinator, weak recoveryCoordinatorForEngineMutationScope, settings,
-          asrManager
+          asrManager, localPolishRuntimes
         ] in
+        // #3105: the run's server hold goes first, so the forced reconcile
+        // below is not deferred behind the import that just ended.
+        Task { await localPolishRuntimes.releaseImportHold() }
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         // #2772: FORCED. An import that started its own bundled polisher armed no
@@ -1817,8 +1833,11 @@ package final class WisprBootstrapper {
       // Only the BUNDLED servers are prepared here. Ollama is the user's own process and
       // the cloud providers have nothing on this Mac to start, which is the same set
       // `localPolishProvider` already names for the eviction pin.
-      prepareLocalPolish: { [localPolishRuntimes] configuration in
+      prepareLocalPolish: { [localPolishRuntimes, checkerEligibility] configuration in
         guard let localPolish = configuration.localPolishProvider else { return true }
+        if localPolish == .egOne {
+          Task { await checkerEligibility.requestAdapterDownload() }
+        }
         // A nil activation is a refusal before the server is even asked: another session
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a
@@ -1831,7 +1850,8 @@ package final class WisprBootstrapper {
         // activation's probe sees the engine busy and skips on purpose, leaving `health` at
         // whatever the last probe said; a server that just came up after an earlier red
         // verdict would be refused on stale advice. The endpoint is what the run will use.
-        return await runtime.activeEndpoint() != nil
+        guard await runtime.activeEndpoint() != nil else { return false }
+        return await localPolishRuntimes.holdForImport(localPolish)
       },
       // #2772 finding 11: the third writer of History, beside dictation and crash replay.
       // Through the COORDINATOR rather than the store, so the row appears immediately —
