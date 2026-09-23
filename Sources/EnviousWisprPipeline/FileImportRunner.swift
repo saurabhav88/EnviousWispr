@@ -172,7 +172,8 @@ public final class FileImportRunner {
       // adapts to the frontmost app would be adapting to whatever the user
       // happened to have open while the file decoded.
       targetAppName: nil,
-      steps: steps.orderedChainForFileImport)
+      steps: steps.orderedChainForFileImport,
+      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
 
     // The user pressed Stop while this part was in flight. The runner will have
     // returned the deterministic floor rather than propagating, which is right
@@ -249,6 +250,9 @@ public final class FileImportRunner {
     let wordCorrection = WordCorrectionStep()
     wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { wordCorrection.correctorVocabulary = frozenVocabulary }
+    let learnedWordCheck = LearnedWordCheckStep()
+    learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    if let frozenVocabulary { learnedWordCheck.correctorVocabulary = frozenVocabulary }
 
     let fillerRemoval = FillerRemovalStep()
     fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
@@ -263,6 +267,7 @@ public final class FileImportRunner {
     return LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: wordCorrection,
+      learnedWordCheck: learnedWordCheck,
       fillerRemoval: fillerRemoval,
       emojiFormatter: emojiFormatter,
       inverseTextNormalization: itn,

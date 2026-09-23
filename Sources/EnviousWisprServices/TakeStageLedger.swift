@@ -41,6 +41,8 @@ struct TakeStageSummary: Equatable {
   /// PLANNED, before the model is asked, so it says what was chosen, never whether polish
   /// succeeded or what language was delivered. Absent for every other provider and family.
   var polishLanguageHint: String?
+  /// #3105: what the learned-word check did for this take, written when the step ends.
+  var learnedCheck: LearnedCheckTerminalFacts?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -56,6 +58,47 @@ struct TakeStageSummary: Equatable {
     if let firstChunkShouldStop { out["vad_first_chunk_should_stop"] = firstChunkShouldStop }
     if let otherAudio { out.merge(otherAudio.terminalProperties) { current, _ in current } }
     if let polishLanguageHint { out["polish_language_hint"] = polishLanguageHint }
+    if let learnedCheck { out.merge(learnedCheck.terminalProperties) { current, _ in current } }
+    return out
+  }
+}
+
+/// #3105. What the learned-word check did for one take, carried on that take's
+/// `dictation.terminal` row: counts, a latency, the checker arm and a closed
+/// fallback reason. Never a word, a spelling, a sentence or a model answer.
+/// Present only for takes where the step ran (a checker was installed and the
+/// vocabulary held a learned word).
+public struct LearnedCheckTerminalFacts: Equatable, Sendable {
+  public var flagged: Int
+  public var approved: Int
+  public var applied: Int
+  public var contested: Int
+  public var latencyMs: Int
+  public var arm: String
+  /// `no_candidates`, `checker_error`, `malformed_answer` or `deadline`; nil when the step
+  /// reached a decision.
+  public var fallbackReason: String?
+
+  public init(
+    flagged: Int, approved: Int, applied: Int, contested: Int, latencyMs: Int, arm: String,
+    fallbackReason: String?
+  ) {
+    self.flagged = flagged
+    self.approved = approved
+    self.applied = applied
+    self.contested = contested
+    self.latencyMs = latencyMs
+    self.arm = arm
+    self.fallbackReason = fallbackReason
+  }
+
+  var terminalProperties: [String: Any] {
+    var out: [String: Any] = [
+      "learned_check_flagged": flagged, "learned_check_approved": approved,
+      "learned_check_applied": applied, "learned_check_contested": contested,
+      "learned_check_latency_ms": latencyMs, "learned_check_arm": arm,
+    ]
+    if let fallbackReason { out["learned_check_fallback_reason"] = fallbackReason }
     return out
   }
 }

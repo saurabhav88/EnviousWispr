@@ -7,7 +7,8 @@ import Foundation
 /// leakage a Swift compile error.
 ///
 /// `EnviousWisprApp.init()` constructs one propagator, registers the known
-/// consumers (pipeline word-correction × 2, pipeline llmPolish × 2 = 4 total;
+/// consumers (pipeline word-correction × 2, learned-word check × 2,
+/// pipeline llmPolish × 2, live preview × 1 = 7 total;
 /// the re-polish polish consumer was removed with the feature in #1106), and
 /// forwards `CustomWordsCoordinator.onWordsChanged` into `update(corrector:polish:)`.
 ///

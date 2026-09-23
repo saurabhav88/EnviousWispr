@@ -49,6 +49,11 @@ public struct TextProcessingContext: Sendable {
   /// session that produced it. Those emit no live polish telemetry anyway (both use
   /// the `.silent` seam presets), so nil here is honest rather than a gap.
   public var takeID: String?
+  /// #3105: the corrector vocabulary frozen for THIS take before the chain's
+  /// first suspension, so Word Correction and the learned-word check read the
+  /// same words even when `CustomWordsPropagator` broadcasts mid-take. Nil
+  /// means the caller froze nothing; each step then reads its own lane.
+  public var frozenCorrectorVocabulary: CorrectorVocabulary?
   /// LLM provider used for polishing (e.g. "openai", "ollama").
   public var llmProvider: String?
   /// LLM model used for polishing (e.g. "gpt-4o-mini").
@@ -183,6 +188,8 @@ protocol TextProcessingStep {
   var name: String { get }
   /// Whether this step should run. Checked before each invocation.
   var isEnabled: Bool { get }
+  /// A take may carry frozen inputs that differ from a step's current lane.
+  func isEnabled(for context: TextProcessingContext) -> Bool
   /// Maximum time this step may run before being skipped.
   ///
   /// The FIXED policy for steps whose cost does not depend on the input. Most
@@ -214,6 +221,7 @@ protocol TextProcessingStep {
 
 extension TextProcessingStep {
   var errorSurfacePolicy: ErrorSurfacePolicy { .swallow }
+  func isEnabled(for context: TextProcessingContext) -> Bool { isEnabled }
   /// Default: the step's cost does not depend on its input, so the fixed
   /// policy applies. `LLMPolishStep` (#1770) and `InverseTextNormalizationStep`
   /// (#2770) override this.

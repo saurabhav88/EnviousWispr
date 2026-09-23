@@ -11,8 +11,21 @@ public struct EGOneEndpoint: Sendable, Equatable {
   /// input-size preflight reads this so an over-budget dictation skips
   /// whole (silent raw fallback), never truncates silently.
   public let contextTokens: Int
+  public let hasLearnedWordAdapter: Bool
   public var chatCompletionsURL: URL {
     URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
+  }
+  public var completionURL: URL {
+    URL(string: "http://127.0.0.1:\(port)/completion")!
+  }
+
+  public init(port: UInt16, authToken: String, contextTokens: Int,
+    hasLearnedWordAdapter: Bool = false
+  ) {
+    self.port = port
+    self.authToken = authToken
+    self.contextTokens = contextTokens
+    self.hasLearnedWordAdapter = hasLearnedWordAdapter
   }
 }
 
@@ -56,6 +69,7 @@ public actor EGOneServerManager {
     public var serverBinaryURL: URL
     public var modelURL: URL
     public var contextTokens: Int
+    public var learnedWordAdapterURL: URL?
     /// Extra launch arguments appended after the standard set.
     public var extraArguments: [String]
     /// Seconds to wait for the HTTP surface after spawn (model load takes
@@ -65,11 +79,13 @@ public actor EGOneServerManager {
 
     public init(
       serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
-      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60
+      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
+      learnedWordAdapterURL: URL? = nil
     ) {
       self.serverBinaryURL = serverBinaryURL
       self.modelURL = modelURL
       self.contextTokens = contextTokens
+      self.learnedWordAdapterURL = learnedWordAdapterURL
       self.extraArguments = extraArguments
       self.readinessBudgetSeconds = readinessBudgetSeconds
     }
@@ -254,7 +270,8 @@ public actor EGOneServerManager {
     installMemoryPressureSource()
 
     let endpoint = EGOneEndpoint(
-      port: port, authToken: token, contextTokens: configuration.contextTokens)
+      port: port, authToken: token, contextTokens: configuration.contextTokens,
+      hasLearnedWordAdapter: configuration.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
     // poll /health until 200, the process dying, or budget exhausted).
     let healthy = await Self.awaitServerUp(
