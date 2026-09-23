@@ -214,11 +214,12 @@ package enum ShortcutMatcher {
     // exactly two mechanisms, the modifier monitor and Carbon, and a chord press produces exactly
     // two events, its modifiers and its key. Both are checked below. A further finding would have
     // to name a THIRD dispatch mechanism, not another combination of these two.
-    for flag in [NSEvent.ModifierFlags.command, .option, .control, .shift]
-    where quickAdd.requiredModifiers.contains(flag) {
-      for other in [record, cancel] where other.isBareModifier {
-        if case .keyboard(let ok, _) = other, ModifierKeyCodes.flag(for: ok) == flag { return false }
-      }
+    //
+    // Scoped to the four modifiers Carbon keeps, exactly as the loop this replaced was: it walked
+    // `[.command, .option, .control, .shift]`, which is `carbonEffectiveModifiers`.
+    for other in [record, cancel]
+    where bareModifier(other, isPrefixOf: quickAdd, within: carbonEffectiveModifiers) {
+      return false
     }
 
     // And the Carbon half: whether another role registers the same chord — key code plus the modifiers Carbon actually keeps. Record registers first and
@@ -259,6 +260,25 @@ package enum ShortcutMatcher {
         == otherModifiers.intersection(carbonEffectiveModifiers)
   }
 
+  /// Is `bare` a standalone modifier whose flag `chord` needs held, among `flags`?
+  ///
+  /// The PREFIX collision, asked from either side: pressing a chord emits its modifiers first, and
+  /// the modifier monitor dispatches that press before the chord's key reaches Carbon. So a bare
+  /// binding on one of a chord's modifiers and that chord cannot both work. One spelling for both
+  /// directions — the dispatch refusal in `role(forBareModifierKeyCode:)` and the standing label
+  /// check in `quickAddOwnsItsBinding` asked it separately, in two different shapes.
+  ///
+  /// `flags` is explicit because the two callers scope it differently today: dispatch considers
+  /// every flag a modifier key can carry (Globe included), the label only the four Carbon keeps.
+  package static func bareModifier(
+    _ bare: ShortcutBinding, isPrefixOf chord: ShortcutBinding, within flags: NSEvent.ModifierFlags
+  ) -> Bool {
+    guard bare.isBareModifier, case .keyboard(let keyCode, _) = bare,
+      let flag = ModifierKeyCodes.flag(for: keyCode), flags.contains(flag)
+    else { return false }
+    return chord.requiredModifiers.contains(flag)
+  }
+
   package static func role(
     forBareModifierKeyCode keyCode: UInt16,
     record: ShortcutBinding,
@@ -266,10 +286,11 @@ package enum ShortcutMatcher {
     quickAdd: ShortcutBinding,
     armed: Set<ShortcutRole>
   ) -> ShortcutRole? {
-    if armed.contains(.record), record == .keyboard(keyCode: keyCode, modifiers: []) {
+    let bare = ShortcutBinding.keyboard(keyCode: keyCode, modifiers: [])
+    if armed.contains(.record), record == bare {
       return .record
     }
-    if armed.contains(.cancel), cancel == .keyboard(keyCode: keyCode, modifiers: []) {
+    if armed.contains(.cancel), cancel == bare {
       // REFUSE when this modifier is also the first half of the record chord.
       //
       // Cancel on bare Right Command with record on Command+D: pressing Command
@@ -289,14 +310,12 @@ package enum ShortcutMatcher {
       // timeout that would itself be wrong. Accepting wrongly destroys dictation
       // the user authored; refusing wrongly costs a shortcut that could never
       // have worked reliably in that configuration.
-      if let flag = ModifierKeyCodes.flag(for: keyCode),
-        record.requiredModifiers.contains(flag)
-      {
+      if bareModifier(bare, isPrefixOf: record, within: .deviceIndependentFlagsMask) {
         return nil
       }
       return .cancel
     }
-    if armed.contains(.quickAdd), quickAdd == .keyboard(keyCode: keyCode, modifiers: []) {
+    if armed.contains(.quickAdd), quickAdd == bare {
       // The SAME refusal as cancel's, for the same reason one step over. With the
       // record chord needing this modifier, a bare press of it is genuinely
       // ambiguous, and accepting it opens a panel that TAKES KEY FOCUS — so the
@@ -304,9 +323,7 @@ package enum ShortcutMatcher {
       // starting never happens. Cancel refuses because accepting destroys text
       // already spoken; this refuses because accepting prevents text being spoken
       // at all. Neither is recoverable by waiting.
-      if let flag = ModifierKeyCodes.flag(for: keyCode),
-        record.requiredModifiers.contains(flag)
-      {
+      if bareModifier(bare, isPrefixOf: record, within: .deviceIndependentFlagsMask) {
         return nil
       }
       return .quickAdd
