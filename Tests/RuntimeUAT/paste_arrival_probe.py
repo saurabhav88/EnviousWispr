@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """paste_arrival_probe.py: how long after Cmd+V does pasted text appear in the focused field? (#3106)
 
-The landing check's negative wait needs a MEASURED per-app arrival time, not a remembered one. The
+The arrival session's negative wait needs a MEASURED per-app arrival time, not a remembered one. The
 #996 app matrix recorded Slack and Word text absent 25 ms after a paste and present about a second
 later, sampled every 150 ms, which bounds arrival loosely. This probe samples every 5 ms.
 

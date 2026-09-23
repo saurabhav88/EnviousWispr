@@ -136,6 +136,30 @@ package enum PastedRegionTiming {
   package static let caretCapMs = 10_000
   /// Wall-clock ceiling from paste; observation never outlives it.
   package static let ceilingMs = 60_000
+  /// #3106 PR A, the arrival session. The landing decision is published at the first new
+  /// occurrence, or at this deadline from dispatch when none was seen. Measured 2026-09-23 on this
+  /// M4 Pro (#3106 comments 5798082590, 5798253620): 46/46 Cmd+V and 13/14 AX-menu pastes were
+  /// first observed at 0.2-120 ms; the one miss was a real miss. A trial value: the late-hit shadow
+  /// below measures whether any real paste arrives after it.
+  package static let landingDeadlineMs = 300
+  /// The session's poll backstop between notification wakeups. A requested cadence: one read can
+  /// take longer, and only one read runs at a time.
+  package static let arrivalPollMs = 25
+  /// How long a potential eligible miss keeps being read after its decision, to catch a late hit.
+  /// Also #996's capture opportunity, counted from its own first request. Moved here with its
+  /// reason from the watcher's retry loop (#3106 PR A):
+  ///
+  /// Capture grace (#996, app matrix 2026-09-20): a key-event paste (Tier 2 Cmd+V into Slack,
+  /// Word, Chrome) lands AFTER the completion event fires, so the first read of the focused field
+  /// can still show the pre-paste text (Slack and Word: `dictated_text_not_found` 25 ms after the
+  /// paste, the text present a second later). The capture was retried until
+  /// `dictated_text_not_found` or `no_focused_element` was final. 10 × 150 ms = 1.5 s: the Tier 2b
+  /// MENU paste (an AppleScript click on Edit › Paste, Slack when the key event is refused) lands
+  /// later than the key event and missed a 0.9 s grace twice on 2026-09-20; 1.5 s is also the
+  /// settle interval, so a person who starts fixing inside it is caught by the first poll after
+  /// capture. (#3106, 2026-09-23: a 5 ms probe saw Cmd+V and AX-menu pastes in Slack and Word
+  /// within 11-75 ms; the grace is kept for #996 until its app matrix is re-run on this reader.)
+  package static let arrivalShadowMs = 1500
   /// Values longer than this are never read into memory as evidence.
   package static let maxValueUTF16 = 20_000
   /// Context kept either side of the pasted text to re-find the region.
@@ -211,6 +235,50 @@ package enum PastedRegionCaptureOutcome: Equatable {
   }
 }
 
+/// One bounded attempt to see the pasted text in the destination's focused field (#3106 PR A):
+/// every cause kept apart, for the arrival session that retries it. Holds Accessibility handles,
+/// so it stays on the main actor and is never `Sendable`.
+package enum PastedRegionArrivalAttempt {
+  /// A complete, stable read of a readable field, with every occurrence of the pasted text in it
+  /// (or why the count could not finish).
+  case readable(PastedRegionReadableField)
+  /// The value changed between reads: not yet stable, never a stable absence.
+  case unstable(element: AXUIElement, reader: PastedRegionTextReader)
+  /// The application answered that nothing is focused.
+  case noFocus
+  /// Secure, or a subrole that could not be read (fail closed): never read.
+  case secureField
+  /// The destination process is not the active application.
+  case destinationMismatch
+  case unsupported(PastedRegionUnsupportedRead)
+  /// The focus query or the text read failed with this error.
+  case queryFailed(AXError)
+  case permissionLost
+  case appTerminated
+}
+
+/// Why a field could not be read at all (never "the text is absent").
+package enum PastedRegionUnsupportedRead: Sendable, Equatable {
+  /// A messaging timeout could not be installed, so any read would be unbounded.
+  case timeoutNotInstalled
+  /// Neither reader answered with text.
+  case absent
+  case notText
+  /// Over `PastedRegionTiming.maxValueUTF16`.
+  case tooLong
+}
+
+/// The readable field an arrival attempt saw.
+package struct PastedRegionReadableField {
+  package let application: AXUIElement
+  package let element: AXUIElement
+  package let reader: PastedRegionTextReader
+  package let value: String
+  /// Whether the application advertises `AXManualAccessibility`; nil when that could not be read.
+  package let manualAccessibility: Bool?
+  package let occurrences: PastedRegionLocator.Occurrences
+}
+
 /// Everything a watch needs, fixed at capture.
 package struct PastedRegionTarget: Equatable {
   package let pid: pid_t
@@ -246,12 +314,11 @@ package struct PastedRegionTarget: Equatable {
   }
 }
 
-/// The observer the App watcher drives. `stop()` is idempotent and every
-/// callback queued before it produces nothing afterwards.
+/// The observer the App watcher drives: edit observation only (#3106 PR A moved capture to the
+/// paste's arrival session). `stop()` is idempotent and every callback queued before it produces
+/// nothing afterwards.
 @MainActor
 package protocol PastedRegionObserving: AnyObject {
-  /// `pastedAtMs` is the paste instant in the scheduler's clock.
-  func capture(pid: pid_t, pastedText: String, pastedAtMs: Int) -> PastedRegionCaptureOutcome
   func start(
     _ target: PastedRegionTarget, onEvent: @escaping @MainActor (PastedRegionEvent) -> Void)
   func stop()
@@ -385,7 +452,7 @@ package protocol PastedRegionAXOperations: AnyObject {
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
   ) -> (any PastedRegionAXRegistration)?
 
-  // MARK: #3106 paste landing check: one AX call per method, on the exact handle given
+  // MARK: #3106 paste arrival session: one AX call per method, on the exact handle given
 
   /// `AXFocusedUIElement` of THIS application handle, one call. The caller installs the handle's
   /// messaging timeout first; nothing here creates another handle or sets its own bound.
@@ -499,6 +566,80 @@ package enum PastedRegionLocator {
     }
   }
 
+  /// Every occurrence of the pasted text, for counting (#3106: a NEW occurrence is what proves a
+  /// paste landed, so a phrase already in the field, or a second identical chunk, must count).
+  package enum Occurrences: Equatable {
+    /// The scan finished. `[start, end)` per occurrence in the value's own UTF-16 offsets, ordered
+    /// by `start`; empty only when the text genuinely does not occur.
+    case complete([Located])
+    /// The scan could not answer. Never a partial list: a count missing hits past the stopping
+    /// point would read as "the paste did not land".
+    case incomplete(Incomplete)
+  }
+
+  package enum Incomplete: Equatable {
+    /// The value or pasted text exceeds `PastedRegionTiming.maxValueUTF16`.
+    case tooLong
+    /// The scan spent `workBudget` unit examinations before it finished.
+    case workBudget
+  }
+
+  /// Haystack units the matcher may examine in one count. A healthy count costs about
+  /// value length x (1 + partial-match depth); a value near the 20,000-unit limit that repeats a
+  /// long prefix of the pasted text is the adversarial case this bounds. (#3106 PR A measures the
+  /// real cost before this number is relied on.)
+  package static let occurrenceWorkBudget = 2_000_000
+
+  /// `locate`'s matching, counted instead of classified. Same folding (`foldSpace`), same
+  /// wrap-tolerant matcher, same leading-space anchoring. At each start the full text is tried
+  /// first and the trailing-whitespace-omitted form only if the full text does not match there,
+  /// so one occurrence rendered either way counts ONCE. Unlike `locate`, the omitted form is tried
+  /// per position, not only when the full text is absent everywhere: one full rendering must not
+  /// hide a second, trimmed one. `locate` keeps its own exact-first rule for #996.
+  package static func occurrences(
+    ofPasted pasted: String, in value: String, workBudget: Int = occurrenceWorkBudget
+  ) -> Occurrences {
+    guard workBudget >= 0 else { return .incomplete(.workBudget) }
+    let limit = PastedRegionTiming.maxValueUTF16
+    guard value.utf16.prefix(limit + 1).count <= limit,
+      pasted.utf16.prefix(limit + 1).count <= limit
+    else { return .incomplete(.tooLong) }
+    guard !pasted.isEmpty else { return .complete([]) }
+    let haystack = value.utf16.map(foldSpace)
+    let full = pasted.utf16.map(foldSpace)
+    let trimmedForm = Array(full.reversed().drop(while: isSpaceUnit).reversed())
+    let trimmed: [UInt16]? =
+      trimmedForm.isEmpty || trimmedForm.count == full.count ? nil : trimmedForm
+    let units = Array(value.utf16)
+    var work = workBudget
+    var found: [Located] = []
+    var i = 0
+    while i < haystack.count {
+      // Leading-space anchoring, as in `wrapTolerantOccurrences`: once per host whitespace run.
+      // Both forms share the first unit, so one check serves both.
+      if full[0] == 0x0020, i > 0, isSpaceUnit(haystack[i - 1]) {
+        i += 1
+        continue
+      }
+      var match =
+        full.count <= haystack.count - i
+        ? matchWrapTolerant(full, in: haystack, at: i, work: &work) : nil
+      if work < 0 { return .incomplete(.workBudget) }
+      if match == nil, let trimmed, trimmed.count <= haystack.count - i {
+        match = matchWrapTolerant(trimmed, in: haystack, at: i, work: &work)
+        if work < 0 { return .incomplete(.workBudget) }
+      }
+      if let match {
+        found.append(
+          Located(
+            text: String(decoding: units[i..<match.reported], as: UTF16.self),
+            start: i, end: match.reported))
+      }
+      i += 1
+    }
+    return .complete(found)
+  }
+
   /// `occurrences(of:in:limit:)` where a run of U+0020 in `needle` matches a
   /// run of whitespace units in `haystack` at least as long. Every other unit
   /// must match exactly. Returns `[start, end)` per hit, `end` depending on
@@ -544,6 +685,16 @@ package enum PastedRegionLocator {
   private static func matchWrapTolerant(_ needle: [UInt16], in haystack: [UInt16], at start: Int)
     -> (end: Int, reported: Int)?
   {
+    var unmetered = Int.max
+    return matchWrapTolerant(needle, in: haystack, at: start, work: &unmetered)
+  }
+
+  /// The matcher itself. `work` is decremented once per haystack unit examined; a caller that
+  /// meters it reads a negative remainder as "stopped, not answered" (#3106: the occurrence
+  /// count must never mistake a refused scan for a complete one).
+  private static func matchWrapTolerant(
+    _ needle: [UInt16], in haystack: [UInt16], at start: Int, work: inout Int
+  ) -> (end: Int, reported: Int)? {
     var n = 0
     var h = start
     // Where the run that ends the needle first broke a line, if it did.
@@ -551,18 +702,26 @@ package enum PastedRegionLocator {
     while n < needle.count {
       if needle[n] == 0x0020 {
         let needleRunStart = n
-        while n < needle.count, needle[n] == 0x0020 { n += 1 }
-        guard h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
+        while n < needle.count, needle[n] == 0x0020 {
+          work -= 1
+          guard work >= 0 else { return nil }
+          n += 1
+        }
+        work -= 1
+        guard work >= 0, h < haystack.count, isSpaceUnit(haystack[h]) else { return nil }
         let haystackRunStart = h
         var firstBreak: Int?
         while h < haystack.count, isSpaceUnit(haystack[h]) {
+          work -= 1
+          if work < 0 { return nil }
           if firstBreak == nil, isLineBreakUnit(haystack[h]) { firstBreak = h }
           h += 1
         }
         guard h - haystackRunStart >= n - needleRunStart else { return nil }
         finalRunBreak = n == needle.count ? firstBreak : nil
       } else {
-        guard h < haystack.count, haystack[h] == needle[n] else { return nil }
+        work -= 1
+        guard work >= 0, h < haystack.count, haystack[h] == needle[n] else { return nil }
         n += 1
         h += 1
         finalRunBreak = nil
@@ -632,7 +791,8 @@ package enum PastedRegionLocator {
 
   /// `region(in:anchors:)` with the offsets retained (Codex r30: the caret
   /// and the changed span must share one unit, the field's UTF-16 offset).
-  package static func locateRegion(in value: String, anchors: PastedRegionAnchors) -> LocatedRegion {
+  package static func locateRegion(in value: String, anchors: PastedRegionAnchors) -> LocatedRegion
+  {
     let units = Array(value.utf16)
     let before = Array(anchors.before.utf16)
     let after = Array(anchors.after.utf16)
@@ -652,7 +812,8 @@ package enum PastedRegionLocator {
       end = start + hits[0]
     }
     guard start <= end else { return .lost }
-    return .located(Located(text: String(decoding: units[start..<end], as: UTF16.self), start: start, end: end))
+    return .located(
+      Located(text: String(decoding: units[start..<end], as: UTF16.self), start: start, end: end))
   }
 
   /// The conservative UTF-16 envelope of everything that changed between the
@@ -662,7 +823,8 @@ package enum PastedRegionLocator {
   /// the watcher wait longer, never settle an actively edited word. An
   /// unchanged region yields an empty envelope at the end.
   package static func changedEnvelope(pasted: String, region: String) -> Range<Int> {
-    let a = Array(pasted.utf16), b = Array(region.utf16)
+    let a = Array(pasted.utf16)
+    let b = Array(region.utf16)
     var prefix = 0
     while prefix < a.count, prefix < b.count, a[prefix] == b[prefix] { prefix += 1 }
     var suffix = 0
@@ -1009,18 +1171,37 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   // MARK: Capture (§3.1 step 2)
 
-  package func capture(pid: pid_t, pastedText: String, pastedAtMs: Int)
-    -> PastedRegionCaptureOutcome
-  {
-    guard ax.isTrusted() else { return .ended(.permissionLost) }
-    guard pid > 0, ax.isProcessRunning(pid) else { return .ended(.appTerminated) }
+  /// What one bounded read of the destination's focused field produced, before anyone decides what
+  /// it means. The ONE implementation of the capture's Accessibility mechanics (#3106 PR A): the
+  /// legacy `capture` and the typed `attemptArrival` both project from it, so their trust, process,
+  /// frontmost, bound, secure-field and reader rules cannot drift apart.
+  private enum FocusedFieldRead {
+    case field(
+      application: AXUIElement, element: AXUIElement, reader: PastedRegionTextReader,
+      read: PastedRegionValueRead, manualAccessibility: Bool?)
+    case permissionLost
+    case appTerminated
+    case destinationMismatch
+    /// A messaging timeout could not be installed on the application or the field.
+    case timeoutNotInstalled
+    case noFocus
+    case focusQueryFailed(AXError)
+    case secureField
+  }
+
+  /// - Parameter enableManualAccessibility: the legacy capture opts an Electron/Chromium host in
+  ///   on EVERY capture (below); the arrival attempt never writes the attribute, because its
+  ///   session enables it once after dispatch and then only reads (#3106 PR A).
+  private func readFocusedField(pid: pid_t, enableManualAccessibility: Bool) -> FocusedFieldRead {
+    guard ax.isTrusted() else { return .permissionLost }
+    guard pid > 0, ax.isProcessRunning(pid) else { return .appTerminated }
     // A process-local focused element survives an app switch, so the ACTIVE
     // application is checked separately, here and on every observation.
-    guard ax.frontmostPID() == pid else { return .skipped(.destinationMismatch) }
+    guard ax.frontmostPID() == pid else { return .destinationMismatch }
     let application = ax.applicationElement(pid: pid)
     // A read behind a failed bound is unbounded: refuse rather than hang.
     guard ax.setMessagingTimeout(application, seconds: PasteService.axMessagingTimeoutSeconds)
-    else { return .ended(.captureUnsupported) }
+    else { return .timeoutNotInstalled }
 
     // Electron/Chromium hosts expose nothing until asked, INCLUDING the focused
     // element: asked after the focus query, the opt-in would never run for a
@@ -1029,23 +1210,23 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // pids, so a later Electron process under a remembered number would never
     // be asked; one attribute write per paste is nothing (cloud review of
     // PR #3054, both rounds).
-    // An unreadable answer is treated as "not a manual host", exactly as before it could be told
-    // apart (#3106): the watcher's behaviour does not change.
-    let isManualHost = ax.supportsManualAccessibility(application) ?? false
-    if isManualHost { _ = ax.enableManualAccessibility(application) }
+    let manualAccessibility = ax.supportsManualAccessibility(application)
+    if enableManualAccessibility, manualAccessibility ?? false {
+      _ = ax.enableManualAccessibility(application)
+    }
 
     let element: AXUIElement
     switch ax.focusedElement(pid: pid) {
     case .element(let focused): element = focused
-    case .noFocus: return .skipped(.noFocusedElement)
-    case .queryFailed(let error): return .ended(Self.endReason(forQueryFailure: error))
+    case .noFocus: return .noFocus
+    case .queryFailed(let error): return .focusQueryFailed(error)
     }
     // A descendant does not inherit the application's timeout (#1332).
     guard ax.setMessagingTimeout(element, seconds: PasteService.axMessagingTimeoutSeconds)
-    else { return .ended(.captureUnsupported) }
+    else { return .timeoutNotInstalled }
 
     // Secure fields are never observed. `unreadable` is secure (fail closed).
-    if SelectionReader.isSecureField(ax.subrole(of: element)) { return .skipped(.secureField) }
+    if SelectionReader.isSecureField(ax.subrole(of: element)) { return .secureField }
 
     // `AXValue` first. An editor that has none, or answers with something
     // that is not a string, may still expose its text through the
@@ -1057,6 +1238,36 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if read == .absent || read == .notText {
       reader = .range
       read = readText(of: element, using: reader)
+    }
+    return .field(
+      application: application, element: element, reader: reader, read: read,
+      manualAccessibility: manualAccessibility)
+  }
+
+  package func capture(pid: pid_t, pastedText: String, pastedAtMs: Int)
+    -> PastedRegionCaptureOutcome
+  {
+    let application: AXUIElement
+    let element: AXUIElement
+    let reader: PastedRegionTextReader
+    let read: PastedRegionValueRead
+    let isManualHost: Bool
+    switch readFocusedField(pid: pid, enableManualAccessibility: true) {
+    case .permissionLost: return .ended(.permissionLost)
+    case .appTerminated: return .ended(.appTerminated)
+    case .destinationMismatch: return .skipped(.destinationMismatch)
+    case .timeoutNotInstalled: return .ended(.captureUnsupported)
+    case .noFocus: return .skipped(.noFocusedElement)
+    case .focusQueryFailed(let error): return .ended(Self.endReason(forQueryFailure: error))
+    case .secureField: return .skipped(.secureField)
+    case .field(let app, let field, let fieldReader, let fieldRead, let manualAccessibility):
+      application = app
+      element = field
+      reader = fieldReader
+      read = fieldRead
+      // An unreadable answer is treated as "not a manual host", exactly as before it could be told
+      // apart (#3106): the watcher's behaviour does not change.
+      isManualHost = manualAccessibility ?? false
     }
     switch read {
     case .text(let value):
@@ -1081,11 +1292,43 @@ package final class PastedRegionObserver: PastedRegionObserving {
     case .absent, .notText, .tooLong:
       return .ended(.captureUnsupported)
     case .unstable:
-      // The text is not STABLY there yet: the one capture outcome the watcher
-      // retries through its capture grace (`deservesCaptureGrace`).
+      // The text is not STABLY there yet: an answer the arrival session's #996
+      // capture retries through its grace (`PastedRegionTiming.arrivalShadowMs`).
       return .ended(.dictatedTextNotFound)
     case .failed(let error):
       return .ended(Self.endReason(forQueryFailure: error))
+    }
+  }
+
+  /// One bounded attempt to see the pasted text, for the arrival session that retries it (#3106
+  /// PR A). The same Accessibility mechanics as `capture` (`readFocusedField`), without the
+  /// manual-accessibility write, and without collapsing causes: a stable read with no occurrence
+  /// keeps its field, reader and value for the baseline comparison; an unstable read is never a
+  /// stable absence; a repeated phrase is a readable field with several positions, not an
+  /// ambiguity.
+  package func attemptArrival(pid: pid_t, pastedText: String) -> PastedRegionArrivalAttempt {
+    switch readFocusedField(pid: pid, enableManualAccessibility: false) {
+    case .permissionLost: return .permissionLost
+    case .appTerminated: return .appTerminated
+    case .destinationMismatch: return .destinationMismatch
+    case .timeoutNotInstalled: return .unsupported(.timeoutNotInstalled)
+    case .noFocus: return .noFocus
+    case .focusQueryFailed(let error): return .queryFailed(error)
+    case .secureField: return .secureField
+    case .field(let application, let element, let reader, let read, let manualAccessibility):
+      switch read {
+      case .text(let value):
+        return .readable(
+          PastedRegionReadableField(
+            application: application, element: element, reader: reader, value: value,
+            manualAccessibility: manualAccessibility,
+            occurrences: PastedRegionLocator.occurrences(ofPasted: pastedText, in: value)))
+      case .unstable: return .unstable(element: element, reader: reader)
+      case .absent: return .unsupported(.absent)
+      case .notText: return .unsupported(.notText)
+      case .tooLong: return .unsupported(.tooLong)
+      case .failed(let error): return .queryFailed(error)
+      }
     }
   }
 
@@ -1168,7 +1411,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// when the value is absent or not text (a FAILED value read is not retried). Nil when `admit`
   /// refused a call (#3106).
   package static func readWholeText(
-    of element: AXUIElement, ax: any PastedRegionAXOperations, admit: @MainActor (AXUIElement) -> Bool
+    of element: AXUIElement, ax: any PastedRegionAXOperations,
+    admit: @MainActor (AXUIElement) -> Bool
   ) -> PastedRegionValueRead? {
     guard let read = readText(of: element, using: .value, ax: ax, admit: admit) else { return nil }
     guard read == .absent || read == .notText else { return read }
@@ -1265,7 +1509,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if endIfPastDeadline(generation: gen) { return }
     switch notification {
     case .elementDestroyed: end(.elementDestroyed)
-    case .focusedElementChanged: evaluate(generation: gen, checkIdentity: true, source: "focus_notification")
+    case .focusedElementChanged:
+      evaluate(generation: gen, checkIdentity: true, source: "focus_notification")
     case .valueChanged: evaluate(generation: gen, checkIdentity: true, source: "value_notification")
     }
   }
@@ -1311,7 +1556,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
   @discardableResult
   /// `source` names what triggered this read, for the `learn_read_changed`
   /// log line that measures which hosts deliver per-keystroke notifications.
-  private func evaluate(generation gen: UInt64, checkIdentity: Bool, source: String = "poll") -> Observation {
+  private func evaluate(generation gen: UInt64, checkIdentity: Bool, source: String = "poll")
+    -> Observation
+  {
     guard let w = watch, w.generation == gen else { return .ended }
     if endIfPastDeadline(generation: gen) { return .ended }
     let target = w.target
@@ -1361,13 +1608,16 @@ package final class PastedRegionObserver: PastedRegionObserving {
       return recordReadFailure(
         error: error, kind: "failed(\(error.rawValue))", permitsLostBoxFlush: true, generation: gen)
     case .absent:
-      return recordReadFailure(error: nil, kind: "absent", permitsLostBoxFlush: true, generation: gen)
+      return recordReadFailure(
+        error: nil, kind: "absent", permitsLostBoxFlush: true, generation: gen)
     case .notText:
-      return recordReadFailure(error: nil, kind: "notText", permitsLostBoxFlush: true, generation: gen)
+      return recordReadFailure(
+        error: nil, kind: "notText", permitsLostBoxFlush: true, generation: gen)
     case .unstable:
       // A person mid-keystroke; the next poll reads a settled field. Three in
       // a row are still a host that cannot be read, and never a lost box.
-      return recordReadFailure(error: nil, kind: "unstable", permitsLostBoxFlush: false, generation: gen)
+      return recordReadFailure(
+        error: nil, kind: "unstable", permitsLostBoxFlush: false, generation: gen)
     case .tooLong:
       end(.captureUnsupported)
       return .ended
@@ -1487,7 +1737,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     watch?.readFailureKinds.append(kind)
     if !permitsLostBoxFlush { watch?.failureRunPermitsLostBoxFlush = false }
     let failures = watch?.consecutiveReadFailures ?? 0
-    log?("learn_read_failed n=\(failures)/\(PastedRegionTiming.maxConsecutiveReadFailures) kind=\(kind) pending_fix=\(watch?.changedSinceSettled ?? false)")
+    log?(
+      "learn_read_failed n=\(failures)/\(PastedRegionTiming.maxConsecutiveReadFailures) kind=\(kind) pending_fix=\(watch?.changedSinceSettled ?? false)"
+    )
     if failures >= PastedRegionTiming.maxConsecutiveReadFailures {
       // A box that stopped answering right after a good read saw the fix is
       // a send in another shape (see `flushesPendingEdit`).
@@ -1571,7 +1823,8 @@ package final class PastedRegionObserver: PastedRegionObserving {
         guard location >= 0, length >= 0 else { return .fallbackQuiet }
         let (selectionEnd, overflow) = location.addingReportingOverflow(length)
         guard !overflow, selectionEnd <= w.lastValueUTF16Count else { return .fallbackQuiet }
-        let envelope = PastedRegionLocator.changedEnvelope(pasted: w.target.renderedText, region: w.lastRegion)
+        let envelope = PastedRegionLocator.changedEnvelope(
+          pasted: w.target.renderedText, region: w.lastRegion)
         let spanStart = w.lastRegionStart + envelope.lowerBound
         let spanEnd = w.lastRegionStart + envelope.upperBound
         if length == 0 {
@@ -1596,7 +1849,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // The AX calls above took time: re-sample before deciding the cap.
     let afterCaretRead = scheduler.nowMs
     if let deadline = w.caretDeadlineMs, afterCaretRead >= deadline { return .cap }
-    if w.caretDeadlineMs == nil { watch?.caretDeadlineMs = afterCaretRead + PastedRegionTiming.caretCapMs }
+    if w.caretDeadlineMs == nil {
+      watch?.caretDeadlineMs = afterCaretRead + PastedRegionTiming.caretCapMs
+    }
     return nil
   }
 
@@ -1635,7 +1890,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
       && scheduler.nowMs - w.lastChangeAtMs >= minimumAgeMs
     stop()
     if lostBoxFlush {
-      log?("learn_lost_box reason=\(reason.rawValue) flushed=\(flush) reads=\(w.readFailureKinds.joined(separator: ","))")
+      log?(
+        "learn_lost_box reason=\(reason.rawValue) flushed=\(flush) reads=\(w.readFailureKinds.joined(separator: ","))"
+      )
     }
     if flush { w.onEvent(.settled(region: w.lastRegion)) }
     w.onEvent(.ended(reason))
@@ -1658,7 +1915,8 @@ package final class TaskPastedRegionScheduler: PastedRegionScheduling {
 
   package var nowMs: Int {
     let elapsed = ContinuousClock.now - epoch
-    return Int(elapsed.components.seconds) * 1000 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+    return Int(elapsed.components.seconds) * 1000
+      + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
   }
 
   package func schedule(afterMs: Int, _ action: @escaping @MainActor () -> Void)

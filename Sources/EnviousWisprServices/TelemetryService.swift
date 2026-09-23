@@ -952,24 +952,30 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("dictation.last_reused", properties: props)
   }
 
-  /// A committed paste landing check resolved (#3106 step 1). One row per observed key paste.
+  /// A committed key paste's arrival session ended (#3106). One row per committed session.
   ///
-  /// Describes the destination field's STATE after the paste, never whether the paste succeeded:
-  /// `unchanged` means `field_identical` or `no_focus`, and does not prove the paste failed. Shape
-  /// only: no text,
-  /// selection, window title, bundle id or manual-accessibility flag. `take_id` is omitted, never
-  /// invented, when the check carried none; the join's take-coverage query counts that row as a gap.
-  /// Sampled by `TelemetryVolumePolicy` (`unchanged` whole, `changed`/`unknown` at the common rate).
-  /// Reader: the "Paste landing" insight (analytics-operations.md FACT: app-posthog-events).
+  /// What the one shared reader observed in the destination field, never whether the paste
+  /// succeeded: `found` is a new occurrence in the same field; `absent` and `no_target` are the
+  /// only negatives, and each required an intact comparison; `cannot_read` and `inconclusive` are
+  /// neither. `resolve_ms` is dispatch to the landing decision. `late_check_status` says whether a
+  /// potential miss was watched afterwards (`not_applicable`, `completed_no_hit`, `found`,
+  /// `censored`); `late_found_ms` (dispatch to the late sighting) is present only for `found`.
+  /// Shape only: no text, selection, window title, bundle id or manual-accessibility flag.
+  /// `take_id` is omitted, never invented, when the session carried none; the join's take-coverage
+  /// query counts that row as a gap. Sampled by `TelemetryVolumePolicy` (an early `found` at the
+  /// common rate, everything else whole). Reader: the "Paste landing" insight (the app PostHog
+  /// events fact in the analytics operations knowledge).
   public func pasteLandingObserved(
     takeID: String?, tier: String, observed: String, reason: String, appClass: String,
-    hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int
+    hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int,
+    lateCheckStatus: String, lateFoundMs: Int?
   ) {
     var props: [String: Any] = [
       "tier": tier, "observed": observed, "reason": reason, "app_class": appClass,
       "host_exposed_focus": hostExposedFocus, "target_window": targetWindow,
-      "before_ms": beforeMs, "resolve_ms": resolveMs,
+      "before_ms": beforeMs, "resolve_ms": resolveMs, "late_check_status": lateCheckStatus,
     ]
+    if let lateFoundMs { props["late_found_ms"] = lateFoundMs }
     if let takeID { props["take_id"] = takeID }
     #if DEBUG
       // The raw dictionary too: the typed projection below drops any value of another type, so an

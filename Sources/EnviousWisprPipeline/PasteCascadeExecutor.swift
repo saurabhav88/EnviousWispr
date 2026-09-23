@@ -134,10 +134,11 @@ internal struct PasteDeliveryResult {
   var copiesEvidence: PasteCopiesEvidence?
   /// #2652. Whether the Tier 1 accessibility SETTER ran. Narrower than "evidence exists".
   var copiesSetterReached = false
-  /// #3106 step 1. The committed landing check of the key paste that delivered, or nil (Tier 1,
-  /// Tier 3, or no key paste succeeded). Observation only: nothing reads its verdict to decide
-  /// anything; the wiring starts its resolution after the outcome is computed. Not persisted.
-  var landingCheck: PasteLandingCheck? = nil
+  /// #3106. The arrival session of the paste that delivered: a key tier's committed session, or
+  /// Tier 1's edit-only one (no landing); nil for Tier 3 or when nothing delivered. Observation only
+  /// in PR A: nothing reads its landing to decide anything; the wiring keeps a key tier's session
+  /// alive until its one report, and the delivery event hands it to #996.
+  var arrivalCapture: PasteArrivalCapture? = nil
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -342,7 +343,7 @@ internal func tier1DeclineReason(
 /// that must exist in exactly one place to prevent drift.
 @MainActor
 internal final class PasteCascadeExecutor {
-  /// #3106 step 1: the live seams a landing check reads and schedules through. Every system-paste
+  /// #3106: the live seams an arrival session reads and schedules through. Every system-paste
   /// tier is inert on an isolated test pasteboard (`systemPasteCanReachOurText`), so no test run
   /// reaches them; the placement is guarded by `PasteCascadeLandingContractTests`.
   private let landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations()
@@ -354,11 +355,11 @@ internal final class PasteCascadeExecutor {
   /// `request.targetElement` (`PasteService.insertViaAccessibility(boundMessagingTimeout:)`, the
   /// only other setter of that handle's timeout). That is the value put back after preparation;
   /// otherwise `0`, the global default the handle had.
-  private func prepareLandingCheck(
+  private func prepareArrivalCapture(
     tier: PasteTier, app: NSRunningApplication, payloadText: String,
     request: PasteDeliveryRequest, tier1BoundTheTarget: Bool
-  ) -> PasteLandingCheck? {
-    PasteLandingCheck.prepare(
+  ) -> PasteArrivalCapture? {
+    PasteArrivalCapture.prepare(
       .init(
         tier: tier, pid: app.processIdentifier, takeID: request.takeID,
         bundleID: app.bundleIdentifier, payload: payloadText),
@@ -490,9 +491,9 @@ internal final class PasteCascadeExecutor {
     // nil = the menu probe never ran (not a `.nonText` path, or activation
     // timed out before probing) → no `focus_class` value is emitted.
     var menuProbe: MenuPasteProbe? = nil
-    // #3106 step 1: the one check that committed, if any. Every tier below is gated on
+    // #3106: the one arrival session that committed, if any. Every tier below is gated on
     // `tier == .clipboardOnly`, so once one commits no later tier runs: at most one per delivery.
-    var committedLandingCheck: PasteLandingCheck? = nil
+    var committedArrivalCapture: PasteArrivalCapture? = nil
 
     // Three-way classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
@@ -676,6 +677,17 @@ internal final class PasteCascadeExecutor {
       switch disposition {
       case .delivered:
         tier = .axDirect
+        // #3106 PR A: Tier 1 wrote the field itself, so there is nothing to observe landing; #996
+        // still asks the same owner for its edit-watch capture, with the text this route
+        // actually submitted. Only a DELIVERED write gets one. The destination is the written
+        // element's own process when no app was recorded (the two are captured independently).
+        if let submitted = insert.writeCall.attemptedText,
+          let pid = request.targetApp?.processIdentifier ?? landingAX.pid(of: element)
+        {
+          committedArrivalCapture = PasteArrivalCapture.editOnly(
+            pid: pid, bundleID: request.targetApp?.bundleIdentifier, payload: submitted,
+            ax: landingAX, scheduler: landingScheduler)
+        }
       case .continueCascade, .stopUnverified:
         // `tierFailureReason` stays the single authority for these strings, so
         // the switch cannot drift from the enum.
@@ -718,13 +730,13 @@ internal final class PasteCascadeExecutor {
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
-        // #3106 step 1: the landing check reads the field (AX), so it is prepared HERE, before
+        // #3106: the arrival session reads the field (AX), so it is prepared HERE, before
         // the omnibox re-check below, which must stay the LAST AX-touching step before the write.
         // Cancelled by the branch-local defer on every exit but a dispatched Cmd+V.
-        let landingCheck = prepareLandingCheck(
+        let arrivalCapture = prepareArrivalCapture(
           tier: .cgEvent, app: app, payloadText: payload.text, request: request,
           tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
-        defer { landingCheck?.cancelUnlessCommitted() }
+        defer { arrivalCapture?.cancelUnlessCommitted() }
         // Cloud review rounds 2 and 4 (PR #2451): both activation AND
         // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
         // the omnibox before the CGEvent fires. Checking after activation but
@@ -776,8 +788,8 @@ internal final class PasteCascadeExecutor {
           switch dispatchResult {
           case .dispatched:
             tier = .cgEvent
-            landingCheck?.commit()
-            committedLandingCheck = landingCheck
+            arrivalCapture?.commit()
+            committedArrivalCapture = arrivalCapture
           case .cgEventCreationFailed(let accessibilityTrusted, _):
             cgEventFailureAccessibilityTrusted = accessibilityTrusted
             tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
@@ -837,12 +849,12 @@ internal final class PasteCascadeExecutor {
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
-        // #3106 step 1: prepared after the clipboard write and BEFORE the omnibox re-check below,
+        // #3106: prepared after the clipboard write and BEFORE the omnibox re-check below,
         // which stays the last AX-touching step before `pasteViaAppleScript`.
-        let landingCheck = prepareLandingCheck(
+        let arrivalCapture = prepareArrivalCapture(
           tier: .appleScript, app: app, payloadText: payload.text, request: request,
           tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
-        defer { landingCheck?.cancelUnlessCommitted() }
+        defer { arrivalCapture?.cancelUnlessCommitted() }
         // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
         // decision at all — the force-activate and settle sleep above can move
         // focus exactly as `activate(app)` does for Tier 2, and a blind
@@ -876,8 +888,8 @@ internal final class PasteCascadeExecutor {
             outcome: appleScriptSucceeded ? "succeeded" : "refused", bundleId: bundleId)
           if appleScriptSucceeded {
             tier = .appleScript
-            landingCheck?.commit()
-            committedLandingCheck = landingCheck
+            arrivalCapture?.commit()
+            committedArrivalCapture = arrivalCapture
           } else {
             tierFailures["applescript"] = "refused"
             emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
@@ -953,15 +965,15 @@ internal final class PasteCascadeExecutor {
             // Scenario B: a real paste target. Enabled item found.
             menuProbe = .targetEnabled
             tiersAttempted.append(.menuPaste)
-            // #3106 step 1: prepared once the enabled item is known, immediately before AXPress.
-            let landingCheck = prepareLandingCheck(
+            // #3106: prepared once the enabled item is known, immediately before AXPress.
+            let arrivalCapture = prepareArrivalCapture(
               tier: .menuPaste, app: app, payloadText: payload.text, request: request,
           tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
-            defer { landingCheck?.cancelUnlessCommitted() }
+            defer { arrivalCapture?.cancelUnlessCommitted() }
             if PasteService.pressMenuItem(menuItem) {
               tier = .menuPaste
-              landingCheck?.commit()
-              committedLandingCheck = landingCheck
+              arrivalCapture?.commit()
+              committedArrivalCapture = arrivalCapture
               // Restore the user's prior clipboard after the paste lands.
               if let snapshot {
                 ClipboardCleanup.scheduleRestore(
@@ -1154,7 +1166,7 @@ internal final class PasteCascadeExecutor {
         fallbackRan: tiersAttempted.contains { $0 != .axDirect })
       result.copiesSetterReached = copiesSetterReached
     }
-    result.landingCheck = committedLandingCheck
+    result.arrivalCapture = committedArrivalCapture
     return result
   }
 

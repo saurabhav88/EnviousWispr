@@ -748,8 +748,8 @@ import Testing
       text: "let prepared = CorrectionCandidateFilter.prepare(group)",
       classification: .unrelatedDomain),
 
-    // MARK: PasteCascadeExecutor (#3106 step 1) — the paste LANDING CHECK, not the ASR engine.
-    // `PasteLandingCheck.prepare` reads the destination field through accessibility and arms an
+    // MARK: PasteCascadeExecutor (#3106) — the paste ARRIVAL SESSION, not the ASR engine.
+    // `PasteArrivalCapture.prepare` reads the destination field through accessibility and arms an
     // observer immediately before a key paste; it holds no engine, no adapter and no audio, and
     // runs after transcription has finished. Matched only by method-name coincidence, the same
     // shape as the VAD, Live Preview, OverlayDirector and candidate-ordering entries above;
@@ -757,7 +757,7 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift",
       matcher: "prepare",
-      text: "PasteLandingCheck.prepare(",
+      text: "PasteArrivalCapture.prepare(",
       classification: .unrelatedDomain),
 
     // MARK: KernelDictationDriver

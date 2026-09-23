@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live UAT for the paste landing check (#3106 step 1), driven synthetically and silently.
+"""Live UAT for the paste arrival session (#3106 PR A), driven synthetically and silently.
 
     python3 Tests/RuntimeUAT/paste_landing_uat.py            # all three phases
     python3 Tests/RuntimeUAT/paste_landing_uat.py focused    # one phase
@@ -23,7 +23,7 @@ WHAT EACH VERDICT READS
 - Arrival (focused phase): the page's text box value, read through accessibility, compared by word
   overlap with the spoken sentence (the recogniser may mishear one word; `last_dictation_uat.py`).
 - Clipboard: a sentinel is put on the board before the take; with the founder's restore setting on,
-  it must be back afterwards. The landing check must not change that either way.
+  it must be back afterwards. The arrival session must not change that either way.
 - Tier, not pill: the take's tier is not `clipboard_only`, the only tier that shows the notice. The
   pill itself is not observed here; "no pill appeared" stays a manual Phase 3 check.
 
@@ -46,9 +46,12 @@ from escape_recovery_uat import screen_is_locked  # noqa: E402
 
 CHROME = "com.google.Chrome"
 SENTENCE = u.SENTENCE
+# The arrival session's one line (#3106 PR A): observed is found / absent / no_target /
+# cannot_read / inconclusive; late_found_ms appears only on a late hit (empty group otherwise).
 LANDING = re.compile(
-    r"PASTE_LANDING tier=(\w+) observed=(\w+) reason=(\w+) app=(\S+) host_exposed_focus=(\w+) "
-    r"manual_ax=(\w+) target_window=(\w+) before_ms=(\d+) resolve_ms=(\d+)")
+    r"PASTE_LANDING tier=(\w+) observed=(\w+) reason=(\w+) app=(\S+) app_class=(\w+) "
+    r"host_exposed_focus=(\w+) manual_ax=(\w+) target_window=(\w+) before_ms=(\d+) "
+    r"resolve_ms=(\d+) late_check=(\w+)(?: late_found_ms=(\d+))?")
 CASCADE = re.compile(r"Paste cascade: tier=(\w+), app=([^,]+)")
 PAGES = {
     "focused": ('<textarea id="t" autofocus rows="6" cols="70"></textarea>'
@@ -71,7 +74,7 @@ def open_page(name):
     with open(path, "w") as fh:
         fh.write('<!doctype html><meta charset="utf-8"><title>ew landing '
                  f'{name}</title><body style="font:18px sans-serif;padding:24px">'
-                 '<p>Paste landing check (local page, nothing is sent anywhere).</p>'
+                 '<p>Paste arrival check (local page, nothing is sent anywhere).</p>'
                  + PAGES[name] + '</body>')
     subprocess.run(["open", "-a", "Google Chrome", path], check=True)
     OPENED.add(name)
@@ -225,7 +228,8 @@ def take(label, base, bundle=CHROME, route=None):
         else:
             raise LiveTakeNotStopped(f"{label}: a take would not stop; the run stops here and the "
                                      "virtual microphone is left in place until it ends")
-    # The check resolves up to 1.5 s after the paste; the take itself takes a few seconds more.
+    # A potential miss reports after its 1.5 s late-hit shadow; the take itself takes a few
+    # seconds more.
     u.wait_for("a PASTE_LANDING line", lambda: LANDING.search(u.log_since(base)), deadline=25.0)
     text = u.log_since(base)
     return LANDING.findall(text), CASCADE.findall(text)
@@ -270,12 +274,14 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     u.check(f"{name}: exactly one PASTE_LANDING line", len(lines) == 1, str(lines))
     if len(lines) != 1:
         return
-    tier, observed, reason, app, hef, manual, window, before_ms, resolve_ms = lines[0]
+    (tier, observed, reason, app, app_class, hef, manual, window, before_ms, resolve_ms,
+     late_check, late_found_ms) = lines[0]
     u.check(f"{name}: the line names Chrome and the delivered tier",
             app == CHROME and [tier] == chrome_tiers, f"app={app} tier={tier}")
-    print(f"    PASTE_LANDING tier={tier} observed={observed} reason={reason} "
+    print(f"    PASTE_LANDING tier={tier} observed={observed} reason={reason} app_class={app_class} "
           f"host_exposed_focus={hef} manual_ax={manual} target_window={window} "
-          f"before_ms={before_ms} resolve_ms={resolve_ms}")
+          f"before_ms={before_ms} resolve_ms={resolve_ms} late_check={late_check} "
+          f"late_found_ms={late_found_ms or '-'}")
     u.check(f"{name}: preparation stayed inside its 500 ms budget", int(before_ms) <= 500,
             f"before_ms={before_ms}")
     bar_after = address_bar_value()
@@ -289,13 +295,13 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
         value = textbox_value() or ""
         u.check(f"{name}: the words landed in the box (5+ of 7 words)",
                 u.sentence_overlap(value) >= 5, repr(value[:80]))
-        u.check(f"{name}: observed=changed", observed == "changed", f"{observed}/{reason}")
+        u.check(f"{name}: observed=found", observed == "found", f"{observed}/{reason}")
     else:
         # Chrome reports the page's web area as focused here (measured 2026-09-23: AXWebArea,
-        # value ''), so `field_identical` is as true an answer as `no_focus`: the paste went
-        # nowhere and the field did not change. Only `changed` would be a false observation.
-        u.check(f"{name}: observed is unchanged or unknown, never changed",
-                observed in ("unchanged", "unknown"), f"{observed}/{reason}")
+        # value ''), so `absent` is as true an answer as `no_target`: the paste went nowhere and
+        # the field did not change. Only `found` would be a false observation. PR A only
+        # observes, so the previous clipboard still comes back below.
+        u.check(f"{name}: observed is never found", observed != "found", f"{observed}/{reason}")
     if restore_on:
         u.check(f"{name}: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
@@ -338,7 +344,7 @@ def verify_textedit(base, delivered, restore_on, sentinel):
     lines = LANDING.findall(text)
     print(f"    tier={tiers} PASTE_LANDING lines={lines}")
     if tiers == ["ax_direct"]:
-        u.check("textedit: no landing check on the ax_direct tier", lines == [], str(lines))
+        u.check("textedit: no landing row on the ax_direct tier", lines == [], str(lines))
 
 
 PHASES = ["focused", "nofocus", "textedit"]

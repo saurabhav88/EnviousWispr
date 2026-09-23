@@ -207,26 +207,44 @@ struct TelemetryVolumePolicyTests {
   }
 
   @Test(
-    "#3106 paste landing: unchanged is kept whole; changed and unknown are sampled; any other shape is kept whole"
+    "#3106 paste landing: only an early found is sampled; every negative, unreadable, inconclusive, late or censored row, and any other shape, is kept whole"
   )
   func pasteLanding() throws {
     let event = "paste.landing_observed"
-    for uuid in [Self.keptUUID, Self.droppedUUID, Self.edgeUUID] {
-      #expect(
-        Policy.decide(event: event, properties: ["observed": "unchanged"], uuid: uuid) == .keep,
-        "unchanged is the row step 2 is decided from")
-    }
-    for observed in ["changed", "unknown"] {
-      #expect(
-        Policy.decide(event: event, properties: ["observed": observed], uuid: Self.lastKeptUUID)
-          == .keepSampled(thresholdPercent: 10), Comment(rawValue: observed))
-      #expect(
-        Policy.decide(event: event, properties: ["observed": observed], uuid: Self.edgeUUID)
-          == .drop, Comment(rawValue: observed))
-    }
-    // Absent, mistyped, differently cased or a value from a newer build: never sampled away.
+    let early: [String: Any] = [
+      "observed": "found", "reason": "same_field", "late_check_status": "not_applicable",
+    ]
+    #expect(
+      Policy.decide(event: event, properties: early, uuid: Self.lastKeptUUID)
+        == .keepSampled(thresholdPercent: 10))
+    #expect(Policy.decide(event: event, properties: early, uuid: Self.edgeUUID) == .drop)
+    // The rows step 2 is decided from, and every row that says the check did not finish cleanly.
     for properties: [String: Any] in [
-      [:], ["observed": 1], ["observed": "Changed"], ["observed": "retracted"],
+      ["observed": "absent", "late_check_status": "completed_no_hit"],
+      ["observed": "absent", "late_check_status": "found"],
+      ["observed": "absent", "late_check_status": "censored"],
+      ["observed": "no_target", "late_check_status": "completed_no_hit"],
+      ["observed": "cannot_read", "late_check_status": "not_applicable"],
+      ["observed": "inconclusive", "late_check_status": "not_applicable"],
+      ["observed": "inconclusive", "late_check_status": "censored"],
+    ] {
+      for uuid in [Self.keptUUID, Self.droppedUUID, Self.edgeUUID] {
+        #expect(
+          Policy.decide(event: event, properties: properties, uuid: uuid) == .keep,
+          Comment(rawValue: "\(properties)"))
+      }
+    }
+    // Absent, mistyped, differently cased, missing its late check, or a value from a newer or
+    // older build: never sampled away.
+    for properties: [String: Any] in [
+      [:], ["observed": 1], ["observed": "found"], ["observed": "Found", "late_check_status": "not_applicable"],
+      ["observed": "found", "late_check_status": 0], ["observed": "changed"], ["observed": "unchanged"],
+      ["observed": "found", "late_check_status": "retracted"],
+      // The early shape with its reason missing or wrong, or carrying a late-hit field.
+      ["observed": "found", "late_check_status": "not_applicable"],
+      ["observed": "found", "reason": "other_field", "late_check_status": "not_applicable"],
+      ["observed": "found", "reason": 1, "late_check_status": "not_applicable"],
+      ["observed": "found", "reason": "same_field", "late_check_status": "not_applicable", "late_found_ms": 40],
     ] {
       #expect(
         Policy.decide(event: event, properties: properties, uuid: Self.droppedUUID) == .keep,
@@ -234,13 +252,15 @@ struct TelemetryVolumePolicyTests {
     }
     let kept = try #require(
       Policy.apply(
-        event: event, properties: ["observed": "changed", "take_id": "T"], uuid: Self.keptUUID))
+        event: event, properties: early.merging(["take_id": "T"]) { a, _ in a }, uuid: Self.keptUUID))
     #expect(kept["$sample_threshold"] as? Double == 0.1)
     #expect(kept["$sampled_events"] as? [String] == [event])
     #expect(kept["take_id"] as? String == "T")
     let whole = try #require(
-      Policy.apply(event: event, properties: ["observed": "unchanged"], uuid: Self.droppedUUID))
-    #expect(whole["$sample_threshold"] == nil, "an unchanged row carries no weight: it counts once")
+      Policy.apply(
+        event: event, properties: ["observed": "absent", "late_check_status": "completed_no_hit"],
+        uuid: Self.droppedUUID))
+    #expect(whole["$sample_threshold"] == nil, "a negative carries no weight: it counts once")
   }
 
   @Test(
@@ -299,7 +319,7 @@ struct TelemetryVolumePolicyTests {
       Policy.apply(
         event: "dictation.started", properties: ["take_id": "T", "backend": "parakeet"],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 4)
+    #expect(out["telemetry_policy_version"] as? Int == 5)
     #expect(out["take_id"] as? String == "T")
     #expect(out["$sample_threshold"] == nil)
     #expect(out.count == 3)
@@ -310,7 +330,7 @@ struct TelemetryVolumePolicyTests {
     let out = try #require(
       Policy.apply(
         event: "hotkey.pressed", properties: ["press_action": "start"], uuid: Self.keptUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 4)
+    #expect(out["telemetry_policy_version"] as? Int == 5)
     #expect(out["$sample_type"] as? [String] == ["sampleByEvent"])
     // A FRACTION, as posthog-js stores it: a percentage here would make the standard
     // `1 / $sample_threshold` weight ten-fold wrong (cloud review on #2962).
@@ -345,7 +365,7 @@ struct TelemetryVolumePolicyTests {
           "note": "someone@example.com",
         ],
         uuid: Self.droppedUUID))
-    #expect(out["telemetry_policy_version"] as? Int == 4)
+    #expect(out["telemetry_policy_version"] as? Int == 5)
     // The two bundle stamps come from the CURRENT bundle, on every row, whether or not
     // `register()` has run: `Application Installed` rows carried no environment at all
     // before this (801 of 801 in the 30 days to 2026-09-15).

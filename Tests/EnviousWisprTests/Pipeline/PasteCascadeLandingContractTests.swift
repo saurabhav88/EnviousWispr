@@ -3,10 +3,10 @@ import SwiftParser
 import SwiftSyntax
 import Testing
 
-/// Drift Guard: where the paste cascade prepares, cancels and commits a landing check (#3106 step 1).
+/// Drift Guard: where the paste cascade prepares, cancels and commits an arrival session (#3106).
 ///
 /// When this fails, a key paste writes without an observation, an attempt that failed leaves an
-/// observer running, a check commits for a tier that did not deliver, or the check's own AX reads
+/// observer running, a session commits for a tier that did not deliver, or the session's own AX reads
 /// land between the Chromium-omnibox re-check and the write that re-check protects.
 ///
 /// Why a guard over the SOURCE rather than a test of the cascade: every system-paste tier is inert
@@ -14,7 +14,7 @@ import Testing
 /// so no test can run the three writers. Parsed with `SwiftParser`, the compiler's own front end,
 /// so comments and strings can never satisfy or break it. Shape only: it cannot prove a Cmd+V
 /// landed.
-@Suite("Paste cascade landing-check placement (#3106)", .tags(.driftGuard))
+@Suite("Paste cascade arrival-session placement (#3106)", .tags(.driftGuard))
 struct PasteCascadeLandingContractTests {
 
   /// The three key-paste writers, the tier each delivers, and the omnibox re-check that must stay
@@ -40,11 +40,11 @@ struct PasteCascadeLandingContractTests {
 
   private static let good = """
     func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
-      var committedLandingCheck: PasteLandingCheck? = nil
+      var committedArrivalCapture: PasteArrivalCapture? = nil
       if activated {
         let payload = choose()
-        let landingCheck = prepareLandingCheck(tier: .cgEvent, app: app, payloadText: payload.text, request: request)
-        defer { landingCheck?.cancelUnlessCommitted() }
+        let arrivalCapture = prepareArrivalCapture(tier: .cgEvent, app: app, payloadText: payload.text, request: request)
+        defer { arrivalCapture?.cancelUnlessCommitted() }
         let chromiumOmniboxStillFocused: Bool = true
         if !chromiumOmniboxStillFocused {
           fail()
@@ -53,16 +53,16 @@ struct PasteCascadeLandingContractTests {
           switch dispatchResult {
           case .dispatched:
             tier = .cgEvent
-            landingCheck?.commit()
-            committedLandingCheck = landingCheck
+            arrivalCapture?.commit()
+            committedArrivalCapture = arrivalCapture
           case .cgEventCreationFailed: fail()
           }
         }
       } else {
         let payload = choose()
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text, to: self.pasteboard)
-        let landingCheck = prepareLandingCheck(tier: .appleScript, app: app, payloadText: payload.text, request: request)
-        defer { landingCheck?.cancelUnlessCommitted() }
+        let arrivalCapture = prepareArrivalCapture(tier: .appleScript, app: app, payloadText: payload.text, request: request)
+        defer { arrivalCapture?.cancelUnlessCommitted() }
         let chromiumOmniboxStillFocusedForAppleScript: Bool = true
         if !chromiumOmniboxStillFocusedForAppleScript {
           fail()
@@ -70,8 +70,8 @@ struct PasteCascadeLandingContractTests {
           let appleScriptSucceeded = PasteService.pasteViaAppleScript(pid: app.processIdentifier)
           if appleScriptSucceeded {
             tier = .appleScript
-            landingCheck?.commit()
-            committedLandingCheck = landingCheck
+            arrivalCapture?.commit()
+            committedArrivalCapture = arrivalCapture
           }
         }
       }
@@ -80,17 +80,17 @@ struct PasteCascadeLandingContractTests {
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text, to: self.pasteboard)
         switch probe {
         case .enabled:
-          let landingCheck = prepareLandingCheck(tier: .menuPaste, app: app, payloadText: payload.text, request: request)
-          defer { landingCheck?.cancelUnlessCommitted() }
+          let arrivalCapture = prepareArrivalCapture(tier: .menuPaste, app: app, payloadText: payload.text, request: request)
+          defer { arrivalCapture?.cancelUnlessCommitted() }
           if PasteService.pressMenuItem(menuItem) {
             tier = .menuPaste
-            landingCheck?.commit()
-            committedLandingCheck = landingCheck
+            arrivalCapture?.commit()
+            committedArrivalCapture = arrivalCapture
           }
         }
       }
       var result = PasteDeliveryResult(tier: tier)
-      result.landingCheck = committedLandingCheck
+      result.arrivalCapture = committedArrivalCapture
       return result
     }
 """
@@ -112,7 +112,7 @@ struct PasteCascadeLandingContractTests {
   @Test("A lost result handoff is caught")
   func missingHandoffIsCaught() throws {
     #expect(
-      try Self.broken("  result.landingCheck = committedLandingCheck\n", "").contains {
+      try Self.broken("  result.arrivalCapture = committedArrivalCapture\n", "").contains {
         $0.contains("handoff")
       })
   }
@@ -130,34 +130,34 @@ struct PasteCascadeLandingContractTests {
   func missingPrepareIsCaught() throws {
     #expect(
       try Self.broken(
-        "let landingCheck = prepareLandingCheck(tier: .menuPaste, app: app, payloadText: payload.text, request: request)",
-        "let landingCheck: PasteLandingCheck? = nil"
+        "let arrivalCapture = prepareArrivalCapture(tier: .menuPaste, app: app, payloadText: payload.text, request: request)",
+        "let arrivalCapture: PasteArrivalCapture? = nil"
       ).contains { $0.contains("pressMenuItem: no prepare") })
   }
 
   @Test("A prepare after its writer is caught")
   func prepareAfterWriterIsCaught() throws {
     let menuPrepare =
-      "          let landingCheck = prepareLandingCheck(tier: .menuPaste, app: app, payloadText: payload.text, request: request)\n"
+      "          let arrivalCapture = prepareArrivalCapture(tier: .menuPaste, app: app, payloadText: payload.text, request: request)\n"
     let moved = Self.good.replacingOccurrences(of: menuPrepare, with: "")
       .replacingOccurrences(
-        of: "            committedLandingCheck = landingCheck\n          }\n        }\n      }\n      var result",
-        with: "            committedLandingCheck = landingCheck\n          }\n" + menuPrepare
+        of: "            committedArrivalCapture = arrivalCapture\n          }\n        }\n      }\n      var result",
+        with: "            committedArrivalCapture = arrivalCapture\n          }\n" + menuPrepare
           + "        }\n      }\n      var result")
     #expect(try Self.problems(moved).contains { $0.contains("pressMenuItem: no prepare before") })
   }
 
   @Test("A missing deferred cancel, or one after the writer, is caught")
   func deferMisplacementIsCaught() throws {
-    let menuDefer = "          defer { landingCheck?.cancelUnlessCommitted() }\n          if PasteService.pressMenuItem"
+    let menuDefer = "          defer { arrivalCapture?.cancelUnlessCommitted() }\n          if PasteService.pressMenuItem"
     #expect(
       try Self.broken(menuDefer, "          if PasteService.pressMenuItem").contains {
         $0.contains("pressMenuItem: no deferred cancel")
       })
     #expect(
       try Self.broken(
-        "defer { landingCheck?.cancelUnlessCommitted() }\n        let chromiumOmniboxStillFocused:",
-        "defer { // landingCheck?.cancelUnlessCommitted()\n }\n        let chromiumOmniboxStillFocused:"
+        "defer { arrivalCapture?.cancelUnlessCommitted() }\n        let chromiumOmniboxStillFocused:",
+        "defer { // arrivalCapture?.cancelUnlessCommitted()\n }\n        let chromiumOmniboxStillFocused:"
       ).contains { $0.contains("pasteToActiveApp: no deferred cancel") },
       "a comment naming the call is not the call")
   }
@@ -165,7 +165,7 @@ struct PasteCascadeLandingContractTests {
   @Test("A prepare after the omnibox re-check is caught")
   func prepareAfterOmniboxIsCaught() throws {
     let prepare =
-      "        let landingCheck = prepareLandingCheck(tier: .cgEvent, app: app, payloadText: payload.text, request: request)\n        defer { landingCheck?.cancelUnlessCommitted() }\n"
+      "        let arrivalCapture = prepareArrivalCapture(tier: .cgEvent, app: app, payloadText: payload.text, request: request)\n        defer { arrivalCapture?.cancelUnlessCommitted() }\n"
     let omnibox = "        let chromiumOmniboxStillFocused: Bool = true\n"
     let swapped = Self.good.replacingOccurrences(of: prepare + omnibox, with: omnibox + prepare)
     #expect(swapped != Self.good)
@@ -180,7 +180,7 @@ struct PasteCascadeLandingContractTests {
     #expect(
       try Self.broken(
         "          case .cgEventCreationFailed: fail()",
-        "          case .cgEventCreationFailed:\n            tier = .cgEvent\n            landingCheck?.commit()"
+        "          case .cgEventCreationFailed:\n            tier = .cgEvent\n            arrivalCapture?.commit()"
       ).contains { $0.contains("pasteToActiveApp: commit outside its success arm") })
   }
 
@@ -274,7 +274,7 @@ struct PasteCascadeLandingContractTests {
           $0.item.trimmedDescription == "tier = .\(writer.tier)"
         }
         let handedOn = armItems[commitIndex...].contains {
-          $0.item.trimmedDescription == "committedLandingCheck = \(site.variable)"
+          $0.item.trimmedDescription == "committedArrivalCapture = \(site.variable)"
         }
         if !tierSet || !handedOn {
           report.problems.append(
@@ -290,13 +290,13 @@ struct PasteCascadeLandingContractTests {
       report.problems.append("a commit that belongs to no key-paste writer")
     }
 
-    // The handoff: exactly one `result.landingCheck = committedLandingCheck`, before `return result`.
+    // The handoff: exactly one `result.arrivalCapture = committedArrivalCapture`, before `return result`.
     let top = Array(deliver.body?.statements ?? [])
     let handoffs = deliver.descendants(CodeBlockItemSyntax.self).filter {
-      $0.item.trimmedDescription.hasPrefix("result.landingCheck =")
+      $0.item.trimmedDescription.hasPrefix("result.arrivalCapture =")
     }
     let handoffIndex = top.firstIndex {
-      $0.item.trimmedDescription == "result.landingCheck = committedLandingCheck"
+      $0.item.trimmedDescription == "result.arrivalCapture = committedArrivalCapture"
     }
     let returnIndex = top.lastIndex { $0.item.trimmedDescription == "return result" }
     if handoffs.count != 1 || handoffIndex == nil || returnIndex == nil
@@ -334,7 +334,7 @@ struct PasteCascadeLandingContractTests {
   }
 
   /// Walking outward from the writer: the first statement list with a
-  /// `let <v> = prepareLandingCheck(tier: .<tier>, …)` BEFORE the statement holding the writer.
+  /// `let <v> = prepareArrivalCapture(tier: .<tier>, …)` BEFORE the statement holding the writer.
   private static func enclosingPrepare(of writer: FunctionCallExprSyntax, tier: String)
     -> PrepareSite?
   {
@@ -346,7 +346,7 @@ struct PasteCascadeLandingContractTests {
           for index in items.indices where index < writerIndex {
             guard let binding = items[index].item.as(VariableDeclSyntax.self)?.bindings.first,
               let call = binding.initializer?.value.as(FunctionCallExprSyntax.self),
-              calledName(call) == "prepareLandingCheck",
+              calledName(call) == "prepareArrivalCapture",
               argumentText(of: call, label: "tier") == ".\(tier)"
             else { continue }
             return PrepareSite(

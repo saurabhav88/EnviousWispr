@@ -86,8 +86,12 @@ struct LearnFromEditsCompositionTests {
       wiring: wiring, dir: dir)
   }
 
-  private func paste() -> PasteCompletionEvent {
-    PasteCompletionEvent(pastedText: "Ask sarah today", destinationBundleID: "com.apple.Notes", language: "en")
+  /// A delivered paste; `edits` stands in for its arrival session, which answers #996's capture
+  /// request (#3106 PR A).
+  private func paste(_ edits: EditCaptureFake? = nil) -> PasteCompletionEvent {
+    PasteCompletionEvent(
+      pastedText: "Ask sarah today", destinationBundleID: "com.apple.Notes", language: "en",
+      editCapture: edits)
   }
 
   @Test("production selects no judge on every macOS major (the qualification table is empty), and the Settings row is disabled with its reason")
@@ -110,10 +114,11 @@ struct LearnFromEditsCompositionTests {
     #expect(f.wiring.coordinator.undoRecord == nil)
     // The registry holds the watcher weakly; the wiring is what keeps it alive.
     #expect(f.settings.learnFromEdits, "on by default")
-    f.observer.captureOutcomes = [
+    let edits = EditCaptureFake()
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
     ]
-    f.registry.emit(paste())
+    f.registry.emit(paste(edits))
     #expect(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
     f.observer.fire(.settled(region: "Ask Saira today"))
     #expect(await waitUntil { f.telemetry.events.contains(.undoShown) }, "\(f.telemetry.events)")
@@ -136,11 +141,12 @@ struct LearnFromEditsCompositionTests {
   @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start finishes the next as next_dictation_started")
   func toggleAndRecordingReachTheWatcher() async {
     let f = fixture(judgeServes: true)
-    f.observer.captureOutcomes = [
+    let edits = EditCaptureFake()
+    edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0)),
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0)),
     ]
-    f.registry.emit(paste())
+    f.registry.emit(paste(edits))
     #expect(await waitUntil { f.observer.starts == 1 }, "a paste through the registry started a watch")
 
     f.settings.learnFromEdits = false
@@ -153,7 +159,7 @@ struct LearnFromEditsCompositionTests {
 
     f.settings.learnFromEdits = true
     f.wiring.settingChanged(.learnFromEdits, settings: f.settings)
-    f.registry.emit(paste())
+    f.registry.emit(paste(edits))
     #expect(await waitUntil { f.observer.starts == 2 })
     f.wiring.recordingStarted()
     // A live watch is finished, not cancelled: the observer reads the box once

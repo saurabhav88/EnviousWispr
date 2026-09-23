@@ -68,11 +68,16 @@ struct TelemetryEmitterRegistryTests {
   /// closed string fields, no content, reader the "Last dictation reuse" insight).
   /// #3106 step 1 added one new site: `paste.landing_observed` via
   /// `TelemetryService.pasteLandingObserved` (per_take, sampled; checklist: one row per committed
-  /// landing check, closed enums, Int durations, no text or bundle id, reader the "Paste landing"
+  /// arrival session (PR A), closed enums, Int durations, no text or bundle id, reader the "Paste landing"
   /// insight). Derived by removing that one line from the printed site list: the rest hashes to
   /// the previous value.
+  /// #3106 PR A: the same single `paste.landing_observed` site gained two parameters
+  /// (`lateCheckStatus`, `lateFoundMs`), which changes its enclosing-function identity. No new site,
+  /// no new event, same per-take cadence; the row's vocabulary changed under telemetry policy 5
+  /// (checklist: existing row, shape not content, Int on the wire, `take_id` unchanged, registry
+  /// reader updated for the policy-5 floor).
   static let sitesFingerprint =
-    "5a4f974486d602fee1aa5665ee8bbb4d8986a9ffcea242f49f223b35ca2d006d"
+    "91ea69f750a5bf215cc9750f1fb15f16982a6c0e5d6c149a61920f756b98180d"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 
