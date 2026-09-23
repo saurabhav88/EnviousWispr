@@ -37,7 +37,8 @@ public enum TelemetryVolumePolicy {
   ///    row by this stamp (`workers/daily-report/src/version-scorecard.js`).
   /// 3: #996, `custom_words.learn_skipped` sampled at the common rate; the
   ///    learn-from-edits rows are the first added under the registry.
-  public static let policyVersion = 3
+  /// 4: #3106, `paste.landing_observed` added with `changed`/`unknown` sampled.
+  public static let policyVersion = 4
   public static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of
@@ -70,6 +71,10 @@ public enum TelemetryVolumePolicy {
   /// recordings. Every other action (`HotkeyService`'s private `PressAction` minus these
   /// two; a new case there needs no edit here) is the signal and stays whole.
   static let happyPathPressActions: Set<String> = ["start", "toggle"]
+
+  /// The `paste.landing_observed.observed` values sampled at the common rate. `unchanged`, the
+  /// row step 2 is decided from, is NOT here: it stays whole, as does any value outside the set.
+  static let sampledLandingObservations: Set<String> = ["changed", "unknown"]
 
   // MARK: - Decision
 
@@ -152,6 +157,11 @@ public enum TelemetryVolumePolicy {
       // reader does not know) stays whole, like the proactive-check rule below.
       guard let reason = properties["reason"] as? String else { return nil }
       isHappyPath = knownLearnSkipReasons.contains(reason)
+    case "paste.landing_observed":
+      // #3106. About nine in ten key pastes; `changed` and `unknown` are read as rates at 10% with
+      // the weight stamped. `unchanged` and an absent, malformed or new value stay whole.
+      guard let observed = properties["observed"] as? String else { return nil }
+      isHappyPath = sampledLandingObservations.contains(observed)
     case "update.proactive_check_triggered":
       // "SAMPLE and record the rate, never suppress" (analytics-operations.md). Fired
       // checks stay at 100%; the non-fired reasons are sampled with the rate stamped.

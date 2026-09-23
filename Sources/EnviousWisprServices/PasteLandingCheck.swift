@@ -255,6 +255,7 @@ package final class PasteLandingCheck {
     phase = .resolved
     tearDown()
     log(logLine(observed))
+    report(observed)
     return observed
   }
 
@@ -312,6 +313,17 @@ package final class PasteLandingCheck {
     deadline?.cancel()
     deadline = nil
     wakeUp()
+  }
+
+  /// The one `paste.landing_observed` row for this check, from the resolution that set `result`, so
+  /// repeated or concurrent `resolve()` calls cannot emit twice. After the log line and after the
+  /// verdict is fixed: it reports and decides nothing (plan §3.5).
+  private func report(_ observed: PasteLandingObserved) {
+    TelemetryService.shared.pasteLandingObserved(
+      takeID: context.takeID, tier: context.tier.rawValue, observed: observed.observed,
+      reason: observed.reason.rawValue, appClass: appClass.rawValue,
+      hostExposedFocus: hostExposedFocus, targetWindow: targetWindow.rawValue,
+      beforeMs: beforeMs, resolveMs: scheduler.nowMs - committedAtMs)
   }
 
   /// Shape only: no text, selection, window title or take id (plan §3.4).
@@ -530,8 +542,8 @@ extension PasteLandingCheck {
   package struct Context: Sendable {
     package let tier: PasteTier
     package let pid: pid_t
-    /// Snapshotted for the later telemetry chunk; never logged. The same type as
-    /// `KernelTelemetryState.takeID`.
+    /// Carried on `paste.landing_observed`; never logged. The same type as
+    /// `KernelTelemetryState.takeID`, snapshotted before the delivery awaits.
     package let takeID: String?
     /// LOCAL log only; never telemetry.
     package let bundleID: String?
