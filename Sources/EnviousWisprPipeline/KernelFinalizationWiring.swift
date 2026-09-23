@@ -1051,8 +1051,8 @@ struct KernelFinalizationWiring {
         // The legacy payload is what a route falls back to; §6 decides per route
         // whether the candidate may be committed instead.
         let pasteText = payloads.legacyText
-        // #3106 step 1: THIS take's id, read before the delivery awaits, so the landing check that
-        // resolves 1.5 s later carries its own take and never a later one's.
+        // #3106: THIS take's id, read before the delivery awaits, so the arrival session that
+        // reports up to 1.5 s later carries its own take and never a later one's.
         let deliveryTakeID = telemetryState.takeID
         let result = await deliverPaste(
           PasteDeliveryRequest(
@@ -1134,13 +1134,14 @@ struct KernelFinalizationWiring {
         } else {
           deliveryOutcome = .clipboardOnly
         }
-        // #3106 step 1: the committed landing check resolves AFTER the outcome above is fixed,
-        // off the delivery path (its up-to-1.5 s watch is never awaited here or counted in the
-        // paste duration). The unstructured task keeps the check alive until it resolves; a
-        // later take starts its own and never cancels this one. Its only output in step 1 is the
-        // check's DEBUG line.
-        if let landingCheck = result.landingCheck {
-          Task { @MainActor in _ = await landingCheck.resolve() }
+        // #3106: the committed arrival session runs AFTER the outcome above is fixed, off the
+        // delivery path (nothing here or in the clipboard cleanup awaits it, and it is not counted
+        // in the paste duration). Its timers hold it weakly, so this unstructured task is its
+        // owner: it holds the session until the session's one report, including a potential
+        // miss's full late-hit shadow, then lets it go. A later take starts its own session and
+        // never cancels this one. PR A only observes: the report and its DEBUG line.
+        if let arrivalCapture = result.arrivalCapture {
+          Task { @MainActor in await arrivalCapture.terminated() }
         }
       } else if config?.autoCopyToClipboard == true {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without

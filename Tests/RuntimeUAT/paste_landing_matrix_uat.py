@@ -13,8 +13,9 @@ actually happened with the check's verdict:
 - tier:    the `Paste cascade:` line for that app;
 - verdict: the one `PASTE_LANDING` line, present only on the three key-paste tiers.
 
-The row that matters for step 2 is a FALSE UNCHANGED: the words landed while the check said
-`unchanged`. Step 2 may only act on verdict shapes this matrix never catches false.
+The row that matters for step 2 is a FALSE MISS: the words landed while the arrival session said
+`absent` or `no_target` (#3106 PR A vocabulary). Step 2 may only act on shapes this matrix never
+catches false.
 
 Safety is the apps driver's: no Enter or Return is ever pressed; each field is cleared afterwards
 and Mail's draft discarded; chat apps get text in their compose box only. Cleanup clears ONLY a
@@ -22,7 +23,7 @@ field that is empty or holds this run's sentence, in the app it staged; anything
 and reported, never cleared. Takes add rows to the
 real History. The clipboard, audio devices and alert device are restored; the takes themselves are
 not metered (their speech plays into BlackHole), everything else runs under the beep meter.
-Exit 0 only when every requested row was scored and no check failed; 1 on a false unchanged, an
+Exit 0 only when every requested row was scored and no check failed; 1 on a false miss, an
 instrument gap, text left behind or a failed restore; 2 when fewer rows than requested exist.
 """
 import argparse
@@ -192,13 +193,16 @@ def one_take(app):
         row["landed"] = "Y" if u.sentence_overlap(value) >= 5 else "N"
         row["read_by"] = "staged field"
         if mine:
-            tier, observed, reason, _app, hef, manual, window, before_ms, resolve_ms = mine[0]
+            (tier, observed, reason, _app, _app_class, hef, manual, window, before_ms, resolve_ms,
+             _late_check, _late_found_ms) = mine[0]
             row.update(observed=observed, reason=reason, host_exposed_focus=hef, manual_ax=manual,
                        target_window=window, before_ms=before_ms, lines=1)
         else:
             row.update(observed="-", reason="-", lines=0)  # ax_direct etc.: no verdict, no evidence
-        row["false_unchanged"] = row["landed"] == "Y" and row["observed"] == "unchanged"
-        u.check(f"{app}: no false unchanged", not row["false_unchanged"],
+        # A false MISS: the text landed, yet the session reported one of the two negatives step 2
+        # may act on (#3106 PR A vocabulary).
+        row["false_miss"] = row["landed"] == "Y" and row["observed"] in ("absent", "no_target")
+        u.check(f"{app}: no false miss", not row["false_miss"],
                 f"landed={row['landed']} verdict={row['observed']}/{row['reason']}")
         return row
     finally:
@@ -309,19 +313,19 @@ def main():
             cleanup_check("devices restored", sink.restore())  # outermost: whatever failed before
         except BaseException as exc:
             cleanup_check("devices restored", False, repr(exc))
-    print("\n| app | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | false unchanged |")
+    print("\n| app | tier | landed | read by | observed | reason | target_window | host_exposed_focus | manual_ax | before_ms | false miss |")
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:
         print(f"| {r['app']} | {r['tier']} | {r['landed']} | {r['read_by']} | {r['observed']} | {r['reason']} | "
               f"{r.get('target_window', '-')} | {r.get('host_exposed_focus', '-')} | {r.get('manual_ax', '-')} | "
-              f"{r.get('before_ms', '-')} | {'YES' if r['false_unchanged'] else 'no'} |")
+              f"{r.get('before_ms', '-')} | {'YES' if r['false_miss'] else 'no'} |")
     if not any(r["tier"] in KEY_TIERS for r in rows):
         u.record("landing verdict coverage", "ABORT",
                  "no key-paste tier produced a PASTE_LANDING verdict")
     failed = [r for r in u.results if r[1] in ("FAIL", "ABORT")]
     print(f"\n{len(rows)} rows; unstaged: {unstaged or 'none'}; "
           f"{sum(1 for r in u.results if r[1] == 'PASS')} checks passed, {len(failed)} failed")
-    if any(r["false_unchanged"] for r in rows) or failed:
+    if any(r["false_miss"] for r in rows) or failed:
         return 1
     # A pass needs every requested row: an app that could not be staged or read is not a pass.
     return 0 if len(rows) == len(requested) * args.takes else 2

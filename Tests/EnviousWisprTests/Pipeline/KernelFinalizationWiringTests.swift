@@ -753,56 +753,62 @@ import os
       "delivery runs exactly once, with the legacy trailing space appended exactly once")
   }
 
+  /// Holds the session WEAKLY, so only the wiring can be what keeps it alive.
+  @MainActor private final class WeakSession { weak var session: PasteArrivalCapture? }
+
   @Test(
-    "#3106: a committed landing check resolves AFTER delivery returns, with this take's id",
+    "#3106: the wiring alone keeps a committed arrival session alive through its whole shadow, off the delivery path, with this take's id",
     .timeLimit(.minutes(1)))
-  func landingCheckResolvesAfterDelivery() async throws {
+  func arrivalSessionOutlivesDelivery() async throws {
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let telemetryState = KernelTelemetryState()
     telemetryState.takeID = "TAKE-42"
     let ax = PastedRegionFakeAX()
     ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
-    ax.reads = [.text("Hello"), .text("Hello")]
-    ax.selectedRange = .range(location: 5, length: 0)  // a caret, so the field can read unchanged
+    ax.focused[42] = .element(PastedRegionFakeAX.field(42))
+    ax.reads = [.text("Hello")]
+    ax.selectedRange = .range(location: 5, length: 0)
     let clock = PastedRegionFakeScheduler()
     let (lines, sink) = AsyncStream<String>.makeStream()
     var requestTakeID: String??
-    var check: PasteLandingCheck?
+    let holder = WeakSession()
     let wiring = makeWiring(
       context: context,
       deliverPaste: { request in
         requestTakeID = .some(request.takeID)
-        let prepared = PasteLandingCheck.prepare(
+        let prepared = PasteArrivalCapture.prepare(
           .init(
             tier: .cgEvent, pid: 42, takeID: request.takeID, bundleID: "com.apple.TextEdit",
             payload: request.legacyText),
           capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
-          scheduler: clock, log: { sink.yield($0) })
+          scheduler: clock, report: { _ in }, log: { sink.yield($0) })
         prepared?.commit()
-        check = prepared
+        holder.session = prepared
         var result = Self.deliveredResult
-        result.landingCheck = prepared
+        result.arrivalCapture = prepared
         return result
       },
       telemetryState: telemetryState)
 
     let outcome = await wiring.deliver("hello world", .ordinary)
-    let committed = try #require(check)
     #expect(outcome == .pasted)
     #expect(requestTakeID == .some("TAKE-42"), "snapshotted before the delivery awaited")
-    #expect(committed.context.takeID == "TAKE-42")
-    // Delivery returned without waiting out the 1.5 s watch: nothing has resolved yet.
-    #expect(committed.phase == .committed)
-    #expect(committed.result == nil)
+    // Delivery returned without waiting for the decision; the cascade result and the delivery
+    // closure are gone, and the test holds the session only weakly: the wiring's owner holds it.
+    #expect(holder.session?.context.takeID == "TAKE-42")
+    #expect(holder.session?.phase == .watching)
+    #expect(holder.session?.landing == nil)
 
-    telemetryState.takeID = "TAKE-43"  // the next take starts; this check keeps its own id
+    telemetryState.takeID = "TAKE-43"  // the next take starts; this session keeps its own id
+    // A potential miss: decided at 300 ms, then shadowed to 1.5 s; its timers hold it weakly.
     clock.advance(ms: 1_500)
     var iterator = lines.makeAsyncIterator()
     let line = try #require(await iterator.next())
-    #expect(line.hasPrefix("PASTE_LANDING tier=cgevent observed=unchanged reason=field_identical"))
-    #expect(committed.result == .unchanged(.fieldIdentical))
-    #expect(committed.context.takeID == "TAKE-42")
+    #expect(
+      line.hasPrefix("PASTE_LANDING tier=cgevent observed=absent reason=absent"),
+      "the session survived its whole shadow: \(line)")
+    #expect(line.hasSuffix("late_check=completed_no_hit"), "\(line)")
   }
 
   @Test("a clipboard-only cascade result is non-fatal and still completes delivery")

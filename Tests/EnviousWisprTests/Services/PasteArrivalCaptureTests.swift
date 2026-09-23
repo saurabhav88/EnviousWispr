@@ -535,7 +535,7 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Preparation
 
-  @Test("only the three key-paste tiers are observed, and preparation never opts a host in")
+  @Test("only the three key-paste tiers are observed; neither preparation nor commit opts a host in")
   func preparation() throws {
     #expect(
       PasteArrivalCapture.prepare(
@@ -546,7 +546,9 @@ struct PasteArrivalCaptureTests {
     let session = try prepare()
     #expect(ax.enableCalls == [], "the baseline reads the host as it is")
     session.commit()
-    #expect(ax.enableCalls == [pid], "opted in once, after dispatch")
+    #expect(ax.enableCalls == [], "commit does no AX work: it runs before the restore is scheduled")
+    scheduler.advance(ms: 25)
+    #expect(ax.enableCalls == [pid], "opted in once, at the first read after dispatch")
     scheduler.advance(ms: 100)
     #expect(ax.enableCalls == [pid], "never per read")
   }

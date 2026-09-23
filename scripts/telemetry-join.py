@@ -130,8 +130,10 @@ TAKE_KEYED_EVENTS = (
     # list is the authority for which events carry `take_id`, and an event absent from it is
     # invisible to every join whatever its payload says.
     "paste.copies_observed",
-    # #3106 step 1. One row per committed landing check, keyed by the take id the delivery
-    # snapshotted before its awaits. A row without the key is a coverage gap, never re-keyed.
+    # #3106. One row per committed arrival session (policy 5 vocabulary: found / absent /
+    # no_target / cannot_read / inconclusive, plus late_check_status), keyed by the take id the
+    # delivery snapshotted before its awaits. A row without the key is a coverage gap, never
+    # re-keyed. Rows below telemetry_policy_version 5 carry the step-1 vocabulary.
     "paste.landing_observed",
     "recording.cap_warning_shown",
 )

@@ -9,7 +9,9 @@ import Foundation
 ///
 /// **Scope of emission** (intentional, see plan §3.5):
 /// - YES: dictation auto-paste via the wiring's `deliver` closure when
-///   the cascade outcome is `.delivered` (paste actually landed).
+///   the cascade outcome is `.delivered`: a route reported success or dispatched
+///   its paste. That is NOT verified landing (#3106 measured dispatched pastes
+///   that went nowhere); the arrival session observes landing separately.
 /// - NO: dictation auto-paste that fell back to clipboard-only (e.g. AX
 ///   denied, CGEvent failed) — observers would falsely learn from a paste
 ///   that did not happen.

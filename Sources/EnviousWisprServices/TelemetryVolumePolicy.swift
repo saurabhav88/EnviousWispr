@@ -38,7 +38,10 @@ public enum TelemetryVolumePolicy {
   /// 3: #996, `custom_words.learn_skipped` sampled at the common rate; the
   ///    learn-from-edits rows are the first added under the registry.
   /// 4: #3106, `paste.landing_observed` added with `changed`/`unknown` sampled.
-  public static let policyVersion = 4
+  /// 5: #3106 PR A, `paste.landing_observed` re-vocabularied by the shared reader
+  ///    (`found`/`absent`/`no_target`/`cannot_read`/`inconclusive`, plus the late check); only an
+  ///    early `found` is sampled. Rows below 5 carry the old vocabulary: read the two apart.
+  public static let policyVersion = 5
   public static let policyVersionKey = "telemetry_policy_version"
 
   /// Percent of matching happy-path rows that are KEPT. One rate on purpose: a table of
@@ -72,9 +75,13 @@ public enum TelemetryVolumePolicy {
   /// two; a new case there needs no edit here) is the signal and stays whole.
   static let happyPathPressActions: Set<String> = ["start", "toggle"]
 
-  /// The `paste.landing_observed.observed` values sampled at the common rate. `unchanged`, the
-  /// row step 2 is decided from, is NOT here: it stays whole, as does any value outside the set.
-  static let sampledLandingObservations: Set<String> = ["changed", "unknown"]
+  /// The one `paste.landing_observed` shape sampled at the common rate: an EARLY `found` (seen
+  /// before the landing decision, so `late_check_status` is `not_applicable`), the common case.
+  /// Every negative, every `cannot_read` and `inconclusive`, every late-hit or censored row, and
+  /// any value outside this vocabulary stays whole: those are the rows step 2 is decided from.
+  static let sampledLandingObservation = (
+    observed: "found", reason: "same_field", lateCheckStatus: "not_applicable"
+  )
 
   // MARK: - Decision
 
@@ -158,10 +165,19 @@ public enum TelemetryVolumePolicy {
       guard let reason = properties["reason"] as? String else { return nil }
       isHappyPath = knownLearnSkipReasons.contains(reason)
     case "paste.landing_observed":
-      // #3106. About nine in ten key pastes; `changed` and `unknown` are read as rates at 10% with
-      // the weight stamped. `unchanged` and an absent, malformed or new value stay whole.
-      guard let observed = properties["observed"] as? String else { return nil }
-      isHappyPath = sampledLandingObservations.contains(observed)
+      // #3106. Most key pastes are an early `found`, read as a rate at 10% with the weight
+      // stamped. Everything else, and an absent, malformed or new value, stays whole.
+      // The exact early-found shape only: any other reason, or a late-hit field on it, is not the
+      // common case and stays whole.
+      guard let observed = properties["observed"] as? String,
+        let reason = properties["reason"] as? String,
+        let lateCheck = properties["late_check_status"] as? String
+      else { return nil }
+      isHappyPath =
+        observed == sampledLandingObservation.observed
+        && reason == sampledLandingObservation.reason
+        && lateCheck == sampledLandingObservation.lateCheckStatus
+        && properties["late_found_ms"] == nil
     case "update.proactive_check_triggered":
       // "SAMPLE and record the rate, never suppress" (analytics-operations.md). Fired
       // checks stay at 100%; the non-fired reasons are sampled with the rate stamped.
