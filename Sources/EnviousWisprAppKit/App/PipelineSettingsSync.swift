@@ -86,7 +86,8 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
-    egOneLearnedWordChecker: (any LearnedWordChecking)? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    ensureCheckerAdapter: (@MainActor () -> Void)? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?,
     /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
     /// nil.
@@ -116,7 +117,8 @@ final class PipelineSettingsSync {
     self.hotkeyService = hotkeyService
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
-    self.egOneLearnedWordChecker = egOneLearnedWordChecker
+    self.checkerSelectionProvider = checkerSelectionProvider
+    self.ensureCheckerAdapter = ensureCheckerAdapter
     self.ollamaRemotenessLookup = ollamaRemotenessLookup
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
@@ -153,13 +155,16 @@ final class PipelineSettingsSync {
   /// #2649: the second local engine. Switching TO it must start it, and
   /// switching AWAY must stop it, exactly as EG-1 does.
   private let s1MiniRuntime: EGOneRuntime?
-  private let egOneLearnedWordChecker: (any LearnedWordChecking)?
+  private let checkerSelectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+  private let ensureCheckerAdapter: (@MainActor () -> Void)?
 
   private func syncEGOneLearnedWordChecker(provider: LLMProvider) {
-    guard egOneLearnedWordChecker != nil else { return }
-    let checker = provider == .egOne ? egOneLearnedWordChecker : nil
-    kernelDriver.learnedWordCheck.checker = checker
-    whisperKitKernelDriver.learnedWordCheck.checker = checker
+    kernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
+    whisperKitKernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
+    if provider == .egOne, let ensureCheckerAdapter {
+      ensureCheckerAdapter()
+    }
   }
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh

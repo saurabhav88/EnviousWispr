@@ -60,8 +60,8 @@ struct TakeStageSummary: Equatable {
 /// #3105. What the learned-word check did for one take, carried on that take's
 /// `dictation.terminal` row: counts, a latency, the checker arm and a closed
 /// fallback reason. Never a word, a spelling, a sentence or a model answer.
-/// Present only for takes where the step ran (a checker was installed and the
-/// vocabulary held a learned word).
+/// Present for takes with a learned word and Dictionary enabled, including
+/// when no checker was eligible.
 public struct LearnedCheckTerminalFacts: Equatable, Sendable {
   public var flagged: Int
   public var approved: Int
@@ -69,13 +69,17 @@ public struct LearnedCheckTerminalFacts: Equatable, Sendable {
   public var contested: Int
   public var latencyMs: Int
   public var arm: String
-  /// `no_candidates`, `checker_error`, `malformed_answer` or `deadline`; nil when the step
+  /// `no_checker`, `no_candidates`, `checker_error`, `malformed_answer` or `deadline`; nil when the step
   /// reached a decision.
   public var fallbackReason: String?
+  public var checkerIdentity: String?
+  public var checkerStatus: String
+  public var absenceReason: String?
 
   public init(
     flagged: Int, approved: Int, applied: Int, contested: Int, latencyMs: Int, arm: String,
-    fallbackReason: String?
+    fallbackReason: String?, checkerIdentity: String? = nil,
+    checkerStatus: String = "ready", absenceReason: String? = nil
   ) {
     self.flagged = flagged
     self.approved = approved
@@ -84,6 +88,9 @@ public struct LearnedCheckTerminalFacts: Equatable, Sendable {
     self.latencyMs = latencyMs
     self.arm = arm
     self.fallbackReason = fallbackReason
+    self.checkerIdentity = checkerIdentity
+    self.checkerStatus = checkerStatus
+    self.absenceReason = absenceReason
   }
 
   var terminalProperties: [String: Any] {

@@ -70,6 +70,8 @@ public final class FileImportRunner {
   private let egOneRuntime: (any EGOneEndpointProviding)?
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
+  private let checkerSelectionProvider:
+    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
   /// **One import, one configuration.** Frozen when the run starts and applied
   /// identically to every part, so a user who changes their polisher halfway
@@ -81,17 +83,22 @@ public final class FileImportRunner {
 
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
+  /// An import is one invocation even when it has many parts. The first part's
+  /// resolved language and endpoint decide for every later part.
+  private var frozenCheckerSelection: LearnedWordCheckerSelection?
 
   public init(
     keychainManager: KeychainManager,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    outputClassifierHolder: OutputClassifierHolder? = nil
+    outputClassifierHolder: OutputClassifierHolder? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.keychainManager = keychainManager
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
     self.outputClassifierHolder = outputClassifierHolder
+    self.checkerSelectionProvider = checkerSelectionProvider
   }
 
   /// Freezes the configuration this import runs under. Called once, before the
@@ -99,6 +106,7 @@ public final class FileImportRunner {
   public func freeze(settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?) {
     frozenSettings = settings
     frozenVocabulary = vocabulary
+    frozenCheckerSelection = nil
   }
 
   /// Runs one part through the shipped chain.
@@ -219,6 +227,16 @@ public final class FileImportRunner {
     wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { wordCorrection.correctorVocabulary = frozenVocabulary }
     let learnedWordCheck = LearnedWordCheckStep()
+    learnedWordCheck.selectionProvider = { [weak self] provider, language in
+      guard let self else { return .init(absence: .serverUnavailable) }
+      if let frozenCheckerSelection = self.frozenCheckerSelection {
+        return frozenCheckerSelection
+      }
+      let selection = await self.checkerSelectionProvider?(provider, language)
+        ?? .init(absence: .serverUnavailable)
+      self.frozenCheckerSelection = selection
+      return selection
+    }
     learnedWordCheck.wordCorrectionEnabled = settings.wordCorrectionEnabled
     if let frozenVocabulary { learnedWordCheck.correctorVocabulary = frozenVocabulary }
 

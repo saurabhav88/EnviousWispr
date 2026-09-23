@@ -57,7 +57,8 @@ public final class RecoveryTextProcessor {
   public init(
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
-    s1MiniRuntime: (any EGOneEndpointProviding)? = nil
+    s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
+    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
@@ -83,6 +84,7 @@ public final class RecoveryTextProcessor {
       inverseTextNormalization: InverseTextNormalizationStep(),
       llmPolish: llmPolish,
       emojiRestore: EmojiRestoreStep())
+    self.steps.learnedWordCheck.selectionProvider = checkerSelectionProvider
     // #945 / #1446 / #1461: crash recovery is invisible to live-polish
     // telemetry. The runner and LLMPolishStep each own separate emitter sets,
     // so recovery constructs both with their complete `.silent` presets.

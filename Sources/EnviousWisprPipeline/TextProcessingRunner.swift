@@ -221,6 +221,14 @@ internal final class TextProcessingRunner {
     context.learnLanguage = resolution.learnLanguage
     context.targetAppName = targetAppName
     context.takeID = takeID
+    if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
+      learnedStep.isEnabled(for: context),
+      let provider = learnedStep.selectionProvider
+    {
+      let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
+        ?? .none
+      context.frozenLearnedWordChecker = await provider(selectedProvider, resolution.language)
+    }
     var polishError: String?
 
     let logger = self.logger

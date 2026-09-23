@@ -3,6 +3,42 @@ import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 
+public enum LearnedWordCheckerAbsence: Sendable, Equatable {
+  case notEGOne, baseNotAdmitted, adapterDownloading, adapterDeliveryFailed
+  case baseMismatch(String), unqualifiedLanguage, serverWithoutAdapter(String), serverUnavailable
+
+  public var code: String {
+    switch self {
+    case .notEGOne: "not_eg_one"
+    case .baseNotAdmitted: "base_not_admitted"
+    case .adapterDownloading: "adapter_downloading"
+    case .adapterDeliveryFailed: "adapter_delivery_failed"
+    case .baseMismatch(let reason): "base_mismatch_\(reason)"
+    case .unqualifiedLanguage: "unqualified_language"
+    case .serverWithoutAdapter(let reason): "server_without_adapter_\(reason)"
+    case .serverUnavailable: "server_unavailable"
+    }
+  }
+}
+
+public struct LearnedWordCheckerSelection: Sendable {
+  public let checker: (any LearnedWordChecking)?
+  public let identity: String?
+  public let absence: LearnedWordCheckerAbsence?
+
+  public init(checker: any LearnedWordChecking, identity: String) {
+    self.checker = checker
+    self.identity = identity
+    absence = nil
+  }
+
+  public init(absence: LearnedWordCheckerAbsence) {
+    checker = nil
+    identity = nil
+    self.absence = absence
+  }
+}
+
 /// #3105: the ONLY place an automatically learned word may change dictated text.
 ///
 /// Runs right after `WordCorrectionStep`, which no longer swaps learned claims
@@ -26,10 +62,11 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// Word Correction (plan §3.1 step 1).
   public var correctorVocabulary: CorrectorVocabulary = .empty
 
-  /// The qualified checker, or nil. Nil keeps the step off: no learned word
-  /// changes (plan §3.3). Only a checker that passed the holdout and harm
-  /// gates may be installed (plan §3.2).
+  /// The qualified checker for direct callers, or nil. Nil leaves text alone
+  /// and records no_checker when the vocabulary contains learned words.
   public var checker: (any LearnedWordChecking)?
+  /// Called once by the runner after language resolution.
+  public var selectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
   /// The user's "Enable Dictionary" switch, the same value `WordCorrectionStep`
   /// follows on every path (live settings sync, recovery snapshot, file-import
@@ -43,6 +80,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// The last invocation's counts and closed reason, never any text.
   public struct Outcome: Sendable, Equatable {
     public enum FallbackReason: String, Sendable, Equatable {
+      case noChecker = "no_checker"
       case noCandidates = "no_candidates"
       case checkerError = "checker_error"
       /// The runner's cap cancelled the checker before it answered.
@@ -67,12 +105,12 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   public init() {}
 
   public var isEnabled: Bool {
-    wordCorrectionEnabled && checker != nil
+    wordCorrectionEnabled
       && correctorVocabulary.terms.contains { $0.learnedAt != nil || !$0.learnedAliases.isEmpty }
   }
 
   func isEnabled(for context: TextProcessingContext) -> Bool {
-    wordCorrectionEnabled && checker != nil
+    wordCorrectionEnabled
       && (context.frozenCorrectorVocabulary ?? correctorVocabulary).terms.contains {
         $0.learnedAt != nil || !$0.learnedAliases.isEmpty
       }
@@ -129,7 +167,8 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-    guard let checker else { return context }
+    let selection = context.frozenLearnedWordChecker
+    let checker = selection?.checker ?? (selection == nil ? self.checker : nil)
     defer {
       if let outcome = lastOutcome {
         // #3105: only live dictation has a take id and a terminal row.
@@ -139,7 +178,10 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
             LearnedCheckTerminalFacts(
               flagged: outcome.flagged, approved: outcome.approved, applied: outcome.applied,
               contested: outcome.contested, latencyMs: outcome.latencyMs, arm: outcome.arm,
-              fallbackReason: outcome.fallbackReason?.rawValue))
+              fallbackReason: outcome.fallbackReason?.rawValue,
+              checkerIdentity: selection?.identity ?? checker?.armName,
+              checkerStatus: checker == nil ? "absent" : "ready",
+              absenceReason: checker == nil ? (selection?.absence?.code ?? "not_configured") : nil))
         }
         Task {
           await AppLogger.shared.log(
@@ -149,6 +191,12 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
       }
     }
     lastOutcome = nil
+    guard let checker else {
+      lastOutcome = Outcome(
+        flagged: 0, approved: 0, applied: 0, contested: 0, latencyMs: 0,
+        arm: "none", fallbackReason: .noChecker)
+      return context
+    }
     let vocabulary = context.frozenCorrectorVocabulary ?? correctorVocabulary
     let learned = LearnedWordCandidates.learnedWords(from: vocabulary.terms)
     let questions = LearnedWordCandidates.questions(

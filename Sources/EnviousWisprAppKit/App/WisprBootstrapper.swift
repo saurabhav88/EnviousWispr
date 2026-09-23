@@ -426,16 +426,15 @@ package final class WisprBootstrapper {
       egOneUpgrade = (registration, coordinator)
     }
     #if DEBUG
-      let learnedWordAdapter = LearnedWordCheckEGOneDoor.configuration()
+      let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
+      let debugLearnedWordAdapter = debugScriptedChecker == nil
+        ? LearnedWordCheckEGOneDoor.configuration() : nil
     #else
-      let learnedWordAdapter: (url: URL, threshold: Double)? = nil
+      let debugScriptedChecker: (any LearnedWordChecking)? = nil
+      let debugLearnedWordAdapter: (url: URL, threshold: Double)? = nil
     #endif
     let learnedWordAdapterProvider: @MainActor () async -> URL? = {
-      #if DEBUG
-        if let debugAdapter = LearnedWordCheckEGOneDoor.configuration() {
-          return debugAdapter.url
-        }
-      #endif
+      if let debugLearnedWordAdapter { return debugLearnedWordAdapter.url }
       guard let base = egOneUpgrade?.registration,
         let promptTemplateID = egOneManifest?.promptTemplateID
       else { return nil }
@@ -464,6 +463,12 @@ package final class WisprBootstrapper {
         await delivery.recordFirstRunBaseline(for: egOneUpgrade.registration)
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
+        if let prompt = egOneManifest?.promptTemplateID {
+          _ = await delivery.ensureCheckerAdapterIfEGOneSelected(
+            selected: settings.llmProvider == .egOne,
+            baseRegistration: egOneUpgrade.registration,
+            promptTemplateID: prompt)
+        }
       }
     }
     // #2649: S1-mini's install path, built beside EG-1's and sharing its
@@ -693,11 +698,13 @@ package final class WisprBootstrapper {
     // Start. Two of those are promises to the user about where their words went,
     // so they must not be able to disagree with the third.
     let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
-    let egOneLearnedWordChecker: (any LearnedWordChecking)? = learnedWordAdapter.map { adapter in
-      EGOneLearnedWordChecker(threshold: adapter.threshold) { [weak egOneRuntime] in
-        await egOneRuntime?.activeEndpoint()
-      }
-    }
+    let checkerBaseRegistration = egOneUpgrade?.registration
+    let checkerPromptTemplateID = egOneManifest?.promptTemplateID
+    let checkerEligibility = EGOneCheckerEligibility(
+      delivery: modelDelivery, base: checkerBaseRegistration,
+      promptTemplateID: checkerPromptTemplateID, runtime: egOneRuntime,
+      debugThreshold: debugLearnedWordAdapter?.threshold,
+      debugScriptedChecker: debugScriptedChecker)
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -706,15 +713,23 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      egOneLearnedWordChecker: egOneLearnedWordChecker,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      },
+      ensureCheckerAdapter: { [weak settings, modelDelivery] in
+        Task {
+          guard let base = checkerBaseRegistration,
+            let prompt = checkerPromptTemplateID
+          else { return }
+          _ = await modelDelivery.ensureCheckerAdapterIfEGOneSelected(
+            selected: settings?.llmProvider == .egOne,
+            baseRegistration: base, promptTemplateID: prompt)
+        }
+      },
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
-    #if DEBUG
-      LearnedWordCheckUATDoor.install(
-        kernelDriver: kernelDriver, whisperKitKernelDriver: whisperKitKernelDriver)
-    #endif
     settingsSync.applyInitialSettings(settings)
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
@@ -1103,6 +1118,9 @@ package final class WisprBootstrapper {
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
@@ -1553,7 +1571,10 @@ package final class WisprBootstrapper {
       // and crash recovery get. Without it an imported part polished by Apple
       // Intelligence silently loses the classifier-aware output filter, even
       // when the classifier prewarmed successfully.
-      outputClassifierHolder: outputClassifierHolder)
+      outputClassifierHolder: outputClassifierHolder,
+      checkerSelectionProvider: { [checkerEligibility] provider, language in
+        await checkerEligibility.selection(provider: provider, language: language)
+      })
     // #2648: the health probe asks the lease, not the settings sync, because
     // the question is "is the ONE inference slot occupied" and every workload
     // that can occupy it takes this claim. `isBusy` had no production reader
