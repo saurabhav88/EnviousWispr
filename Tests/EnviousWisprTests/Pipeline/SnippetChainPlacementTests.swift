@@ -30,6 +30,7 @@ struct SnippetChainPlacementTests {
     LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
+      learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
@@ -46,6 +47,7 @@ struct SnippetChainPlacementTests {
       names == [
         "Snippet Expansion",
         "Word Correction",
+        "Learned Word Check",
         "Filler Removal",
         "Emoji Formatter",
         "Inverse Text Normalization",

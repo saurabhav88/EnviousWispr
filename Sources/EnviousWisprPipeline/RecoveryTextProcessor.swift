@@ -5,11 +5,11 @@ import Foundation
 // MARK: - Recovery text-processing seam (#1063 PR0)
 //
 // Recovery must run the SAME post-ASR text chain a live dictation runs
-// (word correction -> filler removal -> emoji -> inverse text normalization ->
+// (word correction -> learned-word check -> filler removal -> emoji -> inverse text normalization ->
 // LLM polish -> emoji restore), but OUTSIDE the live kernel. The chain's runner
 // and steps are internal to Pipeline and not reusable from the App layer, so
 // this is the small PUBLIC seam that reuses the internal `TextProcessingRunner`
-// + the same six step instances.
+// + the same step instances.
 //
 // It is a limb of a limb: a recovered transcript that fails to polish lands as
 // raw text (the raw-fallback contract), exactly like a live dictation whose
@@ -34,7 +34,7 @@ public struct RecoveryTextOutcome: Sendable {
   public var displayText: String { polishedText ?? text }
 }
 
-/// Runs the standard six-step post-ASR text chain on a recovered transcript.
+/// Runs the standard post-ASR text chain on a recovered transcript.
 @MainActor
 public final class RecoveryTextProcessor {
   private let steps: LimbSteps
@@ -77,6 +77,7 @@ public final class RecoveryTextProcessor {
     self.steps = LimbSteps(
       snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
+      learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
@@ -97,6 +98,7 @@ public final class RecoveryTextProcessor {
   /// `wordCorrectionStep.correctorVocabulary` separately.
   public func applySettings(_ snapshot: RecordingSettingsSnapshot) {
     steps.wordCorrection.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
+    steps.learnedWordCheck.wordCorrectionEnabled = snapshot.wordCorrectionEnabled
     steps.fillerRemoval.fillerRemovalEnabled = snapshot.fillerRemovalEnabled
     steps.emojiFormatter.emojiFormatterEnabled = snapshot.emojiFormatterEnabled
     // #1794: a legacy spool records no preference for this setting, absence is not an
@@ -165,6 +167,7 @@ public final class RecoveryTextProcessor {
     corrector: CorrectorVocabulary, polish: PolishVocabulary
   ) {
     steps.wordCorrection.correctorVocabulary = corrector
+    steps.learnedWordCheck.correctorVocabulary = corrector
     steps.llmPolish.polishVocabulary = polish
   }
 
@@ -205,6 +208,7 @@ public final class RecoveryTextProcessor {
     -> RecoveryTextOutcome
   {
     do {
+      let frozenCorrectorVocabulary = steps.wordCorrection.correctorVocabulary
       // #2614: no persisted per-take engine answer exists for a recovered take, so
       // the engine rung reports nothing and the runner resolves from the lock or
       // the text — the same ladder the live path walks.
@@ -215,7 +219,8 @@ public final class RecoveryTextProcessor {
           engineDetectsLanguage: recordedEngineDetectsLanguage,
           engineReportedLanguage: nil),
         targetAppName: targetAppName,
-        steps: steps.orderedChain)
+        steps: steps.orderedChain,
+        frozenCorrectorVocabulary: frozenCorrectorVocabulary)
       // #1948: a BLANK polish is not a polish. Live finalization has an empty-output
       // recovery floor (`KernelFinalizationWiring` `:349`) that turns "" into the intact
       // deterministic text; this replay path has none, so a blank result would be saved to

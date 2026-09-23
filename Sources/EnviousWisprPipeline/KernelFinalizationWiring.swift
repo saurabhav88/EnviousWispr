@@ -375,14 +375,12 @@ struct KernelFinalizationWiring {
     // `LLMPolishStep.onWillProcess` so the limb emits and the kernel observes
     // (D18 closed for Parakeet — PR-4 §3.8).
     processText = { raw, onPolishStarted in
-      // FIRST statement, before any suspension point: snapshot the canonical
-      // protected spellings for this session. `correctorVocabulary` is mutable
-      // and `CustomWordsPropagator` can replace it while this dictation is still
-      // being processed; reading it at delivery time would let that broadcast
-      // change a decision for text already in flight. Canonicals only — an alias
-      // is a misheard form we correct FROM, never a spelling to protect.
+      // FIRST statement, before any suspension point: freeze one full vocabulary
+      // for both correction steps and the protected-spellings floor. Canonicals
+      // are protected spellings; aliases are misheard forms we correct FROM.
+      let frozenCorrectorVocabulary = steps.wordCorrection.correctorVocabulary
       context.protectedSpellings = Set(
-        steps.wordCorrection.correctorVocabulary.terms.map(\.canonical))
+        frozenCorrectorVocabulary.terms.map(\.canonical))
       // #996: this take's languages start unknown. The four fields are
       // stamped only when the chain reaches resolution below; a take that stops
       // earlier (empty output, a thrown limb) must not carry the PREVIOUS take's
@@ -423,6 +421,7 @@ struct KernelFinalizationWiring {
         evidence: evidence,
         targetAppName: context.targetApp?.localizedName,
         steps: steps.orderedChain,
+        frozenCorrectorVocabulary: frozenCorrectorVocabulary,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same

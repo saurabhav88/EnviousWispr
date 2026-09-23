@@ -425,8 +425,14 @@ package final class WisprBootstrapper {
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
       egOneUpgrade = (registration, coordinator)
     }
+    #if DEBUG
+      let learnedWordAdapter = LearnedWordCheckEGOneDoor.configuration()
+    #else
+      let learnedWordAdapter: (url: URL, threshold: Double)? = nil
+    #endif
     let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter)
+      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
+      learnedWordAdapterURL: learnedWordAdapter?.url)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
     if let egOneUpgrade {
@@ -667,6 +673,11 @@ package final class WisprBootstrapper {
     // Start. Two of those are promises to the user about where their words went,
     // so they must not be able to disagree with the third.
     let ollamaRemoteness = PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
+    let egOneLearnedWordChecker: (any LearnedWordChecking)? = learnedWordAdapter.map { adapter in
+      EGOneLearnedWordChecker(threshold: adapter.threshold) { [weak egOneRuntime] in
+        await egOneRuntime?.activeEndpoint()
+      }
+    }
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
@@ -675,10 +686,15 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
+      egOneLearnedWordChecker: egOneLearnedWordChecker,
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
     )
+    #if DEBUG
+      LearnedWordCheckUATDoor.install(
+        kernelDriver: kernelDriver, whisperKitKernelDriver: whisperKitKernelDriver)
+    #endif
     settingsSync.applyInitialSettings(settings)
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
@@ -850,7 +866,9 @@ package final class WisprBootstrapper {
       initialWords: customWordsCoordinator.customWords,
       correctorConsumers: [
         kernelDriver.wordCorrection,
+        kernelDriver.learnedWordCheck,
         whisperKitKernelDriver.wordCorrection,
+        whisperKitKernelDriver.learnedWordCheck,
         // #1988: the preview corrects displayed text with the SAME lane, so a
         // user's own names do not visibly mangle while the pasted text is fixed.
         livePreview,

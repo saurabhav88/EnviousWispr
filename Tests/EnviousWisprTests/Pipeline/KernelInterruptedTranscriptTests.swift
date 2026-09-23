@@ -46,6 +46,7 @@ struct KernelInterruptedTranscriptTests {
       steps: LimbSteps(
         snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
+        learnedWordCheck: LearnedWordCheckStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),
         inverseTextNormalization: InverseTextNormalizationStep(),

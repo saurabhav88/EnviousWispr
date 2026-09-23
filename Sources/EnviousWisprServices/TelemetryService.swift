@@ -1528,7 +1528,8 @@ public final class TelemetryService {
       if let reason { stringProps["reason"] = reason }
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
-        "delivery_disposition", "vad_conditioning_reason",
+        "delivery_disposition", "vad_conditioning_reason", "learned_check_arm",
+        "learned_check_fallback_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
@@ -1536,7 +1537,9 @@ public final class TelemetryService {
       var intProps: [String: Int] = [:]
       for key in [
         "duration_ms", "capture_native_channel_count", "capture_input_channel",
-        "vad_raw_sample_count", "vad_filtered_sample_count",
+        "vad_raw_sample_count", "vad_filtered_sample_count", "learned_check_flagged",
+        "learned_check_approved", "learned_check_applied", "learned_check_contested",
+        "learned_check_latency_ms",
       ] {
         if let value = props[key] as? Int { intProps[key] = value }
       }
@@ -4519,6 +4522,13 @@ public final class TelemetryService {
   @discardableResult
   public func recordOtherAudioTake(_ facts: OtherAudioTerminalFacts) -> String? {
     takeStages.updateNewest { $0.otherAudio = facts }
+  }
+
+  /// #3105: the learned-word check's counts for `takeID`, carried on that take's
+  /// `dictation.terminal` row. A take with no open entry (recovery, file import, a
+  /// closed take) records nothing: never a second row, never a fabricated value.
+  public func recordLearnedCheck(takeID: String, facts: LearnedCheckTerminalFacts) {
+    takeStages.update(takeID: takeID) { $0.learnedCheck = facts }
   }
 
   /// The media half settles later; update ONLY the take that carried the summary.

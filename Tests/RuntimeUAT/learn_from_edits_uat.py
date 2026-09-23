@@ -123,6 +123,7 @@ PAIRS = {
     "toggle-off": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "next-dictation": Pair("Ask sorab about the invoices today", "invoices", "Ask", "about", "Saurabh"),
     "deletion-only": Pair("Send the report to Vaish today", "report", "Send", "to", "report"),
+    "learned-check": Pair("The day Tuist regenerated my whole project", "project", "day", "regenerated", "Tuist"),
 }
 
 results = []
@@ -274,6 +275,22 @@ def defaults_restore(snap):
         subprocess.run(["defaults", "write", DOMAIN, "learnFromEdits", snap["value"]], check=True)
 
 
+CHECK_ENV_KEY = "EW_LEARNED_CHECK_UAT_APPROVE"
+
+
+def check_door_get():
+    r = subprocess.run(["launchctl", "getenv", CHECK_ENV_KEY], capture_output=True, text=True)
+    v = r.stdout.strip()
+    return v if v else None
+
+
+def check_door_set(value):
+    if value is None:
+        subprocess.run(["launchctl", "unsetenv", CHECK_ENV_KEY], check=True)
+    else:
+        subprocess.run(["launchctl", "setenv", CHECK_ENV_KEY, value], check=True)
+
+
 def launchctl_get():
     r = subprocess.run(["launchctl", "getenv", ENV_KEY], capture_output=True, text=True)
     v = r.stdout.strip()
@@ -378,6 +395,18 @@ def seeded_words_like(snapshot, canonical):
     parsed = dict(base["parsed"])
     parsed["words"] = [{"id": "00000000-0000-4000-8000-0000000000aa", "canonical": canonical,
                         "aliases": [], "category": "general", "source": "user", "isEnabled": True}]
+    raw = json.dumps(parsed).encode("utf-8")
+    return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
+
+
+def learned_word_seed(snapshot, canonical):
+    """One word the app LEARNED (#3105): `learnedAt` set, no sound-alikes. Its
+    uses go through the learned-word check only."""
+    base = empty_words_like(snapshot)
+    parsed = dict(base["parsed"])
+    parsed["words"] = [{"id": "00000000-0000-4000-8000-0000000000bb", "canonical": canonical,
+                        "aliases": [], "category": "general", "source": "user", "isEnabled": True,
+                        "learnedAliases": [], "learnedAt": 780000000}]
     raw = json.dumps(parsed).encode("utf-8")
     return {"exists": True, "bytes": raw, "mode": 0o600, "sha256": hashlib.sha256(raw).hexdigest(), "parsed": parsed}
 
@@ -761,6 +790,10 @@ def case_deletion_only(path):
     pair = PAIRS["deletion-only"]
     mark, _, _ = dictate(path, "deletion-only", pair, need_heard=False)
     apply_fix(path, "deletion-only", "report", "rep")
+    # Let the edit SETTLE before ending the watch: an edit cleared inside the
+    # quiet interval is never filtered at all (round 1 of this arm: settled_bursts=0).
+    if not wait_for("the edit to settle", lambda: has(mark, "learn_settle trigger="), deadline=15.0):
+        raise Aborted("deletion-only: the edit never settled")
     clear_field(path)
     ended = wait_for("observation end", lambda: re.search(r"learn_observation_ended reason=\w+ settled_bursts=(\d+) app_class=\w+ duration_ms=\d+ unfinished_edits=(\d+)", log_since(mark)), deadline=15.0)
     if not ended:
@@ -991,6 +1024,42 @@ def case_next_dictation(path):
                  f"started={bool(started)} ended={bool(ended)} judged={'learn_judged' in lines}")
 
 
+CHECK_LINE = re.compile(
+    r"LearnedWordCheck: flagged=(\d+) approved=(\d+) applied=(\d+) contested=(\d+) latency_ms=(\d+) arm=(\S+) reason=(\S+)")
+
+
+def case_learned_check(path):
+    """#3105 wiring, end to end in the real app with the Debug door's scripted
+    checker (approves every question whose listed word is Tuist): the step runs
+    after Word Correction, asks about the sound-alike spots, writes Tuist at
+    the approved ones, and logs its counts. Proves the chain, not model quality."""
+    pair = PAIRS["learned-check"]
+    mark, text, _ = dictate(path, "learned-check", pair, need_heard=False)
+    line = wait_for("the LearnedWordCheck line", lambda: CHECK_LINE.search(log_since(mark)), deadline=15.0)
+    if not line:
+        return check("learned-check", False, "no LearnedWordCheck line (the step did not run)")
+    flagged, applied, arm = int(line.group(1)), int(line.group(3)), line.group(6)
+    if flagged == 0:
+        # The recogniser wrote nothing that sounds like Tuist (or wrote Tuist
+        # itself): nothing to ask, so the take proves nothing about the step.
+        raise Aborted(f"learned-check: no sound-alike to flag (line={line.group(0)} delivered={text!r})")
+    ok = arm == "uat_scripted" and applied >= 1 and "tuist" in (text or "").lower()
+    return check("learned-check", ok, f"line={line.group(0)} delivered={text!r}")
+
+
+def case_learned_check_door_off(path):
+    """The control: the same learned word and sentence with NO checker installed
+    (the production state until a model qualifies): the step is off, so no
+    LearnedWordCheck line, and the learned word never swaps by itself."""
+    pair = PAIRS["learned-check"]
+    mark, text, _ = dictate(path, "learned-check-off", pair, need_heard=False)
+    reached = wait_for("the take's terminal", lambda: has(mark, "Pipeline timing TOTAL"), deadline=20.0)
+    if not reached:
+        raise Aborted("learned-check-off: the take never completed")
+    return check("learned-check-door-off", CHECK_LINE.search(log_since(mark)) is None,
+                 f"delivered={text!r}")
+
+
 # --- audio ------------------------------------------------------------------
 
 BAND_SCRIPT = os.path.expanduser(
@@ -1031,7 +1100,8 @@ def main():
     initially_running = app_pid() is not None
 
     head = subprocess.run(["git", "-C", WORKTREE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    snaps = {"words": file_snapshot(WORDS), "defaults": defaults_snapshot(), "launchctl": launchctl_get()}
+    snaps = {"words": file_snapshot(WORDS), "defaults": defaults_snapshot(), "launchctl": launchctl_get(),
+             "checkdoor": check_door_get()}
     save("before-custom-words.json", {k: v for k, v in snaps["words"].items() if k != "bytes"})
     save("before-legacy-ledger.json", {"present": legacy_ledger_present(), "path": LEGACY_LEDGER, "note": "read only; the app deletes it at launch; this script never writes it"})
     save("before-defaults-and-launchctl.json", {"defaults": snaps["defaults"], "launchctl": snaps["launchctl"]})
@@ -1070,6 +1140,8 @@ def main():
             ("toggle-off", False, None, True, case_toggle_off),
             ("next-dictation", True, None, True, case_next_dictation),
             ("deletion-only", True, None, True, case_deletion_only),
+            ("learned-check", True, "learned", True, case_learned_check),
+            ("learned-check-door-off", True, "learned", True, case_learned_check_door_off),
         ]
         for name, toggle_on, seed, relaunch, fn in cases:
             if only and name not in only:
@@ -1083,6 +1155,10 @@ def main():
                     words = seeded_words_like(snaps["words"], PAIRS[name].correct)
                 elif seed == "manual":
                     words = seeded_words_like(snaps["words"], MANUAL_WORD)
+                elif seed == "learned":
+                    words = learned_word_seed(snaps["words"], PAIRS[name.replace("-door-off", "")].correct)
+                # The learned-check door is ON only for its own case (#3105).
+                check_door_set("Tuist" if name == "learned-check" else None)
                 relaunch_for_case(snaps, toggle_on, args.export, words=words)
                 clear_field(doc)
             try:
@@ -1128,6 +1204,7 @@ def main():
         # The launch environment is safe to restore whether or not the app is
         # down (launchd state, not the app's files); the rest waits for a stop.
         launchctl_set(snaps["launchctl"])
+        check_door_set(snaps["checkdoor"])
         if app_stopped:
             file_restore(WORDS, snaps["words"])
             defaults_restore(snaps["defaults"])
@@ -1136,7 +1213,7 @@ def main():
             ok_w, why_w = False, "not restored: the app did not stop"
         after_defaults = defaults_snapshot()
         ok_d = after_defaults == snaps["defaults"]
-        ok_e = launchctl_get() == snaps["launchctl"]
+        ok_e = launchctl_get() == snaps["launchctl"] and check_door_get() == snaps["checkdoor"]
         save("restore-verification.json", {"audio": audio_restored, "app_stopped": app_stopped,
                                            "words": [ok_w, why_w],
                                            "legacy_ledger_present_after": legacy_ledger_present(),

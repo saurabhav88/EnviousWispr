@@ -42,6 +42,11 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
     wordCorrectionEnabled && !correctorVocabulary.terms.isEmpty
   }
 
+  func isEnabled(for context: TextProcessingContext) -> Bool {
+    wordCorrectionEnabled
+      && !(context.frozenCorrectorVocabulary ?? correctorVocabulary).terms.isEmpty
+  }
+
   /// Runner-level safety net. #657 (2026-05-05) raised this from 100ms to 3
   /// seconds after empirical evidence showed the previous cap silently
   /// discarded corrector output on paragraph-length input. The cap is now a
@@ -71,7 +76,9 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-    let snapshot = correctorVocabulary
+    // #3105: the take's frozen vocabulary when the caller froze one, so this step
+    // and the learned-word check read the same words.
+    let snapshot = context.frozenCorrectorVocabulary ?? correctorVocabulary
     let lookups = ensureLookups(for: snapshot)
 
     let inputText = context.text

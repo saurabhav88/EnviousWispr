@@ -76,7 +76,7 @@ private final class TerminalResumeLatch: Sendable {
   var resumed = false
 }
 
-/// The six text-processing limb steps the App configures and the kernel's
+/// The text-processing limb steps the App configures and the kernel's
 /// `processText` closure runs. Created once, shared by the driver (which
 /// exposes the accessors) and `KernelFinalizationWiring` (whose `processText`
 /// consumes them). `inverseTextNormalization` runs before `llmPolish` as the
@@ -90,6 +90,7 @@ struct LimbSteps {
   /// says why.
   let snippetExpansion: SnippetExpansionStep
   let wordCorrection: WordCorrectionStep
+  let learnedWordCheck: LearnedWordCheckStep
   let fillerRemoval: FillerRemovalStep
   let emojiFormatter: EmojiFormatterStep
   let inverseTextNormalization: InverseTextNormalizationStep
@@ -105,7 +106,8 @@ struct LimbSteps {
   /// drift.
   ///
   /// `snippetExpansion` is first because a snippet trigger is matched literally and must read
-  /// the raw ASR surface before the fuzzy corrector can alter one of its words. `llmPolish` sits
+  /// the raw ASR surface before the fuzzy corrector can alter one of its words. The learned-word
+  /// check follows deterministic word correction so it sees the corrected text. `llmPolish` sits
   /// after `inverseTextNormalization` so ITN doubles as the raw-fallback floor (#145), and
   /// `emojiRestore` sits after polish because it repairs what polish dropped (#761).
   ///
@@ -114,7 +116,7 @@ struct LimbSteps {
   @MainActor
   var orderedChain: [any TextProcessingStep] {
     [
-      snippetExpansion, wordCorrection, fillerRemoval, emojiFormatter,
+      snippetExpansion, wordCorrection, learnedWordCheck, fillerRemoval, emojiFormatter,
       inverseTextNormalization, llmPolish, emojiRestore,
     ]
   }
@@ -734,6 +736,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   // MARK: Limb-step accessors (read by `PipelineSettingsSync` + custom-words)
 
   public var wordCorrection: WordCorrectionStep { steps.wordCorrection }
+  public var learnedWordCheck: LearnedWordCheckStep { steps.learnedWordCheck }
   /// #628. Exposed for the same reason as `wordCorrection`: the App layer owns the store and
   /// must hand this driver its frozen vocabulary, and there are TWO drivers, so a caller that
   /// seeds one has done half the job.

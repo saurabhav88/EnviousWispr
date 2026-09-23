@@ -1,0 +1,153 @@
+"""Step 8 of the proposed flow: the sound-matcher. For each clip's plain Parakeet transcript, mark every
+span of 1 to 3 words that sounds like a listed word (a crude English phonetic key + string similarity).
+Nothing is replaced here; each spot becomes one yes/no question for the checker.
+
+Also `apply`: rebuild each clip's text from the checker's yes answers into run_hints.py's run shape, so
+score_hints.py scores it unchanged.
+
+  python3 spots.py find <plain-run.jsonl> <hints.json> <spots.jsonl>
+  python3 spots.py apply <plain-run.jsonl> <spots.jsonl> <answers.jsonl> <out-run.jsonl>
+"""
+import json
+import re
+import sys
+from difflib import SequenceMatcher
+from pathlib import Path
+
+WORD = re.compile(r"[A-Za-z0-9'’.-]+")
+
+
+def key(s: str) -> str:
+    """Crude sound key: letters only, common spelling-to-sound folds, vowels collapsed."""
+    s = re.sub(r"[^a-z]", "", s.lower())
+    for a, b in (("ph", "f"), ("ck", "k"), ("qu", "kw"), ("q", "k"), ("x", "ks"), ("z", "s"), ("wh", "w"),
+                 ("gh", "g"), ("ch", "c"), ("sh", "s"), ("th", "t"), ("c", "k"), ("y", "i")):
+        s = s.replace(a, b)
+    s = re.sub(r"(.)\1+", r"\1", s)            # doubled letters
+    head, tail = s[:1], s[1:]
+    tail = re.sub(r"[aeiou]+", "a", tail)       # vowel quality is what recognisers get wrong
+    return head + tail
+
+
+THRESH = float(__import__("os").environ.get("SPOT_THRESH", "0.72"))
+SOUNDEX = __import__("os").environ.get("SPOT_SOUNDEX", "0") == "1"
+TOPK = int(__import__("os").environ.get("SPOT_TOPK", "8"))
+# v2 (2026-09-22, training-data plan section 3): skip spans already holding the word, prefer the shortest span.
+# The frozen checker set (afm-iter/) was built with v1 and is saved; SPOT_V1=1 reproduces v1.
+V2 = __import__("os").environ.get("SPOT_V1", "0") != "1"
+# v2 (2026-09-22, training-data plan section 3): skip spans already holding the word, prefer the shortest span.
+# The frozen checker set (afm-iter/) was built with v1 and is saved; SPOT_V1=1 reproduces v1.
+V2 = __import__("os").environ.get("SPOT_V1", "0") != "1"
+
+
+def soundex(w: str) -> str:
+    if not w:
+        return ""
+    m = {**dict.fromkeys("bfpv", "1"), **dict.fromkeys("cgjkqsxz", "2"), **dict.fromkeys("dt", "3"), "l": "4",
+         **dict.fromkeys("mn", "5"), "r": "6"}
+    out, last = w[0], m.get(w[0], "")
+    for ch in w[1:]:
+        d = m.get(ch, "")
+        if d and d != last:
+            out += d
+        if ch not in "hw":
+            last = d
+    return (out + "000")[:4]
+
+
+def prep(hints):
+    return [(h, key(h), re.sub(r"[^a-z]", "", h.lower())) for h in hints if key(h)]
+
+
+def find_text(text, hk):
+    """Spots in one transcript for prepared hints hk; returns dicts ordered by position."""
+    toks = [(m.start(), m.end(), m.group()) for m in WORD.finditer(text)]
+    cands = []
+    for i in range(len(toks)):
+        for n in (1, 2, 3):
+            if i + n > len(toks):
+                break
+            span = text[toks[i][0]:toks[i + n - 1][1]].rstrip(".")
+            sk, sl = key(span), re.sub(r"[^a-z]", "", span.lower())
+            if len(sk) < 3:
+                continue
+            stoks = set(re.findall(r"[a-z0-9']+", span.lower()))
+            for h, k, hl in hk:
+                if span == h:
+                    continue  # already written exactly right
+                same_case_only = sl == hl and len(span.split()) == len(h.split())
+                if V2 and (same_case_only or set(re.findall(r"[a-z0-9']+", h.lower())) <= stoks):
+                    # v2: the span already holds the word (capitals only, or "by Gaudi"); capitals-only edits never
+                    # reach a judge (founder ruling 2026-09-22). A split compound ("data frame" -> DataFrame) is
+                    # still asked: RULE hard-case-e says joining a split term back is a correction
+                    continue
+                if n > len(h.split()) + 1:
+                    continue
+                if abs(len(sk) - len(k)) > max(2, len(k) // 2):
+                    continue  # same length filter as below, applied first (identical result, far cheaper)
+                sm, sm2 = SequenceMatcher(a=sk, b=k), SequenceMatcher(a=sk[1:], b=k[1:])
+                if (sl != hl and not SOUNDEX and sm.quick_ratio() < THRESH
+                        and sm2.quick_ratio() - 0.05 < THRESH):
+                    continue  # quick_ratio is an upper bound on ratio, so this skip never changes a result
+                sim = 1.0 if sl == hl else max(sm.ratio(),
+                                               sm2.ratio() - 0.05,
+                                               (0.9 if SOUNDEX and soundex(sl) == soundex(hl) else 0.0))
+                if sim >= THRESH and abs(len(sk) - len(k)) <= max(2, len(k) // 2):
+                    cands.append((sim, i, i + n, span, h, toks[i][0], toks[i][0] + len(span)))
+    # per listed word keep its best non-overlapping spots; different words may share a span,
+    # each is its own question
+    cands.sort(key=lambda c: (-c[0], c[2] - c[1]))
+    taken, chosen = {}, []
+    for c in cands:
+        t = taken.setdefault(c[4], [])
+        span = set(range(c[1], c[2]))
+        # v1: a word's spots never overlap. v2: a span nested inside (or around) an already chosen span of
+        # the same word is also offered ("my Awdy" and "Awdy"), so the checker, not the crude sound key,
+        # decides the boundary; at apply time the shortest approved nested span wins
+        nested = lambda o: span <= o or o <= span
+        if all(span.isdisjoint(o) or (V2 and nested(o)) for o in t):
+            t.append(span)
+            chosen.append(c)
+    # at most TOPK questions per dictation: the closest-sounding spots win
+    chosen = sorted(chosen, key=lambda c: -c[0])[:TOPK]
+    return [{"spot": c[3], "word": c[4], "start": c[5], "end": c[6], "sim": round(c[0], 3)}
+            for c in sorted(chosen, key=lambda c: c[5])]
+
+
+def find(plain_run, hints_path, out):
+    hk = prep(json.loads(Path(hints_path).read_text()))
+    rows = [json.loads(l) for l in Path(plain_run).read_text().splitlines() if l.strip()]
+    n_spots = 0
+    with open(out, "w") as f:
+        for r in rows:
+            text = r["plain"].strip()
+            for k_, sp in enumerate(find_text(text, hk)):
+                f.write(json.dumps({"id": r["id"], "spot_n": k_, "sentence": text, **sp}, ensure_ascii=False) + "\n")
+                n_spots += 1
+    print(f"{len(rows)} clips, {n_spots} spots")
+
+
+def apply(plain_run, spots_path, answers_path, out):
+    rows = [json.loads(l) for l in Path(plain_run).read_text().splitlines() if l.strip()]
+    spots = [json.loads(l) for l in Path(spots_path).read_text().splitlines() if l.strip()]
+    ans = {}
+    for l in Path(answers_path).read_text().splitlines():
+        a = json.loads(l)
+        ans[(a["id"], a["spot_n"])] = a.get("yes", False)
+    by = {}
+    for s in spots:
+        by.setdefault(s["id"], []).append(s)
+    with open(out, "w") as f:
+        for r in rows:
+            text = r["plain"].strip()
+            yes = [s for s in by.get(r["id"], []) if ans.get((r["id"], s["spot_n"]))]
+            # nested approved spans: keep the shortest; partial overlaps cannot occur within one word (find)
+            yes = [s for s in yes if not any(o is not s and s["start"] <= o["start"] and o["end"] <= s["end"]
+                                             and (o["end"] - o["start"]) < (s["end"] - s["start"]) for o in yes)]
+            for s in sorted(yes, key=lambda s: -s["start"]):
+                text = text[:s["start"]] + s["word"] + text[s["end"]:]
+            f.write(json.dumps({"id": r["id"], "plain": r["plain"], "boosted": text, "keep": True}, ensure_ascii=False) + "\n")
+
+
+if __name__ == "__main__":
+    {"find": find, "apply": apply}[sys.argv[1]](*sys.argv[2:])
