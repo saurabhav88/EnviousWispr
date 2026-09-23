@@ -242,7 +242,10 @@ public actor LocalPolishServerCoordinator {
     guard intent >= honouredIntent else { return }
     honouredIntent = intent
     deferredRequest = nil
-    changing = changesProcess || target != nil
+    // A same-model restatement needs no process change; marking it
+    // changing would skip the polish of a take that lands during the
+    // idempotent start.
+    changing = changesProcess || (resident == nil && target != nil)
 
     if let resident, changesProcess {
       // Stop the outgoing model BEFORE recording the new resident, so a start
@@ -445,7 +448,7 @@ public final class LocalPolishRuntimeSet {
   /// is changing; the caller refuses the local cleanup as for a missing
   /// endpoint.
   public func holdForImport(_ provider: LLMProvider) async -> Bool {
-    await releaseImportHold()
+    await releaseImportHold()?.value
     guard let runtime = runtime(for: provider) else { return false }
     switch await runtime.acquireLocalServerLease() {
     case .granted(let lease):
@@ -456,9 +459,13 @@ public final class LocalPolishRuntimeSet {
     }
   }
 
-  public func releaseImportHold() async {
-    guard let hold = importHold else { return }
+  /// Takes the current hold synchronously, so a later import's hold can never
+  /// be the one this call releases, and returns the release for the caller
+  /// to await before reconciling.
+  @discardableResult
+  public func releaseImportHold() -> Task<Void, Never>? {
+    guard let hold = importHold else { return nil }
     importHold = nil
-    await hold.runtime.releaseLocalServerLease(hold.lease)
+    return Task { await hold.runtime.releaseLocalServerLease(hold.lease) }
   }
 }

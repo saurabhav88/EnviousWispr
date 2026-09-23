@@ -2,7 +2,6 @@ import AppKit
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
-import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 
@@ -312,18 +311,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   private let observer: KernelHeartPathTelemetryObserver
   private let outcome: KernelFinalizationOutcome
   private let steps: LimbSteps
-  private var localServerLease: (runtime: any EGOneLeaseProviding,
-    lease: LocalPolishServerLease)?
-  private var acquiringLocalServerLease = false
-  private var stopRequestedWhileAcquiringLease = false
-
-  /// The terminal relay calls this after the accepted terminal, including
-  /// cancellation and failure. Release itself wakes a deferred server intent.
-  package func releaseLocalServerLeaseAfterTerminal() {
-    guard let hold = localServerLease else { return }
-    localServerLease = nil
-    Task { await hold.runtime.releaseLocalServerLease(hold.lease) }
-  }
 
   /// PR-5 Rung 5 (#827): the adapter the kernel drives. Held by the driver so
   /// `ensureEngineWarm(reason:)` can read its live readiness and drive
@@ -1193,36 +1180,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .toggleRecording(let config):
       switch kernel.state {
       case .idle:
-        if acquiringLocalServerLease {
-          stopRequestedWhileAcquiringLease = true
-          return
-        }
-        acquiringLocalServerLease = true
-        let runtime: (any EGOneLeaseProviding)? = switch config.llmProvider {
-        case .egOne: steps.llmPolish.egOneRuntime as? any EGOneLeaseProviding
-        case .s1Mini: steps.llmPolish.s1MiniRuntime as? any EGOneLeaseProviding
-        case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: nil
-        }
-        var acquired: (runtime: any EGOneLeaseProviding, lease: LocalPolishServerLease)?
-        var changing = false
-        if let runtime {
-          switch await runtime.acquireLocalServerLease() {
-          case .granted(let lease): acquired = (runtime, lease)
-          case .changing: changing = true
-          }
-        } else if config.llmProvider == .egOne || config.llmProvider == .s1Mini {
-          changing = true
-        }
-        acquiringLocalServerLease = false
-        if stopRequestedWhileAcquiringLease || kernel.state != .idle {
-          stopRequestedWhileAcquiringLease = false
-          if let acquired {
-            await acquired.runtime.releaseLocalServerLease(acquired.lease)
-          }
-          return
-        }
-        localServerLease = acquired
-        steps.llmPolish.localServerChangingAtFreeze = changing
         // Start: clear the prior session's surfaces, capture finalization
         // context AT RECORDING START (PR-4.5 #6, parity with old
         // the old Parakeet pipeline), then mint a new session. `.idle` is also
@@ -1305,16 +1262,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         break
       }
     case .requestStop:
-      if acquiringLocalServerLease {
-        stopRequestedWhileAcquiringLease = true
-        return
-      }
       kernel.requestStop()
     case .cancelRecording:
-      if acquiringLocalServerLease {
-        stopRequestedWhileAcquiringLease = true
-        return
-      }
       kernel.cancel()
     case .reset:
       lastTerminalReason = nil

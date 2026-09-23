@@ -130,6 +130,13 @@ struct EGOneCheckerEligibilityTests {
         == .deliveryDisabled)
     #expect(
       EGOneCheckerEligibility.evaluate(
+        provider: .egOne, baseAdmitted: true, adapterAdmitted: false,
+        deliveryState: .notReady, hostConfigured: false, deliveryEnabled: false,
+        contract: contract, admittedBase: base, language: "en", endpoint: ready,
+        serverReason: nil
+      ).absence == .deliveryDisabled)
+    #expect(
+      EGOneCheckerEligibility.evaluate(
         provider: .egOne, baseAdmitted: true, adapterAdmitted: true,
         deliveryState: .admitted, deliveryEnabled: false, contract: contract,
         admittedBase: base, language: "en", endpoint: ready, serverReason: nil
