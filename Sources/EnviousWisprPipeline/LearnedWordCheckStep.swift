@@ -151,7 +151,9 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
     lastOutcome = nil
     let vocabulary = context.frozenCorrectorVocabulary ?? correctorVocabulary
     let learned = LearnedWordCandidates.learnedWords(from: vocabulary.terms)
-    let questions = LearnedWordCandidates.questions(for: context.text, learned: learned)
+    let questions = LearnedWordCandidates.questions(
+      for: context.text, learned: learned,
+      language: context.englishRulesVetoed ? nil : context.language)
     let start = ContinuousClock.now
     func outcome(approved: Int, applied: Int, contested: Int, reason: Outcome.FallbackReason?)
       -> Outcome
