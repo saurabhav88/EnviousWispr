@@ -359,10 +359,14 @@ enum PasteTargetWindow {
 @MainActor
 enum PasteTargetWindowGate {
   /// Why the gate refused. The raw value is the reason string logged and sent as
-  /// `paste.tier_failures` (`target_window_not_front(<reason>)`).
+  /// `paste.tier_failures` (`target_window_not_confirmed(<reason>)`).
   enum Refusal: String, Equatable, Sendable {
-    /// The app's focused window is another window and the captured field is not the focus.
+    /// The app's focused window was READ and is another window; the captured field is not the
+    /// focus.
     case windowMismatch = "window_mismatch"
+    /// The app's focused window could not be read (failed, absent, not an element) and the
+    /// captured field is not the focus. Not proof another window is front, only no proof ours is.
+    case focusedWindowUnreadable = "focused_window_unreadable"
     /// The captured field's window is unreadable and the field is not the focus.
     case windowUnreadableFocusMismatch = "window_unreadable_focus_mismatch"
     /// The budget refused a read, so the gate could not tell. Fails closed.
@@ -397,12 +401,12 @@ enum PasteTargetWindowGate {
     case .window(let window):
       let application = ax.applicationElement(pid: pid)
       guard admit(application) else { return .budget }
-      if case .window(let focusedWindow) = ax.focusedWindow(of: application),
-        CFEqual(focusedWindow, window)
-      {
-        return nil
+      if case .window(let focusedWindow) = ax.focusedWindow(of: application) {
+        if CFEqual(focusedWindow, window) { return nil }
+        mismatch = .windowMismatch
+      } else {
+        mismatch = .focusedWindowUnreadable
       }
-      mismatch = .windowMismatch
     case .unreadable:
       mismatch = .windowUnreadableFocusMismatch
     }
@@ -892,14 +896,14 @@ internal final class PasteCascadeExecutor {
         step: "tier2_activate", startedAt: tier2ActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2ActivationStart) * 1000,
         outcome: activation.windowRefusal != nil
-          ? "window_not_front" : activated ? "activated" : "not_activated",
+          ? "window_not_confirmed" : activated ? "activated" : "not_activated",
         bundleId: bundleId)
 
       if let windowRefusal = activation.windowRefusal {
         // #3121: the app came front but the captured field's window did not. A Cmd+V now, or
         // Tier 2b's AppleScript paste, would go to the window that IS front. Neither runs;
         // Tier 3 keeps the words on the clipboard and shows the Copied notice.
-        let reason = "target_window_not_front(\(windowRefusal.rawValue)) ms=\(elapsed)"
+        let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
       } else if activated {
@@ -946,7 +950,7 @@ internal final class PasteCascadeExecutor {
         if let windowRefusal = gate.refusal {
           // #3121: same shape as the omnibox refusal below: `.cgEvent` is NOT recorded as
           // attempted, because `pasteToActiveApp` is never called.
-          let reason = "target_window_not_front(\(windowRefusal))"
+          let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["cgevent"] = reason
           emitTierFailureBreadcrumb(stage: "cgevent", reason: reason, bundleId: bundleId)
         } else if !chromiumOmniboxStillFocused {
@@ -1063,7 +1067,7 @@ internal final class PasteCascadeExecutor {
           }
         if let windowRefusal = gate.refusal {
           // #3121: nothing was written and `.appleScript` is not recorded as attempted.
-          let reason = "target_window_not_front(\(windowRefusal))"
+          let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["applescript"] = reason
           emitTierFailureBreadcrumb(stage: "applescript", reason: reason, bundleId: bundleId)
         } else if !chromiumOmniboxStillFocusedForAppleScript {
@@ -1149,12 +1153,12 @@ internal final class PasteCascadeExecutor {
         step: "tier2c_activate", startedAt: tier2cActivationStart,
         elapsedMs: (CFAbsoluteTimeGetCurrent() - tier2cActivationStart) * 1000,
         outcome: activation.windowRefusal != nil
-          ? "window_not_front" : activation.activated ? "activated" : "not_activated",
+          ? "window_not_confirmed" : activation.activated ? "activated" : "not_activated",
         bundleId: bundleId)
       if let windowRefusal = activation.windowRefusal {
         // #3121: the app came front with another of its windows. Its Edit > Paste would paste
         // there, so the probe does not run; Tier 3 follows.
-        let reason = "target_window_not_front(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
+        let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
       } else if activation.activated {
@@ -1208,7 +1212,7 @@ internal final class PasteCascadeExecutor {
               tier1BoundTheTarget: false)
             if let windowRefusal = gate.refusal {
               // The payload stays on the clipboard, as on the `.disabled` arm; Tier 3 follows.
-              let reason = "target_window_not_front(\(windowRefusal))"
+              let reason = "target_window_not_confirmed(\(windowRefusal))"
               tierFailures["menu_paste"] = reason
               emitTierFailureBreadcrumb(stage: "menu_paste", reason: reason, bundleId: bundleId)
             } else {

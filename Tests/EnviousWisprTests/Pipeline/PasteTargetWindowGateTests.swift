@@ -129,7 +129,9 @@ struct PasteTargetWindowGateTests {
     ax.focusedByApplication[pid] = .element(field)
     #expect(refusal(.window(windowA)) == nil)
     ax.focusedByApplication[pid] = .noFocus
-    #expect(refusal(.window(windowA)) == .windowMismatch)
+    #expect(refusal(.window(windowA)) == .focusedWindowUnreadable, "unread is not a different window")
+    ax.focusedWindows[pid] = .absent
+    #expect(refusal(.window(windowA)) == .focusedWindowUnreadable)
   }
 
   @Test("An unreadable captured window passes only while the field itself is focused")
@@ -162,6 +164,8 @@ struct PasteTargetWindowGateTests {
   @Test("Refusal reasons are the strings logged and sent as paste.tier_failures")
   func reasonStrings() {
     #expect(PasteTargetWindowGate.Refusal.windowMismatch.rawValue == "window_mismatch")
+    #expect(
+      PasteTargetWindowGate.Refusal.focusedWindowUnreadable.rawValue == "focused_window_unreadable")
     #expect(
       PasteTargetWindowGate.Refusal.windowUnreadableFocusMismatch.rawValue
         == "window_unreadable_focus_mismatch")
