@@ -444,11 +444,17 @@ internal final class PasteCascadeExecutor {
 
   /// #3106 PR B: told once, with the take and the board's receipt, when a checked cleanup kept a
   /// missed paste's dictation on the board. AppKit decides whether a pill may still show.
-  private let onRetained: (@MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void)?
+  /// `reportShown` must be called exactly once, with the overlay's own verdict: it completes the
+  /// take's `paste.landing_retained` row.
+  private let onRetained: RetainedHandler?
+
+  typealias RetainedHandler = @MainActor (
+    _ takeID: String, _ retainedChangeCount: Int, _ reportShown: @escaping @MainActor (Bool) -> Void
+  ) -> Void
 
   internal init(
     pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
-    onRetained: (@MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void)? = nil
+    onRetained: RetainedHandler? = nil
   ) {
     self.pasteboard = pasteboard
     self.policy = policy
@@ -461,6 +467,17 @@ internal final class PasteCascadeExecutor {
   ///
   /// Route, app and take come from the session's own context, set when it was prepared for this
   /// tier, and the take id is the one the caller snapshotted before delivery began.
+  /// Lets exactly one caller through: a take's `paste.landing_retained` row is completed once.
+  @MainActor
+  private final class ReportOnce {
+    private var done = false
+    func claim() -> Bool {
+      guard !done else { return false }
+      done = true
+      return true
+    }
+  }
+
   func landingCheck(
     for capture: PasteArrivalCapture?, request: PasteDeliveryRequest
   ) -> ClipboardCleanup.LandingCheck? {
@@ -481,8 +498,21 @@ internal final class PasteCascadeExecutor {
       },
       legacyText: request.legacyText,
       onOutcome: { outcome in
-        guard case .retained(let changeCount) = outcome, let takeID else { return }
-        onRetained?(takeID, changeCount)
+        // The ONE owner of `paste.landing_retained`: one row per checked miss, completed once.
+        let tierLabel = tier.rawValue
+        let classLabel = capture.appClass.rawValue
+        let once = ReportOnce()
+        let report: @MainActor (Bool) -> Void = { shown in
+          guard once.claim() else { return }
+          TelemetryService.shared.pasteLandingRetained(
+            takeID: takeID, tier: tierLabel, appClass: classLabel,
+            outcome: outcome == .yielded ? "yielded" : "retained", pillShown: shown)
+        }
+        guard case .retained(let changeCount) = outcome, let takeID, let onRetained else {
+          report(false)
+          return
+        }
+        onRetained(takeID, changeCount, report)
       })
   }
 

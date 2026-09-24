@@ -56,13 +56,17 @@ struct PasteCascadeLandingHandoffTests {
   @MainActor
   final class Calls {
     var retained: [(String, Int)] = []
+    var reports: [@MainActor (Bool) -> Void] = []
   }
 
   private func executor(_ calls: Calls) -> PasteCascadeExecutor {
     let board = NSPasteboard.withUniqueName()
     return PasteCascadeExecutor(
       pasteboard: board, policy: .baseline,
-      onRetained: { takeID, count in calls.retained.append((takeID, count)) })
+      onRetained: { takeID, count, report in
+        calls.retained.append((takeID, count))
+        calls.reports.append(report)
+      })
   }
 
   @Test("No committed session, Tier 1 or an unnamed app: no check, so today's cleanup runs")
@@ -109,6 +113,75 @@ struct PasteCascadeLandingHandoffTests {
     check.onOutcome(.retained(changeCount: 7))
     #expect(calls.retained.isEmpty)
   }
+
+  #if DEBUG
+    // MARK: paste.landing_retained, read through the DEBUG raw hook around synchronous calls
+
+    @MainActor private final class RawBox { var rows: [[String: Any]] = [] }
+
+    /// The raw `paste.landing_retained` dictionaries emitted during one synchronous call; the hook
+    /// in place before is kept for every other event and put back after.
+    private func retainedRows(_ emit: () -> Void) -> [[String: Any]] {
+      let box = RawBox()
+      let prior = TelemetryService.shared.testRawPropertiesHook
+      TelemetryService.shared.testRawPropertiesHook = { @Sendable name, props in
+        guard name == "paste.landing_retained" else {
+          prior?(name, props)
+          return
+        }
+        nonisolated(unsafe) let props = props
+        MainActor.assumeIsolated { box.rows.append(props) }
+      }
+      defer { TelemetryService.shared.testRawPropertiesHook = prior }
+      emit()
+      return box.rows
+    }
+
+    @Test("A retained row waits for the overlay's verdict, then is emitted once with exactly five keys")
+    func retainedRowCarriesThePillVerdictOnce() throws {
+      let calls = Calls()
+      let session = try capture()
+      let check = try #require(executor(calls).landingCheck(for: session, request: request()))
+      let early = retainedRows { check.onOutcome(.retained(changeCount: 7)) }
+      #expect(early.isEmpty, "no row before the overlay answers")
+      let report = try #require(calls.reports.first)
+      let rows = retainedRows {
+        report(true)
+        report(false)  // a second answer is ignored
+      }
+      #expect(rows.count == 1)
+      let row = try #require(rows.first)
+      #expect(Set(row.keys) == ["take_id", "tier", "app_class", "outcome", "pill_shown"])
+      #expect(row["take_id"] as? String == "take-1")
+      #expect(row["tier"] as? String == "cgevent")
+      #expect(row["app_class"] as? String == session.appClass.rawValue)
+      #expect(row["outcome"] as? String == "retained")
+      #expect(row["pill_shown"] as? Bool == true)
+    }
+
+    @Test("A yielded miss is one row at once, pill_shown false, and never reaches AppKit")
+    func yieldedRowIsImmediate() throws {
+      let calls = Calls()
+      let check = try #require(executor(calls).landingCheck(for: try capture(), request: request()))
+      let rows = retainedRows { check.onOutcome(.yielded) }
+      #expect(calls.retained.isEmpty)
+      #expect(rows.count == 1)
+      #expect(rows.first?["outcome"] as? String == "yielded")
+      #expect(rows.first?["pill_shown"] as? Bool == false)
+    }
+
+    @Test("A retained miss with no take id has no pill to show: one row, pill_shown false, no take id")
+    func retainedWithoutTakeIDIsReportedNotShown() throws {
+      let calls = Calls()
+      let check = try #require(
+        executor(calls).landingCheck(for: try capture(), request: request(takeID: nil)))
+      let rows = retainedRows { check.onOutcome(.retained(changeCount: 7)) }
+      #expect(calls.retained.isEmpty)
+      #expect(rows.count == 1)
+      #expect(rows.first?["take_id"] == nil)
+      #expect(rows.first?["pill_shown"] as? Bool == false)
+    }
+  #endif
 
   @Test("A manual-accessibility answer learned during observation is the class the permission uses")
   func appClassIsReadAtDecisionTime() async throws {

@@ -115,6 +115,12 @@ public enum KernelDictationDriverFactory {
   /// Swift package, so `package` is the right access level for these inputs
   /// after `CaptureVADSignalSource` (a stored field below) widened to
   /// `package` to be shareable across drivers.
+  /// #3106 PR B: a checked cleanup kept `takeID`'s dictation (board count `retainedChangeCount`).
+  /// The receiver must call `reportShown` exactly once with the overlay's verdict for the notice.
+  package typealias RetainedCallback = @MainActor (
+    _ takeID: String, _ retainedChangeCount: Int, _ reportShown: @escaping @MainActor (Bool) -> Void
+  ) -> Void
+
   package struct ParakeetInputs {
     package let audioCapture: any AudioCaptureInterface
     package let asrManager: any ASRManagerInterface
@@ -179,7 +185,7 @@ public enum KernelDictationDriverFactory {
     /// #3106 PR B: told once when a checked clipboard cleanup kept a missed paste's dictation on
     /// the board, with that take and the board's change count at that moment. Defaulted like
     /// `onTakeAccepted`.
-    package let onRetained: @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void
+    package let onRetained: RetainedCallback
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -207,9 +213,7 @@ public enum KernelDictationDriverFactory {
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-      onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
-        _, _ in
-      }
+      onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -297,7 +301,7 @@ public enum KernelDictationDriverFactory {
     /// #3106 PR B: told once when a checked clipboard cleanup kept a missed paste's dictation on
     /// the board, with that take and the board's change count at that moment. Defaulted like
     /// `onTakeAccepted`.
-    package let onRetained: @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void
+    package let onRetained: RetainedCallback
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -328,9 +332,7 @@ public enum KernelDictationDriverFactory {
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-      onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
-        _, _ in
-      }
+      onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -523,9 +525,7 @@ public enum KernelDictationDriverFactory {
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
     onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-    onRetained: @escaping @MainActor (_ takeID: String, _ retainedChangeCount: Int) -> Void = {
-      _, _ in
-    }
+    onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme

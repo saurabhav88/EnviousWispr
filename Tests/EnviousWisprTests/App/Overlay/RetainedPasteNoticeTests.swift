@@ -102,9 +102,7 @@ struct RetainedPasteNoticeDirectorTests {
   private final class Board { var count = 10 }
 
   private func notice(_ board: Board, _ log: Log) -> RetainedPasteNotice {
-    let n = RetainedPasteNotice(boardChangeCount: { board.count })
-    n.onPresentation = { log.shown.append(($0, $1)) }
-    return n
+    RetainedPasteNotice(boardChangeCount: { board.count })
   }
 
   @Test("A kept dictation for the latest take shows the notice once and reports it shown")
@@ -115,7 +113,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10)
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
     #expect(isShowing(d))
     #expect(log.announcements.count == 1)
     #expect(log.shown.count == 1 && log.shown.first?.0 == "take-1" && log.shown.first?.1 == true)
@@ -129,7 +127,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10)
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
     #expect(log.shown.isEmpty, "nothing answered before the render")
     board.count = 11
     let render = try #require(deferred())
@@ -146,7 +144,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(Board(), log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10)
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
     n.takeAccepted("take-2")
     let render = try #require(deferred())
     render()
@@ -163,11 +161,11 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
 
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10)  // not connected yet
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // not connected yet
     n.connect(d)
     n.takeAccepted("take-2")
-    n.retained(takeID: "take-1", changeCount: 10)  // older take
-    n.retained(takeID: "take-2", changeCount: 9)  // board moved since
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // older take
+    n.retained(takeID: "take-2", changeCount: 9) { log.shown.append(("take-2", $0)) }  // board moved since
     #expect(isShowing(d) == false)
     #expect(log.announcements.isEmpty)
     #expect(log.shown.map(\.1) == [false, false, false])
@@ -182,7 +180,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(Board(), log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10)
+    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
     #expect(isShowing(d) == false)
     #expect(log.announcements.count == announcedBefore)
     #expect(log.shown.first?.1 == false)

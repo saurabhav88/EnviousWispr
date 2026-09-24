@@ -539,8 +539,9 @@ package final class WisprBootstrapper {
         onTakeAccepted: { [retainedPasteNotice] takeID in
           retainedPasteNotice.takeAccepted(takeID)
         },
-        onRetained: { [retainedPasteNotice] takeID, changeCount in
-          retainedPasteNotice.retained(takeID: takeID, changeCount: changeCount)
+        onRetained: { [retainedPasteNotice] takeID, changeCount, reportShown in
+          retainedPasteNotice.retained(
+            takeID: takeID, changeCount: changeCount, reportShown: reportShown)
         }
       ))
 
@@ -600,8 +601,9 @@ package final class WisprBootstrapper {
         onTakeAccepted: { [retainedPasteNotice] takeID in
           retainedPasteNotice.takeAccepted(takeID)
         },
-        onRetained: { [retainedPasteNotice] takeID, changeCount in
-          retainedPasteNotice.retained(takeID: takeID, changeCount: changeCount)
+        onRetained: { [retainedPasteNotice] takeID, changeCount, reportShown in
+          retainedPasteNotice.retained(
+            takeID: takeID, changeCount: changeCount, reportShown: reportShown)
         }
       ))
 

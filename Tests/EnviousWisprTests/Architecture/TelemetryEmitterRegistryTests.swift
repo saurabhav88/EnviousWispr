@@ -76,8 +76,11 @@ struct TelemetryEmitterRegistryTests {
   /// no new event, same per-take cadence; the row's vocabulary changed under telemetry policy 5
   /// (checklist: existing row, shape not content, Int on the wire, `take_id` unchanged, registry
   /// reader updated for the policy-5 floor).
+  /// #3106 PR B: one NEW event, `paste.landing_retained`, one site in `pasteLandingRetained`
+  /// (checklist: new registry row, per_take, kept whole, shape only with no text, Bool
+  /// `pill_shown`, `take_id` in TAKE_KEYED_EVENTS, reader the #3106 release review).
   static let sitesFingerprint =
-    "91ea69f750a5bf215cc9750f1fb15f16982a6c0e5d6c149a61920f756b98180d"
+    "f8f0047ef994e2c9132be9bf5fe6d5b353e64fa666eb83ecd8664cf3e9770b15"
   static let ungradedFingerprint =
     "1fd54b3c7ba7ac9701ddd2825a5949d0a2cfee218f9f8e66d6eb1931186a0d68"
 

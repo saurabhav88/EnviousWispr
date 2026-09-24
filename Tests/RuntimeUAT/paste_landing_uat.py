@@ -257,6 +257,7 @@ def phase(name):
     sentinel = f"ew-uat-sentinel-landing-{name}"
     u.set_clipboard_text(sentinel)
     base = u.log_size()
+    PHASE_BASE["offset"] = base
     lines, cascades = take(name, base)  # not metered: speech plays into BlackHole
     quiet(f"{name} checks", verify, name, lines, cascades, bar_before, restore_on, sentinel)
 
@@ -299,9 +300,11 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
     else:
         # Chrome reports the page's web area as focused here (measured 2026-09-23: AXWebArea,
         # value ''), so `absent` is as true an answer as `no_target`: the paste went nowhere and
-        # the field did not change. Only `found` would be a false observation. PR A only
-        # observes, so the previous clipboard still comes back below.
-        u.check(f"{name}: observed is never found", observed != "found", f"{observed}/{reason}")
+        # the field did not change. PR B (G5): that miss must KEEP the words and show the pill.
+        u.check(f"{name}: observed is a miss (absent or no_target)",
+                observed in ("absent", "no_target"), f"{observed}/{reason}")
+        verify_kept(name)
+        return
     if restore_on:
         u.check(f"{name}: the previous clipboard is back (restore on)",
                 u.wait_for("the clipboard restore", lambda: u.clipboard_text() == sentinel,
@@ -310,6 +313,41 @@ def verify(name, lines, cascades, bar_before, restore_on, sentinel):
         u.skip(f"{name}: clipboard restore", "the founder's restore setting is off")
     u.check(f"{name}: the tier is not clipboard_only (the only tier that shows the notice)",
             "clipboard_only" not in [t for t, _ in cascades], str(cascades))
+
+
+# PR B: the cleanup's verdict and the notice's, both DEBUG `app.log` lines without text.
+KEPT = re.compile(r"Clipboard cleanup: op=(keep_dictation|yield|restore|legacy_rewrite), "
+                  r"applied=(\w+), delay=\d+ms, tier=(\w+), checked=true")
+NOTICE = re.compile(r"RETAINED_NOTICE take=(\S+) shown=(\w+) why=(\w+)")
+
+
+def verify_kept(name):
+    """G5: the words stay on the clipboard, the existing pill shows, and a manual ⌘V into a text
+    box pastes them once. Reads the log from this phase's take on (`PHASE_BASE`)."""
+    log = lambda: u.log_since(PHASE_BASE["offset"])  # noqa: E731
+    u.wait_for("the checked cleanup's line", lambda: KEPT.search(log()), deadline=10.0)
+    kept = KEPT.findall(log())
+    u.check(f"{name}: the checked cleanup kept the dictation",
+            [k[0] for k in kept] == ["keep_dictation"], str(kept))
+    u.wait_for("the notice's line", lambda: NOTICE.search(log()), deadline=5.0)
+    notices = NOTICE.findall(log())
+    u.check(f"{name}: the \"Copied. Press ⌘V to paste\" notice was shown, once",
+            len(notices) == 1 and notices[0][1] == "true", str(notices))
+    board = u.clipboard_text() or ""
+    u.check(f"{name}: the clipboard holds the dictation (5+ of 7 words)",
+            u.sentence_overlap(board) >= 5, repr(board[:80]))
+    # The user's recovery: click into a text box, press ⌘V.
+    quiet(f"{name} recovery staging", open_page, "focused")
+    import simulate_input
+    simulate_input.press_key("v", cmd=True)
+    landed = u.wait_for("the recovered paste", lambda: u.sentence_overlap(textbox_value() or "") >= 5,
+                        deadline=5.0)
+    value = textbox_value() or ""
+    u.check(f"{name}: ⌘V pastes the kept words into the box, once",
+            landed and value.lower().count(SENTENCE.split()[0].lower()) == 1, repr(value[:80]))
+
+
+PHASE_BASE = {"offset": 0}
 
 
 def phase_textedit():
