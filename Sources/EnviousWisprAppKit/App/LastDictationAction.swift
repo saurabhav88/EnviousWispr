@@ -90,6 +90,10 @@ final class LastDictationAction {
   /// fires on the release; consumed by that release.
   private var chordTarget: NSRunningApplication?
 
+  /// The Copy Last still waiting for the clipboard, if any (#3135). A newer Copy press cancels it:
+  /// the latest press wins, so an older copy cannot wake after a newer one and overwrite it.
+  private var pendingCopy: Task<Void, Never>?
+
   init(environment: Environment) {
     self.environment = environment
   }
@@ -124,7 +128,12 @@ final class LastDictationAction {
   func copyFromChord() -> Task<Void, Never> {
     let recordingAtPress = environment.isDictationActive()
     let rowID = environment.lastPasteable()?.id
-    return Task { finish(.copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress)) }
+    pendingCopy?.cancel()
+    let task = Task {
+      finish(.copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress))
+    }
+    pendingCopy = task
+    return task
   }
 
   // MARK: Copy

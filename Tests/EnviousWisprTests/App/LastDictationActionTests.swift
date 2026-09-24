@@ -452,6 +452,20 @@ struct LastDictationActionTests {
     #expect(fake.copies.count == 1, "no second write")
   }
 
+  @Test("A newer Copy press cancels an older one still waiting, so the older cannot overwrite it")
+  func newerCopyWins() async {
+    let fake = Fake()
+    fake.clipboardHeldPolls = 20
+    let action = makeAction(fake)
+    let older = action.copyFromChord()
+    fake.row = (UUID(), "A newer dictation.")
+    let newer = action.copyFromChord()
+    await older.value
+    await newer.value
+    #expect(fake.copies == ["A newer dictation."], "only the latest press writes")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
   @Test("Copy refuses on a recording in flight at the press even if it ends before the task runs")
   func copyRecordingAtThePress() async {
     let fake = Fake()

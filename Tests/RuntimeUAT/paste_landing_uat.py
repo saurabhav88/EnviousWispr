@@ -691,6 +691,11 @@ def phase_reuse_right_after():
     u.check(f"{name}: Paste Last was pressed right after the key paste", "at" in pressed)
     u.wait_for("the reuse outcome", lambda: u.reuse_lines(base), deadline=8.0)
     reuses = u.reuse_lines(base)
+    if not reuses:
+        # The chord is the DEFAULT Paste Last binding (Control+Command+V); a rebound shortcut never
+        # reaches the action, and that must read as a setup failure, not as this change failing.
+        raise u.Aborted(f"{name}: no Paste Last outcome at all: is Paste Last still bound to the "
+                        "default Control+Command+V?")
     u.check(f"{name}: one Paste Last outcome, dispatched (was clipboard_busy before #3135)",
             reuses == [("paste", "chord", "dispatched")], str(reuses))
     kept = KEPT.findall(u.log_since(base))
