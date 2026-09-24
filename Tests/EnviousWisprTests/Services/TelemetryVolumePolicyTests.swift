@@ -245,6 +245,12 @@ struct TelemetryVolumePolicyTests {
       ["observed": "found", "reason": "other_field", "late_check_status": "not_applicable"],
       ["observed": "found", "reason": 1, "late_check_status": "not_applicable"],
       ["observed": "found", "reason": "same_field", "late_check_status": "not_applicable", "late_found_ms": 40],
+      // The early reason with any other late check or observation (#3141 re-point: the negative
+      // rows above carry no reason, so they never reach these two comparisons).
+      ["observed": "found", "reason": "same_field", "late_check_status": "censored"],
+      ["observed": "found", "reason": "same_field", "late_check_status": "found"],
+      ["observed": "found", "reason": "same_field", "late_check_status": "completed_no_hit"],
+      ["observed": "absent", "reason": "same_field", "late_check_status": "not_applicable"],
     ] {
       #expect(
         Policy.decide(event: event, properties: properties, uuid: Self.droppedUUID) == .keep,
