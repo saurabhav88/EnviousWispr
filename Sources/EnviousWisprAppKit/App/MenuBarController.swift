@@ -307,8 +307,7 @@ final class MenuBarController: NSObject {
       let setupItem = NSMenuItem(
         title: String(
           localized: "menu.setupRequired.continue",
-          defaultValue: "Setup Required: Continue Setup…",
-          bundle: AppKitLocalization.bundle
+          defaultValue: "Setup Required: Continue Setup…"
         ),
         action: #selector(continueOnboardingAction),
         keyEquivalent: ""

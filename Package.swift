@@ -4,8 +4,6 @@ import PackageDescription
 
 let package = Package(
   name: "EnviousWispr",
-  // #3142: required once a target ships a String Catalog (EnviousWisprAppKit/Resources/Localizable.xcstrings).
-  defaultLocalization: "en",
   platforms: [
     .macOS(.v14)
   ],

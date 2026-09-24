@@ -348,8 +348,7 @@ struct AIPolishSettingsView: View {
               Text(
                 LocalizedStringResource(
                   "settings.aiPolish.enable.title",
-                  defaultValue: "Enable AI Polish",
-                  bundle: AppKitLocalization.bundle
+                  defaultValue: "Enable AI Polish"
                 )
               )
                 .settingsRowTitle()
