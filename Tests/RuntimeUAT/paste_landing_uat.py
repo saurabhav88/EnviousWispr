@@ -698,6 +698,11 @@ def phase_reuse_right_after():
                         "default Control+Command+V?")
     u.check(f"{name}: one Paste Last outcome, dispatched (was clipboard_busy before #3135)",
             reuses == [("paste", "chord", "dispatched")], str(reuses))
+    # The reuse must have MET a held board; one that arrived after the cleanup released it would
+    # pass on the old code too. The app logs the wait only when it found the board held.
+    waited = re.findall(r"last dictation reuse: waited for the clipboard ms=(\d+)", u.log_since(base))
+    u.check(f"{name}: Paste Last met the clipboard still held, and waited", len(waited) == 1,
+            str(waited))
     kept = KEPT.findall(u.log_since(base))
     u.check(f"{name}: the miss was still kept by its cleanup", [k[0] for k in kept] == ["keep_dictation"],
             str(kept))

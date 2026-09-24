@@ -39,6 +39,8 @@ struct LastDictationActionTests {
     var pasteStarted = false
     /// Replaces the `clipboardHeldPolls` countdown when set.
     var clipboardHeldOverride: (() -> Bool)?
+    /// Every wait a reuse reported for a held clipboard.
+    var clipboardWaits: [Duration] = []
     var deleted = false
     var dictationActive = false
     var axTrusted = true
@@ -116,6 +118,7 @@ struct LastDictationActionTests {
           if fake.clipboardHeldPolls != Int.max { fake.clipboardHeldPolls -= 1 }
           return true
         },
+        clipboardWaited: { fake.clipboardWaits.append($0) },
         manualPaste: { text, restore in
           fake.pastes.append((text, restore))
           return fake.pasteResult
@@ -433,7 +436,8 @@ struct LastDictationActionTests {
     #expect(fake.pastes.map(\.text) == ["Send the draft to Maya."])
     #expect(fake.clipboardHeldPolls == 0, "every held poll was consumed before the write")
     #expect(!activatedWhileHeld, "focus is moved only once the clipboard is free")
-    #expect(fake.sleeps >= 30)
+    #expect(fake.clipboardWaits.count == 1, "the wait on a held board is reported once")
+    #expect(fake.sleeps == 29, "30 held reads: the entry check, then one per sleep until free")
   }
 
   @Test("A hold that outlasts the bound refuses as clipboard_busy, without moving focus or writing")
@@ -459,6 +463,7 @@ struct LastDictationActionTests {
     await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(outcomes(fake) == ["dispatched"])
     #expect(fake.sleeps == 0)
+    #expect(fake.clipboardWaits.isEmpty, "a free board reports no wait")
   }
 
   @Test("Copy waits for the clipboard too, and a recording that starts meanwhile stops it")

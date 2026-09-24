@@ -67,6 +67,9 @@ final class LastDictationAction {
     /// Whether the clipboard is still held by the last dictation's cleanup or a Quick Add takeover,
     /// so a reuse write now would be refused (#3135). `ClipboardCleanup.isBoardHeldForManualWrite`.
     var clipboardHeld: @MainActor () -> Bool
+    /// Told how long a reuse waited when it found the clipboard held (#3135); DEBUG log in
+    /// production, so a live check can prove it met a held board rather than a free one.
+    var clipboardWaited: @MainActor (Duration) -> Void
     /// `ClipboardCleanup.manualPaste` on the general board with the real Cmd+V, in production.
     var manualPaste:
       @MainActor (_ text: String, _ restore: Bool) -> ClipboardCleanup.ManualClipboardResult
@@ -271,9 +274,12 @@ final class LastDictationAction {
   /// otherwise. The write still claims the board itself, so a hold that returns after this wait is
   /// refused there exactly as before.
   private func waitForClipboard() async -> Outcome? {
-    switch await waitUntil(
+    guard environment.clipboardHeld() else { return nil }
+    let started = environment.now()
+    let result = await waitUntil(
       within: ClipboardCleanup.manualWriteWaitBound, { !self.environment.clipboardHeld() })
-    {
+    environment.clipboardWaited(environment.now() - started)
+    switch result {
     case .met: return nil
     case .expired: return .clipboardBusy
     case .cancelled: return .cancelled
@@ -350,6 +356,13 @@ extension LastDictationAction {
         },
         restoreClipboard: { [weak settings] in settings?.restoreClipboardAfterPaste ?? true },
         clipboardHeld: { ClipboardCleanup.isBoardHeldForManualWrite(.general) },
+        clipboardWaited: { waited in
+          Task {
+            await AppLogger.shared.log(
+              "last dictation reuse: waited for the clipboard ms=\(waited.components.seconds * 1000 + waited.components.attoseconds / 1_000_000_000_000_000)",
+              level: .info, category: "LastDictation")
+          }
+        },
         manualPaste: { text, restore in
           ClipboardCleanup.manualPaste(
             text: text, restore: restore, on: .general,
