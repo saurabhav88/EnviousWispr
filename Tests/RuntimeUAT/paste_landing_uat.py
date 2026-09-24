@@ -169,7 +169,7 @@ def address_bar_value():
 
 
 EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea", "readonly": "AXTextArea",
-                  "copy-during-wait": "AXWebArea"}
+                  "copy-during-wait": "AXWebArea", "new-take": "AXWebArea"}
 
 
 class LiveTakeNotStopped(u.Aborted):
@@ -181,7 +181,7 @@ class LiveTakeNotStopped(u.Aborted):
 TAKE_STUCK = {"stuck": False}
 
 
-def take(label, base, bundle=CHROME, route=None):
+def take(label, base, bundle=CHROME, route=None, expected_takes=1):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -212,7 +212,8 @@ def take(label, base, bundle=CHROME, route=None):
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)
         starts = u.log_since(base).count("Recording started")
-        u.check(f"{label}: exactly one take", starts == 1, f"{starts} takes started")
+        u.check(f"{label}: exactly {expected_takes} take(s)", starts == expected_takes,
+                f"{starts} takes started")
         u.check(f"{label}: the take captured through the virtual device", virtual, str(transports))
     finally:
         try:
@@ -363,6 +364,44 @@ def verify_kept(name):
 PHASE_BASE = {"offset": 0}
 
 
+def phase_new_take_after_miss():
+    """§8 (#3106 PR B): a new dictation starts between a missed paste and its notice. The old
+    notice must not show; the words stay on the clipboard (the cleanup already kept them). A
+    watcher presses the push-to-talk key the moment the cascade logs the first paste, and holds it
+    silently (the route is still BlackHole), so the second take has no speech and pastes nothing."""
+    import threading
+    import simulate_input
+    name = "nofocus"
+    print("\n== new take after a miss: a second dictation starts before the notice")
+    quiet("newtake staging", open_page, name)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    started = {"at": None}
+
+    def second_take_on_paste():
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if CASCADE.search(u.log_since(base)):
+                started["at"] = time.time()
+                simulate_input.hold_modifier(61, 1.2)  # right Option: the configured push-to-talk
+                return
+            time.sleep(0.005)
+    watcher = threading.Thread(target=second_take_on_paste, daemon=True)
+    watcher.start()
+    lines, cascades = take("new-take", base, expected_takes=2)
+    watcher.join(timeout=10)
+    u.check("newtake: the second take started right after the paste", started["at"] is not None)
+    u.check("newtake: the first paste was a miss",
+            len(lines) >= 1 and lines[0][1] in ("absent", "no_target"), str(lines))
+    u.wait_for("the notice verdict", lambda: NOTICE.search(u.log_since(base)), deadline=10.0)
+    notices = NOTICE.findall(u.log_since(base))
+    u.check("newtake: the old take's notice was not shown",
+            len(notices) == 1 and notices[0][1] == "false", str(notices))
+    kept = KEPT.findall(u.log_since(base))
+    u.check("newtake: the words were still kept on the clipboard",
+            "keep_dictation" in [k[0] for k in kept], str(kept))
+
+
 def phase_copy_during_wait():
     """§8 (#3106 PR B): the user copies something between the paste and the landing decision. The
     miss must YIELD: their copy stays on the clipboard, nothing is rewritten, no notice shows. A
@@ -436,7 +475,7 @@ def verify_textedit(base, delivered, restore_on, sentinel):
         u.check("textedit: no landing row on the ax_direct tier", lines == [], str(lines))
 
 
-PHASES = ["focused", "nofocus", "textedit", "readonly", "copy"]
+PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake"]
 
 
 def main():
@@ -468,6 +507,8 @@ def main():
                 phase_textedit()
             elif name == "copy":
                 phase_copy_during_wait()
+            elif name == "newtake":
+                phase_new_take_after_miss()
             else:
                 phase(name)
     except u.Aborted as e:
