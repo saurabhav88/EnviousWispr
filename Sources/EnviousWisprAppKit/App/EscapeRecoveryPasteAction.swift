@@ -232,6 +232,7 @@ enum EscapeRecoveryPasteAction {
         payload,
         forceActivate: { application.forceActivate(processIdentifier: $0) },
         activateFallback: { application.activate($0) },
+        raiseWindow: { application.raiseWindow(of: $0) },
         focusElement: { application.focus($0) })
     }
   }
@@ -249,6 +250,8 @@ enum EscapeRecoveryPasteAction {
     // test could reach by simply not overriding it. The seam existed; the default
     // is what made it optional.
     activateFallback: (NSRunningApplication) -> Bool,
+    // #3121: no default either, for the same reason: a live raise moves the developer's windows.
+    raiseWindow: (AXUIElement) -> Bool?,
     // #2455 C3: the THIRD live default in this signature. Two rounds each closed
     // one and reported the path shut. Counting the routes before claiming closure
     // is now RULE: fix-the-path-that-runs-first-not-the-one-you-were-reading.
@@ -262,6 +265,13 @@ enum EscapeRecoveryPasteAction {
       return false
     }
     guard let element = payload.targetElement else { return true }
+    // #3121: activating the app brought back ITS key window, which may be another window of the
+    // same app. Raise the field's own window first. A readable window that refuses the raise keeps
+    // the recovery on the clipboard; an unreadable one leaves the field focus to decide, as before.
+    // Not verified here that the window came front: the switch is asynchronous (about 60 ms), so
+    // a synchronous check would refuse correct retargets. The check after the hide delay is a
+    // follow-up.
+    if raiseWindow(element) == false { return false }
     return focusElement(element)
   }
 }

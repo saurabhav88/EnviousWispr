@@ -55,6 +55,18 @@ package final class LiveDesktopPresentationEffects: ApplicationActivating, Panel
     PasteService.focusElement(element)
   }
 
+  /// The window read is the paste cascade's (`LivePastedRegionAXOperations.window(of:)`) and the
+  /// raise is `PasteService.raiseWindow`; each call is bounded by the usual 0.5 s. The field's
+  /// timeout goes back to `0`, the global default it had.
+  package func raiseWindow(of element: AXUIElement) -> Bool? {
+    let ax = LivePastedRegionAXOperations()
+    let bound = PasteService.axMessagingTimeoutSeconds
+    guard ax.setMessagingTimeout(element, seconds: bound) else { return nil }
+    defer { _ = ax.setMessagingTimeout(element, seconds: 0) }
+    guard case .window(let window) = ax.window(of: element) else { return nil }
+    return PasteService.raiseWindow(window) { ax.setMessagingTimeout($0, seconds: bound) }
+  }
+
   package func makeKeyAndOrderFront(_ panel: NSPanel) {
     panel.makeKeyAndOrderFront(nil)
   }
