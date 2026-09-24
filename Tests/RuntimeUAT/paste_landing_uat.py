@@ -186,6 +186,7 @@ def address_bar_value():
 
 
 EXPECTED_FOCUS = {"focused": "AXTextArea", "nofocus": "AXWebArea", "readonly": "AXTextArea",
+                  "reuseafter": "AXWebArea",
                   "copy-during-wait": "AXWebArea", "new-take": "AXWebArea"}
 
 
@@ -662,8 +663,56 @@ def verify_other_window(name, close_target, lines, cascades, done, restore_on, s
             u.sentence_overlap(board) >= 5, repr(board[:80]))
 
 
+def phase_reuse_right_after():
+    """#3135. A key paste into a Chrome page with nothing focused (a checked miss, so the cleanup
+    holds the clipboard through the landing decision), then Paste Last (Control+Command+V) the
+    moment the cascade logs its tier. Measured on main at ec30ec68: `clipboard_busy`, silently. Now
+    the reuse waits for the cleanup and pastes. (A LANDED paste releases the board in ~200 ms, before
+    this chord's release arrives, so it passed on main too and proves nothing here.)"""
+    import threading
+    name = "reuseafter"
+    print(f"\n== {name}: Paste Last pressed right after a dictation's key paste")
+    quiet(f"{name} staging", open_page, "nofocus")
+    sentinel = f"ew-uat-sentinel-landing-{name}"
+    u.set_clipboard_text(sentinel)
+    base = u.log_size()
+    PHASE_BASE["offset"] = base
+    pressed = {}
+
+    def press_when_pasted():
+        if u.wait_for("the take's key paste", lambda: CASCADE.search(u.log_since(base)),
+                      deadline=30.0):
+            pressed["at"] = time.monotonic()
+            u.chord("v")
+    thread = threading.Thread(target=press_when_pasted, daemon=True)
+    thread.start()
+    take(name, base)
+    thread.join(timeout=5.0)
+    u.check(f"{name}: Paste Last was pressed right after the key paste", "at" in pressed)
+    u.wait_for("the reuse outcome", lambda: u.reuse_lines(base), deadline=8.0)
+    reuses = u.reuse_lines(base)
+    if not reuses:
+        # The chord is the DEFAULT Paste Last binding (Control+Command+V); a rebound shortcut never
+        # reaches the action, and that must read as a setup failure, not as this change failing.
+        raise u.Aborted(f"{name}: no Paste Last outcome at all: is Paste Last still bound to the "
+                        "default Control+Command+V?")
+    u.check(f"{name}: one Paste Last outcome, dispatched (was clipboard_busy before #3135)",
+            reuses == [("paste", "chord", "dispatched")], str(reuses))
+    # The reuse must have MET a held board; one that arrived after the cleanup released it would
+    # pass on the old code too. The app logs the wait only when it found the board held.
+    wait_line = r"last dictation reuse: waited for the clipboard ms=(\d+)"
+    # Written by its own logging task, so it may land after the outcome line: waited for, not read.
+    u.wait_for("the reuse's wait line", lambda: re.search(wait_line, u.log_since(base)), deadline=5.0)
+    waited = re.findall(wait_line, u.log_since(base))
+    u.check(f"{name}: Paste Last met the clipboard still held, and waited", len(waited) == 1,
+            str(waited))
+    kept = KEPT.findall(u.log_since(base))
+    u.check(f"{name}: the miss was still kept by its cleanup", [k[0] for k in kept] == ["keep_dictation"],
+            str(kept))
+
+
 PHASES = ["focused", "nofocus", "textedit", "readonly", "copy", "newtake", "otherwindow",
-          "closedwindow"]
+          "closedwindow", "reuseafter"]
 
 
 def main():
@@ -697,6 +746,8 @@ def main():
                 phase_copy_during_wait()
             elif name == "newtake":
                 phase_new_take_after_miss()
+            elif name == "reuseafter":
+                phase_reuse_right_after()
             elif name in ("otherwindow", "closedwindow"):
                 phase_other_window(close_target=name == "closedwindow")
             else:

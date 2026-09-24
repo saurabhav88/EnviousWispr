@@ -218,6 +218,8 @@ struct ManualClipboardTransactionTests {
         }
         let before = pb.changeCount
         var dispatches = 0
+        // #3135: the predicate Paste/Copy Last waits on says held exactly where the write refuses.
+        #expect(ClipboardCleanup.isBoardHeldForManualWrite(pb), "legacyRewrite=\(legacyRewrite)")
 
         let paste = ClipboardCleanup.manualPaste(text: "reused", restore: true, on: pb) {
           dispatches += 1
@@ -235,12 +237,22 @@ struct ManualClipboardTransactionTests {
     }
   }
 
+  @Test("An idle board is not held (#3135)")
+  func idleBoardIsNotHeld() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      #expect(!ClipboardCleanup.isBoardHeldForManualWrite(pb))
+    }
+  }
+
   @Test("A stale pending restore is dropped, so it cannot fire over the new text")
   func stalePendingIsCancelled() async {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
       dictationJustPasted(on: pb)
       put("the board moved on", on: pb)  // the pending restore is now stale
+      #expect(!ClipboardCleanup.isBoardHeldForManualWrite(pb), "a stale pending is not a hold")
+      #expect(ClipboardCleanup.hasPending, "the probe cancels nothing; only the claim does")
 
       #expect(ClipboardCleanup.manualCopy(text: "send the draft to Maya", on: pb) == .copied)
       #expect(!ClipboardCleanup.hasPending)
@@ -261,6 +273,7 @@ struct ManualClipboardTransactionTests {
       }
       let before = pb.changeCount
       var dispatches = 0
+      #expect(ClipboardCleanup.isBoardHeldForManualWrite(pb), "a takeover is a hold")
 
       let paste = ClipboardCleanup.manualPaste(text: "reused", restore: false, on: pb) {
         dispatches += 1

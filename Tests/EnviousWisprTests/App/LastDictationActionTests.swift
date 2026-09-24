@@ -20,7 +20,27 @@ import Testing
 struct LastDictationActionTests {
 
   private final class Fake {
-    var row: (id: UUID, text: String)? = (UUID(), "Send the draft to Maya.")
+    var row: (id: UUID, text: String)? = (UUID(), "Send the draft to Maya.") {
+      didSet { if let row { history[row.id] = row.text } }
+    }
+    /// Every row ever shown, by id, as History keeps them: a newer dictation does not remove an older
+    /// one, so a reuse that captured an id can still read it (#3135 R2-1).
+    var history: [UUID: String] = [:]
+    /// How many polls report the clipboard still held by a cleanup; `Int.max` means never released.
+    var clipboardHeldPolls = 0
+    /// Whether a sleep really suspends (yields the main actor), so another action can run inside a
+    /// wait. Off by default: most tests want a wait to run to its end in one go.
+    var yieldOnSleep = false
+    /// Resumed by the first sleep, so a test can await "an action is now inside its wait" instead
+    /// of guessing with a number of yields.
+    var sleepEntered: CheckedContinuation<Void, Never>?
+    /// Set when a Paste first reads the modifiers, its first step after its press. Lets a test
+    /// hold the clipboard exactly until a newer Paste has started, whatever order the tasks run in.
+    var pasteStarted = false
+    /// Replaces the `clipboardHeldPolls` countdown when set.
+    var clipboardHeldOverride: (() -> Bool)?
+    /// Every wait a reuse reported for a held clipboard.
+    var clipboardWaits: [Duration] = []
     var deleted = false
     var dictationActive = false
     var axTrusted = true
@@ -48,6 +68,10 @@ struct LastDictationActionTests {
     var lag: Duration = .zero
     /// Runs when the target is activated, so a test can change the world during that wait.
     var duringActivation: (() -> Void)?
+
+    init() {
+      if let row { history[row.id] = row.text }
+    }
   }
 
   private static let own = ProcessInfo.processInfo.processIdentifier
@@ -67,8 +91,8 @@ struct LastDictationActionTests {
       environment: .init(
         lastPasteable: { fake.row },
         textForReuse: { id in
-          guard !fake.deleted, let row = fake.row, row.id == id else { return nil }
-          return row.text
+          guard !fake.deleted else { return nil }
+          return fake.history[id]
         },
         isDictationActive: { fake.dictationActive },
         isAccessibilityTrusted: { fake.axTrusted },
@@ -82,11 +106,19 @@ struct LastDictationActionTests {
           return fake.activationSucceeds
         },
         modifiersHeld: {
+          fake.pasteStarted = true
           guard fake.heldPolls > 0 else { return false }
           if fake.heldPolls != Int.max { fake.heldPolls -= 1 }
           return true
         },
         restoreClipboard: { true },
+        clipboardHeld: {
+          if let override = fake.clipboardHeldOverride { return override() }
+          guard fake.clipboardHeldPolls > 0 else { return false }
+          if fake.clipboardHeldPolls != Int.max { fake.clipboardHeldPolls -= 1 }
+          return true
+        },
+        clipboardWaited: { fake.clipboardWaits.append($0) },
         manualPaste: { text, restore in
           fake.pastes.append((text, restore))
           return fake.pasteResult
@@ -102,20 +134,32 @@ struct LastDictationActionTests {
           fake.sleeps += 1
           fake.clock += duration + fake.lag
           fake.duringWait?()
+          if let entered = fake.sleepEntered {
+            fake.sleepEntered = nil
+            entered.resume()
+          }
+          if fake.yieldOnSleep { await Task.yield() }
         },
         now: { fake.clock }))
   }
 
   private func outcomes(_ fake: Fake) -> [String] { fake.reports.map(\.2) }
 
+  /// Returns once some action has entered a wait (its first sleep). The suites run these under a
+  /// time limit, so an action that never sleeps fails the test rather than hanging it.
+  private func actionEnteredWait(_ fake: Fake) async {
+    if fake.sleeps > 0 { return }
+    await withCheckedContinuation { fake.sleepEntered = $0 }
+  }
+
   // MARK: Copy
 
   @Test("Copy needs no target and no Accessibility, and works with our own window in front")
-  func copyNeedsNothingButARow() {
+  func copyNeedsNothingButARow() async {
     let fake = Fake()
     fake.axTrusted = false
     fake.frontmost = NSRunningApplication.current
-    makeAction(fake).copyFromChord()
+    await makeAction(fake).copyFromChord().value
     #expect(fake.copies == ["Send the draft to Maya."])
     #expect(outcomes(fake) == ["copied"])
     #expect(fake.reports.first?.0 == .copy && fake.reports.first?.1 == .chord)
@@ -123,13 +167,13 @@ struct LastDictationActionTests {
   }
 
   @Test("Copy refuses while a dictation is in flight, and with nothing to reuse")
-  func copyRefusals() {
+  func copyRefusals() async {
     let fake = Fake()
     fake.dictationActive = true
-    makeAction(fake).copyFromChord()
+    await makeAction(fake).copyFromChord().value
     fake.dictationActive = false
     fake.row = nil
-    makeAction(fake).copyFromChord()
+    await makeAction(fake).copyFromChord().value
     #expect(fake.copies.isEmpty)
     #expect(outcomes(fake) == ["recording", "no_dictation"])
   }
@@ -142,10 +186,10 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.own = us
     let action = makeAction(fake)
-    await action.pasteFromMenu(rowID: fake.row?.id, target: us)
+    await action.pasteFromMenu(rowID: fake.row?.id, target: us).value
     fake.terminated = [a.processIdentifier]
-    await action.pasteFromMenu(rowID: fake.row?.id, target: a)
-    await action.pasteFromMenu(rowID: fake.row?.id, target: nil)
+    await action.pasteFromMenu(rowID: fake.row?.id, target: a).value
+    await action.pasteFromMenu(rowID: fake.row?.id, target: nil).value
     #expect(outcomes(fake) == ["own_window", "target_gone", "target_gone"])
     #expect(fake.pastes.isEmpty)
     #expect(fake.activated.isEmpty)
@@ -158,9 +202,9 @@ struct LastDictationActionTests {
     fake.frontmost = a
     let rendered = fake.row?.id
     fake.deleted = true
-    await makeAction(fake).pasteFromMenu(rowID: rendered, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: rendered, target: a).value
     fake.row = nil  // imported-only History: nothing eligible at all
-    await makeAction(fake).pasteFromMenu(rowID: nil, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: nil, target: a).value
     #expect(outcomes(fake) == ["no_dictation", "no_dictation"])
     #expect(fake.pastes.isEmpty)
   }
@@ -171,11 +215,11 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = a
     fake.dictationActive = true
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     fake.dictationActive = false
     fake.axTrusted = false
     let action = makeAction(fake)
-    await action.pasteFromMenu(rowID: fake.row?.id, target: a)
+    await action.pasteFromMenu(rowID: fake.row?.id, target: a).value
     action.notePasteChordPressed()
     await action.pasteFromChord().value
     #expect(outcomes(fake) == ["recording", "ax_denied", "ax_denied"])
@@ -205,9 +249,9 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = a
     fake.pasteResult = .clipboardBusy
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     fake.pasteResult = .dispatchFailed
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(outcomes(fake) == ["clipboard_busy", "dispatch_failed"])
   }
 
@@ -249,7 +293,7 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = a
     fake.heldPolls = 3
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.sleeps == 3, "exactly as many polls as the keys stayed down")
     #expect(outcomes(fake) == ["dispatched"])
   }
@@ -260,7 +304,7 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = a
     fake.heldPolls = Int.max
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(outcomes(fake) == ["keys_held"])
     #expect(fake.pastes.isEmpty)
     #expect(
@@ -275,7 +319,7 @@ struct LastDictationActionTests {
     fake.frontmost = a
     fake.heldPolls = Int.max
     fake.lag = .milliseconds(490)  // each 10 ms poll actually takes half a second
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.sleeps == 2, "one second of wall time, however few polls fit in it")
     #expect(outcomes(fake) == ["keys_held"])
     #expect(fake.pastes.isEmpty)
@@ -288,7 +332,7 @@ struct LastDictationActionTests {
     fake.frontmost = a
     fake.heldPolls = 2  // held at the start and after the first poll; up on the second
     fake.lag = .milliseconds(490)  // and the second poll resumes one full second in
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.sleeps == 2)
     #expect(outcomes(fake) == ["keys_held"])
     #expect(fake.pastes.isEmpty)
@@ -301,7 +345,7 @@ struct LastDictationActionTests {
     fake.frontmost = a
     fake.heldPolls = 1  // released by the first poll, the same poll the task is cancelled in
     fake.duringWait = { withUnsafeCurrentTask { $0?.cancel() } }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.sleeps == 1)
     #expect(outcomes(fake) == ["cancelled"])
     #expect(fake.pastes.isEmpty)
@@ -314,10 +358,9 @@ struct LastDictationActionTests {
     fake.frontmost = a
     let action = makeAction(fake)
     let rowID = fake.row?.id
-    let task = Task { @MainActor in
-      withUnsafeCurrentTask { $0?.cancel() }
-      await action.pasteFromMenu(rowID: rowID, target: a)
-    }
+    // Cancelled before it first runs: the menu entry returns its task synchronously (#3135).
+    let task = action.pasteFromMenu(rowID: rowID, target: a)
+    task.cancel()
     await task.value
     #expect(fake.sleeps == 0)
     #expect(outcomes(fake) == ["cancelled"])
@@ -344,12 +387,13 @@ struct LastDictationActionTests {
   }
 
   @Test("Copy takes the row present at the press, whatever happens after")
-  func copyUsesTheRowAtThePress() {
+  func copyUsesTheRowAtThePress() async {
     let fake = Fake()
     let pressed = fake.row?.text
     let action = makeAction(fake)
-    action.copyFromChord()
+    let copying = action.copyFromChord()
     fake.row = (UUID(), "A newer dictation.")
+    await copying.value
     #expect(fake.copies == [pressed].compactMap { $0 })
   }
 
@@ -359,7 +403,7 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = b  // the target must be brought forward
     fake.duringActivation = { fake.heldPolls = Int.max }  // the user presses Control meanwhile
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.activated == [a.processIdentifier])
     #expect(outcomes(fake) == ["keys_held"])
     #expect(fake.pastes.isEmpty)
@@ -371,10 +415,154 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = a
     fake.pasteResult = .writeFailed
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     fake.copyResult = .writeFailed
-    makeAction(fake).copyFromChord()
+    await makeAction(fake).copyFromChord().value
     #expect(outcomes(fake) == ["write_failed", "write_failed"])
+  }
+
+  // MARK: The clipboard is still held by the last dictation (#3135)
+
+  @Test("A paste pressed while the last dictation's cleanup holds the clipboard waits, then pastes")
+  func pasteWaitsForTheClipboard() async throws {
+    let (a, b) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = b  // the target must be brought forward, so activation order is visible
+    fake.clipboardHeldPolls = 30  // about 300 ms of a pending landing decision
+    var activatedWhileHeld = false
+    fake.duringActivation = { activatedWhileHeld = fake.clipboardHeldPolls > 0 }
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
+    #expect(outcomes(fake) == ["dispatched"])
+    #expect(fake.pastes.map(\.text) == ["Send the draft to Maya."])
+    #expect(fake.clipboardHeldPolls == 0, "every held poll was consumed before the write")
+    #expect(!activatedWhileHeld, "focus is moved only once the clipboard is free")
+    #expect(fake.clipboardWaits.count == 1, "the wait on a held board is reported once")
+    #expect(fake.sleeps == 29, "30 held reads: the entry check, then one per sleep until free")
+  }
+
+  @Test("A hold that outlasts the bound refuses as clipboard_busy, without moving focus or writing")
+  func pasteGivesUpAtTheBound() async throws {
+    let (a, b) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = b
+    fake.clipboardHeldPolls = Int.max
+    let started = fake.clock
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
+    #expect(outcomes(fake) == ["clipboard_busy"])
+    #expect(fake.pastes.isEmpty && fake.activated.isEmpty)
+    // Measured on the monotonic clock: the bound, not a count of sleeps.
+    #expect(fake.clock - started >= ClipboardCleanup.manualWriteWaitBound)
+    #expect(ClipboardCleanup.manualWriteWaitBound == .milliseconds(3500))
+  }
+
+  @Test("A free clipboard adds no wait")
+  func freeClipboardAddsNoWait() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
+    #expect(outcomes(fake) == ["dispatched"])
+    #expect(fake.sleeps == 0)
+    #expect(fake.clipboardWaits.isEmpty, "a free board reports no wait")
+  }
+
+  @Test("Copy waits for the clipboard too, and a recording that starts meanwhile stops it")
+  func copyWaitsForTheClipboard() async {
+    let fake = Fake()
+    fake.clipboardHeldPolls = 20
+    await makeAction(fake).copyFromChord().value
+    #expect(outcomes(fake) == ["copied"])
+    #expect(fake.copies == ["Send the draft to Maya."])
+
+    fake.clipboardHeldPolls = 20
+    fake.duringWait = { fake.dictationActive = true }
+    await makeAction(fake).copyFromChord().value
+    #expect(outcomes(fake).last == "recording")
+    #expect(fake.copies.count == 1, "no second write")
+  }
+
+  @Test("A newer Copy pressed WHILE an older one waits cancels it, so the older cannot overwrite it")
+  func newerCopyWins() async {
+    let fake = Fake()
+    fake.clipboardHeldPolls = 20
+    let action = makeAction(fake)
+    var newer: Task<Void, Never>?
+    // Pressed during the older copy's first sleep, so the older is already inside its wait.
+    fake.duringWait = {
+      guard newer == nil else { return }
+      fake.row = (UUID(), "A newer dictation.")
+      newer = action.copyFromChord()
+    }
+    await action.copyFromChord().value
+    await newer?.value
+    #expect(newer != nil)
+    #expect(fake.copies == ["A newer dictation."], "only the latest press writes")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
+  @Test("A newer Copy cancels an older one that has not started, even with the clipboard free")
+  func newerCopyWinsOnAFreeBoard() async {
+    let fake = Fake()
+    let action = makeAction(fake)
+    let older = action.copyFromChord()  // not yet run
+    fake.row = (UUID(), "A newer dictation.")
+    let newer = action.copyFromChord()
+    await older.value
+    await newer.value
+    #expect(fake.copies == ["A newer dictation."], "the cancelled copy did not write")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
+  @Test("A Paste Last that writes cancels an older Copy still waiting", .timeLimit(.minutes(1)))
+  func pasteCancelsWaitingCopy() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    fake.yieldOnSleep = true
+    // Held until the newer Paste has started, then free: the Paste goes straight through while the
+    // Copy is still asleep in its wait, whichever task the main actor runs first.
+    fake.clipboardHeldOverride = { !fake.pasteStarted }
+    let action = makeAction(fake)
+    let copying = action.copyFromChord()
+    await actionEnteredWait(fake)  // the copy is inside its clipboard wait
+    await action.pasteFromMenu(rowID: fake.row?.id, target: a).value
+    await copying.value
+    #expect(fake.pastes.count == 1)
+    #expect(fake.copies.isEmpty, "the older copy did not wake and overwrite the pasted text")
+    #expect(outcomes(fake).sorted() == ["cancelled", "dispatched"])
+  }
+
+  @Test(
+    "A newer Copy supersedes an older Paste still waiting, so the paste cannot replace it",
+    .timeLimit(.minutes(1)))
+  func copySupersedesWaitingPaste() async throws {
+    let (a, _) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = a
+    fake.clipboardHeldPolls = Int.max
+    fake.yieldOnSleep = true
+    let action = makeAction(fake)
+    action.notePasteChordPressed()
+    let pasting = action.pasteFromChord()  // waits: the clipboard stays held
+    await actionEnteredWait(fake)  // the paste is inside its clipboard wait
+    fake.row = (UUID(), "A newer dictation.")
+    fake.clipboardHeldPolls = 0
+    await action.copyFromChord().value  // the newer action: copies B
+    await pasting.value
+    #expect(fake.copies == ["A newer dictation."])
+    #expect(fake.pastes.isEmpty, "the older paste did not wake and replace the copy")
+    #expect(outcomes(fake).sorted() == ["cancelled", "copied"])
+  }
+
+  @Test("Copy refuses on a recording in flight at the press even if it ends before the task runs")
+  func copyRecordingAtThePress() async {
+    let fake = Fake()
+    fake.dictationActive = true
+    let copying = makeAction(fake).copyFromChord()
+    fake.dictationActive = false
+    await copying.value
+    #expect(outcomes(fake) == ["recording"])
+    #expect(fake.copies.isEmpty)
   }
 
   // MARK: Re-checks after the awaits
@@ -401,9 +589,9 @@ struct LastDictationActionTests {
     fake.frontmost = a
     fake.axTrusted = false
     fake.terminated = [a.processIdentifier]
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     fake.terminated = []
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: us)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: us).value
     #expect(outcomes(fake) == ["target_gone", "own_window"])
     #expect(fake.permissionsOpened == 0, "granting Accessibility would not make either pasteable")
     #expect(fake.pastes.isEmpty)
@@ -416,17 +604,17 @@ struct LastDictationActionTests {
     fake.frontmost = b  // the target is not in front, so a paste would activate it
     fake.heldPolls = 1
     fake.duringWait = { fake.dictationActive = true }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     fake.dictationActive = false
     fake.heldPolls = 1
     fake.duringWait = { fake.terminated = [a.processIdentifier] }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     fake.terminated = []
     fake.heldPolls = 1
     fake.duringWait = { fake.axTrusted = false }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     #expect(outcomes(fake) == ["recording", "target_gone", "ax_denied"])
     #expect(fake.permissionsOpened == 1, "revoked during a MENU wait: sent to the fix, as at the start")
@@ -440,7 +628,7 @@ struct LastDictationActionTests {
     let fake = Fake()
     fake.frontmost = b
     fake.duringActivation = { fake.dictationActive = true }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
     #expect(fake.activated == [a.processIdentifier])
     #expect(outcomes(fake) == ["recording"])
     #expect(fake.pastes.isEmpty)
@@ -453,12 +641,12 @@ struct LastDictationActionTests {
     fake.frontmost = a
     fake.heldPolls = 1
     fake.duringWait = { fake.dictationActive = true }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     fake.dictationActive = false
     fake.heldPolls = 1
     fake.duringWait = { fake.deleted = true }
-    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     #expect(outcomes(fake) == ["recording", "no_dictation"])
     #expect(fake.pastes.isEmpty)
@@ -472,7 +660,7 @@ struct LastDictationActionTests {
     fake.heldPolls = 1
     let id = try #require(fake.row?.id)
     fake.duringWait = { fake.row = (id, "Edited after the menu opened.") }
-    await makeAction(fake).pasteFromMenu(rowID: id, target: a)
+    await makeAction(fake).pasteFromMenu(rowID: id, target: a).value
     #expect(fake.pastes.map(\.text) == ["Edited after the menu opened."])
   }
 }
