@@ -163,6 +163,10 @@ public enum ClipboardCleanup {
   /// production, and nothing in `Sources/` ever assigns it.
   static var testDelayOverrideMs: Int?
 
+  /// Replaces the keep path's clipboard write, so a test can make it fail the way a refused
+  /// `setString` would (#3106 PR B). Nil in production, and nothing in `Sources/` assigns it.
+  static var testKeepWriteOverride: (@MainActor (String, NSPasteboard) -> Void)?
+
   /// Awaits the currently-pending cleanup, so a test learns it is done from the
   /// subject rather than by sleeping and hoping
   /// (testing-philosophy.md RULE: never-guess-when-the-subject-is-finished).
@@ -694,6 +698,9 @@ public enum ClipboardCleanup {
     let onOutcome: @MainActor (LandingOutcome) -> Void
     /// Ends the arrival session when its decision did not come within the bound.
     var onDecisionTimeout: @MainActor () -> Void = {}
+    /// How long to wait for the decision. Production keeps the default; a test shortens it to prove
+    /// the timeout path without waiting seconds.
+    var decisionBoundSeconds: Double = ClipboardCleanup.landingDecisionBoundSeconds
     /// The 200 ms minimum before the board may change. Injectable so a test releases it rather
     /// than sleeping; it must THROW on cancellation, so a cancelled cleanup abandons.
     var minimumWait: @MainActor () async throws -> Void = ClipboardCleanup.defaultMinimumWait
@@ -917,7 +924,7 @@ public enum ClipboardCleanup {
     // user's clipboard and every manual request, forever. Timing out is "not a miss".
     let decision = landing.decision
     let bounded: PasteArrivalLanding?? =
-      await withDeadline(seconds: Self.landingDecisionBoundSeconds) { await decision() }
+      await withDeadline(seconds: landing.decisionBoundSeconds) { await decision() }
     // Timed out: end the session too, so an abandoned one neither keeps reading nor keeps a waiter.
     if bounded == nil { landing.onDecisionTimeout() }
     let decided: PasteArrivalLanding? = bounded ?? nil
@@ -928,10 +935,13 @@ public enum ClipboardCleanup {
     var label = operation.label
     var outcome: LandingOutcome?
     var keepWriteFailed = false
+    var afterFailedWrite = 0
     if let decided, landing.mayRetain(decided) {
       switch keepDictation(landing.legacyText, owned: owned, on: board) {
       case .kept(let kept): outcome = kept
-      case .writeFailed: keepWriteFailed = true
+      case .writeFailed(let afterAttempt):
+        keepWriteFailed = true
+        afterFailedWrite = afterAttempt
       }
     }
     if let outcome {
@@ -939,12 +949,13 @@ public enum ClipboardCleanup {
       applied = outcome != .yielded
     } else if keepWriteFailed {
       // Our own failed write moved the board, so today's restore (guarded by the count from before
-      // it) would refuse and leave the board empty. Hand the user's clipboard back against the
-      // board as it stands now; with restore off there is nothing held to hand back.
+      // it) would refuse and leave the board empty. Hand the user's clipboard back, guarded by the
+      // count read right after OUR attempt, so a copy made after it is never restored over; with
+      // restore off there is nothing held to hand back.
       label = "keep_failed"
       if case .restore(let snapshot) = operation {
         applied = PasteService.restoreClipboard(
-          snapshot, changeCountAfterPaste: board.changeCount, on: board)
+          snapshot, changeCountAfterPaste: afterFailedWrite, on: board)
       }
     } else if case .restore = operation {
       applied = body()
@@ -965,23 +976,32 @@ public enum ClipboardCleanup {
   private enum KeepResult {
     case kept(LandingOutcome)
     /// The board could not be made to hold the text, and our attempt may have changed it: the
-    /// caller restores against the board as it now stands and reports nothing, because an
+    /// caller restores guarded by `changeCountAfterAttempt` and reports nothing, because an
     /// unverified board is not a receipt.
-    case writeFailed
+    case writeFailed(changeCountAfterAttempt: Int)
   }
 
   /// How long a checked cleanup waits for its landing decision before treating it as not a miss.
   /// Far above any deadline (`PasteLandingPolicy.landingDeadlineMs`, at most 700 ms) plus a final
   /// read; only a decision that never comes reaches it.
-  static let landingDecisionBoundSeconds = 3.0
+  nonisolated static let landingDecisionBoundSeconds = 3.0
 
   /// Leave this take's legacy text on the board for a manual ⌘V, or yield to whoever wrote it.
   private static func keepDictation(
     _ legacyText: String, owned: Int, on board: NSPasteboard
   ) -> KeepResult {
     guard board.changeCount == owned else { return .kept(.yielded) }
-    if !boardHolds(legacyText, board) { PasteService.copyToClipboard(legacyText, to: board) }
-    guard boardHolds(legacyText, board) else { return .writeFailed }
+    if !boardHolds(legacyText, board) {
+      if let write = testKeepWriteOverride {
+        write(legacyText, board)
+      } else {
+        PasteService.copyToClipboard(legacyText, to: board)
+      }
+    }
+    let afterAttempt = board.changeCount
+    guard boardHolds(legacyText, board) else {
+      return .writeFailed(changeCountAfterAttempt: afterAttempt)
+    }
     return .kept(.retained(changeCount: board.changeCount))
   }
 

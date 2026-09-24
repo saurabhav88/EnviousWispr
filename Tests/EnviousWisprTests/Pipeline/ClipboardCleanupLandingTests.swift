@@ -422,4 +422,56 @@ struct ClipboardCleanupLandingTests {
       #expect(pb.string(forType: .string) == Self.dictation, "abandoned, not restored early")
     }
   }
+
+  // MARK: Failure paths (second-pass review)
+
+  @Test("A keep whose write does not take hands the user's clipboard back and reports nothing")
+  func failedKeepWriteRestores() async throws {
+    try await withCleanCleanupThrowing {
+      // The write lands different text, the way a refused or clobbered `setString` would.
+      ClipboardCleanup.testKeepWriteOverride = { _, board in
+        board.clearContents()
+        board.setString("not the dictation", forType: .string)
+      }
+      defer { ClipboardCleanup.testKeepWriteOverride = nil }
+      let fake = FakeLanding(preset: .some(.absent))
+      let outcomes = Outcomes()
+      let (pb, _) = restoreOnPaste(payload: Self.adjusted, fake: fake, outcomes: outcomes)
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(pb.string(forType: .string) == Self.user, "the user's clipboard came back")
+      #expect(outcomes.all.isEmpty, "an unverified board is not a receipt")
+    }
+  }
+
+  @Test("A decision that never comes is bounded: the session is ended and today's restore runs")
+  func neverDecidingIsBounded() async throws {
+    try await withCleanCleanupThrowing {
+      let fake = FakeLanding()  // never published
+      let outcomes = Outcomes()
+      @MainActor final class Ended { var count = 0 }
+      let ended = Ended()
+      let pb = board(holding: Self.user)
+      let snap = snapshot(of: pb)
+      put(Self.dictation, on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snap, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb,
+        landing: ClipboardCleanup.LandingCheck(
+          decision: { await fake.decision() },
+          mayRetain: { _ in true },
+          legacyText: Self.dictation,
+          onOutcome: { outcomes.all.append($0) },
+          onDecisionTimeout: {
+            ended.count += 1
+            fake.publish(nil)  // what ending the real session does: its waiters are released
+          },
+          // The subject's own bound, shortened; the test waits on the subject, not on a clock.
+          decisionBoundSeconds: 0.05,
+          minimumWait: {}))
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(ended.count == 1)
+      #expect(pb.string(forType: .string) == Self.user)
+      #expect(outcomes.all.isEmpty)
+      #expect(ClipboardCleanup.hasPending == false)
+    }
+  }
 }
