@@ -101,6 +101,22 @@ struct RetainedPasteNoticeDirectorTests {
   @MainActor
   private final class Board { var count = 10 }
 
+  /// Forwards to the real director and counts the asks. The render-time `isStillWanted` re-check
+  /// refuses a stale request too, so what reaches the screen cannot tell "dropped before asking"
+  /// from "asked and refused"; only the count can (#3122 row 5).
+  @MainActor
+  private final class CountingHost: RetainedPasteNoticeHosting {
+    let inner: OverlayDirector
+    var asked = 0
+    init(_ inner: OverlayDirector) { self.inner = inner }
+    func present(
+      _ request: PillRequest, onResult: @escaping (PillPresentationResult) -> Void
+    ) -> PillReceipt? {
+      asked += 1
+      return inner.present(request, onResult: onResult)
+    }
+  }
+
   private func notice(_ board: Board, _ log: Log) -> RetainedPasteNotice {
     RetainedPasteNotice(boardChangeCount: { board.count })
   }
@@ -162,13 +178,15 @@ struct RetainedPasteNoticeDirectorTests {
 
     n.takeAccepted("take-1")
     n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // not connected yet
-    n.connect(d)
+    let counting = CountingHost(d)
+    n.connect(counting)
     n.takeAccepted("take-2")
     n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // older take
     n.retained(takeID: "take-2", changeCount: 9) { log.shown.append(("take-2", $0)) }  // board moved since
     #expect(isShowing(d) == false)
     #expect(log.announcements.isEmpty)
     #expect(log.shown.map(\.1) == [false, false, false])
+    #expect(counting.asked == 0, "a stale report must not ask the overlay at all")
   }
 
   @Test("An occupied overlay refuses it, and the notice reports it not shown")

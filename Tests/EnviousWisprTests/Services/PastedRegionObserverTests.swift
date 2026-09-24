@@ -178,19 +178,15 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     guard admit(application) else { return nil }
     guard !registrationFails else { return nil }
     landingObserversCreated += 1
-    var wanted: [(AXUIElement, PastedRegionAXNotification)] = []
-    if let element {
-      wanted.append((element, .valueChanged))
-      wanted.append((element, .elementDestroyed))
-    }
-    wanted.append((application, .focusedElementChanged))
-    var registered: Set<PastedRegionAXNotification> = []
-    for (target, kind) in wanted {
-      guard admit(target) else { break }
-      noteLanding("add:\(kind)", target)
-      afterLandingNotification?(kind)
-      if !landingNotificationFailures.contains(kind) { registered.insert(kind) }
-    }
+    // The live order and budget rule come from the production plan (#3141), so a test of the
+    // budget binds the loop the app runs; only the add itself is faked.
+    let wanted = PastedRegionRegistrationPlan.wanted(element: element, application: application)
+    let registered = Set(
+      PastedRegionRegistrationPlan.register(wanted, admit: admit) { target, kind in
+        noteLanding("add:\(kind)", target)
+        afterLandingNotification?(kind)
+        return !landingNotificationFailures.contains(kind)
+      }.map(\.1))
     guard !registered.isEmpty else { return nil }
     let registration = PastedRegionFakeRegistration(handler: handler, registered: registered)
     landingRegistrations.append(registration)

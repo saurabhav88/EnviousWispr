@@ -37,15 +37,21 @@ struct KernelInputResolutionFreezeTests {
   /// #1857: `concluding: true` for the fault-injected starts whose caller then
   /// asserts the kernel reached its FAILED terminal. Epoch quiescence can settle
   /// while the failure path is still a ready task, so `state` would read the
-  /// in-flight value. A healthy start has no terminal coming and keeps the plain
-  /// drain — the conclusion wait would spin to its livelock cap there.
+  /// in-flight value. A healthy start has no terminal coming, so it waits for
+  /// the session to go live instead (#2539): the success-path freeze runs just
+  /// before `.live`, so live means the freeze has happened. The plain drain is a
+  /// quiescence guess and read `nil` on CI under contention.
   private func startAndSettle(_ wrapper: KernelRecordingSession, concluding: Bool = false) async {
     await wrapper.apply(.start)
     if concluding {
       await wrapper.drainUntilConcluded()
     } else {
-      await wrapper.drainReadyWork()
+      await waitUntilLive(wrapper)
     }
+  }
+
+  private func waitUntilLive(_ wrapper: KernelRecordingSession) async {
+    await wrapper.drainUntil({ wrapper.testKernel.state == .live }, what: "the session going live")
   }
 
   // MARK: 1 — the ordinary success path
@@ -167,7 +173,7 @@ struct KernelInputResolutionFreezeTests {
       "resetSessionState must clear session 1 before session 2 reaches its final freeze")
 
     capture.releaseStabilizationGate()
-    await wrapper.drainReadyWork()
+    await waitUntilLive(wrapper)
 
     #expect(wrapper.testKernel.lastInputResolutionSource == "pinned_uid")
   }

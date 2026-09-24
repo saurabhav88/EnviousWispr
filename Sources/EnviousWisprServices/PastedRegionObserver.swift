@@ -406,6 +406,40 @@ package enum PastedRegionAXNotification: Sendable, Hashable, CaseIterable {
   case elementDestroyed
 }
 
+/// What one registration asks for and the budget rule that stops it, shared by the live
+/// `Registration.make` and the tests' fake (#3141). The fake used to carry its own copy of this
+/// loop, so a test "of the budget" passed against the copy while the live loop could be broken.
+package enum PastedRegionRegistrationPlan {
+  /// The live order: value-changed and destroyed on the element, then focus on the application.
+  package static func wanted<Target>(
+    element: Target?, application: Target
+  ) -> [(Target, PastedRegionAXNotification)] {
+    var wanted: [(Target, PastedRegionAXNotification)] = []
+    if let element {
+      wanted.append((element, .valueChanged))
+      wanted.append((element, .elementDestroyed))
+    }
+    wanted.append((application, .focusedElementChanged))
+    return wanted
+  }
+
+  /// Asks `admit` before each add and stops at the first refusal, keeping what already
+  /// registered. `add` performs one registration and answers whether it succeeded.
+  @MainActor
+  package static func register<Target>(
+    _ wanted: [(Target, PastedRegionAXNotification)],
+    admit: (Target) -> Bool,
+    add: (Target, PastedRegionAXNotification) -> Bool
+  ) -> [(Target, PastedRegionAXNotification)] {
+    var registered: [(Target, PastedRegionAXNotification)] = []
+    for (target, kind) in wanted {
+      guard admit(target) else { break }
+      if add(target, kind) { registered.append((target, kind)) }
+    }
+    return registered
+  }
+}
+
 @MainActor
 package protocol PastedRegionAXRegistration: AnyObject {
   func invalidate()
@@ -2152,18 +2186,11 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
         observer: observer, element: element, application: application)
       registration.handler = handler
       let refcon = Unmanaged.passUnretained(registration).toOpaque()
-      var wanted: [(AXUIElement, CFString)] = []
-      if let element {
-        wanted.append((element, kAXValueChangedNotification as CFString))
-        wanted.append((element, kAXUIElementDestroyedNotification as CFString))
-      }
-      wanted.append((application, kAXFocusedUIElementChangedNotification as CFString))
-      for (target, name) in wanted {
-        guard admit(target) else { break }
-        if AXObserverAddNotification(observer, target, name, refcon) == .success {
-          registration.registered.append((target, name))
-        }
-      }
+      let wanted = PastedRegionRegistrationPlan.wanted(element: element, application: application)
+      registration.registered = PastedRegionRegistrationPlan.register(wanted, admit: admit) {
+        target, kind in
+        AXObserverAddNotification(observer, target, Self.name(of: kind), refcon) == .success
+      }.map { ($0.0, Self.name(of: $0.1)) }
       guard !registration.registered.isEmpty else { return nil }
       CFRunLoopAddSource(
         CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), CFRunLoopMode.defaultMode)
@@ -2194,6 +2221,14 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       case kAXUIElementDestroyedNotification as String: .elementDestroyed
       case kAXFocusedUIElementChangedNotification as String: .focusedElementChanged
       default: nil
+      }
+    }
+
+    private static func name(of kind: PastedRegionAXNotification) -> CFString {
+      switch kind {
+      case .valueChanged: kAXValueChangedNotification as CFString
+      case .elementDestroyed: kAXUIElementDestroyedNotification as CFString
+      case .focusedElementChanged: kAXFocusedUIElementChangedNotification as CFString
       }
     }
 
